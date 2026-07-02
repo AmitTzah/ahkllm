@@ -86,6 +86,18 @@ closeWindowsHotkey := "~^w"           ; Ctrl+W — close input pop-up
 suspendHotkey  := "CapsLock & ``"     ; CapsLock+Backtick — toggle script suspend
 
 ; ----------------------------------------------------
+; OPTIONS MENU ITEMS
+; ----------------------------------------------------
+; Items shown under the "Options" submenu (press ` then Options).
+; Each entry: { menuText, command }
+;   command is either a URL to open ("https://...") or a file path to run.
+
+optionsMenuItems := [
+    { menuText: "&1 - Edit UserConfig",  command: "Notepad " A_ScriptDir "\UserConfig.ahk" },
+    { menuText: "&2 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" }
+]
+
+; ----------------------------------------------------
 ; TRAY MENU ITEMS
 ; ----------------------------------------------------
 ; Each entry: { menuText, action }

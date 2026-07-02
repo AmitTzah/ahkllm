@@ -10,6 +10,10 @@ Hotkey(saveReloadHotkey, (*) => mainScriptHotkeyActions("saveAndReloadScript"))
 Hotkey(closeWindowsHotkey, (*) => mainScriptHotkeyActions("closeWindows"))
 Hotkey(suspendHotkey, (*) => mainScriptHotkeyActions("suspendHotkey"), "S")
 
+runOptionsMenuAction(command, *) {
+    Run(command)
+}
+
 mainScriptHotkeyActions(action) {
     activeModelsCount := getActiveModels().Count
 
@@ -110,12 +114,11 @@ mainScriptHotkeyActions(action) {
             ; Line separator before Options
             promptMenu.Add()
 
-            ; Options menu
+            ; Options menu — built dynamically from UserConfig.ahk
             promptMenu.Add("&Options", optionsMenu := Menu())
-            optionsMenu.Add("&1 - Edit UserConfig", (*) => Run("Notepad " A_ScriptDir "\UserConfig.ahk"))
-            optionsMenu.Add("&2 - DeepSeek Platform", (*) => Run("https://platform.deepseek.com"))
-            optionsMenu.Add("&3 - DeepSeek API Keys", (*) => Run("https://platform.deepseek.com/api_keys"))
-            optionsMenu.Add("&4 - DeepSeek Usage", (*) => Run("https://platform.deepseek.com/usage"))
+            for _, item in optionsMenuItems {
+                optionsMenu.Add(item.menuText, runOptionsMenuAction.Bind(item.command))
+            }
             promptMenu.Show()
 
         case "suspendHotkey":
