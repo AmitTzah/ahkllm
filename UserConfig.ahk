@@ -83,20 +83,29 @@ prompts := [
         menuText: "&1 - Ask DeepSeek V4 Pro",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek-v4-pro",
-        isCustomPrompt: true,
-        customPromptInitialMessage: "",
-        tags: ["&DeepSeek"]
+        isCustomPrompt: true,               ; Shows input window for your instruction
+        customPromptInitialMessage: "",     ; (no pre-filled text)
+        isAutoPaste: false,                 ; Response stays in the Response Window
+        skipConfirmation: false,            ; Shows confirmation before sending
+        copyAsMarkdown: false,              ; Copies as plain text
+        tags: ["&DeepSeek"],
+        directAccelerator: ""               ; (no top-level shortcut)
     }
 
     , {
         ; ---------- Quick ask (V4 Flash) ----------
+        ; Same as General assistant, but uses the faster (and cheaper) Flash model.
         promptName: "Quick ask (V4 Flash)",
         menuText: "&2 - Ask DeepSeek V4 Flash",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek-v4-flash",
         isCustomPrompt: true,
         customPromptInitialMessage: "",
-        tags: ["&DeepSeek"]
+        isAutoPaste: false,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        tags: ["&DeepSeek"],
+        directAccelerator: ""
     }
 
     , {
@@ -107,8 +116,13 @@ prompts := [
         menuText: "&3 - Rephrase",
         systemPrompt: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek-v4-pro",
+        isCustomPrompt: false,              ; Uses selected text directly (no input window)
+        customPromptInitialMessage: "",
+        isAutoPaste: false,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
         tags: ["&Text manipulation"],
-        directAccelerator: "&r"
+        directAccelerator: "&r"             ; Press ` then R to fire directly
     }
 
     , {
@@ -117,7 +131,13 @@ prompts := [
         menuText: "&4 - Summarize",
         systemPrompt: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek-v4-pro",
-        tags: ["&Text manipulation", "&Articles"]
+        isCustomPrompt: false,
+        customPromptInitialMessage: "",
+        isAutoPaste: false,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        tags: ["&Text manipulation", "&Articles"],
+        directAccelerator: ""
     }
 
     , {
@@ -126,7 +146,13 @@ prompts := [
         menuText: "&5 - Translate to English",
         systemPrompt: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek-v4-pro",
-        tags: ["&Text manipulation", "Language"]
+        isCustomPrompt: false,
+        customPromptInitialMessage: "",
+        isAutoPaste: false,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        tags: ["&Text manipulation", "Language"],
+        directAccelerator: ""
     }
 
     , {
@@ -135,7 +161,13 @@ prompts := [
         menuText: "&6 - Define",
         systemPrompt: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
         APIModels: "deepseek-v4-pro",
-        tags: ["&Text manipulation", "Learning"]
+        isCustomPrompt: false,
+        customPromptInitialMessage: "",
+        isAutoPaste: false,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        tags: ["&Text manipulation", "Learning"],
+        directAccelerator: ""
     }
 
     , {
@@ -149,9 +181,13 @@ prompts := [
         menuText: "&7 - Auto-paste custom prompt",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask.",
         APIModels: "deepseek-v4-flash",
-        isCustomPrompt: true,       ; Opens text input for you to type any instruction
-        isAutoPaste: true,          ; Pastes the LLM response straight into the active app
-        tags: ["&Custom prompts", "&Auto paste"]
+        isCustomPrompt: true,               ; Shows input window for any instruction
+        customPromptInitialMessage: "",
+        isAutoPaste: true,                  ; Pastes response straight into active app
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        tags: ["&Custom prompts", "&Auto paste"],
+        directAccelerator: ""
     }
 
     , {
@@ -164,6 +200,10 @@ prompts := [
         APIModels: "deepseek-v4-pro, deepseek-v4-flash",   ; Two models = two Response Windows
         isCustomPrompt: true,
         customPromptInitialMessage: "",
-        tags: ["&DeepSeek", "&Multi-models"]
+        isAutoPaste: false,                 ; Auto-disabled anyway (multi-model)
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        tags: ["&DeepSeek", "&Multi-models"],
+        directAccelerator: ""
     }
 ]
