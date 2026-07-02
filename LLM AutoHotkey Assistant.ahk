@@ -8,7 +8,7 @@
 Hotkey(mainHotkey, (*) => mainScriptHotkeyActions("showPromptMenu"))
 Hotkey(saveReloadHotkey, (*) => mainScriptHotkeyActions("saveAndReloadScript"))
 Hotkey(closeWindowsHotkey, (*) => mainScriptHotkeyActions("closeWindows"))
-Hotkey(suspendHotkey, (*) => mainScriptHotkeyActions("suspendHotkey"))
+Hotkey(suspendHotkey, (*) => mainScriptHotkeyActions("suspendHotkey"), "S")
 
 mainScriptHotkeyActions(action) {
     activeModelsCount := getActiveModels().Count
