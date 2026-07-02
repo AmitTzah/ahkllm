@@ -1,13 +1,11 @@
 #Requires AutoHotkey v2.0.18+
-#Include ..\UserConfig.ahk
-#Include Dark_MsgBox.ahk ; Enables dark mode MsgBox and InputBox. Remove this if you want light mode MsgBox and InputBox
-#Include Dark_Menu.ahk ; Enables dark mode Menu. Remove this if you want light mode Menu
-#Include SystemThemeAwareToolTip.ahk ; Enables dark mode tooltips. Remove this if you want light mode tooltips
-#Include WebViewToo.ahk ; Allows for use of the WebView2 Framework within AHK to create Web-based GUIs
-#Include jsongo.v2.ahk ; For JSON parsing
-#Include AutoXYWH.ahk ; Enables auto-resizing of GUI controls. Does not include resizing of Response Window GUI elements, as it is handled by HTML and CSS
-#Include ToolTipEx.ahk ; Enables the tooltip to track the mouse cursor smoothly and permit the tooltip to be moved by dragging
-DetectHiddenWindows true ; Enables detection of hidden windows for inter-process communication
+#Include ..\UserConfig.ahk        ; All user-facing configuration
+; Theme includes are now in UserConfig.ahk (above)
+#Include WebViewToo.ahk             ; WebView2 Framework for Web-based GUIs
+#Include jsongo.v2.ahk              ; JSON parsing
+#Include AutoXYWH.ahk               ; Auto-resizing of GUI controls
+#Include ToolTipEx.ahk              ; Tooltip tracking and dragging
+DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
 ; ----------------------------------------------------
 ; LLM Client (OpenAI-compatible API)
@@ -15,7 +13,7 @@ DetectHiddenWindows true ; Enables detection of hidden windows for inter-process
 
 class LLMClient {
     static cURLCommand :=
-        'cURL.exe -s -X POST https://api.deepseek.com/chat/completions '
+        'cURL.exe -s -X POST ' APIEndpoint ' '
         . '-H "Authorization: Bearer {1}" '
         . '-H "Content-Type: application/json" '
         . '-d @"{2}" '
@@ -100,16 +98,16 @@ class InputWindow {
     __New(windowTitle, skipConfirmation := false) {
         this.inputWindowSkipConfirmation := skipConfirmation
 
-        ; Create Input Window
+        ; Create Input Window — uses settings from UserConfig.ahk
         this.guiObj := Gui("Resize", windowTitle)
         this.guiObj.OnEvent("Close", this.closeButtonAction.Bind(this))
         this.guiObj.OnEvent("Escape", this.closeButtonAction.Bind(this))
         this.guiObj.OnEvent("Size", this.resizeAction.Bind(this))
-        this.guiObj.BackColor := "0x212529"
-        this.guiObj.SetFont("s14 cWhite", "Cambria")
+        this.guiObj.BackColor := inputWindowBackground
+        this.guiObj.SetFont(inputWindowFontSize " " inputWindowFontColor, inputWindowFontFace)
 
         ; Add controls
-        this.EditControl := this.guiObj.Add("Edit", "x20 y+5 w500 h250 Background0x212529")
+        this.EditControl := this.guiObj.Add("Edit", "x20 y+5 w" inputWindowWidth " h" inputWindowHeight " Background" inputWindowBackground)
         this.SendButton := this.guiObj.Add("Button", "x240 y+10 w80", "Send")
 
         ; Apply dark mode to title bar

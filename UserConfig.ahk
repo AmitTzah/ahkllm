@@ -3,10 +3,9 @@
 ; ============================================================================
 ; Edit this file to customize the LLM AutoHotkey Assistant.
 ; Changes take effect after saving and reloading (~^s).
-; ----------------------------------------------------
 
 ; ----------------------------------------------------
-; DeepSeek API Key
+; API KEY
 ; ----------------------------------------------------
 ; Reads from DEEPSEEK_API_KEY environment variable.
 ; Set it via:  setx DEEPSEEK_API_KEY "sk-your-key-here"
@@ -20,7 +19,103 @@ if (!APIKey || APIKey = "") {
 }
 
 ; ----------------------------------------------------
-; Prompts (menu commands)
+; API ENDPOINT
+; ----------------------------------------------------
+; The base URL for the LLM API server.
+
+APIEndpoint := "https://api.deepseek.com/chat/completions"
+
+; ----------------------------------------------------
+; THEME (dark mode components)
+; ----------------------------------------------------
+; Comment out any line below to disable that component's dark theme.
+
+#Include lib\Dark_MsgBox.ahk              ; Dark mode MsgBox and InputBox
+#Include lib\Dark_Menu.ahk                ; Dark mode menus
+#Include lib\SystemThemeAwareToolTip.ahk  ; Dark mode tooltips
+
+; ----------------------------------------------------
+; UI — Input Window
+; ----------------------------------------------------
+
+inputWindowBackground    := "0x212529"     ; Background color for the text input window
+inputWindowFontSize      := "s14"
+inputWindowFontColor     := "cWhite"
+inputWindowFontFace      := "Cambria"
+inputWindowWidth         := 500            ; Width of the text input control in pixels
+inputWindowHeight        := 250            ; Height of the text input control in pixels
+
+; ----------------------------------------------------
+; UI — Suspend Banner
+; ----------------------------------------------------
+; The yellow banner shown at the bottom of the screen when the script is suspended.
+
+suspendBannerText        := "LLM AutoHotkey Assistant Suspended"
+suspendBannerFontSize    := "s10"
+suspendBannerFontFace    := "Cambria"
+suspendBannerTextColor   := "cBlack"
+suspendBannerBackground  := "0xFFDF00"     ; Gold/yellow
+
+; ----------------------------------------------------
+; ICONS
+; ----------------------------------------------------
+
+iconOn  := "icons\IconOn.ico"   ; Tray icon when the script is active
+iconOff := "icons\IconOff.ico"  ; Tray icon when the script is suspended
+
+; ----------------------------------------------------
+; HOTKEYS
+; ----------------------------------------------------
+; Main hotkey that opens the prompt menu.
+; Change this to any key (e.g. "F1", "~^Space") to use a different hotkey.
+
+mainHotkey     := "``"                ; Backtick — opens the prompt menu
+
+; When you edit UserConfig.ahk (e.g. via mainHotkey> Options > Edit UserConfig which opens
+; it in Notepad), Ctrl+S saves the file and the script auto-reloads to pick up
+; the new settings.  The ~ prefix lets the keystroke pass through to the editor.
+saveReloadHotkey := "~^s"             ; Ctrl+S — save config & reload script
+
+; Dismisses the active input window (custom prompt, send to all, send to group)
+; when focused.  The ~ prefix lets the keystroke pass through to other handlers.
+closeWindowsHotkey := "~^w"           ; Ctrl+W — close input pop-up
+
+; Temporarily freezes/unfreezes all hotkeys without closing the script.
+; When suspended a yellow banner appears at the bottom of the screen and the
+; tray icon changes.  Press again to resume.
+suspendHotkey  := "CapsLock & ``"     ; CapsLock+Backtick — toggle script suspend
+
+; ----------------------------------------------------
+; TRAY MENU ITEMS
+; ----------------------------------------------------
+; Each entry: { menuText, action }
+;   action is the callback function name to call when clicked.
+
+trayMenuItems := [
+    { menuText: "&Reload Script", action: "reload" },
+    { menuText: "E&xit",          action: "exit" }
+]
+
+; ----------------------------------------------------
+; PROVIDER INFERENCE MAP
+; ----------------------------------------------------
+; When a model name doesn't use "provider/model" format (e.g. "openai/gpt-4o"),
+; the script infers the provider by checking if the name contains any of these
+; prefixes. The first match wins. If no match, defaults to "deepseek".
+;
+; Format: Map("prefix", "provider-name", ...)
+
+providerMap := Map(
+    "deepseek", "deepseek",
+    "gpt",      "openai",
+    "o1",       "openai",
+    "o3",       "openai",
+    "claude",   "anthropic",
+    "gemini",   "google"
+)
+
+; ----------------------------------------------------
+; PROMPTS (menu commands)
 ; ============================================================================
 ; Each object in this array defines one command in the prompt menu.
 ;

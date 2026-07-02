@@ -2,15 +2,13 @@
 #SingleInstance
 
 ; ----------------------------------------------------
-; Hotkeys
+; Hotkeys (registered dynamically from UserConfig.ahk)
 ; ----------------------------------------------------
 
-`:: mainScriptHotkeyActions("showPromptMenu")
-~^s:: mainScriptHotkeyActions("saveAndReloadScript")
-~^w:: mainScriptHotkeyActions("closeWindows")
-
-#SuspendExempt
-CapsLock & `:: mainScriptHotkeyActions("suspendHotkey")
+Hotkey(mainHotkey, (*) => mainScriptHotkeyActions("showPromptMenu"))
+Hotkey(saveReloadHotkey, (*) => mainScriptHotkeyActions("saveAndReloadScript"))
+Hotkey(closeWindowsHotkey, (*) => mainScriptHotkeyActions("closeWindows"))
+Hotkey(suspendHotkey, (*) => mainScriptHotkeyActions("suspendHotkey"))
 
 mainScriptHotkeyActions(action) {
     activeModelsCount := getActiveModels().Count
@@ -151,25 +149,16 @@ mainScriptHotkeyActions(action) {
 }
 
 ; ----------------------------------------------------
-; Script tray menu
+; Generate tray menu dynamically from UserConfig.ahk
 ; ----------------------------------------------------
 
-trayMenuItems := [{
-    menuText: "&Reload Script",
-    function: (*) => Reload()
-}, {
-    menuText: "E&xit",
-    function: (*) => ExitApp()
-}]
-
-; ----------------------------------------------------
-; Generate tray menu dynamically
-; ----------------------------------------------------
-
-TraySetIcon("icons\IconOn.ico")
+TraySetIcon(iconOn)
 A_TrayMenu.Delete()
-for index, item in trayMenuItems {
-    A_TrayMenu.Add(item.menuText, item.function)
+for _, item in trayMenuItems {
+    switch item.action {
+        case "reload": A_TrayMenu.Add(item.menuText, (*) => Reload())
+        case "exit":   A_TrayMenu.Add(item.menuText, (*) => ExitApp())
+    }
 }
 A_IconTip := "LLM AutoHotkey Assistant"
 
@@ -328,9 +317,9 @@ managePromptWindows(operation, promptName := "", *) {
 ; ----------------------------------------------------
 
 scriptSuspendStatus := Gui()
-scriptSuspendStatus.SetFont("s10", "Cambria")
-scriptSuspendStatus.Add("Text", "cBlack Center", "LLM AutoHotkey Assistant Suspended")
-scriptSuspendStatus.BackColor := "0xFFDF00"
+scriptSuspendStatus.SetFont(suspendBannerFontSize, suspendBannerFontFace)
+scriptSuspendStatus.Add("Text", suspendBannerTextColor " Center", suspendBannerText)
+scriptSuspendStatus.BackColor := suspendBannerBackground
 scriptSuspendStatus.Opt("-Caption +Owner -SysMenu +AlwaysOnTop")
 scriptSuspendStatusWidth := ""
 scriptSuspendStatus.GetPos(, , &scriptSuspendStatusWidth)
@@ -342,13 +331,13 @@ scriptSuspendStatus.GetPos(, , &scriptSuspendStatusWidth)
 toggleSuspend(*) {
     Suspend -1
     if (A_IsSuspended) {
-        TraySetIcon("icons\IconOff.ico", , 1)
+        TraySetIcon(iconOff, , 1)
         A_IconTip := "LLM AutoHotkey Assistant - Suspended)"
 
         ; Show GUI at the bottom, centered
         scriptSuspendStatus.Show("AutoSize x" (A_ScreenWidth - scriptSuspendStatusWidth) / 2.3 " y990 NA")
     } else {
-        TraySetIcon("icons\IconOn.ico")
+        TraySetIcon(iconOn)
         A_IconTip := "LLM AutoHotkey Assistant"
         scriptSuspendStatus.Hide()
     }
@@ -453,17 +442,14 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             providerName := SubStr(fullAPIModelName, 1, slashPos - 1)
             singleAPIModelName := SubStr(fullAPIModelName, slashPos + 1)
         } else {
-            ; Direct model name — infer provider from known prefixes
-            if InStr(fullAPIModelName, "deepseek")
-                providerName := "deepseek"
-            else if InStr(fullAPIModelName, "gpt") || InStr(fullAPIModelName, "o1") || InStr(fullAPIModelName, "o3")
-                providerName := "openai"
-            else if InStr(fullAPIModelName, "claude")
-                providerName := "anthropic"
-            else if InStr(fullAPIModelName, "gemini")
-                providerName := "google"
-            else
-                providerName := "deepseek"
+            ; Direct model name — infer provider from UserConfig providerMap
+            providerName := "deepseek"  ; default fallback
+            for prefix, mappedProvider in providerMap {
+                if InStr(fullAPIModelName, prefix) {
+                    providerName := mappedProvider
+                    break
+                }
+            }
             singleAPIModelName := fullAPIModelName
         }
 
