@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0.18+
-#Include ..\Prompts.ahk
+#Include ..\UserConfig.ahk
 #Include Dark_MsgBox.ahk ; Enables dark mode MsgBox and InputBox. Remove this if you want light mode MsgBox and InputBox
 #Include Dark_Menu.ahk ; Enables dark mode Menu. Remove this if you want light mode Menu
 #Include SystemThemeAwareToolTip.ahk ; Enables dark mode tooltips. Remove this if you want light mode tooltips

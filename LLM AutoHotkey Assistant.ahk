@@ -51,6 +51,11 @@ mainScriptHotkeyActions(action) {
                 ; Check if prompt has tags
                 hasTags := prompt.HasProp("tags") && prompt.tags && prompt.tags.Length > 0
 
+                ; If prompt has a directAccelerator, add a top-level shortcut
+                if prompt.HasProp("directAccelerator") && prompt.directAccelerator {
+                    promptMenu.Add(prompt.directAccelerator . " - " . prompt.promptName, promptMenuHandler.Bind(index))
+                }
+
                 ; If no tags, add directly to menu and continue
                 if !hasTags {
                     promptMenu.Add(prompt.menuText, promptMenuHandler.Bind(index))
@@ -109,7 +114,7 @@ mainScriptHotkeyActions(action) {
 
             ; Options menu
             promptMenu.Add("&Options", optionsMenu := Menu())
-            optionsMenu.Add("&1 - Edit prompts", (*) => Run("Notepad " A_ScriptDir "\Prompts.ahk"))
+            optionsMenu.Add("&1 - Edit UserConfig", (*) => Run("Notepad " A_ScriptDir "\UserConfig.ahk"))
             optionsMenu.Add("&2 - DeepSeek Platform", (*) => Run("https://platform.deepseek.com"))
             optionsMenu.Add("&3 - DeepSeek API Keys", (*) => Run("https://platform.deepseek.com/api_keys"))
             optionsMenu.Add("&4 - DeepSeek Usage", (*) => Run("https://platform.deepseek.com/usage"))
@@ -121,7 +126,7 @@ mainScriptHotkeyActions(action) {
             toggleSuspend(A_IsSuspended)
 
         case "saveAndReloadScript":
-            if !WinActive("Prompts.ahk") {
+            if !WinActive("UserConfig.ahk") {
                 return
             }
 
