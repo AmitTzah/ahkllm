@@ -19,11 +19,20 @@ if (!APIKey || APIKey = "") {
 }
 
 ; ----------------------------------------------------
-; API ENDPOINT
+; API ENDPOINT (chat completions)
 ; ----------------------------------------------------
-; The base URL for the LLM API server.
 
 APIEndpoint := "https://api.deepseek.com/chat/completions"
+
+; ----------------------------------------------------
+; FIM ENDPOINT (Fill In the Middle — beta)
+; ----------------------------------------------------
+; For code completion and text continuation.
+; Max tokens is 4K.  Prefix = selected text (or text before cursor),
+; suffix = text after the selection (optional).
+
+FIMEndpoint       := "https://api.deepseek.com/beta/completions"
+FIMMaxTokens      := 4000
 
 ; ----------------------------------------------------
 ; THEME (dark mode components)
@@ -94,7 +103,9 @@ suspendHotkey  := "CapsLock & ``"     ; CapsLock+Backtick — toggle script susp
 
 optionsMenuItems := [
     { menuText: "&1 - Edit UserConfig",  command: "Notepad " A_ScriptDir "\UserConfig.ahk" },
-    { menuText: "&2 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" }
+    { menuText: "&2 - DeepSeek Platform", command: "https://platform.deepseek.com" },
+    { menuText: "&3 - DeepSeek API Keys", command: "https://platform.deepseek.com/api_keys" },
+    { menuText: "&4 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" }
 ]
 
 ; ----------------------------------------------------
@@ -153,31 +164,43 @@ providerMap := Map(
 ;
 ;   isCustomPrompt:   (Optional) When true, the user is shown a text input
 ;                     window where they can type their own instruction instead
-;                     of using only the selected text. Default: false.
+;                     of using only the selected text.  For FIM prompts this
+;                     input becomes the suffix.  Default: false.
 ;
 ;   customPromptInitialMessage:
 ;                     (Optional) Pre-filled text in the custom prompt input
-;                     window. Only meaningful when isCustomPrompt: true.
+;                     window.  Only meaningful when isCustomPrompt: true.
 ;
-;   isAutoPaste:      (Optional) When true, the LLM response is automatically
-;                     pasted into the active application (no manual copy/paste
-;                     needed). Automatically disabled when >1 model is used.
-;                     Default: false.
+;   pasteMode:        (Optional) Where the LLM response goes:
+;                       "" (empty) — stays in the Response Window (no paste)
+;                       "replace"  — replaces the selected text in the active app
+;                       "append"   — placed after the cursor/selection
+;                     Default: "".
+;
+;   isFIM:            (Optional) Use DeepSeek FIM (Fill In the Middle) beta
+;                     endpoint instead of chat completions.
+;                     FIM Fill (pasteMode: "replace"):
+;                       Selection = gap to fill.  Script copies the full text
+;                       with Ctrl+A, splits around the selection into prefix/suffix.
+;                     FIM Continue (pasteMode: "append"):
+;                       Selection = prefix (no suffix needed).  If nothing is
+;                       selected, uses Ctrl+Shift+Home to grab text before cursor.
+;                     Max output: 4K tokens.  Default: false.
 ;
 ;   skipConfirmation: (Optional) When true, skips the confirmation dialog
-;                     before sending the request. Default: false.
+;                     before sending the request.  Default: false.
 ;
 ;   copyAsMarkdown:   (Optional) When true, the response is copied as
-;                     Markdown-formatted text. Default: false.
+;                     Markdown-formatted text.  Default: false.
 ;
 ;   tags:             (Optional) Array of submenu names used to group prompts
-;                     in the menu. Each tag creates a submenu containing all
-;                     prompts that share that tag. Default: [] (no grouping).
+;                     in the menu.  Each tag creates a submenu containing all
+;                     prompts that share that tag.  Default: [] (no grouping).
 ;
 ;   directAccelerator:
 ;                     (Optional) A keyboard accelerator string (e.g. "&r")
 ;                     that creates a top-level menu item as a shortcut to
-;                     this prompt. Press ` followed by the accelerator key
+;                     this prompt.  Press ` followed by the accelerator key
 ;                     to fire it without navigating into submenus.
 ;                     The prompt also stays in its original tagged submenu.
 ;                     Default: none.
@@ -192,9 +215,10 @@ prompts := [
         APIModels: "deepseek-v4-pro",
         isCustomPrompt: true,               ; Shows input window for your instruction
         customPromptInitialMessage: "",     ; (no pre-filled text)
-        isAutoPaste: false,                 ; Response stays in the Response Window
+        pasteMode: "",                      ; Response stays in Response Window
         skipConfirmation: false,            ; Shows confirmation before sending
         copyAsMarkdown: false,              ; Copies as plain text
+        isFIM: false,
         tags: ["&DeepSeek"],
         directAccelerator: ""               ; (no top-level shortcut)
     }
@@ -208,9 +232,10 @@ prompts := [
         APIModels: "deepseek-v4-flash",
         isCustomPrompt: true,
         customPromptInitialMessage: "",
-        isAutoPaste: false,
+        pasteMode: "",
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&DeepSeek"],
         directAccelerator: ""
     }
@@ -222,12 +247,13 @@ prompts := [
         promptName: "Rephrase",
         menuText: "&3 - Rephrase",
         systemPrompt: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         isCustomPrompt: false,              ; Uses selected text directly (no input window)
         customPromptInitialMessage: "",
-        isAutoPaste: false,
+        pasteMode: "replace",               ; Replaces selected text with rephrased version
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&Text manipulation"],
         directAccelerator: "&r"             ; Press ` then R to fire directly
     }
@@ -237,12 +263,13 @@ prompts := [
         promptName: "Summarize",
         menuText: "&4 - Summarize",
         systemPrompt: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
-        isAutoPaste: false,
+        pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&Text manipulation", "&Articles"],
         directAccelerator: ""
     }
@@ -252,12 +279,13 @@ prompts := [
         promptName: "Translate to English",
         menuText: "&5 - Translate to English",
         systemPrompt: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
-        isAutoPaste: false,
+        pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&Text manipulation", "Language"],
         directAccelerator: ""
     }
@@ -267,12 +295,13 @@ prompts := [
         promptName: "Define",
         menuText: "&6 - Define",
         systemPrompt: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
-        isAutoPaste: false,
+        pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&Text manipulation", "Learning"],
         directAccelerator: ""
     }
@@ -281,18 +310,19 @@ prompts := [
         ; ---------- Auto-paste custom prompt ----------
         ; Combines two independent features:
         ;   isCustomPrompt: shows an input window where you type any instruction
-        ;   isAutoPaste:    pastes the LLM response directly into the active window
-        ; (You can enable auto-paste without custom prompt — just set isAutoPaste
-        ;  on any prompt and the selected text is used directly.)
+        ;   pasteMode:      "replace" pastes the result back into the active app
+        ; (You can enable paste without custom prompt — just set pasteMode on any prompt
+        ;  and the selected text is used directly.)
         promptName: "Auto-paste custom prompt",
         menuText: "&7 - Auto-paste custom prompt",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask.",
         APIModels: "deepseek-v4-flash",
         isCustomPrompt: true,               ; Shows input window for any instruction
         customPromptInitialMessage: "",
-        isAutoPaste: true,                  ; Pastes response straight into active app
+        pasteMode: "replace",               ; Pastes response straight into active app
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&Custom prompts", "&Auto paste"],
         directAccelerator: ""
     }
@@ -307,10 +337,50 @@ prompts := [
         APIModels: "deepseek-v4-pro, deepseek-v4-flash",   ; Two models = two Response Windows
         isCustomPrompt: true,
         customPromptInitialMessage: "",
-        isAutoPaste: false,                 ; Auto-disabled anyway (multi-model)
+        pasteMode: "",                      ; Response stays in window
         skipConfirmation: false,
         copyAsMarkdown: false,
+        isFIM: false,
         tags: ["&DeepSeek", "&Multi-models"],
         directAccelerator: ""
+    }
+
+    , {
+        ; ---------- FIM Fill ----------
+        ; Select the gap you want filled.  Script copies the selection, then
+        ; copies the full text (Ctrl+A), splits around the selected text into
+        ; prefix + suffix, and FIM fills the middle.  The result replaces the
+        ; selection.
+        promptName: "FIM Fill",
+        menuText: "&9 - FIM Fill",
+        systemPrompt: "",
+        APIModels: "deepseek-v4-flash",
+        isCustomPrompt: false,
+        customPromptInitialMessage: "",
+        pasteMode: "replace",               ; FIM output replaces the selected gap
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        isFIM: true,
+        tags: ["&FIM"],
+        directAccelerator: ""
+    }
+
+    , {
+        ; ---------- FIM Continue ----------
+        ; Select prefix text (or just place cursor).  If nothing is selected,
+        ; grabs text before the cursor (Ctrl+Shift+Home).  FIM generates a
+        ; natural continuation that gets appended after the selection/cursor.
+        promptName: "FIM Continue",
+        menuText: "&0 - FIM Continue",
+        systemPrompt: "",
+        APIModels: "deepseek-v4-flash",
+        isCustomPrompt: false,
+        customPromptInitialMessage: "",
+        pasteMode: "append",                ; Continuation placed after cursor
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        isFIM: true,
+        tags: ["&FIM"],
+        directAccelerator: "&1"
     }
 ]

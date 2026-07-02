@@ -12,8 +12,17 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 ; ----------------------------------------------------
 
 class LLMClient {
+    ; Chat completions cURL template
     static cURLCommand :=
         'cURL.exe -s -X POST ' APIEndpoint ' '
+        . '-H "Authorization: Bearer {1}" '
+        . '-H "Content-Type: application/json" '
+        . '-d @"{2}" '
+        . '-o "{3}"'
+
+    ; FIM (Fill In the Middle) cURL template — uses the DeepSeek beta endpoint
+    static FIMcURLCommand :=
+        'cURL.exe -s -X POST ' FIMEndpoint ' '
         . '-H "Authorization: Bearer {1}" '
         . '-H "Content-Type: application/json" '
         . '-d @"{2}" '
@@ -87,6 +96,34 @@ class LLMClient {
 
     buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
         return Format(LLMClient.cURLCommand, this.APIKey, chatHistoryJSONRequestFile, cURLOutputFile)
+    }
+
+    ; ----------------------------------------------------
+    ; FIM-specific methods (Fill In the Middle)
+    ; ----------------------------------------------------
+
+    ; Builds the FIM JSON request: {model, prompt, suffix?, max_tokens}
+    createFIMRequest(APIModel, prefix, suffix) {
+        requestObj := { model: APIModel, prompt: prefix, max_tokens: FIMMaxTokens }
+        if (suffix != "") {
+            requestObj.suffix := suffix
+        }
+        return jsongo.Stringify(requestObj)
+    }
+
+    ; Extracts FIM response: choices[0].text
+    extractFIMResponse(var) {
+        response := var.Get("choices")[1].Get("text")
+        model := var.Get("model")
+        return {
+            response: response,
+            model: model
+        }
+    }
+
+    ; Builds the cURL command for the FIM endpoint
+    buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
+        return Format(LLMClient.FIMcURLCommand, this.APIKey, chatHistoryJSONRequestFile, cURLOutputFile)
     }
 }
 

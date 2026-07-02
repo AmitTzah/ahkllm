@@ -200,8 +200,9 @@ customPromptSendButtonAction(*) {
     processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
         selectedPrompt.APIModels,
         selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
-        selectedPrompt.HasProp("isAutoPaste") && selectedPrompt.isAutoPaste,
+        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "",
         selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
+        selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
         customPromptInputWindow.EditControl.Value
     )
     customPromptInputWindow.EditControl.Value := ""
@@ -365,10 +366,12 @@ promptMenuHandler(index, *) {
             ? selectedPrompt.customPromptInitialMessage : unset, selectedPrompt.promptName, "ahk_id " customPromptInputWindow
         .guiObj.hWnd)
     } else {
-        processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
-            selectedPrompt.APIModels, selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
-            selectedPrompt.HasProp("isAutoPaste") && selectedPrompt.isAutoPaste,
-            selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation)
+    processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
+        selectedPrompt.APIModels,
+        selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
+        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "",
+        selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
+        selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM)
     }
 }
 
@@ -408,44 +411,128 @@ managePromptState(component, action, data := {}) {
 ; Connect to LLM API and process request
 ; ----------------------------------------------------
 
-processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkdown, isAutoPaste, skipConfirmation,
+processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
     customPromptMessage := unset) {
 
-    ; Handle the copied text
+    ; ----------------------------------------------------
+    ; STEP 1: Capture text (clipboard-based)
+    ; ----------------------------------------------------
     clipboardBeforeCopy := A_Clipboard
-    A_Clipboard := ""
-    Send("^c")
+    prefix := ""
+    suffix := ""
 
-    if !ClipWait(1) {
-        if IsSet(customPromptMessage) {
-            userPrompt := customPromptMessage
+    if isFIM {
+        ; --- FIM text capture ---
+
+        ; First, try to copy the selection
+        A_Clipboard := ""
+        Send("^c")
+
+        selection := ""
+        if !ClipWait(1) {
+            ; Nothing selected — try Ctrl+Shift+Home to grab text before cursor
+            A_Clipboard := ""
+            Send("^+{Home}^c")
+            if !ClipWait(1) {
+                manageCursorAndToolTip("Reset")
+                A_Clipboard := clipboardBeforeCopy
+                MsgBox "No text found before cursor. Please select some text or place your cursor after text.", "FIM Continue", "IconX"
+                return
+            }
+            ; Text-before-cursor grabbed — FIM Continue, no suffix
+            prefix := A_Clipboard
+            suffix := ""
         } else {
-            manageCursorAndToolTip("Reset")
-            MsgBox "The attempt to copy text onto the clipboard failed.", "No text copied", "IconX"
-            return
+            ; Selection found
+            selection := A_Clipboard
+
+            if pasteMode = "replace" {
+                ; FIM Fill: cut the gap (removes selection, cursor at gap position)
+                A_Clipboard := ""
+                Send("^x")
+                if !ClipWait(1) {
+                    manageCursorAndToolTip("Reset")
+                    A_Clipboard := clipboardBeforeCopy
+                    MsgBox "Could not cut the selected text.", "FIM Fill", "IconX"
+                    return
+                }
+                ; The gap is now removed from the text. Extract everything before it.
+                A_Clipboard := ""
+                Send("^+{Home}^c")
+                if !ClipWait(1) {
+                    prefix := ""
+                } else {
+                    prefix := A_Clipboard
+                }
+                ; Move cursor back to gap position, then get everything after the gap.
+                Send("{Right}")
+                Sleep 50
+                A_Clipboard := ""
+                Send("+^{End}^c")
+                if !ClipWait(1) {
+                    suffix := ""
+                } else {
+                    suffix := A_Clipboard
+                }
+                ; Move cursor back to gap position for paste later.
+                Send("{Left}")
+            } else {
+                ; FIM Continue with selection as prefix
+                prefix := selection
+                suffix := ""
+            }
         }
-    } else if IsSet(customPromptMessage) {
-        userPrompt := customPromptMessage "`n`n" A_Clipboard
+
+        A_Clipboard := clipboardBeforeCopy
+
+        ; For FIM, auto-disable multi-model (FIM only makes sense with one model)
+        if InStr(APIModels, ",") {
+            MsgBox "FIM does not support multiple models. Only the first model will be used.", "FIM Warning", "IconX"
+        }
+
+        ; Process models (single model for FIM)
+        APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
     } else {
-        userPrompt := A_Clipboard
+        ; --- Chat text capture (existing logic) ---
+        A_Clipboard := ""
+        Send("^c")
+
+        if !ClipWait(1) {
+            if IsSet(customPromptMessage) {
+                userPrompt := customPromptMessage
+            } else {
+                manageCursorAndToolTip("Reset")
+                A_Clipboard := clipboardBeforeCopy
+                MsgBox "The attempt to copy text onto the clipboard failed.", "No text copied", "IconX"
+                return
+            }
+        } else if IsSet(customPromptMessage) {
+            userPrompt := customPromptMessage "`n`n" A_Clipboard
+        } else {
+            userPrompt := A_Clipboard
+        }
+
+        A_Clipboard := clipboardBeforeCopy
+
+        ; Removes newlines, spaces, and splits by comma
+        APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
+
+        ; For pasteMode "replace" or "append", auto-disable if multi-model
+        if pasteMode = "replace" || pasteMode = "append" {
+            pasteMode := (APIModels.Length > 1) ? "" : pasteMode
+        }
     }
 
-    A_Clipboard := clipboardBeforeCopy
-
-    ; Removes newlines, spaces, and splits by comma
-    APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
-
-    ; Automatically disables isAutoPaste if more than one model is present
-    isAutoPaste := (APIModels.Length > 1) ? false : isAutoPaste
-
+    ; ----------------------------------------------------
+    ; STEP 2: Build request and spawn Response Windows
+    ; ----------------------------------------------------
     for i, fullAPIModelName in APIModels {
 
-        ; Parse provider/model format (e.g., "openai/gpt-4o") or direct model name (e.g., "deepseek-v4-pro")
+        ; Parse provider/model format (e.g., "openai/gpt-4o") or direct model name
         if (slashPos := InStr(fullAPIModelName, "/")) {
             providerName := SubStr(fullAPIModelName, 1, slashPos - 1)
             singleAPIModelName := SubStr(fullAPIModelName, slashPos + 1)
         } else {
-            ; Direct model name — infer provider from UserConfig providerMap
             providerName := "deepseek"  ; default fallback
             for prefix, mappedProvider in providerMap {
                 if InStr(fullAPIModelName, prefix) {
@@ -458,10 +545,14 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 
         uniqueID := A_TickCount
 
-        ; Create the chatHistoryJSONRequest
-        chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userPrompt)
+        ; Build the JSON request — FIM or chat
+        if isFIM {
+            chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix)
+        } else {
+            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userPrompt)
+        }
 
-        ; Generate sanitized filenames for chat history, cURL command, and cURL output files
+        ; Generate sanitized filenames
         chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" promptName "_" singleAPIModelName "_" uniqueID ".json",
             "[\/\\:*?`"<>|]", "")
         cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" promptName "_" singleAPIModelName "_" uniqueID ".txt",
@@ -471,7 +562,11 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 
         ; Write the JSON request and cURL command to files
         FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
-        cURLCommand := router.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+        if isFIM {
+            cURLCommand := router.buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+        } else {
+            cURLCommand := router.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+        }
         FileOpen(cURLCommandFile, "w").Write(cURLCommand)
 
         ; Maintain a reference in the global map
@@ -485,14 +580,15 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             isLoading: false
         }
 
-        ; Create an object containing all values for the Response Window
+        ; Create the Response Window data object with pasteMode + isFIM
         responseWindowDataObj := {
             chatHistoryJSONRequestFile: chatHistoryJSONRequestFile,
             cURLCommandFile: cURLCommandFile,
             cURLOutputFile: cURLOutputFile,
             providerName: providerName,
             copyAsMarkdown: copyAsMarkdown,
-            isAutoPaste: isAutoPaste,
+            pasteMode: pasteMode,
+            isFIM: isFIM,
             skipConfirmation: skipConfirmation,
             mainScriptHiddenhWnd: A_ScriptHwnd,
             responseWindowTitle: promptName " [" singleAPIModelName "]",
@@ -502,9 +598,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             uniqueID: uniqueID
         }
 
-        ; Write the object to a file named responseWindowData and run
-        ; Response Window.ahk while passing the location of that file
-        ; through dataObjToJSONStrFile as the first argument
+        ; Write the object to a file and run Response Window.ahk
         dataObjToJSONStr := jsongo.Stringify(responseWindowDataObj)
         dataObjToJSONStrFile := A_Temp "\" RegExReplace("responseWindowData_" promptName "_" singleAPIModelName "_" A_TickCount ".json",
             "[\/\\:*?`"<>|]", "")

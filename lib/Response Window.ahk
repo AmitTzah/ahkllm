@@ -303,15 +303,24 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
     ; Process the JSON response from the LLM API
     try {
         JSONResponseVar := jsongo.Parse(JSONResponseFromLLM)
-        responseFromLLM := router.extractJSONResponse(JSONResponseVar)
+
+        ; Use FIM or chat extraction based on request params
+        if requestParams["isFIM"] {
+            responseFromLLM := router.extractFIMResponse(JSONResponseVar)
+        } else {
+            responseFromLLM := router.extractJSONResponse(JSONResponseVar)
+        }
 
         ; Get text after forward slash as responseFromLLM.model and replace colon (:) with dash (-)
         responseFromLLM.model := StrReplace(SubStr(responseFromLLM.model, InStr(responseFromLLM.model, "/") + 1), ":",
         "-")
 
         manageState("model", "add", responseFromLLM.model)
-        router.appendToChatHistory("assistant",
-            responseFromLLM.response, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
+        if !requestParams["isFIM"] {
+            ; Only append to chat history for chat completions (FIM has no chat history)
+            router.appendToChatHistory("assistant",
+                responseFromLLM.response, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
+        }
     } catch as e {
         JSONResponseFromLLM := router.extractErrorResponse(JSONResponseVar)
         responseFromLLM :=
@@ -337,44 +346,51 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         Exit
     }
 
-    ; Save Chat History and Latest Response so it can be viewed later
-    ; Begin by parsing the JSON string into an object
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
-    obj := jsongo.Parse(chatHistoryJSONRequest)
+    ; Save Chat History and Latest Response (only for chat completions, not FIM)
+    if !requestParams["isFIM"] {
+        manageChatHistoryJSON("set", chatHistoryJSONRequest)
+        obj := jsongo.Parse(chatHistoryJSONRequest)
 
-    ; Get the messages array
-    messages := router.getMessages(obj)
-    totalMessages := messages.Length
+        ; Get the messages array
+        messages := router.getMessages(obj)
+        totalMessages := messages.Length
 
-    ; Chat History - Iterate over each message in the 'messages' array
-    modelIndex := 1
-    for index, message in messages {
-        role := message.role
-        content := message.content
+        ; Chat History - Iterate over each message in the 'messages' array
+        modelIndex := 1
+        for index, message in messages {
+            role := message.role
+            content := message.content
 
-        switch role {
-            case "system": chatHistory .= "**🔧 System Prompt**`n`n" content
-            case "user": chatHistory .= "`n`n---`n`n**🔵 You**`n`n" content
-            case "assistant": chatHistory .= "`n`n---`n`n**🟡 " manageState("model", "get")[modelIndex++] "**`n`n" content
+            switch role {
+                case "system": chatHistory .= "**🔧 System Prompt**`n`n" content
+                case "user": chatHistory .= "`n`n---`n`n**🔵 You**`n`n" content
+                case "assistant": chatHistory .= "`n`n---`n`n**🟡 " manageState("model", "get")[modelIndex++] "**`n`n" content
+            }
         }
+
+        ; Latest Response - Iterate backwards over each message in the 'messages' array to find the last assistant message
+        ; and calculate the current index starting from the end
+        loop totalMessages {
+            currentIndex := totalMessages - A_Index + 1  ;
+            msg := messages[currentIndex]
+            if (msg.role = "assistant") {
+                latestResponse := msg.content
+                break
+            }
+        }
+
+        manageState("chat", "add", { chatHistory: chatHistory, latestResponse: latestResponse })
     }
 
-    ; Latest Response - Iterate backwards over each message in the 'messages' array to find the last assistant message
-    ; and calculate the current index starting from the end
-    loop totalMessages {
-        currentIndex := totalMessages - A_Index + 1  ;
-        msg := messages[currentIndex]
-        if (msg.role = "assistant") {
-            latestResponse := msg.content
-            break
-        }
-    }
-
-    manageState("chat", "add", { chatHistory: chatHistory, latestResponse: latestResponse })
-
-    if requestParams["isAutoPaste"] {
+    if requestParams["pasteMode"] = "replace" || requestParams["pasteMode"] = "append" {
         A_Clipboard := responseFromLLM.response
+        if requestParams["pasteMode"] = "append" {
+            Send("{Right}")       ; Move cursor past the selection before pasting
+        }
         Send("^v")
+        Sleep 50
+        ; Move cursor slightly within pasted text to force scroll-to-cursor
+        Send("{Left}{Right}")
         startLoadingCursor(false)
         CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_CLOSED, requestParams["uniqueID"],
             responseWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
