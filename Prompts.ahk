@@ -90,8 +90,9 @@ prompts := [
         promptName: "Rephrase",
         menuText: "&3 - Rephrase",
         systemPrompt: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-pro",
-        tags: ["&Text manipulation"]
+        APIModels: "deepseek-v4-flash",
+        tags: ["&Text manipulation"],
+        isAutoPaste: true  ; Automatically replaces the selected text with the LLM response
     }
 
     , {
@@ -99,7 +100,7 @@ prompts := [
         promptName: "Summarize",
         menuText: "&4 - Summarize",
         systemPrompt: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         tags: ["&Text manipulation", "&Articles"]
     }
 
@@ -108,7 +109,7 @@ prompts := [
         promptName: "Translate to English",
         menuText: "&5 - Translate to English",
         systemPrompt: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         tags: ["&Text manipulation", "Language"]
     }
 
@@ -117,7 +118,7 @@ prompts := [
         promptName: "Define",
         menuText: "&6 - Define",
         systemPrompt: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek-v4-flash",
         tags: ["&Text manipulation", "Learning"]
     }
 
