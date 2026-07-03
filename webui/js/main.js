@@ -5,6 +5,11 @@ function setTheme(isDark) {
   document.documentElement.setAttribute("data-bs-theme", isDark ? "dark" : "light");
 }
 
+// Apply font face to the document body (from user config)
+function setFontFace(fontFamily) {
+  document.body.style.fontFamily = fontFamily;
+}
+
 // Initialize markdown-it with options
 var md = window.markdownit({
   html: true,         // Enable HTML tags in source
@@ -367,6 +372,10 @@ function handleWebMessage(event) {
       case 'renderMarkdown':
         // For non-chat mode fallback (e.g. FIM)
         renderMarkdown(Array.isArray(data) ? data[0] : data);
+        break;
+
+      case 'setFontFace':
+        setFontFace(Array.isArray(data) ? data[0] : data);
         break;
 
       case 'setChatButtonsEnabled':

@@ -214,7 +214,8 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             singleAPIModelName: singleAPIModelName,
             numberOfAPIModels: APIModels.Length,
             APIModelsIndex: i,
-            uniqueID: uniqueID
+            uniqueID: uniqueID,
+            responseWindowFontFace: responseWindowFontFace
         }
 
         ; Write the object to a file and run ResponseWindow.ahk

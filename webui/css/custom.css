@@ -1,5 +1,5 @@
 body {
-    font-family: "TeX Gyre Pagella", "Latin Modern Roman 12", "Source Serif Pro", Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
+    font-family: Arial, "Segoe UI", Helvetica, Verdana, Tahoma, sans-serif;
     color: var(--bs-body-color);
     background-color: var(--bs-body-bg);
     font-size: large;

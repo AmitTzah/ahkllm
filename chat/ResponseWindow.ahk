@@ -98,6 +98,7 @@ responseWindow.AddHostObjectToScript("RetryAction", { func: retryFromWebView })
 
 showResponseWindow(responseWindowTextContent, initialRequest, noActivate := false) {
     postWebMessage("setTheme", [darkMode])
+    postWebMessage("setFontFace", [responseWindowFontFace])
 
     ; For chat mode, the structured message array is already sent by sendRequestToLLM.
     ; For non-chat mode (FIM fallback), render markdown in the content area.

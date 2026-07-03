@@ -43,13 +43,23 @@ FIMMaxTokens      := 4000
 darkMode := false
 
 ; ----------------------------------------------------
+; UI — Response Window (WebView)
+; ----------------------------------------------------
+; Font face for the Web-based Response Window (chat messages and markdown content).
+; Uses CSS font-family syntax. Set to a system sans-serif font like "Arial" for
+; better screen readability, or a serif font like "Georgia" if you prefer print-style.
+; Fallback fonts are applied automatically.
+
+responseWindowFontFace := "Arial, Segoe UI, Helvetica, Verdana, Tahoma, sans-serif"
+
+; ----------------------------------------------------
 ; UI — Input Window
 ; ----------------------------------------------------
 
 inputWindowBackground    := "0x212529"     ; Background color for the text input window
 inputWindowFontSize      := "s14"
 inputWindowFontColor     := "cWhite"
-inputWindowFontFace      := "Cambria"
+inputWindowFontFace      := "Arial"
 inputWindowWidth         := 500            ; Width of the text input control in pixels
 inputWindowHeight        := 250            ; Height of the text input control in pixels
 
@@ -60,7 +70,7 @@ inputWindowHeight        := 250            ; Height of the text input control in
 
 suspendBannerText        := "LLM AutoHotkey Assistant Suspended"
 suspendBannerFontSize    := "s10"
-suspendBannerFontFace    := "Cambria"
+suspendBannerFontFace    := "Arial"
 suspendBannerTextColor   := "cBlack"
 suspendBannerBackground  := "0xFFDF00"     ; Gold/yellow
 
