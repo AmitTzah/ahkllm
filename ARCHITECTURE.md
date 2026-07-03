@@ -222,9 +222,9 @@ These are handled by the `CustomMessages` class in `ui/CustomMessages.ahk`.
 
 The script writes data in three different storage locations, each with different lifetimes.
 
-### 1. WebView localStorage (Browser Storage)
+### 1. WebView sessionStorage (Browser Storage)
 
-**Scope:** Per Response Window (WebView2 instance). Tied to the window lifetime — destroyed when the window closes.
+**Scope:** Per Response Window (WebView2 instance). Persists across page reloads within the same window (e.g., system sleep/wake), but is **automatically cleared** when the window closes. Unlike `localStorage`, data does NOT bleed between different chat sessions.
 
 | Key | Type | Content | Purpose |
 |-----|------|---------|---------|
@@ -232,7 +232,7 @@ The script writes data in three different storage locations, each with different
 | `chatMessages` | JSON string | Array of `{role, content, model?}` objects | Restores all chat bubbles after a reload (e.g. system sleep/wake) |
 | `preMarkdownText` | string | Raw markdown text for FIM/non-chat modes | Restores rendered content for the fallback `#content` div on reload |
 
-**Important:** localStorage is tied to each WebView2 instance. When the Response Window closes, the WebView is destroyed and the data is lost. localStorage does NOT persist between script sessions — each new prompt starts a fresh conversation.
+**Important:** `sessionStorage` is scoped to each WebView2 instance. When the window closes, the data is automatically purged — no stale chat from a previous prompt will appear.
 
 ### 2. Temp Files (`%TEMP%\*`)
 

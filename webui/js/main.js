@@ -47,9 +47,9 @@ function initChatMode(messages) {
 
   renderChatMessages(chatMessages);
 
-  // Save to localStorage for reload persistence
-  localStorage.setItem('chatMessages', JSON.stringify(chatMessages));
-  localStorage.setItem('isChatMode', 'true');
+  // Save to sessionStorage for reload persistence within the same window session
+  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
+  sessionStorage.setItem('isChatMode', 'true');
 }
 
 // Append a single message to the chat (used for new responses)
@@ -57,8 +57,8 @@ function appendChatMessage(message) {
   chatMessages.push(message);
   renderChatMessages(chatMessages);
 
-  // Save to localStorage
-  localStorage.setItem('chatMessages', JSON.stringify(chatMessages));
+  // Save to sessionStorage
+  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
 
   // Hide loading indicator if present
   hideLoadingIndicator();
@@ -73,7 +73,7 @@ function removeLastAssistantMessage() {
     }
   }
   renderChatMessages(chatMessages);
-  localStorage.setItem('chatMessages', JSON.stringify(chatMessages));
+  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
 }
 
 // Render all chat messages as bubbles
@@ -297,7 +297,7 @@ function retryLastAssistantMessage() {
 // Markdown rendering for non-chat modes (FIM fallback)
 function renderMarkdown(content) {
   var contentToRender = content || 'There is no content available.';
-  localStorage.setItem('preMarkdownText', contentToRender);
+  sessionStorage.setItem('preMarkdownText', contentToRender);
 
   var result = md.render(contentToRender);
   var contentElement = document.getElementById('content');
@@ -413,9 +413,9 @@ document.addEventListener('DOMContentLoaded', function () {
     copyAllBtn.addEventListener('click', copyEntireChat);
   }
 
-  // Restore chat state from localStorage if available
-  var storedIsChatMode = localStorage.getItem('isChatMode');
-  var storedMessages = localStorage.getItem('chatMessages');
+  // Restore chat state from sessionStorage if available
+  var storedIsChatMode = sessionStorage.getItem('isChatMode');
+  var storedMessages = sessionStorage.getItem('chatMessages');
   if (storedIsChatMode === 'true' && storedMessages) {
     try {
       var messages = JSON.parse(storedMessages);
@@ -428,7 +428,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // Restore fallback markdown content
-  var storedContent = localStorage.getItem('preMarkdownText');
+  var storedContent = sessionStorage.getItem('preMarkdownText');
   if (storedContent && !isChatMode) {
     renderMarkdown(storedContent);
   }
