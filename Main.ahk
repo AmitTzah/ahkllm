@@ -2,6 +2,15 @@
 #SingleInstance
 
 ; ----------------------------------------------------
+; Clear diagnostic debug log from previous session
+; ----------------------------------------------------
+
+debugLogFile := A_Temp "\LLM_Debug_Log.txt"
+if FileExist(debugLogFile) {
+    FileDelete(debugLogFile)
+}
+
+; ----------------------------------------------------
 ; Hotkeys (registered dynamically from UserConfig.ahk)
 ; ----------------------------------------------------
 

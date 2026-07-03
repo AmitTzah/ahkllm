@@ -130,6 +130,8 @@ promptMenuHandler(index, *) {
         "",  ; customPromptMessage (not applicable for non-custom prompts)
         selectedPrompt.HasProp("temperature") ? selectedPrompt.temperature : "",
         selectedPrompt.HasProp("maxTokens") ? selectedPrompt.maxTokens : "",
-        selectedPrompt.HasProp("stop") ? selectedPrompt.stop : "")
+        selectedPrompt.HasProp("stop") ? selectedPrompt.stop : "",
+        selectedPrompt.HasProp("stream") && selectedPrompt.stream,
+        selectedPrompt.HasProp("thinking") && selectedPrompt.thinking ? selectedPrompt.thinking["type"] : "")
     }
 }

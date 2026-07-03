@@ -113,7 +113,8 @@ optionsMenuItems := [
     { menuText: "&2 - DeepSeek Platform", command: "https://platform.deepseek.com" },
     { menuText: "&3 - DeepSeek API Keys", command: "https://platform.deepseek.com/api_keys" },
     { menuText: "&4 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" },
-    { menuText: "&5 - API Logs",          command: A_ScriptDir "\lib\ApiLogsViewer.ahk" }
+    { menuText: "&5 - API Logs",          command: A_ScriptDir "\lib\ApiLogsViewer.ahk" },
+    { menuText: "&6 - Debug Log",         command: A_Temp "\LLM_Debug_Log.txt" }
 ]
 
 ; ----------------------------------------------------
@@ -185,6 +186,16 @@ providerMap := Map(
 ;                       "append"   — placed after the cursor/selection
 ;                     Default: "chat".
 ;
+;   stream:           (Optional, chat mode only) When true, the LLM response
+;                     streams token-by-token in real time instead of appearing
+;                     all at once. Requires pasteMode: "chat". Default: false.
+;
+;   thinking:         (Optional) Map with "type": "enabled" to enable DeepSeek
+;                     reasoning (thinking blocks). When streaming, thinking
+;                     content appears in a collapsible block before the response.
+;                     In non-streaming mode, it's included in the response JSON
+;                     as reasoning_content. Default: omitted (no thinking).
+;
 ;   isFIM:            (Optional) Use DeepSeek FIM (Fill In the Middle) beta
 ;                     endpoint instead of chat completions.
 ;                     FIM Fill (pasteMode: "replace"):
@@ -241,6 +252,8 @@ providerMap := Map(
 ;     isCustomPrompt: true,                    ; Shows input window
 ;     customPromptInitialMessage: "",          ; (optional) pre-filled text
 ;     pasteMode: "replace",                    ; "chat", "replace", or "append"
+;     stream: false,                           ; (optional, chat only) token-by-token response
+;     thinking: { type: "enabled" },           ; (optional) DeepSeek reasoning (thinking blocks)
 ;     skipConfirmation: false,
 ;     copyAsMarkdown: false,
 ;     isFIM: false,                            ; Uses FIM beta endpoint
@@ -279,6 +292,7 @@ prompts := [
         isCustomPrompt: true,
         customPromptInitialMessage: "",
         pasteMode: "chat",
+        stream: true,                           ; (optional, chat only) token-by-token response
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,

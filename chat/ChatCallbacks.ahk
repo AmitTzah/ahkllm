@@ -8,11 +8,32 @@ chatSendFromWebView(message, *) {
         return
     }
 
+    debugLog("chatSendFromWebView: message length=" StrLen(message) " preview=" SubStr(message, 1, 60))
     startLoadingCursor(true)
     postWebMessage("setChatButtonsEnabled", false)
     chatHistoryJSONRequest := manageChatHistoryJSON("get")
+
+    ; [DEBUG] Log chat history state BEFORE appending the new user message
+    try {
+        preObj := jsongo.Parse(chatHistoryJSONRequest)
+        preCount := preObj["messages"].Length
+        debugLog("[DEBUG] Chat history BEFORE append: " preCount " messages")
+        ; Log the last message in history
+        lastRole := preObj["messages"][preCount]["role"]
+        lastContent := SubStr(preObj["messages"][preCount]["content"], 1, 60)
+        debugLog("[DEBUG]   Last msg before append: role=" lastRole " content=" lastContent)
+    }
+
     router.appendToChatHistory("user", message, &
         chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
+
+    ; [DEBUG] Log chat history state AFTER appending
+    try {
+        postObj := jsongo.Parse(chatHistoryJSONRequest)
+        postCount := postObj["messages"].Length
+        debugLog("[DEBUG] Chat history AFTER append: " postCount " messages")
+    }
+
     manageChatHistoryJSON("set", chatHistoryJSONRequest)
     sendRequestToLLM(&chatHistoryJSONRequest)
 }
@@ -31,6 +52,7 @@ retryFromWebView(*) {
 ; ----------------------------------------------------
 
 buttonClickAction(action) {
+    debugLog("buttonClickAction: " action)
     switch action {
         case "Retry":
             manageState("model", "remove")

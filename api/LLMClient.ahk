@@ -11,6 +11,16 @@ class LLMClient {
         . '-d @"{2}" '
         . '-o "{3}"'
 
+    ; Streaming cURL template (no --max-time, uses --no-buffer for real-time output)
+    ; {4} = stderr capture file (e.g., cURLError_*.txt)
+    static StreamcURLCommand :=
+        'cURL.exe -s --no-buffer --connect-timeout 30 -X POST ' APIEndpoint ' '
+        . '-H "Authorization: Bearer {1}" '
+        . '-H "Content-Type: application/json" '
+        . '-d @"{2}" '
+        . '-o "{3}" '
+        . '2>"{4}"'
+
     ; FIM (Fill In the Middle) cURL template — uses the DeepSeek beta endpoint
     static FIMcURLCommand :=
         'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST ' FIMEndpoint ' '
@@ -23,7 +33,7 @@ class LLMClient {
         this.APIKey := APIKey
     }
 
-    createJSONRequest(APIModel, systemPrompt, userPrompt, temperature := "", maxTokens := "", stop := "") {
+    createJSONRequest(APIModel, systemPrompt, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
         requestObj := {}
         requestObj.model := APIModel
         requestObj.messages := [{ role: "user", content: userPrompt }]
@@ -36,7 +46,18 @@ class LLMClient {
             requestObj.max_tokens := maxTokens
         if stop != "" && stop.Length > 0
             requestObj.stop := stop
-        return jsongo.Stringify(requestObj)
+        if stream {
+            requestObj.stream := true
+        }
+        if thinking != "" {
+            requestObj.thinking := { type: thinking }
+        }
+        result := jsongo.Stringify(requestObj)
+        ; jsongo serializes AHK v2 true/false (integers 1/0) as "stream":1 instead of "stream":true.
+        ; The DeepSeek API requires boolean values for the stream field. Fix it post-hoc.
+        result := StrReplace(result, '"stream":1', '"stream":true')
+        result := StrReplace(result, '"stream":0', '"stream":false')
+        return result
     }
 
     extractJSONResponse(var) {
@@ -64,6 +85,10 @@ class LLMClient {
             content: message
         })
         chatHistoryJSONRequest := jsongo.Stringify(obj)
+        ; jsongo serializes AHK v2 true/false as integers 1/0.
+        ; The DeepSeek API requires boolean values. Fix it post-hoc.
+        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":1', '"stream":true')
+        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":0', '"stream":false')
         FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
     }
 
@@ -86,10 +111,19 @@ class LLMClient {
             messagesArray.RemoveAt(lastIndex)
         }
         chatHistoryJSONRequest := jsongo.Stringify(obj)
+        ; jsongo serializes AHK v2 true/false as integers 1/0 — fix for DeepSeek API
+        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":1', '"stream":true')
+        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":0', '"stream":false')
     }
 
     buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
         return Format(LLMClient.cURLCommand, this.APIKey, chatHistoryJSONRequestFile, cURLOutputFile)
+    }
+
+    ; Builds the streaming cURL command (no --max-time, uses --no-buffer)
+    ; errorFile = path to capture stderr (e.g., cURLError_*.txt)
+    buildStreamcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile, errorFile) {
+        return Format(LLMClient.StreamcURLCommand, this.APIKey, chatHistoryJSONRequestFile, cURLOutputFile, errorFile)
     }
 
     ; ----------------------------------------------------
@@ -123,6 +157,65 @@ class LLMClient {
     ; Builds the cURL command for the FIM endpoint
     buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
         return Format(LLMClient.FIMcURLCommand, this.APIKey, chatHistoryJSONRequestFile, cURLOutputFile)
+    }
+
+    ; ----------------------------------------------------
+    ; SSE Streaming — parses a "data: " line from the SSE stream
+    ; Returns an object {type, content, model?} where type is
+    ; "content", "reasoning", "model", or "done"
+    ; ----------------------------------------------------
+
+    parseSSELine(line) {
+        if !InStr(line, "data: ")
+            return { type: "ignore" }
+        
+        data := SubStr(line, InStr(line, "data: ") + 6)
+        
+        if data = "[DONE]"
+            return { type: "done" }
+        
+        try {
+            parsed := jsongo.Parse(data)
+        } catch {
+            return { type: "ignore" }
+        }
+        
+        choices := parsed["choices"]
+        if !choices || choices.Length = 0
+            return { type: "ignore" }
+        
+        delta := choices[1].Has("delta") ? choices[1]["delta"] : choices[1]
+        
+        result := {}
+        
+        ; Check for reasoning content (DeepSeek thinking blocks)
+        if delta.Has("reasoning_content") && delta["reasoning_content"] != "" {
+            result.type := "reasoning"
+            result.content := delta["reasoning_content"]
+            return result
+        }
+        
+        ; Check for regular content
+        if delta.Has("content") && delta["content"] != "" {
+            result.type := "content"
+            result.content := delta["content"]
+            return result
+        }
+        
+        ; Check for finish reason (stream end)
+        finish := choices[1].Has("finish_reason") ? choices[1]["finish_reason"] : ""
+        if finish != "" && finish != "null" {
+            result.type := "finish"
+            result.reason := finish
+            
+            ; Extract model name from the response
+            if parsed.Has("model") && parsed["model"] != "" {
+                result.model := parsed["model"]
+            }
+            return result
+        }
+        
+        return { type: "ignore" }
     }
 
     ; ----------------------------------------------------

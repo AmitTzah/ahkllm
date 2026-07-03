@@ -1,0 +1,188 @@
+; ----------------------------------------------------
+; Streaming request handler
+; Polls the SSE output file, parses lines, posts to WebView
+; ----------------------------------------------------
+
+sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
+    debugLog("sendStreamingRequest entered. initialRequest=" initialRequest)
+
+    ; [DEBUG] Log full chat history structure: message count and all messages
+    jsonBody := FileOpen(requestParams["chatHistoryJSONRequestFile"], "r", "UTF-8-RAW").Read()
+    try {
+        parsedBody := jsongo.Parse(jsonBody)
+        msgCount := parsedBody["messages"].Length
+        debugLog("[DEBUG] Chat history message count: " msgCount)
+        Loop msgCount {
+            role := parsedBody["messages"][A_Index]["role"]
+            contentPreview := SubStr(parsedBody["messages"][A_Index]["content"], 1, 80)
+            debugLog("[DEBUG]   msg[" A_Index "]: role=" role " content_preview=" contentPreview)
+        }
+    } catch as e {
+        debugLog("[DEBUG] Failed to parse JSON for logging: " e.Message)
+    }
+
+    ; Delete old output and error files so stale data can't mask a cURL failure on subsequent requests
+    if FileExist(requestParams["cURLOutputFile"]) {
+        FileDelete(requestParams["cURLOutputFile"])
+    }
+    if FileExist(requestParams["cURLErrorFile"]) {
+        FileDelete(requestParams["cURLErrorFile"])
+    }
+
+    ; Rebuild cURL command fresh each request (not from stale file)
+    cURLCommand := router.buildStreamcURLCommand(requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
+    FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
+    debugLog("Rebuilt cURL command. length=" StrLen(cURLCommand))
+
+    Run(cURLCommand, , "Hide", &cURLPID)
+    manageState("cURL", "set", cURLPID)
+    debugLog("Streaming cURL PID: " cURLPID)
+
+    ; Initialize streaming state
+    streamState := {
+        outputFile: requestParams["cURLOutputFile"],
+        lastPos: 0,
+        content: "",
+        reasoning: "",
+        modelName: ""
+    }
+
+    ; Poll the output file incrementally
+    pollCount := 0
+    while (ProcessExist(cURLPID)) {
+        readStreamChunk(streamState)
+        pollCount++
+        Sleep 100
+    }
+    debugLog("Streaming while loop exited. Poll iterations=" pollCount " outputFileExists=" FileExist(streamState.outputFile) " outputFileSize=" (FileExist(streamState.outputFile) ? FileGetSize(streamState.outputFile) : 0))
+
+    ; Process any remaining data after process exits
+    readStreamChunk(streamState)
+    debugLog("After final readStreamChunk. Total content length=" StrLen(streamState.content) " reasoning length=" StrLen(streamState.reasoning))
+
+    ; Check stderr file for cURL errors if no content was produced
+    if (streamState.content = "" && streamState.reasoning = "") {
+        errorFile := requestParams["cURLErrorFile"]
+        if FileExist(errorFile) {
+            errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
+            debugLog("cURL stderr: " Trim(errorContent))
+        } else {
+            debugLog("cURL stderr file not found: " errorFile)
+        }
+
+        ; [DEBUG] Also check if output file has any raw content (cURL error response)
+        if FileExist(streamState.outputFile) {
+            rawOutput := FileOpen(streamState.outputFile, "r", "UTF-8-RAW").Read()
+            debugLog("[DEBUG] Raw output file content (first 300 chars): " SubStr(rawOutput, 1, 300))
+        }
+
+        ; [DEBUG] Log the cURL command for manual diagnosis
+        cURLCommandForLog := FileOpen(requestParams["cURLCommandFile"], "r", "UTF-8").Read()
+        debugLog("[DEBUG] cURL command used: " cURLCommandForLog)
+    }
+
+    ; If user cancelled, exit
+    if !manageState("cURL", "get") {
+        debugLog("User cancelled streaming request")
+        manageState("cURL", "close")
+        startLoadingCursor(false)
+        if initialRequest {
+            deleteTempFiles()
+            CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_CLOSED,
+                requestParams["uniqueID"], responseWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
+            ExitApp
+        }
+        Exit
+    }
+
+    cURLPID := 0
+    manageState("cURL", "set", cURLPID)
+
+    ; Save full response to chat history and log
+    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest)
+
+    ; Finalize: tell WebView streaming is done
+    postWebMessage("streamDone", streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"])
+    debugLog("Streaming complete. streamDone posted.")
+
+    ; Enable chat input
+    postWebMessage("setChatButtonsEnabled", true)
+    startLoadingCursor(false)
+}
+
+; Read and parse new content from the stream output file
+readStreamChunk(streamState) {
+    if !FileExist(streamState.outputFile) {
+        return
+    }
+
+    file := FileOpen(streamState.outputFile, "r", "UTF-8-RAW")
+    if !file {
+        return
+    }
+
+    file.Pos := streamState.lastPos
+    newContent := file.Read()
+    streamState.lastPos := file.Pos
+    file.Close()
+
+    if !newContent {
+        return
+    }
+
+    ; Parse each line for SSE data
+    for line in StrSplit(newContent, "`n", "`r") {
+        if (line = "")
+            continue
+        chunk := router.parseSSELine(line)
+
+        switch chunk.type {
+            case "content":
+                streamState.content .= chunk.content
+                postWebMessage("streamContent", chunk.content)
+
+            case "reasoning":
+                streamState.reasoning .= chunk.content
+                postWebMessage("streamReasoning", chunk.content)
+
+            case "finish":
+                if chunk.HasProp("model") && chunk.model {
+                    streamState.modelName := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
+                }
+
+            case "done":
+                ; No more data expected
+        }
+    }
+}
+
+; Save the accumulated streaming response to chat history
+saveStreamResponse(content, modelName, &chatHistoryJSONRequest) {
+    manageState("model", "add", modelName ? modelName : requestParams["singleAPIModelName"])
+
+    ; Snapshot the request BEFORE appending the response
+    requestBeforeAppend := chatHistoryJSONRequest
+
+    ; Append assistant message to chat history
+    router.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
+    manageChatHistoryJSON("set", chatHistoryJSONRequest)
+
+    ; Reconstruct the full JSON response for logging
+    fullResponse := jsongo.Stringify({
+        choices: [{ message: { content: content } }],
+        model: modelName ? modelName : requestParams["singleAPIModelName"]
+    })
+
+    LLMClient.LogRequest({
+        timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+        promptName: requestParams["responseWindowTitle"],
+        provider: requestParams["providerName"],
+        model: requestParams["singleAPIModelName"],
+        isFIM: false,
+        endpoint: APIEndpoint,
+        pasteMode: requestParams["pasteMode"],
+        request: requestBeforeAppend,
+        response: fullResponse,
+        status: "success"
+    })
+}

@@ -61,6 +61,7 @@ deleteTempFiles() {
     FileDelete(requestParams["chatHistoryJSONRequestFile"])
     FileDelete(requestParams["cURLCommandFile"])
     FileExist(requestParams["cURLOutputFile"]) ? FileDelete(requestParams["cURLOutputFile"]) : ""
+    FileExist(requestParams["cURLErrorFile"]) ? FileDelete(requestParams["cURLErrorFile"]) : ""
     FileDelete(A_Args[1])
 }
 
@@ -100,4 +101,15 @@ startLoadingCursor(status) {
         requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
             : CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_LOADING_FINISH,
                 requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
+}
+
+; ----------------------------------------------------
+; Diagnostic logging helper
+; Append a timestamped line to %TEMP%\LLM_Debug_Log.txt
+; ----------------------------------------------------
+
+debugLog(message) {
+    timestamp := FormatTime(, "HH:mm:ss")
+    logLine := timestamp " [" requestParams["singleAPIModelName"] "] " message "`n"
+    FileAppend(logLine, A_Temp "\LLM_Debug_Log.txt")
 }

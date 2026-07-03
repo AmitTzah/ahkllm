@@ -62,7 +62,13 @@ function initChatMode(messages) {
 // Append a single message to the chat (used for new responses)
 function appendChatMessage(message) {
   chatMessages.push(message);
-  renderChatMessages(chatMessages);
+
+  // Append just the new bubble instead of re-rendering everything,
+  // so ephemeral elements (thinking blocks, streaming bubbles) are preserved.
+  var container = document.getElementById('chat-messages');
+  var bubble = createMessageBubble(message, chatMessages.length - 1);
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
 
   // Save to sessionStorage
   sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
@@ -367,6 +373,12 @@ function handleWebMessage(event) {
         setChatButtonsEnabled(data);
         break;
 
+      case 'streamContent':
+      case 'streamReasoning':
+      case 'streamDone':
+        handleStreamMessage(target, data);
+        break;
+
       default:
         // Try calling as a function name for backward compatibility
         if (typeof window[target] === 'function') {
@@ -412,6 +424,17 @@ document.addEventListener('DOMContentLoaded', function () {
   if (chatInput) {
     chatInput.addEventListener('keydown', handleChatInputKeydown);
     chatInput.addEventListener('input', autoResizeChatInput);
+  }
+
+  // Track user scroll intent for streaming — a single scroll up stops auto-follow
+  var chatMessagesEl = document.getElementById('chat-messages');
+  if (chatMessagesEl) {
+    chatMessagesEl.addEventListener('scroll', function () {
+      var distanceFromBottom = chatMessagesEl.scrollHeight - chatMessagesEl.scrollTop - chatMessagesEl.clientHeight;
+      if (typeof streamState !== 'undefined') {
+        streamState.userScrolledUp = distanceFromBottom > 5;
+      }
+    });
   }
 
   // Copy entire chat button

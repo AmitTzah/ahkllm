@@ -2,8 +2,18 @@
 ; Connect to LLM API and process request
 ; ----------------------------------------------------
 
+; ----------------------------------------------------
+; Diagnostic logging helper (standalone for main script context)
+; ----------------------------------------------------
+
+debugLog(message) {
+    timestamp := FormatTime(, "HH:mm:ss")
+    FileAppend(timestamp " [RequestProcessor] " message "`n", A_Temp "\LLM_Debug_Log.txt")
+}
+
 processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
-    customPromptMessage := "", temperature := "", maxTokens := "", stop := "") {
+    customPromptMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
+    debugLog("processInitialRequest: " promptName " stream=" stream " pasteMode=" pasteMode)
 
     ; ----------------------------------------------------
     ; STEP 1: Capture text (clipboard-based)
@@ -137,13 +147,13 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 
         uniqueID := A_TickCount
 
-        ; Build the JSON request — FIM or chat, with optional temperature/maxTokens/stop
+        ; Build the JSON request — FIM or chat, with optional temperature/maxTokens/stop/stream/thinking
         if isFIM {
             chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
                 temperature, maxTokens, stop)
         } else {
             chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userPrompt,
-                temperature, maxTokens, stop)
+                temperature, maxTokens, stop, stream, thinking)
         }
 
         ; Generate sanitized filenames
@@ -153,15 +163,26 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             "[\/\\:*?`"<>|]", "")
         cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" promptName "_" singleAPIModelName "_" uniqueID ".json",
             "[\/\\:*?`"<>|]", "")
+        cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" promptName "_" singleAPIModelName "_" uniqueID ".txt",
+            "[\/\\:*?`"<>|]", "")
 
         ; Write the JSON request and cURL command to files
         FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
         if isFIM {
             cURLCommand := router.buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+            debugLog("Built FIM cURL command. outputFile=" cURLOutputFile)
+        } else if stream && pasteMode = "chat" {
+            ; Use streaming cURL command for streaming requests
+            cURLCommand := router.buildStreamcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile, cURLErrorFile)
+            debugLog("Built STREAMING cURL command. outputFile=" cURLOutputFile)
         } else {
             cURLCommand := router.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+            debugLog("Built NON-STREAMING cURL command. stream=" stream " pasteMode=" pasteMode " outputFile=" cURLOutputFile)
         }
         FileOpen(cURLCommandFile, "w", "UTF-8-RAW").Write(cURLCommand)
+        debugLog("Wrote cURL command to: " cURLCommandFile)
+        debugLog("JSON request written to: " chatHistoryJSONRequestFile)
+        debugLog("stream field in responseWindowDataObj: " (stream && pasteMode = "chat"))
 
         ; Maintain a reference in the global map
         getActiveModels()[uniqueID] := {
@@ -171,18 +192,22 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             JSONFile: chatHistoryJSONRequestFile,
             cURLFile: cURLCommandFile,
             outputFile: cURLOutputFile,
+            errorFile: cURLErrorFile,
             isLoading: false
         }
 
-        ; Create the Response Window data object with pasteMode + isFIM
+        ; Create the Response Window data object
         responseWindowDataObj := {
             chatHistoryJSONRequestFile: chatHistoryJSONRequestFile,
             cURLCommandFile: cURLCommandFile,
             cURLOutputFile: cURLOutputFile,
+            cURLErrorFile: cURLErrorFile,
             providerName: providerName,
             copyAsMarkdown: copyAsMarkdown,
             pasteMode: pasteMode,
             isFIM: isFIM,
+            stream: stream && pasteMode = "chat",
+            thinking: (thinking != "") ? { type: thinking } : "",
             skipConfirmation: skipConfirmation,
             mainScriptHiddenhWnd: A_ScriptHwnd,
             responseWindowTitle: promptName " [" singleAPIModelName "]",

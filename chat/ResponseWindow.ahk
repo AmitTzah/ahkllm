@@ -85,6 +85,7 @@ if (darkMode) {
 
 #Include ChatUtils.ahk
 #Include ChatCallbacks.ahk
+#Include StreamHandler.ahk
 
 ; Assign actions to click events
 responseWindow.AddHostObjectToScript("ButtonClick", { func: buttonClickAction })
@@ -198,16 +199,29 @@ if requestParams["pasteMode"] = "chat" {
 sendRequestToLLM(&chatHistoryJSONRequest, true)
 
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
+    debugLog("sendRequestToLLM entered. stream=" requestParams["stream"] " initialRequest=" initialRequest)
 
-    ; Run the cURL command asynchronously and store the PID
-    Run(FileOpen(requestParams["cURLCommandFile"], "r", "UTF-8").Read(), , "Hide", &cURLPID)
+    ; For streaming requests, delegate to StreamHandler
+    if requestParams["stream"] {
+        debugLog("Delegating to sendStreamingRequest")
+        sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
+        return
+    }
+
+    ; Run the non-streaming cURL command asynchronously
+    cURLCommand := FileOpen(requestParams["cURLCommandFile"], "r", "UTF-8").Read()
+    debugLog("cURL command file: " requestParams["cURLCommandFile"])
+    debugLog("cURL command length: " StrLen(cURLCommand))
+    debugLog("Running cURL command...")
+    Run(cURLCommand, , "Hide", &cURLPID)
     manageState("cURL", "set", cURLPID)
+    debugLog("cURL PID: " cURLPID)
 
     ; Waits for the process to complete or be aborted
-    ; while allowing the script to process events
     while (ProcessExist(cURLPID)) {
         Sleep 250
     }
+    debugLog("cURL while loop exited. ProcessExist=" ProcessExist(cURLPID) " manageState(cURL,get)=" manageState("cURL", "get"))
 
     ; If user cancels the process, exit
     if !manageState("cURL", "get") {
@@ -215,9 +229,6 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         startLoadingCursor(false)
         if initialRequest {
             deleteTempFiles()
-
-            ; Sends a message to main script saying the Response Window has been closed,
-            ; then terminates the Response Window script
             CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_CLOSED,
                 requestParams["uniqueID"], responseWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
             ExitApp
@@ -228,9 +239,19 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
     ; Reset the PID as the process has completed
     cURLPID := 0
     manageState("cURL", "set", cURLPID)
+    debugLog("cURL PID reset to 0, manageState(cURL,get)=" manageState("cURL", "get"))
 
     ; Read the output after the process has completed
+    if !FileExist(requestParams["cURLOutputFile"]) {
+        debugLog("ERROR: Output file NOT FOUND: " requestParams["cURLOutputFile"])
+        responseFromLLM := "**⛔ Error: No response received**`n`nThe API did not return any output. This may indicate a network error, timeout, or invalid request. Check the API Logs viewer (Options → API Logs) for details."
+        showResponseWindow(responseFromLLM, initialRequest)
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+        Exit
+    }
     JSONResponseFromLLM := FileOpen(requestParams["cURLOutputFile"], "r", "UTF-8").Read()
+    debugLog("Output file read successfully. Length=" StrLen(JSONResponseFromLLM))
 
     ; Process the JSON response from the LLM API
     try {

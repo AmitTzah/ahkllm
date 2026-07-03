@@ -258,12 +258,30 @@ The API log is the only persistent storage. Each entry stores:
 - **`response`** — The raw JSON response from the API (includes the assistant's reply and metadata)
 - Cleared manually via the "Clear Logs" button in the API Logs Viewer
 
+### 4. Debug Log File (Temporary Diagnostics)
+
+| Location | Format | Content | Lifecycle |
+|----------|--------|---------|-----------|
+| `%TEMP%\LLM_Debug_Log.txt` | Plain text, one line per entry | Timestamped diagnostic messages from `RequestProcessor.ahk`, `ResponseWindow.ahk`, and `StreamHandler.ahk` | Cleared on each script startup. Grows during the session. Used only for debugging — not a persistent feature. |
+
+The `debugLog()` helper is defined in two places:
+- `chat/ChatUtils.ahk` — used by `ResponseWindow.ahk` and `StreamHandler.ahk` (sub-process context). Tags lines with the model name from `requestParams["singleAPIModelName"]`.
+- `app/RequestProcessor.ahk` — standalone copy for the main script context. Tags lines with `[RequestProcessor]`.
+
+Each entry records a key decision or state during the request lifecycle:
+- **RequestProcessor**: which cURL command type was selected (streaming vs non-streaming vs FIM), file paths written, the `stream` field value passed to ResponseWindow
+- **ResponseWindow** (non-streaming): entry into `sendRequestToLLM`, cURL command length/contents, PID of spawned cURL process, while-loop exit reason (did the process end or was it cancelled?), output file existence check
+- **StreamHandler** (streaming): entry into `sendStreamingRequest`, PID, whether the output file exists at start, poll iteration count, total content length accumulated after the stream ends
+
+To view the log at any time, open `%TEMP%\LLM_Debug_Log.txt` in a text editor. The log is automatically cleared each time the script starts (see `Main.ahk` — startup block).
+
 ### Summary
 
 | Storage | Lifetime | Data |
 |---------|----------|------|
-| WebView localStorage | Per window session | Chat bubble state (for reload recovery) |
+| WebView sessionStorage | Per window session | Chat bubble state (for reload recovery) |
 | `%TEMP%\*.json/txt` | Per prompt | Request payloads, cURL commands, API responses |
 | `%TEMP%\LLM_API_Log.json` | Persistent | API interaction history (capped) |
+| `%TEMP%\LLM_Debug_Log.txt` | Per session | Diagnostic trace (cleared on startup) |
 
 **There is NO on-disk chat history.** Once a Response Window closes, the conversation is gone. This is intentional — the script is designed for ad-hoc queries, not as a permanent chat record.

@@ -256,6 +256,67 @@
 				40% { transform: scale(1); }
 			}
 
+			/* Streaming cursor */
+			.streaming-cursor {
+				display: inline;
+				animation: blink 1s step-end infinite;
+				color: var(--bs-secondary-color);
+			}
+
+			@keyframes blink {
+				0%, 100% { opacity: 1; }
+				50% { opacity: 0; }
+			}
+
+			/* Thinking block (collapsible reasoning) */
+			.thinking-block {
+				align-self: flex-start;
+				margin-bottom: 0.25rem;
+				max-width: 85%;
+			}
+
+			.thinking-block summary {
+				cursor: pointer;
+				font-size: 0.8rem;
+				color: var(--bs-secondary-color);
+				padding: 0.35rem 0.6rem;
+				border-radius: 0.5rem;
+				background-color: var(--bs-tertiary-bg);
+				border: 1px solid var(--bs-border-color);
+				user-select: none;
+			}
+
+			.thinking-block summary:hover {
+				background-color: var(--bs-secondary-bg);
+			}
+
+			.thinking-block[open] summary {
+				border-bottom: none;
+				border-radius: 0.5rem 0.5rem 0 0;
+			}
+
+			.thinking-content {
+				font-size: 0.85rem;
+				color: var(--bs-secondary-color);
+				white-space: pre-wrap;
+				padding: 0.5rem 0.75rem;
+				border: 1px solid var(--bs-border-color);
+				border-top: none;
+				border-radius: 0 0 0.5rem 0.5rem;
+				background-color: var(--bs-tertiary-bg);
+				font-family: "Cascadia Code", "JetBrains Mono", "Fira Code", monospace;
+				line-height: 1.4;
+			}
+
+			.thinking-pulse {
+				animation: thinkingPulse 1.5s ease-in-out infinite;
+			}
+
+			@keyframes thinkingPulse {
+				0%, 100% { opacity: 0.4; }
+				50% { opacity: 1; }
+			}
+
 			/* Code blocks inside messages */
 			.chat-message pre.hljs {
 				margin: 0.5em 0;
@@ -489,6 +550,7 @@
         <script src="./js/vendor/texmath.min.js"></script>
 
 		<!-- Your custom script to render markdown -->
+		<script src="./js/stream.js"></script>
 		<script src="./js/main.js"></script>
 	</body>
 </html>
