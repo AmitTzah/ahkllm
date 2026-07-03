@@ -1,4 +1,4 @@
-#Include Config.ahk
+#Include ..\lib\Config.ahk
 #SingleInstance Off
 #NoTrayIcon
 
@@ -71,7 +71,7 @@ router := LLMClient(APIKey)
 ; Create the Webview Window
 responseWindow := WebViewToo(, , ,)
 responseWindow.OnEvent("Close", (*) => buttonClickAction("Close"))
-responseWindow.Load("..\resources\index.html")
+responseWindow.Load("..\webui\index.html")
 
 ; Apply dark mode to title bar
 ; Reference: https://www.autohotkey.com/boards/viewtopic.php?p=422034#p422034
@@ -79,87 +79,21 @@ if (darkMode) {
     DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", responseWindow.hWnd, "int", 20, "int*", true, "int", 4)
 }
 
+; ----------------------------------------------------
+; Include chat module files
+; ----------------------------------------------------
+
+#Include ChatUtils.ahk
+#Include ChatCallbacks.ahk
+
 ; Assign actions to click events
 responseWindow.AddHostObjectToScript("ButtonClick", { func: buttonClickAction })
 responseWindow.AddHostObjectToScript("ChatSend", { func: chatSendFromWebView })
-
-buttonClickAction(action) {
-    switch action {
-        case "Retry":
-            manageState("model", "remove")
-            postWebMessage("setChatButtonsEnabled", false)
-            startLoadingCursor(true)
-            chatHistoryJSONRequest := manageChatHistoryJSON("get")
-            router.removeLastAssistantMessage(&chatHistoryJSONRequest)
-            FileOpen(requestParams["chatHistoryJSONRequestFile"], "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
-            manageChatHistoryJSON("set", chatHistoryJSONRequest)
-            sendRequestToLLM(&chatHistoryJSONRequest)
-
-        case "Close":
-            if (!requestParams["skipConfirmation"]) {
-                if (MsgBox("End your chat session with " requestParams["responseWindowTitle"] "?",
-                    "Close " requestParams["responseWindowTitle"],
-                    "308 Owner" responseWindow.hWnd) != "Yes") {
-                    return true
-                }
-            }
-
-            ; Proceed with closing (either no warning needed or user clicked "Yes")
-            if (ProcessExist(manageState("cURL", "get"))) {
-                manageState("cURL", "close")
-
-                ; Sometimes the cURLOutputFile is still being accessed
-                ; Sleep here to make sure the file is not opened anymore
-                Sleep 100
-            }
-
-            deleteTempFiles()
-            startLoadingCursor(false)
-
-            ; Sends a PostMessage to main script saying the
-            ; Response Window has been closed, then terminates
-            ; the Response Window script afterwards
-            CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_CLOSED,
-                requestParams["uniqueID"],
-                responseWindow.hWnd,
-                requestParams["mainScriptHiddenhWnd"])
-            ExitApp
-    }
-}
-
-; ----------------------------------------------------
-; Chat mode: Handle messages sent from the inline chat input
-; ----------------------------------------------------
-
-chatSendFromWebView(message, *) {
-    ; The message is passed directly as a string from the WebView HostObject call
-    if !message {
-        return
-    }
-
-    startLoadingCursor(true)
-    postWebMessage("setChatButtonsEnabled", false)
-    chatHistoryJSONRequest := manageChatHistoryJSON("get")
-    router.appendToChatHistory("user", message, &
-        chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
-    sendRequestToLLM(&chatHistoryJSONRequest)
-}
-
-; ----------------------------------------------------
-; Chat mode: Handle retry request from WebView
-; ----------------------------------------------------
-
 responseWindow.AddHostObjectToScript("RetryAction", { func: retryFromWebView })
-retryFromWebView(*) {
-    manageState("model", "remove")
-    startLoadingCursor(true)
-    chatHistoryJSONRequest := manageChatHistoryJSON("get")
-    router.removeLastAssistantMessage(&chatHistoryJSONRequest)
-    FileOpen(requestParams["chatHistoryJSONRequestFile"], "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
-    sendRequestToLLM(&chatHistoryJSONRequest)
-}
+
+; ----------------------------------------------------
+; Show the Response Window with the response content
+; ----------------------------------------------------
 
 showResponseWindow(responseWindowTextContent, initialRequest, noActivate := false) {
     postWebMessage("setTheme", [darkMode])
@@ -184,12 +118,7 @@ showResponseWindow(responseWindowTextContent, initialRequest, noActivate := fals
         X := (screenW - desiredW) // 2
         Y := (screenH - desiredH) // 4
 
-        ; Compute the arrangement of Response Windows based on the number of models:
-        ; If there is one Response Window, it will be in the center
-        ; If there are two, they will be side by side in the center
-        ; If there are three, they will be arranged in the center
-        ; If there are more than three, it will be the same as three for the first three,
-        ; then additional windows will be in the center as a stack and have a slight downward offset
+        ; Compute the arrangement of Response Windows based on the number of models
         switch requestParams["numberOfAPIModels"] {
             case 1:
                 pos := Format("x{} y{} w{} h{}", X - 100, Y, desiredW, desiredH)
@@ -200,19 +129,10 @@ showResponseWindow(responseWindowTextContent, initialRequest, noActivate := fals
 
             case 3:
                 switch requestParams["APIModelsIndex"] {
-                    case 1:
-                        ; Left
-                        X := (screenW // 2) - (desiredW * 1.6)
-
-                    case 2:
-                        ; Center
-                        X := (screenW - desiredW) // 2
-
-                    default:
-                        ; Right
-                        X := (screenW // 2) + (desiredW * 0.4)
+                    case 1: X := (screenW // 2) - (desiredW * 1.6)
+                    case 2: X := (screenW - desiredW) // 2
+                    default: X := (screenW // 2) + (desiredW * 0.4)
                 }
-
                 pos := Format("x{} y{} w{} h{}", X, Y, desiredW, desiredH)
 
             default:
@@ -226,7 +146,6 @@ showResponseWindow(responseWindowTextContent, initialRequest, noActivate := fals
                     X := (screenW - desiredW) // 2
                     Y := Y + (requestParams["APIModelsIndex"] - 3) * 30
                 }
-
                 pos := Format("x{} y{} w{} h{}", X, Y, desiredW, desiredH)
         }
 
@@ -388,74 +307,22 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         Exit
     }
 
-    ; Save Chat History and Latest Response
+    ; Save updated chat history JSON
     if !requestParams["isFIM"] {
         manageChatHistoryJSON("set", chatHistoryJSONRequest)
 
         if requestParams["pasteMode"] = "chat" {
             ; --- Chat mode: Send structured message arrays to the WebView ---
-
-            ; Build the full structured messages array from the JSON
-            obj := jsongo.Parse(chatHistoryJSONRequest)
-            messages := router.getMessages(obj)
-            structuredMessages := []
-            modelIndex := 1
-            modelNames := manageState("model", "get")
-
-            for index, message in messages {
-                msgObj := { role: message.role, content: message.content }
-
-                ; Add model name for assistant messages
-                if (message.role = "assistant") {
-                    msgObj.model := modelIndex <= modelNames.Length ? modelNames[modelIndex] : requestParams["singleAPIModelName"]
-                    modelIndex++
-                }
-
-                structuredMessages.Push(msgObj)
-            }
+            structuredMessages := buildStructuredMessages(chatHistoryJSONRequest)
 
             if initialRequest {
                 ; On initial request, initialize the full chat
                 postWebMessage("initChatMode", structuredMessages)
             } else {
                 ; On subsequent requests, send just the new assistant message
-                ; The last element is the new assistant response
                 lastMsg := structuredMessages[structuredMessages.Length]
                 postWebMessage("appendChatMessage", lastMsg)
             }
-
-        } else {
-            ; --- Non-chat mode: Build chat history string for the old format ---
-            obj := jsongo.Parse(chatHistoryJSONRequest)
-            messages := router.getMessages(obj)
-            totalMessages := messages.Length
-
-            ; Chat History - Iterate over each message in the 'messages' array
-            chatHistory := ""
-            modelIndex := 1
-            for index, message in messages {
-                role := message.role
-                content := message.content
-
-                switch role {
-                    case "system": chatHistory .= "**🔧 System Prompt**`n`n" content
-                    case "user": chatHistory .= "`n`n---`n`n**🔵 You**`n`n" content
-                    case "assistant": chatHistory .= "`n`n---`n`n**🟡 " manageState("model", "get")[modelIndex++] "**`n`n" content
-                }
-            }
-
-            ; Latest Response - iterate backwards to find last assistant message
-            latestResponse := ""
-            loop totalMessages {
-                currentIndex := totalMessages - A_Index + 1
-                msg := messages[currentIndex]
-                if (msg.role = "assistant") {
-                    latestResponse := msg.content
-                    break
-                }
-            }
-
-            manageState("chat", "add", { chatHistory: chatHistory, latestResponse: latestResponse })
         }
     }
 
@@ -490,90 +357,4 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
     }
-}
-
-; ----------------------------------------------------
-; Manage Chat History requests
-; ----------------------------------------------------
-
-manageChatHistoryJSON(action, data := unset) {
-    static JSONRequest := FileOpen(requestParams["chatHistoryJSONRequestFile"], "r", "UTF-8-RAW").Read()
-
-    switch action {
-        case "get": return JSONRequest
-        case "set": JSONRequest := data
-    }
-}
-
-;--------------------------------------------------
-; Combined state management for model history,
-; chat history, and cURL process
-;--------------------------------------------------
-
-manageState(component, action, data := {}) {
-    static state := {
-        modelHistory: [],
-        chatHistory: { chatHistory: "", latestResponse: "" },
-        cURLPID: 0
-    }
-
-    switch component {
-        case "model":
-            switch action {
-                case "get": return state.modelHistory
-                case "add": state.modelHistory.Push(data)
-                case "remove": (state.modelHistory.Length) ? state.modelHistory.Pop() : ""
-            }
-
-        case "chat":
-            switch action {
-                case "get": return state.chatHistory
-                case "add":
-                    state.chatHistory.chatHistory := data.chatHistory
-                    state.chatHistory.latestResponse := data.latestResponse
-            }
-
-        case "cURL":
-            switch action {
-                case "get": return state.cURLPID
-                case "set": state.cURLPID := data
-                case "close": ProcessClose(state.cURLPID), state.cURLPID := 0
-            }
-    }
-}
-
-; ----------------------------------------------------
-; Call main.js functions
-; ----------------------------------------------------
-
-postWebMessage(target, data := unset) {
-    msgObj := { target: target }
-
-    ; If data is provided, add it to the message object
-    msgObj.data := IsSet(data) ? data : unset
-
-    jsonStr := jsongo.Stringify(msgObj)
-    responseWindow.PostWebMessageAsJSON(jsonStr)
-}
-
-; ----------------------------------------------------
-; Deletes the files created by the main script
-; ----------------------------------------------------
-
-deleteTempFiles() {
-    FileDelete(requestParams["chatHistoryJSONRequestFile"])
-    FileDelete(requestParams["cURLCommandFile"])
-    FileExist(requestParams["cURLOutputFile"]) ? FileDelete(requestParams["cURLOutputFile"]) : ""
-    FileDelete(A_Args[1])
-}
-
-; ----------------------------------------------------
-; Start or stop loading cursor
-; ----------------------------------------------------
-
-startLoadingCursor(status) {
-    status ? CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_LOADING_START,
-        requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
-            : CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_LOADING_FINISH,
-                requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
 }

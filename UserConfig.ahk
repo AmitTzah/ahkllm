@@ -113,7 +113,7 @@ optionsMenuItems := [
     { menuText: "&2 - DeepSeek Platform", command: "https://platform.deepseek.com" },
     { menuText: "&3 - DeepSeek API Keys", command: "https://platform.deepseek.com/api_keys" },
     { menuText: "&4 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" },
-    { menuText: "&5 - API Logs",          command: A_ScriptDir "\lib\API Logs Viewer.ahk" }
+    { menuText: "&5 - API Logs",          command: A_ScriptDir "\lib\ApiLogsViewer.ahk" }
 ]
 
 ; ----------------------------------------------------

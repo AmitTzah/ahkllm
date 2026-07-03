@@ -13,7 +13,7 @@
 ; Create the Webview Window
 viewerWindow := WebViewToo(, , ,)
 viewerWindow.OnEvent("Close", (*) => ExitApp())
-viewerWindow.Load("..\resources\api-logs.html")
+viewerWindow.Load("..\webui\api-logs.html")
 
 ; Apply dark mode to title bar
 DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", viewerWindow.hWnd, "int", 20, "int*", true, "int", 4)

@@ -53,13 +53,7 @@ function initChatMode(messages) {
 }
 
 // Append a single message to the chat (used for new responses)
-function appendChatMessage(data) {
-  var message = data;
-  // Support both direct object and wrapped format
-  if (data && data.content !== undefined) {
-    message = data;
-  }
-
+function appendChatMessage(message) {
   chatMessages.push(message);
   renderChatMessages(chatMessages);
 
@@ -317,14 +311,6 @@ function renderMarkdown(content) {
   }
 }
 
-// Enables or disables buttons (old function kept for backward compat with Retry button)
-function responseWindowButtonsEnabled(enable) {
-  // Only applies to the old button bar which is hidden.
-  // Keep for backward compatibility with AHK-side calls.
-  setChatButtonsEnabled(enable);
-  document.body.style.cursor = 'auto';
-}
-
 // Main message handler from AHK
 function handleWebMessage(event) {
   try {
@@ -374,18 +360,6 @@ function handleWebMessage(event) {
         setChatButtonsEnabled(data);
         break;
 
-      case 'responseWindowButtonsEnabled':
-        responseWindowButtonsEnabled(data);
-        break;
-
-      case 'toggleButtonText':
-        // No-op in chat mode, kept for backward compat
-        break;
-
-      case 'responseWindowCopyButtonAction':
-        // No-op in chat mode, kept for backward compat
-        break;
-
       default:
         // Try calling as a function name for backward compatibility
         if (typeof window[target] === 'function') {
@@ -401,11 +375,6 @@ function handleWebMessage(event) {
   } catch (error) {
     console.error('Error handling incoming message:', error);
   }
-}
-
-// Handle chat send from input box
-function handleChatSend() {
-  onChatSend();
 }
 
 // Handle Enter key in chat input (Shift+Enter for newline)

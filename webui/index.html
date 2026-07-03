@@ -11,7 +11,7 @@
 
 		<script src="Bootstrap/bootstrap.bundle.min.js"></script>
 		<script src="Bootstrap/sidebars.js"></script>
-		<script src="./js/highlight.min.js"></script>
+		<script src="./js/vendor/highlight.min.js"></script>
 
 		
 		<link href="Bootstrap/sidebars.css" rel="stylesheet">
@@ -25,10 +25,10 @@
 		-->
 
         <!-- Additional stylesheets for markdown rendering -->
-		<link rel="stylesheet" href="./css/highlight/atom-one-dark.min.css">
+		<link rel="stylesheet" href="./css/vendor/highlight/atom-one-dark.min.css">
         <link rel="stylesheet" href="./css/custom.css">
-        <link rel="stylesheet" href="./css/katex.min.css">
-        <link rel="stylesheet" href="./css/texmath.min.css">
+        <link rel="stylesheet" href="./css/vendor/katex.min.css">
+        <link rel="stylesheet" href="./css/vendor/texmath.min.css">
 
 		<style>
 			:root {
@@ -461,62 +461,34 @@
 		<main class="d-flex flex-nowrap mt-2">
 			
 			<!-- Page Content -->
-			<div class="flex-grow-1 flex-column bg-body-tertiary" id="page-content">
-				<!-- Chat Layout (shown for pasteMode "chat") -->
-				<div id="chat-layout">
-					<div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
-					<div id="chat-messages">
-						<!-- Chat bubbles will be rendered here -->
-					</div>
-					<div id="chat-input-area">
-						<textarea id="chat-input" placeholder="Type a message..." rows="1"></textarea>
-						<button type="button" id="chat-send-btn">Send</button>
-						<button type="button" id="copy-entire-chat-btn" title="Copy entire chat">📋 Copy All</button>
-					</div>
+		<div class="flex-grow-1 flex-column bg-body-tertiary" id="page-content">
+			<!-- Chat Layout (shown for pasteMode "chat") -->
+			<div id="chat-layout">
+				<div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
+				<div id="chat-messages">
+					<!-- Chat bubbles will be rendered here -->
 				</div>
-				<!-- Fallback content for non-chat modes (e.g. FIM) -->
-				<div id="content">
-					<!-- Markdown content will be rendered here for non-chat modes -->
-				</div>
-				<div class="d-flex justify-content-center gap-4 mt-3" id="action-buttons" style="display:none !important;">
-					<button type="button" id="chatButton" onclick="ahkButtonClick(this)" class="btn btn-primary btn-lg" style="display:none;">Chat</button>
-					<button type="button" id="copyButton" onclick="ahkButtonClick(this)" class="btn btn-secondary btn-lg" style="display:none;">Copy</button>
-					<button type="button" id="retryButton" onclick="ahkButtonClick(this)" class="btn btn-danger btn-lg" style="display:none;">Retry</button>
-					<button type="button" id="chatHistoryButton" onclick="ahkButtonClick(this); toggleButtonText();" class="btn btn-success btn-lg" style="display:none;">Chat History</button>
+				<div id="chat-input-area">
+					<textarea id="chat-input" placeholder="Type a message..." rows="1"></textarea>
+					<button type="button" id="chat-send-btn">Send</button>
+					<button type="button" id="copy-entire-chat-btn" title="Copy entire chat">📋 Copy All</button>
 				</div>
 			</div>
+			<!-- Fallback content for non-chat modes (e.g. FIM) -->
+			<div id="content">
+				<!-- Markdown content will be rendered here for non-chat modes -->
+			</div>
+		</div>
 			<!-- End Page Content -->
 		</main>
 
 		<!-- Additional scripts for markdown rendering -->
-		<script src="./js/markdown-it.min.js"></script>
-		<script src="./js/katex.min.js"></script>
-		<script src="./js/mhchem.min.js"></script>
-		<script src="./js/texmath.min.js"></script>
+        <script src="./js/vendor/markdown-it.min.js"></script>
+        <script src="./js/vendor/katex.min.js"></script>
+        <script src="./js/vendor/mhchem.min.js"></script>
+        <script src="./js/vendor/texmath.min.js"></script>
 
 		<!-- Your custom script to render markdown -->
 		<script src="./js/main.js"></script>
 	</body>
-	<script>
-		window.chrome.webview.addEventListener('message', ahkWebMessage);
-		function ahkWebMessage(Msg) {
-			console.log(Msg.data);
-		}
-
-		function ahkButtonClick(ele) {
-			if (ele.Id != null || "") {
-				var eleInfo = ele.Id;
-			}
-			else if (ele.Name != null || "") {
-				var eleInfo = ele.Name;
-			}
-			else if (ele.innerText != null || "") {
-				var eleInfo = ele.innerText;
-			}
-			else {
-				var eleInfo = ele.outerHTML;
-			}
-			ahk.ButtonClick.Func(eleInfo);
-		}
-	</script>
 </html>
