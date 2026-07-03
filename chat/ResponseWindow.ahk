@@ -243,6 +243,10 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         "-")
 
         manageState("model", "add", responseFromLLM.model)
+
+        ; Snapshot the request BEFORE appending the response, so the log
+        ; shows the actual request sent (not the request + response combined)
+        requestBeforeAppend := chatHistoryJSONRequest
         if !requestParams["isFIM"] {
             ; Only append to chat history for chat completions (FIM has no chat history)
             router.appendToChatHistory("assistant",
@@ -258,7 +262,7 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
             isFIM: requestParams["isFIM"],
             endpoint: requestParams["isFIM"] ? FIMEndpoint : APIEndpoint,
             pasteMode: requestParams["pasteMode"],
-            request: chatHistoryJSONRequest,
+            request: requestBeforeAppend,
             response: JSONResponseFromLLM,
             status: "success"
         })
