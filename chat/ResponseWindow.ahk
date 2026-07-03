@@ -166,12 +166,6 @@ CustomMessages.registerHandlers("subScript", responseWindowSendToAllModels)
 CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_OPENED, requestParams["uniqueID"],
     responseWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
 
-; Show the window immediately for chat mode before cURL runs
-; (replace/append modes paste and close immediately, no need to show a window)
-if requestParams["pasteMode"] = "chat" {
-    showResponseWindow("", true)
-}
-
 responseWindowSendToAllModels(uniqueID, lParam, msg, responseWindowhWnd) {
     if (ProcessExist(manageState("cURL", "get"))) {
         manageState("cURL", "close")
@@ -190,6 +184,17 @@ responseWindowSendToAllModels(uniqueID, lParam, msg, responseWindowhWnd) {
 ; ----------------------------------------------------
 
 chatHistoryJSONRequest := manageChatHistoryJSON("get")
+
+; Show the window immediately for chat mode before cURL runs
+; (replace/append modes paste and close immediately, no need to show a window)
+if requestParams["pasteMode"] = "chat" {
+    ; Wait for WebView to finish loading before posting messages
+    Sleep 500
+    structuredMessages := buildStructuredMessages(chatHistoryJSONRequest)
+    postWebMessage("initChatMode", structuredMessages)
+    showResponseWindow("", true)
+}
+
 sendRequestToLLM(&chatHistoryJSONRequest, true)
 
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {

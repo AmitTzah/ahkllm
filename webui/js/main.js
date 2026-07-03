@@ -47,6 +47,13 @@ function initChatMode(messages) {
 
   renderChatMessages(chatMessages);
 
+  // If the last message is not from "assistant", we're still waiting for the LLM
+  // (this happens when the window is shown before the first cURL response arrives)
+  if (chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role !== 'assistant') {
+    isLoading = true;
+    showLoadingIndicator();
+  }
+
   // Save to sessionStorage for reload persistence within the same window session
   sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
   sessionStorage.setItem('isChatMode', 'true');
