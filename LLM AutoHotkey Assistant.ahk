@@ -200,7 +200,7 @@ customPromptSendButtonAction(*) {
     processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
         selectedPrompt.APIModels,
         selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
-        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "",
+        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "chat",
         selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
         selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
         customPromptInputWindow.EditControl.Value,
@@ -372,7 +372,7 @@ promptMenuHandler(index, *) {
     processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
         selectedPrompt.APIModels,
         selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
-        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "",
+        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "chat",
         selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
         selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
         "",  ; customPromptMessage (not applicable for non-custom prompts)
@@ -524,9 +524,9 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
         ; Removes newlines, spaces, and splits by comma
         APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
 
-        ; For pasteMode "replace" or "append", auto-disable if multi-model
+        ; For pasteMode "replace" or "append", fall back to "chat" if multi-model
         if pasteMode = "replace" || pasteMode = "append" {
-            pasteMode := (APIModels.Length > 1) ? "" : pasteMode
+            pasteMode := (APIModels.Length > 1) ? "chat" : pasteMode
         }
     }
 

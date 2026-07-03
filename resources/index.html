@@ -39,6 +39,242 @@
 				height: calc(100vh - (var(--FauxTitleBarHeight)));
 			}
 
+			/* Chat layout */
+			#chat-layout {
+				display: flex;
+				flex-direction: column;
+				height: 100%;
+				width: 100%;
+			}
+
+			#chat-messages {
+				flex-grow: 1;
+				overflow-y: auto;
+				padding: 1rem;
+				display: flex;
+				flex-direction: column;
+				gap: 0.75rem;
+			}
+
+			#chat-input-area {
+				display: flex;
+				gap: 0.5rem;
+				padding: 0.75rem 1rem;
+				border-top: 1px solid var(--bs-border-color);
+				background-color: var(--bs-body-bg);
+				align-items: flex-end;
+			}
+
+			#chat-input {
+				flex-grow: 1;
+				resize: none;
+				border-radius: 0.5rem;
+				padding: 0.5rem 0.75rem;
+				font-size: 0.95rem;
+				background-color: var(--bs-tertiary-bg);
+				color: var(--bs-body-color);
+				border: 1px solid var(--bs-border-color);
+				min-height: 40px;
+				max-height: 200px;
+			}
+
+			#chat-input:focus {
+				outline: none;
+				border-color: var(--bs-primary);
+				box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+			}
+
+			/* Chat message bubbles */
+			.chat-message {
+				display: flex;
+				flex-direction: column;
+				max-width: 85%;
+				padding: 0.5rem 0.75rem;
+				border-radius: 0.75rem;
+				position: relative;
+			}
+
+			.chat-message.user {
+				align-self: flex-end;
+				background-color: var(--bs-primary);
+				color: white;
+				border-bottom-right-radius: 0.25rem;
+			}
+
+			.chat-message.assistant {
+				align-self: flex-start;
+				background-color: var(--bs-tertiary-bg);
+				color: var(--bs-body-color);
+				border-bottom-left-radius: 0.25rem;
+			}
+
+			.chat-message.system {
+				align-self: center;
+				max-width: 95%;
+				background-color: transparent;
+				border: 1px solid var(--bs-border-color);
+				padding: 0.5rem 0.75rem;
+				font-size: 0.85rem;
+				opacity: 0.8;
+			}
+
+			.chat-message .message-label {
+				font-size: 0.75rem;
+				font-weight: 600;
+				margin-bottom: 0.25rem;
+				opacity: 0.8;
+			}
+
+			.chat-message.user .message-label {
+				color: rgba(255, 255, 255, 0.85);
+			}
+
+			.chat-message.assistant .message-label {
+				color: var(--bs-secondary-color);
+			}
+
+			.chat-message .message-content {
+				word-wrap: break-word;
+				overflow-wrap: break-word;
+			}
+
+			.chat-message .message-content p:last-child {
+				margin-bottom: 0;
+			}
+
+			.chat-message.user .message-content a {
+				color: rgba(255, 255, 255, 0.9);
+				text-decoration: underline;
+			}
+
+			/* Per-message action buttons */
+			.chat-message .message-actions {
+				display: flex;
+				gap: 0.25rem;
+				justify-content: flex-end;
+				margin-top: 0.25rem;
+				opacity: 0;
+				transition: opacity 0.15s ease;
+			}
+
+			.chat-message:hover .message-actions {
+				opacity: 1;
+			}
+
+			.chat-message .message-actions button {
+				background: none;
+				border: 1px solid var(--bs-border-color);
+				border-radius: 0.25rem;
+				padding: 2px 6px;
+				font-size: 0.75rem;
+				cursor: pointer;
+				color: var(--bs-secondary-color);
+				background-color: var(--bs-body-bg);
+				transition: all 0.15s ease;
+			}
+
+			.chat-message .message-actions button:hover {
+				background-color: var(--bs-tertiary-bg);
+				color: var(--bs-body-color);
+			}
+
+			.chat-message.user .message-actions button {
+				color: rgba(255, 255, 255, 0.8);
+				border-color: rgba(255, 255, 255, 0.3);
+				background-color: rgba(0, 0, 0, 0.15);
+			}
+
+			.chat-message.user .message-actions button:hover {
+				background-color: rgba(0, 0, 0, 0.3);
+				color: white;
+			}
+
+			/* Send and Copy All buttons */
+			#chat-send-btn {
+				padding: 0.5rem 1.25rem;
+				border-radius: 0.5rem;
+				border: none;
+				background-color: var(--bs-primary);
+				color: white;
+				font-weight: 600;
+				cursor: pointer;
+				white-space: nowrap;
+				height: 40px;
+			}
+
+			#chat-send-btn:hover {
+				filter: brightness(1.1);
+			}
+
+			#chat-send-btn:disabled {
+				opacity: 0.5;
+				cursor: not-allowed;
+			}
+
+			#copy-entire-chat-btn {
+				padding: 0.5rem 0.75rem;
+				border-radius: 0.5rem;
+				border: 1px solid var(--bs-border-color);
+				background-color: transparent;
+				color: var(--bs-secondary-color);
+				cursor: pointer;
+				white-space: nowrap;
+				font-size: 0.85rem;
+				height: 40px;
+			}
+
+			#copy-entire-chat-btn:hover {
+				background-color: var(--bs-tertiary-bg);
+				color: var(--bs-body-color);
+			}
+
+			/* Loading indicator */
+			.loading-indicator {
+				align-self: flex-start;
+				display: flex;
+				gap: 0.3rem;
+				padding: 0.75rem 1rem;
+				background-color: var(--bs-tertiary-bg);
+				border-radius: 1rem;
+				border-bottom-left-radius: 0.25rem;
+			}
+
+			.loading-indicator .dot {
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background-color: var(--bs-secondary-color);
+				animation: bounce 1.4s infinite ease-in-out both;
+			}
+
+			.loading-indicator .dot:nth-child(1) { animation-delay: -0.32s; }
+			.loading-indicator .dot:nth-child(2) { animation-delay: -0.16s; }
+			.loading-indicator .dot:nth-child(3) { animation-delay: 0s; }
+
+			@keyframes bounce {
+				0%, 80%, 100% { transform: scale(0); }
+				40% { transform: scale(1); }
+			}
+
+			/* Code blocks inside messages */
+			.chat-message pre.hljs {
+				margin: 0.5em 0;
+				font-size: 0.85rem;
+			}
+
+			.chat-message code {
+				font-size: 0.85rem;
+			}
+
+			/* FIM mode indicator in chat */
+			#fim-notice {
+				text-align: center;
+				font-size: 0.8rem;
+				color: var(--bs-secondary-color);
+				padding: 0.5rem;
+				border-bottom: 1px solid var(--bs-border-color);
+			}
+
 			/* Make #page-content a flex container in column direction */
 			#page-content {
 				display: flex;
@@ -157,7 +393,7 @@
 				--bs-btn-hover-color: var(--bs-white);
 				--bs-btn-hover-bg: #6528e0;
 				--bs-btn-hover-border-color: #6528e0;
-				--bs-btn-focus-shadow-rgb: var(--bd-violet-rgb);
+				--bs-btn-hover-focus-shadow-rgb: var(--bd-violet-rgb);
 				--bs-btn-active-color: var(--bs-btn-hover-color);
 				--bs-btn-active-bg: #5a23c8;
 				--bs-btn-active-border-color: #5a23c8;
@@ -225,28 +461,41 @@
 		<main class="d-flex flex-nowrap mt-2">
 			
 			<!-- Page Content -->
-				<div class="flex-grow-1 flex-column bg-body-tertiary" id="page-content">
-					<div id="content" style="padding-right:0.5rem;">
-                        <!-- Markdown content will be rendered here-->
-                    </div>
-					<div class="d-flex justify-content-center gap-4 mt-3">
-						<button type="button" id="chatButton" onclick="ahkButtonClick(this)" class="btn btn-primary btn-lg">Chat</button>
-						<button type="button" id="copyButton" onclick="ahkButtonClick(this)" class="btn btn-secondary btn-lg">Copy</button>
-						<button type="button" id="retryButton" onclick="ahkButtonClick(this)" class="btn btn-danger btn-lg">Retry</button>
-						<button type="button" id="chatHistoryButton" onclick="ahkButtonClick(this); toggleButtonText();" class="btn btn-success btn-lg">Chat History</button>
+			<div class="flex-grow-1 flex-column bg-body-tertiary" id="page-content">
+				<!-- Chat Layout (shown for pasteMode "chat") -->
+				<div id="chat-layout">
+					<div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
+					<div id="chat-messages">
+						<!-- Chat bubbles will be rendered here -->
+					</div>
+					<div id="chat-input-area">
+						<textarea id="chat-input" placeholder="Type a message..." rows="1"></textarea>
+						<button type="button" id="chat-send-btn">Send</button>
+						<button type="button" id="copy-entire-chat-btn" title="Copy entire chat">📋 Copy All</button>
 					</div>
 				</div>
+				<!-- Fallback content for non-chat modes (e.g. FIM) -->
+				<div id="content">
+					<!-- Markdown content will be rendered here for non-chat modes -->
+				</div>
+				<div class="d-flex justify-content-center gap-4 mt-3" id="action-buttons" style="display:none !important;">
+					<button type="button" id="chatButton" onclick="ahkButtonClick(this)" class="btn btn-primary btn-lg" style="display:none;">Chat</button>
+					<button type="button" id="copyButton" onclick="ahkButtonClick(this)" class="btn btn-secondary btn-lg" style="display:none;">Copy</button>
+					<button type="button" id="retryButton" onclick="ahkButtonClick(this)" class="btn btn-danger btn-lg" style="display:none;">Retry</button>
+					<button type="button" id="chatHistoryButton" onclick="ahkButtonClick(this); toggleButtonText();" class="btn btn-success btn-lg" style="display:none;">Chat History</button>
+				</div>
+			</div>
 			<!-- End Page Content -->
 		</main>
 
-        <!-- Additional scripts for markdown rendering -->
-        <script src="./js/markdown-it.min.js"></script>
-        <script src="./js/katex.min.js"></script>
-        <script src="./js/mhchem.min.js"></script>
-        <script src="./js/texmath.min.js"></script>
+		<!-- Additional scripts for markdown rendering -->
+		<script src="./js/markdown-it.min.js"></script>
+		<script src="./js/katex.min.js"></script>
+		<script src="./js/mhchem.min.js"></script>
+		<script src="./js/texmath.min.js"></script>
 
-        <!-- Your custom script to render markdown -->
-        <script src="./js/main.js"></script>
+		<!-- Your custom script to render markdown -->
+		<script src="./js/main.js"></script>
 	</body>
 	<script>
 		window.chrome.webview.addEventListener('message', ahkWebMessage);

@@ -180,10 +180,10 @@ providerMap := Map(
 ;                     window.  Only meaningful when isCustomPrompt: true.
 ;
 ;   pasteMode:        (Optional) Where the LLM response goes:
-;                       "" (empty) — stays in the Response Window (no paste)
+;                       "chat"     — shows a full chat interface in the Response Window
 ;                       "replace"  — replaces the selected text in the active app
 ;                       "append"   — placed after the cursor/selection
-;                     Default: "".
+;                     Default: "chat".
 ;
 ;   isFIM:            (Optional) Use DeepSeek FIM (Fill In the Middle) beta
 ;                     endpoint instead of chat completions.
@@ -240,7 +240,7 @@ providerMap := Map(
 ;
 ;     isCustomPrompt: true,                    ; Shows input window
 ;     customPromptInitialMessage: "",          ; (optional) pre-filled text
-;     pasteMode: "replace",                    ; "", "replace", or "append"
+;     pasteMode: "replace",                    ; "chat", "replace", or "append"
 ;     skipConfirmation: false,
 ;     copyAsMarkdown: false,
 ;     isFIM: false,                            ; Uses FIM beta endpoint
@@ -261,7 +261,7 @@ prompts := [
         APIModels: "deepseek-v4-pro",
         isCustomPrompt: true,               ; Shows input window for your instruction
         customPromptInitialMessage: "",     ; (no pre-filled text)
-        pasteMode: "",                      ; Response stays in Response Window
+        pasteMode: "chat",                      ; Chat interface
         skipConfirmation: false,            ; Shows confirmation before sending
         copyAsMarkdown: false,              ; Copies as plain text
         isFIM: false,
@@ -278,7 +278,7 @@ prompts := [
         APIModels: "deepseek-v4-flash",
         isCustomPrompt: true,
         customPromptInitialMessage: "",
-        pasteMode: "",
+        pasteMode: "chat",
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
@@ -383,7 +383,7 @@ prompts := [
         APIModels: "deepseek-v4-pro, deepseek-v4-flash",   ; Two models = two Response Windows
         isCustomPrompt: true,
         customPromptInitialMessage: "",
-        pasteMode: "",                      ; Response stays in window
+        pasteMode: "chat",                      ; Chat interface (multi-model, each window has its own chat)
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
@@ -422,7 +422,7 @@ prompts := [
         APIModels: "deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
-        pasteMode: "append",                ; Continuation placed after cursor
+        pasteMode: "append",          ; FIM Continue — pastes result after cursor
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: true,
