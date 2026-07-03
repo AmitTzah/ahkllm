@@ -32,7 +32,8 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         content: "",
         reasoning: "",
         modelName: "",
-        firstTokenTime: 0
+        firstTokenTime: 0,
+        usage: {}
     }
 
     ; Poll the output file incrementally
@@ -80,11 +81,28 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     manageState("cURL", "set", cURLPID)
 
     ; Save full response to chat history and log
-    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest, requestStartTime, streamState.firstTokenTime)
+    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest, requestStartTime, streamState.firstTokenTime, streamState.usage)
 
     ; Finalize: tell WebView streaming is done
     postWebMessage("streamDone", streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"])
     debugLog("Streaming complete. streamDone posted.")
+
+    ; Post token usage to WebView (streaming)
+    if streamState.usage.HasProp("totalTokens") && streamState.usage.totalTokens > 0 {
+        effectiveModel := streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"]
+        costs := LLMClient.ComputeTokenCosts(effectiveModel, streamState.usage)
+        tokenUsage := {
+            promptTokens:     streamState.usage.promptTokens,
+            completionTokens: streamState.usage.completionTokens,
+            totalTokens:      streamState.usage.totalTokens,
+            cachedTokens:     streamState.usage.HasProp("cachedTokens") ? streamState.usage.cachedTokens : 0,
+            contextWindow:    costs.contextWindow,
+            inputCost:        costs.inputCost,
+            outputCost:       costs.outputCost,
+            totalCost:        costs.totalCost
+        }
+        postWebMessage("updateTokenUsage", tokenUsage)
+    }
 
     ; Enable chat input
     postWebMessage("setChatButtonsEnabled", true)
@@ -133,6 +151,10 @@ readStreamChunk(streamState) {
                 if chunk.HasProp("model") && chunk.model {
                     streamState.modelName := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
                 }
+                ; Capture usage data from the final SSE chunk
+                if chunk.HasProp("usage") && chunk.usage.HasProp("totalTokens") && chunk.usage.totalTokens > 0 {
+                    streamState.usage := chunk.usage
+                }
 
             case "done":
                 ; No more data expected
@@ -141,7 +163,7 @@ readStreamChunk(streamState) {
 }
 
 ; Save the accumulated streaming response to chat history
-saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime) {
+saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}) {
     manageState("model", "add", modelName ? modelName : requestParams["singleAPIModelName"])
 
     ; Snapshot the request BEFORE appending the response
@@ -152,10 +174,20 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
     manageChatHistoryJSON("set", chatHistoryJSONRequest)
 
     ; Reconstruct the full JSON response for logging
-    fullResponse := jsongo.Stringify({
+    ; Include usage data if available (captured from the SSE finish chunk)
+    logEntry := {
         choices: [{ message: { content: content } }],
         model: modelName ? modelName : requestParams["singleAPIModelName"]
-    })
+    }
+    if usage.HasProp("totalTokens") && usage.totalTokens > 0 {
+        logEntry.usage := {
+            prompt_tokens:            usage.promptTokens,
+            completion_tokens:        usage.completionTokens,
+            total_tokens:             usage.totalTokens,
+            prompt_cache_hit_tokens:  usage.cachedTokens
+        }
+    }
+    fullResponse := jsongo.Stringify(logEntry)
 
     ; For streaming, latency = time to first token (TTFT)
     ; This is the most meaningful metric — how fast the model starts responding

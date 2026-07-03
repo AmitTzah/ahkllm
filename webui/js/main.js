@@ -329,6 +329,77 @@ function renderMarkdown(content) {
   }
 }
 
+// Format a number with comma separators
+function formatNumber(n) {
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+// Format cost to a reasonable number of decimal places
+function formatCost(cost) {
+  if (cost === "" || cost === null || cost === undefined) return "";
+  var num = Number(cost);
+  if (num === 0) return "$0.00";
+  // Show up to 6 decimal places, but strip trailing zeros
+  var s = num.toFixed(6);
+  // Remove trailing zeros after decimal but keep at least 2 decimals
+  s = s.replace(/\.?0+$/, "");
+  if (s.indexOf(".") === -1) s += ".00";
+  // Ensure at least 2 decimal places
+  var parts = s.split(".");
+  if (parts.length < 2 || parts[1].length < 2) {
+    s = num.toFixed(2);
+  }
+  return "$" + s;
+}
+
+// Update the token usage bar at the top of the chat
+function updateTokenUsage(data) {
+  var bar = document.getElementById('token-usage-bar');
+  var content = document.getElementById('token-usage-content');
+  if (!bar || !content) return;
+
+  var html = '';
+
+  // First row: Token Usage overview
+  html += '<div class="tu-row">';
+  html += '<span><span class="tu-label">🔢 Token Usage:</span> ' +
+    formatNumber(data.totalTokens) +
+    (data.contextWindow ? ' / ' + formatNumber(data.contextWindow) : '') +
+    '</span>';
+  html += '</div>';
+
+  // Second row: detailed breakdown
+  html += '<div class="tu-row">';
+  html += '<span><span class="tu-label">Input:</span> ' + formatNumber(data.promptTokens);
+  if (data.cachedTokens && data.cachedTokens > 0) {
+    html += ' (' + formatNumber(data.cachedTokens) + ' cached)';
+  }
+  html += '</span>';
+  html += '<span><span class="tu-label">Output:</span> ' + formatNumber(data.completionTokens) + '</span>';
+  html += '<span><span class="tu-label">Total:</span> ' + formatNumber(data.totalTokens) + '</span>';
+  html += '</div>';
+
+  // Third row: cost estimation (only if costs are available)
+  if (data.inputCost !== "" || data.outputCost !== "" || data.totalCost !== "") {
+    html += '<div class="tu-row tu-cost">';
+    html += '<span><span class="tu-label">💲 Cost Est.<sup class="tu-asterisk">*</sup></span>';
+    if (data.inputCost !== "") {
+      html += ' Input: ' + formatCost(data.inputCost);
+    }
+    if (data.outputCost !== "") {
+      html += '  |  Output: ' + formatCost(data.outputCost);
+    }
+    if (data.totalCost !== "") {
+      html += '  |  Total: ' + formatCost(data.totalCost);
+    }
+    html += '</span>';
+    html += '</div>';
+  }
+
+  content.innerHTML = html;
+  bar.style.display = 'block';
+}
+
 // Main message handler from AHK
 function handleWebMessage(event) {
   try {
@@ -380,6 +451,10 @@ function handleWebMessage(event) {
 
       case 'setChatButtonsEnabled':
         setChatButtonsEnabled(data);
+        break;
+
+      case 'updateTokenUsage':
+        updateTokenUsage(data);
         break;
 
       case 'streamContent':

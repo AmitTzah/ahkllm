@@ -139,6 +139,21 @@ trayMenuItems := [
 ]
 
 ; ----------------------------------------------------
+; MODEL PRICING (for token usage display and cost estimation)
+; ----------------------------------------------------
+; Prices are in USD per 1M tokens. Set to 0 or omit to disable cost display.
+; Format: Map("model-name", {input: price_per_1M_input, cachedInput: price_per_1M_cached, output: price_per_1M_output, context: context_window_tokens})
+; To add pricing for other models/providers, add entries to this map.
+; If a model is not found here, tokens will be displayed without cost estimates.
+; If input or output is 0, cost is not calculated for that category.
+; cachedInput defaults to 10% of input price if not specified.
+
+modelPricing := Map(
+    "deepseek-v4-pro",   {input: 0.435, cachedInput: 0.003625, output: 0.87, context: 1048576},
+    "deepseek-v4-flash", {input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1048576}
+)
+
+; ----------------------------------------------------
 ; PROVIDER INFERENCE MAP
 ; ----------------------------------------------------
 ; When a model name doesn't use "provider/model" format (e.g. "openai/gpt-4o"),

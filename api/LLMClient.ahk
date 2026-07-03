@@ -63,9 +63,16 @@ class LLMClient {
     extractJSONResponse(var) {
         response := var.Get("choices")[1].Get("message").Get("content")
         model := var.Get("model")
+        usage := var.Has("usage") ? {
+            promptTokens:     var["usage"]["prompt_tokens"],
+            completionTokens: var["usage"]["completion_tokens"],
+            totalTokens:      var["usage"]["total_tokens"],
+            cachedTokens:     var["usage"].Has("prompt_cache_hit_tokens") ? var["usage"]["prompt_cache_hit_tokens"] : 0
+        } : { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
         return {
             response: response,
-            model: model
+            model: model,
+            usage: usage
         }
     }
 
@@ -212,6 +219,16 @@ class LLMClient {
             if parsed.Has("model") && parsed["model"] != "" {
                 result.model := parsed["model"]
             }
+            
+            ; Extract usage data from the stream response
+            if parsed.Has("usage") {
+                result.usage := {
+                    promptTokens:     parsed["usage"]["prompt_tokens"],
+                    completionTokens: parsed["usage"]["completion_tokens"],
+                    totalTokens:      parsed["usage"]["total_tokens"],
+                    cachedTokens:     parsed["usage"].Has("prompt_cache_hit_tokens") ? parsed["usage"]["prompt_cache_hit_tokens"] : 0
+                }
+            }
             return result
         }
         
@@ -274,6 +291,62 @@ class LLMClient {
     }
 
     ; Returns the path to the log file (for reference/display).
+    ; ----------------------------------------------------
+    ; Token cost calculation
+    ; ----------------------------------------------------
+    ;
+    ; Computes cost estimates for a given model and token usage.
+    ; Looks up pricing from the global modelPricing map (defined in UserConfig.ahk).
+    ; Returns an object with formatted cost strings, or empty strings if pricing
+    ; is not available for the model.
+    ;
+    static ComputeTokenCosts(model, usage) {
+        costs := { inputCost: "", outputCost: "", totalCost: "", contextWindow: "" }
+        
+        ; Handle provider/model format — use just the model part for lookup
+        modelShort := model
+        slashPos := InStr(model, "/")
+        if slashPos > 0 {
+            modelShort := SubStr(model, slashPos + 1)
+        }
+        
+        ; Look up pricing for this model
+        if modelPricing.Has(modelShort) {
+            pricing := modelPricing[modelShort]
+            inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
+            cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
+            outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
+            contextWin       := pricing.HasOwnProp("context")     ? pricing.context     : ""
+            
+            ; Determine cached token count (default to 0 if not provided)
+            cachedTokens := usage.HasProp("cachedTokens") ? usage.cachedTokens : 0
+            
+            ; Calculate input cost: split cached vs non-cached
+            if inputPrice > 0 && usage.promptTokens > 0 {
+                nonCachedTokens := usage.promptTokens - cachedTokens
+                nonCachedCost := nonCachedTokens * inputPrice / 1000000
+                cachedCost := cachedTokens * cachedInputPrice / 1000000
+                costs.inputCost := Round(nonCachedCost + cachedCost, 6)
+            }
+            
+            ; Calculate output cost
+            if outputPrice > 0 && usage.completionTokens > 0 {
+                costs.outputCost := Round(usage.completionTokens * outputPrice / 1000000, 6)
+            }
+            
+            ; Calculate total
+            if (inputPrice > 0 || outputPrice > 0) && (costs.inputCost != "" || costs.outputCost != "") {
+                total := (costs.inputCost != "" ? costs.inputCost : 0) + (costs.outputCost != "" ? costs.outputCost : 0)
+                costs.totalCost := Round(total, 6)
+            }
+            if contextWin != "" {
+                costs.contextWindow := contextWin
+            }
+        }
+        
+        return costs
+    }
+
     static GetLogFilePath() {
         return this.logFilePath
     }

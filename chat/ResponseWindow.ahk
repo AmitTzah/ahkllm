@@ -274,6 +274,21 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
 
         manageState("model", "add", responseFromLLM.model)
 
+        ; Post token usage to WebView (non-streaming)
+        if responseFromLLM.HasProp("usage") && responseFromLLM.usage.totalTokens > 0 {
+            costs := LLMClient.ComputeTokenCosts(responseFromLLM.model, responseFromLLM.usage)
+            tokenUsage := {
+                promptTokens:     responseFromLLM.usage.promptTokens,
+                completionTokens: responseFromLLM.usage.completionTokens,
+                totalTokens:      responseFromLLM.usage.totalTokens,
+                cachedTokens:     responseFromLLM.usage.HasProp("cachedTokens") ? responseFromLLM.usage.cachedTokens : 0,
+                contextWindow:    costs.contextWindow,
+                inputCost:        costs.inputCost,
+                outputCost:       costs.outputCost,
+                totalCost:        costs.totalCost
+            }
+            postWebMessage("updateTokenUsage", tokenUsage)
+        }
         ; Snapshot the request BEFORE appending the response, so the log
         ; shows the actual request sent (not the request + response combined)
         requestBeforeAppend := chatHistoryJSONRequest
