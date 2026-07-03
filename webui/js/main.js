@@ -52,6 +52,10 @@ function initChatMode(messages) {
 
   renderChatMessages(chatMessages);
 
+  // Show token usage bar immediately (with empty placeholder state)
+  // It will be updated with real data when the LLM responds
+  showTokenUsageBar();
+
   // If the last message is not from "assistant", we're still waiting for the LLM
   // (this happens when the window is shown before the first cURL response arrives)
   if (chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role !== 'assistant') {
@@ -62,6 +66,28 @@ function initChatMode(messages) {
   // Save to sessionStorage for reload persistence within the same window session
   sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
   sessionStorage.setItem('isChatMode', 'true');
+}
+
+// Show token usage bar immediately with an empty placeholder state
+function showTokenUsageBar() {
+  var bar = document.getElementById('token-usage-bar');
+  var content = document.getElementById('token-usage-content');
+  if (!bar || !content) return;
+
+  var html = '';
+  // First row: placeholder overview
+  html += '<div class="tu-row">';
+  html += '<span><span class="tu-label">🔢 Token Usage:</span> — / —</span>';
+  html += '</div>';
+  // Second row: breakdown with dashes
+  html += '<div class="tu-row">';
+  html += '<span><span class="tu-label">Input:</span> —</span>';
+  html += '<span><span class="tu-label">Output:</span> —</span>';
+  html += '<span><span class="tu-label">Total:</span> —</span>';
+  html += '</div>';
+
+  content.innerHTML = html;
+  bar.style.display = 'block';
 }
 
 // Append a single message to the chat (used for new responses)
