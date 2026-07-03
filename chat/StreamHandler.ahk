@@ -6,21 +6,6 @@
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     debugLog("sendStreamingRequest entered. initialRequest=" initialRequest)
 
-    ; [DEBUG] Log full chat history structure: message count and all messages
-    jsonBody := FileOpen(requestParams["chatHistoryJSONRequestFile"], "r", "UTF-8-RAW").Read()
-    try {
-        parsedBody := jsongo.Parse(jsonBody)
-        msgCount := parsedBody["messages"].Length
-        debugLog("[DEBUG] Chat history message count: " msgCount)
-        Loop msgCount {
-            role := parsedBody["messages"][A_Index]["role"]
-            contentPreview := SubStr(parsedBody["messages"][A_Index]["content"], 1, 80)
-            debugLog("[DEBUG]   msg[" A_Index "]: role=" role " content_preview=" contentPreview)
-        }
-    } catch as e {
-        debugLog("[DEBUG] Failed to parse JSON for logging: " e.Message)
-    }
-
     ; Delete old output and error files so stale data can't mask a cURL failure on subsequent requests
     if FileExist(requestParams["cURLOutputFile"]) {
         FileDelete(requestParams["cURLOutputFile"])
@@ -32,7 +17,6 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     ; Rebuild cURL command fresh each request (not from stale file)
     cURLCommand := router.buildStreamcURLCommand(requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
     FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
-    debugLog("Rebuilt cURL command. length=" StrLen(cURLCommand))
 
     Run(cURLCommand, , "Hide", &cURLPID)
     manageState("cURL", "set", cURLPID)
@@ -54,7 +38,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         pollCount++
         Sleep 100
     }
-    debugLog("Streaming while loop exited. Poll iterations=" pollCount " outputFileExists=" FileExist(streamState.outputFile) " outputFileSize=" (FileExist(streamState.outputFile) ? FileGetSize(streamState.outputFile) : 0))
+    debugLog("Streaming while loop exited. Poll iterations=" pollCount)
 
     ; Process any remaining data after process exits
     readStreamChunk(streamState)
@@ -66,19 +50,12 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         if FileExist(errorFile) {
             errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
             debugLog("cURL stderr: " Trim(errorContent))
-        } else {
-            debugLog("cURL stderr file not found: " errorFile)
         }
-
-        ; [DEBUG] Also check if output file has any raw content (cURL error response)
+        ; Also check the output file for API-level error responses
         if FileExist(streamState.outputFile) {
             rawOutput := FileOpen(streamState.outputFile, "r", "UTF-8-RAW").Read()
-            debugLog("[DEBUG] Raw output file content (first 300 chars): " SubStr(rawOutput, 1, 300))
+            debugLog("cURL output (error): " SubStr(rawOutput, 1, 300))
         }
-
-        ; [DEBUG] Log the cURL command for manual diagnosis
-        cURLCommandForLog := FileOpen(requestParams["cURLCommandFile"], "r", "UTF-8").Read()
-        debugLog("[DEBUG] cURL command used: " cURLCommandForLog)
     }
 
     ; If user cancelled, exit
