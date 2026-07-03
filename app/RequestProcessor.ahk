@@ -76,13 +76,14 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 
         A_Clipboard := clipboardBeforeCopy
 
-        ; For FIM, auto-disable multi-model (FIM only makes sense with one model)
+        ; For FIM, restrict to a single model since FIM doesn't support multi-model
         if InStr(APIModels, ",") {
             MsgBox "FIM does not support multiple models. Only the first model will be used.", "FIM Warning", "IconX"
         }
 
-        ; Process models (single model for FIM)
+        ; Parse models (take only the first for FIM)
         APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
+        APIModels := [APIModels[1]]
     } else {
         ; --- Chat text capture (existing logic) ---
         A_Clipboard := ""
