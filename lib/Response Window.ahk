@@ -76,7 +76,9 @@ responseWindow.Load("..\resources\index.html")
 
 ; Apply dark mode to title bar
 ; Reference: https://www.autohotkey.com/boards/viewtopic.php?p=422034#p422034
-DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", responseWindow.hWnd, "int", 20, "int*", true, "int", 4)
+if (darkMode) {
+    DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", responseWindow.hWnd, "int", 20, "int*", true, "int", 4)
+}
 
 ; Assign actions to click events
 responseWindow.AddHostObjectToScript("ButtonClick", { func: buttonClickAction })
@@ -144,6 +146,7 @@ buttonClickAction(action) {
 }
 
 showResponseWindow(responseWindowTextContent, initialRequest, noActivate := false) {
+    postWebMessage("setTheme", [darkMode])
     postWebMessage("renderMarkdown", [responseWindowTextContent, true])
     buttonClickAction("resetChatHistoryButtonText")
     if initialRequest {

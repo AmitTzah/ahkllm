@@ -1,7 +1,7 @@
 body {
     font-family: "TeX Gyre Pagella", "Latin Modern Roman 12", "Source Serif Pro", Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
-    color: white;
-    background-color: #212529;
+    color: var(--bs-body-color);
+    background-color: var(--bs-body-bg);
     font-size: large;
 }
 
@@ -29,10 +29,10 @@ code {
 
 /* Inline code styling */
 :not(pre) > code {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--bs-tertiary-bg, rgba(255, 255, 255, 0.1));
     border-radius: 3px;
     padding: 2px 4px;
-    color: #e6e6e6;
+    color: var(--bs-code-color, #e6e6e6);
 }
 
 /* Override Bootstrap's disabled button styles */

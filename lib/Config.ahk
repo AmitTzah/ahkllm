@@ -1,6 +1,8 @@
 #Requires AutoHotkey v2.0.18+
 #Include ..\UserConfig.ahk        ; All user-facing configuration
-; Theme includes are now in UserConfig.ahk (above)
+#Include Dark_MsgBox.ahk                  ; Dark mode MsgBox and InputBox
+#Include Dark_Menu.ahk                    ; Dark mode menus
+#Include SystemThemeAwareToolTip.ahk       ; Dark mode tooltips
 #Include WebViewToo.ahk             ; WebView2 Framework for Web-based GUIs
 #Include jsongo.v2.ahk              ; JSON parsing
 #Include AutoXYWH.ahk               ; Auto-resizing of GUI controls
@@ -208,20 +210,27 @@ class InputWindow {
         this.guiObj.OnEvent("Close", this.closeButtonAction.Bind(this))
         this.guiObj.OnEvent("Escape", this.closeButtonAction.Bind(this))
         this.guiObj.OnEvent("Size", this.resizeAction.Bind(this))
-        this.guiObj.BackColor := inputWindowBackground
-        this.guiObj.SetFont(inputWindowFontSize " " inputWindowFontColor, inputWindowFontFace)
-
-        ; Add controls
-        this.EditControl := this.guiObj.Add("Edit", "x20 y+5 w" inputWindowWidth " h" inputWindowHeight " Background" inputWindowBackground)
+        if (darkMode) {
+            this.guiObj.BackColor := inputWindowBackground
+            this.guiObj.SetFont(inputWindowFontSize " " inputWindowFontColor, inputWindowFontFace)
+            this.EditControl := this.guiObj.Add("Edit", "x20 y+5 w" inputWindowWidth " h" inputWindowHeight " Background" inputWindowBackground)
+        } else {
+            this.guiObj.SetFont(inputWindowFontSize " cDefault", inputWindowFontFace)
+            this.EditControl := this.guiObj.Add("Edit", "x20 y+5 w" inputWindowWidth " h" inputWindowHeight)
+        }
         this.SendButton := this.guiObj.Add("Button", "x240 y+10 w80", "Send")
 
         ; Apply dark mode to title bar
         ; Reference: https://www.autohotkey.com/boards/viewtopic.php?p=422034#p422034
-        DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", this.guiObj.hWnd, "int", 20, "int*", true, "int", 4)
+        if (darkMode) {
+            DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", this.guiObj.hWnd, "int", 20, "int*", true, "int", 4)
+        }
 
         ; Apply dark mode to Send button and Edit control
-        for ctrl in [this.SendButton, this.EditControl] {
-            DllCall("uxtheme\SetWindowTheme", "ptr", ctrl.hWnd, "str", "DarkMode_Explorer", "ptr", 0)
+        if (darkMode) {
+            for ctrl in [this.SendButton, this.EditControl] {
+                DllCall("uxtheme\SetWindowTheme", "ptr", ctrl.hWnd, "str", "DarkMode_Explorer", "ptr", 0)
+            }
         }
     }
 

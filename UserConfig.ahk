@@ -41,9 +41,6 @@ FIMMaxTokens      := 4000
 ; Affects MsgBox, menus, tooltips, and the API Logs Viewer.
 
 darkMode := false
-#Include lib\Dark_MsgBox.ahk              ; Dark mode MsgBox and InputBox
-#Include lib\Dark_Menu.ahk                ; Dark mode menus
-#Include lib\SystemThemeAwareToolTip.ahk  ; Dark mode tooltips
 
 ; ----------------------------------------------------
 ; UI — Input Window

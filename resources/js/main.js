@@ -1,5 +1,10 @@
 window.chrome.webview.addEventListener('message', handleWebMessage);
 
+// Set Bootstrap theme based on darkMode config
+function setTheme(isDark) {
+  document.documentElement.setAttribute("data-bs-theme", isDark ? "dark" : "light");
+}
+
 // Initialize markdown-it with options
 var md = window.markdownit({
   html: true,         // Enable HTML tags in source
