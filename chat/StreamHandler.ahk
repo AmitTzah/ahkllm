@@ -6,6 +6,9 @@
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     debugLog("sendStreamingRequest entered. initialRequest=" initialRequest)
 
+    ; Record start time for latency tracking
+    requestStartTime := A_TickCount
+
     ; Delete old output and error files so stale data can't mask a cURL failure on subsequent requests
     if FileExist(requestParams["cURLOutputFile"]) {
         FileDelete(requestParams["cURLOutputFile"])
@@ -28,7 +31,8 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         lastPos: 0,
         content: "",
         reasoning: "",
-        modelName: ""
+        modelName: "",
+        firstTokenTime: 0
     }
 
     ; Poll the output file incrementally
@@ -76,7 +80,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     manageState("cURL", "set", cURLPID)
 
     ; Save full response to chat history and log
-    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest)
+    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest, requestStartTime, streamState.firstTokenTime)
 
     ; Finalize: tell WebView streaming is done
     postWebMessage("streamDone", streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"])
@@ -115,6 +119,9 @@ readStreamChunk(streamState) {
 
         switch chunk.type {
             case "content":
+                if (streamState.firstTokenTime = 0) {
+                    streamState.firstTokenTime := A_TickCount
+                }
                 streamState.content .= chunk.content
                 postWebMessage("streamContent", chunk.content)
 
@@ -134,7 +141,7 @@ readStreamChunk(streamState) {
 }
 
 ; Save the accumulated streaming response to chat history
-saveStreamResponse(content, modelName, &chatHistoryJSONRequest) {
+saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime) {
     manageState("model", "add", modelName ? modelName : requestParams["singleAPIModelName"])
 
     ; Snapshot the request BEFORE appending the response
@@ -150,6 +157,12 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest) {
         model: modelName ? modelName : requestParams["singleAPIModelName"]
     })
 
+    ; For streaming, latency = time to first token (TTFT)
+    ; This is the most meaningful metric — how fast the model starts responding
+    latencyMs := firstTokenTime > 0
+        ? firstTokenTime - requestStartTime
+        : A_TickCount - requestStartTime
+
     LLMClient.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         promptName: requestParams["responseWindowTitle"],
@@ -160,6 +173,7 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest) {
         pasteMode: requestParams["pasteMode"],
         request: requestBeforeAppend,
         response: fullResponse,
-        status: "success"
+        status: "success",
+        latencyMs: latencyMs
     })
 }

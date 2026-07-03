@@ -106,6 +106,7 @@
                 <th style="width:160px">Timestamp</th>
                 <th style="width:140px">Prompt</th>
                 <th style="width:180px">Model</th>
+                <th style="width:80px">Latency</th>
                 <th style="width:40px">Status</th>
                 <th>Endpoint</th>
             </tr>
@@ -159,6 +160,7 @@ function renderTable() {
         html += '<td class="timestamp">' + esc(entry.timestamp||'') + '</td>';
         html += '<td>' + esc(entry.promptName||'') + '</td>';
         html += '<td class="model-name">' + esc(entry.model||entry.provider||'') + '</td>';
+        html += '<td class="timestamp">' + fmtLatency(entry.latencyMs) + '</td>';
         html += '<td><span class="status-badge ' + sClass + '">' + esc(status) + '</span></td>';
         html += '<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">' + esc(entry.endpoint||'') + '</td>';
         html += '</tr>';
@@ -170,7 +172,7 @@ function renderTable() {
         var resHtml = '<pre>' + esc(fj(entry.response)) + '</pre>';
 
         html += '<tr class="detail-row" id="' + eid + '">';
-        html += '<td colspan="5" class="detail-cell"><div class="detail-inner">';
+        html += '<td colspan="6" class="detail-cell"><div class="detail-inner">';
         html += '<div class="detail-tabs">';
         html += '<button class="detail-tab active" onclick="event.stopPropagation(); st(this,\'rq-' + i + '\')">Request</button>';
         html += '<button class="detail-tab" onclick="event.stopPropagation(); st(this,\'rs-' + i + '\')">Response</button>';
@@ -215,11 +217,12 @@ function st(tab, cid) {
 function cp(idx, btn) {
     var e = logData[idx];
     if (!e) return;
-    var txt = '=== API Request ===\n' + 'POST ' + (e.endpoint||'') + '\n' + fj(e.request)
-            + '\n\n=== API Response ===\n' + fj(e.response)
-            + '\n\n---\nTimestamp: ' + (e.timestamp||'')
-            + ' | Model: ' + (e.model||'')
-            + ' | Status: ' + (e.status||'');
+        var txt = '=== API Request ===\n' + 'POST ' + (e.endpoint||'') + '\n' + fj(e.request)
+                + '\n\n=== API Response ===\n' + fj(e.response)
+                + '\n\n---\nTimestamp: ' + (e.timestamp||'')
+                + ' | Model: ' + (e.model||'')
+                + ' | Status: ' + (e.status||'')
+                + ' | Latency: ' + fmtLatency(e.latencyMs);
     navigator.clipboard.writeText(txt).then(function() {
         var orig = btn.textContent;
         btn.textContent = 'Copied!';
@@ -240,6 +243,15 @@ function clearLogs() {
         expandedRow = null;
         renderTable();
     });
+}
+
+function fmtLatency(ms) {
+    if (ms === undefined || ms === null || ms === '') return '-';
+    if (ms < 1000) return Math.round(ms) + ' ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + ' s';
+    var mins = Math.floor(ms / 60000);
+    var secs = ((ms % 60000) / 1000).toFixed(0);
+    return mins + ' min ' + secs + ' s';
 }
 
 function fj(data) {

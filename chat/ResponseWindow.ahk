@@ -208,6 +208,9 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         return
     }
 
+    ; Record start time for latency tracking
+    requestStartTime := A_TickCount
+
     ; Run the non-streaming cURL command asynchronously
     cURLCommand := FileOpen(requestParams["cURLCommandFile"], "r", "UTF-8").Read()
     debugLog("cURL command file: " requestParams["cURLCommandFile"])
@@ -279,6 +282,9 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
                 responseFromLLM.response, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
         }
 
+        ; Calculate latency in milliseconds
+        latencyMs := A_TickCount - requestStartTime
+
         ; Log the successful API interaction
         LLMClient.LogRequest({
             timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
@@ -290,9 +296,13 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
             pasteMode: requestParams["pasteMode"],
             request: requestBeforeAppend,
             response: JSONResponseFromLLM,
-            status: "success"
+            status: "success",
+            latencyMs: latencyMs
         })
     } catch as e {
+        ; Calculate latency in milliseconds
+        latencyMs := A_TickCount - requestStartTime
+
         ; Log the failed API interaction
         LLMClient.LogRequest({
             timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
@@ -304,7 +314,8 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
             pasteMode: requestParams["pasteMode"],
             request: chatHistoryJSONRequest,
             response: JSONResponseFromLLM,
-            status: "error"
+            status: "error",
+            latencyMs: latencyMs
         })
         JSONResponseFromLLM := router.extractErrorResponse(JSONResponseVar)
         responseFromLLM :=
