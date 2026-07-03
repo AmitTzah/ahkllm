@@ -187,6 +187,18 @@ providerMap := Map(
 ;                       selected, uses Ctrl+Shift+Home to grab text before cursor.
 ;                     Max output: 4K tokens.  Default: false.
 ;
+;   temperature:      (Optional) Sampling temperature 0–2.  Higher = more
+;                     creative/random, lower = more deterministic.
+;                     Not set by default (API uses its own default).
+;
+;   maxTokens:        (Optional) Maximum tokens in the response.  For FIM
+;                     prompts this overrides FIMMaxTokens (which defaults to
+;                     4000).  Not set by default (API decides).
+;
+;   stop:             (Optional) Array of stop sequences (e.g. ["\n\n"]).
+;                     Generation stops when any sequence appears.
+;                     Not set by default (no stop sequences).
+;
 ;   skipConfirmation: (Optional) When true, skips the confirmation dialog
 ;                     before sending the request.  Default: false.
 ;
@@ -204,6 +216,32 @@ providerMap := Map(
 ;                     to fire it without navigating into submenus.
 ;                     The prompt also stays in its original tagged submenu.
 ;                     Default: none.
+; ============================================================================
+
+; ============================================================================
+; Example prompt template — copy and paste to create new commands:
+;
+; {
+;     ; ---------- Copy this template ----------
+;     promptName: "Your Prompt Name",
+;     menuText: "&9 - Your Menu Label",        ; & defines accelerator key
+;     systemPrompt: "Your system message here. This sets the model's role.",
+;     APIModels: "deepseek-v4-flash",          ; single model
+;     ; APIModels: "deepseek-v4-pro, deepseek-v4-flash",  ; multi-model (Council)
+;     ; APIModels: "openai/gpt-4o",            ; provider/model format
+;
+;     isCustomPrompt: true,                    ; Shows input window
+;     customPromptInitialMessage: "",          ; (optional) pre-filled text
+;     pasteMode: "replace",                    ; "", "replace", or "append"
+;     skipConfirmation: false,
+;     copyAsMarkdown: false,
+;     isFIM: false,                            ; Uses FIM beta endpoint
+;     temperature: 0.7,                        ; (optional) 0 to 2
+;     maxTokens: 500,                          ; (optional) overrides FIMMaxTokens
+;     stop: ["\n\n"],                          ; (optional) stop sequences
+;     tags: ["&Your tag"],
+;     directAccelerator: "&y"                  ; (optional) ` then key shortcut
+; }
 ; ============================================================================
 
 prompts := [
@@ -381,6 +419,8 @@ prompts := [
         copyAsMarkdown: false,
         isFIM: true,
         tags: ["&FIM"],
-        directAccelerator: "&1"
+        directAccelerator: "&1",
+        temperature: 1,
+        maxTokens: 5
     }
 ]

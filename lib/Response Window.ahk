@@ -339,7 +339,13 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
             503: "No suitable model available. There are no providers currently meeting your request requirements. Please try again later or adjust your routing settings."
         }
 
-        responseFromLLM .= errorCodes.%JSONResponseFromLLM.code%
+        ; Only append an error code explanation for known numeric codes
+        try {
+            errorCodeValue := errorCodes.%JSONResponseFromLLM.code%
+            if errorCodeValue != "" {
+                responseFromLLM .= errorCodeValue
+            }
+        }
         showResponseWindow(responseFromLLM, initialRequest)
         postWebMessage("responseWindowButtonsEnabled", true)
         startLoadingCursor(false)

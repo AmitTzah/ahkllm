@@ -32,16 +32,19 @@ class LLMClient {
         this.APIKey := APIKey
     }
 
-    createJSONRequest(APIModel, systemPrompt, userPrompt) {
+    createJSONRequest(APIModel, systemPrompt, userPrompt, temperature := "", maxTokens := "", stop := "") {
         requestObj := {}
         requestObj.model := APIModel
-        requestObj.messages := [{
-            role: "system",
-            content: systemPrompt
-        }, {
-            role: "user",
-            content: userPrompt
-        }]
+        requestObj.messages := [{ role: "user", content: userPrompt }]
+        if systemPrompt != "" {
+            requestObj.messages.InsertAt(1, { role: "system", content: systemPrompt })
+        }
+        if temperature != ""
+            requestObj.temperature := temperature
+        if maxTokens != ""
+            requestObj.max_tokens := maxTokens
+        if stop != "" && stop.Length > 0
+            requestObj.stop := stop
         return jsongo.Stringify(requestObj)
     }
 
@@ -103,11 +106,16 @@ class LLMClient {
     ; ----------------------------------------------------
 
     ; Builds the FIM JSON request: {model, prompt, suffix?, max_tokens}
-    createFIMRequest(APIModel, prefix, suffix) {
-        requestObj := { model: APIModel, prompt: prefix, max_tokens: FIMMaxTokens }
+    createFIMRequest(APIModel, prefix, suffix, temperature := "", maxTokens := "", stop := "") {
+        maxTokens := (maxTokens != "") ? maxTokens : FIMMaxTokens
+        requestObj := { model: APIModel, prompt: prefix, max_tokens: maxTokens }
         if (suffix != "") {
             requestObj.suffix := suffix
         }
+        if temperature != ""
+            requestObj.temperature := temperature
+        if stop != "" && stop.Length > 0
+            requestObj.stop := stop
         return jsongo.Stringify(requestObj)
     }
 

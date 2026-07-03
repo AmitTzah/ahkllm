@@ -203,7 +203,10 @@ customPromptSendButtonAction(*) {
         selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "",
         selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
         selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
-        customPromptInputWindow.EditControl.Value
+        customPromptInputWindow.EditControl.Value,
+        selectedPrompt.HasProp("temperature") ? selectedPrompt.temperature : "",
+        selectedPrompt.HasProp("maxTokens") ? selectedPrompt.maxTokens : "",
+        selectedPrompt.HasProp("stop") ? selectedPrompt.stop : ""
     )
     customPromptInputWindow.EditControl.Value := ""
 }
@@ -371,7 +374,11 @@ promptMenuHandler(index, *) {
         selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
         selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "",
         selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
-        selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM)
+        selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
+        "",  ; customPromptMessage (not applicable for non-custom prompts)
+        selectedPrompt.HasProp("temperature") ? selectedPrompt.temperature : "",
+        selectedPrompt.HasProp("maxTokens") ? selectedPrompt.maxTokens : "",
+        selectedPrompt.HasProp("stop") ? selectedPrompt.stop : "")
     }
 }
 
@@ -412,7 +419,7 @@ managePromptState(component, action, data := {}) {
 ; ----------------------------------------------------
 
 processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
-    customPromptMessage := unset) {
+    customPromptMessage := "", temperature := "", maxTokens := "", stop := "") {
 
     ; ----------------------------------------------------
     ; STEP 1: Capture text (clipboard-based)
@@ -498,7 +505,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
         Send("^c")
 
         if !ClipWait(1) {
-            if IsSet(customPromptMessage) {
+            if customPromptMessage != "" {
                 userPrompt := customPromptMessage
             } else {
                 manageCursorAndToolTip("Reset")
@@ -506,7 +513,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
                 MsgBox "The attempt to copy text onto the clipboard failed.", "No text copied", "IconX"
                 return
             }
-        } else if IsSet(customPromptMessage) {
+        } else if customPromptMessage != "" {
             userPrompt := customPromptMessage "`n`n" A_Clipboard
         } else {
             userPrompt := A_Clipboard
@@ -545,11 +552,13 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 
         uniqueID := A_TickCount
 
-        ; Build the JSON request — FIM or chat
+        ; Build the JSON request — FIM or chat, with optional temperature/maxTokens/stop
         if isFIM {
-            chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix)
+            chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
+                temperature, maxTokens, stop)
         } else {
-            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userPrompt)
+            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userPrompt,
+                temperature, maxTokens, stop)
         }
 
         ; Generate sanitized filenames
