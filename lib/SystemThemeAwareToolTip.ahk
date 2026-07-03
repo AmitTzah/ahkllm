@@ -10,7 +10,7 @@ class SystemThemeAwareToolTip
 
     static __New()
     {
-        if this.HasOwnProp("HTT") || !this.IsDarkMode
+        if this.HasOwnProp("HTT") || !this.IsDarkMode || !IsSet(darkMode) || !darkMode
             return
 
         GroupAdd("tooltips_class32", "ahk_class tooltips_class32")

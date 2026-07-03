@@ -1,4 +1,4 @@
-﻿/************************************************************************
+/************************************************************************
  * @description Apply dark theme to the built-in MsgBox and InputBox.
  * @file Dark_MsgBox.ahk
  * @link https://github.com/nperovic/DarkMsgBox
@@ -14,6 +14,10 @@ class DarkMsgBox
 {
     static __New()
     {
+        ; Abort early if dark mode is disabled
+        if (!IsSet(darkMode) || !darkMode)
+            return
+
         /** Thanks to geekdude & Mr Doge for providing this method to rewrite built-in functions. */
         static _Msgbox   := MsgBox.Call.Bind(MsgBox)
         static _InputBox := InputBox.Call.Bind(InputBox)

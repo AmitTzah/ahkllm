@@ -321,7 +321,34 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
             router.appendToChatHistory("assistant",
                 responseFromLLM.response, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
         }
+
+        ; Log the successful API interaction
+        LLMClient.LogRequest({
+            timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+            promptName: requestParams["responseWindowTitle"],
+            provider: requestParams["providerName"],
+            model: requestParams["singleAPIModelName"],
+            isFIM: requestParams["isFIM"],
+            endpoint: requestParams["isFIM"] ? FIMEndpoint : APIEndpoint,
+            pasteMode: requestParams["pasteMode"],
+            request: chatHistoryJSONRequest,
+            response: JSONResponseFromLLM,
+            status: "success"
+        })
     } catch as e {
+        ; Log the failed API interaction
+        LLMClient.LogRequest({
+            timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+            promptName: requestParams["responseWindowTitle"],
+            provider: requestParams["providerName"],
+            model: requestParams["singleAPIModelName"],
+            isFIM: requestParams["isFIM"],
+            endpoint: requestParams["isFIM"] ? FIMEndpoint : APIEndpoint,
+            pasteMode: requestParams["pasteMode"],
+            request: chatHistoryJSONRequest,
+            response: JSONResponseFromLLM,
+            status: "error"
+        })
         JSONResponseFromLLM := router.extractErrorResponse(JSONResponseVar)
         responseFromLLM :=
             "**⛔ Error parsing response**`n`n" e.Message

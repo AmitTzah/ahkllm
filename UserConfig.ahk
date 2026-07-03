@@ -35,10 +35,12 @@ FIMEndpoint       := "https://api.deepseek.com/beta/completions"
 FIMMaxTokens      := 4000
 
 ; ----------------------------------------------------
-; THEME (dark mode components)
+; THEME (dark mode)
 ; ----------------------------------------------------
-; Comment out any line below to disable that component's dark theme.
+; Set to false for light/system theme, true for dark mode.
+; Affects MsgBox, menus, tooltips, and the API Logs Viewer.
 
+darkMode := false
 #Include lib\Dark_MsgBox.ahk              ; Dark mode MsgBox and InputBox
 #Include lib\Dark_Menu.ahk                ; Dark mode menus
 #Include lib\SystemThemeAwareToolTip.ahk  ; Dark mode tooltips
@@ -95,6 +97,14 @@ closeWindowsHotkey := "~^w"           ; Ctrl+W — close input pop-up
 suspendHotkey  := "CapsLock & ``"     ; CapsLock+Backtick — toggle script suspend
 
 ; ----------------------------------------------------
+; API LOGS
+; ----------------------------------------------------
+; Maximum number of API request/response entries to keep in the log file.
+; Set to 0 to disable logging entirely.
+
+apiLogMaxEntries := 20
+
+; ----------------------------------------------------
 ; OPTIONS MENU ITEMS
 ; ----------------------------------------------------
 ; Items shown under the "Options" submenu (press ` then Options).
@@ -105,7 +115,8 @@ optionsMenuItems := [
     { menuText: "&1 - Edit UserConfig",  command: "Notepad " A_ScriptDir "\UserConfig.ahk" },
     { menuText: "&2 - DeepSeek Platform", command: "https://platform.deepseek.com" },
     { menuText: "&3 - DeepSeek API Keys", command: "https://platform.deepseek.com/api_keys" },
-    { menuText: "&4 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" }
+    { menuText: "&4 - DeepSeek Usage",    command: "https://platform.deepseek.com/usage" },
+    { menuText: "&5 - API Logs",          command: A_ScriptDir "\lib\API Logs Viewer.ahk" }
 ]
 
 ; ----------------------------------------------------
@@ -421,6 +432,6 @@ prompts := [
         tags: ["&FIM"],
         directAccelerator: "&1",
         temperature: 1,
-        maxTokens: 5
+        maxTokens: 300
     }
 ]
