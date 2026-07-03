@@ -165,6 +165,7 @@ function createStreamingBubble() {
 function createThinkingBlock() {
   var details = document.createElement('details');
   details.className = 'thinking-block';
+  details.open = true;  // Expanded by default
 
   var summary = document.createElement('summary');
   summary.innerHTML = '🧠 Thinking (0 chars) <span class="thinking-pulse">⏳</span>';
