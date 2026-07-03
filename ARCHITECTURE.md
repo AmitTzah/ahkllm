@@ -1,4 +1,4 @@
-# LLM AutoHotkey Assistant — Developer Guide
+# LLM AutoHotkey Assistant — Architecture Guide
 
 ## Directory Structure
 
@@ -6,8 +6,8 @@
 ai-automation/
 ├── Main.ahk                         # Entry point — run this file
 ├── UserConfig.ahk                   # User-facing configuration (API keys, prompts, theme, hotkeys)
-├── Config.ahk                       # Include chain — loads all vendor libs + application modules
-├── DEVELOPMENT.md                   # This file
+├── lib/Config.ahk                   # Include chain — loads all vendor libs + application modules
+├── ARCHITECTURE.md                  # This file
 │
 ├── app/                             # Application logic (loaded by Main.ahk)
 │   ├── PromptMenu.ahk               # Menu building: prompt menu, tags, submenus, options
@@ -217,3 +217,53 @@ The main script and Response Windows use Windows messages (`WM_`) for IPC:
 | `WM_RESPONSE_WINDOW_LOADING_FINISH` | sub → main | Notifies loading finished |
 
 These are handled by the `CustomMessages` class in `ui/CustomMessages.ahk`.
+
+## Data Storage & Persistence
+
+The script writes data in three different storage locations, each with different lifetimes.
+
+### 1. WebView localStorage (Browser Storage)
+
+**Scope:** Per Response Window (WebView2 instance). Tied to the window lifetime — destroyed when the window closes.
+
+| Key | Type | Content | Purpose |
+|-----|------|---------|---------|
+| `isChatMode` | string `"true"` | Whether the current WebView is in chat mode | Restores the chat UI layout if the WebView reloads |
+| `chatMessages` | JSON string | Array of `{role, content, model?}` objects | Restores all chat bubbles after a reload (e.g. system sleep/wake) |
+| `preMarkdownText` | string | Raw markdown text for FIM/non-chat modes | Restores rendered content for the fallback `#content` div on reload |
+
+**Important:** localStorage is tied to each WebView2 instance. When the Response Window closes, the WebView is destroyed and the data is lost. localStorage does NOT persist between script sessions — each new prompt starts a fresh conversation.
+
+### 2. Temp Files (`%TEMP%\*`)
+
+**Scope:** Session-only. Created per prompt, deleted when the Response Window closes.
+
+| Pattern | Encoding | Content | Lifecycle |
+|---------|----------|---------|-----------|
+| `chatHistoryJSONRequest_*.json` | UTF-8 | Full chat conversation as JSON `{model, messages: [{role, content}]}` | Created on prompt start. Appended on each user/assistant message exchange. **Deleted** on window close. |
+| `cURLCommand_*.txt` | UTF-8 | The raw cURL command string (with API key, paths, model, etc.) | Created per request. **Deleted** on window close. |
+| `cURLOutput_*.json` | UTF-8 | Raw response from LLM API (full JSON returned by the endpoint) | Created per request. Overwritten on retry. **Deleted** on window close. |
+| `responseWindowData_*.json` | UTF-8 | Request params passed from main script to sub-process (prompt name, model, pasteMode, skipConfirmation, etc.) | Created on prompt start. **Deleted** on window close. |
+
+**All temp file names are sanitized** with `RegExReplace(..., "[\/\\:*?\"<>|]", "")` to avoid illegal filesystem characters.
+
+### 3. API Log File (Persistent)
+
+| Location | Format | Content | Lifecycle |
+|----------|--------|---------|-----------|
+| `%TEMP%\LLM_API_Log.json` | JSON array | Array of log entries, each containing `{timestamp, promptName, provider, model, isFIM, endpoint, pasteMode, request, response, status}` | **Never deleted by the script.** Capped at `apiLogMaxEntries` (default: 20). Viewable via Options → API Logs. |
+
+The API log is the only persistent storage. Each entry stores:
+- **`request`** — The JSON payload sent to the API (system + user messages only, NOT including the response — see `requestBeforeAppend` in `chat/ResponseWindow.ahk`)
+- **`response`** — The raw JSON response from the API (includes the assistant's reply and metadata)
+- Cleared manually via the "Clear Logs" button in the API Logs Viewer
+
+### Summary
+
+| Storage | Lifetime | Data |
+|---------|----------|------|
+| WebView localStorage | Per window session | Chat bubble state (for reload recovery) |
+| `%TEMP%\*.json/txt` | Per prompt | Request payloads, cURL commands, API responses |
+| `%TEMP%\LLM_API_Log.json` | Persistent | API interaction history (capped) |
+
+**There is NO on-disk chat history.** Once a Response Window closes, the conversation is gone. This is intentional — the script is designed for ad-hoc queries, not as a permanent chat record.
