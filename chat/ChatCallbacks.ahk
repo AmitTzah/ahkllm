@@ -45,15 +45,6 @@ buttonClickAction(action) {
             sendRequestToLLM(&chatHistoryJSONRequest)
 
         case "Close":
-            if (!requestParams["skipConfirmation"]) {
-                if (MsgBox("End your chat session with " requestParams["responseWindowTitle"] "?",
-                    "Close " requestParams["responseWindowTitle"],
-                    "308 Owner" responseWindow.hWnd) != "Yes") {
-                    return true
-                }
-            }
-
-            ; Proceed with closing (either no warning needed or user clicked "Yes")
             if (ProcessExist(manageState("cURL", "get"))) {
                 manageState("cURL", "close")
 

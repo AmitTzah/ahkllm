@@ -63,12 +63,8 @@ class InputWindow {
     }
 
     closeButtonAction(*) {
-        if this.inputWindowSkipConfirmation || (MsgBox("Close " this.guiObj.Title " window?", this.guiObj.Title, 308) = "Yes") {
-            this.EditControl.Value := ""
-            this.guiObj.Hide
-            return
-        }
-
+        this.EditControl.Value := ""
+        this.guiObj.Hide
         return true
     }
 
