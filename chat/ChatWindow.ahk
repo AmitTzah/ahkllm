@@ -68,6 +68,7 @@ OnLoadThread(wParam, lParam, msg, hWnd) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
         postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
+        postThreadStats(activeThreadId)
     }
 }
 
@@ -224,6 +225,7 @@ if (A_Args.Length >= 2 && A_Args[2] != "") {
     activeThreadId := A_Args[2]
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+    postThreadStats(activeThreadId)
     ; Clear loading state and check if we need to auto-fire LLM
     Sleep 500
     postWebMessage("setChatButtonsEnabled", true)

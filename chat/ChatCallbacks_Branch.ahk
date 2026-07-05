@@ -22,6 +22,7 @@ switchBranchFromWebView(params, *) {
     result := ChatDB.Msg_SwitchBranch(activeThreadId, id, direction)
     postWebMessage("initChatMode", buildStructuredMessagesFromPath(result.path))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
+    postThreadStats(activeThreadId)
 }
 
 ; ----------------------------------------------------

@@ -23,6 +23,7 @@ sidebarActionFromWebView(params, *) {
                 path := ChatDB.Msg_GetActivePath(activeThreadId)
                 postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
                 postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
+                postThreadStats(activeThreadId)
             }
         case "navigateToMessage":
             if params.Has("messageId") && activeThreadId {
@@ -30,6 +31,7 @@ sidebarActionFromWebView(params, *) {
                 path := ChatDB.Msg_GetActivePath(activeThreadId)
                 postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
                 postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
+                postThreadStats(activeThreadId)
             }
         case "newChat":
             activeThreadId := ChatDB.Thread_Create()

@@ -92,22 +92,8 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     postWebMessage("streamDone", { model: streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
     debugLog("Streaming complete. streamDone posted.")
 
-    ; Post token usage to WebView (streaming)
-    if streamState.usage.HasProp("totalTokens") && streamState.usage.totalTokens > 0 {
-        effectiveModel := streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"]
-        costs := LLMClient.ComputeTokenCosts(effectiveModel, streamState.usage)
-        tokenUsage := {
-            promptTokens:     streamState.usage.promptTokens,
-            completionTokens: streamState.usage.completionTokens,
-            totalTokens:      streamState.usage.totalTokens,
-            cachedTokens:     streamState.usage.HasProp("cachedTokens") ? streamState.usage.cachedTokens : 0,
-            contextWindow:    costs.contextWindow,
-            inputCost:        costs.inputCost,
-            outputCost:       costs.outputCost,
-            totalCost:        costs.totalCost
-        }
-        postWebMessage("updateTokenUsage", tokenUsage)
-    }
+    ; Post thread stats (persistent token + cost from DB)
+    postThreadStats(activeThreadId)
 
     ; Enable chat input
     postWebMessage("setChatButtonsEnabled", true)
@@ -191,6 +177,12 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
             retrySiblingIdx := sibTable.count ? Integer(sibTable[1, "max_idx"]) + 1 : 0
             requestParams.Delete("pendingRetrySiblingGroup")
         }
+        ; Extract actual token counts from API usage data
+        pt := usage.HasProp("promptTokens") ? usage.promptTokens : 0
+        ct := usage.HasProp("completionTokens") ? usage.completionTokens : 0
+        tt := usage.HasProp("totalTokens") ? usage.totalTokens : 0
+        ckt := usage.HasProp("cachedTokens") ? usage.cachedTokens : 0
+
         ChatDB.Msg_Insert({
             thread_id: activeThreadId,
             role: "assistant",
@@ -199,7 +191,11 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
             parent_id: parentId,
             sibling_group: retrySiblingGroup,
             sibling_index: retrySiblingIdx,
-            reasoning: reasoning
+            reasoning: reasoning,
+            prompt_tokens: pt,
+            completion_tokens: ct,
+            total_tokens: tt,
+            cached_tokens: ckt
         })
     }
 

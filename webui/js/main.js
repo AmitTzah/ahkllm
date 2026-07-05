@@ -141,6 +141,9 @@ function handleWebMessage(event) {
 
 // Attach event listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', function () {
+  // Show token usage bar immediately (zero state, updated by postThreadStats)
+  showTokenUsageBar();
+
   // Chat send button
   var sendBtn = document.getElementById('chat-send-btn');
   if (sendBtn) sendBtn.addEventListener('click', onChatSend);

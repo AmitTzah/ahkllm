@@ -48,19 +48,22 @@ class ChatDB {
 
     static _CreateSchema() {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT);")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')));")
-        ; Ensure reasoning column exists (for DBs created before this column was added)
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
+        ; Ensure all columns exist (migration for DBs created before new columns were added)
         colCheck := ChatDB.db.Exec("PRAGMA table_info(messages);")
-        hasReasoningCol := false
-        for row in colCheck.rows {
-            if row.name = "reasoning" {
-                hasReasoningCol := true
-                break
-            }
-        }
-        if !hasReasoningCol {
-            ChatDB._DBLog("[DEBUG] _CreateSchema: adding missing reasoning column via ALTER TABLE")
+        colNames := Map()
+        for row in colCheck.rows
+            colNames[row.name] := true
+
+        if !colNames.Has("reasoning") {
+            ChatDB._DBLog("[DEBUG] _CreateSchema: adding reasoning column via ALTER TABLE")
             ChatDB.db.Exec("ALTER TABLE messages ADD COLUMN reasoning TEXT DEFAULT '';")
+        }
+        for colName in ["prompt_tokens", "completion_tokens", "cached_tokens", "total_tokens"] {
+            if !colNames.Has(colName) {
+                ChatDB._DBLog("[DEBUG] _CreateSchema: adding " colName " column via ALTER TABLE")
+                ChatDB.db.Exec("ALTER TABLE messages ADD COLUMN " colName " INTEGER DEFAULT 0;")
+            }
         }
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, is_deleted);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
@@ -139,10 +142,15 @@ class ChatDB {
         safeSiblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? "'" msgObj.sibling_group "'" : "NULL"
         siblingIdx := msgObj.HasProp("sibling_index") ? msgObj.sibling_index : 0
         safeReasoning := msgObj.HasProp("reasoning") && msgObj.reasoning ? SQLite.Escape(msgObj.reasoning) : ""
-
         safeFeedback := msgObj.HasProp("feedback") && msgObj.feedback ? msgObj.feedback : "NULL"
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, feedback) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " safeFeedback ");")
+        ; Token counts (from API response, or 0 for estimated)
+        pt := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : 0
+        ct := msgObj.HasProp("completion_tokens") ? msgObj.completion_tokens : 0
+        tt := msgObj.HasProp("total_tokens") ? msgObj.total_tokens : 0
+        ckt := msgObj.HasProp("cached_tokens") ? msgObj.cached_tokens : 0
+
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, feedback, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " safeFeedback ", " pt ", " ct ", " ckt ", " tt ");")
 
         ; Update thread's active_leaf_id and timestamp
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now') WHERE id='" msgObj.thread_id "';")
@@ -211,7 +219,9 @@ class ChatDB {
                 sibling_group: row.sibling_group ? row.sibling_group : "",
                 sibling_index: row.sibling_index,
                 feedback: row.feedback ? Integer(row.feedback) : 0,
-                reasoning: row.Has("reasoning") && row["reasoning"] ? row["reasoning"] : ""
+                reasoning: row.Has("reasoning") && row["reasoning"] ? row["reasoning"] : "",
+                total_tokens: row.Has("total_tokens") && row.total_tokens ? Integer(row.total_tokens) : 0,
+                cached_tokens: row.Has("cached_tokens") && row.cached_tokens ? Integer(row.cached_tokens) : 0
             }
             childKey := row.parent_id ? row.parent_id : "__root__"
             if !childrenMap.Has(childKey)
@@ -402,6 +412,111 @@ class ChatDB {
 
         path := ChatDB.Msg_GetActivePath(threadId)
         return { path: path, siblingInfo: { index: newPos + 1, total: siblings.Length } }
+    }
+
+    ; ----------------------------------------------------
+    ; Token estimates and cumulative cost for a thread
+    ; Uses ~4 chars ≈ 1 token for estimation.
+    ; Returns { activePathTokens, contextWindow,
+    ;           cumulativePromptTokens, cumulativeCompletionTokens,
+    ;           cumulativeTotalTokens, cumulativeCost }
+    ; ----------------------------------------------------
+
+    static Msg_GetThreadStats(threadId) {
+        ; 1. Active path — for context usage display (use stored tokens, fallback to estimation)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        ; Use the LAST assistant's total_tokens (API reports cumulative for entire request)
+        activePathTokens := 0
+        i := path.Length
+        while i >= 1 {
+            if path[i].total_tokens && path[i].total_tokens > 0 {
+                activePathTokens := path[i].total_tokens
+                break
+            }
+            i--
+        }
+        ; Fallback: estimate from content if no stored tokens (old messages)
+        if !activePathTokens {
+            for msg in path
+                activePathTokens += StrLen(msg.content) > 3 ? Round(StrLen(msg.content) / 4) : 1
+        }
+
+        ; 2. ALL non-deleted messages — for cumulative cost (use stored tokens)
+        result := {
+            activePathTokens: activePathTokens,
+            contextWindow: 1048576,
+            cumulativePromptTokens: 0,
+            cumulativeCompletionTokens: 0,
+            cumulativeTotalTokens: 0,
+            cumulativeCachedTokens: 0,
+            cumulativeCost: 0,
+            cumulativeInputCost: 0,
+            cumulativeCachedInputCost: 0,
+            cumulativeOutputCost: 0,
+            pricingUnit: { input: 0, cachedInput: 0, output: 0 }
+        }
+
+        ; Track which pricing model was last used for the tooltip
+        allTable := ChatDB.db.Exec("SELECT role, prompt_tokens, completion_tokens, total_tokens, cached_tokens, model FROM messages WHERE thread_id='" threadId "' AND is_deleted=0;")
+        for row in allTable.rows {
+            pt := Integer(row.prompt_tokens ? row.prompt_tokens : 0)
+            ct := Integer(row.completion_tokens ? row.completion_tokens : 0)
+            tt := Integer(row.total_tokens ? row.total_tokens : 0)
+            ckt := Integer(row.cached_tokens ? row.cached_tokens : 0)
+            if tt = 0 {
+                ; Estimate fallback for messages before token tracking
+                tt := pt + ct
+            }
+            result.cumulativePromptTokens += pt
+            result.cumulativeCompletionTokens += ct
+            result.cumulativeTotalTokens += tt
+            result.cumulativeCachedTokens += ckt
+
+            ; Calculate cost using stored tokens if model is known
+            if row.model {
+                modelShort := row.model
+                slashPos := InStr(modelShort, "/")
+                if slashPos > 0
+                    modelShort := SubStr(modelShort, slashPos + 1)
+                if modelPricing.Has(modelShort) {
+                    pricing := modelPricing[modelShort]
+                    inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
+                    cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
+                    outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
+                    nonCachedTokens := pt - ckt
+                    nonCachedCost := nonCachedTokens * inputPrice / 1000000
+                    cachedCost := ckt * cachedInputPrice / 1000000
+                    outputCost := ct * outputPrice / 1000000
+                    result.cumulativeInputCost += Round(nonCachedCost + cachedCost, 6)
+                    result.cumulativeCachedInputCost += Round(cachedCost, 6)
+                    result.cumulativeOutputCost += Round(outputCost, 6)
+                    result.cumulativeCost += Round(nonCachedCost + cachedCost + outputCost, 6)
+                    ; Store pricing for tooltip (use last seen model's pricing)
+                    result.pricingUnit := { input: inputPrice, cachedInput: cachedInputPrice, output: outputPrice }
+                }
+            }
+        }
+        result.cumulativeCost := Round(result.cumulativeCost, 6)
+        result.cumulativeInputCost := Round(result.cumulativeInputCost, 6)
+        result.cumulativeCachedInputCost := Round(result.cumulativeCachedInputCost, 6)
+        result.cumulativeOutputCost := Round(result.cumulativeOutputCost, 6)
+
+        ; 3. Context window from model pricing (use last assistant's model)
+        i := path.Length
+        while i >= 1 {
+            if path[i].role = "assistant" && path[i].model {
+                modelShort := path[i].model
+                slashPos := InStr(modelShort, "/")
+                if slashPos > 0
+                    modelShort := SubStr(modelShort, slashPos + 1)
+                if modelPricing.Has(modelShort) && modelPricing[modelShort].HasOwnProp("context") {
+                    result.contextWindow := modelPricing[modelShort].context
+                    break
+                }
+            }
+            i--
+        }
+        return result
     }
 
     ; Walk forward from a message to the leaf following the first child at each step

@@ -51,6 +51,18 @@ startLoadingCursor(status) {
 }
 
 ; ----------------------------------------------------
+; Post token usage and cost stats for the current thread
+; Computes estimates from DB, sends to WebView
+; ----------------------------------------------------
+
+postThreadStats(threadId := "") {
+    if !threadId
+        return
+    stats := ChatDB.Msg_GetThreadStats(threadId)
+    postWebMessage("updateTokenUsage", stats)
+}
+
+; ----------------------------------------------------
 ; Diagnostic logging helper
 ; Append a timestamped line to %TEMP%\LLM_Debug_Log.txt
 ; ----------------------------------------------------

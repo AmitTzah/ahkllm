@@ -172,6 +172,10 @@ Done
 | `is_deleted` | INTEGER | Soft-delete flag (0 or 1) |
 | `feedback` | INTEGER | 1 (up), -1 (down), NULL (none) |
 | `reasoning` | TEXT | Thinking/reasoning content (DeepSeek) |
+| `prompt_tokens` | INTEGER | Actual prompt tokens from API response (0 if not available) |
+| `completion_tokens` | INTEGER | Actual completion tokens from API response |
+| `cached_tokens` | INTEGER | Cached prompt tokens from API response |
+| `total_tokens` | INTEGER | Actual total tokens from API response (0 = estimation fallback) |
 | `created_at` | TEXT | ISO 8601 datetime |
 
 ### Branching Model
