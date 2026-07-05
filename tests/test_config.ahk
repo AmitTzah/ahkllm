@@ -55,3 +55,7 @@ global providerMap := Map(
 global trayMenuItems := []
 global optionsMenuItems := []
 global prompts := []
+
+; Mock responseWindow for ChatUtils/StreamHandler tests that use postWebMessage
+; (*) variadic accepts 0+ params — AHK v2 method calls may pass 'this' implicitly
+global responseWindow := {PostWebMessageAsJSON: (*) => ""}

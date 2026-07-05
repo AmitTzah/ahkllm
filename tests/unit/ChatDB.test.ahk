@@ -290,6 +290,35 @@ class ChatDBTest {
         this._teardown()
     }
 
+    SwitchBranch_UpdatesActivePathTokens() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
+        ; Two sibling assistants with different content lengths
+        ; Estimation: "hello" (5 chars)=1, "short reply" (11 chars)=3, "longer detailed response" (24 chars)=6
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "short reply", parent_id: u1Id, sibling_group: "test-sg", sibling_index: 0, model: "deepseek-v4-flash", prompt_tokens: 20, completion_tokens: 5, total_tokens: 25, cached_tokens: 0})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "longer detailed response", parent_id: u1Id, sibling_group: "test-sg", sibling_index: 1, model: "deepseek-v4-flash", prompt_tokens: 50, completion_tokens: 10, total_tokens: 60, cached_tokens: 0})
+        ; After insert, active_path_tokens is set to API total_tokens (60 for a2)
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.activePathTokens != 60
+            throw Error("Expected active_path_tokens=60 (API value) for a2, got " stats.activePathTokens)
+
+        ; Switch to a1 branch — _SyncActivePathTokens recalculates with estimation: user(1) + a1(3) = 4
+        result := ChatDB.Msg_SwitchBranch(threadId, a2Id, -1)
+        if result.siblingInfo.index != 1
+            throw Error("Expected sibling index 1 after switching, got " result.siblingInfo.index)
+
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.activePathTokens != 4
+            throw Error("Expected active_path_tokens=4 (estimated) for a1 branch after switch, got " stats.activePathTokens)
+
+        ; Switch back to a2 — estimation: user(1) + a2(6) = 7
+        ChatDB.Msg_SwitchBranch(threadId, a1Id, 1)
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.activePathTokens != 7
+            throw Error("Expected active_path_tokens=7 (estimated) for a2 branch after switch back, got " stats.activePathTokens)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_ForkThread
     ; --------------------
@@ -330,7 +359,6 @@ class ChatDBTest {
         threadId := this._setup()
         id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
         ChatDB.Msg_SetFeedback(id, 1)
-        ; Verify via DB query
         table := ChatDB.db.Exec("SELECT feedback FROM messages WHERE id='" id "';")
         if table.count && table[1, "feedback"] != 1
             throw Error("Expected feedback=1, got " table[1, "feedback"])
@@ -342,6 +370,105 @@ class ChatDBTest {
         table := ChatDB.db.Exec("SELECT feedback FROM messages WHERE id='" id "';")
         if table.count && table[1, "feedback"] != ""
             throw Error("Expected feedback=NULL after clear, got " table[1, "feedback"])
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Trash lifecycle
+    ; --------------------
+
+    Thread_SoftDelete_HidesFromList() {
+        threadId := this._setup()
+        ChatDB.Thread_SoftDelete(threadId)
+        threads := ChatDB.Thread_List()
+        for t in threads {
+            if t.id = threadId
+                throw Error("Soft-deleted thread should not appear in normal list")
+        }
+        ; Should appear in trash
+        trashed := ChatDB.Thread_List(true)
+        found := false
+        for t in trashed {
+            if t.id = threadId
+                found := true
+        }
+        if !found
+            throw Error("Soft-deleted thread should appear in trash list")
+        this._teardown()
+    }
+
+    Thread_Restore_Reappears() {
+        threadId := this._setup()
+        ChatDB.Thread_SoftDelete(threadId)
+        ChatDB.Thread_Restore(threadId)
+        threads := ChatDB.Thread_List()
+        found := false
+        for t in threads {
+            if t.id = threadId
+                found := true
+        }
+        if !found
+            throw Error("Restored thread should appear in list")
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Cumulative counter persistence
+    ; --------------------
+
+    HardDelete_PreservesCumulativeCounters() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cached_tokens: 0})
+        ; Capture cumulative counters before delete
+        threadRow := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens FROM chat_threads WHERE id='" threadId "';")
+        beforePt := Integer(threadRow[1, "cumulative_prompt_tokens"])
+        beforeCt := Integer(threadRow[1, "cumulative_completion_tokens"])
+        beforeTt := Integer(threadRow[1, "cumulative_total_tokens"])
+
+        ChatDB.Msg_HardDelete(a1Id)
+
+        ; Verify cumulative counters unchanged
+        threadRow := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens FROM chat_threads WHERE id='" threadId "';")
+        afterPt := Integer(threadRow[1, "cumulative_prompt_tokens"])
+        afterCt := Integer(threadRow[1, "cumulative_completion_tokens"])
+        afterTt := Integer(threadRow[1, "cumulative_total_tokens"])
+        if afterPt != beforePt
+            throw Error("Cumulative prompt_tokens changed after delete: " beforePt " → " afterPt)
+        if afterCt != beforeCt
+            throw Error("Cumulative completion_tokens changed: " beforeCt " → " afterCt)
+        if afterTt != beforeTt
+            throw Error("Cumulative total_tokens changed: " beforeTt " → " afterTt)
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Msg_Edit active_path_tokens adjustment
+    ; --------------------
+
+    Edit_AdjustsActivePathTokens() {
+        threadId := this._setup()
+        ; Establish a non-zero baseline by inserting an assistant message with total_tokens
+        ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Very long original message to edit"})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", model: "deepseek-v4-flash", prompt_tokens: 50, completion_tokens: 10, total_tokens: 60, cached_tokens: 0})
+        ; Msg_Edit only estimates tokens from content length — the assistant's 60 total_tokens
+        ; (set by Msg_Insert) won't be used. Verify baseline is non-zero.
+        beforeRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
+        beforeTokens := Integer(beforeRow[1, "active_path_tokens"])
+        if beforeTokens <= 0
+            throw Error("Expected non-zero active_path_tokens baseline, got " beforeTokens)
+
+        ; Now edit the user message to shorter content — this adjusts estimated tokens
+        ChatDB.Msg_Edit(aId, "ok")
+
+        afterRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
+        afterTokens := Integer(afterRow[1, "active_path_tokens"])
+        ; Old content "response" (8 chars) → 8/4=2, New content "ok" (2 chars) → estimate = 1 (min)
+        ; Delta = 1-2 = -1, so active_path_tokens should decrease by 1
+        if afterTokens != beforeTokens - 1
+            throw Error("Expected active_path_tokens to decrease by 1 after shortening: " beforeTokens " → " afterTokens)
         this._teardown()
     }
 }

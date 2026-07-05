@@ -47,8 +47,9 @@ class ChatUtilsTest {
 
     PostWebMessage_Format() {
         ; Create a mock responseWindow that captures the JSON
+        ; AHK v2 passes 'this' as first param for method calls — accept (self, json)
         mockJson := ""
-        mockResponseWindow := { PostWebMessageAsJSON: (json) => mockJson := json }
+        mockResponseWindow := { PostWebMessageAsJSON: (self, json) => mockJson := json }
         ; Temporarily swap the global
         global responseWindow
         saved := responseWindow
@@ -67,7 +68,7 @@ class ChatUtilsTest {
 
     PostWebMessage_NoData() {
         mockJson := ""
-        mockResponseWindow := { PostWebMessageAsJSON: (json) => mockJson := json }
+        mockResponseWindow := { PostWebMessageAsJSON: (self, json) => mockJson := json }
         global responseWindow
         saved := responseWindow
         try {

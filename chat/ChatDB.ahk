@@ -473,6 +473,8 @@ class ChatDB {
         if !check.count
             return
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" msgId "', updated_at=datetime('now') WHERE id='" threadId "';")
+        ; Recalculate active_path_tokens for the new active path
+        ChatDB._SyncActivePathTokens(threadId)
     }
 
     ; Switch to a sibling branch (D3). direction: -1 (prev), +1 (next).
@@ -505,6 +507,8 @@ class ChatDB {
 
         ; Set as active leaf
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" threadId "';")
+        ; Recalculate active_path_tokens for the new branch
+        ChatDB._SyncActivePathTokens(threadId)
 
         path := ChatDB.Msg_GetActivePath(threadId)
         return { path: path, siblingInfo: { index: newPos + 1, total: siblings.Length } }
@@ -592,6 +596,25 @@ class ChatDB {
             currentId := childTable[1, "id"]
         }
         return currentId
+    }
+
+    ; Recalculate active_path_tokens by estimating tokens from all messages in the active path.
+    ; Uses the same ~4 chars/1 token rule as Msg_Edit and Msg_HardDelete, ensuring consistency:
+    ; delete subtracts estimated tokens → switch away and back → recalculate yields same estimate.
+    ; Estimation is lower than API total_tokens (doesn't count system prompt), but the next
+    ; assistant response resets active_path_tokens to the accurate API value.
+    static _SyncActivePathTokens(threadId) {
+        path := ChatDB.Msg_GetActivePath(threadId)
+        totalEstimate := 0
+        for msg in path {
+            len := StrLen(msg.content)
+            totalEstimate += len > 3 ? Round(len / 4) : 1
+            if msg.HasProp("reasoning") && msg.reasoning {
+                rLen := StrLen(msg.reasoning)
+                totalEstimate += rLen > 3 ? Round(rLen / 4) : 1
+            }
+        }
+        ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=" totalEstimate " WHERE id='" threadId "';")
     }
 
     ; ----------------------------------------------------

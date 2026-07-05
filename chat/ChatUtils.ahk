@@ -12,6 +12,7 @@ manageState(component, action, data := 0) {
             case "close": ProcessClose(cURLPID), cURLPID := 0
         }
     }
+    return 0
 }
 
 ; ----------------------------------------------------

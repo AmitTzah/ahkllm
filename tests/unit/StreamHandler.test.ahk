@@ -68,7 +68,7 @@ class StreamHandlerTest {
         FileAppend('data: {"choices":[{"delta":{"content":"Hello"}}]}', tmpFile)
         state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}}
         readStreamChunk(state)
-        if state.content != ""
+        if state.content = ""
             throw Error("Expected content accumulator to fill, got empty after readStreamChunk")
         FileDelete(tmpFile)
     }

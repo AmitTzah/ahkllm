@@ -49,10 +49,16 @@ RegisterTestClass(className) {
 #Include ..\api\ApiLogger.ahk
 #Include ..\api\CostCalculator.ahk
 #Include ..\chat\ChatDB.ahk
+#Include ..\chat\ChatUtils.ahk
+#Include ..\chat\StreamHandler.ahk
+#Include ..\ui\CustomMessages.ahk
 
 ; Include test files
 #Include unit\ChatDB.test.ahk
 #Include unit\LLMClient.test.ahk
+#Include unit\ChatUtils.test.ahk
+#Include unit\StreamHandler.test.ahk
+#Include unit\CustomMessages.test.ahk
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk
 
