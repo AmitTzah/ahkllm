@@ -56,7 +56,7 @@ toggleSuspend(*) {
         A_IconTip := "LLM AutoHotkey Assistant - Suspended"
 
         ; Show GUI at the bottom, centered
-        scriptSuspendStatus.Show("AutoSize x" (A_ScreenWidth - scriptSuspendStatusWidth) / 2.3 " y990 NA")
+        scriptSuspendStatus.Show("AutoSize x" (A_ScreenWidth - scriptSuspendStatusWidth) / 2 " y" (A_ScreenHeight - 80) " NA")
     } else {
         TraySetIcon(iconOn)
         A_IconTip := "LLM AutoHotkey Assistant"

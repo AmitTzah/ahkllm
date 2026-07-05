@@ -48,8 +48,6 @@ mainScriptHotkeyActions(action) {
         case "closeWindows":
             switch WinActive("A") {
                 case customPromptInputWindow.guiObj.hWnd: customPromptInputWindow.closeButtonAction()
-                case sendToPromptNameInputWindow.guiObj.hWnd: sendToPromptNameInputWindow.closeButtonAction()
-                case sendToAllModelsInputWindow.guiObj.hWnd: sendToAllModelsInputWindow.closeButtonAction()
             }
     }
 }
@@ -144,16 +142,12 @@ router := LLMClient(APIKey)
 ; ----------------------------------------------------
 
 customPromptInputWindow := InputWindow("Custom prompt")
-sendToAllModelsInputWindow := InputWindow("Send message to all")
-sendToPromptNameInputWindow := InputWindow("Send message to prompt")
 
 ; ----------------------------------------------------
 ; Register sendButtonActions
 ; ----------------------------------------------------
 
 customPromptInputWindow.sendButtonAction(customPromptSendButtonAction)
-sendToAllModelsInputWindow.sendButtonAction(sendToAllModelsSendButtonAction)
-sendToPromptNameInputWindow.sendButtonAction(sendToGroupSendButtonAction)
 
 ; ----------------------------------------------------
 ; Initialize Suspend GUI

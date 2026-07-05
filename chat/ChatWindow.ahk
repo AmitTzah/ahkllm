@@ -199,7 +199,7 @@ showChatWindow(initialRequest := true) {
     } else {
         chatWindow.Show()
     }
-    if WinGetMinMax(chatWindow.hWnd) = -1
+    if !WinActive("ahk_id " chatWindow.hWnd)
         chatWindow.Flash()
     Sleep 500
     postWebMessage("setTheme", [darkMode])

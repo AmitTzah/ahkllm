@@ -3,32 +3,11 @@
 ; ----------------------------------------------------
 
 buildPromptMenu() {
-    activeModelsCount := getActiveModels().Count
     promptMenu := Menu()
     tagsMap := Map()
 
     ; Always show "&1 - Open Chat" as the first item
     promptMenu.Add("&1 - Open Chat", (*) => OpenChatPromptHandler())
-
-    ; Send message to submenu if there are active models
-    if (activeModelsCount > 0) {
-        ; Send message to menu
-        sendToMenu := Menu()
-        promptMenu.Add("Send message to", sendToMenu)
-
-        for uniqueID, modelData in getActiveModels() {
-            sendToMenu.Add(modelData.promptName, sendToPromptGroupHandler.Bind(modelData.promptName))
-        }
-
-        ; If there are more than one Response Windows, add "All" menu option
-        if (activeModelsCount > 1) {
-            sendToMenu.Add("All", (*) => sendToAllModelsInputWindow.showInputWindow(, , "ahk_id " sendToAllModelsInputWindow
-                .guiObj.hWnd))
-        }
-
-        ; Line separator after Activate and Send message to
-        promptMenu.Add()
-    }
 
     ; Normal prompts
     for index, prompt in managePromptState("prompts", "get") {
@@ -59,38 +38,6 @@ buildPromptMenu() {
 
             ; Add prompt to tag menu
             tagsMap[normalizedTag].menu.Add(prompt.menuText, promptMenuHandler.Bind(index))
-        }
-    }
-
-    ; Add menus ("Activate", "Minimize", "Close") that manages Response Windows
-    ; after normal prompts if there are active models
-    if (activeModelsCount > 0) {
-
-        ; Line separator before managing Response Window menu
-        promptMenu.Add()
-
-        ; Define the action types
-        actionTypes := ["Activate", "Minimize", "Close"]
-
-        ; Create submenus for each action type
-        for _, actionType in actionTypes {
-
-            ; Convert to lowercase for function names
-            actionKey := StrLower(actionType)
-
-            actionSubMenu := Menu()
-            promptMenu.Add(actionType, actionSubMenu)
-
-            ; Add menu items for each active model
-            for uniqueID, modelData in getActiveModels() {
-                actionSubMenu.Add(modelData.promptName, managePromptWindows.Bind(actionKey, modelData.promptName
-                ))
-            }
-
-            ; If there are more than one Response Windows, add "All" menu option
-            if (activeModelsCount > 1) {
-                actionSubMenu.Add("All", managePromptWindows.Bind(actionKey))
-            }
         }
     }
 
