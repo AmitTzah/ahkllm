@@ -95,11 +95,26 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
         APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
         APIModels := [APIModels[1]]
     } else {
-        ; --- Chat text capture (existing logic) ---
+        ; --- Chat text capture (with retry cascade) ---
         A_Clipboard := ""
-        Send("^c")
+        Critical("On")
+        SendInput("^c")
+        copied := ClipWait(0.5)
+        if !copied {
+            ; Retry with standard Send
+            A_Clipboard := ""
+            Send("^c")
+            copied := ClipWait(1.5)
+        }
+        if !copied {
+            ; Final fallback: Ctrl+Insert (works in terminals)
+            A_Clipboard := ""
+            Send("^{Insert}")
+            copied := ClipWait(1)
+        }
+        Critical("Off")
 
-        if !ClipWait(1) {
+        if !copied {
             if customPromptMessage != "" {
                 userPrompt := customPromptMessage
             } else {

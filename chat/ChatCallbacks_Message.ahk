@@ -16,9 +16,12 @@ chatSendFromWebView(message, *) {
     if !message
         return
 
-    ; Auto-create thread if first message
-    if !activeThreadId
+    ; Auto-create thread if first message (no active thread)
+    if !activeThreadId {
         activeThreadId := ChatDB.Thread_Create("New Chat")
+        postWebMessage("threadList", ChatDB.Thread_List())
+        postWebMessage("trashList", ChatDB.Thread_List(true))
+    }
 
     startLoadingCursor(true)
     postWebMessage("setChatButtonsEnabled", false)

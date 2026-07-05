@@ -55,7 +55,7 @@ class ChatDB {
 
     static _CreateSchema() {
         ; Create tables (new databases get the latest schema)
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT);")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, active_path_tokens INTEGER DEFAULT 0, cumulative_prompt_tokens INTEGER DEFAULT 0, cumulative_completion_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_total_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0);")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
 
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
@@ -89,12 +89,10 @@ class ChatDB {
         return id
     }
 
-    ; Get all threads sorted by most recent first. Returns array of objects.
-    ; includeDeleted: if true, includes soft-deleted (trashed) threads.
-    static Thread_List(includeDeleted := false) {
-        query := "SELECT id, title, created_at, updated_at FROM chat_threads"
-        if !includeDeleted
-            query .= " WHERE is_deleted=0"
+    ; Get threads sorted by most recent first.
+    ; showTrash: if true, returns ONLY trashed threads; otherwise returns active ones.
+    static Thread_List(showTrash := false) {
+        query := "SELECT id, title, created_at, updated_at FROM chat_threads WHERE is_deleted=" (showTrash ? 1 : 0)
         query .= " ORDER BY updated_at DESC"
         table := ChatDB.db.Exec(query)
         threads := []
@@ -169,8 +167,35 @@ class ChatDB {
 
         ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, feedback, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " safeFeedback ", " pt ", " ct ", " ckt ", " tt ");")
 
-        ; Update thread's active_leaf_id and timestamp
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now') WHERE id='" msgObj.thread_id "';")
+        ; Calculate cost for this message (using same formula as ComputeTokenCosts)
+        inputCost := 0
+        cachedInputCost := 0
+        outputCost := 0
+        totalCost := 0
+        if msgObj.HasProp("model") && msgObj.model {
+            modelShort := msgObj.model
+            slashPos := InStr(modelShort, "/")
+            if slashPos > 0
+                modelShort := SubStr(modelShort, slashPos + 1)
+            if IsSet(modelPricing) && modelPricing.Has(modelShort) {
+                pricing := modelPricing[modelShort]
+                inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
+                cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
+                outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
+                nonCachedTokens := pt - ckt
+                nonCachedCost := nonCachedTokens * inputPrice / 1000000
+                cachedCost := ckt * cachedInputPrice / 1000000
+                outputCost := ct * outputPrice / 1000000
+                inputCost := Round(nonCachedCost + cachedCost, 6)
+                cachedInputCost := Round(cachedCost, 6)
+                totalCost := Round(nonCachedCost + cachedCost + outputCost, 6)
+            }
+        }
+
+        ; Update thread cumulative counters (these persist even if messages are deleted — tokens already paid for)
+        ; For assistant messages, store API-reported total_tokens as the current context usage
+        activePathUpdate := msgObj.role = "assistant" && tt > 0 ? "active_path_tokens=" tt "," : ""
+        ChatDB.db.Exec("UPDATE chat_threads SET " activePathUpdate "active_leaf_id='" id "', updated_at=datetime('now'), cumulative_prompt_tokens=cumulative_prompt_tokens+" pt ", cumulative_completion_tokens=cumulative_completion_tokens+" ct ", cumulative_cached_tokens=cumulative_cached_tokens+" ckt ", cumulative_total_tokens=cumulative_total_tokens+" tt ", cumulative_cost=cumulative_cost+" totalCost ", cumulative_input_cost=cumulative_input_cost+" inputCost ", cumulative_cached_input_cost=cumulative_cached_input_cost+" cachedInputCost ", cumulative_output_cost=cumulative_output_cost+" outputCost " WHERE id='" msgObj.thread_id "';")
 
         return id
     }
@@ -203,11 +228,21 @@ class ChatDB {
                 ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id=NULL WHERE id='" threadId "';")
         }
 
-        ; 4. Delete the message
+        ; 4. Delete the message — first capture content+reasoning for context adjustment
+        contentTable := ChatDB.db.Exec("SELECT content, reasoning FROM messages WHERE id='" msgId "';")
         ChatDB.db.Exec("DELETE FROM messages WHERE id='" msgId "';")
 
-        ; 5. Touch thread's updated_at (use captured threadId, not _TouchThreadByMsg which queries the now-deleted row)
-        ChatDB.db.Exec("UPDATE chat_threads SET updated_at=datetime('now') WHERE id='" threadId "';")
+        ; 5. Subtract estimated tokens of deleted message (content + reasoning) from active_path_tokens
+        if contentTable.count {
+            deletedContent := contentTable[1, "content"]
+            estimatedTokens := StrLen(deletedContent) > 3 ? Round(StrLen(deletedContent) / 4) : 1
+            ; Include reasoning/thinking blocks if present (they also consume context tokens)
+            if contentTable[1].Has("reasoning") && contentTable[1, "reasoning"] {
+                reasoningLen := StrLen(contentTable[1, "reasoning"])
+                estimatedTokens += reasoningLen > 3 ? Round(reasoningLen / 4) : 1
+            }
+            ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=MAX(0, active_path_tokens-" estimatedTokens "), updated_at=datetime('now') WHERE id='" threadId "';")
+        }
     }
 
     ; Edit message content in-place (overwrite).
@@ -459,85 +494,51 @@ class ChatDB {
     ; ----------------------------------------------------
 
     static Msg_GetThreadStats(threadId) {
-        ; 1. Active path — for context usage display (use stored tokens, fallback to estimation)
-        path := ChatDB.Msg_GetActivePath(threadId)
-        ; Use the LAST assistant's total_tokens (API reports cumulative for entire request)
-        activePathTokens := 0
-        i := path.Length
-        while i >= 1 {
-            if path[i].total_tokens && path[i].total_tokens > 0 {
-                activePathTokens := path[i].total_tokens
-                break
-            }
-            i--
-        }
-        ; Fallback: estimate from content if no stored tokens (old messages)
-        if !activePathTokens {
-            for msg in path
-                activePathTokens += StrLen(msg.content) > 3 ? Round(StrLen(msg.content) / 4) : 1
-        }
+        ; 1. Active path — context used by current conversation tree.
+        ; Uses a running counter: accurate API total_tokens when assistant arrives,
+        ; subtracts estimated tokens when messages are deleted.
+        threadRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
+        activePathTokens := threadRow.count ? Integer(threadRow[1, "active_path_tokens"]) : 0
 
-        ; 2. ALL non-deleted messages — for cumulative cost (use stored tokens)
+        ; 2. Read thread-level cumulative counters (persist across deletes — tokens already paid for)
+        threadTable := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost, cumulative_prompt_tokens FROM chat_threads WHERE id='" threadId "';")
+        cumulativePt := threadTable.count ? Integer(threadTable[1, "cumulative_prompt_tokens"]) : 0
+        cumulativeCt := threadTable.count ? Integer(threadTable[1, "cumulative_completion_tokens"]) : 0
+        cumulativeTt := threadTable.count ? Integer(threadTable[1, "cumulative_total_tokens"]) : 0
+        cumulativeCkt := threadTable.count ? Integer(threadTable[1, "cumulative_cached_tokens"]) : 0
+
         result := {
             activePathTokens: activePathTokens,
             contextWindow: 1048576,
-            cumulativePromptTokens: 0,
-            cumulativeCompletionTokens: 0,
-            cumulativeTotalTokens: 0,
-            cumulativeCachedTokens: 0,
-            cumulativeCost: 0,
-            cumulativeInputCost: 0,
-            cumulativeCachedInputCost: 0,
-            cumulativeOutputCost: 0,
+            cumulativePromptTokens: cumulativePt,
+            cumulativeCompletionTokens: cumulativeCt,
+            cumulativeTotalTokens: cumulativeTt,
+            cumulativeCachedTokens: cumulativeCkt,
+            cumulativeCost: threadTable.count ? Number(threadTable[1, "cumulative_cost"]) : 0,
+            cumulativeInputCost: threadTable.count ? Number(threadTable[1, "cumulative_input_cost"]) : 0,
+            cumulativeCachedInputCost: threadTable.count ? Number(threadTable[1, "cumulative_cached_input_cost"]) : 0,
+            cumulativeOutputCost: threadTable.count ? Number(threadTable[1, "cumulative_output_cost"]) : 0,
             pricingUnit: { input: 0, cachedInput: 0, output: 0 }
         }
 
-        ; Track which pricing model was last used for the tooltip
-        allTable := ChatDB.db.Exec("SELECT role, prompt_tokens, completion_tokens, total_tokens, cached_tokens, model FROM messages WHERE thread_id='" threadId "';")
-        for row in allTable.rows {
-            pt := Integer(row.prompt_tokens ? row.prompt_tokens : 0)
-            ct := Integer(row.completion_tokens ? row.completion_tokens : 0)
-            tt := Integer(row.total_tokens ? row.total_tokens : 0)
-            ckt := Integer(row.cached_tokens ? row.cached_tokens : 0)
-            if tt = 0 {
-                ; Estimate fallback for messages before token tracking
-                tt := pt + ct
-            }
-            result.cumulativePromptTokens += pt
-            result.cumulativeCompletionTokens += ct
-            result.cumulativeTotalTokens += tt
-            result.cumulativeCachedTokens += ckt
-
-            ; Calculate cost using stored tokens if model is known
-            if row.model {
-                modelShort := row.model
-                slashPos := InStr(modelShort, "/")
-                if slashPos > 0
-                    modelShort := SubStr(modelShort, slashPos + 1)
-                if modelPricing.Has(modelShort) {
-                    pricing := modelPricing[modelShort]
-                    inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
-                    cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
-                    outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
-                    nonCachedTokens := pt - ckt
-                    nonCachedCost := nonCachedTokens * inputPrice / 1000000
-                    cachedCost := ckt * cachedInputPrice / 1000000
-                    outputCost := ct * outputPrice / 1000000
-                    result.cumulativeInputCost += Round(nonCachedCost + cachedCost, 6)
-                    result.cumulativeCachedInputCost += Round(cachedCost, 6)
-                    result.cumulativeOutputCost += Round(outputCost, 6)
-                    result.cumulativeCost += Round(nonCachedCost + cachedCost + outputCost, 6)
-                    ; Store pricing for tooltip (use last seen model's pricing)
-                    result.pricingUnit := { input: inputPrice, cachedInput: cachedInputPrice, output: outputPrice }
+        ; 3. Find pricing info for tooltip from existing messages
+        allTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL AND model != '' LIMIT 1;")
+        if allTable.count && allTable[1, "model"] {
+            modelShort := allTable[1, "model"]
+            slashPos := InStr(modelShort, "/")
+            if slashPos > 0
+                modelShort := SubStr(modelShort, slashPos + 1)
+            if IsSet(modelPricing) && modelPricing.Has(modelShort) {
+                pricing := modelPricing[modelShort]
+                result.pricingUnit := {
+                    input:       pricing.HasOwnProp("input")       ? pricing.input       : 0,
+                    cachedInput: pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
+                    output:      pricing.HasOwnProp("output")      ? pricing.output      : 0
                 }
             }
         }
-        result.cumulativeCost := Round(result.cumulativeCost, 6)
-        result.cumulativeInputCost := Round(result.cumulativeInputCost, 6)
-        result.cumulativeCachedInputCost := Round(result.cumulativeCachedInputCost, 6)
-        result.cumulativeOutputCost := Round(result.cumulativeOutputCost, 6)
-
-        ; 3. Context window from model pricing (use last assistant's model)
+        ; 4. Context window from model pricing (use last assistant's model)
+        path := ChatDB.Msg_GetActivePath(threadId)
         i := path.Length
         while i >= 1 {
             if path[i].role = "assistant" && path[i].model {

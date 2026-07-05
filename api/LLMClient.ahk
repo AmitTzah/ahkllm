@@ -29,6 +29,13 @@ class LLMClient {
         . '-d @"{2}" '
         . '-o "{3}"'
 
+    ; Fix jsongo boolean serialization — converts "stream":1 to "stream":true
+    static _FixStreamBoolean(jsonStr) {
+        jsonStr := StrReplace(jsonStr, '"stream":1', '"stream":true')
+        jsonStr := StrReplace(jsonStr, '"stream":0', '"stream":false')
+        return jsonStr
+    }
+
     __New(APIKey) {
         this.APIKey := APIKey
     }
@@ -52,12 +59,7 @@ class LLMClient {
         if thinking != "" {
             requestObj.thinking := { type: thinking }
         }
-        result := jsongo.Stringify(requestObj)
-        ; jsongo serializes AHK v2 true/false (integers 1/0) as "stream":1 instead of "stream":true.
-        ; The DeepSeek API requires boolean values for the stream field. Fix it post-hoc.
-        result := StrReplace(result, '"stream":1', '"stream":true')
-        result := StrReplace(result, '"stream":0', '"stream":false')
-        return result
+        return LLMClient._FixStreamBoolean(jsongo.Stringify(requestObj))
     }
 
     extractJSONResponse(var) {
@@ -91,11 +93,7 @@ class LLMClient {
             role: role,
             content: message
         })
-        chatHistoryJSONRequest := jsongo.Stringify(obj)
-        ; jsongo serializes AHK v2 true/false as integers 1/0.
-        ; The DeepSeek API requires boolean values. Fix it post-hoc.
-        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":1', '"stream":true')
-        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":0', '"stream":false')
+        chatHistoryJSONRequest := LLMClient._FixStreamBoolean(jsongo.Stringify(obj))
         FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
     }
 

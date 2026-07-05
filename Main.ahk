@@ -61,11 +61,20 @@ mainScriptHotkeyActions(action) {
 ChatDB.Open()
 
 ; ----------------------------------------------------
-; Chat window state (single persistent window)
+; Pre-warm ChatWindow: spawn hidden at startup so WebView2
+; is initialized before user first opens it (avoids black flash)
 ; ----------------------------------------------------
-
 global chatWindowPID := 0
 global chatWindowhWnd := 0
+
+; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
+; The "prewarm" arg tells ChatWindow to stay hidden after init
+mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")
+Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd), , "Hide", &chatWindowPID)
+
+; ----------------------------------------------------
+; Chat window state (single persistent window)
+; ----------------------------------------------------
 
 OpenOrSpawnChatWindow(threadId := "") {
     global chatWindowPID, chatWindowhWnd

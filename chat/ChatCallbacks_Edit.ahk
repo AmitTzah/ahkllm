@@ -73,5 +73,7 @@ deleteMessageFromWebView(msgId, *) {
     ChatDB.Msg_HardDelete(msgId)
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+    postThreadStats(activeThreadId)  ; refresh token/cost bar after deletion
 }

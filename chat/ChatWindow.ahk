@@ -144,9 +144,7 @@ BuildAndWriteRequestFiles() {
     if requestParams["stream"]
         requestObj.stream := true
 
-    payload := jsongo.Stringify(requestObj)
-    ; jsongo serializes AHK v2 true/false as integers 1/0 — fix for DeepSeek API
-    payload := StrReplace(payload, '"stream":1', '"stream":true')
+    payload := LLMClient._FixStreamBoolean(jsongo.Stringify(requestObj))
 
     uniqueID := A_TickCount
     requestFile := A_Temp "\ChatWindow_Req_" uniqueID ".json"
@@ -182,25 +180,13 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
 #Include ChatCallbacks_Sidebar.ahk
 
 ; ----------------------------------------------------
-; Load WebView — delay showing window until page finishes loading
+; Load WebView
 ; ----------------------------------------------------
 
-showChatWindowReady := false
-responseWindow.NavigationCompleted(NavigationFinished)
 responseWindow.Load("..\webui\index.html")
 
-NavigationFinished(sender, args) {
-    global showChatWindowReady
-    if showChatWindowReady
-        return  ; already shown — ignore refresh navigations
-    showChatWindowReady := true
-    showChatWindow()
-    postWebMessage("setChatButtonsEnabled", true)
-    loadInitialThread()
-}
-
 ; ----------------------------------------------------
-; Show window (called by NavigationCompleted or on re-open)
+; Show window
 ; ----------------------------------------------------
 
 showChatWindow(initialRequest := true) {
@@ -224,28 +210,49 @@ showChatWindow(initialRequest := true) {
     }
 }
 
+; Check if pre-warming (spawned hidden at Main.ahk startup)
+prewarming := (A_Args.Length >= 2 && A_Args[2] = "prewarm")
+
+if prewarming {
+    ; Pre-warm mode: initialize WebView2 in background, stay hidden.
+    ; Set window size/position now so it appears centered when shown.
+    desiredW := 900
+    desiredH := 680
+    X := (A_ScreenWidth - desiredW) // 2
+    Y := (A_ScreenHeight - desiredH) // 4
+    WinMove(X, Y, desiredW, desiredH, "ahk_id " chatWindow.hWnd)
+    ; Post config messages so they're ready when user opens.
+    postWebMessage("setTheme", [darkMode])
+    postWebMessage("setFontFace", [responseWindowFontFace])
+    postWebMessage("setChatButtonsEnabled", true)
+    ; Notify main script so it knows we exist (for WinShow later).
+    CustomMessages.notifyResponseWindowState(CustomMessages.WM_CHAT_WINDOW_OPENED,
+        requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
+} else {
+    showChatWindow(true)
+    postWebMessage("setChatButtonsEnabled", true)
+}
+
 ; ----------------------------------------------------
 ; Load initial thread if passed via command-line arg
+; (skip in prewarm mode — "prewarm" is not a thread ID)
 ; ----------------------------------------------------
 
-loadInitialThread() {
-    global activeThreadId
-    if (A_Args.Length >= 2 && A_Args[2] != "") {
-        activeThreadId := A_Args[2]
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
-        postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-        postThreadStats(activeThreadId)
-        ; Clear loading state and check if we need to auto-fire LLM
-        Sleep 500
-        postWebMessage("setChatButtonsEnabled", true)
-        
-        ; Auto-trigger LLM if the last message is from the user (pending response)
-        if path.Length > 0 && path[path.Length].role = "user" {
-            chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-            if chatHistoryJSONRequest {
-                postWebMessage("setChatButtonsEnabled", false)
-                sendRequestToLLM(&chatHistoryJSONRequest)
-            }
+if (A_Args.Length >= 2 && A_Args[2] != "" && A_Args[2] != "prewarm") {
+    activeThreadId := A_Args[2]
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+    postThreadStats(activeThreadId)
+    ; Clear loading state and check if we need to auto-fire LLM
+    Sleep 500
+    postWebMessage("setChatButtonsEnabled", true)
+    
+    ; Auto-trigger LLM if the last message is from the user (pending response)
+    if path.Length > 0 && path[path.Length].role = "user" {
+        chatHistoryJSONRequest := BuildAndWriteRequestFiles()
+        if chatHistoryJSONRequest {
+            postWebMessage("setChatButtonsEnabled", false)
+            sendRequestToLLM(&chatHistoryJSONRequest)
         }
     }
 }

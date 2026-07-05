@@ -108,6 +108,10 @@ function handleWebMessage(event) {
         loadThreadList(data);
         break;
 
+      case 'trashList':
+        if (typeof loadTrashList === 'function') loadTrashList(data);
+        break;
+
       case 'loadThread':
         loadThread(data);
         break;

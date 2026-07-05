@@ -18,8 +18,9 @@ function openSidebar() {
   sidebar.style.display = 'flex';
   sidebarOpen = true;
 
-  // Load thread list
+  // Load thread list and trash
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTrashList' }));
 }
 
 function closeSidebar() {
@@ -42,94 +43,208 @@ function loadThreadList(threads) {
   }
 
   for (var i = 0; i < threads.length; i++) {
-    var t = threads[i];
-    var item = document.createElement('div');
-    item.className = 'thread-item';
-    if (t.id === activeThreadId) item.classList.add('active');
-    item.style.cssText = 'padding:0.75rem;margin:0.25rem 0.5rem;border-radius:0.5rem;cursor:pointer;font-size:0.85rem;border:1px solid transparent;';
+    (function(t) {
+      var item = document.createElement('div');
+      item.className = 'thread-item';
+      if (t.id === activeThreadId) item.classList.add('active');
+      item.style.cssText = 'padding:0.75rem;margin:0.25rem 0.5rem;border-radius:0.5rem;cursor:pointer;font-size:0.85rem;border:1px solid transparent;';
 
-    var date = t.updated_at || t.created_at || '';
-    if (date.length > 16) date = date.substring(0, 16);
+      var date = t.updated_at || t.created_at || '';
+      if (date.length > 16) date = date.substring(0, 16);
 
-    // Title with inline editing
-    var titleDiv = document.createElement('div');
-    titleDiv.style.cssText = 'font-weight:600;display:flex;align-items:center;gap:4px;';
-    
-    var titleSpan = document.createElement('span');
-    var displayTitle = t.title || 'New Chat';
-    if (displayTitle.length > 30) displayTitle = displayTitle.substring(0, 30) + '...';
-    titleSpan.textContent = '📝 ' + displayTitle;
-    titleSpan.style.cssText = 'cursor:text;';
-    
-    // Inline rename: double-click title to edit
-    titleSpan.addEventListener('dblclick', function(e) {
-      e.stopPropagation();
-      var input = document.createElement('input');
-      input.type = 'text';
-      input.value = t.title || '';
-      input.style.cssText = 'width:140px;font-size:0.85rem;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid var(--bs-primary);border-radius:3px;padding:1px 4px;';
+      // Title with inline editing
+      var titleDiv = document.createElement('div');
+      titleDiv.style.cssText = 'font-weight:600;display:flex;align-items:center;gap:4px;';
       
-      var finishRename = function() {
-        var newTitle = input.value.trim();
-        if (newTitle && newTitle !== (t.title || '')) {
-          window.chrome.webview.postMessage(JSON.stringify({
-            action: 'sidebarAction',
-            subAction: 'renameThread',
-            threadId: t.id,
-            title: newTitle
-          }));
-        }
-        titleSpan.style.display = '';
-        input.remove();
-      };
+      var titleSpan = document.createElement('span');
+      var displayTitle = t.title || 'New Chat';
+      if (displayTitle.length > 30) displayTitle = displayTitle.substring(0, 30) + '...';
+      titleSpan.textContent = '📝 ' + displayTitle;
+      titleSpan.style.cssText = 'cursor:text;';
       
-      input.addEventListener('blur', finishRename);
-      input.addEventListener('keydown', function(ev) {
-        if (ev.key === 'Enter') { finishRename(); }
-        if (ev.key === 'Escape') { input.remove(); titleSpan.style.display = ''; }
+      // Inline rename: double-click title to edit
+      titleSpan.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.value = t.title || '';
+        input.style.cssText = 'width:140px;font-size:0.85rem;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid var(--bs-primary);border-radius:3px;padding:1px 4px;';
+        
+        var finishRename = function() {
+          var newTitle = input.value.trim();
+          if (newTitle && newTitle !== (t.title || '')) {
+            window.chrome.webview.postMessage(JSON.stringify({
+              action: 'sidebarAction',
+              subAction: 'renameThread',
+              threadId: t.id,
+              title: newTitle
+            }));
+          }
+          titleSpan.style.display = '';
+          input.remove();
+        };
+        
+        input.addEventListener('blur', finishRename);
+        input.addEventListener('keydown', function(ev) {
+          if (ev.key === 'Enter') { finishRename(); }
+          if (ev.key === 'Escape') { input.remove(); titleSpan.style.display = ''; }
+        });
+        
+        titleSpan.style.display = 'none';
+        titleDiv.insertBefore(input, titleSpan);
+        input.focus();
+        input.select();
       });
       
-      titleSpan.style.display = 'none';
-      titleDiv.insertBefore(input, titleSpan);
-      input.focus();
-      input.select();
-    });
-    
-    titleDiv.appendChild(titleSpan);
+      titleDiv.appendChild(titleSpan);
 
-    // Date
-    var dateDiv = document.createElement('div');
-    dateDiv.style.cssText = 'font-size:0.7rem;color:var(--bs-secondary-color);';
-    dateDiv.textContent = date;
+      // Date
+      var dateDiv = document.createElement('div');
+      dateDiv.style.cssText = 'font-size:0.7rem;color:var(--bs-secondary-color);';
+      dateDiv.textContent = date;
 
-    item.appendChild(titleDiv);
-    item.appendChild(dateDiv);
+      item.appendChild(titleDiv);
+      item.appendChild(dateDiv);
 
-    item.addEventListener('click', function(threadId) {
-      return function() {
-        loadThread(threadId);
-      };
-    }(t.id));
+      item.addEventListener('click', function() {
+        loadThread(t.id);
+      });
 
-    // Delete button
-    var delBtn = document.createElement('button');
-    delBtn.textContent = '🗑';
-    delBtn.style.cssText = 'float:right;background:none;border:none;cursor:pointer;font-size:0.7rem;opacity:0.5;';
-    delBtn.title = 'Delete thread';
-    delBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (confirm('Delete this chat permanently?')) {
+      // Delete button
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '🗑';
+      delBtn.style.cssText = 'float:right;background:none;border:none;cursor:pointer;font-size:0.7rem;opacity:0.5;';
+      delBtn.title = 'Delete thread';
+      delBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (confirm('Delete this chat permanently?')) {
+          window.chrome.webview.postMessage(JSON.stringify({
+            action: 'sidebarAction',
+            subAction: 'deleteThread',
+            threadId: t.id
+          }));
+        }
+      });
+      item.appendChild(delBtn);
+
+      list.appendChild(item);
+    })(threads[i]);
+  }
+}
+
+// Called by AHK with trashed thread list
+function loadTrashList(threads) {
+  var list = document.getElementById('thread-list');
+  if (!list) return;
+
+  // Remove any existing trash section
+  var existingTrash = document.getElementById('trash-section');
+  if (existingTrash) existingTrash.remove();
+
+  if (!threads || threads.length === 0) return;
+
+  var trashSection = document.createElement('div');
+  trashSection.id = 'trash-section';
+  trashSection.style.cssText = 'border-top:1px solid var(--bs-border-color);margin-top:0.5rem;padding-top:0.25rem;';
+
+  // Collapsible header
+  var trashHeader = document.createElement('div');
+  trashHeader.style.cssText = 'padding:0.5rem 0.75rem;font-size:0.8rem;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;';
+  trashHeader.innerHTML = '<span>🗑 Trash (' + threads.length + ')</span><span id="trash-toggle" style="font-size:0.7rem;">▼</span>';
+  trashHeader.title = 'Click to toggle trash visibility';
+
+  var trashBody = document.createElement('div');
+  trashBody.style.cssText = 'display:none;max-height:200px;overflow-y:auto;';
+
+  // Toggle collapse
+  trashHeader.addEventListener('click', function() {
+    var isHidden = trashBody.style.display === 'none';
+    trashBody.style.display = isHidden ? 'block' : 'none';
+    document.getElementById('trash-toggle').textContent = isHidden ? '▲' : '▼';
+  });
+
+  // Empty trash button
+  var emptyBtn = document.createElement('button');
+  emptyBtn.textContent = '🗑 Empty Trash';
+  emptyBtn.style.cssText = 'width:calc(100% - 1rem);margin:0.25rem 0.5rem;padding:3px 8px;font-size:0.75rem;background:none;border:1px solid var(--bs-border-color);border-radius:4px;cursor:pointer;color:var(--bs-danger, #dc3545);';
+  emptyBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (confirm('Permanently delete ALL trashed chats?')) {
+      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'emptyTrash' }));
+    }
+  });
+
+  for (var i = 0; i < threads.length; i++) {
+    (function(t) {
+      var item = document.createElement('div');
+      item.style.cssText = 'padding:0.4rem 0.5rem;margin:0.1rem 0.5rem;border-radius:0.4rem;font-size:0.8rem;opacity:0.6;cursor:pointer;';
+
+      var displayTitle = t.title || 'New Chat';
+      if (displayTitle.length > 25) displayTitle = displayTitle.substring(0, 25) + '...';
+      
+      var date = t.updated_at || t.created_at || '';
+      if (date.length > 16) date = date.substring(0, 16);
+
+      // Click to open in read-only mode
+      item.addEventListener('click', function() {
+        loadThread(t.id);
+        // Disable chat input since thread is trashed
+        var chatInput = document.getElementById('chat-input');
+        if (chatInput) chatInput.disabled = true;
+        var sendBtn = document.getElementById('chat-send-btn');
+        if (sendBtn) sendBtn.disabled = true;
+      });
+
+      // Restore button
+      var restoreBtn = document.createElement('button');
+      restoreBtn.textContent = '♻';
+      restoreBtn.style.cssText = 'float:right;background:none;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;opacity:0.7;';
+      restoreBtn.title = 'Restore';
+      restoreBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
         window.chrome.webview.postMessage(JSON.stringify({
           action: 'sidebarAction',
-          subAction: 'deleteThread',
+          subAction: 'restoreThread',
           threadId: t.id
         }));
-      }
-    });
-    item.appendChild(delBtn);
+      });
 
-    list.appendChild(item);
+      // Delete forever button
+      var delForeverBtn = document.createElement('button');
+      delForeverBtn.textContent = '✕';
+      delForeverBtn.style.cssText = 'float:right;background:none;border:none;cursor:pointer;font-size:0.7rem;opacity:0.5;';
+      delForeverBtn.title = 'Delete forever';
+      delForeverBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (confirm('Permanently delete this chat?')) {
+          window.chrome.webview.postMessage(JSON.stringify({
+            action: 'sidebarAction',
+            subAction: 'deleteThreadForever',
+            threadId: t.id
+          }));
+        }
+      });
+
+      // Read-only: no click to load, just display
+      item.innerHTML = '<div style="text-decoration:line-through;color:var(--bs-secondary-color);">📝 ' + displayTitle + '</div><div style="font-size:0.65rem;color:var(--bs-secondary-color);">' + date + '</div>';
+      item.appendChild(restoreBtn);
+      item.appendChild(delForeverBtn);
+      trashBody.appendChild(item);
+    })(threads[i]);
   }
+
+  trashSection.appendChild(trashHeader);
+  trashSection.appendChild(emptyBtn);
+  trashSection.appendChild(trashBody);
+  list.appendChild(trashSection);
+
+  // Auto-expand if items exist
+  setTimeout(function() {
+    if (threads.length > 0) {
+      trashBody.style.display = 'block';
+      document.getElementById('trash-toggle').textContent = '▲';
+    }
+  }, 100);
 }
 
 function loadThread(threadId) {

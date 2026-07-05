@@ -21,6 +21,13 @@ function initChatMode(messages) {
 
   renderChatMessages(chatMessages);
   showTokenUsageBar();
+  // Re-enable chat input in case it was disabled from trash view
+  var chatInput = document.getElementById('chat-input');
+  if (chatInput) chatInput.disabled = false;
+  var sendBtn = document.getElementById('chat-send-btn');
+  if (sendBtn) sendBtn.disabled = false;
+
+  updateBranchBadges();
   updateBranchBadges();
 
   // Only show loading if a request is already in-flight AND last message isn't assistant
