@@ -188,13 +188,14 @@ function renderTreeNode(node, depth) {
   return div;
 }
 
-// Update branch info badge after branch switch
+// Update branch info label after branch switch
 function updateBranchInfo(data) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
-  var badge = container.querySelector('.branch-badge[data-msg-id="' + data.msgId + '"]');
-  if (badge) {
-    var label = badge.querySelector('.branch-label');
+  // Find the message bubble and its inline branch label
+  var bubble = container.querySelector('.chat-message[data-msg-id="' + data.msgId + '"]');
+  if (bubble) {
+    var label = bubble.querySelector('.branch-label-inline');
     if (label) label.textContent = data.siblingInfo.index + '/' + data.siblingInfo.total;
   }
 }

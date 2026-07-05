@@ -20,7 +20,7 @@ switchBranchFromWebView(params, *) {
     id := params["id"]
     direction := params.Has("direction") ? params["direction"] : 1
     result := ChatDB.Msg_SwitchBranch(activeThreadId, id, direction)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(result.path))
+    postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
 }
@@ -52,33 +52,53 @@ setFeedbackFromWebView(params, *) {
 ; Button click actions
 ; ----------------------------------------------------
 
-buttonClickAction(action) {
+buttonClickAction(action, messageId := "") {
     global activeThreadId, chatWindow, requestParams
     switch action {
         case "Retry":
             if !activeThreadId
                 return
             path := ChatDB.Msg_GetActivePath(activeThreadId)
-            if path.Length && path[path.Length].role = "assistant" {
+            targetMsg := ""
+            parentMsg := ""
+            if messageId && path.Length {
+                ; Find the specific assistant to retry (and its parent)
+                for i, msg in path {
+                    if msg.id = messageId && msg.role = "assistant" {
+                        targetMsg := msg
+                        if i > 1
+                            parentMsg := path[i - 1]
+                        break
+                    }
+                }
+            }
+            if targetMsg {
+                ; Retry specific assistant
+                siblingGroup := targetMsg.sibling_group
+                if !siblingGroup {
+                    siblingGroup := ChatDB._UUID()
+                    ChatDB.db.Exec("UPDATE messages SET sibling_group='" siblingGroup "', sibling_index=0 WHERE id='" targetMsg.id "';")
+                }
+                requestParams["pendingRetrySiblingGroup"] := siblingGroup
+                if parentMsg
+                    ChatDB.Msg_SetActiveLeaf(activeThreadId, parentMsg.id)
+            } else if path.Length && path[path.Length].role = "assistant" {
+                ; Legacy: retry last assistant
                 oldMsg := path[path.Length]
-                ; Ensure old message has a sibling_group for branch navigation
                 siblingGroup := oldMsg.sibling_group
                 if !siblingGroup {
                     siblingGroup := ChatDB._UUID()
                     ChatDB.db.Exec("UPDATE messages SET sibling_group='" siblingGroup "', sibling_index=0 WHERE id='" oldMsg.id "';")
-                } else {
-                    ; Already has sibling_group — find max sibling_index for the new response
-                    sibTable := ChatDB.db.Exec("SELECT MAX(sibling_index) as max_idx FROM messages WHERE sibling_group='" siblingGroup "';")
-                    ; We'll set the new index in saveStreamResponse
                 }
-                ; Store pending sibling_group for the new response
                 requestParams["pendingRetrySiblingGroup"] := siblingGroup
                 if path.Length > 1
                     ChatDB.Msg_SetActiveLeaf(activeThreadId, path[path.Length - 1].id)
             }
-            chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-            postWebMessage("setChatButtonsEnabled", false)
-            startLoadingCursor(true)
-            sendRequestToLLM(&chatHistoryJSONRequest)
+            if requestParams.Has("pendingRetrySiblingGroup") {
+                chatHistoryJSONRequest := BuildAndWriteRequestFiles()
+                postWebMessage("setChatButtonsEnabled", false)
+                startLoadingCursor(true)
+                sendRequestToLLM(&chatHistoryJSONRequest)
+            }
     }
 }

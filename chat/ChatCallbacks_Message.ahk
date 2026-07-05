@@ -62,8 +62,12 @@ chatSendFromWebView(message, *) {
 ; Chat mode: Handle retry request from WebView
 ; ----------------------------------------------------
 
-retryFromWebView(*) {
-    buttonClickAction("Retry")
+retryFromWebView(params := "") {
+    if params && params.Has("messageId") {
+        buttonClickAction("Retry", params["messageId"])
+    } else {
+        buttonClickAction("Retry")
+    }
 }
 
 ; ----------------------------------------------------

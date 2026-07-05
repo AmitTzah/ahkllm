@@ -99,7 +99,7 @@ OnWebMessageReceived(sender, args) {
             case "chatSend":
                 chatSendFromWebView(parsed.Get("message", ""))
             case "retry":
-                retryFromWebView()
+                retryFromWebView(parsed)
             case "editMessage":
                 editMessageFromWebView(parsed)
             case "deleteMessage":

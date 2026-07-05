@@ -70,14 +70,10 @@ main {
     display: flex;
     flex-direction: column;
     position: relative;
-    animation: msgFadeIn 0.25s ease-out;
     margin-bottom: 2.5rem;
 }
 
-@keyframes msgFadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
+/* Incremental DOM updates render instantly — no animation needed */
 
 /* Assistant: plain text, no bubble, constrained by parent column */
 .chat-message.assistant {
@@ -154,7 +150,7 @@ main {
     text-decoration: underline;
 }
 
-/* Per-message action buttons */
+/* Per-message action buttons — always visible on last message, hover-only on others */
 .chat-message .message-actions {
     display: flex;
     gap: 0.25rem;
@@ -164,7 +160,8 @@ main {
     transition: opacity 0.15s ease;
 }
 
-.chat-message:hover .message-actions {
+.chat-message:hover .message-actions,
+.chat-message:last-child .message-actions {
     opacity: 1;
 }
 
@@ -196,39 +193,9 @@ main {
     color: var(--bs-body-color);
 }
 
-/* Branch badge (D3) — sibling navigation */
-.chat-message .branch-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.75rem;
+/* Branch arrow buttons (D3) — inline in message-actions */
+.branch-label-inline {
     color: var(--bs-secondary-color);
-}
-
-.chat-message .branch-badge .branch-arrow {
-    background: none;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 0.25rem;
-    cursor: pointer;
-    padding: 2px 8px;
-    font-size: 0.7rem;
-    color: var(--bs-secondary-color);
-    line-height: 1.4;
-    min-width: 24px;
-    text-align: center;
-}
-
-.chat-message .branch-badge .branch-arrow:hover {
-    background-color: var(--bs-tertiary-bg);
-    color: var(--bs-body-color);
-}
-
-.chat-message .branch-badge .branch-label {
-    font-weight: 600;
-    font-size: 0.75rem;
-    min-width: 2.5em;
-    text-align: center;
 }
 
 /* Send and Copy All buttons */
@@ -312,7 +279,6 @@ main {
     align-self: flex-start;
     margin-bottom: 0.5rem;
     max-width: 100%;
-    animation: msgFadeIn 0.2s ease-out;
 }
 
 .thinking-block summary {

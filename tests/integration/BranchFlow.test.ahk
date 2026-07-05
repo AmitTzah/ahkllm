@@ -130,4 +130,110 @@ class BranchFlowTest {
 
         this._teardown()
     }
+
+    ; --------------------
+    ; Retry middle assistant — set active leaf to its parent
+    ; This tests the DB-level logic behind buttonClickAction("Retry", messageId)
+    ; for a targeted retry on an assistant that is NOT the last message.
+    ; --------------------
+
+    RetryMiddleAssistant_TargetsCorrectPath() {
+        threadId := this._setup()
+
+        ; Create 4-message path: user1 → assistant1 → user2 → assistant2
+        usr1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: usr1Id})
+        usr2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1Id})
+        asst2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: usr2Id})
+
+        ; Verify full path before retry
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 4
+            throw Error("Expected 4 messages before retry, got " path.Length)
+
+        ; Simulate retry on assistant1:
+        ; 1. Assign sibling_group to assistant1 (so new response becomes a sibling)
+        sg := ChatDB._UUID()
+        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" a1Id "';")
+
+        ; 2. Set active leaf to assistant1's parent (user1)
+        ChatDB.Msg_SetActiveLeaf(threadId, usr1Id)
+
+        ; 3. Verify active path is now [user1] only
+        path2 := ChatDB.Msg_GetActivePath(threadId)
+        if path2.Length != 1
+            throw Error("Expected 1 message after targeted retry, got " path2.Length)
+        if path2[1].id != usr1Id
+            throw Error("Expected path to contain user1 after retry, got id=" path2[1].id)
+        if path2[1].role != "user"
+            throw Error("Expected path to end with 'user' after retry, got '" path2[1].role "'")
+
+        ; 4. Simulate LLM response: insert new assistant with sibling_group
+        ;    (matching what saveStreamResponse does)
+        a3Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a3_retried", parent_id: usr1Id, sibling_group: sg, sibling_index: 1})
+
+        ; 5. Set active leaf to the new response
+        ChatDB.Msg_SetActiveLeaf(threadId, a3Id)
+
+        ; 6. Verify path is now [user1, a3_retried]
+        path3 := ChatDB.Msg_GetActivePath(threadId)
+        if path3.Length != 2
+            throw Error("Expected 2 messages after retry response, got " path3.Length)
+        if path3[2].content != "a3_retried"
+            throw Error("Expected 'a3_retried' after retry, got '" path3[2].content "'")
+
+        ; 7. Verify both siblings exist
+        sibs := ChatDB.Msg_GetSiblings(a1Id)
+        if sibs.Length != 2
+            throw Error("Expected 2 siblings after retry, got " sibs.Length)
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; buildStructuredMessagesFromPath includes siblingInfo and reasoning
+    ; --------------------
+
+    BuildStructuredMessages_IncludesMetadata() {
+        threadId := this._setup()
+
+        ; Create path with a message that has reasoning
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Think step by step"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Final answer: 42", model: "deepseek-v4-flash", parent_id: usrId, reasoning: "Let me think...\nStep 1: x = 1\nStep 2: answer = 42"})
+
+        ; Check structured output without siblingInfo
+        path1 := ChatDB.Msg_GetActivePath(threadId)
+        struct1 := buildStructuredMessagesFromPath(path1)
+        if struct1.Length != 2
+            throw Error("Expected 2 structured messages, got " struct1.Length)
+        if !struct1[2].HasOwnProp("reasoning")
+            throw Error("Expected reasoning field on assistant message")
+        if struct1[2].reasoning != "Let me think...\nStep 1: x = 1\nStep 2: answer = 42"
+            throw Error("Reasoning content mismatch, got '" struct1[2].reasoning "'")
+        if struct1[2].model != "deepseek-v4-flash"
+            throw Error("Expected model field, got '" struct1[2].model "'")
+
+        ; Now add a sibling and verify siblingInfo appears in structured output
+        sg := ChatDB._UUID()
+        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" a1Id "';")
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Alternative: 7", model: "deepseek-v4-flash", parent_id: usrId, sibling_group: sg, sibling_index: 1})
+
+        ; Switch to the sibling to get siblingInfo in the path
+        result := ChatDB.Msg_SwitchBranch(threadId, a1Id, 1)
+
+        path2 := ChatDB.Msg_GetActivePath(threadId)
+        struct2 := buildStructuredMessagesFromPath(path2)
+        if struct2.Length != 2
+            throw Error("Expected 2 structured messages with sibling, got " struct2.Length)
+
+        ; The new active path has the second sibling (a2Id, sibling_index=1 → 1-based display = 2)
+        if !struct2[2].HasOwnProp("siblingInfo")
+            throw Error("Expected siblingInfo on message with sibling_group")
+        if struct2[2].siblingInfo.index != 2
+            throw Error("Expected siblingInfo.index = 2, got " struct2[2].siblingInfo.index)
+        if struct2[2].siblingInfo.total != 2
+            throw Error("Expected siblingInfo.total = 2, got " struct2[2].siblingInfo.total)
+
+        this._teardown()
+    }
 }

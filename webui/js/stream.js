@@ -159,17 +159,7 @@ function onStreamDone(data) {
     // Add action buttons now that the message is in chatMessages
     if (streamState.bubble) {
       addStreamingActions(streamState.bubble, chatMessages.length - 1);
-      // Add branch badge if the message has siblingInfo
-      if (streamingMessage.siblingInfo && streamingMessage.siblingInfo.total > 1) {
-        var badge = createBranchBadge(streamingMessage);
-        // Insert badge after content (matching createMessageBubble behavior)
-        var contentEl = streamState.bubble.querySelector('.message-content');
-        if (contentEl && contentEl.nextSibling) {
-          streamState.bubble.insertBefore(badge, contentEl.nextSibling);
-        } else {
-          streamState.bubble.appendChild(badge);
-        }
-      }
+      // Branch arrows are handled inside addMessageActions — no separate badge needed
     }
   }
 
@@ -201,8 +191,17 @@ function createStreamingBubble() {
   return bubble;
 }
 
-// Create a thinking/details block for reasoning content
+// Create a thinking/details block for reasoning content.
+// Nests the block INSIDE the streaming bubble (between label and content),
+// matching how createMessageBubble renders it. This ensures the thinking
+// block is removed when the bubble is removed — no orphaned DOM elements.
 function createThinkingBlock() {
+  // Reasoning may arrive before the first content token. If no bubble
+  // exists yet, create one so we have a parent to nest inside.
+  if (!streamState.bubble) {
+    streamState.bubble = createStreamingBubble();
+  }
+
   var details = document.createElement('details');
   details.className = 'thinking-block';
   details.open = true;  // Expanded by default
@@ -215,13 +214,8 @@ function createThinkingBlock() {
   content.className = 'thinking-content';
   details.appendChild(content);
 
-  // Insert before the streaming bubble
-  if (streamState.bubble && streamState.bubble.parentNode) {
-    streamState.bubble.parentNode.insertBefore(details, streamState.bubble);
-  } else {
-    var container = document.getElementById('chat-messages');
-    container.appendChild(details);
-  }
+  // Insert inside the bubble, between the label and the message-content div
+  streamState.bubble.insertBefore(details, streamState.contentDiv);
 
   scrollToBottom();
   return details;

@@ -116,16 +116,22 @@
 		chat-core.js must be first (defines chatMessages, initChatMode, addMessageActions).
 		main.js must be last (orchestrates all modules via handleWebMessage).
 		Dependency chain:
-		  chat-core.js (core state, rendering, shared actions)
+		  chat-core.js (state: chatMessages, isChatMode, isLoading, activeThreadId)
+		    ↓ chat-format.js (clipboard, format helpers, token bar — depends on chatMessages)
+		    ↓ chat-render.js (bubble creation, DOM rendering, incremental updates — depends on chatMessages, copySingleMessage)
+		    ↓ chat-input.js (send, loading, keyboard, retry — depends on chatMessages, removeLastAssistantMessage)
 		    ↓ chat-branching.js (edit, delete, branch nav, tree viz)
 		    ↓ chat-sidebar.js (thread list sidebar, nav bar)
-		    ↓ chat-quote.js (text selection popup)
+		    ↓ chat-quote.js (text selection popup — uses autoResizeChatInput)
 		    ↓ chat-feedback.js (thumbs up/down)
 		    ↓ chat-undo.js (Ctrl+Z/Y — reads chatMessages)
 		    ↓ stream.js (streaming — uses addMessageActions, createBranchBadge)
 		    ↓ main.js (message handler, DOM init, orchestrator)
 		-->
 		<script src="./js/chat-core.js"></script>
+		<script src="./js/chat-format.js"></script>
+		<script src="./js/chat-render.js"></script>
+		<script src="./js/chat-input.js"></script>
 		<script src="./js/chat-branching.js"></script>
 		<script src="./js/chat-sidebar.js"></script>
 		<script src="./js/chat-quote.js"></script>

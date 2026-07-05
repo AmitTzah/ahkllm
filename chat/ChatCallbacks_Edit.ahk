@@ -45,7 +45,7 @@ editMessageFromWebView(params, *) {
         ChatDB.Msg_Insert({ thread_id: activeThreadId, role: role, content: content, model: "", parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex })
         ; Trigger LLM request for the new branch (same as Retry flow)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
-        postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+        postWebMessage("updateChatView", buildStructuredMessagesFromPath(path))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
         chatHistoryJSONRequest := BuildAndWriteRequestFiles()
         postWebMessage("setChatButtonsEnabled", false)
@@ -54,7 +54,7 @@ editMessageFromWebView(params, *) {
     } else {
         ChatDB.Msg_Edit(id, content)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
-        postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+        postWebMessage("updateChatView", buildStructuredMessagesFromPath(path))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
     }
 }
@@ -75,6 +75,6 @@ deleteMessageFromWebView(msgId, *) {
     ChatDB.Msg_HardDelete(msgId)
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+    postWebMessage("updateChatView", buildStructuredMessagesFromPath(path))
     postThreadStats(activeThreadId)  ; refresh token/cost bar after deletion
 }

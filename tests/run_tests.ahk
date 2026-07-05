@@ -51,6 +51,7 @@ RegisterTestClass(className) {
 #Include ..\chat\ChatDB.ahk
 #Include ..\chat\ChatUtils.ahk
 #Include ..\chat\StreamHandler.ahk
+#Include ..\chat\ChatCallbacks_Message.ahk
 #Include ..\ui\CustomMessages.ahk
 
 ; Include test files

@@ -88,6 +88,10 @@ function handleWebMessage(event) {
         updateTokenUsage(data);
         break;
 
+      case 'updateChatView':
+        updateChatMessages(data);
+        break;
+
       case 'updateBranchInfo':
         updateBranchInfo(data);
         break;
