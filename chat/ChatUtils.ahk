@@ -100,11 +100,15 @@ generateThreadTitle(threadId) {
     ; Build minimal prompt for title generation
     genPrompt := "User: " SubStr(firstUser, 1, 200) "`nAssistant: " SubStr(firstAsst, 1, 200)
 
+    ; Track timing
+    titleGenStart := A_TickCount
+
     ; Build API request
+    ; Disable thinking for title generation — we want clean output, not reasoning
     requestObj := { model: titleGenModel, messages: [
         { role: "system", content: titleGenSystemPrompt },
         { role: "user", content: genPrompt }
-    ], max_tokens: titleGenMaxTokens }
+    ], max_tokens: titleGenMaxTokens, thinking: { type: "disabled" } }
 
     payload := jsongo.Stringify(requestObj)
     ; Fix jsongo boolean serialization
@@ -117,14 +121,18 @@ generateThreadTitle(threadId) {
 
     ; Build and run cURL command
     cURLCommand := Format('cURL.exe -s --max-time 15 --connect-timeout 10 -X POST ' APIEndpoint ' -H "Authorization: Bearer ' router.APIKey '" -H "Content-Type: application/json" -d @"' tmpFile '" -o "' outFile '"')
+    FileAppend("[DEBUG-TITLE] Running title gen cURL...`n", A_Temp "\LLM_Debug_Log.txt")
     Run(cURLCommand, , "Hide", &cURLPID)
     while ProcessExist(cURLPID)
         Sleep 200
+    FileAppend("[DEBUG-TITLE] cURL completed, checking output...`n", A_Temp "\LLM_Debug_Log.txt")
 
     ; Parse response
     title := ""
     if FileExist(outFile) {
+        FileAppend("[DEBUG-TITLE] Output file exists`n", A_Temp "\LLM_Debug_Log.txt")
         raw := FileOpen(outFile, "r", "UTF-8-RAW").Read()
+        FileAppend("[DEBUG-TITLE] Raw response (" StrLen(raw) " bytes): " SubStr(raw, 1, 200) "`n", A_Temp "\LLM_Debug_Log.txt")
         try {
             parsed := jsongo.Parse(raw)
             if parsed.Has("choices") && parsed["choices"].Length > 0 {
@@ -145,9 +153,27 @@ generateThreadTitle(threadId) {
 
     ; Update DB and refresh sidebar if title was generated
     if title {
+        FileAppend("[DEBUG-TITLE] Generated title: '" title "'`n", A_Temp "\LLM_Debug_Log.txt")
         ChatDB.Thread_Update(threadId, title)
         postWebMessage("threadList", ChatDB.Thread_List())
+    } else {
+        FileAppend("[DEBUG-TITLE] No title generated (empty response or parse failed)`n", A_Temp "\LLM_Debug_Log.txt")
     }
+
+    ; Log the title generation to API logs (transparency)
+    LLMClient.LogRequest({
+        timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+        promptName: "Thread Title Generation",
+        provider: "deepseek",
+        model: titleGenModel,
+        isFIM: false,
+        endpoint: APIEndpoint,
+        pasteMode: "none",
+        request: payload,
+        response: raw,
+        status: title ? "success" : "failed",
+        latencyMs: A_TickCount - titleGenStart
+    })
 
     ; Cleanup temp files
     FileDelete(tmpFile)

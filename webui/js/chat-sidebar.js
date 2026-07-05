@@ -23,6 +23,16 @@ function openSidebar() {
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTrashList' }));
 }
 
+function modelEmoji(model) {
+  if (!model) return '🤖';
+  var m = model.toLowerCase();
+  if (m.indexOf('deepseek') !== -1) return '🐋';
+  if (m.indexOf('gpt') !== -1 || m.indexOf('o1') !== -1 || m.indexOf('o3') !== -1) return '🧠';
+  if (m.indexOf('claude') !== -1) return '🎭';
+  if (m.indexOf('gemini') !== -1) return '💎';
+  return '🤖';
+}
+
 function closeSidebar() {
   var sidebar = document.getElementById('chat-sidebar');
   if (!sidebar) return;
@@ -59,7 +69,8 @@ function loadThreadList(threads) {
       var titleSpan = document.createElement('span');
       var displayTitle = t.title || 'New Chat';
       if (displayTitle.length > 30) displayTitle = displayTitle.substring(0, 30) + '...';
-      titleSpan.textContent = '📝 ' + displayTitle;
+      var modelIcon = modelEmoji(t.model);
+      titleSpan.textContent = modelIcon + ' ' + displayTitle;
       titleSpan.style.cssText = 'cursor:text;';
       
       // Inline rename: double-click title to edit
@@ -110,6 +121,17 @@ function loadThreadList(threads) {
         loadThread(t.id);
       });
 
+      // Rename button
+      var renameBtn = document.createElement('button');
+      renameBtn.textContent = '✏️';
+      renameBtn.style.cssText = 'float:right;background:none;border:none;cursor:pointer;font-size:0.7rem;opacity:0.5;margin-left:0;';
+      renameBtn.title = 'Rename';
+      renameBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        titleSpan.dispatchEvent(new MouseEvent('dblclick'));
+      });
+      item.appendChild(renameBtn);
+  
       // Delete button
       var delBtn = document.createElement('button');
       delBtn.textContent = '🗑';

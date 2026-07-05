@@ -187,7 +187,7 @@ modelPricing := Map(
 
 titleGenModel := "deepseek-v4-flash"
 titleGenSystemPrompt := "Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary."
-titleGenMaxTokens := 20
+titleGenMaxTokens := 50
 
 ; ----------------------------------------------------
 ; PROVIDER INFERENCE MAP

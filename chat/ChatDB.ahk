@@ -97,11 +97,17 @@ class ChatDB {
         table := ChatDB.db.Exec(query)
         threads := []
         for row in table.rows {
+            ; Find last assistant model for display icon
+            model := ""
+            modelTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" row.id "' AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;")
+            if modelTable.count
+                model := modelTable[1, "model"]
             threads.Push({
                 id: row.id,
                 title: row.title,
                 created_at: row.created_at,
-                updated_at: row.updated_at
+                updated_at: row.updated_at,
+                model: model
             })
         }
         return threads
