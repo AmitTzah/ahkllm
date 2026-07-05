@@ -48,13 +48,62 @@ function loadThreadList(threads) {
     if (t.id === activeThreadId) item.classList.add('active');
     item.style.cssText = 'padding:0.75rem;margin:0.25rem 0.5rem;border-radius:0.5rem;cursor:pointer;font-size:0.85rem;border:1px solid transparent;';
 
-    var title = t.title || 'New Chat';
-    if (title.length > 30) title = title.substring(0, 30) + '...';
-
     var date = t.updated_at || t.created_at || '';
     if (date.length > 16) date = date.substring(0, 16);
 
-    item.innerHTML = '<div style="font-weight:600;">📝 ' + title + '</div><div style="font-size:0.7rem;color:var(--bs-secondary-color);">' + date + '</div>';
+    // Title with inline editing
+    var titleDiv = document.createElement('div');
+    titleDiv.style.cssText = 'font-weight:600;display:flex;align-items:center;gap:4px;';
+    
+    var titleSpan = document.createElement('span');
+    var displayTitle = t.title || 'New Chat';
+    if (displayTitle.length > 30) displayTitle = displayTitle.substring(0, 30) + '...';
+    titleSpan.textContent = '📝 ' + displayTitle;
+    titleSpan.style.cssText = 'cursor:text;';
+    
+    // Inline rename: double-click title to edit
+    titleSpan.addEventListener('dblclick', function(e) {
+      e.stopPropagation();
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = t.title || '';
+      input.style.cssText = 'width:140px;font-size:0.85rem;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid var(--bs-primary);border-radius:3px;padding:1px 4px;';
+      
+      var finishRename = function() {
+        var newTitle = input.value.trim();
+        if (newTitle && newTitle !== (t.title || '')) {
+          window.chrome.webview.postMessage(JSON.stringify({
+            action: 'sidebarAction',
+            subAction: 'renameThread',
+            threadId: t.id,
+            title: newTitle
+          }));
+        }
+        titleSpan.style.display = '';
+        input.remove();
+      };
+      
+      input.addEventListener('blur', finishRename);
+      input.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { finishRename(); }
+        if (ev.key === 'Escape') { input.remove(); titleSpan.style.display = ''; }
+      });
+      
+      titleSpan.style.display = 'none';
+      titleDiv.insertBefore(input, titleSpan);
+      input.focus();
+      input.select();
+    });
+    
+    titleDiv.appendChild(titleSpan);
+
+    // Date
+    var dateDiv = document.createElement('div');
+    dateDiv.style.cssText = 'font-size:0.7rem;color:var(--bs-secondary-color);';
+    dateDiv.textContent = date;
+
+    item.appendChild(titleDiv);
+    item.appendChild(dateDiv);
 
     item.addEventListener('click', function(threadId) {
       return function() {

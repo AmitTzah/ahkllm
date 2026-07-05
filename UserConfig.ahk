@@ -117,6 +117,18 @@ suspendHotkey  := "CapsLock & ``"     ; CapsLock+Backtick — toggle script susp
 ; Maximum number of API request/response entries to keep in the log file.
 ; Set to 0 to disable logging entirely.
 
+; ----------------------------------------------------
+; TRASH RETENTION
+; ----------------------------------------------------
+; Number of days to keep deleted chats in trash before auto-purge.
+; Set to 0 to disable auto-purge entirely (trash must be emptied manually).
+
+trashRetentionDays := 30
+
+; ----------------------------------------------------
+; API LOGS
+; ----------------------------------------------------
+
 apiLogMaxEntries := 20
 
 ; ----------------------------------------------------
@@ -160,6 +172,22 @@ modelPricing := Map(
     "deepseek-v4-pro",   {input: 0.435, cachedInput: 0.003625, output: 0.87, context: 1048576},
     "deepseek-v4-flash", {input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1048576}
 )
+
+; ----------------------------------------------------
+; THREAD TITLE AUTO-GENERATION
+; ----------------------------------------------------
+; After the first user+assistant exchange in a chat thread, the script generates
+; a short title for the thread using a separate, cheap LLM call.
+; Set titleGenModel to an empty string to disable auto-generation entirely.
+;
+; titleGenModel: The model used for title generation. Use a cheap/fast model.
+; titleGenSystemPrompt: Instruction for the title generation model.
+;   Keep it strict — only the title text, no commentary.
+; titleGenMaxTokens: Maximum tokens for the generated title. Titles are short.
+
+titleGenModel := "deepseek-v4-flash"
+titleGenSystemPrompt := "Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary."
+titleGenMaxTokens := 20
 
 ; ----------------------------------------------------
 ; PROVIDER INFERENCE MAP

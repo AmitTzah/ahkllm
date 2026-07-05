@@ -104,8 +104,6 @@ OnWebMessageReceived(sender, args) {
                 editMessageFromWebView(parsed)
             case "deleteMessage":
                 deleteMessageFromWebView(parsed.Get("id", ""))
-            case "undeleteMessage":
-                undeleteMessageFromWebView(parsed.Get("id", ""))
             case "switchBranch":
                 switchBranchFromWebView(parsed)
             case "forkChat":
@@ -184,13 +182,25 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
 #Include ChatCallbacks_Sidebar.ahk
 
 ; ----------------------------------------------------
-; Load WebView
+; Load WebView — delay showing window until page finishes loading
 ; ----------------------------------------------------
 
+showChatWindowReady := false
+responseWindow.NavigationCompleted(NavigationFinished)
 responseWindow.Load("..\webui\index.html")
 
+NavigationFinished(sender, args) {
+    global showChatWindowReady
+    if showChatWindowReady
+        return  ; already shown — ignore refresh navigations
+    showChatWindowReady := true
+    showChatWindow()
+    postWebMessage("setChatButtonsEnabled", true)
+    loadInitialThread()
+}
+
 ; ----------------------------------------------------
-; Show window
+; Show window (called by NavigationCompleted or on re-open)
 ; ----------------------------------------------------
 
 showChatWindow(initialRequest := true) {
@@ -214,28 +224,28 @@ showChatWindow(initialRequest := true) {
     }
 }
 
-showChatWindow(true)
-postWebMessage("setChatButtonsEnabled", true)
-
 ; ----------------------------------------------------
 ; Load initial thread if passed via command-line arg
 ; ----------------------------------------------------
 
-if (A_Args.Length >= 2 && A_Args[2] != "") {
-    activeThreadId := A_Args[2]
-    path := ChatDB.Msg_GetActivePath(activeThreadId)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-    postThreadStats(activeThreadId)
-    ; Clear loading state and check if we need to auto-fire LLM
-    Sleep 500
-    postWebMessage("setChatButtonsEnabled", true)
-    
-    ; Auto-trigger LLM if the last message is from the user (pending response)
-    if path.Length > 0 && path[path.Length].role = "user" {
-        chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-        if chatHistoryJSONRequest {
-            postWebMessage("setChatButtonsEnabled", false)
-            sendRequestToLLM(&chatHistoryJSONRequest)
+loadInitialThread() {
+    global activeThreadId
+    if (A_Args.Length >= 2 && A_Args[2] != "") {
+        activeThreadId := A_Args[2]
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+        postThreadStats(activeThreadId)
+        ; Clear loading state and check if we need to auto-fire LLM
+        Sleep 500
+        postWebMessage("setChatButtonsEnabled", true)
+        
+        ; Auto-trigger LLM if the last message is from the user (pending response)
+        if path.Length > 0 && path[path.Length].role = "user" {
+            chatHistoryJSONRequest := BuildAndWriteRequestFiles()
+            if chatHistoryJSONRequest {
+                postWebMessage("setChatButtonsEnabled", false)
+                sendRequestToLLM(&chatHistoryJSONRequest)
+            }
         }
     }
 }

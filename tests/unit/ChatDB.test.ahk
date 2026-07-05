@@ -112,50 +112,63 @@ class ChatDBTest {
     }
 
     ; --------------------
-    ; Msg_SoftDelete / Msg_Undelete
+    ; Msg_HardDelete (re-parenting model)
     ; --------------------
 
-    SoftDelete_LastMessage() {
+    HardDelete_LastMessage_MovesActiveLeaf() {
         threadId := this._setup()
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
-        id2 := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length != 2
             throw Error("Expected 2 before delete, got " path.Length)
 
-        ChatDB.Msg_SoftDelete(id2)
-        ; Move active leaf to parent so the path is navigable
-        ChatDB.Msg_SetActiveLeaf(threadId, u1Id)
+        ChatDB.Msg_HardDelete(a1Id)
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length != 1
-            throw Error("Expected 1 after delete, got " path.Length)
+            throw Error("Expected 1 after deleting leaf, got " path.Length)
+        ; Verify row is gone
+        check := ChatDB.db.Exec("SELECT id FROM messages WHERE id='" a1Id "';")
+        if check.count > 0
+            throw Error("Row should have been hard-deleted")
         this._teardown()
     }
 
-    Undelete_RestoresMessage() {
+    HardDelete_MiddleMessage_ReparentsChildren() {
         threadId := this._setup()
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
-        id2 := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
-        ChatDB.Msg_SoftDelete(id2)
-        ChatDB.Msg_SetActiveLeaf(threadId, u1Id)
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1Id})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id})
         path := ChatDB.Msg_GetActivePath(threadId)
-        if path.Length != 1
-            throw Error("Expected 1 after delete, got " path.Length)
+        if path.Length != 4
+            throw Error("Expected 4 before delete, got " path.Length)
 
-        ChatDB.Msg_Undelete(id2)
+        ; Delete middle message (a1Id) — children should be re-parented to u1Id
+        ChatDB.Msg_HardDelete(a1Id)
         path := ChatDB.Msg_GetActivePath(threadId)
-        if path.Length != 2
-            throw Error("Expected 2 after undelete, got " path.Length)
+        if path.Length != 3
+            throw Error("Expected 3 after re-parent, got " path.Length)
+        ; Verify u2 now has parent u1 (not a1 which is deleted)
+        checkParent := ChatDB.db.Exec("SELECT parent_id FROM messages WHERE id='" u2Id "';")
+        if checkParent.count && checkParent[1, "parent_id"] != u1Id
+            throw Error("u2 should be re-parented to u1Id, got " checkParent[1, "parent_id"])
         this._teardown()
     }
 
-    Undelete_NonDeleted_Nop() {
+    HardDelete_RootMessage_ReparentsToNull() {
         threadId := this._setup()
-        id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
-        ChatDB.Msg_Undelete(id)
+        rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", parent_id: rootId})
+        ; Delete root — children should get parent_id=NULL
+        ChatDB.Msg_HardDelete(rootId)
         path := ChatDB.Msg_GetActivePath(threadId)
-        if path.Length != 1
-            throw Error("Expected 1 after no-op undelete, got " path.Length)
+        if path.Length < 1
+            throw Error("Expected path with user message after root delete, got " path.Length)
+        ; Verify u1 has NULL parent_id
+        check := ChatDB.db.Exec("SELECT parent_id FROM messages WHERE id='" u1Id "';")
+        if check.count && check[1, "parent_id"] != ""
+            throw Error("Child should have NULL parent after root delete")
         this._teardown()
     }
 

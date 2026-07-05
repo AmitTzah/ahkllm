@@ -54,25 +54,11 @@ class ChatDB {
     ; ----------------------------------------------------
 
     static _CreateSchema() {
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT);")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
-        ; Ensure all columns exist (migration for DBs created before new columns were added)
-        colCheck := ChatDB.db.Exec("PRAGMA table_info(messages);")
-        colNames := Map()
-        for row in colCheck.rows
-            colNames[row.name] := true
+        ; Create tables (new databases get the latest schema)
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT);")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
 
-        if !colNames.Has("reasoning") {
-            ChatDB._DBLog("[DEBUG] _CreateSchema: adding reasoning column via ALTER TABLE")
-            ChatDB.db.Exec("ALTER TABLE messages ADD COLUMN reasoning TEXT DEFAULT '';")
-        }
-        for colName in ["prompt_tokens", "completion_tokens", "cached_tokens", "total_tokens"] {
-            if !colNames.Has(colName) {
-                ChatDB._DBLog("[DEBUG] _CreateSchema: adding " colName " column via ALTER TABLE")
-                ChatDB.db.Exec("ALTER TABLE messages ADD COLUMN " colName " INTEGER DEFAULT 0;")
-            }
-        }
-        ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, is_deleted);")
+        ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
     }
@@ -104,8 +90,13 @@ class ChatDB {
     }
 
     ; Get all threads sorted by most recent first. Returns array of objects.
-    static Thread_List() {
-        table := ChatDB.db.Exec("SELECT id, title, created_at, updated_at FROM chat_threads ORDER BY updated_at DESC")
+    ; includeDeleted: if true, includes soft-deleted (trashed) threads.
+    static Thread_List(includeDeleted := false) {
+        query := "SELECT id, title, created_at, updated_at FROM chat_threads"
+        if !includeDeleted
+            query .= " WHERE is_deleted=0"
+        query .= " ORDER BY updated_at DESC"
+        table := ChatDB.db.Exec(query)
         threads := []
         for row in table.rows {
             threads.Push({
@@ -118,7 +109,26 @@ class ChatDB {
         return threads
     }
 
-    ; Delete a thread and all its messages
+    ; Trash a thread (soft-delete). Moves to trash with timestamp for auto-purge.
+    static Thread_SoftDelete(threadId) {
+        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" threadId "';")
+    }
+
+    ; Restore a trashed thread back to active chats.
+    static Thread_Restore(threadId) {
+        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id='" threadId "';")
+    }
+
+    ; Permanently delete expired trashed threads and their messages.
+    ; Uses trashRetentionDays from UserConfig. Set to 0 to disable auto-purge.
+    static Thread_PurgeExpired() {
+        if (IsSet(trashRetentionDays) && trashRetentionDays <= 0) || (!IsSet(trashRetentionDays))
+            return  ; auto-purge disabled
+        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days'));")
+        ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
+    }
+
+    ; Permanently delete a thread and all its messages (no recovery).
     static Thread_Delete(threadId) {
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" threadId "';")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" threadId "';")
@@ -165,22 +175,39 @@ class ChatDB {
         return id
     }
 
-    ; Mark a message as soft-deleted
-    static Msg_SoftDelete(msgId) {
-        ChatDB.db.Exec("UPDATE messages SET is_deleted=1 WHERE id='" msgId "';")
-        ChatDB._TouchThreadByMsg(msgId)
-    }
-
-    ; Undo soft-delete — restore a previously deleted message
-    static Msg_Undelete(msgId) {
-        ; Only act if the message exists and is soft-deleted
-        checkTable := ChatDB.db.Exec("SELECT is_deleted, thread_id FROM messages WHERE id='" msgId "';")
-        if !checkTable.count || checkTable[1, "is_deleted"] = 0
+    ; Hard-delete a message. Re-parents children to the deleted message's parent.
+    ; Only moves active_leaf_id if the deleted message was the leaf itself.
+    static Msg_HardDelete(msgId) {
+        ; 1. Find the deleted message's parent and thread
+        parentTable := ChatDB.db.Exec("SELECT parent_id, thread_id FROM messages WHERE id='" msgId "';")
+        if !parentTable.count
             return
-        ChatDB.db.Exec("UPDATE messages SET is_deleted=0 WHERE id='" msgId "';")
-        ; Restore as active leaf
-        threadId := checkTable[1, "thread_id"]
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" msgId "', updated_at=datetime('now') WHERE id='" threadId "';")
+        parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
+        threadId := parentTable[1, "thread_id"]
+
+        ; 2. Re-parent all direct children to the deleted message's parent
+        childrenTable := ChatDB.db.Exec("SELECT id FROM messages WHERE parent_id='" msgId "';")
+        for row in childrenTable.rows {
+            if parentId
+                ChatDB.db.Exec("UPDATE messages SET parent_id='" parentId "' WHERE id='" row.id "';")
+            else
+                ChatDB.db.Exec("UPDATE messages SET parent_id=NULL WHERE id='" row.id "';")
+        }
+
+        ; 3. If this message was the active leaf, move leaf to its parent
+        leafTable := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='" threadId "';")
+        if leafTable.count && leafTable[1, "active_leaf_id"] = msgId {
+            if parentId
+                ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" parentId "' WHERE id='" threadId "';")
+            else
+                ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id=NULL WHERE id='" threadId "';")
+        }
+
+        ; 4. Delete the message
+        ChatDB.db.Exec("DELETE FROM messages WHERE id='" msgId "';")
+
+        ; 5. Touch thread's updated_at (use captured threadId, not _TouchThreadByMsg which queries the now-deleted row)
+        ChatDB.db.Exec("UPDATE chat_threads SET updated_at=datetime('now') WHERE id='" threadId "';")
     }
 
     ; Edit message content in-place (overwrite).
@@ -199,7 +226,7 @@ class ChatDB {
             ChatDB.db.Exec("UPDATE messages SET feedback=" rating " WHERE id='" msgId "';")
     }
 
-    ; Get all messages for a thread (non-deleted). Returns array ordered by the active path.
+    ; Get all messages for a thread. Returns array ordered by the active path.
     static Msg_GetActivePath(threadId) {
         ; 1. Get the active leaf
         leafTable := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='" threadId "';")
@@ -209,12 +236,11 @@ class ChatDB {
         if !leafId
             return []
 
-        ; 2. Load all non-deleted messages for this thread
-        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" threadId "' AND is_deleted=0;")
+        ; 2. Load all messages for this thread (is_deleted column removed — all rows are visible)
+        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" threadId "';")
 
-        ; 3. Build lookup maps
+        ; 3. Build lookup map (childrenMap is no longer needed — removed dead code)
         msgMap := Map()
-        childrenMap := Map()
         for row in allTable.rows {
             msgMap[row.id] := {
                 id: row.id,
@@ -227,13 +253,11 @@ class ChatDB {
                 sibling_index: row.sibling_index,
                 feedback: row.feedback ? Integer(row.feedback) : 0,
                 reasoning: row.Has("reasoning") && row["reasoning"] ? row["reasoning"] : "",
+                prompt_tokens: row.Has("prompt_tokens") && row.prompt_tokens ? Integer(row.prompt_tokens) : 0,
+                completion_tokens: row.Has("completion_tokens") && row.completion_tokens ? Integer(row.completion_tokens) : 0,
                 total_tokens: row.Has("total_tokens") && row.total_tokens ? Integer(row.total_tokens) : 0,
                 cached_tokens: row.Has("cached_tokens") && row.cached_tokens ? Integer(row.cached_tokens) : 0
             }
-            childKey := row.parent_id ? row.parent_id : "__root__"
-            if !childrenMap.Has(childKey)
-                childrenMap[childKey] := []
-            childrenMap[childKey].Push(row.id)
         }
 
         ; 4. Walk from leaf to root
@@ -257,8 +281,8 @@ class ChatDB {
         if !sg
             return []  ; no siblings — this message is a singleton
 
-        ; Get all siblings in this group (filter out soft-deleted)
-        table2 := ChatDB.db.Exec("SELECT id, role, content, model, sibling_index, is_deleted FROM messages WHERE sibling_group='" sg "' AND is_deleted=0 ORDER BY sibling_index;")
+        ; Get all siblings in this group (is_deleted column removed — all rows are visible)
+        table2 := ChatDB.db.Exec("SELECT id, role, content, model, sibling_index FROM messages WHERE sibling_group='" sg "' ORDER BY sibling_index;")
         siblings := []
         for row in table2.rows {
             siblings.Push({
@@ -266,8 +290,7 @@ class ChatDB {
                 role: row.role,
                 content_preview: SubStr(row.content, 1, 80),
                 model: row.model ? row.model : "",
-                sibling_index: row.sibling_index,
-                is_deleted: row.is_deleted
+                sibling_index: row.sibling_index
             })
         }
         return siblings
@@ -276,7 +299,7 @@ class ChatDB {
     ; Get the full branch tree for visualization (D4).
     ; Returns a tree structure: [{ id, role, content_preview, children: [...] }]
     static Msg_GetTree(threadId) {
-        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" threadId "' AND is_deleted=0;")
+        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" threadId "';")
 
         ; Build node map and children map
         nodeMap := Map()
@@ -363,7 +386,13 @@ class ChatDB {
             safeFeedback := msg.feedback ? msg.feedback : "NULL"
             safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
 
-            ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning) VALUES('" newId "', '" newThreadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "');")
+            ; Include token counts to preserve cost data in forked threads
+            pt := msg.HasProp("prompt_tokens") ? msg.prompt_tokens : 0
+            ct := msg.HasProp("completion_tokens") ? msg.completion_tokens : 0
+            tt := msg.HasProp("total_tokens") ? msg.total_tokens : 0
+            ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
+
+            ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newId "', '" newThreadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " pt ", " ct ", " ckt ", " tt ");")
         }
 
         ; 5. Set active leaf
@@ -380,7 +409,7 @@ class ChatDB {
     ; Set the active leaf to a specific message (branch switch)
     static Msg_SetActiveLeaf(threadId, msgId) {
         ; Validate that msgId belongs to this thread
-        check := ChatDB.db.Exec("SELECT id FROM messages WHERE id='" msgId "' AND thread_id='" threadId "' AND is_deleted=0;")
+        check := ChatDB.db.Exec("SELECT id FROM messages WHERE id='" msgId "' AND thread_id='" threadId "';")
         if !check.count
             return
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" msgId "', updated_at=datetime('now') WHERE id='" threadId "';")
@@ -464,7 +493,7 @@ class ChatDB {
         }
 
         ; Track which pricing model was last used for the tooltip
-        allTable := ChatDB.db.Exec("SELECT role, prompt_tokens, completion_tokens, total_tokens, cached_tokens, model FROM messages WHERE thread_id='" threadId "' AND is_deleted=0;")
+        allTable := ChatDB.db.Exec("SELECT role, prompt_tokens, completion_tokens, total_tokens, cached_tokens, model FROM messages WHERE thread_id='" threadId "';")
         for row in allTable.rows {
             pt := Integer(row.prompt_tokens ? row.prompt_tokens : 0)
             ct := Integer(row.completion_tokens ? row.completion_tokens : 0)
@@ -531,7 +560,7 @@ class ChatDB {
         currentId := msgId
         loop {
             ; Find child (deterministic: earliest created first)
-            childTable := ChatDB.db.Exec("SELECT id FROM messages WHERE parent_id='" currentId "' AND is_deleted=0 ORDER BY created_at LIMIT 1;")
+            childTable := ChatDB.db.Exec("SELECT id FROM messages WHERE parent_id='" currentId "' ORDER BY created_at LIMIT 1;")
             if !childTable.count
                 break
             currentId := childTable[1, "id"]

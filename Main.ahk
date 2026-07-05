@@ -65,7 +65,6 @@ ChatDB.Open()
 ; ----------------------------------------------------
 
 global chatWindowPID := 0
-global chatWindowPID := 0
 global chatWindowhWnd := 0
 
 OpenOrSpawnChatWindow(threadId := "") {

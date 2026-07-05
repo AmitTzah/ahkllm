@@ -72,3 +72,84 @@ debugLog(message) {
     logLine := timestamp " [" requestParams["singleAPIModelName"] "] " message "`n"
     FileAppend(logLine, A_Temp "\LLM_Debug_Log.txt")
 }
+
+; ----------------------------------------------------
+; Generate a thread title from the first user+assistant exchange
+; Fire-and-forget: runs asynchronously via SetTimer, never blocks
+; ----------------------------------------------------
+
+generateThreadTitle(threadId) {
+    if !IsSet(titleGenModel) || !titleGenModel
+        return   ; title generation disabled in config
+    path := ChatDB.Msg_GetActivePath(threadId)
+    if path.Length < 2
+        return
+
+    ; Find first user message and first assistant response
+    firstUser := ""
+    firstAsst := ""
+    for msg in path {
+        if msg.role = "user" && !firstUser
+            firstUser := msg.content
+        if msg.role = "assistant" && firstUser && !firstAsst
+            firstAsst := msg.content
+    }
+    if !firstUser || !firstAsst
+        return
+
+    ; Build minimal prompt for title generation
+    genPrompt := "User: " SubStr(firstUser, 1, 200) "`nAssistant: " SubStr(firstAsst, 1, 200)
+
+    ; Build API request
+    requestObj := { model: titleGenModel, messages: [
+        { role: "system", content: titleGenSystemPrompt },
+        { role: "user", content: genPrompt }
+    ], max_tokens: titleGenMaxTokens }
+
+    payload := jsongo.Stringify(requestObj)
+    ; Fix jsongo boolean serialization
+    payload := StrReplace(payload, '"stream":1', '"stream":true')
+
+    ; Write temp request file
+    tmpFile := A_Temp "\ChatWindow_TitleGen_" A_TickCount ".json"
+    outFile := A_Temp "\ChatWindow_TitleGen_Out_" A_TickCount ".json"
+    FileOpen(tmpFile, "w", "UTF-8-RAW").Write(payload)
+
+    ; Build and run cURL command
+    cURLCommand := Format('cURL.exe -s --max-time 15 --connect-timeout 10 -X POST ' APIEndpoint ' -H "Authorization: Bearer ' router.APIKey '" -H "Content-Type: application/json" -d @"' tmpFile '" -o "' outFile '"')
+    Run(cURLCommand, , "Hide", &cURLPID)
+    while ProcessExist(cURLPID)
+        Sleep 200
+
+    ; Parse response
+    title := ""
+    if FileExist(outFile) {
+        raw := FileOpen(outFile, "r", "UTF-8-RAW").Read()
+        try {
+            parsed := jsongo.Parse(raw)
+            if parsed.Has("choices") && parsed["choices"].Length > 0 {
+                title := Trim(parsed["choices"][1]["message"]["content"])
+                ; Strip leading/trailing quotes and periods, truncate long titles
+                if SubStr(title, 1, 1) = '"' || SubStr(title, 1, 1) = "'"
+                    title := SubStr(title, 2)
+                lastChar := SubStr(title, StrLen(title))
+                if lastChar = '"' || lastChar = "'"
+                    title := SubStr(title, 1, StrLen(title) - 1)
+                if SubStr(title, -1) = "."
+                    title := SubStr(title, 1, StrLen(title) - 1)
+                if StrLen(title) > 60
+                    title := SubStr(title, 1, 60)
+            }
+        }
+    }
+
+    ; Update DB and refresh sidebar if title was generated
+    if title {
+        ChatDB.Thread_Update(threadId, title)
+        postWebMessage("threadList", ChatDB.Thread_List())
+    }
+
+    ; Cleanup temp files
+    FileDelete(tmpFile)
+    FileExist(outFile) ? FileDelete(outFile) : ""
+}

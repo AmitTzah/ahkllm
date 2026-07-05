@@ -73,24 +73,18 @@ class ChatFlowTest {
     ; Delete → path changes
     ; --------------------
 
-    DeleteMessage_ChangesPath() {
+    HardDelete_ChangesPath() {
         threadId := this._setup()
         sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "s"})
         usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u", parent_id: sysId})
         asstId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a", parent_id: usrId})
 
-        ChatDB.Msg_SoftDelete(asstId)
-        ChatDB.Msg_SetActiveLeaf(threadId, usrId)
+        ChatDB.Msg_HardDelete(asstId)
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length != 2
             throw Error("Expected 2 after delete, got " path.Length)
         if path[path.Length].role != "user"
             throw Error("Expected last role 'user' after delete")
-
-        ChatDB.Msg_Undelete(asstId)
-        path := ChatDB.Msg_GetActivePath(threadId)
-        if path.Length != 3
-            throw Error("Expected 3 after undelete, got " path.Length)
 
         this._teardown()
     }

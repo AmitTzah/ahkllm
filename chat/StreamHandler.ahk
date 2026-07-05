@@ -197,6 +197,21 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
             total_tokens: tt,
             cached_tokens: ckt
         })
+
+        ; Trigger title auto-generation after the first assistant response
+        ; Only if thread title is still a default (prompt name or "New Chat")
+        if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
+            ; path.Length <= 2 means: system + user, or just user + assistant
+            ; Check current title is still a default
+            threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
+            if threadInfo.count {
+                currentTitle := threadInfo[1, "title"]
+                if currentTitle = "New Chat" || InStr(currentTitle, "(") {
+                    ; First exchange — fire-and-forget title generation
+                    SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
+                }
+            }
+        }
     }
 
     ; Reconstruct the full JSON response for logging

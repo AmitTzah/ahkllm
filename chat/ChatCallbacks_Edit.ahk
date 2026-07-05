@@ -58,20 +58,7 @@ editMessageFromWebView(params, *) {
 }
 
 ; ----------------------------------------------------
-; Undelete message from WebView (undo delete)
-; ----------------------------------------------------
-
-undeleteMessageFromWebView(msgId, *) {
-    global activeThreadId
-    if !msgId || !activeThreadId
-        return
-    ChatDB.Msg_Undelete(msgId)
-    path := ChatDB.Msg_GetActivePath(activeThreadId)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-}
-
-; ----------------------------------------------------
-; Delete message from WebView (D2)
+; Delete message from WebView (D2) — hard-delete with re-parenting
 ; ----------------------------------------------------
 
 deleteMessageFromWebView(msgId, *) {
@@ -79,24 +66,11 @@ deleteMessageFromWebView(msgId, *) {
     if !msgId || !activeThreadId
         return
     
-    ; Find parent before soft-deleting so we can update the active leaf
-    currentPath := ChatDB.Msg_GetActivePath(activeThreadId)
-    parentId := ""
-    for msg in currentPath {
-        if msg.id = msgId {
-            ; parent is the previous message in the path (if any)
-            break
-        }
-        parentId := msg.id
-    }
-    
-    ChatDB.Msg_SoftDelete(msgId)
-    
-    ; Update active leaf — if parent exists, navigate there; otherwise set to NULL
-    if parentId
-        ChatDB.Msg_SetActiveLeaf(activeThreadId, parentId)
-    else
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id=NULL, updated_at=datetime('now') WHERE id='" activeThreadId "';")
+    ; Msg_HardDelete handles re-parenting and active_leaf_id internally.
+    ; No need to manually find parent or update active leaf — the method
+    ; re-parents children to the deleted message's parent and only moves
+    ; active_leaf_id if the deleted message was the leaf itself.
+    ChatDB.Msg_HardDelete(msgId)
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
