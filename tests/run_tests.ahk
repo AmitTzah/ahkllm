@@ -45,6 +45,9 @@ RegisterTestClass(className) {
 #Include ..\lib\jsongo.v2.ahk
 #Include ..\lib\SQLite\SQLite.ahk
 #Include ..\api\LLMClient.ahk
+#Include ..\api\SSEParser.ahk
+#Include ..\api\ApiLogger.ahk
+#Include ..\api\CostCalculator.ahk
 #Include ..\chat\ChatDB.ahk
 
 ; Include test files

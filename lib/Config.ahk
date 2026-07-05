@@ -12,6 +12,9 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 
 ; Application classes
 #Include ..\api\LLMClient.ahk
+#Include ..\api\SSEParser.ahk
+#Include ..\api\ApiLogger.ahk
+#Include ..\api\CostCalculator.ahk
 #Include ..\ui\InputWindow.ahk
 #Include ..\ui\CustomMessages.ahk
 #Include ..\chat\ChatDB.ahk          ; Chat persistence (SQLite-backed)

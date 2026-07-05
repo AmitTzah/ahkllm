@@ -124,7 +124,7 @@ readStreamChunk(streamState) {
     for line in StrSplit(newContent, "`n", "`r") {
         if (line = "")
             continue
-        chunk := router.parseSSELine(line)
+        chunk := SSEParser.ParseLine(line)
 
         switch chunk.type {
             case "content":
@@ -236,7 +236,7 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
         ? firstTokenTime - requestStartTime
         : A_TickCount - requestStartTime
 
-    LLMClient.LogRequest({
+    ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         promptName: requestParams["responseWindowTitle"],
         provider: requestParams["providerName"],

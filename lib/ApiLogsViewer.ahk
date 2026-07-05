@@ -40,12 +40,12 @@ viewerWindow.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 
 ; These must return values so the JS Promise resolves.
 
 GetLogs(*) {
-    logs := LLMClient.ReadLogs()
+    logs := ApiLogger.ReadLogs()
     return jsongo.Stringify(logs)
 }
 
 ClearLogs(*) {
-    LLMClient.ClearLogs()
+    ApiLogger.ClearLogs()
     return "ok"
 }
 

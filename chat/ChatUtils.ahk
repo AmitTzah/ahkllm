@@ -161,7 +161,7 @@ generateThreadTitle(threadId) {
     }
 
     ; Log the title generation to API logs (transparency)
-    LLMClient.LogRequest({
+    ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         promptName: "Thread Title Generation",
         provider: "deepseek",

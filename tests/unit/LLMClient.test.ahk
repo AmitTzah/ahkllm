@@ -147,7 +147,7 @@ class LLMClientTest {
 
     ParseSSELine_Content() {
         client := this._setup()
-        result := client.parseSSELine('data: {"choices":[{"delta":{"content":"Hello"}}]}')
+        result := SSEParser.ParseLine('data: {"choices":[{"delta":{"content":"Hello"}}]}')
         if result.type != "content"
             throw Error("Expected type 'content', got '" result.type "'")
         if result.content != "Hello"
@@ -156,7 +156,7 @@ class LLMClientTest {
 
     ParseSSELine_Reasoning() {
         client := this._setup()
-        result := client.parseSSELine('data: {"choices":[{"delta":{"reasoning_content":"thinking...", "content":""}}]}')
+        result := SSEParser.ParseLine('data: {"choices":[{"delta":{"reasoning_content":"thinking...", "content":""}}]}')
         if result.type != "reasoning"
             throw Error("Expected type 'reasoning', got '" result.type "'")
         if result.content != "thinking..."
@@ -165,7 +165,7 @@ class LLMClientTest {
 
     ParseSSELine_Done() {
         client := this._setup()
-        result := client.parseSSELine("data: [DONE]")
+        result := SSEParser.ParseLine("data: [DONE]")
         if result.type != "done"
             throw Error("Expected type 'done', got '" result.type "'")
     }
@@ -173,7 +173,7 @@ class LLMClientTest {
     ParseSSELine_Finish() {
         client := this._setup()
         line := 'data: {"choices":[{"finish_reason":"stop"}],"model":"deepseek","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
-        result := client.parseSSELine(line)
+        result := SSEParser.ParseLine(line)
         if result.type != "finish"
             throw Error("Expected type 'finish', got '" result.type "'")
         if result.reason != "stop"
@@ -184,7 +184,7 @@ class LLMClientTest {
 
     ParseSSELine_Ignore() {
         client := this._setup()
-        result := client.parseSSELine("event: ping")
+        result := SSEParser.ParseLine("event: ping")
         if result.type != "ignore"
             throw Error("Expected type 'ignore', got '" result.type "'")
     }
@@ -192,7 +192,7 @@ class LLMClientTest {
     ParseSSELine_NotData() {
         client := this._setup()
         ; Input that doesn't start with "data: " — should return { type: "ignore" }
-        result := client.parseSSELine("just a random line without data prefix")
+        result := SSEParser.ParseLine("just a random line without data prefix")
         if !IsObject(result)
             throw Error("Expected Object result")
         if result.type != "ignore"
@@ -205,7 +205,7 @@ class LLMClientTest {
 
     ComputeTokenCosts_KnownModel() {
         usage := {promptTokens: 100, completionTokens: 50, totalTokens: 150, cachedTokens: 0}
-        costs := LLMClient.ComputeTokenCosts("deepseek-v4-flash", usage)
+        costs := CostCalculator.ComputeTokenCosts("deepseek-v4-flash", usage)
         if costs.inputCost = "" || costs.inputCost <= 0
             throw Error("Expected positive inputCost, got '" costs.inputCost "'")
         if costs.outputCost = "" || costs.outputCost <= 0
@@ -216,7 +216,7 @@ class LLMClientTest {
 
     ComputeTokenCosts_WithCache() {
         usage := {promptTokens: 200, completionTokens: 50, totalTokens: 250, cachedTokens: 100}
-        costs := LLMClient.ComputeTokenCosts("deepseek-v4-flash", usage)
+        costs := CostCalculator.ComputeTokenCosts("deepseek-v4-flash", usage)
         if costs.inputCost = "" || costs.inputCost <= 0
             throw Error("Expected positive inputCost with cache")
         if costs.totalCost = "" || costs.totalCost <= 0
@@ -225,7 +225,7 @@ class LLMClientTest {
 
     ComputeTokenCosts_UnknownModel() {
         usage := {promptTokens: 100, completionTokens: 50, totalTokens: 150, cachedTokens: 0}
-        costs := LLMClient.ComputeTokenCosts("unknown-model", usage)
+        costs := CostCalculator.ComputeTokenCosts("unknown-model", usage)
         if costs.inputCost != ""
             throw Error("Expected empty inputCost for unknown model")
         if costs.totalCost != ""
@@ -285,14 +285,14 @@ class LLMClientTest {
     ; --------------------
 
     LogRequest_CreatesEntry() {
-        logPath := LLMClient.logFilePath
+        logPath := ApiLogger.logFilePath
         hadLog := FileExist(logPath)
         backupPath := ""
         if hadLog {
             backupPath := logPath ".bak"
             FileCopy(logPath, backupPath, 1)
         }
-        LLMClient.LogRequest({
+        ApiLogger.LogRequest({
             timestamp: "2025-01-01 00:00:00",
             promptName: "Test",
             provider: "deepseek",
@@ -304,7 +304,7 @@ class LLMClientTest {
             response: "{}",
             status: "success"
         })
-        logs := LLMClient.ReadLogs()
+        logs := ApiLogger.ReadLogs()
         if logs.Length < 1
             throw Error("Expected at least 1 log entry, got " logs.Length)
         if logs[1]["promptName"] != "Test"

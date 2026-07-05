@@ -277,7 +277,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
                     Send("{Left}{Right}") ; Force scroll-to-cursor
                 }
                 ; Log the API call
-                LLMClient.LogRequest({
+                ApiLogger.LogRequest({
                     timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
                     promptName: promptName,
                     provider: providerName,
