@@ -63,28 +63,33 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         }
     }
 
-    ; If user cancelled, exit
+    ; If user cancelled, clean up but keep window alive (persistent ChatWindow)
     if !manageState("cURL", "get") {
         debugLog("User cancelled streaming request")
         manageState("cURL", "close")
+        deleteTempFiles()
         startLoadingCursor(false)
-        if initialRequest {
-            deleteTempFiles()
-            CustomMessages.notifyResponseWindowState(CustomMessages.WM_RESPONSE_WINDOW_CLOSED,
-                requestParams["uniqueID"], responseWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
-            ExitApp
-        }
-        Exit
+        postWebMessage("setChatButtonsEnabled", true)
+        return
     }
 
     cURLPID := 0
     manageState("cURL", "set", cURLPID)
 
     ; Save full response to chat history and log
-    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest, requestStartTime, streamState.firstTokenTime, streamState.usage)
+    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest, requestStartTime, streamState.firstTokenTime, streamState.usage, streamState.reasoning)
 
-    ; Finalize: tell WebView streaming is done
-    postWebMessage("streamDone", streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"])
+    ; Build DB message data to sync back to WebView (id, siblingInfo, reasoning)
+    dbMsgData := ""
+    if activeThreadId {
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        if path.Length {
+            dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
+        }
+    }
+
+    ; Finalize: tell WebView streaming is done, include DB message data for id sync
+    postWebMessage("streamDone", { model: streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
     debugLog("Streaming complete. streamDone posted.")
 
     ; Post token usage to WebView (streaming)
@@ -163,7 +168,7 @@ readStreamChunk(streamState) {
 }
 
 ; Save the accumulated streaming response to chat history
-saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}) {
+saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "") {
     manageState("model", "add", modelName ? modelName : requestParams["singleAPIModelName"])
 
     ; Snapshot the request BEFORE appending the response
@@ -172,6 +177,30 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
     ; Append assistant message to chat history
     router.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
     manageChatHistoryJSON("set", chatHistoryJSONRequest)
+
+    ; Persist assistant response in SQLite DB
+    if activeThreadId {
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        parentId := path.Length ? path[path.Length].id : ""
+        ; Check for pending retry sibling_group
+        retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
+        retrySiblingIdx := 0
+        if retrySiblingGroup {
+            sibTable := ChatDB.db.Exec("SELECT MAX(sibling_index) as max_idx FROM messages WHERE sibling_group='" retrySiblingGroup "';")
+            retrySiblingIdx := sibTable.count ? Integer(sibTable[1, "max_idx"]) + 1 : 0
+            requestParams.Delete("pendingRetrySiblingGroup")
+        }
+        ChatDB.Msg_Insert({
+            thread_id: activeThreadId,
+            role: "assistant",
+            content: content,
+            model: modelName,
+            parent_id: parentId,
+            sibling_group: retrySiblingGroup,
+            sibling_index: retrySiblingIdx,
+            reasoning: reasoning
+        })
+    }
 
     ; Reconstruct the full JSON response for logging
     ; Include usage data if available (captured from the SSE finish chunk)

@@ -184,47 +184,77 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
         debugLog("JSON request written to: " chatHistoryJSONRequestFile)
         debugLog("stream field in responseWindowDataObj: " (stream && pasteMode = "chat"))
 
-        ; Maintain a reference in the global map
-        getActiveModels()[uniqueID] := {
-            promptName: promptName,
-            name: singleAPIModelName,
-            provider: router,
-            JSONFile: chatHistoryJSONRequestFile,
-            cURLFile: cURLCommandFile,
-            outputFile: cURLOutputFile,
-            errorFile: cURLErrorFile,
-            isLoading: false
-        }
+        ; For chat mode, route through the persistent ChatWindow
+        if pasteMode = "chat" {
+            ; Create a new thread in the DB
+            threadId := ChatDB.Thread_Create(promptName)
 
-        ; Create the Response Window data object
-        responseWindowDataObj := {
-            chatHistoryJSONRequestFile: chatHistoryJSONRequestFile,
-            cURLCommandFile: cURLCommandFile,
-            cURLOutputFile: cURLOutputFile,
-            cURLErrorFile: cURLErrorFile,
-            providerName: providerName,
-            copyAsMarkdown: copyAsMarkdown,
-            pasteMode: pasteMode,
-            isFIM: isFIM,
-            stream: stream && pasteMode = "chat",
-            thinking: (thinking != "") ? { type: thinking } : "",
-            skipConfirmation: skipConfirmation,
-            mainScriptHiddenhWnd: A_ScriptHwnd,
-            responseWindowTitle: promptName " [" singleAPIModelName "]",
-            singleAPIModelName: singleAPIModelName,
-            numberOfAPIModels: APIModels.Length,
-            APIModelsIndex: i,
-            uniqueID: uniqueID,
-            responseWindowFontFace: responseWindowFontFace
-        }
+            ; Insert system prompt if present
+            if systemPrompt {
+                ChatDB.Msg_Insert({
+                    thread_id: threadId,
+                    role: "system",
+                    content: systemPrompt,
+                    parent_id: ""
+                })
+            }
 
-        ; Write the object to a file and run ResponseWindow.ahk
-        dataObjToJSONStr := jsongo.Stringify(responseWindowDataObj)
-        dataObjToJSONStrFile := A_Temp "\" RegExReplace("responseWindowData_" promptName "_" singleAPIModelName "_" A_TickCount ".json",
-            "[\/\\:*?`"<>|]", "")
-        FileOpen(dataObjToJSONStrFile, "w", "UTF-8-RAW").Write(dataObjToJSONStr)
-        getActiveModels()[uniqueID].JSONFile := chatHistoryJSONRequestFile
-        Run(A_ScriptDir "\chat\ResponseWindow.ahk " "`"" dataObjToJSONStrFile)
+            ; Insert captured text as first user message if any (isSet check for FIM mode)
+            if IsSet(userPrompt) && userPrompt {
+                path := ChatDB.Msg_GetActivePath(threadId)
+                parentId := path.Length ? path[path.Length].id : ""
+                ChatDB.Msg_Insert({
+                    thread_id: threadId,
+                    role: "user",
+                    content: userPrompt,
+                    parent_id: parentId
+                })
+            }
+
+            ; Open the ChatWindow with this thread
+            OpenOrSpawnChatWindow(threadId)
+        } else {
+            ; Non-chat mode: run LLM inline and paste result directly (no window)
+            ; Track in active models during processing (for tooltip and reload deferral)
+            getActiveModels()[uniqueID] := {
+                promptName: promptName,
+                name: singleAPIModelName,
+                provider: router,
+                JSONFile: chatHistoryJSONRequestFile,
+                cURLFile: cURLCommandFile,
+                outputFile: cURLOutputFile,
+                errorFile: cURLErrorFile,
+                isLoading: true
+            }
+            manageCursorAndToolTip("Update")
+            cURLCommand := FileOpen(cURLCommandFile, "r", "UTF-8-RAW").Read()
+            Run(cURLCommand, , "Hide", &cURLPID)
+            while ProcessExist(cURLPID)
+                Sleep 250
+            if FileExist(cURLOutputFile) {
+                JSONResponseFromLLM := FileOpen(cURLOutputFile, "r", "UTF-8-RAW").Read()
+                try responseFromLLM := router.extractJSONResponse(jsongo.Parse(JSONResponseFromLLM))
+            }
+            if responseFromLLM && responseFromLLM.HasProp("response") {
+                A_Clipboard := responseFromLLM.response
+                if pasteMode = "append" {
+                    Send("{Right}")       ; Move cursor past the selection before pasting
+                }
+                Send("^v")
+                Sleep 50
+                if pasteMode = "append" {
+                    Send("{Left}{Right}") ; Force scroll-to-cursor
+                }
+            }
+            ; Cleanup
+            getActiveModels()[uniqueID].isLoading := false
+            manageCursorAndToolTip("Update")
+            getActiveModels().Delete(uniqueID)
+            FileDelete(chatHistoryJSONRequestFile)
+            FileDelete(cURLCommandFile)
+            FileExist(cURLOutputFile) ? FileDelete(cURLOutputFile) : ""
+            FileExist(cURLErrorFile) ? FileDelete(cURLErrorFile) : ""
+        }
     }
 }
 
@@ -233,5 +263,22 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 ; ----------------------------------------------------
 
 runOptionsMenuAction(command, *) {
+    ; If command is "Program filepath" format (e.g., "Notepad C:\...\UserConfig.ahk"),
+    ; skip FileExist check — the full string isn't a valid path. Run directly.
+    if (spacePos := InStr(command, " ")) {
+        firstWord := SubStr(command, 1, spacePos - 1)
+        if !InStr(firstWord, "\") && !InStr(firstWord, ":") {
+            Run(command)
+            return
+        }
+    }
+    ; Pure file path — check if it exists, show friendly tooltip if not
+    if (InStr(command, ":") || InStr(command, "\")) {
+        if !FileExist(command) && !InStr(command, "http") {
+            ToolTip("No logs written yet — file hasn't been created", , , 19)
+            SetTimer () => ToolTip(, , , 19), -3000
+            return
+        }
+    }
     Run(command)
 }

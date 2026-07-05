@@ -30,6 +30,9 @@ responseWindowState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
                 Reload()
             }
         case CustomMessages.WM_RESPONSE_WINDOW_LOADING_START:
+            if !getActiveModels().Has(uniqueID) {
+                return
+            }
             getActiveModels()[uniqueID].isLoading := true
             responseWindowLoadingCount++
             if (responseWindowLoadingCount = 1) {
@@ -39,7 +42,10 @@ responseWindowState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
             manageCursorAndToolTip("Update")
 
         case CustomMessages.WM_RESPONSE_WINDOW_LOADING_FINISH:
-            if (responseWindowLoadingCount > 0 && getActiveModels().Has(uniqueID)) {
+            if !getActiveModels().Has(uniqueID) {
+                return
+            }
+            if (responseWindowLoadingCount > 0) {
                 responseWindowLoadingCount--
                 getActiveModels()[uniqueID].isLoading := false
                 if (responseWindowLoadingCount = 0) {
@@ -50,5 +56,11 @@ responseWindowState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
             }
 
         case "reloadScript": reloadScript := true
+
+        case CustomMessages.WM_CHAT_WINDOW_OPENED:
+            OnChatWindowOpened(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd)
+
+        case CustomMessages.WM_CHAT_WINDOW_CLOSED:
+            OnChatWindowClosed(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd)
     }
 }

@@ -55,11 +55,63 @@ mainScriptHotkeyActions(action) {
 }
 
 ; ----------------------------------------------------
+; Initialize Chat DB (persistent chat history)
+; ----------------------------------------------------
+
+ChatDB.Open()
+
+; ----------------------------------------------------
+; Chat window state (single persistent window)
+; ----------------------------------------------------
+
+global chatWindowPID := 0
+global chatWindowhWnd := 0
+
+OpenOrSpawnChatWindow(threadId := "") {
+    global chatWindowPID, chatWindowhWnd
+
+    if chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
+        WinShow("ahk_id " chatWindowhWnd)
+        WinActivate("ahk_id " chatWindowhWnd)
+    } else {
+        ; Get main script's hidden hWnd for IPC
+        mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")
+        ; Pass threadId as third argument (A_Args[2] in ChatWindow.ahk)
+        if threadId
+            Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd, threadId), , , &chatWindowPID)
+        else
+            Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd), , , &chatWindowPID)
+    }
+}
+
+; Handler for chat window opened notification
+OnChatWindowOpened(uniqueID, lParam, msg, hWnd) {
+    global chatWindowhWnd
+    chatWindowhWnd := lParam
+}
+
+OnChatWindowClosed(uniqueID, lParam, msg, hWnd) {
+    global chatWindowhWnd
+    ; Window is hidden, don't clear hWnd — it still exists
+}
+
+; Clean up ChatWindow sub-process when Main.ahk exits
+OnExit(KillChatWindow)
+KillChatWindow(ExitReason, ExitCode) {
+    global chatWindowPID
+    if chatWindowPID
+        ProcessClose(chatWindowPID)
+}
+
+; ----------------------------------------------------
 ; Generate tray menu dynamically from UserConfig.ahk
 ; ----------------------------------------------------
 
 TraySetIcon(iconOn)
 A_TrayMenu.Delete()
+A_TrayMenu.Add("📋 Open Chat Window", (*) => OpenOrSpawnChatWindow())
+A_TrayMenu.Add("📝 New Chat", (*) => OpenOrSpawnChatWindow(ChatDB.Thread_Create()))
+A_TrayMenu.Add()
 for _, item in trayMenuItems {
     switch item.action {
         case "reload": A_TrayMenu.Add(item.menuText, (*) => Reload())

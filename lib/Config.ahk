@@ -7,9 +7,11 @@
 #Include jsongo.v2.ahk              ; JSON parsing
 #Include AutoXYWH.ahk               ; Auto-resizing of GUI controls
 #Include ToolTipEx.ahk              ; Tooltip tracking and dragging
+#Include SQLite\SQLite.ahk          ; SQLite database wrapper
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
 ; Application classes
 #Include ..\api\LLMClient.ahk
 #Include ..\ui\InputWindow.ahk
 #Include ..\ui\CustomMessages.ahk
+#Include ..\chat\ChatDB.ahk          ; Chat persistence (SQLite-backed)

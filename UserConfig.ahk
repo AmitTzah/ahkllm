@@ -53,6 +53,14 @@ darkMode := false
 responseWindowFontFace := "Arial, Segoe UI, Helvetica, Verdana, Tahoma, sans-serif"
 
 ; ----------------------------------------------------
+; UI — Chat Window (persistent chat via ChatWindow.ahk)
+; ----------------------------------------------------
+; Default model used for new free-form chats (opened from tray or ` menu).
+; Must be a valid model name supported by APIEndpoint (e.g. "deepseek-v4-flash",
+; "deepseek-v4-flash", etc.). Users can switch models mid-chat via the sidebar.
+chatDefaultModel := "deepseek-v4-flash"
+
+; ----------------------------------------------------
 ; UI — Input Window
 ; ----------------------------------------------------
 
@@ -297,7 +305,7 @@ prompts := [
         menuText: "&1 - Ask DeepSeek V4 Pro",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek-v4-pro",
-        isCustomPrompt: true,               ; Shows input window for your instruction
+        isCustomPrompt: false,               ; Shows input window for your instruction
         customPromptInitialMessage: "",     ; (no pre-filled text)
         pasteMode: "chat",                      ; Chat interface
         skipConfirmation: false,            ; Shows confirmation before sending

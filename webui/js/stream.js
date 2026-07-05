@@ -77,7 +77,11 @@ function onStreamReasoning(text) {
 }
 
 // Called when streaming is complete
-function onStreamDone(modelName) {
+function onStreamDone(data) {
+  // Support both legacy (string modelName) and new ({ model, dbMsg }) formats
+  var modelName = typeof data === 'string' ? data : (data && data.model ? data.model : '');
+  var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
+
   // Always scroll to bottom on completion and reset the flag
   streamState.userScrolledUp = false;
   var container = document.getElementById('chat-messages');
@@ -118,6 +122,17 @@ function onStreamDone(modelName) {
   if (streamState.contentBuffer) {
     var streamingMessage = { role: 'assistant', content: streamState.contentBuffer };
     if (modelName) streamingMessage.model = modelName;
+    // Apply DB fields (id, siblingInfo, reasoning, feedback) if available
+    if (dbMsg) {
+      if (dbMsg.id) streamingMessage.id = dbMsg.id;
+      if (dbMsg.siblingInfo) streamingMessage.siblingInfo = dbMsg.siblingInfo;
+      if (dbMsg.reasoning) streamingMessage.reasoning = dbMsg.reasoning;
+      if (dbMsg.feedback) streamingMessage.feedback = dbMsg.feedback;
+      // Update the bubble's dataset with the DB id
+      if (streamState.bubble && dbMsg.id) {
+        streamState.bubble.dataset.msgId = dbMsg.id;
+      }
+    }
 
     // Only add if not already in chatMessages (avoid duplicates)
     var found = false;
@@ -130,6 +145,21 @@ function onStreamDone(modelName) {
     if (!found) {
       chatMessages.push(streamingMessage);
       sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
+    }
+    // Add action buttons now that the message is in chatMessages
+    if (streamState.bubble) {
+      addStreamingActions(streamState.bubble, chatMessages.length - 1);
+      // Add branch badge if the message has siblingInfo
+      if (streamingMessage.siblingInfo && streamingMessage.siblingInfo.total > 1) {
+        var badge = createBranchBadge(streamingMessage);
+        // Insert badge after content (matching createMessageBubble behavior)
+        var contentEl = streamState.bubble.querySelector('.message-content');
+        if (contentEl && contentEl.nextSibling) {
+          streamState.bubble.insertBefore(badge, contentEl.nextSibling);
+        } else {
+          streamState.bubble.appendChild(badge);
+        }
+      }
     }
   }
 
@@ -200,4 +230,87 @@ function handleStreamMessage(target, data) {
       onStreamDone(data);
       break;
   }
+}
+
+// Add action buttons to a streaming bubble after completion
+function addStreamingActions(bubble, index) {
+  // Avoid adding twice
+  if (bubble.querySelector('.message-actions')) return;
+
+  var actions = document.createElement('div');
+  actions.className = 'message-actions';
+
+  // Quote button
+  var quoteBtn = document.createElement('button');
+  quoteBtn.className = 'quote-msg-btn';
+  quoteBtn.textContent = '💬 Quote';
+  quoteBtn.title = 'Quote this message';
+  quoteBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    quoteMessage(index);
+  });
+  actions.appendChild(quoteBtn);
+
+  // Copy button
+  var copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-msg-btn';
+  copyBtn.textContent = '📋 Copy';
+  copyBtn.title = 'Copy this message';
+  copyBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    copySingleMessage(index);
+  });
+  actions.appendChild(copyBtn);
+
+  // Edit button
+  var editBtn = document.createElement('button');
+  editBtn.className = 'edit-msg-btn';
+  editBtn.textContent = '✏️ Edit';
+  editBtn.title = 'Edit this message';
+  editBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    editMessage(index);
+  });
+  actions.appendChild(editBtn);
+
+  // Delete button
+  var deleteBtn = document.createElement('button');
+  deleteBtn.className = 'delete-msg-btn';
+  deleteBtn.textContent = '🗑️ Delete';
+  deleteBtn.title = 'Delete this message';
+  deleteBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    deleteMessage(index);
+  });
+  actions.appendChild(deleteBtn);
+
+  // Fork button
+  var forkBtn = document.createElement('button');
+  forkBtn.className = 'fork-msg-btn';
+  forkBtn.textContent = '⑂ Fork';
+  forkBtn.title = 'Fork chat from here';
+  forkBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    forkChat(index);
+  });
+  actions.appendChild(forkBtn);
+
+  // Retry button
+  var retryBtn = document.createElement('button');
+  retryBtn.className = 'retry-msg-btn';
+  retryBtn.textContent = '🔄 Retry';
+  retryBtn.title = 'Retry this response';
+  retryBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    retryLastAssistantMessage();
+  });
+  actions.appendChild(retryBtn);
+
+  // Feedback buttons
+  if (typeof addFeedbackButtons === 'function') {
+    var msg = chatMessages[index];
+    if (msg) addFeedbackButtons(actions, msg, index);
+  }
+
+  bubble.appendChild(actions);
 }

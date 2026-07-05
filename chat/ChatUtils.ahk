@@ -3,10 +3,13 @@
 ; ----------------------------------------------------
 
 manageChatHistoryJSON(action, data := unset) {
-    static JSONRequest := FileOpen(requestParams["chatHistoryJSONRequestFile"], "r", "UTF-8-RAW").Read()
+    static JSONRequest := ""
 
     switch action {
-        case "get": return JSONRequest
+        case "get":
+            if JSONRequest = "" && requestParams.Has("chatHistoryJSONRequestFile") && FileExist(requestParams["chatHistoryJSONRequestFile"])
+                JSONRequest := FileOpen(requestParams["chatHistoryJSONRequestFile"], "r", "UTF-8-RAW").Read()
+            return JSONRequest
         case "set": JSONRequest := data
     }
 }
@@ -62,7 +65,6 @@ deleteTempFiles() {
     FileDelete(requestParams["cURLCommandFile"])
     FileExist(requestParams["cURLOutputFile"]) ? FileDelete(requestParams["cURLOutputFile"]) : ""
     FileExist(requestParams["cURLErrorFile"]) ? FileDelete(requestParams["cURLErrorFile"]) : ""
-    FileDelete(A_Args[1])
 }
 
 ; ----------------------------------------------------
