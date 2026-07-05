@@ -1,5 +1,5 @@
 ; ======================================================
-; ChatCallbacks_Edit.ahk — Edit, undelete, and delete callbacks
+; ChatCallbacks_Edit.ahk — Edit and delete callbacks
 ;
 ; NOTE: #Include'd by ChatWindow.ahk. Has access to:
 ;   activeThreadId, requestParams, ChatDB,
@@ -46,6 +46,7 @@ editMessageFromWebView(params, *) {
         ; Trigger LLM request for the new branch (same as Retry flow)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+        postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
         chatHistoryJSONRequest := BuildAndWriteRequestFiles()
         postWebMessage("setChatButtonsEnabled", false)
         startLoadingCursor(true)
@@ -54,6 +55,7 @@ editMessageFromWebView(params, *) {
         ChatDB.Msg_Edit(id, content)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+        postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
     }
 }
 

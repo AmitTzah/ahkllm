@@ -252,11 +252,30 @@ class ChatDB {
     }
 
     ; Edit message content in-place (overwrite).
-    ; For "edit as branch", use Msg_Insert with sibling_group set.
+    ; Adjusts active_path_tokens for the content change (subtract old, add new).
     static Msg_Edit(msgId, newContent) {
+        ; Capture old content before updating
+        oldTable := ChatDB.db.Exec("SELECT content, thread_id FROM messages WHERE id='" msgId "';")
+        threadId := oldTable.count ? oldTable[1, "thread_id"] : ""
+        oldEstimate := 0
+        if oldTable.count {
+            oldLen := StrLen(oldTable[1, "content"])
+            oldEstimate := oldLen > 3 ? Round(oldLen / 4) : 1
+        }
+        newEstimate := StrLen(newContent) > 3 ? Round(StrLen(newContent) / 4) : 1
+        tokenDelta := newEstimate - oldEstimate
+
         safeContent := SQLite.Escape(newContent)
         ChatDB.db.Exec("UPDATE messages SET content='" safeContent "' WHERE id='" msgId "';")
         ChatDB._TouchThreadByMsg(msgId)
+
+        ; Adjust active_path_tokens on the thread
+        if threadId && tokenDelta != 0 {
+            if tokenDelta > 0
+                ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=active_path_tokens+" tokenDelta " WHERE id='" threadId "';")
+            else
+                ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=MAX(0, active_path_tokens" tokenDelta ") WHERE id='" threadId "';")
+        }
     }
 
     ; Set feedback on a message (1 = thumbs up, -1 = thumbs down, 0 / NULL = clear)
