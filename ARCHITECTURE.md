@@ -19,8 +19,11 @@ ai-automation/
 ├── chat/                            # Persistent chat window (sub-process)
 │   ├── ChatWindow.ahk               # Orchestrator: hotkeys, WebView creation, cURL runner, message dispatch
 │   ├── ChatDB.ahk                   # SQLite wrapper: thread/message CRUD, branching, fork, undo
-│   ├── ChatCallbacks.ahk            # WebMessageReceived handlers: send, retry, edit, delete, branch, fork, feedback, sidebar
-│   ├── ChatUtils.ahk                # postWebMessage, manageState (cURL PID), manageChatHistoryJSON, temp file cleanup
+│   ├── ChatUtils.ahk                # postWebMessage, manageState (cURL PID), temp file cleanup
+│   ├── ChatCallbacks_Message.ahk    # Send + retry callbacks, buildStructuredMessagesFromPath
+│   ├── ChatCallbacks_Edit.ahk       # Edit, undelete, delete callbacks
+│   ├── ChatCallbacks_Branch.ahk     # Branch nav, fork, feedback, Retry button callbacks
+│   ├── ChatCallbacks_Sidebar.ahk    # Thread list, load, new, delete, navigate sidebar callbacks
 │   └── StreamHandler.ahk            # Streaming: cURL polling, SSE parsing, DB persistence, API logging
 │
 ├── api/                             # API client
@@ -276,5 +279,5 @@ When `APIModels` contains multiple comma-separated models and `pasteMode != "cha
 
 ## File Size Warnings
 
-Files exceeding 300 lines (excluding comments/blanks):
-- [`chat/ChatCallbacks.ahk`](ai-automation/chat/ChatCallbacks.ahk) — 324 lines. Contains: undelete, delete, edit, branch switch, fork, feedback, sidebar actions, button click, buildStructuredMessagesFromPath — multiple distinct concerns in one file.
+No modified files exceed 300 lines. Largest is [`chat/ChatCallbacks_Edit.ahk`](ai-automation/chat/ChatCallbacks_Edit.ahk) at ~95 lines.
+[`webui/index.html`](ai-automation/webui/index.html) reduced from 652 to 127 lines by extracting CSS to [`webui/css/chat.css`](ai-automation/webui/css/chat.css).

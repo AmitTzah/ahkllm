@@ -177,7 +177,10 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
 
 #Include ChatUtils.ahk
 #Include StreamHandler.ahk
-#Include ChatCallbacks.ahk
+#Include ChatCallbacks_Message.ahk
+#Include ChatCallbacks_Edit.ahk
+#Include ChatCallbacks_Branch.ahk
+#Include ChatCallbacks_Sidebar.ahk
 
 ; ----------------------------------------------------
 ; Load WebView
