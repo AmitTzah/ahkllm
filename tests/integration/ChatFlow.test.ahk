@@ -1,0 +1,155 @@
+; ======================================================
+; ChatFlow.test.ahk — Integration tests for full chat flow
+;
+; Tests: Thread create → insert messages → get path →
+;        token stats → delete → stats update across branches
+; ======================================================
+
+class ChatFlowTest {
+
+    static __New() {
+        RegisterTestClass("ChatFlowTest")
+    }
+
+    _setup() {
+        if ChatDB.isOpen {
+            oldPath := ChatDB.dbPath
+            ChatDB.Close()
+            try FileDelete(oldPath)
+        }
+        ChatDB.Open(A_Temp "\test_flow_" A_TickCount ".db")
+        return ChatDB.Thread_Create("Flow Test")
+    }
+
+    _teardown() {
+        if ChatDB.isOpen {
+            dbPath := ChatDB.dbPath
+            ChatDB.Close()
+            try FileDelete(dbPath)
+        }
+    }
+
+    ; --------------------
+    ; Full send→DB→path→stats pipeline
+    ; --------------------
+
+    FullPipeline_InsertPathStats() {
+        threadId := this._setup()
+
+        ; Insert messages with proper parent chain
+        sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "You are helpful."})
+        usr1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello", parent_id: sysId})
+        asst1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", parent_id: usr1Id, prompt_tokens: 15, completion_tokens: 3, total_tokens: 18})
+        usr2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "What is 2+2?", parent_id: asst1Id})
+        asst2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "4", model: "deepseek-v4-flash", parent_id: usr2Id, prompt_tokens: 25, completion_tokens: 1, total_tokens: 26})
+
+        ; Verify path length
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 5
+            throw Error("Expected 5 messages in path, got " path.Length)
+
+        ; Verify message order
+        expectedRoles := ["system", "user", "assistant", "user", "assistant"]
+        for i, msg in path {
+            if msg.role != expectedRoles[i]
+                throw Error("Message " i " expected role '" expectedRoles[i] "', got '" msg.role "'")
+        }
+
+        ; Verify stats — context used should be the last assistant's total_tokens
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.activePathTokens <= 0
+            throw Error("Expected activePathTokens > 0, got " stats.activePathTokens)
+        if stats.cumulativeTotalTokens <= 0
+            throw Error("Expected cumulativeTotalTokens > 0")
+        if stats.cumulativeCost <= 0
+            throw Error("Expected cumulativeCost > 0, got " stats.cumulativeCost)
+        if stats.cumulativeCachedTokens < 0
+            throw Error("Expected cumulativeCachedTokens >= 0")
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Delete → path changes
+    ; --------------------
+
+    DeleteMessage_ChangesPath() {
+        threadId := this._setup()
+        sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "s"})
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u", parent_id: sysId})
+        asstId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a", parent_id: usrId})
+
+        ChatDB.Msg_SoftDelete(asstId)
+        ChatDB.Msg_SetActiveLeaf(threadId, usrId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 2
+            throw Error("Expected 2 after delete, got " path.Length)
+        if path[path.Length].role != "user"
+            throw Error("Expected last role 'user' after delete")
+
+        ChatDB.Msg_Undelete(asstId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 3
+            throw Error("Expected 3 after undelete, got " path.Length)
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Branch → siblings → stats
+    ; --------------------
+
+    Branch_BadgeInfo() {
+        threadId := this._setup()
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: usrId})
+        ; Create a sibling via retry-like flow
+        sg := ChatDB._UUID()
+        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" a1Id "';")
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: usrId, sibling_group: sg, sibling_index: 1})
+
+        ; Get sibling info
+        sibs := ChatDB.Msg_GetSiblings(a1Id)
+        if sibs.Length != 2
+            throw Error("Expected 2 siblings, got " sibs.Length)
+        if sibs[1].sibling_index != 0
+            throw Error("Expected first sibling index 0")
+        if sibs[2].sibling_index != 1
+            throw Error("Expected second sibling index 1")
+
+        ; Switch branch
+        result := ChatDB.Msg_SwitchBranch(threadId, a1Id, 1)
+        if result.siblingInfo.total != 2
+            throw Error("Expected sibling total 2 after switch, got " result.siblingInfo.total)
+        if result.path[result.path.Length].content != "a2"
+            throw Error("Expected last message content 'a2' after branch switch")
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Fork → verify copied messages
+    ; --------------------
+
+    ForkThread_MaintainsCount() {
+        threadId := this._setup()
+        sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "system"})
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "user msg", parent_id: sysId})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "asst response", model: "deepseek-v4-flash", parent_id: usrId, prompt_tokens: 10, completion_tokens: 5, total_tokens: 15})
+
+        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+        if !newThreadId
+            throw Error("Fork returned empty thread id")
+
+        path := ChatDB.Msg_GetActivePath(newThreadId)
+        if path.Length != 2
+            throw Error("Expected 2 messages in forked thread, got " path.Length)
+        if path[1].content != "system"
+            throw Error("Expected first forked message 'system'")
+        if path[2].content != "user msg"
+            throw Error("Expected second forked message 'user msg'")
+
+        ChatDB.Thread_Delete(newThreadId)
+        this._teardown()
+    }
+}

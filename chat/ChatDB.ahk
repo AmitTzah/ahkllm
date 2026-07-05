@@ -22,6 +22,13 @@ class ChatDB {
     static Open(dbPath := "") {
         if ChatDB.isOpen
             return
+        ; Safety check: never open production DB in test mode
+        if !dbPath || InStr(dbPath, "LLM-AutoHotkey-Assistant") {
+            if IsSet(testMode) && testMode {
+                FileAppend("[CRITICAL] ChatDB.Open() attempted production DB path in test mode! Path: '" dbPath "'`n", "*")
+                ExitApp(99)
+            }
+        }
         ChatDB.dbPath := dbPath ? dbPath : A_AppData "\LLM-AutoHotkey-Assistant\chat_history.db"
         dirPath := SubStr(ChatDB.dbPath, 1, InStr(ChatDB.dbPath, "\", , -1))
         if !DirExist(dirPath)

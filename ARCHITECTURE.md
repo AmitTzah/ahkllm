@@ -285,3 +285,73 @@ When `APIModels` contains multiple comma-separated models and `pasteMode != "cha
 
 No modified files exceed 300 lines. Largest is [`chat/ChatCallbacks_Edit.ahk`](ai-automation/chat/ChatCallbacks_Edit.ahk) at ~95 lines.
 [`webui/index.html`](ai-automation/webui/index.html) reduced from 652 to 127 lines by extracting CSS to [`webui/css/chat.css`](ai-automation/webui/css/chat.css).
+
+## Testing
+
+### How to Run All Tests (No GUI Popups)
+
+```bash
+"AutoHotkey64.exe" ai-automation/tests/run_tests.ahk
+```
+
+No flags needed. No piping to echo. Run directly.
+
+### Why No Popups
+
+Tests use a 3-layer defense to suppress all AHK GUI:
+
+| Layer | Mechanism | What It Catches |
+|-------|-----------|----------------|
+| `#ErrorStdOut` in script | AHK v2 directive | Load-time parse/syntax errors |
+| `OnError` handler in `run_tests.ahk` | Global error hook | All runtime errors (unassigned vars, type errors) |
+| `test_config.ahk` overrides | `MsgBox()` + `ExitApp()` functions | Production code calling `MsgBox` or `ExitApp` |
+
+`test_config.ahk` also provides mock config globals (`APIKey`, `modelPricing`, `APIEndpoint`), so `UserConfig.ahk` is **never loaded** in test mode — preventing the "no API key" `ExitApp` call.
+
+### Test Structure
+
+```
+ai-automation/tests/
+├── test_config.ahk          # Mock configs + popup suppression (included FIRST)
+├── run_tests.ahk            # Entry point — discovers + runs all test classes
+├── unit/                    # Tests isolated from I/O, DB, network
+│   ├── ChatDB.test.ahk      # DB CRUD, branching, token stats
+│   └── LLMClient.test.ahk   # JSON building, SSE parsing, cost computation
+└── integration/             # Tests across multiple modules (future)
+```
+
+### How Tests Work
+
+Test files define classes with methods. Each method is a single test case. The runner discovers all classes via `RegisterTestClass()` (called in `static __New()`), instantiates each class, and iterates its prototype methods.
+
+A test **passes** if it completes without throwing. A test **fails** if it throws any `Error` object:
+
+```ahk
+class MyTest {
+    static __New() {
+        RegisterTestClass("MyTest")
+    }
+
+    Addition_Works() {
+        result := 2 + 2
+        if result != 4
+            throw Error("Expected 4, got " result)
+    }
+}
+```
+
+### Output Format
+
+```
+[PASS] MyTest.Addition_Works
+[FAIL] MyTest.OtherTest — Expected 4, got 5
+---
+3 tests run | 2 passed | 1 failed
+```
+
+### How New Tests Are Discovered
+
+1. Create a `*.test.ahk` file in `unit/` or `integration/`
+2. Define a class with `static __New()` calling `RegisterTestClass("ClassName")`
+3. Add methods starting with capital letter (methods starting with `_` are treated as helpers)
+4. Add a `#Include` line in [`tests/run_tests.ahk`](ai-automation/tests/run_tests.ahk)
