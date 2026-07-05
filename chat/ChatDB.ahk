@@ -507,7 +507,7 @@ class ChatDB {
         activePathTokens := threadRow.count ? Integer(threadRow[1, "active_path_tokens"]) : 0
 
         ; 2. Read thread-level cumulative counters (persist across deletes — tokens already paid for)
-        threadTable := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost, cumulative_prompt_tokens FROM chat_threads WHERE id='" threadId "';")
+        threadTable := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" threadId "';")
         cumulativePt := threadTable.count ? Integer(threadTable[1, "cumulative_prompt_tokens"]) : 0
         cumulativeCt := threadTable.count ? Integer(threadTable[1, "cumulative_completion_tokens"]) : 0
         cumulativeTt := threadTable.count ? Integer(threadTable[1, "cumulative_total_tokens"]) : 0

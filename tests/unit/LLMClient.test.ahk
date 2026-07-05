@@ -146,7 +146,6 @@ class LLMClientTest {
     ; --------------------
 
     ParseSSELine_Content() {
-        client := this._setup()
         result := SSEParser.ParseLine('data: {"choices":[{"delta":{"content":"Hello"}}]}')
         if result.type != "content"
             throw Error("Expected type 'content', got '" result.type "'")

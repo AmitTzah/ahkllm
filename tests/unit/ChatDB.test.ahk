@@ -1,8 +1,8 @@
 ; ======================================================
 ; ChatDB.test.ahk — Unit tests for ChatDB class
 ;
-; Tests: Msg_Insert, Msg_GetActivePath, Msg_SoftDelete,
-;        Msg_Undelete, Msg_GetThreadStats, Msg_GetSiblings,
+; Tests: Msg_Insert, Msg_GetActivePath, Msg_HardDelete,
+;        Msg_GetThreadStats, Msg_GetSiblings,
 ;        Msg_SetActiveLeaf, Msg_SwitchBranch, Thread_CRUD
 ; ======================================================
 

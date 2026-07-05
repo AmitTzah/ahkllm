@@ -5,8 +5,7 @@
 managePromptState(component, action, data := {}) {
     static state := {
         prompts: prompts,
-        selectedPrompt: {},
-        selectedPromptForMessage: {}
+        selectedPrompt: {}
     }
 
     switch component {
