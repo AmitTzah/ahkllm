@@ -21,20 +21,15 @@
 ChatHotkeys(action) {
     switch action {
         case "Esc":
-            switch {
-                case WinExist(chatWindow.hWnd) && !WinActive(chatWindow.hWnd) && ProcessExist(manageState("cURL", "get")):
-                    manageState("cURL", "close")
-                    postWebMessage("setChatButtonsEnabled", true)
-                case WinActive(chatWindow.hWnd):
-                    switch {
-                        case ProcessExist(manageState("cURL", "get")):
-                            manageState("cURL", "close")
-                            postWebMessage("setChatButtonsEnabled", true)
-                        Default:
-                            chatWindow.Hide()
-                    }
-                case ProcessExist(manageState("cURL", "get")):
-                    manageState("cURL", "close")
+            curlPID := manageState("cURL", "get")
+            hadCurl := ProcessExist(curlPID)
+            if hadCurl {
+                manageState("cURL", "close")
+                postWebMessage("setChatButtonsEnabled", true)
+            }
+            ; Only hide window if no cURL was running (don't hide after cancelling a request)
+            if WinActive("ahk_id " chatWindow.hWnd) && !hadCurl {
+                chatWindow.Hide()
             }
         case "closeWindows":
             switch WinActive("A") {
@@ -60,6 +55,27 @@ requestParams["isFIM"] := false
 requestParams["numberOfAPIModels"] := 1
 requestParams["APIModelsIndex"] := 1
 activeThreadId := ""
+
+; Register IPC handlers for main-script commands
+OnMessage(CustomMessages.WM_LOAD_THREAD, OnLoadThread)
+OnMessage(CustomMessages.WM_NEW_CHAT, OnNewChat)
+
+OnLoadThread(wParam, lParam, msg, hWnd) {
+    global activeThreadId
+    threadId := StrGet(wParam)
+    if threadId {
+        activeThreadId := threadId
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+        postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
+    }
+}
+
+OnNewChat(wParam, lParam, msg, hWnd) {
+    global activeThreadId
+    activeThreadId := ChatDB.Thread_Create()
+    postWebMessage("initChatMode", [])
+}
 
 ; ----------------------------------------------------
 ; Create WebView and router
@@ -87,6 +103,8 @@ OnWebMessageReceived(sender, args) {
                 editMessageFromWebView(parsed)
             case "deleteMessage":
                 deleteMessageFromWebView(parsed.Get("id", ""))
+            case "undeleteMessage":
+                undeleteMessageFromWebView(parsed.Get("id", ""))
             case "switchBranch":
                 switchBranchFromWebView(parsed)
             case "forkChat":
@@ -117,24 +135,19 @@ BuildAndWriteRequestFiles() {
     if !path.Length
         return ""
 
-    msgs := "["
-    for i, msg in path {
-        if i > 1
-            msgs .= ","
-        escapedContent := StrReplace(StrReplace(StrReplace(msg.content, "\", "\\"), '"', '\"'), "`n", "\n")
-        if msg.role = "system"
-            msgs .= '{"role":"system","content":"' escapedContent '"}'
-        else if msg.role = "user"
-            msgs .= '{"role":"user","content":"' escapedContent '"}'
-        else
-            msgs .= '{"role":"assistant","content":"' escapedContent '"}'
+    ; Build messages array as AHK objects for safe JSON serialization
+    apiMessages := []
+    for msg in path {
+        apiMessages.Push({ role: msg.role, content: msg.content })
     }
-    msgs .= "]"
 
-    payload := '{"model":"' requestParams["singleAPIModelName"] '","messages":' msgs
+    requestObj := { model: requestParams["singleAPIModelName"], messages: apiMessages }
     if requestParams["stream"]
-        payload .= ',"stream":true'
-    payload .= "}"
+        requestObj.stream := true
+
+    payload := jsongo.Stringify(requestObj)
+    ; jsongo serializes AHK v2 true/false as integers 1/0 — fix for DeepSeek API
+    payload := StrReplace(payload, '"stream":1', '"stream":true')
 
     uniqueID := A_TickCount
     requestFile := A_Temp "\ChatWindow_Req_" uniqueID ".json"
@@ -155,64 +168,19 @@ BuildAndWriteRequestFiles() {
 }
 
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
-    if requestParams["stream"] {
-        sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
-        return
-    }
-    cURLCommand := FileOpen(requestParams["cURLCommandFile"], "r", "UTF-8").Read()
-    Run(cURLCommand, , "Hide", &cURLPID)
-    manageState("cURL", "set", cURLPID)
-    while ProcessExist(cURLPID)
-        Sleep 250
-    if !manageState("cURL", "get") {
-        manageState("cURL", "close")
-        startLoadingCursor(false)
-        return
-    }
-    manageState("cURL", "set", 0)
-    if !FileExist(requestParams["cURLOutputFile"]) {
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
-        return
-    }
-    JSONResponseFromLLM := FileOpen(requestParams["cURLOutputFile"], "r", "UTF-8").Read()
-    responseFromLLM := router.extractJSONResponse(jsongo.Parse(JSONResponseFromLLM))
-    responseFromLLM.model := StrReplace(SubStr(responseFromLLM.model, InStr(responseFromLLM.model, "/") + 1), ":", "-")
-    router.appendToChatHistory("assistant", responseFromLLM.response, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
-    structuredMessages := buildStructuredMessagesFromPath(ChatDB.Msg_GetActivePath(activeThreadId))
-    if initialRequest
-        postWebMessage("initChatMode", structuredMessages)
-    else {
-        lastMsg := structuredMessages[structuredMessages.Length]
-        postWebMessage("appendChatMessage", lastMsg)
-    }
-    postWebMessage("setChatButtonsEnabled", true)
-    startLoadingCursor(false)
+    sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
 }
 
 ; ----------------------------------------------------
-; Include modules (must be before Load() for HostObjects to be registered on time)
+; Include modules
 ; ----------------------------------------------------
 
-#Include ChatIPC.ahk
 #Include ChatUtils.ahk
 #Include StreamHandler.ahk
 #Include ChatCallbacks.ahk
 
 ; ----------------------------------------------------
-; ----------------------------------------------------
-; Register HostObjects BEFORE Load() — required by WebViewToo
-; ----------------------------------------------------
-; NOTE: HostObjects with { func: ... } pattern are NOT used for JS→AHK calls.
-; Instead, we use window.chrome.webview.postMessage() with WebMessageReceived handler.
-; These registrations are kept for backward compatibility but should not be relied upon.
-
-; Set postWebMessageFn for ChatUtils (used by StreamHandler)
-ChatIPCHandler.postWebMessageFn := (target, data) => postWebMessage(target, data)
-
-; ----------------------------------------------------
-; Load WebView — now that HostObjects are registered
+; Load WebView
 ; ----------------------------------------------------
 
 responseWindow.Load("..\webui\index.html")
@@ -261,7 +229,6 @@ if (A_Args.Length >= 2 && A_Args[2] != "") {
     if path.Length > 0 && path[path.Length].role = "user" {
         chatHistoryJSONRequest := BuildAndWriteRequestFiles()
         if chatHistoryJSONRequest {
-            manageChatHistoryJSON("set", chatHistoryJSONRequest)
             postWebMessage("setChatButtonsEnabled", false)
             sendRequestToLLM(&chatHistoryJSONRequest)
         }

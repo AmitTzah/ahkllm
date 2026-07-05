@@ -7,7 +7,7 @@
 ; NOTE: This file is #Include'd by ChatWindow.ahk. It has access to:
 ;   activeThreadId, requestParams, router, responseWindow, chatWindow,
 ;   ChatDB, BuildAndWriteRequestFiles, postWebMessage, manageState,
-;   manageChatHistoryJSON, startLoadingCursor, debugLog, deleteTempFiles
+;   startLoadingCursor, debugLog, deleteTempFiles
 ; ======================================================
 
 ; ----------------------------------------------------
@@ -47,7 +47,6 @@ chatSendFromWebView(message, *) {
         startLoadingCursor(false)
         return
     }
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
 
     ; Show user message bubble in WebView
     path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -106,7 +105,6 @@ editMessageFromWebView(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
         chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-        manageChatHistoryJSON("set", chatHistoryJSONRequest)
         postWebMessage("setChatButtonsEnabled", false)
         startLoadingCursor(true)
         sendRequestToLLM(&chatHistoryJSONRequest)
@@ -115,6 +113,19 @@ editMessageFromWebView(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
     }
+}
+
+; ----------------------------------------------------
+; Undelete message from WebView (undo delete)
+; ----------------------------------------------------
+
+undeleteMessageFromWebView(msgId, *) {
+    global activeThreadId
+    if !msgId || !activeThreadId
+        return
+    ChatDB.Msg_Undelete(msgId)
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
 }
 
 ; ----------------------------------------------------
@@ -139,9 +150,11 @@ deleteMessageFromWebView(msgId, *) {
     
     ChatDB.Msg_SoftDelete(msgId)
     
-    ; Update active leaf to parent so the path doesn't become empty
+    ; Update active leaf — if parent exists, navigate there; otherwise set to NULL
     if parentId
         ChatDB.Msg_SetActiveLeaf(activeThreadId, parentId)
+    else
+        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id=NULL, updated_at=datetime('now') WHERE id='" activeThreadId "';")
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
@@ -160,9 +173,6 @@ switchBranchFromWebView(params, *) {
     result := ChatDB.Msg_SwitchBranch(activeThreadId, id, direction)
     postWebMessage("initChatMode", buildStructuredMessagesFromPath(result.path))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
-    ; Rebuild temp files for next send
-    chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
 }
 
 ; ----------------------------------------------------
@@ -204,13 +214,18 @@ sidebarActionFromWebView(params, *) {
                 path := ChatDB.Msg_GetActivePath(activeThreadId)
                 postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
                 postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
-                chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-                manageChatHistoryJSON("set", chatHistoryJSONRequest)
+            }
+        case "navigateToMessage":
+            if params.Has("messageId") && activeThreadId {
+                ChatDB.Msg_SetActiveLeaf(activeThreadId, params["messageId"])
+                path := ChatDB.Msg_GetActivePath(activeThreadId)
+                postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+                postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
             }
         case "newChat":
             activeThreadId := ChatDB.Thread_Create()
             postWebMessage("loadThread", activeThreadId)
-            manageChatHistoryJSON("set", "")
+            postWebMessage("threadList", ChatDB.Thread_List())
         case "deleteThread":
             if params.Has("threadId") {
                 threadId := params["threadId"]
@@ -234,7 +249,6 @@ buttonClickAction(action) {
         case "Retry":
             if !activeThreadId
                 return
-            manageState("model", "remove")
             path := ChatDB.Msg_GetActivePath(activeThreadId)
             if path.Length && path[path.Length].role = "assistant" {
                 oldMsg := path[path.Length]
@@ -254,20 +268,9 @@ buttonClickAction(action) {
                     ChatDB.Msg_SetActiveLeaf(activeThreadId, path[path.Length - 1].id)
             }
             chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-            manageChatHistoryJSON("set", chatHistoryJSONRequest)
             postWebMessage("setChatButtonsEnabled", false)
             startLoadingCursor(true)
             sendRequestToLLM(&chatHistoryJSONRequest)
-        case "Close":
-            if ProcessExist(manageState("cURL", "get")) {
-                manageState("cURL", "close")
-                Sleep 100
-            }
-            deleteTempFiles()
-            startLoadingCursor(false)
-            CustomMessages.notifyResponseWindowState(CustomMessages.WM_CHAT_WINDOW_CLOSED,
-                requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
-            chatWindow.Hide()
     }
 }
 

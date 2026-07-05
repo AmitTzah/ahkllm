@@ -10,6 +10,12 @@
 ; Reads the LLM_API_Log.json file and displays it in a
 ; WebViewToo window with expandable request/response details.
 
+; If already open, bring to front and exit
+if WinExist("API Logs Viewer") {
+    WinActivate("API Logs Viewer")
+    ExitApp()
+}
+
 ; Create the Webview Window
 viewerWindow := WebViewToo(, , ,)
 viewerWindow.OnEvent("Close", (*) => ExitApp())

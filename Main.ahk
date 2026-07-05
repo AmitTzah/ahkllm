@@ -65,12 +65,17 @@ ChatDB.Open()
 ; ----------------------------------------------------
 
 global chatWindowPID := 0
+global chatWindowPID := 0
 global chatWindowhWnd := 0
 
 OpenOrSpawnChatWindow(threadId := "") {
     global chatWindowPID, chatWindowhWnd
 
     if chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
+        if threadId {
+            ; IPC: tell running ChatWindow to switch to this thread
+            CustomMessages.notifyLoadThread(threadId, chatWindowhWnd)
+        }
         WinShow("ahk_id " chatWindowhWnd)
         WinActivate("ahk_id " chatWindowhWnd)
     } else {

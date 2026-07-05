@@ -169,14 +169,15 @@ readStreamChunk(streamState) {
 
 ; Save the accumulated streaming response to chat history
 saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "") {
-    manageState("model", "add", modelName ? modelName : requestParams["singleAPIModelName"])
+    ; Guard: don't persist empty assistant messages (e.g. failed API calls)
+    if !content && !reasoning
+        return
 
     ; Snapshot the request BEFORE appending the response
     requestBeforeAppend := chatHistoryJSONRequest
 
     ; Append assistant message to chat history
     router.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
-    manageChatHistoryJSON("set", chatHistoryJSONRequest)
 
     ; Persist assistant response in SQLite DB
     if activeThreadId {

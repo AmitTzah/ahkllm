@@ -185,7 +185,13 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
         debugLog("stream field in responseWindowDataObj: " (stream && pasteMode = "chat"))
 
         ; For chat mode, route through the persistent ChatWindow
+        ; Note: multi-model (Council) is not supported in the single-window chat architecture.
+        ; Only the first model is used for chat mode.
         if pasteMode = "chat" {
+            if APIModels.Length > 1 {
+                ; Log warning but proceed with first model
+                debugLog("WARNING: Multi-model not supported in chat mode. Using only first model: " APIModels[1])
+            }
             ; Create a new thread in the DB
             threadId := ChatDB.Thread_Create(promptName)
 
@@ -213,6 +219,8 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
 
             ; Open the ChatWindow with this thread
             OpenOrSpawnChatWindow(threadId)
+            ; Only process the first model for chat mode (single-window limitation)
+            break
         } else {
             ; Non-chat mode: run LLM inline and paste result directly (no window)
             ; Track in active models during processing (for tooltip and reload deferral)
@@ -227,15 +235,23 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
                 isLoading: true
             }
             manageCursorAndToolTip("Update")
+            requestStartTime := A_TickCount
             cURLCommand := FileOpen(cURLCommandFile, "r", "UTF-8-RAW").Read()
             Run(cURLCommand, , "Hide", &cURLPID)
             while ProcessExist(cURLPID)
                 Sleep 250
+            responseFromLLM := ""
             if FileExist(cURLOutputFile) {
                 JSONResponseFromLLM := FileOpen(cURLOutputFile, "r", "UTF-8-RAW").Read()
-                try responseFromLLM := router.extractJSONResponse(jsongo.Parse(JSONResponseFromLLM))
+                try {
+                    if isFIM
+                        responseFromLLM := router.extractFIMResponse(jsongo.Parse(JSONResponseFromLLM))
+                    else
+                        responseFromLLM := router.extractJSONResponse(jsongo.Parse(JSONResponseFromLLM))
+                }
             }
-            if responseFromLLM && responseFromLLM.HasProp("response") {
+            if IsObject(responseFromLLM) && responseFromLLM.HasProp("response") {
+                latencyMs := A_TickCount - requestStartTime
                 A_Clipboard := responseFromLLM.response
                 if pasteMode = "append" {
                     Send("{Right}")       ; Move cursor past the selection before pasting
@@ -245,6 +261,20 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
                 if pasteMode = "append" {
                     Send("{Left}{Right}") ; Force scroll-to-cursor
                 }
+                ; Log the API call
+                LLMClient.LogRequest({
+                    timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+                    promptName: promptName,
+                    provider: providerName,
+                    model: singleAPIModelName,
+                    isFIM: isFIM,
+                    endpoint: isFIM ? FIMEndpoint : APIEndpoint,
+                    pasteMode: pasteMode,
+                    request: chatHistoryJSONRequest,
+                    response: JSONResponseFromLLM,
+                    status: "success",
+                    latencyMs: latencyMs
+                })
             }
             ; Cleanup
             getActiveModels()[uniqueID].isLoading := false

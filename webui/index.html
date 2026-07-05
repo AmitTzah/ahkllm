@@ -721,7 +721,20 @@
         <script src="./js/vendor/mhchem.min.js"></script>
         <script src="./js/vendor/texmath.min.js"></script>
 
-		<!-- Feature modules (order matters: core first) -->
+		<!--
+		Feature modules — LOAD ORDER IS CRITICAL.
+		chat-core.js must be first (defines chatMessages, initChatMode, addMessageActions).
+		main.js must be last (orchestrates all modules via handleWebMessage).
+		Dependency chain:
+		  chat-core.js (core state, rendering, shared actions)
+		    ↓ chat-branching.js (edit, delete, branch nav, tree viz)
+		    ↓ chat-sidebar.js (thread list sidebar, nav bar)
+		    ↓ chat-quote.js (text selection popup)
+		    ↓ chat-feedback.js (thumbs up/down)
+		    ↓ chat-undo.js (Ctrl+Z/Y — reads chatMessages)
+		    ↓ stream.js (streaming — uses addMessageActions, createBranchBadge)
+		    ↓ main.js (message handler, DOM init, orchestrator)
+		-->
 		<script src="./js/chat-core.js"></script>
 		<script src="./js/chat-branching.js"></script>
 		<script src="./js/chat-sidebar.js"></script>

@@ -67,6 +67,12 @@ function editMessage(index) {
 }
 
 function commitEdit(index, msgId, newContent, mode) {
+  // Record undo state before sending
+  var msg = chatMessages[index];
+  if (msg && mode === 'overwrite') {
+    recordUndo('edit', msgId, { content: msg.content }, { content: newContent });
+  }
+
   window.chrome.webview.postMessage(JSON.stringify({
     action: 'editMessage',
     id: msgId,
@@ -81,6 +87,9 @@ function deleteMessage(index) {
   if (!msg || isLoading) return;
 
   if (!confirm('Delete this message? This removes it from the current view but data is preserved.')) return;
+
+  // Record undo state before deleting
+  recordUndo('delete', msg.id, { content: msg.content, role: msg.role });
 
   window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteMessage', id: msg.id }));
 }
@@ -162,11 +171,11 @@ function renderTreeNode(node, depth) {
 
   div.addEventListener('click', function(e) {
     e.stopPropagation();
-    // Navigate to this message in the tree
+    // Navigate to this specific message (set as active leaf)
     window.chrome.webview.postMessage(JSON.stringify({
-      action: 'switchBranch',
-      id: node.id,
-      direction: 0
+      action: 'sidebarAction',
+      subAction: 'navigateToMessage',
+      messageId: node.id
     }));
     closeTreeModal();
   });

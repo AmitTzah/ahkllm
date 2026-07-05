@@ -8,11 +8,13 @@ var undoStack = [];
 var redoStack = [];
 
 // Record an action for undo
-function recordUndo(action, messageId, beforeState) {
+// beforeState/afterState: { content, role, msgId? }
+function recordUndo(action, messageId, beforeState, afterState) {
   undoStack.push({
     action: action,          // 'edit' | 'delete' | 'branch'
     messageId: messageId,
     beforeState: beforeState, // snapshot before the change
+    afterState: afterState,   // snapshot after the change (for redo)
     timestamp: Date.now()
   });
 
@@ -43,6 +45,7 @@ function undo() {
       break;
     default:
       showUndoNotification('Undo not supported for this action');
+      break;
   }
 }
 
@@ -65,6 +68,7 @@ function redo() {
       break;
     default:
       showUndoNotification('Redo not supported for this action');
+      break;
   }
 }
 
@@ -93,12 +97,23 @@ function redoEdit(action) {
 }
 
 function undoDelete(action) {
-  // Can't truly undo a soft delete from JS side — would need AHK support
-  showUndoNotification('Undo delete not available for soft-deleted messages');
+  // Undo soft-delete: tell AHK to restore the message
+  if (action.messageId) {
+    window.chrome.webview.postMessage(JSON.stringify({
+      action: 'undeleteMessage',
+      id: action.messageId
+    }));
+  }
 }
 
 function redoDelete(action) {
-  showUndoNotification('Redo delete not available');
+  // Re-apply the delete
+  if (action.messageId) {
+    window.chrome.webview.postMessage(JSON.stringify({
+      action: 'deleteMessage',
+      id: action.messageId
+    }));
+  }
 }
 
 // Show a brief notification

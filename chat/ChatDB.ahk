@@ -156,6 +156,18 @@ class ChatDB {
         ChatDB._TouchThreadByMsg(msgId)
     }
 
+    ; Undo soft-delete — restore a previously deleted message
+    static Msg_Undelete(msgId) {
+        ; Only act if the message exists and is soft-deleted
+        checkTable := ChatDB.db.Exec("SELECT is_deleted, thread_id FROM messages WHERE id='" msgId "';")
+        if !checkTable.count || checkTable[1, "is_deleted"] = 0
+            return
+        ChatDB.db.Exec("UPDATE messages SET is_deleted=0 WHERE id='" msgId "';")
+        ; Restore as active leaf
+        threadId := checkTable[1, "thread_id"]
+        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" msgId "', updated_at=datetime('now') WHERE id='" threadId "';")
+    }
+
     ; Edit message content in-place (overwrite).
     ; For "edit as branch", use Msg_Insert with sibling_group set.
     static Msg_Edit(msgId, newContent) {
@@ -328,8 +340,9 @@ class ChatDB {
             safeContent := SQLite.Escape(msg.content)
             safeModel := msg.model ? SQLite.Escape(msg.model) : ""
             safeParent := newParentId ? "'" newParentId "'" : "NULL"
-            safeSiblingGroup := "NULL"
-            siblingIdx := 0
+            ; Preserve sibling_group info when forking
+            safeSiblingGroup := msg.sibling_group ? "'" msg.sibling_group "'" : "NULL"
+            siblingIdx := msg.sibling_index
             safeFeedback := msg.feedback ? msg.feedback : "NULL"
             safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
 

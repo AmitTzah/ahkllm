@@ -92,9 +92,16 @@ function handleWebMessage(event) {
         updateBranchInfo(data);
         break;
 
+      case 'undeleteMessage':
+        // Handled by AHK via message passing — no JS action needed
+        break;
+
       case 'renderChatTree':
-        openTreeModal();
-        renderChatTree(data);
+        // Only render tree content — don't auto-open modal on thread switch
+        var treeContainer = document.getElementById('tree-container');
+        if (treeContainer) {
+          renderChatTree(data);
+        }
         break;
 
       case 'threadList':

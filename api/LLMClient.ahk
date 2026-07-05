@@ -99,30 +99,6 @@ class LLMClient {
         FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
     }
 
-    getMessages(obj) {
-        messages := []
-        for i in obj["messages"] {
-            messages.Push({
-                role: i["role"],
-                content: i["content"]
-            })
-        }
-        return messages
-    }
-
-    removeLastAssistantMessage(&chatHistoryJSONRequest) {
-        obj := jsongo.Parse(chatHistoryJSONRequest)
-        messagesArray := obj["messages"]
-        lastIndex := messagesArray.Length
-        if (messagesArray[lastIndex]["role"] = "assistant") {
-            messagesArray.RemoveAt(lastIndex)
-        }
-        chatHistoryJSONRequest := jsongo.Stringify(obj)
-        ; jsongo serializes AHK v2 true/false as integers 1/0 — fix for DeepSeek API
-        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":1', '"stream":true')
-        chatHistoryJSONRequest := StrReplace(chatHistoryJSONRequest, '"stream":0', '"stream":false')
-    }
-
     buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
         return Format(LLMClient.cURLCommand, this.APIKey, chatHistoryJSONRequestFile, cURLOutputFile)
     }

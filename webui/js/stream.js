@@ -134,12 +134,22 @@ function onStreamDone(data) {
       }
     }
 
-    // Only add if not already in chatMessages (avoid duplicates)
+    // Only add if not already in chatMessages (avoid duplicates — use id if available)
     var found = false;
-    for (var i = chatMessages.length - 1; i >= 0; i--) {
-      if (chatMessages[i].role === 'assistant' && chatMessages[i].content === streamState.contentBuffer) {
-        found = true;
-        break;
+    if (dbMsg && dbMsg.id) {
+      for (var i = chatMessages.length - 1; i >= 0; i--) {
+        if (chatMessages[i].id === dbMsg.id) {
+          found = true;
+          break;
+        }
+      }
+    } else {
+      // Fallback: content-based dedup (no id available from DB)
+      for (var i = chatMessages.length - 1; i >= 0; i--) {
+        if (chatMessages[i].role === 'assistant' && chatMessages[i].content === streamState.contentBuffer) {
+          found = true;
+          break;
+        }
       }
     }
     if (!found) {
@@ -237,80 +247,11 @@ function addStreamingActions(bubble, index) {
   // Avoid adding twice
   if (bubble.querySelector('.message-actions')) return;
 
+  var msg = chatMessages[index];
+  if (!msg) return;
+
   var actions = document.createElement('div');
   actions.className = 'message-actions';
-
-  // Quote button
-  var quoteBtn = document.createElement('button');
-  quoteBtn.className = 'quote-msg-btn';
-  quoteBtn.textContent = '💬 Quote';
-  quoteBtn.title = 'Quote this message';
-  quoteBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    quoteMessage(index);
-  });
-  actions.appendChild(quoteBtn);
-
-  // Copy button
-  var copyBtn = document.createElement('button');
-  copyBtn.className = 'copy-msg-btn';
-  copyBtn.textContent = '📋 Copy';
-  copyBtn.title = 'Copy this message';
-  copyBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    copySingleMessage(index);
-  });
-  actions.appendChild(copyBtn);
-
-  // Edit button
-  var editBtn = document.createElement('button');
-  editBtn.className = 'edit-msg-btn';
-  editBtn.textContent = '✏️ Edit';
-  editBtn.title = 'Edit this message';
-  editBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    editMessage(index);
-  });
-  actions.appendChild(editBtn);
-
-  // Delete button
-  var deleteBtn = document.createElement('button');
-  deleteBtn.className = 'delete-msg-btn';
-  deleteBtn.textContent = '🗑️ Delete';
-  deleteBtn.title = 'Delete this message';
-  deleteBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    deleteMessage(index);
-  });
-  actions.appendChild(deleteBtn);
-
-  // Fork button
-  var forkBtn = document.createElement('button');
-  forkBtn.className = 'fork-msg-btn';
-  forkBtn.textContent = '⑂ Fork';
-  forkBtn.title = 'Fork chat from here';
-  forkBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    forkChat(index);
-  });
-  actions.appendChild(forkBtn);
-
-  // Retry button
-  var retryBtn = document.createElement('button');
-  retryBtn.className = 'retry-msg-btn';
-  retryBtn.textContent = '🔄 Retry';
-  retryBtn.title = 'Retry this response';
-  retryBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    retryLastAssistantMessage();
-  });
-  actions.appendChild(retryBtn);
-
-  // Feedback buttons
-  if (typeof addFeedbackButtons === 'function') {
-    var msg = chatMessages[index];
-    if (msg) addFeedbackButtons(actions, msg, index);
-  }
-
+  addMessageActions(actions, msg, index);
   bubble.appendChild(actions);
 }

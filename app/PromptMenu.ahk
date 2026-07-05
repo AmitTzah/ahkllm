@@ -144,29 +144,6 @@ promptMenuHandler(index, *) {
 ; ----------------------------------------------------
 
 OpenChatPromptHandler(*) {
-    ; Check if text is selected in the active application
-    clipboardBeforeCopy := A_Clipboard
-    A_Clipboard := ""
-    Send("^c")
-    hasSelection := ClipWait(0.3)
-
-    if hasSelection {
-        ; Text is selected — create a new chat thread and send it as first message
-        selectedText := A_Clipboard
-
-        ; Create new thread
-        threadId := ChatDB.Thread_Create("New Chat")
-        OpenOrSpawnChatWindow(threadId)
-
-        ; The ChatWindow will load the empty thread.
-        ; We need to send the selected text as the first user message.
-        ; This is done by the ChatWindow which will receive it as a queued message.
-        ; For now, just open the window — the user can paste the text themselves.
-        ; TODO: pass selected text as first message via IPC
-        A_Clipboard := selectedText  ; restore selection in clipboard
-    } else {
-        ; No selection — just open/restore the chat window
-        A_Clipboard := clipboardBeforeCopy
-        OpenOrSpawnChatWindow()
-    }
+    ; Open or restore the persistent chat window at the last active thread
+    OpenOrSpawnChatWindow()
 }
