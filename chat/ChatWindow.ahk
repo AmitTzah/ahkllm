@@ -86,6 +86,13 @@ responseWindow := WebViewToo(, , ,)
 responseWindow.OnEvent("Close", (*) => responseWindow.Hide())
 global chatWindow := responseWindow
 
+; Set window icon (title bar / taskbar) to match the main script's tray icon
+hIcon := LoadPicture(A_ScriptDir "\..\" iconOn, "w32 h32")
+if hIcon {
+    SendMessage(0x80, 0, hIcon, , "ahk_id " chatWindow.hWnd)  ; WM_SETICON, ICON_BIG (Alt+Tab)
+    SendMessage(0x80, 1, hIcon, , "ahk_id " chatWindow.hWnd)  ; WM_SETICON, ICON_SMALL (title bar / taskbar)
+}
+
 ; Set up WebMessageReceived handler for JS→AHK communication via postMessage
 responseWindow.WebMessageReceived(OnWebMessageReceived)
 OnWebMessageReceived(sender, args) {
