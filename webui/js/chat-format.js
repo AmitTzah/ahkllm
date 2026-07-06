@@ -56,11 +56,11 @@ function showCopiedFeedback(index) {
   if (!container) return;
   var bubbles = container.querySelectorAll('.chat-message');
   if (bubbles[index]) {
-    var copyBtn = bubbles[index].querySelector('.copy-msg-btn');
+    var copyBtn = bubbles[index].querySelector('[data-action="copy"]');
     if (copyBtn) {
-      var originalText = copyBtn.textContent;
-      copyBtn.textContent = '✅ Copied!';
-      setTimeout(function() { copyBtn.textContent = originalText; }, 2000);
+      var originalHTML = copyBtn.innerHTML;
+      copyBtn.innerHTML = '✅';
+      setTimeout(function() { copyBtn.innerHTML = originalHTML; }, 2000);
     }
   }
 }

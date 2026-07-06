@@ -86,22 +86,25 @@ main {
     color: var(--bs-body-color);
 }
 
-/* User: right-aligned bubble within the same column, inset from right edge */
+/* User: right-aligned, action bar below the bubble, not inside it */
 .chat-message.user {
     align-self: flex-end;
     max-width: 70%;
+    margin-right: 0.75rem;
+}
+
+.chat-message.user .user-bubble {
     padding: 12px 20px;
     border-radius: 1.25rem;
-    margin-right: 0.75rem;
     color: var(--bs-body-color);
 }
 
-[data-bs-theme="light"] .chat-message.user {
+[data-bs-theme="light"] .chat-message.user .user-bubble {
     background-color: #f0f0f0;
     border: 1px solid #e0e0e0;
 }
 
-[data-bs-theme="dark"] .chat-message.user {
+[data-bs-theme="dark"] .chat-message.user .user-bubble {
     background-color: #2d2d2d;
     border: 1px solid #3d3d3d;
 }
@@ -150,52 +153,108 @@ main {
     text-decoration: underline;
 }
 
-/* Per-message action buttons — always visible on last message, hover-only on others */
+/* Per-message action buttons — minimal icon-only design */
 .chat-message .message-actions {
     display: flex;
-    gap: 0.25rem;
-    justify-content: flex-end;
+    gap: 0.15rem;
+    align-items: center;
     margin-top: 0.25rem;
-    opacity: 0;
+    opacity: 0.6;
     transition: opacity 0.15s ease;
 }
 
-.chat-message:hover .message-actions,
-.chat-message:last-child .message-actions {
+.chat-message:hover .message-actions {
     opacity: 1;
 }
 
-.chat-message .message-actions button {
+.chat-message.user .message-actions {
+    justify-content: flex-end;
+}
+
+.chat-message.assistant .message-actions {
+    justify-content: flex-start;
+}
+
+/* Minimal icon-only action button */
+.msg-action-btn {
     background: none;
-    border: 1px solid var(--bs-border-color);
+    border: none;
     border-radius: 0.25rem;
-    padding: 2px 6px;
-    font-size: 0.75rem;
+    padding: 2px 5px;
+    font-size: 0.85rem;
     cursor: pointer;
     color: var(--bs-secondary-color);
-    background-color: var(--bs-body-bg);
     transition: all 0.15s ease;
+    line-height: 1;
 }
 
-.chat-message .message-actions button:hover {
-    background-color: var(--bs-tertiary-bg);
+.msg-action-btn:hover {
+    background-color: rgba(var(--bs-secondary-rgb), 0.1);
     color: var(--bs-body-color);
 }
 
-.chat-message.user .message-actions button {
-    color: var(--bs-secondary-color);
-    border-color: var(--bs-border-color);
-    background-color: var(--bs-body-bg);
+.msg-action-btn:active {
+    transform: translateY(1px);
+    background-color: rgba(var(--bs-secondary-rgb), 0.2);
 }
 
-.chat-message.user .message-actions button:hover {
-    background-color: var(--bs-tertiary-bg);
-    color: var(--bs-body-color);
-}
-
-/* Branch arrow buttons (D3) — inline in message-actions */
+/* Branch counter label */
 .branch-label-inline {
     color: var(--bs-secondary-color);
+    font-weight: 500;
+    font-size: 0.75rem;
+    padding: 0 2px;
+    user-select: none;
+}
+
+/* Feedback active states */
+.msg-action-btn.feedback-active-up {
+    color: var(--bs-success);
+}
+
+.msg-action-btn.feedback-active-down {
+    color: var(--bs-danger);
+}
+
+/* More dropdown menu */
+.more-dropdown {
+    position: relative;
+    display: inline-flex;
+}
+
+.more-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    right: 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 0.25rem 0;
+    min-width: 140px;
+    z-index: 100;
+}
+
+.more-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    color: var(--bs-body-color);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.more-menu-item:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+
+.more-menu-item:active {
+    transform: translateY(1px);
+    background-color: rgba(var(--bs-secondary-rgb), 0.15);
 }
 
 /* Send and Copy All buttons */

@@ -92,6 +92,17 @@ function createMessageBubble(msg, index) {
   div.dataset.index = index;
   if (msg.id) div.dataset.msgId = msg.id;
 
+  // For user messages: wrap label + content in a nested bubble div
+  // so the action bar appears below the bubble (matching assistant layout)
+  var bubbleContent = div;
+
+  if (msg.role === 'user') {
+    var innerBubble = document.createElement('div');
+    innerBubble.className = 'user-bubble';
+    div.appendChild(innerBubble);
+    bubbleContent = innerBubble;
+  }
+
   // Role label
   var label = document.createElement('div');
   label.className = 'message-label';
@@ -106,7 +117,7 @@ function createMessageBubble(msg, index) {
       label.textContent = 'System Prompt';
       break;
   }
-  div.appendChild(label);
+  bubbleContent.appendChild(label);
 
   // Reasoning/thinking block (rendered before content if present)
   if (msg.reasoning) {
@@ -123,14 +134,14 @@ function createMessageBubble(msg, index) {
     thinkingContent.textContent = msg.reasoning;
     thinkingDetails.appendChild(thinkingContent);
 
-    div.appendChild(thinkingDetails);
+    bubbleContent.appendChild(thinkingDetails);
   }
 
   // Content (rendered markdown)
   var contentDiv = document.createElement('div');
   contentDiv.className = 'message-content';
   contentDiv.innerHTML = md.render(msg.content || '');
-  div.appendChild(contentDiv);
+  bubbleContent.appendChild(contentDiv);
 
   // Action buttons (branch arrows are inside the action bar via addMessageActions)
   if (msg.role !== 'system') {
@@ -213,105 +224,141 @@ function removeLastAssistantMessage() {
 // ======================================================
 
 function addMessageActions(actionsContainer, msg, index) {
-  // Branch arrows (D3) — first in the action bar, before Quote
-  if (msg.siblingInfo && msg.siblingInfo.total > 1) {
-    var prevBtn = document.createElement('button');
-    prevBtn.textContent = '◀';
-    prevBtn.title = 'Previous branch';
-    prevBtn.style.cssText = 'padding:2px 6px;font-size:0.75rem;';
-    prevBtn.addEventListener('click', function(e) {
+  // Helper: create a minimal icon-only action button
+  function iconBtn(icon, title, onClick) {
+    var btn = document.createElement('button');
+    btn.className = 'msg-action-btn';
+    btn.innerHTML = icon;
+    btn.title = title;
+    btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      switchBranch(msg.id, -1);
+      onClick();
     });
-    actionsContainer.appendChild(prevBtn);
+    return btn;
+  }
+
+  // Helper: create the "More" dropdown menu
+  function createMoreDropdown(items) {
+    var wrapper = document.createElement('span');
+    wrapper.className = 'more-dropdown';
+
+    var toggleBtn = iconBtn('⋯', 'More actions', function() {});
+    toggleBtn.classList.add('more-toggle');
+
+    // Toggle menu on click
+    toggleBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var menu = wrapper.querySelector('.more-menu');
+      var isOpen = menu.style.display === 'block';
+      // Close all other open menus first
+      document.querySelectorAll('.more-menu').forEach(function(m) {
+        m.style.display = 'none';
+      });
+      menu.style.display = isOpen ? 'none' : 'block';
+    });
+
+    var menu = document.createElement('div');
+    menu.className = 'more-menu';
+    menu.style.display = 'none';
+
+    items.forEach(function(item) {
+      var itemBtn = document.createElement('button');
+      itemBtn.className = 'more-menu-item';
+      itemBtn.textContent = item.label;
+      itemBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        item.action();
+        menu.style.display = 'none';
+      });
+      menu.appendChild(itemBtn);
+    });
+
+    wrapper.appendChild(toggleBtn);
+    wrapper.appendChild(menu);
+    return wrapper;
+  }
+
+  // Helper: add branch nav when multiple branches exist
+  function addBranchNav(container, msg) {
+    var totalBranches = msg.siblingInfo ? msg.siblingInfo.total : 1;
+    if (totalBranches <= 1) return;
+
+    container.appendChild(iconBtn('◀', 'Previous branch', function() {
+      switchBranch(msg.id, -1);
+    }));
 
     var label = document.createElement('span');
     label.className = 'branch-label-inline';
-    label.textContent = msg.siblingInfo.index + '/' + msg.siblingInfo.total;
-    label.style.cssText = 'font-weight:600;font-size:0.75rem;min-width:2.5em;text-align:center;color:var(--bs-secondary-color);';
-    actionsContainer.appendChild(label);
+    label.textContent = (msg.siblingInfo ? msg.siblingInfo.index : 1) + '/' + totalBranches;
+    container.appendChild(label);
 
-    var nextBtn = document.createElement('button');
-    nextBtn.textContent = '▶';
-    nextBtn.title = 'Next branch';
-    nextBtn.style.cssText = 'padding:2px 6px;font-size:0.75rem;';
-    nextBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
+    container.appendChild(iconBtn('▶', 'Next branch', function() {
       switchBranch(msg.id, 1);
-    });
-    actionsContainer.appendChild(nextBtn);
+    }));
   }
 
-  // Quote button (D5)
-  var quoteBtn = document.createElement('button');
-  quoteBtn.className = 'quote-msg-btn';
-  quoteBtn.textContent = '💬 Quote';
-  quoteBtn.title = 'Quote this message';
-  quoteBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    quoteMessage(index);
-  });
-  actionsContainer.appendChild(quoteBtn);
+  // --- USER MESSAGE ACTIONS ---
+  if (msg.role === 'user') {
+    var copyBtn = iconBtn('📋', 'Copy', function() {
+      copySingleMessage(index);
+    });
+    copyBtn.dataset.action = 'copy';
+    actionsContainer.appendChild(copyBtn);
 
-  // Copy button
-  var copyBtn = document.createElement('button');
-  copyBtn.className = 'copy-msg-btn';
-  copyBtn.textContent = '📋 Copy';
-  copyBtn.title = 'Copy this message';
-  copyBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    copySingleMessage(index);
-  });
-  actionsContainer.appendChild(copyBtn);
+    actionsContainer.appendChild(iconBtn('✏️', 'Edit', function() {
+      editMessage(index);
+    }));
 
-  // Edit button (D1)
-  var editBtn = document.createElement('button');
-  editBtn.className = 'edit-msg-btn';
-  editBtn.textContent = '✏️ Edit';
-  editBtn.title = 'Edit this message';
-  editBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
+    addBranchNav(actionsContainer, msg);
+
+    // Hidden actions: Quote, Fork, Delete
+    var moreItems = [
+      { label: '💬 Quote', action: function() { quoteMessage(index); } },
+      { label: '↪ Fork',  action: function() { forkChat(index); } },
+      { label: '🗑️ Delete', action: function() { deleteMessage(index); } }
+    ];
+    actionsContainer.appendChild(createMoreDropdown(moreItems));
+    return;
+  }
+
+  // --- ASSISTANT MESSAGE ACTIONS ---
+    var copyBtn = iconBtn('📋', 'Copy', function() {
+      copySingleMessage(index);
+    });
+    copyBtn.dataset.action = 'copy';
+    actionsContainer.appendChild(copyBtn);
+
+  actionsContainer.appendChild(iconBtn('🔄', 'Retry', function() {
+    retryLastAssistantMessage(msg.id);
+  }));
+
+  actionsContainer.appendChild(iconBtn('✏️', 'Edit', function() {
     editMessage(index);
+  }));
+
+  // Feedback buttons
+  var upBtn = iconBtn('👍', 'Thumbs up', function() {
+    var rating = msg.feedback === 1 ? 0 : 1;
+    setFeedback(msg.id, rating, upBtn, downBtn, msg);
   });
-  actionsContainer.appendChild(editBtn);
+  if (msg.feedback === 1) upBtn.classList.add('feedback-active-up');
 
-  // Delete button (D2)
-  var deleteBtn = document.createElement('button');
-  deleteBtn.className = 'delete-msg-btn';
-  deleteBtn.textContent = '🗑️ Delete';
-  deleteBtn.title = 'Delete this message';
-  deleteBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    deleteMessage(index);
+  var downBtn = iconBtn('👎', 'Thumbs down', function() {
+    var rating = msg.feedback === -1 ? 0 : -1;
+    setFeedback(msg.id, rating, upBtn, downBtn, msg);
   });
-  actionsContainer.appendChild(deleteBtn);
+  if (msg.feedback === -1) downBtn.classList.add('feedback-active-down');
 
-  // Fork button (D7)
-  var forkBtn = document.createElement('button');
-  forkBtn.className = 'fork-msg-btn';
-  forkBtn.textContent = '↪ Fork';
-  forkBtn.title = 'Fork chat from here';
-  forkBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    forkChat(index);
-  });
-  actionsContainer.appendChild(forkBtn);
+  actionsContainer.appendChild(upBtn);
+  actionsContainer.appendChild(downBtn);
 
-  // Retry button (assistant messages only)
-  if (msg.role === 'assistant') {
-    var retryBtn = document.createElement('button');
-    retryBtn.className = 'retry-msg-btn';
-    retryBtn.textContent = '🔄 Retry';
-    retryBtn.title = 'Retry this response';
-    retryBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      retryLastAssistantMessage(msg.id);
-    });
-    actionsContainer.appendChild(retryBtn);
+  addBranchNav(actionsContainer, msg);
 
-    // Feedback buttons (D8)
-    if (typeof addFeedbackButtons === 'function') {
-      addFeedbackButtons(actionsContainer, msg, index);
-    }
-  }
+  // Hidden actions: Quote, Fork, Delete
+  var moreItems = [
+    { label: '💬 Quote', action: function() { quoteMessage(index); } },
+    { label: '↪ Fork',  action: function() { forkChat(index); } },
+    { label: '🗑️ Delete', action: function() { deleteMessage(index); } }
+  ];
+  actionsContainer.appendChild(createMoreDropdown(moreItems));
 }

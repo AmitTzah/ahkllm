@@ -8,6 +8,14 @@ var isChatMode = false;
 var isLoading = false;
 var activeThreadId = "";
 
+// Close all dropdown menus when clicking outside
+document.addEventListener('click', function() {
+  var menus = document.querySelectorAll('.more-menu');
+  for (var i = 0; i < menus.length; i++) {
+    menus[i].style.display = 'none';
+  }
+});
+
 // Initialize chat mode — called by AHK when a thread loads
 function initChatMode(messages) {
   isChatMode = true;

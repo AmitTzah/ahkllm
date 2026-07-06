@@ -55,7 +55,6 @@ function editMessage(index) {
   cancelBtn.style.cssText = 'padding:4px 12px;border-radius:0.25rem;border:1px solid var(--bs-border-color);cursor:pointer;background:var(--bs-body-bg);color:var(--bs-secondary-color);font-size:0.8rem;';
   cancelBtn.addEventListener('click', function() {
     contentDiv.innerHTML = md.render(msg.content);
-    contentDiv.removeChild(textarea);
     if (actions) actions.style.display = 'flex';
     editActions.remove();
   });
