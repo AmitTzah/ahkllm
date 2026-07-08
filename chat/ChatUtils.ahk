@@ -75,6 +75,31 @@ debugLog(message) {
 }
 
 ; ----------------------------------------------------
+; Build structured messages array from DB path for WebView
+; Used by ChatIPC, ChatCallbacks, StreamHandler — defined here
+; as a shared utility rather than in a callbacks file.
+; ----------------------------------------------------
+
+buildStructuredMessagesFromPath(path) {
+    structuredMessages := []
+    for msg in path {
+        msgObj := { role: msg.role, content: msg.content, id: msg.id }
+        if msg.role = "assistant" && msg.model
+            msgObj.model := msg.model
+        if msg.sibling_group {
+            siblings := ChatDB.Msg_GetSiblings(msg.id)
+            msgObj.siblingInfo := { index: msg.sibling_index + 1, total: siblings.Length }
+        }
+        if msg.feedback
+            msgObj.feedback := msg.feedback
+        if msg.HasProp("reasoning") && msg.reasoning
+            msgObj.reasoning := msg.reasoning
+        structuredMessages.Push(msgObj)
+    }
+    return structuredMessages
+}
+
+; ----------------------------------------------------
 ; Generate a thread title from the first user+assistant exchange
 ; Fire-and-forget: runs asynchronously via SetTimer, never blocks
 ; ----------------------------------------------------

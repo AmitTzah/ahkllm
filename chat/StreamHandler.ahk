@@ -145,93 +145,19 @@ _finalizeStreaming() {
         _readStreamChunkFromParams()
         debugLog("After final readStreamChunk. Total content length=" StrLen(requestParams["_streamContent"]) " reasoning length=" StrLen(requestParams["_streamReasoning"]))
 
+        ; Check for empty response (API error, connectivity issue, etc.)
         if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
-            errorFile := requestParams["cURLErrorFile"]
-            if FileExist(errorFile) {
-                errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
-                debugLog("cURL stderr: " Trim(errorContent))
-            }
-            if FileExist(requestParams["_streamOutputFile"]) {
-                rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
-                debugLog("cURL output (error): " SubStr(rawOutput, 1, 500))
-                try {
-                    parsedError := jsongo.Parse(rawOutput)
-                    if parsedError.Has("error") && parsedError["error"].Has("message") {
-                        errMsg := parsedError["error"]["message"]
-                        postWebMessage("showError", { message: errMsg })
-                    }
-                }
-            }
-            if !FileExist(requestParams["_streamOutputFile"]) || !FileOpen(requestParams["_streamOutputFile"], "r").Read() {
-                postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
-            }
+            _handleStreamError()
         }
 
         wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
 
         if wasCancelled {
-            debugLog("User cancelled streaming request")
-            manageState("cURL", "close")
-
-            if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
-                path := ChatDB.Msg_GetActivePath(activeThreadId)
-                parentId := path.Length ? path[path.Length].id : ""
-                ChatDB.Msg_Insert({
-                    thread_id: activeThreadId, role: "assistant",
-                    content: requestParams["_streamContent"],
-                    model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
-                    parent_id: parentId, sibling_group: "", sibling_index: 0,
-                    reasoning: requestParams["_streamReasoning"],
-                    prompt_tokens: requestParams["_streamUsage"].HasOwnProp("promptTokens") ? requestParams["_streamUsage"].promptTokens : 0,
-                    completion_tokens: requestParams["_streamUsage"].HasOwnProp("completionTokens") ? requestParams["_streamUsage"].completionTokens : 0,
-                    total_tokens: requestParams["_streamUsage"].HasOwnProp("totalTokens") ? requestParams["_streamUsage"].totalTokens : 0,
-                    cached_tokens: requestParams["_streamUsage"].HasOwnProp("cachedTokens") ? requestParams["_streamUsage"].cachedTokens : 0
-                })
-                if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
-                    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
-                    if threadInfo.count {
-                        currentTitle := threadInfo[1, "title"]
-                        if currentTitle = "New Chat" || InStr(currentTitle, "(")
-                            SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
-                    }
-                }
-                dbMsgData := buildStructuredMessagesFromPath([ChatDB.Msg_GetActivePath(activeThreadId)[ChatDB.Msg_GetActivePath(activeThreadId).Length]])[1]
-                postWebMessage("streamCancelled", { dbMsg: dbMsgData })
-            } else {
-                postWebMessage("streamCancelled", true)
-            }
-
-            _cleanupStreamState()
-            deleteTempFiles()
-            startLoadingCursor(false)
-            postWebMessage("setChatButtonsEnabled", true)
+            _handleStreamCancelled()
             return
         }
 
-        ; Normal completion
-        try {
-            manageState("cURL", "set", 0)
-
-            chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
-            saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
-
-            dbMsgData := ""
-            if activeThreadId {
-                path := ChatDB.Msg_GetActivePath(activeThreadId)
-                if path.Length
-                    dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
-            }
-
-            postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
-
-            postThreadStats(activeThreadId)
-            postWebMessage("setChatButtonsEnabled", true)
-            startLoadingCursor(false)
-        } catch Error as normErr {
-            debugLog("Stream completion error: " normErr.Message "`nStack: " normErr.Stack)
-            postWebMessage("showError", { message: "Request failed: " normErr.Message })
-        }
-
+        _handleStreamComplete()
         _cleanupStreamState()
     } catch Error as e {
         debugLog("_finalizeStreaming error: " e.Message)
@@ -239,6 +165,97 @@ _finalizeStreaming() {
         startLoadingCursor(false)
         postWebMessage("showError", { message: "Request failed: " e.Message })
         _cleanupStreamState()
+    }
+}
+
+_handleStreamError() {
+    errorFile := requestParams["cURLErrorFile"]
+    if FileExist(errorFile) {
+        errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
+        debugLog("cURL stderr: " Trim(errorContent))
+    }
+    if FileExist(requestParams["_streamOutputFile"]) {
+        rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
+        debugLog("cURL output (error): " SubStr(rawOutput, 1, 500))
+        try {
+            parsedError := jsongo.Parse(rawOutput)
+            if parsedError.Has("error") && parsedError["error"].Has("message") {
+                errMsg := parsedError["error"]["message"]
+                postWebMessage("showError", { message: errMsg })
+            }
+        }
+    }
+    if !FileExist(requestParams["_streamOutputFile"]) || !FileOpen(requestParams["_streamOutputFile"], "r").Read() {
+        postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
+    }
+}
+
+_handleStreamCancelled() {
+    debugLog("User cancelled streaming request")
+    manageState("cURL", "close")
+
+    if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        parentId := path.Length ? path[path.Length].id : ""
+        ChatDB.Msg_Insert({
+            thread_id: activeThreadId, role: "assistant",
+            content: requestParams["_streamContent"],
+            model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
+            parent_id: parentId, sibling_group: "", sibling_index: 0,
+            reasoning: requestParams["_streamReasoning"],
+            prompt_tokens: requestParams["_streamUsage"].HasOwnProp("promptTokens") ? requestParams["_streamUsage"].promptTokens : 0,
+            completion_tokens: requestParams["_streamUsage"].HasOwnProp("completionTokens") ? requestParams["_streamUsage"].completionTokens : 0,
+            total_tokens: requestParams["_streamUsage"].HasOwnProp("totalTokens") ? requestParams["_streamUsage"].totalTokens : 0,
+            cached_tokens: requestParams["_streamUsage"].HasOwnProp("cachedTokens") ? requestParams["_streamUsage"].cachedTokens : 0
+        })
+        _maybeGenerateTitle(path)
+        dbMsgData := buildStructuredMessagesFromPath([ChatDB.Msg_GetActivePath(activeThreadId)[ChatDB.Msg_GetActivePath(activeThreadId).Length]])[1]
+        postWebMessage("streamCancelled", { dbMsg: dbMsgData })
+    } else {
+        postWebMessage("streamCancelled", true)
+    }
+
+    _cleanupStreamState()
+    deleteTempFiles()
+    startLoadingCursor(false)
+    postWebMessage("setChatButtonsEnabled", true)
+}
+
+_handleStreamComplete() {
+    try {
+        manageState("cURL", "set", 0)
+
+        chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
+        saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
+
+        dbMsgData := ""
+        if activeThreadId {
+            path := ChatDB.Msg_GetActivePath(activeThreadId)
+            if path.Length
+                dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
+        }
+
+        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
+
+        postThreadStats(activeThreadId)
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+    } catch Error as normErr {
+        debugLog("Stream completion error: " normErr.Message "`nStack: " normErr.Stack)
+        postWebMessage("showError", { message: "Request failed: " normErr.Message })
+    }
+}
+
+; Trigger title generation if this is the first assistant response and title is still default.
+; Extracted to eliminate duplication between cancellation and normal completion paths.
+_maybeGenerateTitle(path) {
+    if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
+        threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
+        if threadInfo.count {
+            currentTitle := threadInfo[1, "title"]
+            if currentTitle = "New Chat" || InStr(currentTitle, "(")
+                SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
+        }
     }
 }
 
@@ -350,14 +367,7 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
             reasoning: reasoning, prompt_tokens: pt, completion_tokens: ct, total_tokens: tt, cached_tokens: ckt
         })
 
-        if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
-            threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
-            if threadInfo.count {
-                currentTitle := threadInfo[1, "title"]
-                if currentTitle = "New Chat" || InStr(currentTitle, "(")
-                    SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
-            }
-        }
+        _maybeGenerateTitle(path)
     }
 
     logEntry := {
