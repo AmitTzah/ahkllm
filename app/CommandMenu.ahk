@@ -10,19 +10,19 @@ buildCommandMenu() {
     commandMenu.Add("&1 - Open Chat", (*) => OpenChatCommandHandler())
 
     ; Normal commands
-    for index, command in manageCommandState("commands", "get") {
+    for index, command in commands {
 
         ; Check if command has tags
         hasTags := command.HasProp("tags") && command.tags && command.tags.Length > 0
 
         ; If command has a directAccelerator, add a top-level shortcut
         if command.HasProp("directAccelerator") && command.directAccelerator {
-            commandMenu.Add(command.directAccelerator . " - " . command.commandName, commandMenuHandler.Bind(index))
+            commandMenu.Add(command.directAccelerator . " - " . command.commandName, onCommandSelected.Bind(index))
         }
 
         ; If no tags, add directly to menu and continue
         if !hasTags {
-            commandMenu.Add(command.menuText, commandMenuHandler.Bind(index))
+            commandMenu.Add(command.menuText, onCommandSelected.Bind(index))
             continue
         }
 
@@ -37,7 +37,7 @@ buildCommandMenu() {
             }
 
             ; Add command to tag menu
-            tagsMap[normalizedTag].menu.Add(command.menuText, commandMenuHandler.Bind(index))
+            tagsMap[normalizedTag].menu.Add(command.menuText, onCommandSelected.Bind(index))
         }
     }
 
@@ -56,33 +56,32 @@ buildCommandMenu() {
 ; Command menu handler function
 ; ----------------------------------------------------
 
-commandMenuHandler(index, *) {
-    commandsList := manageCommandState("commands", "get")
-    selectedCommand := commandsList[index]
+onCommandSelected(index, *) {
+    cmd := commands[index]
     if (selectedCommand.HasProp("isCustomCommand") && selectedCommand.isCustomCommand) {
 
         ; Save the command for future reference in customCommandSendButtonAction(*)
-        manageCommandState("selectedCommand", "set", selectedCommand)
+        setSelectedCommand(cmd)
 
         ; Set skipConfirmation property based on the command
-        customCommandInputWindow.setSkipConfirmation(selectedCommand.HasProp("skipConfirmation") ? selectedCommand.skipConfirmation : false)
+        commandInputWindow.setSkipConfirmation(cmd.HasProp("skipConfirmation") ? cmd.skipConfirmation : false)
 
-        customCommandInputWindow.showInputWindow(selectedCommand.HasProp("customInputInitialMessage")
-            ? selectedCommand.customInputInitialMessage : unset, selectedCommand.commandName, "ahk_id " customCommandInputWindow
+        commandInputWindow.showInputWindow(cmd.HasProp("customInputInitialMessage")
+            ? cmd.customInputInitialMessage : unset, cmd.commandName, "ahk_id " commandInputWindow
         .guiObj.hWnd)
     } else {
-    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemMessage,
-        selectedCommand.APIModels,
-        selectedCommand.HasProp("copyAsMarkdown") && selectedCommand.copyAsMarkdown,
-        selectedCommand.HasProp("pasteMode") ? selectedCommand.pasteMode : "chat",
-        selectedCommand.HasProp("skipConfirmation") && selectedCommand.skipConfirmation,
-        selectedCommand.HasProp("isFIM") && selectedCommand.isFIM,
+    processInitialRequest(cmd.commandName, cmd.menuText, cmd.systemMessage,
+        cmd.APIModels,
+        cmd.HasProp("copyAsMarkdown") && cmd.copyAsMarkdown,
+        cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat",
+        cmd.HasProp("skipConfirmation") && cmd.skipConfirmation,
+        cmd.HasProp("isFIM") && cmd.isFIM,
         "",  ; customInputMessage (not applicable for non-custom commands)
-        selectedCommand.HasProp("temperature") ? selectedCommand.temperature : "",
-        selectedCommand.HasProp("maxTokens") ? selectedCommand.maxTokens : "",
-        selectedCommand.HasProp("stop") ? selectedCommand.stop : "",
-        selectedCommand.HasProp("stream") && selectedCommand.stream,
-        selectedCommand.HasProp("thinking") && selectedCommand.thinking ? selectedCommand.thinking["type"] : "")
+        cmd.HasProp("temperature") ? cmd.temperature : "",
+        cmd.HasProp("maxTokens") ? cmd.maxTokens : "",
+        cmd.HasProp("stop") ? cmd.stop : "",
+        cmd.HasProp("stream") && cmd.stream,
+        cmd.HasProp("thinking") && cmd.thinking ? cmd.thinking["type"] : "")
     }
 }
 
@@ -92,5 +91,5 @@ commandMenuHandler(index, *) {
 
 OpenChatCommandHandler(*) {
     ; Open or restore the persistent chat window at the last active thread
-    OpenOrSpawnChatWindow()
+    openChatWindow()
 }

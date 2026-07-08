@@ -10,17 +10,20 @@ class ApiLogger {
     static logFilePath := A_Temp "\LLM_API_Log.json"
 
     ; Logs a single API interaction entry
-    static LogRequest(entry) {
-        if (apiLogMaxEntries <= 0) {
-            return
-        }
-
-        logs := []
+    static _readLogFile() {
         if FileExist(this.logFilePath) {
             try {
-                logs := jsongo.Parse(FileOpen(this.logFilePath, "r", "UTF-8-RAW").Read())
+                return jsongo.Parse(FileOpen(this.logFilePath, "r", "UTF-8-RAW").Read())
             }
         }
+        return []
+    }
+
+    static LogRequest(entry) {
+        if (apiLogMaxEntries <= 0)
+            return
+
+        logs := this._readLogFile()
 
         ; Add timestamp if not already present
         if !entry.HasProp("timestamp") || entry.timestamp = "" {
@@ -39,13 +42,7 @@ class ApiLogger {
 
     ; Reads the log file and returns the entries array (newest first)
     static ReadLogs() {
-        logs := []
-        if FileExist(this.logFilePath) {
-            try {
-                logs := jsongo.Parse(FileOpen(this.logFilePath, "r", "UTF-8-RAW").Read())
-            }
-        }
-        return logs
+        return this._readLogFile()
     }
 
     ; Clears the log file entirely

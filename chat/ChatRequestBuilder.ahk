@@ -1,7 +1,7 @@
 ; ======================================================
 ; ChatRequestBuilder.ahk — LLM request pipeline
 ;
-; BuildAndWriteRequestFiles has 3 responsibilities:
+; buildRequest has 3 responsibilities:
 ;   1. VALIDATE — check API key is configured for the provider
 ;   2. BUILD — construct the JSON request from DB messages + overrides
 ;   3. WRITE — persist request + cURL command to temp files
@@ -9,10 +9,10 @@
 ; (providerInfo, apiMessages, requestObj) that would be awkward
 ; to pass between separate functions.
 ;
-; Also: sendRequestToLLM (thin wrapper) and cancelStreamFromWebView.
+; Also: sendRequestToLLM (thin wrapper) and handleCancelStream.
 ; ======================================================
 
-BuildAndWriteRequestFiles() {
+buildRequest() {
     if !activeThreadId
         return ""
     path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -57,12 +57,8 @@ BuildAndWriteRequestFiles() {
         }
     }
 
-    ; Strip provider prefix from model name for API call (e.g. "deepseek/deepseek-v4-flash" → "deepseek-v4-flash")
-    apiModelName := requestParams["singleAPIModelName"]
-    slashPos := InStr(apiModelName, "/")
-    if slashPos > 0 {
-        apiModelName := SubStr(apiModelName, slashPos + 1)
-    }
+    ; Strip provider prefix from model name for API call
+    apiModelName := ModelParser.StripProvider(requestParams["singleAPIModelName"])
     requestObj := { model: apiModelName, messages: apiMessages }
 
     ; Apply reasoning override with per-provider thinking control.
@@ -129,7 +125,21 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
     sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
 }
 
-cancelStreamFromWebView() {
+; Build request, fire to LLM, handle errors. Replaces 5 duplicate call sites.
+_BuildAndFireRequest() {
+    chatHistoryJSONRequest := buildRequest()
+    if !chatHistoryJSONRequest {
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+        return false
+    }
+    postWebMessage("setChatButtonsEnabled", false)
+    startLoadingCursor(true)
+    sendRequestToLLM(&chatHistoryJSONRequest)
+    return true
+}
+
+handleCancelStream() {
     ; Kill cURL to stop generation server-side (closing TCP connection).
     ; Usage data is lost (only in final SSE chunk), but we avoid billing
     ; for un-displayed tokens. Token estimates are computed from what we captured.

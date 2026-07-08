@@ -28,11 +28,7 @@ class CostCalculator {
 
         ; Fallback: try the old modelPricing map (model name without provider prefix)
         if !inputPrice && !outputPrice {
-            modelShort := model
-            slashPos := InStr(model, "/")
-            if slashPos > 0 {
-                modelShort := SubStr(model, slashPos + 1)
-            }
+            modelShort := ModelParser.StripProvider(model)
 
             if modelPricing.Has(modelShort) {
                 pricing := modelPricing[modelShort]

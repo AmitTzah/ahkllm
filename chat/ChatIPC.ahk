@@ -30,15 +30,8 @@ OnTriggerLLM(wParam, lParam, msg, hWnd) {
     if !activeThreadId
         return
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    if path.Length > 0 && path[path.Length].role = "user" {
-        postWebMessage("setChatButtonsEnabled", false)
-        chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-        if chatHistoryJSONRequest {
-            sendRequestToLLM(&chatHistoryJSONRequest)
-        } else {
-            postWebMessage("setChatButtonsEnabled", true)
-        }
-    }
+    if path.Length > 0 && path[path.Length].role = "user"
+        _BuildAndFireRequest()
 }
 
 OnNewChat(wParam, lParam, msg, hWnd) {
@@ -52,23 +45,11 @@ OnNewChat(wParam, lParam, msg, hWnd) {
 ; Unified thread loader — used by both IPC path (OnLoadThread) and
 ; command-line-arg path (ChatWindow startup). Eliminates duplication.
 LoadThreadIntoUI(threadId, autoFire := false) {
-    global activeThreadId
-    activeThreadId := threadId
-    _restoreThreadSettings(activeThreadId)
-    path := ChatDB.Msg_GetActivePath(activeThreadId)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-    postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
-    postThreadStats(activeThreadId)
-    _sendDropdownLabel()
+    _LoadThreadAndRefreshUI(threadId)
     ; Auto-trigger LLM when spawning fresh with a threadId (command-line-arg path).
-    ; IPC path uses separate WM_TRIGGER_LLM sent by processInitialRequest.
-    if autoFire && path.Length > 0 && path[path.Length].role = "user" {
-        postWebMessage("setChatButtonsEnabled", false)
-        chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-        if chatHistoryJSONRequest {
-            sendRequestToLLM(&chatHistoryJSONRequest)
-        } else {
-            postWebMessage("setChatButtonsEnabled", true)
-        }
+    if autoFire {
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        if path.Length > 0 && path[path.Length].role = "user"
+            _BuildAndFireRequest()
     }
 }

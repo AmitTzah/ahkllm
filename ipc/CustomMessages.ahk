@@ -4,8 +4,8 @@
 
 class CustomMessages {
     ; Loading cursor notifications (main script → tooltip + cursor)
-    static WM_RESPONSE_WINDOW_LOADING_START := 0x400 + 123
-    static WM_RESPONSE_WINDOW_LOADING_FINISH := 0x400 + 124
+    static WM_LOADING_START := 0x400 + 123
+    static WM_LOADING_FINISH := 0x400 + 124
 
     ; Single-window chat model messages
     ; NOTE: Must use 0x500+ range — WebView2 uses 0x400-0x4FF for internal messages.
@@ -18,8 +18,8 @@ class CustomMessages {
     static registerHandlers(origin, handle) {
         switch origin {
             case "mainScript":
-                for msg in [this.WM_RESPONSE_WINDOW_LOADING_START,
-                    this.WM_RESPONSE_WINDOW_LOADING_FINISH,
+                for msg in [this.WM_LOADING_START,
+                    this.WM_LOADING_FINISH,
                     this.WM_CHAT_WINDOW_OPENED]
                     OnMessage(msg, handle)
 
@@ -29,12 +29,12 @@ class CustomMessages {
         }
     }
 
-    static notifyResponseWindowState(state, uniqueID, responseWindowhWnd := unset, mainScriptHiddenhWnd := unset) {
+    static notifyLoadingState(state, uniqueID, responseWindowhWnd := unset, mainScriptHiddenhWnd := unset) {
         try {
             switch state {
                 case this.WM_CHAT_WINDOW_OPENED:
                     PostMessage(state, uniqueID, responseWindowhWnd, , "ahk_id " mainScriptHiddenhWnd)
-                case this.WM_RESPONSE_WINDOW_LOADING_START, this.WM_RESPONSE_WINDOW_LOADING_FINISH:
+                case this.WM_LOADING_START, this.WM_LOADING_FINISH:
                     PostMessage(state, uniqueID, 0, , "ahk_id " mainScriptHiddenhWnd)
             }
         }

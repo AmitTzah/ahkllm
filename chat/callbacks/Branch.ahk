@@ -13,7 +13,7 @@
 ; Switch branch from WebView (D3)
 ; ----------------------------------------------------
 
-switchBranchFromWebView(params, *) {
+handleBranchSwitch(params, *) {
     global activeThreadId
     if !params.Has("id") || !activeThreadId
         return
@@ -29,7 +29,7 @@ switchBranchFromWebView(params, *) {
 ; Fork/duplicate chat from WebView (D7)
 ; ----------------------------------------------------
 
-forkChatFromWebView(msgId, *) {
+handleFork(msgId, *) {
     global activeThreadId
     if !msgId || !activeThreadId
         return
@@ -42,7 +42,7 @@ forkChatFromWebView(msgId, *) {
 ; Set message feedback from WebView (D8)
 ; ----------------------------------------------------
 
-setFeedbackFromWebView(params, *) {
+handleFeedback(params, *) {
     if !params.Has("id")
         return
     ChatDB.Msg_SetFeedback(params["id"], params.Has("rating") ? params["rating"] : 0)
@@ -52,10 +52,8 @@ setFeedbackFromWebView(params, *) {
 ; Button click actions
 ; ----------------------------------------------------
 
-buttonClickAction(action, messageId := "") {
+retryAction(messageId := "") {
     global activeThreadId, chatWindow, requestParams
-    switch action {
-        case "Retry":
             if !activeThreadId
                 return
             path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -101,16 +99,6 @@ buttonClickAction(action, messageId := "") {
                     requestParams.Delete("pendingRetrySiblingGroup")
             }
             ; Send to LLM if we have a retry pending OR if chat ends with user
-            if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user") {
-                chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-                if !chatHistoryJSONRequest {
-                    postWebMessage("setChatButtonsEnabled", true)
-                    startLoadingCursor(false)
-                    return
-                }
-                postWebMessage("setChatButtonsEnabled", false)
-                startLoadingCursor(true)
-                sendRequestToLLM(&chatHistoryJSONRequest)
-            }
-    }
+    if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user")
+        _BuildAndFireRequest()
 }

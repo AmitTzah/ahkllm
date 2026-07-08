@@ -11,7 +11,7 @@
 ; Chat mode: Handle messages sent from the inline chat input
 ; ----------------------------------------------------
 
-chatSendFromWebView(message, *) {
+handleChatSend(message, *) {
     global activeThreadId
     if !message
         return
@@ -41,33 +41,21 @@ chatSendFromWebView(message, *) {
         sibling_index: 0
     })
 
-    ; Build API request from DB messages
-    chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-    if !chatHistoryJSONRequest {
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
-        return
-    }
-
-    ; Show user message bubble in WebView
+    ; Show user message bubble in WebView before firing
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     structuredMessages := buildStructuredMessagesFromPath(path)
     lastMsg := structuredMessages[structuredMessages.Length]
     postWebMessage("appendChatMessage", lastMsg)
 
-    ; Send to LLM
-    sendRequestToLLM(&chatHistoryJSONRequest)
+    ; Build and fire
+    _BuildAndFireRequest()
 }
 
 ; ----------------------------------------------------
 ; Chat mode: Handle retry request from WebView
 ; ----------------------------------------------------
 
-retryFromWebView(params := "") {
-    if params && params.Has("messageId") {
-        buttonClickAction("Retry", params["messageId"])
-    } else {
-        buttonClickAction("Retry")
-    }
+handleRetry(params := "") {
+    retryAction(params && params.Has("messageId") ? params["messageId"] : "")
 }
 

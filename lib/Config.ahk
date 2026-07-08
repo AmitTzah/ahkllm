@@ -10,6 +10,11 @@
 #Include SQLite\SQLite.ahk          ; SQLite database wrapper
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
+; Shared utilities
+#Include ..\lib\shared\ModelParser.ahk
+#Include ..\lib\shared\TokenEstimation.ahk
+#Include ..\lib\shared\DebugLog.ahk
+
 ; Application classes
 #Include ..\api\CurlBuilder.ahk
 #Include ..\api\ProviderResolver.ahk
@@ -19,5 +24,5 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 #Include ..\api\ApiLogger.ahk
 #Include ..\api\CostCalculator.ahk
 #Include ..\ui\InputWindow.ahk
-#Include ..\ui\CustomMessages.ahk
-#Include ..\chat\ChatDB.ahk          ; Chat persistence (SQLite-backed)
+#Include ..\ipc\CustomMessages.ahk
+#Include ..\chat\db\ChatDB.ahk       ; Chat persistence (SQLite-backed)

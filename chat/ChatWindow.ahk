@@ -61,7 +61,7 @@ requestParams["uniqueID"] := A_TickCount A_NowUTC
 requestParams["mainScriptHiddenhWnd"] := A_Args.Length > 0 ? Integer(A_Args[1]) : 0
 requestParams["providerName"] := "deepseek"
 requestParams["singleAPIModelName"] := chatDefaultModel
-requestParams["responseWindowTitle"] := "Chat"
+requestParams["windowTitle"] := "Chat"
 requestParams["stream"] := true
 requestParams["isFIM"] := false
 requestParams["numberOfAPIModels"] := 1
@@ -78,7 +78,7 @@ activeThreadId := ""
 #Include ChatIPC.ahk
 
 ; ----------------------------------------------------
-; Create WebView and router
+; Create WebView and LLM client
 ; ----------------------------------------------------
 
 responseWindow := WebViewToo(, , ,)
@@ -94,61 +94,20 @@ if hIcon {
 
 ; Set up WebMessageReceived handler for JS→AHK communication via postMessage
 responseWindow.WebMessageReceived(OnWebMessageReceived)
-OnWebMessageReceived(sender, args) {
-    try {
-        msg := args.TryGetWebMessageAsString()
-        if !msg
-            return
-        parsed := jsongo.Parse(msg)
-        action := parsed.Get("action", "")
-        switch action {
-            case "chatSend":
-                chatSendFromWebView(parsed.Get("message", ""))
-            case "retry":
-                retryFromWebView(parsed)
-            case "editMessage":
-                editMessageFromWebView(parsed)
-            case "deleteMessage":
-                deleteMessageFromWebView(parsed.Get("id", ""))
-            case "switchBranch":
-                switchBranchFromWebView(parsed)
-            case "forkChat":
-                forkChatFromWebView(parsed.Get("id", ""))
-            case "setFeedback":
-                setFeedbackFromWebView(parsed)
-            case "sidebarAction":
-                sidebarActionFromWebView(parsed)
-            case "buttonClick":
-                buttonClickAction(parsed.Get("btnAction", ""))
-            case "requestAssistantList":
-                postAssistantsToWebView()
-            case "updateModelSettings":
-                updateModelSettingsFromWebView(parsed)
-            case "switchAssistant":
-                switchAssistantFromWebView(parsed)
-            case "cancelStream":
-                cancelStreamFromWebView()
-            case "requestCurrentSettings":
-                postCurrentSettingsToWebView()
-        }
-    }
-}
 
 if (darkMode)
     DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", responseWindow.hWnd, "int", 20, "int*", true, "int", 4)
 
-router := LLMRequestBuilder(APIKey)
+llmClient := LLMRequestBuilder(APIKey)
 
 ; ----------------------------------------------------
-; Utility modules and callbacks
+; Utility modules, dispatch, and callbacks
 ; ----------------------------------------------------
 
 #Include ChatUtils.ahk
-#Include StreamHandler.ahk
-#Include ChatCallbacks_Message.ahk
-#Include ChatCallbacks_Edit.ahk
-#Include ChatCallbacks_Branch.ahk
-#Include ChatCallbacks_Sidebar.ahk
+#Include ThreadTitleGen.ahk
+#Include streaming\StreamHandler.ahk
+#Include callbacks\Dispatch.ahk
 
 ; ----------------------------------------------------
 ; Load WebView
@@ -176,7 +135,7 @@ showChatWindow(initialRequest := true) {
     postWebMessage("setTheme", [darkMode])
     postWebMessage("setFontFace", [responseWindowFontFace])
     if initialRequest && requestParams["mainScriptHiddenhWnd"] {
-        CustomMessages.notifyResponseWindowState(CustomMessages.WM_CHAT_WINDOW_OPENED,
+        CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
             requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
     }
 }
@@ -197,7 +156,7 @@ if prewarming {
     postWebMessage("setFontFace", [responseWindowFontFace])
     postWebMessage("setChatButtonsEnabled", true)
     ; Notify main script so it knows we exist (for WinShow later).
-    CustomMessages.notifyResponseWindowState(CustomMessages.WM_CHAT_WINDOW_OPENED,
+    CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
         requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
 } else {
     showChatWindow(true)

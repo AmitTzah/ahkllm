@@ -11,7 +11,7 @@
 ; Sidebar actions from WebView (D6)
 ; ----------------------------------------------------
 
-sidebarActionFromWebView(params, *) {
+handleSidebarAction(params, *) {
     global activeThreadId
     subAction := params.Has("subAction") ? params["subAction"] : params["action"]
     switch subAction {
@@ -20,22 +20,12 @@ sidebarActionFromWebView(params, *) {
         case "loadTrashList":
             postWebMessage("trashList", ChatDB.Thread_List(true))
         case "loadThread":
-            if params.Has("threadId") {
-                activeThreadId := params["threadId"]
-                _restoreThreadSettings(activeThreadId)
-                path := ChatDB.Msg_GetActivePath(activeThreadId)
-                postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-                postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
-                postThreadStats(activeThreadId)
-                _sendDropdownLabel()
-            }
+            if params.Has("threadId")
+                _LoadThreadAndRefreshUI(params["threadId"])
         case "navigateToMessage":
             if params.Has("messageId") && activeThreadId {
                 ChatDB.Msg_SetActiveLeaf(activeThreadId, params["messageId"])
-                path := ChatDB.Msg_GetActivePath(activeThreadId)
-                postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-                postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
-                postThreadStats(activeThreadId)
+                _LoadThreadAndRefreshUI(activeThreadId, false)
             }
         case "newChat":
             activeThreadId := ChatDB.Thread_Create()

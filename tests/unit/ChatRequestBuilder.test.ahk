@@ -31,11 +31,11 @@ class ChatRequestBuilderTest {
     }
 
     ; Helper: create a thread with a user message, configure requestParams,
-    ; call BuildAndWriteRequestFiles, return the parsed request JSON.
+    ; call buildRequest, return the parsed request JSON.
     _buildRequest(providerModel, reasoningOverride := "") {
         global activeThreadId, requestParams
 
-        ; Ensure API keys are set for the test (BuildAndWriteRequestFiles validates).
+        ; Ensure API keys are set for the test (buildRequest validates).
         ; EnvSet is process-scoped — no cleanup needed between tests.
         EnvSet("DEEPSEEK_API_KEY", "sk-test-deepseek-key")
         EnvSet("OPENAI_API_KEY", "sk-test-openai-key")
@@ -68,14 +68,14 @@ class ChatRequestBuilderTest {
             "singleAPIModelName", providerModel,
             "stream", true,
             "pasteMode", "chat",
-            "responseWindowTitle", "test",
+            "windowTitle", "test",
             "providerName", "",
             "uniqueID", A_TickCount
         )
         if reasoningOverride != ""
             requestParams["reasoningOverride"] := reasoningOverride
 
-        result := BuildAndWriteRequestFiles()
+        result := buildRequest()
 
         this._teardownDb()
 
@@ -101,7 +101,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("google/gemini-2.5-flash", "medium")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for Gemini 2.5 with reasoning override")
+            throw Error("buildRequest returned empty for Gemini 2.5 with reasoning override")
 
         parsed := jsongo.Parse(result)
 
@@ -131,7 +131,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("google/gemini-3.5-flash", "medium")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for Gemini 3.x with reasoning override")
+            throw Error("buildRequest returned empty for Gemini 3.x with reasoning override")
 
         parsed := jsongo.Parse(result)
 
@@ -161,7 +161,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("google/gemini-2.5-flash", "none")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for Gemini with reasoning=none")
+            throw Error("buildRequest returned empty for Gemini with reasoning=none")
 
         parsed := jsongo.Parse(result)
 
@@ -182,7 +182,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("google/gemini-2.5-flash", "")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for Gemini without reasoning override")
+            throw Error("buildRequest returned empty for Gemini without reasoning override")
 
         parsed := jsongo.Parse(result)
 
@@ -211,7 +211,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("deepseek/deepseek-v4-flash", "none")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for DeepSeek with reasoning=none")
+            throw Error("buildRequest returned empty for DeepSeek with reasoning=none")
 
         parsed := jsongo.Parse(result)
 
@@ -234,7 +234,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("deepseek/deepseek-v4-flash", "high")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for DeepSeek with reasoning=high")
+            throw Error("buildRequest returned empty for DeepSeek with reasoning=high")
 
         parsed := jsongo.Parse(result)
 
@@ -257,7 +257,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("openai/gpt-5-mini", "none")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for OpenAI with reasoning=none")
+            throw Error("buildRequest returned empty for OpenAI with reasoning=none")
 
         parsed := jsongo.Parse(result)
 
@@ -274,7 +274,7 @@ class ChatRequestBuilderTest {
         result := this._buildRequest("openai/gpt-5-mini", "high")
 
         if result = ""
-            throw Error("BuildAndWriteRequestFiles returned empty for OpenAI with reasoning=high")
+            throw Error("buildRequest returned empty for OpenAI with reasoning=high")
 
         parsed := jsongo.Parse(result)
 

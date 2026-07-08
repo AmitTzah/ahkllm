@@ -1,5 +1,12 @@
 ; ======================================================
 ; ChatSettings.ahk — Thread settings + assistant/model management
+
+_updateProviderFromModel(model) {
+    parts := ModelParser.Split(model)
+    if parts.provider
+        requestParams["providerName"] := parts.provider
+}
+
 ;
 ; Manages requestParams for the current thread: restore,
 ; save, reset, dropdown label, assistant switching,
@@ -67,15 +74,14 @@ _sendDropdownLabel() {
     model := requestParams["singleAPIModelName"]
     if model && model != chatDefaultModel {
         ; Show model name without provider prefix
-        slashPos := InStr(model, "/")
-        displayModel := slashPos > 0 ? SubStr(model, slashPos + 1) : model
+        displayModel := ModelParser.StripProvider(model)
         postWebMessage("dropdownLabel", { text: displayModel, isAssistant: false })
         return
     }
     postWebMessage("dropdownLabel", { text: "Default Model", isAssistant: false })
 }
 
-switchAssistantFromWebView(parsed) {
+handleSwitchAssistant(parsed) {
     global activeThreadId
     assistantId := parsed.Get("assistantId", "")
     if !assistantId {
@@ -105,10 +111,7 @@ switchAssistantFromWebView(parsed) {
     requestParams["activeAssistantId"] := assistantId
 
     ; Update provider tracking for API logs
-    slashPos := InStr(asst.baseModel, "/")
-    if slashPos > 0 {
-        requestParams["providerName"] := SubStr(asst.baseModel, 1, slashPos - 1)
-    }
+    _updateProviderFromModel(asst.baseModel)
 
     ; Persist to DB
     if activeThreadId {
@@ -125,7 +128,7 @@ switchAssistantFromWebView(parsed) {
     debugLog("Switched to assistant: " asst.name " (" asst.baseModel ")")
 }
 
-updateModelSettingsFromWebView(parsed) {
+handleModelSettingsUpdate(parsed) {
     model := parsed.Get("model", "")
     systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
@@ -137,10 +140,7 @@ updateModelSettingsFromWebView(parsed) {
 
     if model {
         requestParams["singleAPIModelName"] := model
-        slashPos := InStr(model, "/")
-        if slashPos > 0 {
-            requestParams["providerName"] := SubStr(model, 1, slashPos - 1)
-        }
+        _updateProviderFromModel(model)
     } else {
         requestParams["singleAPIModelName"] := chatDefaultModel
     }
@@ -185,10 +185,10 @@ postAssistantsToWebView() {
     ; Also send model list grouped by provider for the two-dropdown selector
     modelByProvider := Map()
     for modelId, modelData in models {
-        slashPos := InStr(modelId, "/")
-        if slashPos > 0 {
-            providerKey := SubStr(modelId, 1, slashPos - 1)
-            shortName := SubStr(modelId, slashPos + 1)
+        parts := ModelParser.Split(modelId)
+        if parts.provider {
+            providerKey := parts.provider
+            shortName := parts.name
             if !modelByProvider.Has(providerKey)
                 modelByProvider[providerKey] := []
             modelByProvider[providerKey].Push({

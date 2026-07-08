@@ -6,26 +6,29 @@
 ; ----------------------------------------------------
 
 class ProviderResolver {
+    static _getApiKey(p) {
+        return EnvGet(p.authEnvVar)
+    }
+
+    static _buildResult(providerKey, modelName, p) {
+        return {
+            providerKey: providerKey,
+            modelName: modelName,
+            apiKey: ProviderResolver._getApiKey(p),
+            endpoint: p.endpoint,
+            fimEndpoint: p.fimEndpoint
+        }
+    }
 
     ; Given a model string like "deepseek/deepseek-v4-pro" or "deepseek-v4-pro",
     ; returns { providerKey, modelName, apiKey, endpoint, fimEndpoint }.
     ; Falls back to the old format (no provider prefix) resolving through providerMap.
     static Resolve(modelId) {
-        slashPos := InStr(modelId, "/")
-        if slashPos > 0 {
-            providerKey := SubStr(modelId, 1, slashPos - 1)
-            modelName := SubStr(modelId, slashPos + 1)
-
-            if providers.Has(providerKey) {
-                p := providers[providerKey]
-                apiKey := EnvGet(p.authEnvVar)
-                return {
-                    providerKey: providerKey,
-                    modelName: modelName,
-                    apiKey: apiKey,
-                    endpoint: p.endpoint,
-                    fimEndpoint: p.fimEndpoint
-                }
+        parts := ModelParser.Split(modelId)
+        if parts.provider {
+            if providers.Has(parts.provider) {
+                p := providers[parts.provider]
+                return ProviderResolver._buildResult(parts.provider, parts.name, p)
             }
         }
 
@@ -38,27 +41,10 @@ class ProviderResolver {
             }
         }
 
-        if providers.Has(providerKey) {
-            p := providers[providerKey]
-            apiKey := EnvGet(p.authEnvVar)
-            return {
-                providerKey: providerKey,
-                modelName: modelId,
-                apiKey: apiKey,
-                endpoint: p.endpoint,
-                fimEndpoint: p.fimEndpoint
-            }
-        }
+        if providers.Has(providerKey)
+            return ProviderResolver._buildResult(providerKey, modelId, providers[providerKey])
 
         ; Fallback to deepseek
-        p := providers["deepseek"]
-        apiKey := EnvGet(p.authEnvVar)
-        return {
-            providerKey: "deepseek",
-            modelName: modelId,
-            apiKey: apiKey,
-            endpoint: p.endpoint,
-            fimEndpoint: p.fimEndpoint
-        }
+        return ProviderResolver._buildResult("deepseek", modelId, providers["deepseek"])
     }
 }

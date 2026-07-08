@@ -14,12 +14,12 @@ if FileExist(debugLogFile) {
 ; Hotkeys (registered dynamically from UserConfig.ahk)
 ; ----------------------------------------------------
 
-Hotkey(mainHotkey, (*) => mainScriptHotkeyActions("showCommandMenu"))
-Hotkey(saveReloadHotkey, (*) => mainScriptHotkeyActions("saveAndReloadScript"))
-Hotkey(closeWindowsHotkey, (*) => mainScriptHotkeyActions("closeWindows"))
-Hotkey(suspendHotkey, (*) => mainScriptHotkeyActions("suspendHotkey"), "S")
+Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"))
+Hotkey(saveReloadHotkey, (*) => handleHotkey("saveAndReloadScript"))
+Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"))
+Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S")
 
-mainScriptHotkeyActions(action) {
+handleHotkey(action) {
     switch action {
         case "showCommandMenu":
             buildCommandMenu()
@@ -40,14 +40,14 @@ mainScriptHotkeyActions(action) {
             if (getActiveModels().Count > 0) {
                 MsgBox("Script will automatically reload once all Response Windows are closed.",
                     "LLM AutoHotkey Assistant", 64)
-                responseWindowState(0, 0, "reloadScript", 0)
+                handleLoadingState(0, 0, "reloadScript", 0)
             } else {
                 Reload()
             }
 
         case "closeWindows":
             switch WinActive("A") {
-                case customCommandInputWindow.guiObj.hWnd: customCommandInputWindow.closeButtonAction()
+                case commandInputWindow.guiObj.hWnd: commandInputWindow.closeButtonAction()
             }
     }
 }
@@ -80,7 +80,7 @@ Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ah
 ; Chat window state (single persistent window)
 ; ----------------------------------------------------
 
-OpenOrSpawnChatWindow(threadId := "") {
+openChatWindow(threadId := "") {
     global chatWindowPID, chatWindowhWnd
 
     if chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
@@ -103,14 +103,14 @@ OpenOrSpawnChatWindow(threadId := "") {
 }
 
 ; Handler for chat window opened notification
-OnChatWindowOpened(uniqueID, lParam, msg, hWnd) {
+onChatWindowOpened(uniqueID, lParam, msg, hWnd) {
     global chatWindowhWnd
     chatWindowhWnd := lParam
 }
 
 ; Clean up ChatWindow sub-process when Main.ahk exits
-OnExit(KillChatWindow)
-KillChatWindow(ExitReason, ExitCode) {
+OnExit(closeChatWindow)
+closeChatWindow(ExitReason, ExitCode) {
     global chatWindowPID
     if chatWindowPID
         ProcessClose(chatWindowPID)
@@ -122,8 +122,8 @@ KillChatWindow(ExitReason, ExitCode) {
 
 TraySetIcon(iconOn)
 A_TrayMenu.Delete()
-A_TrayMenu.Add("📋 Open Chat Window", (*) => OpenOrSpawnChatWindow())
-A_TrayMenu.Add("📝 New Chat", (*) => OpenOrSpawnChatWindow(ChatDB.Thread_Create()))
+A_TrayMenu.Add("📋 Open Chat Window", (*) => openChatWindow())
+A_TrayMenu.Add("📝 New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))
 A_TrayMenu.Add()
 for _, item in trayMenuItems {
     switch item.action {
@@ -137,44 +137,46 @@ A_IconTip := "LLM AutoHotkey Assistant"
 ; Create new instance of LLMRequestBuilder class
 ; ----------------------------------------------------
 
-router := LLMRequestBuilder(APIKey)
+llmClient := LLMRequestBuilder(APIKey)
 
 ; ----------------------------------------------------
 ; Create Input Windows
 ; ----------------------------------------------------
 
-customCommandInputWindow := InputWindow("Custom command")
+commandInputWindow := InputWindow("Custom command")
 
 ; ----------------------------------------------------
 ; Register sendButtonActions
 ; ----------------------------------------------------
 
-customCommandInputWindow.sendButtonAction(customCommandSendButtonAction)
+commandInputWindow.sendButtonAction(onCommandInputSend)
 
 ; ----------------------------------------------------
 ; Initialize Suspend GUI
 ; ----------------------------------------------------
 
-scriptSuspendStatus := Gui()
-scriptSuspendStatus.SetFont(suspendBannerFontSize, suspendBannerFontFace)
-scriptSuspendStatus.Add("Text", suspendBannerTextColor " Center", suspendBannerText)
-scriptSuspendStatus.BackColor := suspendBannerBackground
-scriptSuspendStatus.Opt("-Caption +Owner -SysMenu +AlwaysOnTop")
-scriptSuspendStatusWidth := ""
-scriptSuspendStatus.GetPos(, , &scriptSuspendStatusWidth)
+suspendBanner := Gui()
+suspendBanner.SetFont(suspendBannerFontSize, suspendBannerFontFace)
+suspendBanner.Add("Text", suspendBannerTextColor " Center", suspendBannerText)
+suspendBanner.BackColor := suspendBannerBackground
+suspendBanner.Opt("-Caption +Owner -SysMenu +AlwaysOnTop")
+suspendBannerWidth := ""
+suspendBanner.GetPos(, , &suspendBannerWidth)
 
 ; ----------------------------------------------------
 ; Register inter-process communication handlers
 ; ----------------------------------------------------
 
-CustomMessages.registerHandlers("mainScript", responseWindowState)
+CustomMessages.registerHandlers("mainScript", handleLoadingState)
 
 ; ----------------------------------------------------
 ; Include application modules
 ; ----------------------------------------------------
 
+#Include app\ClipboardCapture.ahk
+#Include app\InlineRequestRunner.ahk
 #Include app\CommandMenu.ahk
-#Include app\CommandManager.ahk
+#Include app\CommandState.ahk
 #Include app\RequestProcessor.ahk
-#Include app\ModelTracker.ahk
-#Include app\UiHelpers.ahk
+#Include app\LoadingTracker.ahk
+#Include app\LoadingUI.ahk

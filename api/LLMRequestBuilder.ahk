@@ -69,11 +69,7 @@ class LLMRequestBuilder {
 
     ; Builds the FIM JSON request: {model, prompt, suffix?, max_tokens}
     createFIMRequest(APIModel, prefix, suffix, temperature := "", maxTokens := "", stop := "") {
-        modelName := APIModel
-        slashPos := InStr(APIModel, "/")
-        if slashPos > 0 {
-            modelName := SubStr(APIModel, slashPos + 1)
-        }
+        modelName := ModelParser.StripProvider(APIModel)
 
         maxTokens := (maxTokens != "") ? maxTokens : FIMMaxTokens
         requestObj := { model: modelName, prompt: prefix, max_tokens: maxTokens }
@@ -156,7 +152,7 @@ class LLMRequestBuilder {
     }
 
     ; ----------------------------------------------------
-    ; Instance Helpers (needed by router in Main/ChatWindow)
+    ; Instance Helpers (needed by llmClient in Main/ChatWindow)
     ; ----------------------------------------------------
 
     buildcURLCommand(requestFile, outputFile) {

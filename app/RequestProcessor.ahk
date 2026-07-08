@@ -1,161 +1,44 @@
 ; ----------------------------------------------------
-; Connect to LLM API and process request
+; RequestProcessor — Command-triggered LLM request orchestrator
+;
+; Entry point for any command-triggered LLM request.
+; Delegates clipboard capture to ClipboardCapture and
+; inline cURL execution to InlineRequestRunner.
+; Chat mode routes through the persistent ChatWindow.
 ; ----------------------------------------------------
 
-; ----------------------------------------------------
-; Diagnostic logging helper (standalone for main script context)
-; ----------------------------------------------------
+; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
-debugLog(message) {
-    timestamp := FormatTime(, "HH:mm:ss")
-    FileAppend(timestamp " [RequestProcessor] " message "`n", A_Temp "\LLM_Debug_Log.txt")
-}
-
-; Entry point for any command-triggered LLM request (menu selection or custom input).
-; The 15 parameters mirror the command config schema from UserConfig.ahk.
-; This flat parameter list avoids coupling to the config object structure —
-; each caller (commandMenuHandler, customCommandSendButtonAction) passes
-; individual fields, keeping the config schema as the single source of truth.
 processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
     customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
-    debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode)
+    debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
 
-    ; ----------------------------------------------------
-    ; STEP 1: Capture text (clipboard-based)
-    ; ----------------------------------------------------
-    clipboardBeforeCopy := A_Clipboard
-    prefix := ""
-    suffix := ""
-
-    if isFIM {
-        ; --- FIM text capture ---
-
-        ; First, try to copy the selection
-        A_Clipboard := ""
-        Send("^c")
-
-        selection := ""
-        if !ClipWait(1) {
-            ; Nothing selected — try Ctrl+Shift+Home to grab text before cursor
-            A_Clipboard := ""
-            Send("^+{Home}^c")
-            if !ClipWait(1) {
-                manageCursorAndToolTip("Reset")
-                A_Clipboard := clipboardBeforeCopy
-                MsgBox "No text found before cursor. Please select some text or place your cursor after text.", "FIM Continue", "IconX"
-                return
-            }
-            ; Text-before-cursor grabbed — FIM Continue, no suffix
-            prefix := A_Clipboard
-            suffix := ""
-        } else {
-            ; Selection found
-            selection := A_Clipboard
-
-            if pasteMode = "replace" {
-                ; FIM Fill: cut the gap (removes selection, cursor at gap position)
-                A_Clipboard := ""
-                Send("^x")
-                if !ClipWait(1) {
-                    manageCursorAndToolTip("Reset")
-                    A_Clipboard := clipboardBeforeCopy
-                    MsgBox "Could not cut the selected text.", "FIM Fill", "IconX"
-                    return
-                }
-                ; The gap is now removed from the text. Extract everything before it.
-                A_Clipboard := ""
-                Send("^+{Home}^c")
-                if !ClipWait(1) {
-                    prefix := ""
-                } else {
-                    prefix := A_Clipboard
-                }
-                ; Move cursor back to gap position, then get everything after the gap.
-                Send("{Right}")
-                Sleep 50
-                A_Clipboard := ""
-                Send("+^{End}^c")
-                if !ClipWait(1) {
-                    suffix := ""
-                } else {
-                    suffix := A_Clipboard
-                }
-                ; Move cursor back to gap position for paste later.
-                Send("{Left}")
-            } else {
-                ; FIM Continue with selection as prefix
-                prefix := selection
-                suffix := ""
-            }
-        }
-
-        A_Clipboard := clipboardBeforeCopy
-
-        ; For FIM, restrict to a single model since FIM doesn't support multi-model
-        if InStr(APIModels, ",") {
-            MsgBox "FIM does not support multiple models. Only the first model will be used.", "FIM Warning", "IconX"
-        }
-
-        ; Parse models (take only the first for FIM)
-        APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
-        APIModels := [APIModels[1]]
-    } else {
-        ; --- Chat text capture (with retry cascade) ---
-        A_Clipboard := ""
-        Critical("On")
-        SendInput("^c")
-        copied := ClipWait(0.5)
-        if !copied {
-            ; Retry with standard Send
-            A_Clipboard := ""
-            Send("^c")
-            copied := ClipWait(1.5)
-        }
-        if !copied {
-            ; Final fallback: Ctrl+Insert (works in terminals)
-            A_Clipboard := ""
-            Send("^{Insert}")
-            copied := ClipWait(1)
-        }
-        Critical("Off")
-
-        if !copied {
-            if customInputMessage != "" {
-                userMessage := customInputMessage
-            } else {
-                manageCursorAndToolTip("Reset")
-                A_Clipboard := clipboardBeforeCopy
-                MsgBox "The attempt to copy text onto the clipboard failed.", "No text copied", "IconX"
-                return
-            }
-        } else if customInputMessage != "" {
-            userMessage := customInputMessage "`n`n" A_Clipboard
-        } else {
-            userMessage := A_Clipboard
-        }
-
-        A_Clipboard := clipboardBeforeCopy
-
-        ; Removes newlines, spaces, and splits by comma
-        APIModels := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
-
-        ; For pasteMode "replace" or "append", fall back to "chat" if multi-model
-        if pasteMode = "replace" || pasteMode = "append" {
-            pasteMode := (APIModels.Length > 1) ? "chat" : pasteMode
-        }
+    ; STEP 1: Capture text
+    captured := ClipboardCapture.Capture(isFIM, pasteMode, customInputMessage)
+    if !captured.success {
+        updateLoadingUI("Reset")
+        MsgBox captured.error, (isFIM ? "FIM" : "No text copied"), "IconX"
+        return
     }
 
-    ; ----------------------------------------------------
-    ; STEP 2: Build request and spawn Response Windows
-    ; ----------------------------------------------------
-    for i, fullAPIModelName in APIModels {
+    ; Parse models
+    APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
+    if isFIM {
+        if APIModelsArr.Length > 1
+            MsgBox "FIM does not support multiple models. Only the first model will be used.", "FIM Warning", "IconX"
+        APIModelsArr := [APIModelsArr[1]]
+    } else if pasteMode = "replace" || pasteMode = "append" {
+        pasteMode := (APIModelsArr.Length > 1) ? "chat" : pasteMode
+    }
 
-        ; Parse provider/model format (e.g., "openai/gpt-4o") or direct model name
-        if (slashPos := InStr(fullAPIModelName, "/")) {
-            providerName := SubStr(fullAPIModelName, 1, slashPos - 1)
-            singleAPIModelName := SubStr(fullAPIModelName, slashPos + 1)
+    ; STEP 2: Build request and execute
+    for i, fullAPIModelName in APIModelsArr {
+        parts := ModelParser.Split(fullAPIModelName)
+        if parts.provider {
+            providerName := parts.provider
+            singleAPIModelName := parts.name
         } else {
-            providerName := "deepseek"  ; default fallback
+            providerName := "deepseek"
             for prefix, mappedProvider in providerMap {
                 if InStr(fullAPIModelName, prefix) {
                     providerName := mappedProvider
@@ -165,42 +48,27 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
             singleAPIModelName := fullAPIModelName
         }
 
-        uniqueID := A_TickCount
-
-        ; For chat mode, route through the persistent ChatWindow.
-        ; Skip file creation — ChatWindow builds its own request from DB state.
-        ; Only the first model is used (single-window architecture).
         if pasteMode = "chat" {
-            if APIModels.Length > 1 {
-                debugLog("WARNING: Multi-model not supported in chat mode. Using only first model: " APIModels[1])
+            if APIModelsArr.Length > 1 {
+                debugLog("WARNING: Multi-model not supported in chat mode. Using only first model: " APIModelsArr[1], "RequestProcessor")
             }
-            ; Create a new thread in the DB
-            threadId := ChatDB.Thread_Create(commandName)
 
-            ; Insert system message if present
+            threadId := ChatDB.Thread_Create(commandName)
             if systemMessage {
                 ChatDB.Msg_Insert({
-                    thread_id: threadId,
-                    role: "system",
-                    content: systemMessage,
-                    parent_id: ""
+                    thread_id: threadId, role: "system",
+                    content: systemMessage, parent_id: ""
                 })
             }
-
-            ; Insert captured text as first user message if any (isSet check for FIM mode)
-            if IsSet(userMessage) && userMessage {
+            if captured.HasOwnProp("userMessage") && captured.userMessage {
                 path := ChatDB.Msg_GetActivePath(threadId)
                 parentId := path.Length ? path[path.Length].id : ""
                 ChatDB.Msg_Insert({
-                    thread_id: threadId,
-                    role: "user",
-                    content: userMessage,
-                    parent_id: parentId
+                    thread_id: threadId, role: "user",
+                    content: captured.userMessage, parent_id: parentId
                 })
             }
 
-            ; Save model override to DB so ChatWindow uses the correct model
-            ; (ChatWindow builds its own request — doesn't use the JSON files built above)
             if fullAPIModelName != chatDefaultModel {
                 ChatDB.Thread_UpdateSettings(threadId, {
                     modelOverride: fullAPIModelName,
@@ -211,111 +79,18 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
                 })
             }
 
-            ; Open the ChatWindow with this thread
-            OpenOrSpawnChatWindow(threadId)
-            ; Trigger LLM — this is a command-triggered chat with a pending user message
-            ; Uses a short delay so WM_LOAD_THREAD (async) is processed first
+            openChatWindow(threadId)
             SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd), -100)
-            ; Only process the first model for chat mode (single-window limitation)
             break
         } else {
-            ; Non-chat mode: run LLM inline and paste result directly (no window)
-
-            ; Build the JSON request (FIM or standard)
-            if isFIM {
-                chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
-                    temperature, maxTokens, stop)
-            } else {
-                chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemMessage, userMessage,
-                    temperature, maxTokens, stop, stream, thinking)
-            }
-
-            ; Generate sanitized filenames and write request/cURL files
-            chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json", "[\/\\:*?`"<>|]", "")
-            cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" commandName "_" singleAPIModelName "_" uniqueID ".txt", "[\/\\:*?`"<>|]", "")
-            cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" commandName "_" singleAPIModelName "_" uniqueID ".json", "[\/\\:*?`"<>|]", "")
-            cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" commandName "_" singleAPIModelName "_" uniqueID ".txt", "[\/\\:*?`"<>|]", "")
-            FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
-            if isFIM {
-                cURLCommand := router.buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
-            } else {
-                cURLCommand := router.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
-            }
-            FileOpen(cURLCommandFile, "w", "UTF-8-RAW").Write(cURLCommand)
-
-            ; Track in active models during processing (for tooltip and reload deferral)
-            getActiveModels()[uniqueID] := {
-                commandName: commandName,
-                name: singleAPIModelName,
-                provider: router,
-                JSONFile: chatHistoryJSONRequestFile,
-                cURLFile: cURLCommandFile,
-                outputFile: cURLOutputFile,
-                errorFile: cURLErrorFile,
-                isLoading: true
-            }
-            manageCursorAndToolTip("Update")
-            requestStartTime := A_TickCount
-            cURLCommand := FileOpen(cURLCommandFile, "r", "UTF-8-RAW").Read()
-            Run(cURLCommand, , "Hide", &cURLPID)
-            while ProcessExist(cURLPID)
-                Sleep 250
-            responseFromLLM := ""
-            if FileExist(cURLOutputFile) {
-                JSONResponseFromLLM := FileOpen(cURLOutputFile, "r", "UTF-8-RAW").Read()
-                try {
-                    if isFIM
-                        responseFromLLM := router.extractFIMResponse(jsongo.Parse(JSONResponseFromLLM))
-                    else
-                        responseFromLLM := router.extractJSONResponse(jsongo.Parse(JSONResponseFromLLM))
-                }
-            }
-            if IsObject(responseFromLLM) && responseFromLLM.HasProp("response") {
-                latencyMs := A_TickCount - requestStartTime
-                A_Clipboard := responseFromLLM.response
-                if pasteMode = "append" {
-                    Send("{Right}")       ; Move cursor past the selection before pasting
-                    Sleep 50              ; Let the deselect complete before pasting
-                }
-                Send("^v")
-                Sleep 50
-                if pasteMode = "append" {
-                    Send("{Left}{Right}") ; Force scroll-to-cursor
-                }
-                ; Log the API call
-                ApiLogger.LogRequest({
-                    timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-                    commandName: commandName,
-                    provider: providerName,
-                    model: singleAPIModelName,
-                    isFIM: isFIM,
-                    endpoint: isFIM ? FIMEndpoint : APIEndpoint,
-                    pasteMode: pasteMode,
-                    request: chatHistoryJSONRequest,
-                    response: JSONResponseFromLLM,
-                    status: "success",
-                    latencyMs: latencyMs
-                })
-            }
-            ; Cleanup
-            getActiveModels()[uniqueID].isLoading := false
-            manageCursorAndToolTip("Update")
-            getActiveModels().Delete(uniqueID)
-            FileDelete(chatHistoryJSONRequestFile)
-            FileDelete(cURLCommandFile)
-            FileExist(cURLOutputFile) ? FileDelete(cURLOutputFile) : ""
-            FileExist(cURLErrorFile) ? FileDelete(cURLErrorFile) : ""
+            InlineRequestRunner.Run(commandName, fullAPIModelName, providerName, singleAPIModelName,
+                captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking)
         }
     }
 }
 
-; ----------------------------------------------------
 ; Options menu action
-; ----------------------------------------------------
-
 runOptionsMenuAction(command, *) {
-    ; If command is "Program filepath" format (e.g., "Notepad C:\...\UserConfig.ahk"),
-    ; skip FileExist check — the full string isn't a valid path. Run directly.
     if (spacePos := InStr(command, " ")) {
         firstWord := SubStr(command, 1, spacePos - 1)
         if !InStr(firstWord, "\") && !InStr(firstWord, ":") {
@@ -323,7 +98,6 @@ runOptionsMenuAction(command, *) {
             return
         }
     }
-    ; Pure file path — check if it exists, show friendly tooltip if not
     if (InStr(command, ":") || InStr(command, "\")) {
         if !FileExist(command) && !InStr(command, "http") {
             ToolTip("No logs written yet — file hasn't been created", , , 19)

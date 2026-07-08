@@ -19,10 +19,10 @@ class CustomMessagesTest {
     ; --------------------
 
     Constants_HaveCorrectValues() {
-        if CustomMessages.WM_RESPONSE_WINDOW_LOADING_START != 0x400 + 123
-            throw Error("WM_RESPONSE_WINDOW_LOADING_START wrong")
-        if CustomMessages.WM_RESPONSE_WINDOW_LOADING_FINISH != 0x400 + 124
-            throw Error("WM_RESPONSE_WINDOW_LOADING_FINISH wrong")
+        if CustomMessages.WM_LOADING_START != 0x400 + 123
+            throw Error("WM_LOADING_START wrong")
+        if CustomMessages.WM_LOADING_FINISH != 0x400 + 124
+            throw Error("WM_LOADING_FINISH wrong")
         if CustomMessages.WM_CHAT_WINDOW_OPENED != 0x500 + 0
             throw Error("WM_CHAT_WINDOW_OPENED wrong")
         if CustomMessages.WM_LOAD_THREAD != 0x500 + 2
@@ -43,9 +43,9 @@ class CustomMessagesTest {
         ; This would normally PostMessage, but without a real window
         ; the call is silently dropped. No crash = pass.
         try {
-            CustomMessages.notifyResponseWindowState(CustomMessages.WM_CHAT_WINDOW_OPENED, 123, 456, 789)
+            CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED, 123, 456, 789)
         } catch Error as err {
-            throw Error("notifyResponseWindowState should not throw: " err.Message)
+            throw Error("notifyLoadingState should not throw: " err.Message)
         }
     }
 

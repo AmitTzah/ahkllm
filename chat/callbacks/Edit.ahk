@@ -12,7 +12,7 @@
 ; Edit message from WebView (D1)
 ; ----------------------------------------------------
 
-editMessageFromWebView(params, *) {
+handleEdit(params, *) {
     global activeThreadId
     if !params.Has("id") || !params.Has("content") || !activeThreadId
         return
@@ -37,8 +37,7 @@ editMessageFromWebView(params, *) {
                     siblingGroup := ChatDB._UUID()
                     ChatDB.db.Exec("UPDATE messages SET sibling_group='" siblingGroup "', sibling_index=0 WHERE id='" id "';")
                 }
-                sibTable := ChatDB.db.Exec("SELECT MAX(sibling_index) as max_idx FROM messages WHERE sibling_group='" siblingGroup "';")
-                siblingIndex := sibTable.count ? Integer(sibTable[1, "max_idx"]) + 1 : 1
+                siblingIndex := MessageRepo.GetMaxSiblingIndex(siblingGroup) + 1
                 break
             }
         }
@@ -47,10 +46,7 @@ editMessageFromWebView(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
-        chatHistoryJSONRequest := BuildAndWriteRequestFiles()
-        postWebMessage("setChatButtonsEnabled", false)
-        startLoadingCursor(true)
-        sendRequestToLLM(&chatHistoryJSONRequest)
+        _BuildAndFireRequest()
     } else {
         ChatDB.Msg_Edit(id, content)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -63,7 +59,7 @@ editMessageFromWebView(params, *) {
 ; Delete message from WebView (D2) — hard-delete with re-parenting
 ; ----------------------------------------------------
 
-deleteMessageFromWebView(msgId, *) {
+handleDelete(msgId, *) {
     global activeThreadId
     if !msgId || !activeThreadId
         return

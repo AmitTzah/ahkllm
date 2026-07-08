@@ -72,17 +72,42 @@ _pollStreamTimer() {
 }
 
 _readStreamChunkFromParams() {
-    outputFile := requestParams["_streamOutputFile"]
-    if !FileExist(outputFile)
+    state := {
+        outputFile: requestParams["_streamOutputFile"],
+        lastPos: requestParams["_streamLastPos"],
+        content: requestParams["_streamContent"],
+        reasoning: requestParams["_streamReasoning"],
+        modelName: requestParams["_streamModelName"],
+        firstTokenTime: requestParams["_streamFirstTokenTime"],
+        usage: requestParams["_streamUsage"],
+        providerKey: requestParams["_streamProviderKey"],
+        rawSseChunks: requestParams["_streamRawSseChunks"],
+        rawLastResponse: requestParams["_streamRawLastResponse"]
+    }
+
+    _readAndProcessStream(state, true)
+
+    requestParams["_streamLastPos"] := state.lastPos
+    requestParams["_streamContent"] := state.content
+    requestParams["_streamReasoning"] := state.reasoning
+    requestParams["_streamModelName"] := state.modelName
+    requestParams["_streamFirstTokenTime"] := state.firstTokenTime
+    requestParams["_streamUsage"] := state.usage
+    requestParams["_streamRawSseChunks"] := state.rawSseChunks
+    requestParams["_streamRawLastResponse"] := state.rawLastResponse
+}
+
+_readAndProcessStream(state, doPostMessage := false) {
+    if !FileExist(state.outputFile)
         return
 
-    file := FileOpen(outputFile, "r", "UTF-8-RAW")
+    file := FileOpen(state.outputFile, "r", "UTF-8-RAW")
     if !file
         return
 
-    file.Pos := requestParams["_streamLastPos"]
+    file.Pos := state.lastPos
     newContent := file.Read()
-    requestParams["_streamLastPos"] := file.Pos
+    state.lastPos := file.Pos
     file.Close()
 
     if !newContent
@@ -92,45 +117,46 @@ _readStreamChunkFromParams() {
         if (line = "")
             continue
 
-        if requestParams["_streamProviderKey"] = "google" && InStr(line, "data: ") {
-            requestParams["_streamRawSseChunks"] .= line "`n"
-        }
+        if state.providerKey = "google" && InStr(line, "data: ")
+            state.rawSseChunks .= line "`n"
 
         if InStr(line, "data: {") {
             jsonStart := InStr(line, "{")
-            requestParams["_streamRawLastResponse"] := SubStr(line, jsonStart)
+            state.rawLastResponse := SubStr(line, jsonStart)
         }
 
         chunk := SSEParser.ParseLine(line)
 
         switch chunk.type {
             case "content":
-                if (requestParams["_streamFirstTokenTime"] = 0)
-                    requestParams["_streamFirstTokenTime"] := A_TickCount
-                requestParams["_streamContent"] .= chunk.content
-                postWebMessage("streamContent", chunk.content)
+                if (state.firstTokenTime = 0)
+                    state.firstTokenTime := A_TickCount
+                state.content .= chunk.content
+                if doPostMessage
+                    postWebMessage("streamContent", chunk.content)
                 if chunk.HasOwnProp("model") && chunk.model
-                    requestParams["_streamModelName"] := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
+                    state.modelName := ModelParser.Sanitize(chunk.model)
                 if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
-                    requestParams["_streamUsage"] := chunk.usage
+                    state.usage := chunk.usage
 
             case "reasoning":
-                requestParams["_streamReasoning"] .= chunk.content
+                state.reasoning .= chunk.content
                 collapseFlag := false
-                if requestParams["_streamReasoning"] = chunk.content {
-                    if providers.Has(requestParams["_streamProviderKey"]) {
-                        p := providers[requestParams["_streamProviderKey"]]
+                if state.reasoning = chunk.content {
+                    if providers.Has(state.providerKey) {
+                        p := providers[state.providerKey]
                         if p.HasOwnProp("collapseThinking")
                             collapseFlag := p.collapseThinking
                     }
                 }
-                postWebMessage("streamReasoning", { content: chunk.content, collapsed: collapseFlag })
+                if doPostMessage
+                    postWebMessage("streamReasoning", { content: chunk.content, collapsed: collapseFlag })
 
             case "finish":
                 if chunk.HasOwnProp("model") && chunk.model
-                    requestParams["_streamModelName"] := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
+                    state.modelName := ModelParser.Sanitize(chunk.model)
                 if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
-                    requestParams["_streamUsage"] := chunk.usage
+                    state.usage := chunk.usage
 
             case "done":
         }
@@ -214,7 +240,7 @@ _handleStreamError() {
         : 0
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        commandName: requestParams["responseWindowTitle"],
+        commandName: requestParams["windowTitle"],
         provider: requestParams["providerName"],
         model: requestParams["singleAPIModelName"],
         isFIM: false,
@@ -232,17 +258,18 @@ _handleStreamCancelled() {
     cURLState("close")
 
     ; Estimate token counts — real usage unavailable (only in final SSE chunk).
-    ; Use same estimates for DB insert AND API log so the UI token bar updates.
     completionChars := StrLen(requestParams["_streamContent"]) + StrLen(requestParams["_streamReasoning"])
-    promptChars := 0
+    estPromptTokens := 0
     if activeThreadId {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         for msg in path {
-            promptChars += StrLen(msg.content)
+            estPromptTokens += TokenEstimation.Estimate(msg.content)
+            if msg.HasProp("reasoning") && msg.reasoning
+                estPromptTokens += TokenEstimation.Estimate(msg.reasoning)
         }
     }
-    estPromptTokens := Max(1, promptChars // 4)
-    estCompletionTokens := Max(1, completionChars // 4)
+    estPromptTokens := Max(1, estPromptTokens)
+    estCompletionTokens := Max(1, TokenEstimation.Estimate(requestParams["_streamContent"] . requestParams["_streamReasoning"]))
 
     _logCancelledRequest(estPromptTokens, estCompletionTokens)
 
@@ -336,7 +363,7 @@ _logCancelledRequest(estPromptTokens, estCompletionTokens) {
     }
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        commandName: requestParams["responseWindowTitle"],
+        commandName: requestParams["windowTitle"],
         provider: requestParams["providerName"],
         model: requestParams["singleAPIModelName"],
         isFIM: false,
@@ -368,65 +395,7 @@ _cleanupStreamState() {
 }
 
 readStreamChunk(streamState) {
-    if !FileExist(streamState.outputFile)
-        return
-
-    file := FileOpen(streamState.outputFile, "r", "UTF-8-RAW")
-    if !file
-        return
-
-    file.Pos := streamState.lastPos
-    newContent := file.Read()
-    streamState.lastPos := file.Pos
-    file.Close()
-
-    if !newContent
-        return
-
-    for line in StrSplit(newContent, "`n", "`r") {
-        if (line = "")
-            continue
-
-        if streamState.providerKey = "google" && InStr(line, "data: ")
-            streamState.rawSseChunks .= line "`n"
-
-        if InStr(line, "data: {") {
-            jsonStart := InStr(line, "{")
-            streamState.rawLastResponse := SubStr(line, jsonStart)
-        }
-
-        chunk := SSEParser.ParseLine(line)
-
-        switch chunk.type {
-            case "content":
-                if (streamState.firstTokenTime = 0)
-                    streamState.firstTokenTime := A_TickCount
-                streamState.content .= chunk.content
-                if chunk.HasOwnProp("model") && chunk.model
-                    streamState.modelName := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
-                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
-                    streamState.usage := chunk.usage
-
-            case "reasoning":
-                streamState.reasoning .= chunk.content
-                collapseFlag := false
-                if streamState.reasoning = chunk.content {
-                    if providers.Has(streamState.providerKey) {
-                        p := providers[streamState.providerKey]
-                        if p.HasOwnProp("collapseThinking")
-                            collapseFlag := p.collapseThinking
-                    }
-                }
-
-            case "finish":
-                if chunk.HasOwnProp("model") && chunk.model
-                    streamState.modelName := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
-                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
-                    streamState.usage := chunk.usage
-
-            case "done":
-        }
-    }
+    _readAndProcessStream(streamState, false)
 }
 
 saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "", rawLastResponse := "", providerKey := "", rawSseChunks := "") {
@@ -434,16 +403,14 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
         return
 
     requestBeforeAppend := chatHistoryJSONRequest
-    router.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
+    llmClient.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
 
     if activeThreadId {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := path.Length ? path[path.Length].id : ""
         retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
-        retrySiblingIdx := 0
+        retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
         if retrySiblingGroup {
-            sibTable := ChatDB.db.Exec("SELECT MAX(sibling_index) as max_idx FROM messages WHERE sibling_group='" retrySiblingGroup "';")
-            retrySiblingIdx := sibTable.count ? Integer(sibTable[1, "max_idx"]) + 1 : 0
             requestParams.Delete("pendingRetrySiblingGroup")
         }
         pt := usage.HasProp("promptTokens") ? usage.promptTokens : 0
@@ -492,7 +459,7 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
 
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        commandName: requestParams["responseWindowTitle"], provider: requestParams["providerName"],
+        commandName: requestParams["windowTitle"], provider: requestParams["providerName"],
         model: requestParams["singleAPIModelName"], isFIM: false, endpoint: _getProviderEndpoint(),
         pasteMode: requestParams["pasteMode"], request: requestBeforeAppend, response: fullResponse,
         status: "success", latencyMs: latencyMs

@@ -2,7 +2,7 @@
 ; Cursor and Tooltip management
 ; ----------------------------------------------------
 
-manageCursorAndToolTip(action) {
+updateLoadingUI(action) {
     switch action {
         case "Update":
             activeCount := 0
@@ -56,10 +56,10 @@ toggleSuspend(*) {
         A_IconTip := "LLM AutoHotkey Assistant - Suspended"
 
         ; Show GUI at the bottom, centered
-        scriptSuspendStatus.Show("AutoSize x" (A_ScreenWidth - scriptSuspendStatusWidth) / 2 " y" (A_ScreenHeight - 80) " NA")
+        suspendBanner.Show("AutoSize x" (A_ScreenWidth - suspendBannerWidth) / 2 " y" (A_ScreenHeight - 80) " NA")
     } else {
         TraySetIcon(iconOn)
         A_IconTip := "LLM AutoHotkey Assistant"
-        scriptSuspendStatus.Hide()
+        suspendBanner.Hide()
     }
 }
