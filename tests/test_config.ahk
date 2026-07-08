@@ -59,7 +59,7 @@ global providers := Map(
 )
 
 global assistants := [
-    { name: "Test Assistant", baseModel: "deepseek/deepseek-v4-flash", systemPrompt: "", reasoning: "", temperature: "", isDefault: true }
+    { name: "Test Assistant", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "", reasoning: "", temperature: "", isDefault: true }
 ]
 
 global defaultAssistant := "Test Assistant"

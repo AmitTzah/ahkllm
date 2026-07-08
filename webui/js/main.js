@@ -310,7 +310,7 @@ function openModelSettings() {
 function populateCurrentSettings(settings) {
   if (!settings) return;
   var model = settings.model || '';
-  var systemPrompt = settings.systemPrompt || '';
+  var systemPrompt = settings.systemMessage || '';
   var reasoning = settings.reasoning || '';
   var temperature = settings.temperature || '';
   var readOnly = settings.readOnly || false;
@@ -430,7 +430,7 @@ function saveModelSettings() {
   window.chrome.webview.postMessage(JSON.stringify({
     action: 'updateModelSettings',
     model: model,
-    systemPrompt: systemPrompt,
+    systemMessage: systemPrompt,
     reasoning: reasoning,
     temperature: temperature
   }));

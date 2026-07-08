@@ -11,7 +11,7 @@ debugLog(message) {
     FileAppend(timestamp " [RequestProcessor] " message "`n", A_Temp "\LLM_Debug_Log.txt")
 }
 
-processInitialRequest(commandName, menuText, systemPrompt, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
+processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
     customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode)
 
@@ -167,7 +167,7 @@ processInitialRequest(commandName, menuText, systemPrompt, APIModels, copyAsMark
             chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
                 temperature, maxTokens, stop)
         } else {
-            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userMessage,
+            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemMessage, userMessage,
                 temperature, maxTokens, stop, stream, thinking)
         }
 
@@ -210,12 +210,12 @@ processInitialRequest(commandName, menuText, systemPrompt, APIModels, copyAsMark
             ; Create a new thread in the DB
             threadId := ChatDB.Thread_Create(commandName)
 
-            ; Insert system prompt if present
-            if systemPrompt {
+            ; Insert system message if present
+            if systemMessage {
                 ChatDB.Msg_Insert({
                     thread_id: threadId,
                     role: "system",
-                    content: systemPrompt,
+                    content: systemMessage,
                     parent_id: ""
                 })
             }

@@ -104,7 +104,7 @@
         <thead>
             <tr>
                 <th style="width:160px">Timestamp</th>
-                <th style="width:140px">Prompt</th>
+                <th style="width:140px">Command</th>
                 <th style="width:180px">Model</th>
                 <th style="width:80px">Latency</th>
                 <th style="width:40px">Status</th>
@@ -158,7 +158,7 @@ function renderTable() {
 
         html += '<tr class="clickable" onclick="td(' + i + ')">';
         html += '<td class="timestamp">' + esc(entry.timestamp||'') + '</td>';
-        html += '<td>' + esc(entry.promptName||'') + '</td>';
+        html += '<td>' + esc(entry.commandName||'') + '</td>';
         html += '<td class="model-name">' + esc(entry.model||entry.provider||'') + '</td>';
         html += '<td class="timestamp">' + fmtLatency(entry.latencyMs) + '</td>';
         html += '<td><span class="status-badge ' + sClass + '">' + esc(status) + '</span></td>';

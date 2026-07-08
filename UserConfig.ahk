@@ -137,7 +137,7 @@ for modelId, modelData in models {
 ; ----------------------------------------------------
 ; ASSISTANTS — Named profiles
 ; ----------------------------------------------------
-; Each assistant has: name, baseModel, systemPrompt?, reasoning?, temperature?
+; Each assistant has: name, baseModel, systemMessage?, reasoning?, temperature?
 ; baseModel uses "provider/model" format.
 ; - isDefault: true for the default assistant used in new chats
 ; - reasoning: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" or "" for model default
@@ -147,7 +147,7 @@ assistants := [
     {
         name: "General Assistant",
         baseModel: "deepseek/deepseek-v4-pro",
-        systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
+        systemMessage: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         reasoning: "",
         temperature: "",
         isDefault: true
@@ -156,7 +156,7 @@ assistants := [
     {
         name: "Gemini Pro",
         baseModel: "google/gemini-2.5-pro",
-        systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
+        systemMessage: "You are a helpful assistant. Answer concisely and accurately.",
         reasoning: "",
         temperature: "",
         isDefault: false
@@ -164,7 +164,7 @@ assistants := [
     {
         name: "GPT-5 Mini",
         baseModel: "openai/gpt-5-mini",
-        systemPrompt: "",
+        systemMessage: "",
         reasoning: "",
         temperature: "",
         isDefault: false
@@ -356,8 +356,8 @@ providerMap := Map(
 ;                     defines an accelerator key (e.g. "&1" lets the user
 ;                     press 1 to select that item).
 ;
-;   systemPrompt:     The system message sent to the LLM. This sets the
-;                     model's role / behaviour for this specific command.
+;   systemMessage:     The system message sent to the LLM. This sets the
+;                      model's role / behaviour for this specific command.
 ;
 ;   APIModels:        One or more model identifiers, comma-separated.
 ;                     Supports "provider/model" format (e.g. "openai/gpt-4o")
@@ -440,7 +440,7 @@ providerMap := Map(
 ;     ; ---------- Copy this template ----------
 ;     commandName: "Your Command Name",
 ;     menuText: "&9 - Your Menu Label",        ; & defines accelerator key
-;     systemPrompt: "Your system message here. This sets the model's role.",
+;     systemMessage: "Your system message here. This sets the model's role.",
 ;     APIModels: "deepseek-v4-flash",          ; single model
 ;     ; APIModels: "deepseek-v4-pro, deepseek-v4-flash",  ; multi-model (Council)
 ;     ; APIModels: "openai/gpt-4o",            ; provider/model format
@@ -466,7 +466,7 @@ commands := [
         ; ---------- General assistant (V4 Pro) ----------
         commandName: "General assistant (V4 Pro)",
         menuText: "&1 - Ask DeepSeek V4 Pro",
-        systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
+        systemMessage: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek/deepseek-v4-pro",
         isCustomCommand: false,
         customInputInitialMessage: "",
@@ -483,7 +483,7 @@ commands := [
         ; Same as General assistant, but uses the faster (and cheaper) Flash model.
         commandName: "Quick ask (V4 Flash)",
         menuText: "&2 - Ask DeepSeek V4 Flash",
-        systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
+        systemMessage: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: true,
         customInputInitialMessage: "",
@@ -500,7 +500,7 @@ commands := [
         ; ---------- Google Gemini ----------
         commandName: "Google Gemini",
         menuText: "&3 - Gemini 2.5 Pro",
-        systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
+        systemMessage: "You are a helpful assistant. Answer concisely and accurately.",
         APIModels: "google/gemini-2.5-pro",
         isCustomCommand: true,
         customInputInitialMessage: "",
@@ -517,7 +517,7 @@ commands := [
         ; ---------- OpenAI GPT ----------
         commandName: "OpenAI GPT",
         menuText: "&4 - GPT-5 Mini",
-        systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
+        systemMessage: "You are a helpful assistant. Answer concisely and accurately.",
         APIModels: "openai/gpt-5-mini",
         isCustomCommand: true,
         customInputInitialMessage: "",
@@ -536,7 +536,7 @@ commands := [
         ; and replaces the original text with the rephrased version.
         commandName: "Rephrase",
         menuText: "&5 - Rephrase",
-        systemPrompt: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
+        systemMessage: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: false,
         customInputInitialMessage: "",
@@ -552,7 +552,7 @@ commands := [
         ; ---------- Summarize ----------
         commandName: "Summarize",
         menuText: "&6 - Summarize",
-        systemPrompt: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
+        systemMessage: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: false,
         customInputInitialMessage: "",
@@ -568,7 +568,7 @@ commands := [
         ; ---------- Translate to English ----------
         commandName: "Translate to English",
         menuText: "&7 - Translate to English",
-        systemPrompt: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
+        systemMessage: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: false,
         customInputInitialMessage: "",
@@ -584,7 +584,7 @@ commands := [
         ; ---------- Define ----------
         commandName: "Define",
         menuText: "&8 - Define",
-        systemPrompt: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
+        systemMessage: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: false,
         customInputInitialMessage: "",
@@ -605,7 +605,7 @@ commands := [
         ;  and the selected text is used directly.)
         commandName: "Auto-paste custom command",
         menuText: "&9 - Auto-paste custom command",
-        systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask.",
+        systemMessage: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask.",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: true,
         customInputInitialMessage: "",
@@ -623,7 +623,7 @@ commands := [
         ; separate Response Windows so you can compare answers side-by-side.
         commandName: "Multi-Provider Council",
         menuText: "&0 - Council (Pro + Flash + Gemini)",
-        systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
+        systemMessage: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek/deepseek-v4-pro, deepseek/deepseek-v4-flash, google/gemini-2.5-flash",
         isCustomCommand: true,
         customInputInitialMessage: "",
@@ -643,7 +643,7 @@ commands := [
         ; selection.
         commandName: "FIM Fill",
         menuText: "&F1 - FIM Fill",
-        systemPrompt: "",
+        systemMessage: "",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: false,
         customInputInitialMessage: "",
@@ -662,7 +662,7 @@ commands := [
         ; natural continuation that gets appended after the selection/cursor.
         commandName: "FIM Continue",
         menuText: "&F2 - FIM Continue",
-        systemPrompt: "",
+        systemMessage: "",
         APIModels: "deepseek/deepseek-v4-flash",
         isCustomCommand: false,
         customInputInitialMessage: "",

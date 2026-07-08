@@ -71,7 +71,7 @@ commandMenuHandler(index, *) {
             ? selectedCommand.customInputInitialMessage : unset, selectedCommand.commandName, "ahk_id " customCommandInputWindow
         .guiObj.hWnd)
     } else {
-    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemPrompt,
+    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemMessage,
         selectedCommand.APIModels,
         selectedCommand.HasProp("copyAsMarkdown") && selectedCommand.copyAsMarkdown,
         selectedCommand.HasProp("pasteMode") ? selectedCommand.pasteMode : "chat",

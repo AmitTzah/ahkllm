@@ -31,7 +31,7 @@ customCommandSendButtonAction(*) {
     }
 
     selectedCommand := manageCommandState("selectedCommand", "get")
-    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemPrompt,
+    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemMessage,
         selectedCommand.APIModels,
         selectedCommand.HasProp("copyAsMarkdown") && selectedCommand.copyAsMarkdown,
         selectedCommand.HasProp("pasteMode") ? selectedCommand.pasteMode : "chat",

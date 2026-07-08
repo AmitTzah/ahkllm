@@ -144,7 +144,7 @@ class ChatDB {
             id := ChatDB._UUID()
             safeName := SQLite.Escape(a.name)
             safeModel := SQLite.Escape(a.baseModel)
-            safePrompt := SQLite.Escape(a.systemPrompt)
+            safePrompt := SQLite.Escape(a.systemMessage)
             safeReasoning := SQLite.Escape(a.reasoning)
             temp := a.temperature = "" ? "NULL" : a.temperature
             isDef := a.isDefault ? 1 : 0
@@ -161,7 +161,7 @@ class ChatDB {
                 id: row.id,
                 name: row.name,
                 baseModel: row.base_model,
-                systemPrompt: row.system_prompt,
+                systemMessage: row.system_prompt,
                 reasoning: row.reasoning,
                 temperature: row.temperature,
                 isDefault: row.is_default = 1
@@ -180,7 +180,7 @@ class ChatDB {
                 id: row.id,
                 name: row.name,
                 baseModel: row.base_model,
-                systemPrompt: row.system_prompt,
+                systemMessage: row.system_prompt,
                 reasoning: row.reasoning,
                 temperature: row.temperature,
                 isDefault: row.is_default = 1

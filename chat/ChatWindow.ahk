@@ -100,7 +100,7 @@ _restoreThreadSettings(threadId) {
         asst := ChatDB.Assistant_Get(settings.assistantId)
         if asst {
             requestParams["singleAPIModelName"] := asst.baseModel
-            requestParams["systemOverride"] := asst.systemPrompt
+            requestParams["systemOverride"] := asst.systemMessage
             requestParams["reasoningOverride"] := asst.reasoning
             requestParams["temperatureOverride"] := asst.temperature
         }
@@ -245,7 +245,7 @@ BuildAndWriteRequestFiles() {
         apiMessages.Push({ role: msg.role, content: msg.content })
     }
 
-    ; Apply system prompt override if set via Settings modal
+    ; Apply system message override if set via Settings modal
     if requestParams.Has("systemOverride") && requestParams["systemOverride"] {
         found := false
         for i, m in apiMessages {
@@ -255,7 +255,7 @@ BuildAndWriteRequestFiles() {
                 break
             }
         }
-        ; If no system message exists (e.g. thread started with empty system prompt),
+        ; If no system message exists (e.g. thread started with empty system message),
         ; prepend one so the override takes effect.
         if !found {
             apiMessages.InsertAt(1, { role: "system", content: requestParams["systemOverride"] })
@@ -371,7 +371,7 @@ switchAssistantFromWebView(parsed) {
         return
 
     requestParams["singleAPIModelName"] := asst.baseModel
-    requestParams["systemOverride"] := asst.systemPrompt
+    requestParams["systemOverride"] := asst.systemMessage
     requestParams["reasoningOverride"] := asst.reasoning
     requestParams["temperatureOverride"] := asst.temperature
     requestParams["activeAssistantId"] := assistantId
@@ -399,7 +399,7 @@ switchAssistantFromWebView(parsed) {
 
 updateModelSettingsFromWebView(parsed) {
     model := parsed.Get("model", "")
-    systemPrompt := parsed.Get("systemPrompt", "")
+    systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
     temperature := parsed.Get("temperature", "")
 
@@ -416,7 +416,7 @@ updateModelSettingsFromWebView(parsed) {
     } else {
         requestParams["singleAPIModelName"] := chatDefaultModel
     }
-    requestParams["systemOverride"] := systemPrompt
+    requestParams["systemOverride"] := systemMessage
     requestParams["reasoningOverride"] := reasoning
     requestParams["temperatureOverride"] := temperature
 
@@ -425,7 +425,7 @@ updateModelSettingsFromWebView(parsed) {
         ChatDB.Thread_UpdateSettings(activeThreadId, {
             assistantId: "",
             modelOverride: requestParams["singleAPIModelName"] != chatDefaultModel ? requestParams["singleAPIModelName"] : "",
-            systemOverride: systemPrompt,
+            systemOverride: systemMessage,
             reasoningOverride: reasoning,
             temperatureOverride: temperature
         })
@@ -437,13 +437,13 @@ updateModelSettingsFromWebView(parsed) {
 
 postCurrentSettingsToWebView() {
     model := requestParams["singleAPIModelName"]
-    systemPrompt := requestParams.Has("systemOverride") ? requestParams["systemOverride"] : ""
+    systemMessage := requestParams.Has("systemOverride") ? requestParams["systemOverride"] : ""
     reasoning := requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : ""
     temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
     isReadOnly := requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] != ""
     postWebMessage("currentSettings", {
         model: model,
-        systemPrompt: systemPrompt,
+        systemMessage: systemMessage,
         reasoning: reasoning,
         temperature: temperature,
         readOnly: isReadOnly

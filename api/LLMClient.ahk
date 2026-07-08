@@ -165,7 +165,7 @@ class LLMClient {
     ; Builds the standard chat completions JSON request.
     ; Supports: provider/model ID, system prompt, user prompt, images, thinking, etc.
     ; images: optional array of { data (base64), mimeType } objects
-    createJSONRequest(APIModel, systemPrompt, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, reasoningEffort := "", images*) {
+    createJSONRequest(APIModel, systemMessage, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, reasoningEffort := "", images*) {
         ; Resolve model name (strip provider prefix if present)
         modelName := APIModel
         slashPos := InStr(APIModel, "/")
@@ -177,8 +177,8 @@ class LLMClient {
         requestObj.model := modelName
         requestObj.messages := []
 
-        if systemPrompt != "" {
-            requestObj.messages.Push({ role: "system", content: systemPrompt })
+        if systemMessage != "" {
+            requestObj.messages.Push({ role: "system", content: systemMessage })
         }
 
         ; Build user message content (text + optional images)
