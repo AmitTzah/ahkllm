@@ -78,7 +78,9 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
     }
 }
 
-; Options menu action
+; Options menu action.
+; If HTTP URLs open then immediately close: check uBlock Origin Lite →
+;   Settings → uncheck "Enable pop-up blocking" (closes externally-launched tabs).
 runOptionsMenuAction(command, *) {
     if (spacePos := InStr(command, " ")) {
         firstWord := SubStr(command, 1, spacePos - 1)
