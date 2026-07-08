@@ -47,21 +47,25 @@ function onStreamContent(text) {
     streamState.bubble = createStreamingBubble();
   }
 
-  // Update the content div with rendered markdown + blinking cursor
+  // Update the content div with rendered markdown
   var rendered = md.render(streamState.contentBuffer);
-  streamState.contentDiv.innerHTML = rendered + '<span class="streaming-cursor">▊</span>';
+  streamState.contentDiv.innerHTML = rendered;
   scrollToBottom();
 }
 
-// Called when reasoning/thinking content arrives
-function onStreamReasoning(text) {
+// Called when reasoning/thinking content arrives.
+// Accepts either a string (legacy) or {content, collapsed} object.
+function onStreamReasoning(data) {
   if (!streamState.active) startStreaming();
+
+  var text = typeof data === 'string' ? data : (data.content || '');
+  var collapsed = (typeof data === 'object' && data.collapsed) || false;
 
   streamState.thinkingBuffer += text;
 
   // Create the thinking details block if it doesn't exist
   if (!streamState.thinkingDetails) {
-    streamState.thinkingDetails = createThinkingBlock();
+    streamState.thinkingDetails = createThinkingBlock(collapsed);
   }
 
   // Update the thinking content
@@ -183,7 +187,6 @@ function createStreamingBubble() {
 
   streamState.contentDiv = document.createElement('div');
   streamState.contentDiv.className = 'message-content';
-  streamState.contentDiv.innerHTML = '<span class="streaming-cursor">▊</span>';
   bubble.appendChild(streamState.contentDiv);
 
   container.appendChild(bubble);
@@ -195,7 +198,7 @@ function createStreamingBubble() {
 // Nests the block INSIDE the streaming bubble (between label and content),
 // matching how createMessageBubble renders it. This ensures the thinking
 // block is removed when the bubble is removed — no orphaned DOM elements.
-function createThinkingBlock() {
+function createThinkingBlock(collapsed) {
   // Reasoning may arrive before the first content token. If no bubble
   // exists yet, create one so we have a parent to nest inside.
   if (!streamState.bubble) {
@@ -204,7 +207,7 @@ function createThinkingBlock() {
 
   var details = document.createElement('details');
   details.className = 'thinking-block';
-  details.open = true;  // Expanded by default
+  details.open = !collapsed;  // Collapsed by default for OpenAI/Gemini (useless summaries), expanded for DeepSeek
 
   var summary = document.createElement('summary');
   summary.innerHTML = '🧠 Thinking (0 chars) <span class="thinking-pulse">⏳</span>';
@@ -233,7 +236,71 @@ function handleStreamMessage(target, data) {
     case 'streamDone':
       onStreamDone(data);
       break;
+    case 'streamCancelled':
+      cancelStreaming(data);
+      break;
   }
+}
+
+// Clean up after user cancellation (Esc or Stop button).
+// data may be {dbMsg: {...}} with DB message info for action buttons.
+function cancelStreaming(data) {
+  if (!streamState.active) return;
+  streamState.active = false;
+
+  var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
+
+  // Remove blinking cursor from partial content
+  if (streamState.contentDiv) {
+    streamState.contentDiv.innerHTML = md.render(streamState.contentBuffer || '');
+  }
+
+  // Update thinking block to show it was cancelled
+  if (streamState.thinkingDetails) {
+    var summary = streamState.thinkingDetails.querySelector('summary');
+    var pulse = streamState.thinkingDetails.querySelector('.thinking-pulse');
+    if (pulse) pulse.remove();
+    if (summary && streamState.thinkingBuffer) {
+      summary.textContent = '🧠 Thought (' + streamState.thinkingBuffer.length + ' chars) — cancelled';
+    }
+  }
+
+  // Update bubble label to model name if we have it
+  if (streamState.bubble && streamState.modelName) {
+    var label = streamState.bubble.querySelector('.message-label');
+    if (label) label.textContent = streamState.modelName;
+  }
+
+  // Add to chatMessages and render action buttons if we have DB data.
+  // Must also render when only thinking content exists (no text yet) —
+  // otherwise Stop during reasoning leaves no action bar.
+  if (dbMsg && (streamState.contentBuffer || streamState.thinkingBuffer)) {
+    var cancelledMsg = { role: 'assistant', content: streamState.contentBuffer };
+    if (streamState.modelName) cancelledMsg.model = streamState.modelName;
+    if (dbMsg.id) cancelledMsg.id = dbMsg.id;
+    if (dbMsg.siblingInfo) cancelledMsg.siblingInfo = dbMsg.siblingInfo;
+    if (dbMsg.reasoning) cancelledMsg.reasoning = dbMsg.reasoning;
+    if (streamState.bubble && dbMsg.id) {
+      streamState.bubble.dataset.msgId = dbMsg.id;
+    }
+
+    // Dedup check
+    var found = false;
+    if (dbMsg.id) {
+      for (var i = chatMessages.length - 1; i >= 0; i--) {
+        if (chatMessages[i].id === dbMsg.id) { found = true; break; }
+      }
+    }
+    if (!found) {
+      chatMessages.push(cancelledMsg);
+      sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
+      if (streamState.bubble) {
+        addStreamingActions(streamState.bubble, chatMessages.length - 1);
+      }
+    }
+  }
+
+  setChatButtonsEnabled(true);
 }
 
 // Add action buttons to a streaming bubble after completion

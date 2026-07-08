@@ -4,7 +4,8 @@
 ; Usage: AutoHotkey64.exe ai-automation/tests/run_tests.ahk
 ;
 ; Includes all test files, discovers test classes,
-; runs each method, prints PASS/FAIL to stdout.
+; runs each method, prints PASS/FAIL to test log file.
+; Output goes to A_Temp "\test_results.txt"
 ; #ErrorStdOut catches load-time parse errors (no flag needed).
 ; OnError catches runtime errors (prevents GUI popups).
 ; ======================================================
@@ -15,15 +16,23 @@
 #NoTrayIcon
 
 ; -----------------------------------------------------------
+; Output file for test results (avoids FileAppend to "*" which
+; fails when no console is attached to the AHK process)
+; -----------------------------------------------------------
+global TEST_LOG := A_Temp "\test_results.txt"
+try FileDelete(TEST_LOG)
+
+; -----------------------------------------------------------
 ; Global error handler — catches ALL runtime errors and
-; outputs to stdout instead of showing a GUI dialog.
+; writes to the test log instead of showing a GUI dialog.
 ; This is REQUIRED for headless/automated test execution.
 ; -----------------------------------------------------------
 OnError(TestErrorHandler, -1)
 TestErrorHandler(err, mode) {
-    FileAppend("[RUNTIME ERROR] " err.Message "`n", "*")
+    global TEST_LOG
+    try FileAppend("[RUNTIME ERROR] " err.Message "`n", TEST_LOG)
     if err.HasProp("Stack") && err.Stack
-        FileAppend(err.Stack "`n", "*")
+        try FileAppend(err.Stack "`n", TEST_LOG)
     ExitApp(1)
 }
 
@@ -79,18 +88,18 @@ RunAllTests(*) {
         RunTestClass(className)
     }
     total := totalPassed + totalFailed
-    FileAppend("`n---`n", "*")
-    FileAppend(total " tests run | " totalPassed " passed | " totalFailed " failed`n", "*")
+    FileAppend("`n---`n", TEST_LOG)
+    FileAppend(total " tests run | " totalPassed " passed | " totalFailed " failed`n", TEST_LOG)
     if failedDetails.Length > 0 {
-        FileAppend("`nFAILURES:`n", "*")
+        FileAppend("`nFAILURES:`n", TEST_LOG)
         for detail in failedDetails
-            FileAppend("  " detail "`n", "*")
+            FileAppend("  " detail "`n", TEST_LOG)
     }
     ExitApp(totalFailed > 0 ? 1 : 0)
 }
 
 RunTestClass(className) {
-    global __TestClasses, totalPassed, totalFailed, failedDetails
+    global __TestClasses, totalPassed, totalFailed, failedDetails, TEST_LOG
     try {
         obj := %className%()
         methodCount := 0
@@ -102,23 +111,23 @@ RunTestClass(className) {
             methodCount++
             try {
                 obj.%methodName%()
-                FileAppend("[PASS] " className "." methodName "`n", "*")
+                FileAppend("[PASS] " className "." methodName "`n", TEST_LOG)
                 totalPassed++
             } catch Error as err {
-                FileAppend("[FAIL] " className "." methodName " — " err.Message "`n", "*")
+                FileAppend("[FAIL] " className "." methodName " — " err.Message "`n", TEST_LOG)
                 totalFailed++
                 failedDetails.Push(className "." methodName ": " err.Message)
             }
         }
     } catch Error as err {
-        FileAppend("[FAIL] " className " (class init) — " err.Message "`n", "*")
+        FileAppend("[FAIL] " className " (class init) — " err.Message "`n", TEST_LOG)
         totalFailed++
     }
 }
 
 ; Verify MsgBox override is active
 if MsgBox("test") != "OK" {
-    FileAppend("[CRITICAL] test_config.ahk MsgBox override not active! Tests aborted.`n", "*")
+    FileAppend("[CRITICAL] test_config.ahk MsgBox override not active! Tests aborted.`n", TEST_LOG)
     ExitApp(1)
 }
 

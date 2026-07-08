@@ -236,4 +236,81 @@ class BranchFlowTest {
 
         this._teardown()
     }
+
+    ; --------------------
+    ; Regression: Retry when path ends with user (assistant was deleted).
+    ; Verifies that after hard-deleting an assistant, inserting a new
+    ; assistant response (without sibling_group) produces the correct path.
+    ; This is the DB-level precondition for the empty-input retry flow
+    ; where onChatSend() sends {action:'retry'} and buttonClickAction("Retry")
+    ; detects path ends with user → builds request without sibling_group.
+    ; --------------------
+
+    RetryAfterAssistantDeleted_InsertsWithoutSiblingGroup() {
+        threadId := this._setup()
+
+        ; Create: user → assistant
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello"})
+        asstId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi there!", model: "deepseek-v4-flash", parent_id: usrId})
+
+        ; Delete the assistant (simulates user clicking delete on assistant bubble)
+        ChatDB.Msg_HardDelete(asstId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 1
+            throw Error("Expected 1 message after delete, got " path.Length)
+        if path[path.Length].role != "user"
+            throw Error("Expected path to end with user after assistant deletion, got '" path[path.Length].role "'")
+
+        ; Simulate LLM response to the "resend": insert new assistant
+        ; No sibling_group — this is a fresh response, not a retry replacement
+        newAsstId := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "assistant",
+            content: "New response after resend",
+            model: "deepseek-v4-flash",
+            parent_id: usrId
+        })
+
+        ; Verify path is: user → new_assistant
+        path2 := ChatDB.Msg_GetActivePath(threadId)
+        if path2.Length != 2
+            throw Error("Expected 2 messages after resend response, got " path2.Length)
+        if path2[1].id != usrId
+            throw Error("Expected first message to be original user")
+        if path2[2].id != newAsstId
+            throw Error("Expected second message to be new assistant response")
+        if path2[2].content != "New response after resend"
+            throw Error("Expected new assistant content, got '" path2[2].content "'")
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Regression: HardDelete assistant → path ends with user →
+    ; buildStructuredMessagesFromPath returns only user messages.
+    ; This validates the JS-side precondition: after deletion,
+    ; updateChatView sends only the user message to the WebView,
+    ; so onChatSend() correctly identifies role='user' as last.
+    ; --------------------
+
+    BuildStructuredMessages_AfterDelete_EndsWithUser() {
+        threadId := this._setup()
+
+        ; Create: user → assistant
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Query"})
+        asstId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Answer", model: "deepseek-v4-flash", parent_id: usrId})
+
+        ; Delete assistant
+        ChatDB.Msg_HardDelete(asstId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        struct := buildStructuredMessagesFromPath(path)
+
+        if struct.Length != 1
+            throw Error("Expected 1 structured message after delete, got " struct.Length)
+        if struct[1].role != "user"
+            throw Error("Expected structured message role='user', got '" struct[1].role "'")
+        if struct[1].content != "Query"
+            throw Error("Expected structured message content='Query', got '" struct[1].content "'")
+
+        this._teardown()
+    }
 }

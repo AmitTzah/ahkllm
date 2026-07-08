@@ -47,6 +47,21 @@ global modelPricing := Map(
     "deepseek-v4-flash", {input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1048576}
 )
 
+; New multi-provider globals
+global models := Map(
+    "deepseek/deepseek-v4-flash", { provider: "deepseek", input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false }
+)
+
+global providers := Map(
+    "deepseek", { displayName: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", authEnvVar: "DEEPSEEK_API_KEY", fimEndpoint: "https://api.deepseek.com/beta/completions", icon: "" }
+)
+
+global assistants := [
+    { name: "Test Assistant", baseModel: "deepseek/deepseek-v4-flash", systemPrompt: "", reasoning: "", temperature: "", isDefault: true }
+]
+
+global defaultAssistant := "Test Assistant"
+
 global providerMap := Map(
     "deepseek", "deepseek",
     "gpt",      "openai"

@@ -6,20 +6,47 @@ function onChatSend() {
   var input = document.getElementById('chat-input');
   if (!input) return;
 
+  // If streaming, treat click as "Stop"
+  if (isLoading) {
+    onStopStreaming();
+    return;
+  }
+
   var message = input.value.trim();
-  if (!message || isLoading) return;
+  if (message) {
+    // Normal send with typed text
+    input.value = '';
+    input.style.height = 'auto';
+    isLoading = true;
+    showLoadingIndicator();
+    var sendBtn = document.getElementById('chat-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+    input.disabled = true;
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'chatSend', message: message }));
+    return;
+  }
 
-  input.value = '';
-  input.style.height = 'auto';
-  isLoading = true;
-
-  showLoadingIndicator();
-
-  var sendBtn = document.getElementById('chat-send-btn');
-  if (sendBtn) sendBtn.disabled = true;
-  input.disabled = true;
-
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'chatSend', message: message }));
+  // No input typed — try to act on existing chat context
+  if (chatMessages && chatMessages.length > 0) {
+    var lastMsg = chatMessages[chatMessages.length - 1];
+    if (lastMsg.role === 'assistant' && lastMsg.id) {
+      // Regenerate the last assistant response
+      retryLastAssistantMessage(lastMsg.id);
+      return;
+    }
+    if (lastMsg.role === 'user') {
+      // Chat ends with user (assistant was deleted) — resend current chat
+      // without inserting a duplicate message. Goes through retry which
+      // just builds the request from the current path.
+      isLoading = true;
+      showLoadingIndicator();
+      var btn = document.getElementById('chat-send-btn');
+      if (btn) btn.disabled = true;
+      input.disabled = true;
+      window.chrome.webview.postMessage(JSON.stringify({ action: 'retry' }));
+      return;
+    }
+  }
 }
 
 // Show the loading dots indicator
@@ -40,24 +67,36 @@ function hideLoadingIndicator() {
   if (indicator) indicator.remove();
 }
 
-// Enable/disable chat input buttons
+// Enable/disable chat input. During streaming, button shows "Stop" to cancel.
 function setChatButtonsEnabled(enabled) {
   isLoading = !enabled;
   var sendBtn = document.getElementById('chat-send-btn');
   var input = document.getElementById('chat-input');
-  if (sendBtn) sendBtn.disabled = !enabled;
+  if (sendBtn) {
+    if (enabled) {
+      sendBtn.textContent = 'Send';
+      sendBtn.disabled = false;
+      sendBtn.onclick = onChatSend;
+    } else {
+      sendBtn.textContent = 'Stop';
+      sendBtn.disabled = false;
+      sendBtn.onclick = onStopStreaming;
+    }
+  }
   if (input) input.disabled = !enabled;
   if (enabled && input) input.focus();
 }
 
-// Retry an assistant message. If messageId is provided, retry that specific
-// assistant (removing it and all subsequent messages). Otherwise, retry the
-// last assistant (legacy behavior).
+// Cancel streaming — sends cancel message to AHK
+function onStopStreaming() {
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'cancelStream' }));
+}
+
+// Retry an assistant message
 function retryLastAssistantMessage(messageId) {
   if (isLoading) return;
 
   if (messageId) {
-    // Find the target assistant and remove it + everything after it
     for (var i = 0; i < chatMessages.length; i++) {
       if (chatMessages[i].id === messageId && chatMessages[i].role === 'assistant') {
         chatMessages.splice(i);

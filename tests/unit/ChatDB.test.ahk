@@ -471,4 +471,88 @@ class ChatDBTest {
             throw Error("Expected active_path_tokens to decrease by 1 after shortening: " beforeTokens " → " afterTokens)
         this._teardown()
     }
+
+    ; ----------------------------------------------------
+    ; Assistant CRUD tests
+    ; ----------------------------------------------------
+
+    Assistant_Seed_PopulatesTable() {
+        this._openDb()
+        ChatDB.Assistant_Seed()
+
+        table := ChatDB.db.Exec("SELECT COUNT(*) as cnt FROM assistants;")
+        if Integer(table[1, "cnt"]) < 1
+            throw Error("Expected at least 1 assistant after seed, got " table[1, "cnt"])
+
+        this._closeDb()
+    }
+
+    Assistant_Seed_OverwritesExisting() {
+        this._openDb()
+
+        ; Insert a manual row first
+        ChatDB.db.Exec("INSERT INTO assistants (id, name, base_model) VALUES('test-id', 'Old', 'deepseek/old');")
+
+        ; Seed should DELETE all existing and repopulate
+        ChatDB.Assistant_Seed()
+
+        table := ChatDB.db.Exec("SELECT COUNT(*) as cnt FROM assistants;")
+        cnt := Integer(table[1, "cnt"])
+        if cnt < 1
+            throw Error("Expected at least 1 assistant after reseed, got " cnt)
+
+        ; Old record should be gone
+        oldRow := ChatDB.db.Exec("SELECT id FROM assistants WHERE name='Old';")
+        if oldRow.count > 0
+            throw Error("Expected Old assistant to be replaced by seed")
+
+        this._closeDb()
+    }
+
+    Assistant_List_ReturnsArray() {
+        this._openDb()
+        ChatDB.Assistant_Seed()
+
+        list := ChatDB.Assistant_List()
+        if !IsObject(list) || list.Length < 1
+            throw Error("Expected non-empty array from Assistant_List")
+
+        ; Each item should have required fields
+        for item in list {
+            if !item.HasOwnProp("id") || !item.HasOwnProp("name") || !item.HasOwnProp("baseModel")
+                throw Error("Assistant item missing required fields: id/name/baseModel")
+        }
+
+        this._closeDb()
+    }
+
+    Assistant_Get_ReturnsCorrectRecord() {
+        this._openDb()
+        ChatDB.Assistant_Seed()
+
+        list := ChatDB.Assistant_List()
+        targetId := list[1].id
+        targetName := list[1].name
+
+        asst := ChatDB.Assistant_Get(targetId)
+        if !asst
+            throw Error("Assistant_Get returned empty for valid ID")
+        if asst.name != targetName
+            throw Error("Assistant_Get returned wrong name: " asst.name " vs " targetName)
+        if asst.id != targetId
+            throw Error("Assistant_Get returned wrong ID")
+
+        this._closeDb()
+    }
+
+    Assistant_Get_UnknownId_ReturnsEmpty() {
+        this._openDb()
+        ChatDB.Assistant_Seed()
+
+        result := ChatDB.Assistant_Get("nonexistent-id-12345")
+        if result != ""
+            throw Error("Expected empty string for unknown assistant ID, got: " (IsObject(result) ? result.name : result))
+
+        this._closeDb()
+    }
 }

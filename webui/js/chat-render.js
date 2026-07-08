@@ -78,6 +78,10 @@ function updateChatMessages(newMessages) {
   chatMessages = newMessages;
   sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
 
+  // Ensure buttons are enabled after view updates (delete, edit, branch switch).
+  // These operations never happen during streaming, so this is always safe.
+  setChatButtonsEnabled(true);
+
   // Restore proportional scroll position synchronously (no rAF needed —
   // the new content is already in the DOM so scrollHeight is current).
   if (prevScrollHeight > 0) {

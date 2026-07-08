@@ -93,9 +93,21 @@ buttonClickAction(action, messageId := "") {
                 requestParams["pendingRetrySiblingGroup"] := siblingGroup
                 if path.Length > 1
                     ChatDB.Msg_SetActiveLeaf(activeThreadId, path[path.Length - 1].id)
+            } else if path.Length && path[path.Length].role = "user" {
+                ; Chat ends with user (e.g. assistant was deleted) — just resend
+                ; the current chat. No sibling group needed since we aren't
+                ; replacing an existing assistant. Clear any stale retry state.
+                if requestParams.Has("pendingRetrySiblingGroup")
+                    requestParams.Delete("pendingRetrySiblingGroup")
             }
-            if requestParams.Has("pendingRetrySiblingGroup") {
+            ; Send to LLM if we have a retry pending OR if chat ends with user
+            if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user") {
                 chatHistoryJSONRequest := BuildAndWriteRequestFiles()
+                if !chatHistoryJSONRequest {
+                    postWebMessage("setChatButtonsEnabled", true)
+                    startLoadingCursor(false)
+                    return
+                }
                 postWebMessage("setChatButtonsEnabled", false)
                 startLoadingCursor(true)
                 sendRequestToLLM(&chatHistoryJSONRequest)

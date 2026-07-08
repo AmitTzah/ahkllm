@@ -1,15 +1,18 @@
 ; ----------------------------------------------------
 ; Streaming request handler
 ; Polls the SSE output file, parses lines, posts to WebView
+;
+; Uses SetTimer-based polling so the main thread can process
+; WebView2 COM callbacks (like cancelStream from Stop button)
+; between poll ticks.
 ; ----------------------------------------------------
 
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     debugLog("sendStreamingRequest entered. initialRequest=" initialRequest)
+    try {
 
-    ; Record start time for latency tracking
     requestStartTime := A_TickCount
 
-    ; Delete old output and error files so stale data can't mask a cURL failure on subsequent requests
     if FileExist(requestParams["cURLOutputFile"]) {
         FileDelete(requestParams["cURLOutputFile"])
     }
@@ -17,159 +20,323 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         FileDelete(requestParams["cURLErrorFile"])
     }
 
-    ; Rebuild cURL command fresh each request (not from stale file)
-    cURLCommand := router.buildStreamcURLCommand(requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
+    providerInfo := LLMClient.ResolveProvider(requestParams["singleAPIModelName"])
+    cURLCommand := LLMClient.BuildStreamcURLCommand(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
     FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
 
     Run(cURLCommand, , "Hide", &cURLPID)
     manageState("cURL", "set", cURLPID)
     debugLog("Streaming cURL PID: " cURLPID)
 
-    ; Initialize streaming state
-    streamState := {
-        outputFile: requestParams["cURLOutputFile"],
-        lastPos: 0,
-        content: "",
-        reasoning: "",
-        modelName: "",
-        firstTokenTime: 0,
-        usage: {}
-    }
+    requestParams["_streamOutputFile"]       := requestParams["cURLOutputFile"]
+    requestParams["_streamLastPos"]          := 0
+    requestParams["_streamContent"]          := ""
+    requestParams["_streamReasoning"]        := ""
+    requestParams["_streamModelName"]        := ""
+    requestParams["_streamFirstTokenTime"]   := 0
+    requestParams["_streamUsage"]            := {}
+    requestParams["_streamProviderKey"]      := providerInfo.providerKey
+    requestParams["_streamRawSseChunks"]     := ""
+    requestParams["_streamRawLastResponse"]  := ""
+    requestParams["_streamPollCount"]        := 0
+    requestParams["_streamRequestStartTime"] := requestStartTime
+    requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
+    requestParams["_streamPID"]              := cURLPID
+    requestParams["_streamCancelled"]        := false
 
-    ; Poll the output file incrementally
-    pollCount := 0
-    while (ProcessExist(cURLPID)) {
-        readStreamChunk(streamState)
-        pollCount++
-        Sleep 100
-    }
-    debugLog("Streaming while loop exited. Poll iterations=" pollCount)
+    SetTimer(_pollStreamTimer, 100)
 
-    ; Process any remaining data after process exits
-    readStreamChunk(streamState)
-    debugLog("After final readStreamChunk. Total content length=" StrLen(streamState.content) " reasoning length=" StrLen(streamState.reasoning))
-
-    ; Check stderr file for cURL errors if no content was produced
-    if (streamState.content = "" && streamState.reasoning = "") {
-        errorFile := requestParams["cURLErrorFile"]
-        if FileExist(errorFile) {
-            errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
-            debugLog("cURL stderr: " Trim(errorContent))
-        }
-        ; Also check the output file for API-level error responses
-        if FileExist(streamState.outputFile) {
-            rawOutput := FileOpen(streamState.outputFile, "r", "UTF-8-RAW").Read()
-            debugLog("cURL output (error): " SubStr(rawOutput, 1, 300))
-        }
-    }
-
-    ; If user cancelled, clean up but keep window alive (persistent ChatWindow)
-    if !manageState("cURL", "get") {
-        debugLog("User cancelled streaming request")
-        manageState("cURL", "close")
-        deleteTempFiles()
-        startLoadingCursor(false)
+    } catch Error as e {
+        debugLog("sendStreamingRequest error: " e.Message)
         postWebMessage("setChatButtonsEnabled", true)
-        return
+        startLoadingCursor(false)
+        postWebMessage("showError", { message: "Request failed: " e.Message })
     }
-
-    cURLPID := 0
-    manageState("cURL", "set", cURLPID)
-
-    ; Save full response to chat history and log
-    saveStreamResponse(streamState.content, streamState.modelName, &chatHistoryJSONRequest, requestStartTime, streamState.firstTokenTime, streamState.usage, streamState.reasoning)
-
-    ; Build DB message data to sync back to WebView (id, siblingInfo, reasoning)
-    dbMsgData := ""
-    if activeThreadId {
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
-        if path.Length {
-            dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
-        }
-    }
-
-    ; Finalize: tell WebView streaming is done, include DB message data for id sync
-    postWebMessage("streamDone", { model: streamState.modelName ? streamState.modelName : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
-    debugLog("Streaming complete. streamDone posted.")
-
-    ; Post thread stats (persistent token + cost from DB)
-    postThreadStats(activeThreadId)
-
-    ; Enable chat input
-    postWebMessage("setChatButtonsEnabled", true)
-    startLoadingCursor(false)
 }
 
-; Read and parse new content from the stream output file
-readStreamChunk(streamState) {
-    if !FileExist(streamState.outputFile) {
-        return
+_pollStreamTimer() {
+    try {
+        pid := requestParams["_streamPID"]
+        if !ProcessExist(pid) {
+            SetTimer(, 0)
+            _finalizeStreaming()
+            return
+        }
+        _readStreamChunkFromParams()
+        requestParams["_streamPollCount"]++
+    } catch Error as e {
+        debugLog("_pollStreamTimer error: " e.Message)
+        SetTimer(, 0)
+        _finalizeStreaming()
     }
+}
+
+_readStreamChunkFromParams() {
+    outputFile := requestParams["_streamOutputFile"]
+    if !FileExist(outputFile)
+        return
+
+    file := FileOpen(outputFile, "r", "UTF-8-RAW")
+    if !file
+        return
+
+    file.Pos := requestParams["_streamLastPos"]
+    newContent := file.Read()
+    requestParams["_streamLastPos"] := file.Pos
+    file.Close()
+
+    if !newContent
+        return
+
+    for line in StrSplit(newContent, "`n", "`r") {
+        if (line = "")
+            continue
+
+        if requestParams["_streamProviderKey"] = "google" && InStr(line, "data: ") {
+            requestParams["_streamRawSseChunks"] .= line "`n"
+        }
+
+        if InStr(line, "data: {") {
+            jsonStart := InStr(line, "{")
+            requestParams["_streamRawLastResponse"] := SubStr(line, jsonStart)
+        }
+
+        chunk := SSEParser.ParseLine(line)
+
+        switch chunk.type {
+            case "content":
+                if (requestParams["_streamFirstTokenTime"] = 0)
+                    requestParams["_streamFirstTokenTime"] := A_TickCount
+                requestParams["_streamContent"] .= chunk.content
+                postWebMessage("streamContent", chunk.content)
+                if chunk.HasOwnProp("model") && chunk.model
+                    requestParams["_streamModelName"] := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
+                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                    requestParams["_streamUsage"] := chunk.usage
+
+            case "reasoning":
+                requestParams["_streamReasoning"] .= chunk.content
+                collapseFlag := false
+                if requestParams["_streamReasoning"] = chunk.content {
+                    if providers.Has(requestParams["_streamProviderKey"]) {
+                        p := providers[requestParams["_streamProviderKey"]]
+                        if p.HasOwnProp("collapseThinking")
+                            collapseFlag := p.collapseThinking
+                    }
+                }
+                postWebMessage("streamReasoning", { content: chunk.content, collapsed: collapseFlag })
+
+            case "finish":
+                if chunk.HasOwnProp("model") && chunk.model
+                    requestParams["_streamModelName"] := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
+                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                    requestParams["_streamUsage"] := chunk.usage
+
+            case "done":
+        }
+    }
+}
+
+_finalizeStreaming() {
+    try {
+        pollCount := requestParams["_streamPollCount"]
+        debugLog("Streaming while loop exited. Poll iterations=" pollCount)
+
+        _readStreamChunkFromParams()
+        debugLog("After final readStreamChunk. Total content length=" StrLen(requestParams["_streamContent"]) " reasoning length=" StrLen(requestParams["_streamReasoning"]))
+
+        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
+            errorFile := requestParams["cURLErrorFile"]
+            if FileExist(errorFile) {
+                errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
+                debugLog("cURL stderr: " Trim(errorContent))
+            }
+            if FileExist(requestParams["_streamOutputFile"]) {
+                rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
+                debugLog("cURL output (error): " SubStr(rawOutput, 1, 500))
+                try {
+                    parsedError := jsongo.Parse(rawOutput)
+                    if parsedError.Has("error") && parsedError["error"].Has("message") {
+                        errMsg := parsedError["error"]["message"]
+                        postWebMessage("showError", { message: errMsg })
+                    }
+                }
+            }
+            if !FileExist(requestParams["_streamOutputFile"]) || !FileOpen(requestParams["_streamOutputFile"], "r").Read() {
+                postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
+            }
+        }
+
+        wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
+
+        if wasCancelled {
+            debugLog("User cancelled streaming request")
+            manageState("cURL", "close")
+
+            if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
+                path := ChatDB.Msg_GetActivePath(activeThreadId)
+                parentId := path.Length ? path[path.Length].id : ""
+                ChatDB.Msg_Insert({
+                    thread_id: activeThreadId, role: "assistant",
+                    content: requestParams["_streamContent"],
+                    model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
+                    parent_id: parentId, sibling_group: "", sibling_index: 0,
+                    reasoning: requestParams["_streamReasoning"],
+                    prompt_tokens: requestParams["_streamUsage"].HasOwnProp("promptTokens") ? requestParams["_streamUsage"].promptTokens : 0,
+                    completion_tokens: requestParams["_streamUsage"].HasOwnProp("completionTokens") ? requestParams["_streamUsage"].completionTokens : 0,
+                    total_tokens: requestParams["_streamUsage"].HasOwnProp("totalTokens") ? requestParams["_streamUsage"].totalTokens : 0,
+                    cached_tokens: requestParams["_streamUsage"].HasOwnProp("cachedTokens") ? requestParams["_streamUsage"].cachedTokens : 0
+                })
+                if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
+                    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
+                    if threadInfo.count {
+                        currentTitle := threadInfo[1, "title"]
+                        if currentTitle = "New Chat" || InStr(currentTitle, "(")
+                            SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
+                    }
+                }
+                dbMsgData := buildStructuredMessagesFromPath([ChatDB.Msg_GetActivePath(activeThreadId)[ChatDB.Msg_GetActivePath(activeThreadId).Length]])[1]
+                postWebMessage("streamCancelled", { dbMsg: dbMsgData })
+            } else {
+                postWebMessage("streamCancelled", true)
+            }
+
+            _cleanupStreamState()
+            deleteTempFiles()
+            startLoadingCursor(false)
+            postWebMessage("setChatButtonsEnabled", true)
+            return
+        }
+
+        ; Normal completion
+        try {
+            manageState("cURL", "set", 0)
+
+            debugLog("[DIAG-NORM] step1: about to copy chatHistory")
+            chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
+            debugLog("[DIAG-NORM] step2: about to saveStreamResponse")
+            saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
+            debugLog("[DIAG-NORM] step3: saveStreamResponse done")
+
+            dbMsgData := ""
+            if activeThreadId {
+                path := ChatDB.Msg_GetActivePath(activeThreadId)
+                if path.Length
+                    dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
+            }
+
+            debugLog("[DIAG-NORM] step4: about to post streamDone")
+            postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
+            debugLog("[DIAG-NORM] step5: streamDone posted")
+
+            postThreadStats(activeThreadId)
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+        } catch Error as normErr {
+            debugLog("[DIAG-NORM] ERROR at step: " normErr.Message "`nStack: " normErr.Stack)
+            postWebMessage("showError", { message: "Request failed: " normErr.Message })
+        }
+
+        _cleanupStreamState()
+    } catch Error as e {
+        debugLog("_finalizeStreaming error: " e.Message)
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _cleanupStreamState()
+    }
+}
+
+_cleanupStreamState() {
+    requestParams.Delete("_streamOutputFile")
+    requestParams.Delete("_streamLastPos")
+    requestParams.Delete("_streamContent")
+    requestParams.Delete("_streamReasoning")
+    requestParams.Delete("_streamModelName")
+    requestParams.Delete("_streamFirstTokenTime")
+    requestParams.Delete("_streamUsage")
+    requestParams.Delete("_streamProviderKey")
+    requestParams.Delete("_streamRawSseChunks")
+    requestParams.Delete("_streamRawLastResponse")
+    requestParams.Delete("_streamPollCount")
+    requestParams.Delete("_streamRequestStartTime")
+    requestParams.Delete("_streamChatHistoryJSONRequest")
+    requestParams.Delete("_streamPID")
+    requestParams.Delete("_streamCancelled")
+}
+
+readStreamChunk(streamState) {
+    if !FileExist(streamState.outputFile)
+        return
 
     file := FileOpen(streamState.outputFile, "r", "UTF-8-RAW")
-    if !file {
+    if !file
         return
-    }
 
     file.Pos := streamState.lastPos
     newContent := file.Read()
     streamState.lastPos := file.Pos
     file.Close()
 
-    if !newContent {
+    if !newContent
         return
-    }
 
-    ; Parse each line for SSE data
     for line in StrSplit(newContent, "`n", "`r") {
         if (line = "")
             continue
+
+        if streamState.providerKey = "google" && InStr(line, "data: ")
+            streamState.rawSseChunks .= line "`n"
+
+        if InStr(line, "data: {") {
+            jsonStart := InStr(line, "{")
+            streamState.rawLastResponse := SubStr(line, jsonStart)
+        }
+
         chunk := SSEParser.ParseLine(line)
 
         switch chunk.type {
             case "content":
-                if (streamState.firstTokenTime = 0) {
+                if (streamState.firstTokenTime = 0)
                     streamState.firstTokenTime := A_TickCount
-                }
                 streamState.content .= chunk.content
-                postWebMessage("streamContent", chunk.content)
+                if chunk.HasOwnProp("model") && chunk.model
+                    streamState.modelName := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
+                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                    streamState.usage := chunk.usage
 
             case "reasoning":
                 streamState.reasoning .= chunk.content
-                postWebMessage("streamReasoning", chunk.content)
+                collapseFlag := false
+                if streamState.reasoning = chunk.content {
+                    if providers.Has(streamState.providerKey) {
+                        p := providers[streamState.providerKey]
+                        if p.HasOwnProp("collapseThinking")
+                            collapseFlag := p.collapseThinking
+                    }
+                }
 
             case "finish":
-                if chunk.HasProp("model") && chunk.model {
+                if chunk.HasOwnProp("model") && chunk.model
                     streamState.modelName := StrReplace(SubStr(chunk.model, InStr(chunk.model, "/") + 1), ":", "-")
-                }
-                ; Capture usage data from the final SSE chunk
-                if chunk.HasProp("usage") && chunk.usage.HasProp("totalTokens") && chunk.usage.totalTokens > 0 {
+                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
                     streamState.usage := chunk.usage
-                }
 
             case "done":
-                ; No more data expected
         }
     }
 }
 
-; Save the accumulated streaming response to chat history
-saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "") {
-    ; Guard: don't persist empty assistant messages (e.g. failed API calls)
+saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "", rawLastResponse := "", providerKey := "", rawSseChunks := "") {
     if !content && !reasoning
         return
 
-    ; Snapshot the request BEFORE appending the response
     requestBeforeAppend := chatHistoryJSONRequest
-
-    ; Append assistant message to chat history
     router.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
 
-    ; Persist assistant response in SQLite DB
     if activeThreadId {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := path.Length ? path[path.Length].id : ""
-        ; Check for pending retry sibling_group
         retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
         retrySiblingIdx := 0
         if retrySiblingGroup {
@@ -177,76 +344,54 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
             retrySiblingIdx := sibTable.count ? Integer(sibTable[1, "max_idx"]) + 1 : 0
             requestParams.Delete("pendingRetrySiblingGroup")
         }
-        ; Extract actual token counts from API usage data
         pt := usage.HasProp("promptTokens") ? usage.promptTokens : 0
         ct := usage.HasProp("completionTokens") ? usage.completionTokens : 0
         tt := usage.HasProp("totalTokens") ? usage.totalTokens : 0
         ckt := usage.HasProp("cachedTokens") ? usage.cachedTokens : 0
 
         ChatDB.Msg_Insert({
-            thread_id: activeThreadId,
-            role: "assistant",
-            content: content,
-            model: modelName,
-            parent_id: parentId,
-            sibling_group: retrySiblingGroup,
-            sibling_index: retrySiblingIdx,
-            reasoning: reasoning,
-            prompt_tokens: pt,
-            completion_tokens: ct,
-            total_tokens: tt,
-            cached_tokens: ckt
+            thread_id: activeThreadId, role: "assistant", content: content, model: modelName,
+            parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
+            reasoning: reasoning, prompt_tokens: pt, completion_tokens: ct, total_tokens: tt, cached_tokens: ckt
         })
 
-        ; Trigger title auto-generation after the first assistant response
-        ; Only if thread title is still a default (prompt name or "New Chat")
         if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
-            ; path.Length <= 2 means: system + user, or just user + assistant
-            ; Check current title is still a default
             threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
             if threadInfo.count {
                 currentTitle := threadInfo[1, "title"]
-                if currentTitle = "New Chat" || InStr(currentTitle, "(") {
-                    ; First exchange — fire-and-forget title generation
+                if currentTitle = "New Chat" || InStr(currentTitle, "(")
                     SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
-                }
             }
         }
     }
 
-    ; Reconstruct the full JSON response for logging
-    ; Include usage data if available (captured from the SSE finish chunk)
     logEntry := {
-        choices: [{ message: { content: content } }],
-        model: modelName ? modelName : requestParams["singleAPIModelName"]
+        choices: [{ message: { content: content }, finish_reason: "stop" }],
+        model: modelName ? modelName : requestParams["singleAPIModelName"],
+        model_full: requestParams["singleAPIModelName"]
     }
+    if reasoning
+        logEntry.choices[1].message.reasoning_content := reasoning
     if usage.HasProp("totalTokens") && usage.totalTokens > 0 {
         logEntry.usage := {
-            prompt_tokens:            usage.promptTokens,
-            completion_tokens:        usage.completionTokens,
-            total_tokens:             usage.totalTokens,
-            prompt_cache_hit_tokens:  usage.cachedTokens
+            prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens,
+            total_tokens: usage.totalTokens, prompt_cache_hit_tokens: usage.cachedTokens
         }
     }
     fullResponse := jsongo.Stringify(logEntry)
 
-    ; For streaming, latency = time to first token (TTFT)
-    ; This is the most meaningful metric — how fast the model starts responding
-    latencyMs := firstTokenTime > 0
-        ? firstTokenTime - requestStartTime
-        : A_TickCount - requestStartTime
+    if rawLastResponse
+        debugLog("RAW_LAST_CHUNK: " rawLastResponse)
+    if providerKey = "google" && rawSseChunks
+        debugLog("RAW_SSE_ALL: " StrReplace(rawSseChunks, "`n", " | "))
+
+    latencyMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : A_TickCount - requestStartTime
 
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        promptName: requestParams["responseWindowTitle"],
-        provider: requestParams["providerName"],
-        model: requestParams["singleAPIModelName"],
-        isFIM: false,
-        endpoint: APIEndpoint,
-        pasteMode: requestParams["pasteMode"],
-        request: requestBeforeAppend,
-        response: fullResponse,
-        status: "success",
-        latencyMs: latencyMs
+        promptName: requestParams["responseWindowTitle"], provider: requestParams["providerName"],
+        model: requestParams["singleAPIModelName"], isFIM: false, endpoint: APIEndpoint,
+        pasteMode: requestParams["pasteMode"], request: requestBeforeAppend, response: fullResponse,
+        status: "success", latencyMs: latencyMs
     })
 }

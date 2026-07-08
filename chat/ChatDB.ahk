@@ -55,8 +55,16 @@ class ChatDB {
 
     static _CreateSchema() {
         ; Create tables (new databases get the latest schema)
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, active_path_tokens INTEGER DEFAULT 0, cumulative_prompt_tokens INTEGER DEFAULT 0, cumulative_completion_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_total_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0);")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, active_path_tokens INTEGER DEFAULT 0, cumulative_prompt_tokens INTEGER DEFAULT 0, cumulative_completion_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_total_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL);")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
+
+        ; Add new columns to existing databases (safe — ALTER TABLE ignores if column exists in SQLite)
+        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN assistant_id TEXT;")
+        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN model_override TEXT;")
+        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN system_override TEXT;")
+        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN reasoning_override TEXT;")
+        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN temperature_override REAL;")
 
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
@@ -87,6 +95,98 @@ class ChatDB {
         safeTitle := SQLite.Escape(title)
         ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('" id "', '" safeTitle "');")
         return id
+    }
+
+    ; Save per-thread settings (model, assistant, system, reasoning, temperature).
+    ; Pass only the fields that changed; NULL or empty = no override.
+    static Thread_UpdateSettings(threadId, settings) {
+        safeId := SQLite.Escape(threadId)
+        parts := []
+        if settings.HasOwnProp("assistantId")
+            parts.Push("assistant_id = " (settings.assistantId ? "'" SQLite.Escape(settings.assistantId) "'" : "NULL"))
+        if settings.HasOwnProp("modelOverride")
+            parts.Push("model_override = " (settings.modelOverride ? "'" SQLite.Escape(settings.modelOverride) "'" : "NULL"))
+        if settings.HasOwnProp("systemOverride")
+            parts.Push("system_override = " (settings.systemOverride ? "'" SQLite.Escape(settings.systemOverride) "'" : "NULL"))
+        if settings.HasOwnProp("reasoningOverride")
+            parts.Push("reasoning_override = " (settings.reasoningOverride ? "'" SQLite.Escape(settings.reasoningOverride) "'" : "NULL"))
+        if settings.HasOwnProp("temperatureOverride")
+            parts.Push("temperature_override = " (settings.temperatureOverride != "" ? settings.temperatureOverride : "NULL"))
+        if parts.Length {
+            setClause := ""
+            for i, p in parts
+                setClause .= (i > 1 ? ", " : "") p
+            ChatDB.db.Exec("UPDATE chat_threads SET " setClause " WHERE id='" safeId "';")
+        }
+    }
+
+    ; Get per-thread settings. Returns object with current overrides.
+    static Thread_GetSettings(threadId) {
+        safeId := SQLite.Escape(threadId)
+        table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override FROM chat_threads WHERE id='" safeId "';")
+        if table.count {
+            row := table[1]
+            return {
+                assistantId: row[1],
+                modelOverride: row[2],
+                systemOverride: row[3],
+                reasoningOverride: row[4],
+                temperatureOverride: row[5]
+            }
+        }
+        return ""
+    }
+
+    ; Seed assistants from UserConfig on startup
+    static Assistant_Seed() {
+        ChatDB.db.Exec("DELETE FROM assistants;")
+        for a in assistants {
+            id := ChatDB._UUID()
+            safeName := SQLite.Escape(a.name)
+            safeModel := SQLite.Escape(a.baseModel)
+            safePrompt := SQLite.Escape(a.systemPrompt)
+            safeReasoning := SQLite.Escape(a.reasoning)
+            temp := a.temperature = "" ? "NULL" : a.temperature
+            isDef := a.isDefault ? 1 : 0
+            ChatDB.db.Exec("INSERT INTO assistants (id, name, base_model, system_prompt, reasoning, temperature, is_default) VALUES('" id "', '" safeName "', '" safeModel "', '" safePrompt "', '" safeReasoning "', " temp ", " isDef ");")
+        }
+    }
+
+    ; List all assistant profiles as AHK array of objects
+    static Assistant_List() {
+        table := ChatDB.db.Exec("SELECT id, name, base_model, system_prompt, reasoning, temperature, is_default FROM assistants ORDER BY is_default DESC, name ASC;")
+        result := []
+        for row in table.rows {
+            result.Push({
+                id: row.id,
+                name: row.name,
+                baseModel: row.base_model,
+                systemPrompt: row.system_prompt,
+                reasoning: row.reasoning,
+                temperature: row.temperature,
+                isDefault: row.is_default = 1
+            })
+        }
+        return result
+    }
+
+    ; Get a single assistant by ID
+    static Assistant_Get(assistantId) {
+        safeId := SQLite.Escape(assistantId)
+        table := ChatDB.db.Exec("SELECT id, name, base_model, system_prompt, reasoning, temperature, is_default FROM assistants WHERE id='" safeId "';")
+        if table.count {
+            row := table[1]
+            return {
+                id: row.id,
+                name: row.name,
+                baseModel: row.base_model,
+                systemPrompt: row.system_prompt,
+                reasoning: row.reasoning,
+                temperature: row.temperature,
+                isDefault: row.is_default = 1
+            }
+        }
+        return ""
     }
 
     ; Get threads sorted by most recent first.
@@ -179,15 +279,29 @@ class ChatDB {
         outputCost := 0
         totalCost := 0
         if msgObj.HasProp("model") && msgObj.model {
-            modelShort := msgObj.model
-            slashPos := InStr(modelShort, "/")
-            if slashPos > 0
-                modelShort := SubStr(modelShort, slashPos + 1)
-            if IsSet(modelPricing) && modelPricing.Has(modelShort) {
-                pricing := modelPricing[modelShort]
-                inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
-                cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
-                outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
+            ; Try dual lookup: new models map first, then fallback to modelPricing
+            inputPrice := 0, cachedInputPrice := 0, outputPrice := 0
+            fullModel := msgObj.model
+
+            if IsSet(models) && models.Has(fullModel) {
+                m := models[fullModel]
+                inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
+                cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)
+                outputPrice      := m.HasOwnProp("output")      ? m.output      : 0
+            } else {
+                modelShort := fullModel
+                slashPos := InStr(modelShort, "/")
+                if slashPos > 0
+                    modelShort := SubStr(modelShort, slashPos + 1)
+                if IsSet(modelPricing) && modelPricing.Has(modelShort) {
+                    pricing := modelPricing[modelShort]
+                    inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
+                    cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
+                    outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
+                }
+            }
+
+            if inputPrice > 0 || outputPrice > 0 {
                 nonCachedTokens := pt - ckt
                 nonCachedCost := nonCachedTokens * inputPrice / 1000000
                 cachedCost := ckt * cachedInputPrice / 1000000

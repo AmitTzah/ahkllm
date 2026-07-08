@@ -37,7 +37,7 @@
 				for (i = 0; i < navText.length; i++) {
 					if (navText[i].style.display === "none") {
 						navText[i].style.display = "inline-block";
-						element.innerText = "Collaspe Panel";
+						element.innerText = "Collapse Panel";
 					}
 					else {
 						navText[i].style.display = "none";
@@ -71,6 +71,11 @@
 				<button id="sidebar-toggle" title="Chats" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">☰</button>
 				<button id="tree-view-btn" title="Chat Tree" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">🌳</button>
 				<button id="nav-toggle" title="Message Navigator" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">📋</button>
+				<span style="color:var(--bs-secondary-color);font-size:0.75rem;margin-left:0.5rem;">Assistant:</span>
+				<select id="assistant-selector" onchange="onAssistantSelect()" style="font-size:0.8rem;padding:2px 4px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);max-width:180px;">
+					<option value="">Default Model</option>
+				</select>
+				<button id="settings-btn" title="Model Settings" onclick="openModelSettings()" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">⚙</button>
 			</div>
 			<!-- Chat Layout (shown for pasteMode "chat") -->
 		<div id="chat-layout">
@@ -104,6 +109,50 @@
 			</div>
 			<!-- End Page Content -->
 		</main>
+
+		<!-- Model Settings Modal -->
+		<div id="model-settings-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:1000;">
+			<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bs-body-bg);border:1px solid var(--bs-border-color);border-radius:8px;padding:1.5rem;min-width:420px;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+				<h3 style="margin:0 0 1rem 0;font-size:1rem;">Model Settings</h3>
+
+				<div style="margin-bottom:0.75rem;">
+					<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Provider</label>
+					<select id="settings-provider" onchange="onSettingsProviderChange()" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
+						<option value="">Select provider...</option>
+					</select>
+				</div>
+				<div style="margin-bottom:0.75rem;">
+					<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Model</label>
+					<select id="settings-model" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
+						<option value="">Select model...</option>
+					</select>
+				</div>
+				<div style="margin-bottom:0.75rem;">
+					<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">System Prompt</label>
+					<textarea id="settings-system-prompt" rows="6" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);resize:vertical;min-height:100px;"></textarea>
+				</div>
+				<div style="margin-bottom:0.75rem;display:flex;gap:1rem;">
+					<div style="flex:1;">
+						<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Reasoning</label>
+						<select id="settings-reasoning" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
+							<option value="">Default</option>
+							<option value="none">None</option>
+							<option value="low">Low</option>
+							<option value="medium">Medium</option>
+							<option value="high">High</option>
+						</select>
+					</div>
+					<div style="flex:1;">
+						<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Temperature</label>
+						<input id="settings-temperature" type="number" step="0.1" min="0" max="2" placeholder="default" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
+					</div>
+				</div>
+				<div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
+					<button onclick="closeModelSettings()" style="padding:6px 16px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);cursor:pointer;">Cancel</button>
+					<button onclick="saveModelSettings()" style="padding:6px 16px;border:none;border-radius:4px;background:var(--bs-primary);color:white;cursor:pointer;">Save</button>
+				</div>
+			</div>
+		</div>
 
 		<!-- Additional scripts for markdown rendering -->
         <script src="./js/vendor/markdown-it.min.js"></script>

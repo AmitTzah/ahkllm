@@ -105,8 +105,13 @@ generateThreadTitle(threadId) {
     titleGenStart := A_TickCount
 
     ; Build API request
+    ; Strip provider prefix from model name for API call
+    titleModel := titleGenModel
+    slashPos := InStr(titleModel, "/")
+    if slashPos > 0
+        titleModel := SubStr(titleModel, slashPos + 1)
     ; Disable thinking for title generation — we want clean output, not reasoning
-    requestObj := { model: titleGenModel, messages: [
+    requestObj := { model: titleModel, messages: [
         { role: "system", content: titleGenSystemPrompt },
         { role: "user", content: genPrompt }
     ], max_tokens: titleGenMaxTokens, thinking: { type: "disabled" } }

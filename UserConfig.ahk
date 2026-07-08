@@ -4,35 +4,192 @@
 ; Edit this file to customize the LLM AutoHotkey Assistant.
 ; Changes take effect after saving and reloading (~^s).
 
-; ----------------------------------------------------
-; API KEY
-; ----------------------------------------------------
-; Reads from DEEPSEEK_API_KEY environment variable.
-; Set it via:  setx DEEPSEEK_API_KEY "sk-your-key-here"
-; Get your key at: https://platform.deepseek.com/api_keys
+; ============================================================================
+; PROVIDERS — API endpoint configuration
+; ============================================================================
+; Each provider defines: display name, API endpoint, auth env var, and FIM endpoint.
+; API keys are read from environment variables.
 
-APIKey := EnvGet("DEEPSEEK_API_KEY")
+providers := Map(
+    "deepseek", {
+        displayName: "DeepSeek",
+        endpoint: "https://api.deepseek.com/chat/completions",
+        fimEndpoint: "https://api.deepseek.com/beta/completions",
+        authEnvVar: "DEEPSEEK_API_KEY",
+        icon: "icons/deepseek.ico",
+        collapseThinking: false    ; DeepSeek thinking is raw reasoning — useful, show expanded
+    },
+    "openai", {
+        displayName: "OpenAI",
+        endpoint: "https://api.openai.com/v1/chat/completions",
+        fimEndpoint: "",      ; No FIM support
+        authEnvVar: "OPENAI_API_KEY",
+        icon: "icons/openai.ico",
+        collapseThinking: true     ; OpenAI sends summaries, not raw reasoning
+    },
+    "google", {
+        displayName: "Google Gemini",
+        endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        fimEndpoint: "",
+        authEnvVar: "GEMINI_API_KEY",
+        icon: "icons/google.ico",
+        collapseThinking: true     ; Gemini sends thought summaries, not raw reasoning
+    }
+)
 
-if (!APIKey || APIKey = "") {
-    MsgBox("DEEPSEEK_API_KEY environment variable is not set.`n`nSet it via:`n  setx DEEPSEEK_API_KEY `"sk-your-key-here`"`n`nThen restart this script.", "Missing API Key", "IconX")
+; ----------------------------------------------------
+; API KEY CHECK — Ensures at least one provider key is set
+; ----------------------------------------------------
+; Check DeepSeek first (primary/default), then fallback to any other
+if !EnvGet("DEEPSEEK_API_KEY") && !EnvGet("OPENAI_API_KEY") && !EnvGet("GEMINI_API_KEY") {
+    msg := "No API keys found.`n`n"
+        . "Set at least one environment variable and restart:"
+        . "`n  DEEPSEEK_API_KEY  (for DeepSeek)"
+        . "`n  OPENAI_API_KEY    (for OpenAI)"
+        . "`n  GEMINI_API_KEY    (for Google Gemini)"
+        . "`n`nExample:"
+        . "`n  setx DEEPSEEK_API_KEY sk-your-key-here"
+    MsgBox(msg, "Missing API Keys", "IconX")
     ExitApp()
 }
 
-; ----------------------------------------------------
-; API ENDPOINT (chat completions)
-; ----------------------------------------------------
+; For backward compatibility — resolve the primary API key and endpoint
+; from the first configured provider
+for providerKey, p in providers {
+    apiKey := EnvGet(p.authEnvVar)
+    if apiKey {
+        APIKey := apiKey                    ; Primary API key
+        APIEndpoint := p.endpoint           ; Primary endpoint
+        FIMEndpoint := p.fimEndpoint        ; FIM endpoint (may be empty)
+        break
+    }
+}
+if !IsSet(APIKey) {
+    ; Fallback: use DeepSeek endpoint even without key (will fail at request time)
+    APIKey := ""
+    APIEndpoint := providers["deepseek"].endpoint
+    FIMEndpoint := providers["deepseek"].fimEndpoint
+}
+FIMMaxTokens := 4000
 
-APIEndpoint := "https://api.deepseek.com/chat/completions"
+; ----------------------------------------------------
+; MODELS — Pricing and metadata
+; ----------------------------------------------------
+; Format: Map("provider/model-name", {provider, input, cachedInput, output, context, reasoning, vision})
+; Prices are in USD per 1M tokens.
+; Use Refresh-ModelPricing.ps1 to auto-generate this from models.dev.
+;
+; cachedInput defaults to 10% of input if not specified.
+; If input or output is 0, cost is not calculated for that category.
+
+models := Map(
+    ; DeepSeek
+    "deepseek/deepseek-v4-pro",   { provider: "deepseek", input: 0.435, cachedInput: 0.003625, output: 0.87,  context: 1000000, reasoning: true,  vision: false },
+    "deepseek/deepseek-v4-flash", { provider: "deepseek", input: 0.14,  cachedInput: 0.0028,   output: 0.28,  context: 1000000, reasoning: true,  vision: false },
+    "deepseek/deepseek-chat",     { provider: "deepseek", input: 0.14,  cachedInput: 0.0028,   output: 0.28,  context: 1000000, reasoning: false, vision: false },
+    "deepseek/deepseek-reasoner", { provider: "deepseek", input: 0.14,  cachedInput: 0.0028,   output: 0.28,  context: 1000000, reasoning: true,  vision: false },
+
+    ; OpenAI
+    "openai/gpt-4.1",       { provider: "openai", input: 2.0,   cachedInput: 0.5,    output: 8.0,   context: 1047576, reasoning: false, vision: true },
+    "openai/gpt-4.1-mini",  { provider: "openai", input: 0.4,   cachedInput: 0.1,    output: 1.6,   context: 1047576, reasoning: false, vision: true },
+    "openai/gpt-4.1-nano",  { provider: "openai", input: 0.1,   cachedInput: 0.025,  output: 0.4,   context: 1047576, reasoning: false, vision: true },
+    "openai/gpt-4o-mini",   { provider: "openai", input: 0.15,  cachedInput: 0.075,  output: 0.6,   context: 128000,   reasoning: false, vision: true },
+    "openai/gpt-4o",        { provider: "openai", input: 2.5,   cachedInput: 1.25,   output: 10,    context: 128000,   reasoning: false, vision: true },
+    "openai/gpt-5-mini",    { provider: "openai", input: 0.25,  cachedInput: 0.025,  output: 2.0,   context: 400000,   reasoning: true,  vision: true },
+    "openai/gpt-5.1",       { provider: "openai", input: 1.25,  cachedInput: 0.125,  output: 10,    context: 400000,   reasoning: true,  vision: true },
+    "openai/gpt-5.2",       { provider: "openai", input: 1.75,  cachedInput: 0.175,  output: 14,    context: 400000,   reasoning: true,  vision: true },
+    "openai/gpt-5.4",       { provider: "openai", input: 2.5,   cachedInput: 0.25,   output: 15,    context: 1050000,  reasoning: true,  vision: true },
+    "openai/gpt-5.4-mini",  { provider: "openai", input: 0.75,  cachedInput: 0.075,  output: 4.5,   context: 400000,   reasoning: true,  vision: true },
+    "openai/o3-mini",       { provider: "openai", input: 1.1,   cachedInput: 0.55,   output: 4.4,   context: 200000,   reasoning: true,  vision: false },
+    "openai/o4-mini",       { provider: "openai", input: 1.1,   cachedInput: 0.275,  output: 4.4,   context: 200000,   reasoning: true,  vision: true },
+
+    ; Google Gemini
+    "google/gemini-2.5-flash",      { provider: "google", input: 0.3,   cachedInput: 0.03,  output: 2.5,  context: 1048576, reasoning: true, vision: true },
+    "google/gemini-2.5-flash-lite", { provider: "google", input: 0.1,   cachedInput: 0.01,  output: 0.4,  context: 1048576, reasoning: true, vision: true },
+    "google/gemini-2.5-pro",        { provider: "google", input: 1.25,  cachedInput: 0.125, output: 10,   context: 1048576, reasoning: true, vision: true },
+    "google/gemini-3.5-flash",      { provider: "google", input: 1.5,   cachedInput: 0.15,  output: 9,    context: 1048576, reasoning: true, vision: true }
+)
 
 ; ----------------------------------------------------
-; FIM ENDPOINT (Fill In the Middle — beta)
+; BACKWARD COMPATIBILITY — modelPricing map
 ; ----------------------------------------------------
-; For code completion and text continuation.
-; Max tokens is 4K.  Prefix = selected text (or text before cursor),
-; suffix = text after the selection (optional).
+; Maps model names (without provider prefix) to their pricing.
+; Generated from the models map above for scripts that still use the old format.
+modelPricing := Map()
+for modelId, modelData in models {
+    ; Extract just the model name after "provider/"
+    slashPos := InStr(modelId, "/")
+    if slashPos > 0 {
+        shortName := SubStr(modelId, slashPos + 1)
+    } else {
+        shortName := modelId
+    }
+    if !modelPricing.Has(shortName) {
+        modelPricing[shortName] := {
+            input: modelData.input,
+            cachedInput: modelData.cachedInput,
+            output: modelData.output,
+            context: modelData.context
+        }
+    }
+}
 
-FIMEndpoint       := "https://api.deepseek.com/beta/completions"
-FIMMaxTokens      := 4000
+; ----------------------------------------------------
+; ASSISTANTS — Named profiles
+; ----------------------------------------------------
+; Each assistant has: name, baseModel, systemPrompt?, reasoning?, temperature?
+; baseModel uses "provider/model" format.
+; - isDefault: true for the default assistant used in new chats
+; - reasoning: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" or "" for model default
+; - temperature: 0-2 or "" for model default
+
+assistants := [
+    {
+        name: "General Assistant",
+        baseModel: "deepseek/deepseek-v4-pro",
+        systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
+        reasoning: "",
+        temperature: "",
+        isDefault: true
+    },
+    {
+        name: "Quick Ask",
+        baseModel: "deepseek/deepseek-v4-flash",
+        systemPrompt: "",
+        reasoning: "",
+        temperature: "",
+        isDefault: false
+    },
+    {
+        name: "Gemini Pro",
+        baseModel: "google/gemini-2.5-pro",
+        systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
+        reasoning: "",
+        temperature: "",
+        isDefault: false
+    },
+    {
+        name: "GPT-5 Mini",
+        baseModel: "openai/gpt-5-mini",
+        systemPrompt: "",
+        reasoning: "",
+        temperature: "",
+        isDefault: false
+    }
+]
+
+; Resolve default assistant
+defaultAssistant := ""
+for a in assistants {
+    if a.isDefault {
+        defaultAssistant := a.name
+        break
+    }
+}
+if !defaultAssistant && assistants.Length > 0 {
+    defaultAssistant := assistants[1].name
+    assistants[1].isDefault := true
+}
 
 ; ----------------------------------------------------
 ; THEME (dark mode)
@@ -58,7 +215,7 @@ responseWindowFontFace := "Arial, Segoe UI, Helvetica, Verdana, Tahoma, sans-ser
 ; Default model used for new free-form chats (opened from tray or ` menu).
 ; Must be a valid model name supported by APIEndpoint (e.g. "deepseek-v4-flash",
 ; "deepseek-v4-flash", etc.). Users can switch models mid-chat via the sidebar.
-chatDefaultModel := "deepseek-v4-flash"
+chatDefaultModel := "deepseek/deepseek-v4-flash"
 
 ; ----------------------------------------------------
 ; UI — Input Window
@@ -159,21 +316,6 @@ trayMenuItems := [
 ]
 
 ; ----------------------------------------------------
-; MODEL PRICING (for token usage display and cost estimation)
-; ----------------------------------------------------
-; Prices are in USD per 1M tokens. Set to 0 or omit to disable cost display.
-; Format: Map("model-name", {input: price_per_1M_input, cachedInput: price_per_1M_cached, output: price_per_1M_output, context: context_window_tokens})
-; To add pricing for other models/providers, add entries to this map.
-; If a model is not found here, tokens will be displayed without cost estimates.
-; If input or output is 0, cost is not calculated for that category.
-; cachedInput defaults to 10% of input price if not specified.
-
-modelPricing := Map(
-    "deepseek-v4-pro",   {input: 0.435, cachedInput: 0.003625, output: 0.87, context: 1048576},
-    "deepseek-v4-flash", {input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1048576}
-)
-
-; ----------------------------------------------------
 ; THREAD TITLE AUTO-GENERATION
 ; ----------------------------------------------------
 ; After the first user+assistant exchange in a chat thread, the script generates
@@ -185,7 +327,7 @@ modelPricing := Map(
 ;   Keep it strict — only the title text, no commentary.
 ; titleGenMaxTokens: Maximum tokens for the generated title. Titles are short.
 
-titleGenModel := "deepseek-v4-flash"
+titleGenModel := "deepseek/deepseek-v4-flash"
 titleGenSystemPrompt := "Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary."
 titleGenMaxTokens := 50
 
@@ -332,7 +474,7 @@ prompts := [
         promptName: "General assistant (V4 Pro)",
         menuText: "&1 - Ask DeepSeek V4 Pro",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
-        APIModels: "deepseek-v4-pro",
+        APIModels: "deepseek/deepseek-v4-pro",
         isCustomPrompt: false,               ; Shows input window for your instruction
         customPromptInitialMessage: "",     ; (no pre-filled text)
         pasteMode: "chat",                      ; Chat interface
@@ -349,7 +491,7 @@ prompts := [
         promptName: "Quick ask (V4 Flash)",
         menuText: "&2 - Ask DeepSeek V4 Flash",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: true,
         customPromptInitialMessage: "",
         pasteMode: "chat",
@@ -362,13 +504,47 @@ prompts := [
     }
 
     , {
+        ; ---------- Google Gemini ----------
+        promptName: "Google Gemini",
+        menuText: "&3 - Gemini 2.5 Pro",
+        systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
+        APIModels: "google/gemini-2.5-pro",
+        isCustomPrompt: true,
+        customPromptInitialMessage: "",
+        pasteMode: "chat",
+        stream: true,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        isFIM: false,
+        tags: ["&Google"],
+        directAccelerator: ""
+    }
+
+    , {
+        ; ---------- OpenAI GPT ----------
+        promptName: "OpenAI GPT",
+        menuText: "&4 - GPT-5 Mini",
+        systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
+        APIModels: "openai/gpt-5-mini",
+        isCustomPrompt: true,
+        customPromptInitialMessage: "",
+        pasteMode: "chat",
+        stream: true,
+        skipConfirmation: false,
+        copyAsMarkdown: false,
+        isFIM: false,
+        tags: ["&OpenAI"],
+        directAccelerator: ""
+    }
+
+    , {
         ; ---------- Rephrase ----------
         ; Copies selected text, sends it to the LLM with rephrase instructions,
         ; and replaces the original text with the rephrased version.
         promptName: "Rephrase",
-        menuText: "&3 - Rephrase",
+        menuText: "&5 - Rephrase",
         systemPrompt: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: false,              ; Uses selected text directly (no input window)
         customPromptInitialMessage: "",
         pasteMode: "replace",               ; Replaces selected text with rephrased version
@@ -382,9 +558,9 @@ prompts := [
     , {
         ; ---------- Summarize ----------
         promptName: "Summarize",
-        menuText: "&4 - Summarize",
+        menuText: "&6 - Summarize",
         systemPrompt: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
         pasteMode: "replace",
@@ -398,9 +574,9 @@ prompts := [
     , {
         ; ---------- Translate to English ----------
         promptName: "Translate to English",
-        menuText: "&5 - Translate to English",
+        menuText: "&7 - Translate to English",
         systemPrompt: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
         pasteMode: "replace",
@@ -414,9 +590,9 @@ prompts := [
     , {
         ; ---------- Define ----------
         promptName: "Define",
-        menuText: "&6 - Define",
+        menuText: "&8 - Define",
         systemPrompt: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
         pasteMode: "replace",
@@ -435,9 +611,9 @@ prompts := [
         ; (You can enable paste without custom prompt — just set pasteMode on any prompt
         ;  and the selected text is used directly.)
         promptName: "Auto-paste custom prompt",
-        menuText: "&7 - Auto-paste custom prompt",
+        menuText: "&9 - Auto-paste custom prompt",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask.",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: true,               ; Shows input window for any instruction
         customPromptInitialMessage: "",
         pasteMode: "replace",               ; Pastes response straight into active app
@@ -449,20 +625,20 @@ prompts := [
     }
 
     , {
-        ; ---------- DeepSeek Council (Pro + Flash) ----------
+        ; ---------- Council (Pro + Flash) ----------
         ; Sends the same request to two models simultaneously, spawning
         ; separate Response Windows so you can compare answers side-by-side.
-        promptName: "DeepSeek Council",
-        menuText: "&8 - Council (Pro + Flash)",
+        promptName: "Multi-Provider Council",
+        menuText: "&0 - Council (Pro + Flash + Gemini)",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
-        APIModels: "deepseek-v4-pro, deepseek-v4-flash",   ; Two models = two Response Windows
+        APIModels: "deepseek/deepseek-v4-pro, deepseek/deepseek-v4-flash, google/gemini-2.5-flash",
         isCustomPrompt: true,
         customPromptInitialMessage: "",
         pasteMode: "chat",                      ; Chat interface (multi-model, each window has its own chat)
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
-        tags: ["&DeepSeek", "&Multi-models"],
+        tags: ["&Multi-models"],
         directAccelerator: ""
     }
 
@@ -473,9 +649,9 @@ prompts := [
         ; prefix + suffix, and FIM fills the middle.  The result replaces the
         ; selection.
         promptName: "FIM Fill",
-        menuText: "&9 - FIM Fill",
+        menuText: "&F1 - FIM Fill",
         systemPrompt: "",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
         pasteMode: "replace",               ; FIM output replaces the selected gap
@@ -492,9 +668,9 @@ prompts := [
         ; grabs text before the cursor (Ctrl+Shift+Home).  FIM generates a
         ; natural continuation that gets appended after the selection/cursor.
         promptName: "FIM Continue",
-        menuText: "&0 - FIM Continue",
+        menuText: "&F2 - FIM Continue",
         systemPrompt: "",
-        APIModels: "deepseek-v4-flash",
+        APIModels: "deepseek/deepseek-v4-flash",
         isCustomPrompt: false,
         customPromptInitialMessage: "",
         pasteMode: "append",          ; FIM Continue — pastes result after cursor

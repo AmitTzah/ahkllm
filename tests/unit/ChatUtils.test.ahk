@@ -38,6 +38,35 @@ class ChatUtilsTest {
             throw Error("Expected 0 for invalid component")
     }
 
+    ManageState_DoubleClose_DoesNotCrash() {
+        ; Regression: cancelStreamFromWebView() calls manageState("cURL","close"),
+        ; then sendStreamingRequest's cancelled path calls it again.
+        ; ProcessClose(0) must be safe — no crash, no error.
+        manageState("cURL", "set", 0)
+        try {
+            manageState("cURL", "close")
+            manageState("cURL", "close")  ; double-close with PID already 0
+        } catch Error as err {
+            throw Error("Double close should not throw: " err.Message)
+        }
+        pid := manageState("cURL", "get")
+        if pid != 0
+            throw Error("PID should remain 0 after double close, got " pid)
+    }
+
+    ManageState_CloseClearsPID() {
+        ; Regression: when cancelStreamFromWebView kills cURL, PID must be
+        ; cleared so sendStreamingRequest detects cancellation.
+        manageState("cURL", "set", 54321)
+        pid := manageState("cURL", "get")
+        if pid != 54321
+            throw Error("Expected PID 54321, got " pid)
+        manageState("cURL", "close")
+        pid := manageState("cURL", "get")
+        if pid != 0
+            throw Error("Expected PID 0 after close (cancellation detection), got " pid)
+    }
+
     ; --------------------
     ; postWebMessage — verify json format
     ; --------------------

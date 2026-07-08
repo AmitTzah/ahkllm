@@ -41,7 +41,7 @@ class StreamHandlerTest {
 
     ReadStreamChunk_NoFile_Returns() {
         ; Should not throw when file doesn't exist
-        state := {outputFile: A_Temp "\nonexistent_" A_TickCount ".tmp", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}}
+        state := {outputFile: A_Temp "\nonexistent_" A_TickCount ".tmp", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         try {
             readStreamChunk(state)
         } catch Error as err {
@@ -53,7 +53,7 @@ class StreamHandlerTest {
         ; Should not throw for empty file
         tmpFile := A_Temp "\test_empty_" A_TickCount ".tmp"
         FileAppend("", tmpFile)
-        state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}}
+        state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         try {
             readStreamChunk(state)
         } catch Error as err {
@@ -66,10 +66,90 @@ class StreamHandlerTest {
     ReadStreamChunk_ParsesContent() {
         tmpFile := A_Temp "\test_sse_" A_TickCount ".tmp"
         FileAppend('data: {"choices":[{"delta":{"content":"Hello"}}]}', tmpFile)
-        state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}}
+        state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         readStreamChunk(state)
-        if state.content = ""
-            throw Error("Expected content accumulator to fill, got empty after readStreamChunk")
+        if state.content != "Hello"
+            throw Error("Expected content='Hello', got '" state.content "'")
         FileDelete(tmpFile)
+    }
+
+    ; --------------------------------------------------------
+    ; SSEParser: null-usage investigation
+    ; jsongo.Parse converts JSON null to "" (empty string).
+    ; If OpenAI returns {"usage":null} in a finish chunk,
+    ; SSEParser would do parsed["usage"]["prompt_tokens"]
+    ; which is bracket-access on "" → __Item error.
+    ; --------------------------------------------------------
+
+    ; Verify jsongo.Parse(null) → "" (AHK empty string)
+    JsongoNull_BecomesEmptyString() {
+        obj := jsongo.Parse('{"key": null}')
+        val := obj["key"]
+        if Type(val) != "String"
+            throw Error("Expected null→String, got Type=" Type(val))
+        if val != ""
+            throw Error("Expected null→empty string, got '" val "'")
+    }
+
+    ; Verify bracket access on "" (from null) triggers __Item
+    JsongoNull_BracketAccessOnString_ThrowsTypeError() {
+        obj := jsongo.Parse('{"usage": null}')
+        usage := obj["usage"]
+        if Type(usage) != "String"
+            throw Error("Expected String, got " Type(usage))
+        ; This should throw — bracket access on a String
+        threw := false
+        try {
+            _ := usage["prompt_tokens"]
+        } catch Error as e {
+            threw := true
+            if !InStr(e.Message, "__Item")
+                throw Error("Expected __Item error, got: " e.Message)
+        }
+        if !threw
+            throw Error("Expected bracket access on String to throw, but it didn't")
+    }
+
+    ; SSEParser with finish chunk containing "usage": null
+    SSEParser_NullUsage_HandlesGracefully() {
+        line := 'data: {"id":"test","choices":[{"delta":{},"finish_reason":"stop"}],"model":"gpt-5.1","usage":null}'
+        try {
+            result := SSEParser.ParseLine(line)
+            ; Should not throw, should return finish without usage
+            if result.type != "finish"
+                throw Error("Expected type='finish', got '" result.type "'")
+            if result.HasOwnProp("usage")
+                throw Error("Expected no usage prop when usage is null")
+        } catch Error as e {
+            throw Error("SSEParser should handle null usage gracefully, but threw: " e.Message)
+        }
+    }
+
+    ; SSEParser with finish chunk containing valid usage
+    SSEParser_ValidUsage_ExtractsCorrectly() {
+        line := 'data: {"id":"test","choices":[{"delta":{},"finish_reason":"stop"}],"model":"gpt-5.1","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+        result := SSEParser.ParseLine(line)
+        if result.type != "finish"
+            throw Error("Expected type='finish', got '" result.type "'")
+        if !result.HasOwnProp("usage")
+            throw Error("Expected usage prop")
+        if result.usage.promptTokens != 10
+            throw Error("Expected promptTokens=10, got " result.usage.promptTokens)
+        if result.usage.completionTokens != 5
+            throw Error("Expected completionTokens=5, got " result.usage.completionTokens)
+        if result.usage.totalTokens != 15
+            throw Error("Expected totalTokens=15, got " result.usage.totalTokens)
+    }
+
+    ; SSEParser with finish chunk containing empty usage object
+    SSEParser_EmptyUsageObject_HandlesGracefully() {
+        line := 'data: {"id":"test","choices":[{"delta":{},"finish_reason":"stop"}],"model":"gpt-5.1","usage":{}}'
+        try {
+            result := SSEParser.ParseLine(line)
+            if result.type != "finish"
+                throw Error("Expected type='finish', got '" result.type "'")
+        } catch Error as e {
+            throw Error("SSEParser should handle empty usage object gracefully, but threw: " e.Message)
+        }
     }
 }

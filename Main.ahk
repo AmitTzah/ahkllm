@@ -57,6 +57,7 @@ mainScriptHotkeyActions(action) {
 ; ----------------------------------------------------
 
 ChatDB.Open()
+ChatDB.Assistant_Seed()
 
 ; ----------------------------------------------------
 ; Pre-warm ChatWindow: spawn hidden at startup so WebView2

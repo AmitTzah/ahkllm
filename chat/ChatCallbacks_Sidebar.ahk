@@ -22,10 +22,12 @@ sidebarActionFromWebView(params, *) {
         case "loadThread":
             if params.Has("threadId") {
                 activeThreadId := params["threadId"]
+                _restoreThreadSettings(activeThreadId)
                 path := ChatDB.Msg_GetActivePath(activeThreadId)
                 postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
                 postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
                 postThreadStats(activeThreadId)
+                _sendDropdownLabel()
             }
         case "navigateToMessage":
             if params.Has("messageId") && activeThreadId {
@@ -37,6 +39,7 @@ sidebarActionFromWebView(params, *) {
             }
         case "newChat":
             activeThreadId := ChatDB.Thread_Create()
+            _resetToDefaultSettings()
             postWebMessage("loadThread", activeThreadId)
             postWebMessage("threadList", ChatDB.Thread_List())
             postWebMessage("trashList", ChatDB.Thread_List(true))
