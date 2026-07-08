@@ -353,7 +353,6 @@ function populateCurrentSettings(settings) {
   var modalContent = document.querySelector('#model-settings-modal > div');
   var bannerEl = document.getElementById('settings-readonly-banner');
   if (readOnly) {
-    if (modalContent) modalContent.style.opacity = '0.7';
     if (!bannerEl) {
       bannerEl = document.createElement('div');
       bannerEl.id = 'settings-readonly-banner';
@@ -362,7 +361,6 @@ function populateCurrentSettings(settings) {
       if (modalContent) modalContent.insertBefore(bannerEl, modalContent.children[1]);
     }
   } else {
-    if (modalContent) modalContent.style.opacity = '1';
     if (bannerEl) bannerEl.remove();
   }
 }

@@ -41,3 +41,12 @@ code {
   pointer-events: auto;
   cursor: not-allowed;
 }
+
+/* Make disabled form fields visually grayed out */
+#model-settings-modal select:disabled,
+#model-settings-modal input:disabled,
+#model-settings-modal textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--bs-secondary-bg, #e9ecef);
+}
