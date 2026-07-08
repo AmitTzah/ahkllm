@@ -270,6 +270,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
                 A_Clipboard := responseFromLLM.response
                 if pasteMode = "append" {
                     Send("{Right}")       ; Move cursor past the selection before pasting
+                    Sleep 50              ; Let the deselect complete before pasting
                 }
                 Send("^v")
                 Sleep 50
