@@ -137,7 +137,7 @@ OnWebMessageReceived(sender, args) {
 if (darkMode)
     DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", responseWindow.hWnd, "int", 20, "int*", true, "int", 4)
 
-router := LLMClient(APIKey)
+router := LLMRequestBuilder(APIKey)
 
 ; ----------------------------------------------------
 ; Utility modules and callbacks

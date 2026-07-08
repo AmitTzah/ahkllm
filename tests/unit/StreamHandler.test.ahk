@@ -152,4 +152,100 @@ class StreamHandlerTest {
             throw Error("SSEParser should handle empty usage object gracefully, but threw: " e.Message)
         }
     }
+
+    ; --------------------------------------------------------
+    ; Error response parsing: Google Gemini returns errors as
+    ; [{error: {message: "..."}}] (array), while OpenAI/DeepSeek
+    ; return {error: {message: "..."}} (object).
+    ; _handleStreamError() must extract the message from both.
+    ; --------------------------------------------------------
+
+    ; Google Gemini format: array with error object
+    ParseError_GoogleArrayFormat() {
+        raw := '[{"error": {"code": 400, "message": "Invalid reasoning_effort value", "status": "INVALID_ARGUMENT"}}]'
+        parsed := jsongo.Parse(raw)
+
+        errMsg := ""
+        if Type(parsed) = "Array" && parsed.Length > 0 && parsed[1].Has("error") && parsed[1]["error"].Has("message") {
+            errMsg := parsed[1]["error"]["message"]
+        }
+
+        if errMsg != "Invalid reasoning_effort value"
+            throw Error("Expected error message 'Invalid reasoning_effort value', got '" errMsg "'")
+    }
+
+    ; OpenAI/DeepSeek format: object with error
+    ParseError_ObjectFormat() {
+        raw := '{"error": {"message": "Invalid API key", "type": "invalid_request_error"}}'
+        parsed := jsongo.Parse(raw)
+
+        errMsg := ""
+        if parsed.Has("error") && parsed["error"].Has("message") {
+            errMsg := parsed["error"]["message"]
+        }
+
+        if errMsg != "Invalid API key"
+            throw Error("Expected error message 'Invalid API key', got '" errMsg "'")
+    }
+
+    ; Both branches combined (mirrors the actual _handleStreamError logic)
+    ParseError_CombinedLogic_HandlesArrayFirst() {
+        ; Test: Array format should be caught by the first branch
+        raw := '[{"error": {"message": "Array error format"}}]'
+        parsed := jsongo.Parse(raw)
+
+        errMsg := ""
+        if Type(parsed) = "Array" && parsed.Length > 0 && parsed[1].Has("error") && parsed[1]["error"].Has("message") {
+            errMsg := parsed[1]["error"]["message"]
+        } else if parsed.Has("error") && parsed["error"].Has("message") {
+            errMsg := parsed["error"]["message"]
+        }
+
+        if errMsg != "Array error format"
+            throw Error("Expected 'Array error format', got '" errMsg "'")
+    }
+
+    ParseError_CombinedLogic_HandlesObjectFallback() {
+        ; Test: Object format falls through to second branch
+        raw := '{"error": {"message": "Object error format"}}'
+        parsed := jsongo.Parse(raw)
+
+        errMsg := ""
+        if Type(parsed) = "Array" && parsed.Length > 0 && parsed[1].Has("error") && parsed[1]["error"].Has("message") {
+            errMsg := parsed[1]["error"]["message"]
+        } else if parsed.Has("error") && parsed["error"].Has("message") {
+            errMsg := parsed["error"]["message"]
+        }
+
+        if errMsg != "Object error format"
+            throw Error("Expected 'Object error format', got '" errMsg "'")
+    }
+
+    ; --------------------------------------------------------
+    ; Non-JSON content: jsongo.Parse throws, catch block must
+    ; ensure errMsg stays empty so the fallback at line ~200 fires.
+    ; --------------------------------------------------------
+    ParseError_NonJsonContent_ReturnsEmptyError() {
+        ; Simulate a garbage response body (e.g., HTML error page)
+        raw := "<html>502 Bad Gateway</html>"
+        threw := false
+        errMsg := ""
+        try {
+            parsed := jsongo.Parse(raw)
+            ; Should have thrown — fail if we reach here
+            if Type(parsed) = "Array" && parsed.Length > 0 && parsed[1].Has("error") && parsed[1]["error"].Has("message") {
+                errMsg := parsed[1]["error"]["message"]
+            } else if parsed.Has("error") && parsed["error"].Has("message") {
+                errMsg := parsed["error"]["message"]
+            }
+        } catch Error as e {
+            threw := true
+            ; errMsg stays empty — fallback path should fire
+        }
+
+        if !threw
+            throw Error("Expected jsongo.Parse to throw on non-JSON input")
+        if errMsg != ""
+            throw Error("Expected empty errMsg after parse failure, got '" errMsg "'")
+    }
 }

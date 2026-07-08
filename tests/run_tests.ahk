@@ -53,7 +53,10 @@ RegisterTestClass(className) {
 ; Include production modules needed by tests
 #Include ..\lib\jsongo.v2.ahk
 #Include ..\lib\SQLite\SQLite.ahk
-#Include ..\api\LLMClient.ahk
+#Include ..\api\CurlBuilder.ahk
+#Include ..\api\ProviderResolver.ahk
+#Include ..\api\ResponseParser.ahk
+#Include ..\api\LLMRequestBuilder.ahk
 #Include ..\api\SSEParser.ahk
 #Include ..\api\ApiLogger.ahk
 #Include ..\api\CostCalculator.ahk
@@ -61,13 +64,15 @@ RegisterTestClass(className) {
 #Include ..\chat\ChatUtils.ahk
 #Include ..\chat\StreamHandler.ahk
 #Include ..\chat\ChatCallbacks_Message.ahk
+#Include ..\chat\ChatRequestBuilder.ahk
 #Include ..\ui\CustomMessages.ahk
 
 ; Include test files
 #Include unit\ChatDB.test.ahk
-#Include unit\LLMClient.test.ahk
+#Include unit\LLMRequestBuilder.test.ahk
 #Include unit\ChatUtils.test.ahk
 #Include unit\StreamHandler.test.ahk
+#Include unit\ChatRequestBuilder.test.ahk
 #Include unit\CustomMessages.test.ahk
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk

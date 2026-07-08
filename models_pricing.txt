@@ -1,7 +1,21 @@
 ﻿; ============================================================================
 ; Auto-generated model pricing from models.dev
-; Generated: 2026-07-06 13:55:57
-; Copy the models := Map(...) block into UserConfig.ahk
+; Generated: 2026-07-08 14:10:17
+; ============================================================================
+;
+; HOW TO USE:
+;  1. Open UserConfig.ahk (find the models := Map(...) block, around line 170)
+;  2. Replace the ENTIRE block from:
+;       models := Map(
+;     through its closing
+;       )
+;     with the block below.
+;  3. Save UserConfig.ahk -- AHK auto-reloads to pick up the new pricing.
+;  4. Keep only the models you actually use. Delete unused lines.
+;
+; If you prefer: paste the whole block and comment out unused models with
+; a semicolon at the start of each line you don't need.
+;
 ; ============================================================================
 
 models := Map(
@@ -69,5 +83,5 @@ models := Map(
 )
 
 ; ============================================================================
-; Summary: 61 models exported from  providers
+; Summary: 61 models exported from 3 providers
 ; ============================================================================

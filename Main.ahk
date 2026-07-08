@@ -134,10 +134,10 @@ for _, item in trayMenuItems {
 A_IconTip := "LLM AutoHotkey Assistant"
 
 ; ----------------------------------------------------
-; Create new instance of LLMClient class
+; Create new instance of LLMRequestBuilder class
 ; ----------------------------------------------------
 
-router := LLMClient(APIKey)
+router := LLMRequestBuilder(APIKey)
 
 ; ----------------------------------------------------
 ; Create Input Windows

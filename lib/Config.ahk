@@ -11,7 +11,10 @@
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
 ; Application classes
-#Include ..\api\LLMClient.ahk
+#Include ..\api\CurlBuilder.ahk
+#Include ..\api\ProviderResolver.ahk
+#Include ..\api\ResponseParser.ahk
+#Include ..\api\LLMRequestBuilder.ahk
 #Include ..\api\SSEParser.ahk
 #Include ..\api\ApiLogger.ahk
 #Include ..\api\CostCalculator.ahk

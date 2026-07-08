@@ -122,6 +122,7 @@ function reloadLogs() {
     window.chrome.webview.hostObjects.Logs.GetLogs().then(function(jsonStr) {
         try { logData = JSON.parse(jsonStr); } catch(e) { logData = []; }
         renderTable();
+        lastLogCount = logData.length;
     });
 }
 

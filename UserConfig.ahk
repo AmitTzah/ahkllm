@@ -107,7 +107,13 @@ models := Map(
     "google/gemini-2.5-flash",      { provider: "google", input: 0.3,   cachedInput: 0.03,  output: 2.5,  context: 1048576, reasoning: true, vision: true },
     "google/gemini-2.5-flash-lite", { provider: "google", input: 0.1,   cachedInput: 0.01,  output: 0.4,  context: 1048576, reasoning: true, vision: true },
     "google/gemini-2.5-pro",        { provider: "google", input: 1.25,  cachedInput: 0.125, output: 10,   context: 1048576, reasoning: true, vision: true },
-    "google/gemini-3.5-flash",      { provider: "google", input: 1.5,   cachedInput: 0.15,  output: 9,    context: 1048576, reasoning: true, vision: true }
+    "google/gemini-3.5-flash",      { provider: "google", input: 1.5,   cachedInput: 0.15,  output: 9,    context: 1048576, reasoning: true, vision: true },
+    "google/gemini-3.1-pro-preview", { provider: "google", input: 2, cachedInput: 0.2, output: 12, context: 1048576, reasoning: true, vision: true },
+    "google/gemini-3-flash-preview", { provider: "google", input: 0.5, cachedInput: 0.05, output: 3, context: 1048576, reasoning: true, vision: true },
+    "google/gemma-4-31b-it", { provider: "google", input: 0, cachedInput: 0, output: 0, context: 262144, reasoning: true, vision: true },
+
+
+
 )
 
 ; ----------------------------------------------------
@@ -141,6 +147,10 @@ for modelId, modelData in models {
 ; baseModel uses "provider/model" format.
 ; - isDefault: true for the default assistant used in new chats
 ; - reasoning: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" or "" for model default
+;   Per-provider support (via OpenAI-compatible reasoning_effort):
+;     DeepSeek: "none" uses thinking:{type:"disabled"}; low/medium→high, xhigh→max
+;     OpenAI:   "none" only on gpt-5.1+; "xhigh" only on gpt-5.1-codex-max+; gpt-5-pro only "high"
+;     Google:   "none" only on Gemini 2.5; "xhigh" not supported
 ; - temperature: 0-2 or "" for model default
 
 assistants := [
@@ -339,7 +349,8 @@ providerMap := Map(
     "o1",       "openai",
     "o3",       "openai",
     "claude",   "anthropic",
-    "gemini",   "google"
+    "gemini",   "google",
+    "gemma",    "google"
 )
 
 ; ----------------------------------------------------

@@ -28,7 +28,8 @@ DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", viewerWindow.hWnd, "int", 20, "in
 viewerWindow.AddHostObjectToScript("Logs", {
     GetLogs: GetLogs,
     ClearLogs: ClearLogs,
-    IsDarkMode: IsDarkMode
+    IsDarkMode: IsDarkMode,
+    GetLogCount: GetLogCount
 })
 
 ; Show the window centered
@@ -51,4 +52,9 @@ ClearLogs(*) {
 
 IsDarkMode(*) {
     return (IsSet(darkMode) && darkMode) ? "true" : "false"
+}
+
+GetLogCount(*) {
+    logs := ApiLogger.ReadLogs()
+    return logs.Length
 }

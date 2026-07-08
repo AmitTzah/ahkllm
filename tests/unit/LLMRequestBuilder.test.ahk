@@ -1,19 +1,19 @@
 ; ======================================================
-; LLMClient.test.ahk — Unit tests for LLMClient class
+; LLMRequestBuilder.test.ahk — Unit tests for LLMRequestBuilder class
 ;
 ; Tests: createJSONRequest, createFIMRequest,
 ;        extractJSONResponse, extractFIMResponse,
 ;        parseSSELine, ComputeTokenCosts, buildcURLCommand
 ; ======================================================
 
-class LLMClientTest {
+class LLMRequestBuilderTest {
 
     static __New() {
-        RegisterTestClass("LLMClientTest")
+        RegisterTestClass("LLMRequestBuilderTest")
     }
 
     _setup() {
-        return LLMClient("sk-test-key")
+        return LLMRequestBuilder("sk-test-key")
     }
 
     ; --------------------
@@ -142,7 +142,7 @@ class LLMClientTest {
     }
 
     ; --------------------
-    ; parseSSELine — instance method on LLMClient
+    ; parseSSELine — instance method on LLMRequestBuilder
     ; --------------------
 
     ParseSSELine_Content() {
@@ -318,7 +318,7 @@ class LLMClientTest {
     ; ----------------------------------------------------
 
     ResolveProvider_NewFormat() {
-        info := LLMClient.ResolveProvider("openai/gpt-4.1-mini")
+        info := ProviderResolver.Resolve("openai/gpt-4.1-mini")
         if info.providerKey != "openai"
             throw Error("Expected providerKey 'openai', got '" info.providerKey "'")
         if info.modelName != "gpt-4.1-mini"
@@ -328,7 +328,7 @@ class LLMClientTest {
     }
 
     ResolveProvider_LegacyFormat() {
-        info := LLMClient.ResolveProvider("deepseek-v4-flash")
+        info := ProviderResolver.Resolve("deepseek-v4-flash")
         if info.providerKey != "deepseek"
             throw Error("Expected providerKey 'deepseek', got '" info.providerKey "'")
         if info.modelName != "deepseek-v4-flash"
@@ -336,7 +336,7 @@ class LLMClientTest {
     }
 
     ResolveProvider_UnknownModel_FallsBackToDeepSeek() {
-        info := LLMClient.ResolveProvider("unknown-model-xyz")
+        info := ProviderResolver.Resolve("unknown-model-xyz")
         if info.providerKey != "deepseek"
             throw Error("Expected fallback to deepseek, got '" info.providerKey "'")
     }
@@ -346,31 +346,31 @@ class LLMClientTest {
     ; ----------------------------------------------------
 
     FixStreamBoolean_FixesStreamTrue() {
-        result := LLMClient._FixStreamBoolean('{"stream":1,"model":"test"}')
+        result := LLMRequestBuilder._FixStreamBoolean('{"stream":1,"model":"test"}')
         if !InStr(result, '"stream":true')
             throw Error("Expected stream:true, got: " result)
     }
 
     FixStreamBoolean_FixesStreamFalse() {
-        result := LLMClient._FixStreamBoolean('{"stream":0}')
+        result := LLMRequestBuilder._FixStreamBoolean('{"stream":0}')
         if !InStr(result, '"stream":false')
             throw Error("Expected stream:false, got: " result)
     }
 
     FixStreamBoolean_FixesIncludeUsage() {
-        result := LLMClient._FixStreamBoolean('{"include_usage":1}')
+        result := LLMRequestBuilder._FixStreamBoolean('{"include_usage":1}')
         if !InStr(result, '"include_usage":true')
             throw Error("Expected include_usage:true, got: " result)
     }
 
     FixStreamBoolean_FixesIncludeThoughts() {
-        result := LLMClient._FixStreamBoolean('{"include_thoughts":1}')
+        result := LLMRequestBuilder._FixStreamBoolean('{"include_thoughts":1}')
         if !InStr(result, '"include_thoughts":true')
             throw Error("Expected include_thoughts:true, got: " result)
     }
 
     FixStreamBoolean_KeepsOtherBooleans() {
-        result := LLMClient._FixStreamBoolean('{"other":1}')
+        result := LLMRequestBuilder._FixStreamBoolean('{"other":1}')
         ; Only stream/include_usage/include_thoughts are fixed — others stay as 1
         if InStr(result, '"stream":1') || InStr(result, '"include_usage":1') || InStr(result, '"include_thoughts":1')
             throw Error("Non-target booleans should remain unchanged")

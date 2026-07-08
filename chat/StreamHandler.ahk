@@ -20,8 +20,8 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         FileDelete(requestParams["cURLErrorFile"])
     }
 
-    providerInfo := LLMClient.ResolveProvider(requestParams["singleAPIModelName"])
-    cURLCommand := LLMClient.BuildStreamcURLCommand(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
+    providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+    cURLCommand := CurlBuilder.BuildStream(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
     FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
 
     Run(cURLCommand, , "Hide", &cURLPID)
@@ -174,20 +174,57 @@ _handleStreamError() {
         errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
         debugLog("cURL stderr: " Trim(errorContent))
     }
+
+    rawOutput := ""
+    errMsg := ""
+
     if FileExist(requestParams["_streamOutputFile"]) {
         rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
         debugLog("cURL output (error): " SubStr(rawOutput, 1, 500))
         try {
-            parsedError := jsongo.Parse(rawOutput)
-            if parsedError.Has("error") && parsedError["error"].Has("message") {
-                errMsg := parsedError["error"]["message"]
+            parsed := jsongo.Parse(rawOutput)
+
+            ; Extract error message from both formats:
+            ;   Object:  {error: {message: "..."}}     — OpenAI, DeepSeek
+            ;   Array:   [{error: {message: "..."}}]   — Google Gemini
+            if Type(parsed) = "Array" && parsed.Length > 0 && parsed[1].Has("error") && parsed[1]["error"].Has("message") {
+                errMsg := parsed[1]["error"]["message"]
+            } else if parsed.Has("error") && parsed["error"].Has("message") {
+                errMsg := parsed["error"]["message"]
+            }
+
+            if errMsg {
                 postWebMessage("showError", { message: errMsg })
             }
+        } catch Error as e {
+            debugLog("Error parsing API error response: " e.Message)
+            ; JSON parse failed — fall back to generic error so user still sees something
+            postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
         }
     }
-    if !FileExist(requestParams["_streamOutputFile"]) || !FileOpen(requestParams["_streamOutputFile"], "r").Read() {
-        postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
+
+    if !errMsg && (!FileExist(requestParams["_streamOutputFile"]) || !FileOpen(requestParams["_streamOutputFile"], "r").Read()) {
+        errMsg := "Request failed. Check your API key and try again."
+        postWebMessage("showError", { message: errMsg })
     }
+
+    ; Log the failed request to API logs so users can inspect the error response
+    latencyMs := requestParams["_streamRequestStartTime"] > 0
+        ? A_TickCount - requestParams["_streamRequestStartTime"]
+        : 0
+    ApiLogger.LogRequest({
+        timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+        commandName: requestParams["responseWindowTitle"],
+        provider: requestParams["providerName"],
+        model: requestParams["singleAPIModelName"],
+        isFIM: false,
+        endpoint: _getProviderEndpoint(),
+        pasteMode: requestParams["pasteMode"],
+        request: requestParams.Has("_streamChatHistoryJSONRequest") ? requestParams["_streamChatHistoryJSONRequest"] : "{}",
+        response: rawOutput ? rawOutput : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
+        status: "error",
+        latencyMs: latencyMs
+    })
 }
 
 _handleStreamCancelled() {
@@ -303,7 +340,7 @@ _logCancelledRequest(estPromptTokens, estCompletionTokens) {
         provider: requestParams["providerName"],
         model: requestParams["singleAPIModelName"],
         isFIM: false,
-        endpoint: APIEndpoint,
+        endpoint: _getProviderEndpoint(),
         pasteMode: requestParams["pasteMode"],
         request: requestParams["_streamChatHistoryJSONRequest"],
         response: jsongo.Stringify(logEntry),
@@ -456,8 +493,17 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: requestParams["responseWindowTitle"], provider: requestParams["providerName"],
-        model: requestParams["singleAPIModelName"], isFIM: false, endpoint: APIEndpoint,
+        model: requestParams["singleAPIModelName"], isFIM: false, endpoint: _getProviderEndpoint(),
         pasteMode: requestParams["pasteMode"], request: requestBeforeAppend, response: fullResponse,
         status: "success", latencyMs: latencyMs
     })
+}
+
+; Resolve the actual provider endpoint for API log entries.
+; Uses the stored provider key from the streaming session.
+_getProviderEndpoint() {
+    providerKey := requestParams.Has("_streamProviderKey") ? requestParams["_streamProviderKey"] : "deepseek"
+    if providers.Has(providerKey)
+        return providers[providerKey].endpoint
+    return APIEndpoint
 }

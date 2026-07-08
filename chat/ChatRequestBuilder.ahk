@@ -20,7 +20,7 @@ BuildAndWriteRequestFiles() {
         return ""
 
     ; Resolve provider once — used for validation, cURL building, and provider-specific request fields
-    providerInfo := LLMClient.ResolveProvider(requestParams["singleAPIModelName"])
+    providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
 
     ; Validate: check API key is available for the selected provider
     if !providerInfo.apiKey {
@@ -66,25 +66,10 @@ BuildAndWriteRequestFiles() {
     requestObj := { model: apiModelName, messages: apiMessages }
 
     ; Apply reasoning override with per-provider thinking control.
-    ; Each provider has different mechanisms for enabling/disabling thinking.
+    ; Delegates to shared LLMRequestBuilder.ApplyThinkingOverride for consistency
+    ; with the menu command flow (createJSONRequest).
     if requestParams.Has("reasoningOverride") && requestParams["reasoningOverride"] != "" {
-        reasoningVal := requestParams["reasoningOverride"]
-
-        if reasoningVal = "none" {
-            ; User wants thinking disabled — use provider-specific mechanism
-            if providerInfo.providerKey = "deepseek" {
-                ; DeepSeek V4: thinking:disabled is the only way to disable.
-                ; Do NOT send reasoning_effort at all — DeepSeek rejects "none".
-                requestObj.thinking := { type: "disabled" }
-            } else {
-                ; OpenAI GPT-5.1+ / Gemini Flash: reasoning_effort: "none" works
-                ; For models that can't disable (GPT-5, Gemini Pro), this is silently ignored
-                requestObj.reasoning_effort := "none"
-            }
-        } else {
-            ; Specific reasoning level (low/medium/high/xhigh)
-            requestObj.reasoning_effort := reasoningVal
-        }
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, providerInfo.providerKey, providerInfo.modelName, requestParams["reasoningOverride"])
     }
 
     ; Apply temperature override if set (use != "" not truthiness — "0" is falsy in AHK)
@@ -102,8 +87,11 @@ BuildAndWriteRequestFiles() {
         requestObj.stream_options := { include_usage: true }
     }
 
-    ; Gemini-specific: request thinking (thought summaries) via extra_body
-    if providerInfo.providerKey = "google" {
+    ; Gemini-specific: when no reasoning override, request thought summaries
+    ; via extra_body at the model's default thinking level.
+    ; When an override IS set, the block above already sets extra_body with
+    ; the specific thinking_level + include_thoughts.
+    if providerInfo.providerKey = "google" && (!requestParams.Has("reasoningOverride") || requestParams["reasoningOverride"] = "") {
         requestObj.extra_body := {
             google: {
                 thinking_config: {
@@ -113,7 +101,7 @@ BuildAndWriteRequestFiles() {
         }
     }
 
-    payload := LLMClient._FixStreamBoolean(jsongo.Stringify(requestObj))
+    payload := LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
 
     uniqueID := A_TickCount
     requestFile := A_Temp "\ChatWindow_Req_" uniqueID ".json"
@@ -123,9 +111,9 @@ BuildAndWriteRequestFiles() {
 
     FileOpen(requestFile, "w", "UTF-8-RAW").Write(payload)
     if requestParams["stream"] {
-        cURLCommand := LLMClient.BuildStreamcURLCommand(providerInfo, requestFile, outputFile, errorFile)
+        cURLCommand := CurlBuilder.BuildStream(providerInfo, requestFile, outputFile, errorFile)
     } else {
-        cURLCommand := LLMClient.BuildcURLCommand(providerInfo, requestFile, outputFile)
+        cURLCommand := CurlBuilder.Build(providerInfo, requestFile, outputFile)
     }
     FileOpen(cURLFile, "w", "UTF-8-RAW").Write(cURLCommand)
 

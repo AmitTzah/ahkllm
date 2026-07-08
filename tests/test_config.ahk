@@ -49,7 +49,9 @@ global modelPricing := Map(
 
 ; New multi-provider globals
 global models := Map(
-    "deepseek/deepseek-v4-flash", { provider: "deepseek", input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false }
+    "deepseek/deepseek-v4-flash", { provider: "deepseek", input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false },
+    "google/gemini-2.5-flash", { provider: "google", input: 0.3, cachedInput: 0.03, output: 2.5, context: 1048576, reasoning: true, vision: true },
+    "google/gemini-3.5-flash", { provider: "google", input: 1.5, cachedInput: 0.15, output: 9, context: 1048576, reasoning: true, vision: true }
 )
 
 global providers := Map(
