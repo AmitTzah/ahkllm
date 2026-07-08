@@ -11,9 +11,9 @@ debugLog(message) {
     FileAppend(timestamp " [RequestProcessor] " message "`n", A_Temp "\LLM_Debug_Log.txt")
 }
 
-processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
-    customPromptMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
-    debugLog("processInitialRequest: " promptName " stream=" stream " pasteMode=" pasteMode)
+processInitialRequest(commandName, menuText, systemPrompt, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
+    customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
+    debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode)
 
     ; ----------------------------------------------------
     ; STEP 1: Capture text (clipboard-based)
@@ -115,18 +115,18 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
         Critical("Off")
 
         if !copied {
-            if customPromptMessage != "" {
-                userPrompt := customPromptMessage
+            if customInputMessage != "" {
+                userMessage := customInputMessage
             } else {
                 manageCursorAndToolTip("Reset")
                 A_Clipboard := clipboardBeforeCopy
                 MsgBox "The attempt to copy text onto the clipboard failed.", "No text copied", "IconX"
                 return
             }
-        } else if customPromptMessage != "" {
-            userPrompt := customPromptMessage "`n`n" A_Clipboard
+        } else if customInputMessage != "" {
+            userMessage := customInputMessage "`n`n" A_Clipboard
         } else {
-            userPrompt := A_Clipboard
+            userMessage := A_Clipboard
         }
 
         A_Clipboard := clipboardBeforeCopy
@@ -167,18 +167,18 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
                 temperature, maxTokens, stop)
         } else {
-            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userPrompt,
+            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemPrompt, userMessage,
                 temperature, maxTokens, stop, stream, thinking)
         }
 
         ; Generate sanitized filenames
-        chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" promptName "_" singleAPIModelName "_" uniqueID ".json",
+        chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json",
             "[\/\\:*?`"<>|]", "")
-        cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" promptName "_" singleAPIModelName "_" uniqueID ".txt",
+        cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" commandName "_" singleAPIModelName "_" uniqueID ".txt",
             "[\/\\:*?`"<>|]", "")
-        cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" promptName "_" singleAPIModelName "_" uniqueID ".json",
+        cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" commandName "_" singleAPIModelName "_" uniqueID ".json",
             "[\/\\:*?`"<>|]", "")
-        cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" promptName "_" singleAPIModelName "_" uniqueID ".txt",
+        cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" commandName "_" singleAPIModelName "_" uniqueID ".txt",
             "[\/\\:*?`"<>|]", "")
 
         ; Write the JSON request and cURL command to files
@@ -208,7 +208,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
                 debugLog("WARNING: Multi-model not supported in chat mode. Using only first model: " APIModels[1])
             }
             ; Create a new thread in the DB
-            threadId := ChatDB.Thread_Create(promptName)
+            threadId := ChatDB.Thread_Create(commandName)
 
             ; Insert system prompt if present
             if systemPrompt {
@@ -221,13 +221,13 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             }
 
             ; Insert captured text as first user message if any (isSet check for FIM mode)
-            if IsSet(userPrompt) && userPrompt {
+            if IsSet(userMessage) && userMessage {
                 path := ChatDB.Msg_GetActivePath(threadId)
                 parentId := path.Length ? path[path.Length].id : ""
                 ChatDB.Msg_Insert({
                     thread_id: threadId,
                     role: "user",
-                    content: userPrompt,
+                    content: userMessage,
                     parent_id: parentId
                 })
             }
@@ -240,7 +240,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
             ; Non-chat mode: run LLM inline and paste result directly (no window)
             ; Track in active models during processing (for tooltip and reload deferral)
             getActiveModels()[uniqueID] := {
-                promptName: promptName,
+                commandName: commandName,
                 name: singleAPIModelName,
                 provider: router,
                 JSONFile: chatHistoryJSONRequestFile,
@@ -279,7 +279,7 @@ processInitialRequest(promptName, menuText, systemPrompt, APIModels, copyAsMarkd
                 ; Log the API call
                 ApiLogger.LogRequest({
                     timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-                    promptName: promptName,
+                    commandName: commandName,
                     provider: providerName,
                     model: singleAPIModelName,
                     isFIM: isFIM,

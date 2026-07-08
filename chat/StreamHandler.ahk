@@ -389,7 +389,7 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
 
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        promptName: requestParams["responseWindowTitle"], provider: requestParams["providerName"],
+        commandName: requestParams["responseWindowTitle"], provider: requestParams["providerName"],
         model: requestParams["singleAPIModelName"], isFIM: false, endpoint: APIEndpoint,
         pasteMode: requestParams["pasteMode"], request: requestBeforeAppend, response: fullResponse,
         status: "success", latencyMs: latencyMs

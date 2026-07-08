@@ -169,7 +169,7 @@ generateThreadTitle(threadId) {
     ; Log the title generation to API logs (transparency)
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        promptName: "Thread Title Generation",
+        commandName: "Thread Title Generation",
         provider: "deepseek",
         model: titleGenModel,
         isFIM: false,

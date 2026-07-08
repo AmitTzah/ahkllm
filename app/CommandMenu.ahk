@@ -1,88 +1,88 @@
 ; ----------------------------------------------------
-; Prompt menu building
+; Command menu building
 ; ----------------------------------------------------
 
-buildPromptMenu() {
-    promptMenu := Menu()
+buildCommandMenu() {
+    commandMenu := Menu()
     tagsMap := Map()
 
     ; Always show "&1 - Open Chat" as the first item
-    promptMenu.Add("&1 - Open Chat", (*) => OpenChatPromptHandler())
+    commandMenu.Add("&1 - Open Chat", (*) => OpenChatCommandHandler())
 
-    ; Normal prompts
-    for index, prompt in managePromptState("prompts", "get") {
+    ; Normal commands
+    for index, command in manageCommandState("commands", "get") {
 
-        ; Check if prompt has tags
-        hasTags := prompt.HasProp("tags") && prompt.tags && prompt.tags.Length > 0
+        ; Check if command has tags
+        hasTags := command.HasProp("tags") && command.tags && command.tags.Length > 0
 
-        ; If prompt has a directAccelerator, add a top-level shortcut
-        if prompt.HasProp("directAccelerator") && prompt.directAccelerator {
-            promptMenu.Add(prompt.directAccelerator . " - " . prompt.promptName, promptMenuHandler.Bind(index))
+        ; If command has a directAccelerator, add a top-level shortcut
+        if command.HasProp("directAccelerator") && command.directAccelerator {
+            commandMenu.Add(command.directAccelerator . " - " . command.commandName, commandMenuHandler.Bind(index))
         }
 
         ; If no tags, add directly to menu and continue
         if !hasTags {
-            promptMenu.Add(prompt.menuText, promptMenuHandler.Bind(index))
+            commandMenu.Add(command.menuText, commandMenuHandler.Bind(index))
             continue
         }
 
         ; Process tags
-        for tag in prompt.tags {
+        for tag in command.tags {
             normalizedTag := StrLower(Trim(tag))
 
             ; Create tag menu if doesn't exist
             if !tagsMap.Has(normalizedTag) {
                 tagsMap[normalizedTag] := { menu: Menu(), displayName: tag }
-                promptMenu.Add(tag, tagsMap[normalizedTag].menu)
+                commandMenu.Add(tag, tagsMap[normalizedTag].menu)
             }
 
-            ; Add prompt to tag menu
-            tagsMap[normalizedTag].menu.Add(prompt.menuText, promptMenuHandler.Bind(index))
+            ; Add command to tag menu
+            tagsMap[normalizedTag].menu.Add(command.menuText, commandMenuHandler.Bind(index))
         }
     }
 
     ; Line separator before Options
-    promptMenu.Add()
+    commandMenu.Add()
 
     ; Options menu — built dynamically from UserConfig.ahk
-    promptMenu.Add("&Options", optionsMenu := Menu())
+    commandMenu.Add("&Options", optionsMenu := Menu())
     for _, item in optionsMenuItems {
         optionsMenu.Add(item.menuText, runOptionsMenuAction.Bind(item.command))
     }
-    promptMenu.Show()
+    commandMenu.Show()
 }
 
 ; ----------------------------------------------------
-; Prompt menu handler function
+; Command menu handler function
 ; ----------------------------------------------------
 
-promptMenuHandler(index, *) {
-    promptsList := managePromptState("prompts", "get")
-    selectedPrompt := promptsList[index]
-    if (selectedPrompt.HasProp("isCustomPrompt") && selectedPrompt.isCustomPrompt) {
+commandMenuHandler(index, *) {
+    commandsList := manageCommandState("commands", "get")
+    selectedCommand := commandsList[index]
+    if (selectedCommand.HasProp("isCustomCommand") && selectedCommand.isCustomCommand) {
 
-        ; Save the prompt for future reference in customPromptSendButtonAction(*)
-        managePromptState("selectedPrompt", "set", selectedPrompt)
+        ; Save the command for future reference in customCommandSendButtonAction(*)
+        manageCommandState("selectedCommand", "set", selectedCommand)
 
-        ; Set skipConfirmation property based on the prompt
-        customPromptInputWindow.setSkipConfirmation(selectedPrompt.HasProp("skipConfirmation") ? selectedPrompt.skipConfirmation : false)
+        ; Set skipConfirmation property based on the command
+        customCommandInputWindow.setSkipConfirmation(selectedCommand.HasProp("skipConfirmation") ? selectedCommand.skipConfirmation : false)
 
-        customPromptInputWindow.showInputWindow(selectedPrompt.HasProp("customPromptInitialMessage")
-            ? selectedPrompt.customPromptInitialMessage : unset, selectedPrompt.promptName, "ahk_id " customPromptInputWindow
+        customCommandInputWindow.showInputWindow(selectedCommand.HasProp("customInputInitialMessage")
+            ? selectedCommand.customInputInitialMessage : unset, selectedCommand.commandName, "ahk_id " customCommandInputWindow
         .guiObj.hWnd)
     } else {
-    processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
-        selectedPrompt.APIModels,
-        selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
-        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "chat",
-        selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
-        selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
-        "",  ; customPromptMessage (not applicable for non-custom prompts)
-        selectedPrompt.HasProp("temperature") ? selectedPrompt.temperature : "",
-        selectedPrompt.HasProp("maxTokens") ? selectedPrompt.maxTokens : "",
-        selectedPrompt.HasProp("stop") ? selectedPrompt.stop : "",
-        selectedPrompt.HasProp("stream") && selectedPrompt.stream,
-        selectedPrompt.HasProp("thinking") && selectedPrompt.thinking ? selectedPrompt.thinking["type"] : "")
+    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemPrompt,
+        selectedCommand.APIModels,
+        selectedCommand.HasProp("copyAsMarkdown") && selectedCommand.copyAsMarkdown,
+        selectedCommand.HasProp("pasteMode") ? selectedCommand.pasteMode : "chat",
+        selectedCommand.HasProp("skipConfirmation") && selectedCommand.skipConfirmation,
+        selectedCommand.HasProp("isFIM") && selectedCommand.isFIM,
+        "",  ; customInputMessage (not applicable for non-custom commands)
+        selectedCommand.HasProp("temperature") ? selectedCommand.temperature : "",
+        selectedCommand.HasProp("maxTokens") ? selectedCommand.maxTokens : "",
+        selectedCommand.HasProp("stop") ? selectedCommand.stop : "",
+        selectedCommand.HasProp("stream") && selectedCommand.stream,
+        selectedCommand.HasProp("thinking") && selectedCommand.thinking ? selectedCommand.thinking["type"] : "")
     }
 }
 
@@ -90,7 +90,7 @@ promptMenuHandler(index, *) {
 ; "&1 - Open Chat" handler — restores or spawns the persistent chat window
 ; ----------------------------------------------------
 
-OpenChatPromptHandler(*) {
+OpenChatCommandHandler(*) {
     ; Open or restore the persistent chat window at the last active thread
     OpenOrSpawnChatWindow()
 }

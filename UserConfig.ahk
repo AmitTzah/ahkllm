@@ -242,17 +242,17 @@ iconOff := "icons\IconOff.ico"  ; Tray icon when the script is suspended
 ; ----------------------------------------------------
 ; HOTKEYS
 ; ----------------------------------------------------
-; Main hotkey that opens the prompt menu.
+; Main hotkey that opens the command menu.
 ; Change this to any key (e.g. "F1", "~^Space") to use a different hotkey.
 
-mainHotkey     := "``"                ; Backtick — opens the prompt menu
+mainHotkey     := "``"                ; Backtick — opens the command menu
 
 ; When you edit UserConfig.ahk (e.g. via mainHotkey> Options > Edit UserConfig which opens
 ; it in Notepad), Ctrl+S saves the file and the script auto-reloads to pick up
 ; the new settings.  The ~ prefix lets the keystroke pass through to the editor.
 saveReloadHotkey := "~^s"             ; Ctrl+S — save config & reload script
 
-; Dismisses the active input window (custom prompt, send to all, send to group)
+; Dismisses the active input window (custom command, send to all, send to group)
 ; when focused.  The ~ prefix lets the keystroke pass through to other handlers.
 closeWindowsHotkey := "~^w"           ; Ctrl+W — close input pop-up
 
@@ -343,14 +343,14 @@ providerMap := Map(
 )
 
 ; ----------------------------------------------------
-; PROMPTS (menu commands)
+; COMMANDS (Menu Commands)
 ; ============================================================================
 ; Each object in this array defines one command in the prompt menu.
 ;
 ; --- REQUIRED FIELDS ---
 ;
-;   promptName:       Internal identifier string (used by the script to
-;                     reference this prompt — not shown to the end user).
+;   commandName:      Internal identifier string (used by the script to
+;                     reference this command — not shown to the end user).
 ;
 ;   menuText:         Label displayed in the tray/hotkey menu. The & character
 ;                     defines an accelerator key (e.g. "&1" lets the user
@@ -367,14 +367,14 @@ providerMap := Map(
 ;
 ; --- OPTIONAL FIELDS ---
 ;
-;   isCustomPrompt:   (Optional) When true, the user is shown a text input
+;   isCustomCommand:  (Optional) When true, the user is shown a text input
 ;                     window where they can type their own instruction instead
-;                     of using only the selected text.  For FIM prompts this
+;                     of using only the selected text.  For FIM commands this
 ;                     input becomes the suffix.  Default: false.
 ;
-;   customPromptInitialMessage:
-;                     (Optional) Pre-filled text in the custom prompt input
-;                     window.  Only meaningful when isCustomPrompt: true.
+;   customInputInitialMessage:
+;                     (Optional) Pre-filled text in the custom command input
+;                     window.  Only meaningful when isCustomCommand: true.
 ;
 ;   pasteMode:        (Optional) Where the LLM response goes:
 ;                       "chat"     — shows a full chat interface in the Response Window
@@ -407,7 +407,7 @@ providerMap := Map(
 ;                     Not set by default (API uses its own default).
 ;
 ;   maxTokens:        (Optional) Maximum tokens in the response.  For FIM
-;                     prompts this overrides FIMMaxTokens (which defaults to
+;                     commands this overrides FIMMaxTokens (which defaults to
 ;                     4000).  Not set by default (API decides).
 ;
 ;   stop:             (Optional) Array of stop sequences (e.g. ["\n\n"]).
@@ -420,33 +420,33 @@ providerMap := Map(
 ;   copyAsMarkdown:   (Optional) When true, the response is copied as
 ;                     Markdown-formatted text.  Default: false.
 ;
-;   tags:             (Optional) Array of submenu names used to group prompts
+;   tags:             (Optional) Array of submenu names used to group commands
 ;                     in the menu.  Each tag creates a submenu containing all
-;                     prompts that share that tag.  Default: [] (no grouping).
+;                     commands that share that tag.  Default: [] (no grouping).
 ;
 ;   directAccelerator:
 ;                     (Optional) A keyboard accelerator string (e.g. "&r")
 ;                     that creates a top-level menu item as a shortcut to
-;                     this prompt.  Press ` followed by the accelerator key
+;                     this command.  Press ` followed by the accelerator key
 ;                     to fire it without navigating into submenus.
-;                     The prompt also stays in its original tagged submenu.
+;                     The command also stays in its original tagged submenu.
 ;                     Default: none.
 ; ============================================================================
 
 ; ============================================================================
-; Example prompt template — copy and paste to create new commands:
+; Example command template — copy and paste to create new commands:
 ;
 ; {
 ;     ; ---------- Copy this template ----------
-;     promptName: "Your Prompt Name",
+;     commandName: "Your Command Name",
 ;     menuText: "&9 - Your Menu Label",        ; & defines accelerator key
 ;     systemPrompt: "Your system message here. This sets the model's role.",
 ;     APIModels: "deepseek-v4-flash",          ; single model
 ;     ; APIModels: "deepseek-v4-pro, deepseek-v4-flash",  ; multi-model (Council)
 ;     ; APIModels: "openai/gpt-4o",            ; provider/model format
 ;
-;     isCustomPrompt: true,                    ; Shows input window
-;     customPromptInitialMessage: "",          ; (optional) pre-filled text
+;     isCustomCommand: true,                   ; Shows input window
+;     customInputInitialMessage: "",           ; (optional) pre-filled text
 ;     pasteMode: "replace",                    ; "chat", "replace", or "append"
 ;     stream: false,                           ; (optional, chat only) token-by-token response
 ;     thinking: { type: "enabled" },           ; (optional) DeepSeek reasoning (thinking blocks)
@@ -461,34 +461,34 @@ providerMap := Map(
 ; }
 ; ============================================================================
 
-prompts := [
+commands := [
     {
         ; ---------- General assistant (V4 Pro) ----------
-        promptName: "General assistant (V4 Pro)",
+        commandName: "General assistant (V4 Pro)",
         menuText: "&1 - Ask DeepSeek V4 Pro",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek/deepseek-v4-pro",
-        isCustomPrompt: false,               ; Shows input window for your instruction
-        customPromptInitialMessage: "",     ; (no pre-filled text)
-        pasteMode: "chat",                      ; Chat interface
-        skipConfirmation: false,            ; Shows confirmation before sending
-        copyAsMarkdown: false,              ; Copies as plain text
+        isCustomCommand: false,
+        customInputInitialMessage: "",
+        pasteMode: "chat",
+        skipConfirmation: false,
+        copyAsMarkdown: false,
         isFIM: false,
         tags: ["&DeepSeek"],
-        directAccelerator: ""               ; (no top-level shortcut)
+        directAccelerator: ""
     }
 
     , {
         ; ---------- Quick ask (V4 Flash) ----------
         ; Same as General assistant, but uses the faster (and cheaper) Flash model.
-        promptName: "Quick ask (V4 Flash)",
+        commandName: "Quick ask (V4 Flash)",
         menuText: "&2 - Ask DeepSeek V4 Flash",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: true,
-        customPromptInitialMessage: "",
+        isCustomCommand: true,
+        customInputInitialMessage: "",
         pasteMode: "chat",
-        stream: true,                           ; (optional, chat only) token-by-token response
+        stream: true,
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
@@ -498,12 +498,12 @@ prompts := [
 
     , {
         ; ---------- Google Gemini ----------
-        promptName: "Google Gemini",
+        commandName: "Google Gemini",
         menuText: "&3 - Gemini 2.5 Pro",
         systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
         APIModels: "google/gemini-2.5-pro",
-        isCustomPrompt: true,
-        customPromptInitialMessage: "",
+        isCustomCommand: true,
+        customInputInitialMessage: "",
         pasteMode: "chat",
         stream: true,
         skipConfirmation: false,
@@ -515,12 +515,12 @@ prompts := [
 
     , {
         ; ---------- OpenAI GPT ----------
-        promptName: "OpenAI GPT",
+        commandName: "OpenAI GPT",
         menuText: "&4 - GPT-5 Mini",
         systemPrompt: "You are a helpful assistant. Answer concisely and accurately.",
         APIModels: "openai/gpt-5-mini",
-        isCustomPrompt: true,
-        customPromptInitialMessage: "",
+        isCustomCommand: true,
+        customInputInitialMessage: "",
         pasteMode: "chat",
         stream: true,
         skipConfirmation: false,
@@ -534,28 +534,28 @@ prompts := [
         ; ---------- Rephrase ----------
         ; Copies selected text, sends it to the LLM with rephrase instructions,
         ; and replaces the original text with the rephrased version.
-        promptName: "Rephrase",
+        commandName: "Rephrase",
         menuText: "&5 - Rephrase",
         systemPrompt: "Your task is to rephrase the following text or paragraph in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The revision should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: false,              ; Uses selected text directly (no input window)
-        customPromptInitialMessage: "",
-        pasteMode: "replace",               ; Replaces selected text with rephrased version
+        isCustomCommand: false,
+        customInputInitialMessage: "",
+        pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
         tags: ["&Text manipulation"],
-        directAccelerator: "&r"             ; Press ` then R to fire directly
+        directAccelerator: "&r"
     }
 
     , {
         ; ---------- Summarize ----------
-        promptName: "Summarize",
+        commandName: "Summarize",
         menuText: "&6 - Summarize",
         systemPrompt: "Your task is to summarize the following article in English to ensure clarity, conciseness, and a natural flow. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The summary should preserve the tone, style, and formatting of the original text, and should be in its original language. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: false,
-        customPromptInitialMessage: "",
+        isCustomCommand: false,
+        customInputInitialMessage: "",
         pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
@@ -566,12 +566,12 @@ prompts := [
 
     , {
         ; ---------- Translate to English ----------
-        promptName: "Translate to English",
+        commandName: "Translate to English",
         menuText: "&7 - Translate to English",
         systemPrompt: "Generate an English translation for the following text or paragraph, ensuring the translation accurately conveys the intended meaning or idea without excessive deviation. If there are abbreviations present, expand it when it's used for the first time, like so: OCR (Optical Character Recognition). The translation should preserve the tone, style, and formatting of the original text. If possible, split it into paragraphs to improve readability. Additionally, correct any grammar and spelling errors you come across. You should also answer follow-up questions if asked. Respond with the rephrased text only:",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: false,
-        customPromptInitialMessage: "",
+        isCustomCommand: false,
+        customInputInitialMessage: "",
         pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
@@ -582,12 +582,12 @@ prompts := [
 
     , {
         ; ---------- Define ----------
-        promptName: "Define",
+        commandName: "Define",
         menuText: "&8 - Define",
         systemPrompt: "Provide and explain the definition of the following, providing analogies if needed. In addition, answer follow-up questions if asked:",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: false,
-        customPromptInitialMessage: "",
+        isCustomCommand: false,
+        customInputInitialMessage: "",
         pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
@@ -597,23 +597,23 @@ prompts := [
     }
 
     , {
-        ; ---------- Auto-paste custom prompt ----------
+        ; ---------- Auto-paste custom command ----------
         ; Combines two independent features:
-        ;   isCustomPrompt: shows an input window where you type any instruction
-        ;   pasteMode:      "replace" pastes the result back into the active app
-        ; (You can enable paste without custom prompt — just set pasteMode on any prompt
+        ;   isCustomCommand: shows an input window where you type any instruction
+        ;   pasteMode:       "replace" pastes the result back into the active app
+        ; (You can enable paste without custom command — just set pasteMode on any command
         ;  and the selected text is used directly.)
-        promptName: "Auto-paste custom prompt",
-        menuText: "&9 - Auto-paste custom prompt",
+        commandName: "Auto-paste custom command",
+        menuText: "&9 - Auto-paste custom command",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask.",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: true,               ; Shows input window for any instruction
-        customPromptInitialMessage: "",
-        pasteMode: "replace",               ; Pastes response straight into active app
+        isCustomCommand: true,
+        customInputInitialMessage: "",
+        pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
-        tags: ["&Custom prompts", "&Auto paste"],
+        tags: ["&Custom commands", "&Auto paste"],
         directAccelerator: ""
     }
 
@@ -621,13 +621,13 @@ prompts := [
         ; ---------- Council (Pro + Flash) ----------
         ; Sends the same request to two models simultaneously, spawning
         ; separate Response Windows so you can compare answers side-by-side.
-        promptName: "Multi-Provider Council",
+        commandName: "Multi-Provider Council",
         menuText: "&0 - Council (Pro + Flash + Gemini)",
         systemPrompt: "You are a helpful assistant. Follow the instructions that I will provide or answer any questions that I will ask. My first query is the following:",
         APIModels: "deepseek/deepseek-v4-pro, deepseek/deepseek-v4-flash, google/gemini-2.5-flash",
-        isCustomPrompt: true,
-        customPromptInitialMessage: "",
-        pasteMode: "chat",                      ; Chat interface (multi-model, each window has its own chat)
+        isCustomCommand: true,
+        customInputInitialMessage: "",
+        pasteMode: "chat",
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: false,
@@ -641,13 +641,13 @@ prompts := [
         ; copies the full text (Ctrl+A), splits around the selected text into
         ; prefix + suffix, and FIM fills the middle.  The result replaces the
         ; selection.
-        promptName: "FIM Fill",
+        commandName: "FIM Fill",
         menuText: "&F1 - FIM Fill",
         systemPrompt: "",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: false,
-        customPromptInitialMessage: "",
-        pasteMode: "replace",               ; FIM output replaces the selected gap
+        isCustomCommand: false,
+        customInputInitialMessage: "",
+        pasteMode: "replace",
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: true,
@@ -660,13 +660,13 @@ prompts := [
         ; Select prefix text (or just place cursor).  If nothing is selected,
         ; grabs text before the cursor (Ctrl+Shift+Home).  FIM generates a
         ; natural continuation that gets appended after the selection/cursor.
-        promptName: "FIM Continue",
+        commandName: "FIM Continue",
         menuText: "&F2 - FIM Continue",
         systemPrompt: "",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomPrompt: false,
-        customPromptInitialMessage: "",
-        pasteMode: "append",          ; FIM Continue — pastes result after cursor
+        isCustomCommand: false,
+        customInputInitialMessage: "",
+        pasteMode: "append",
         skipConfirmation: false,
         copyAsMarkdown: false,
         isFIM: true,

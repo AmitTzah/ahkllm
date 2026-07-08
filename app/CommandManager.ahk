@@ -1,48 +1,48 @@
 ; ----------------------------------------------------
-; Manage prompt states
+; Manage command states
 ; ----------------------------------------------------
 
-managePromptState(component, action, data := {}) {
+manageCommandState(component, action, data := {}) {
     static state := {
-        prompts: prompts,
-        selectedPrompt: {}
+        commands: commands,
+        selectedCommand: {}
     }
 
     switch component {
-        case "prompts":
+        case "commands":
             switch action {
-                case "get": return state.prompts
-                case "set": state.prompts := data
+                case "get": return state.commands
+                case "set": state.commands := data
             }
 
-        case "selectedPrompt":
+        case "selectedCommand":
             switch action {
-                case "get": return state.selectedPrompt
-                case "set": state.selectedPrompt := data
+                case "get": return state.selectedCommand
+                case "set": state.selectedCommand := data
             }
 
     }
 }
 
-; Custom prompt send action
-customPromptSendButtonAction(*) {
-    if !customPromptInputWindow.validateInputAndHide() {
+; Custom command send action
+customCommandSendButtonAction(*) {
+    if !customCommandInputWindow.validateInputAndHide() {
         return
     }
 
-    selectedPrompt := managePromptState("selectedPrompt", "get")
-    processInitialRequest(selectedPrompt.promptName, selectedPrompt.menuText, selectedPrompt.systemPrompt,
-        selectedPrompt.APIModels,
-        selectedPrompt.HasProp("copyAsMarkdown") && selectedPrompt.copyAsMarkdown,
-        selectedPrompt.HasProp("pasteMode") ? selectedPrompt.pasteMode : "chat",
-        selectedPrompt.HasProp("skipConfirmation") && selectedPrompt.skipConfirmation,
-        selectedPrompt.HasProp("isFIM") && selectedPrompt.isFIM,
-        customPromptInputWindow.EditControl.Value,
-        selectedPrompt.HasProp("temperature") ? selectedPrompt.temperature : "",
-        selectedPrompt.HasProp("maxTokens") ? selectedPrompt.maxTokens : "",
-        selectedPrompt.HasProp("stop") ? selectedPrompt.stop : "",
-        selectedPrompt.HasProp("stream") && selectedPrompt.stream,
-        selectedPrompt.HasProp("thinking") && selectedPrompt.thinking ? selectedPrompt.thinking["type"] : ""
+    selectedCommand := manageCommandState("selectedCommand", "get")
+    processInitialRequest(selectedCommand.commandName, selectedCommand.menuText, selectedCommand.systemPrompt,
+        selectedCommand.APIModels,
+        selectedCommand.HasProp("copyAsMarkdown") && selectedCommand.copyAsMarkdown,
+        selectedCommand.HasProp("pasteMode") ? selectedCommand.pasteMode : "chat",
+        selectedCommand.HasProp("skipConfirmation") && selectedCommand.skipConfirmation,
+        selectedCommand.HasProp("isFIM") && selectedCommand.isFIM,
+        customCommandInputWindow.EditControl.Value,
+        selectedCommand.HasProp("temperature") ? selectedCommand.temperature : "",
+        selectedCommand.HasProp("maxTokens") ? selectedCommand.maxTokens : "",
+        selectedCommand.HasProp("stop") ? selectedCommand.stop : "",
+        selectedCommand.HasProp("stream") && selectedCommand.stream,
+        selectedCommand.HasProp("thinking") && selectedCommand.thinking ? selectedCommand.thinking["type"] : ""
     )
-    customPromptInputWindow.EditControl.Value := ""
+    customCommandInputWindow.EditControl.Value := ""
 }

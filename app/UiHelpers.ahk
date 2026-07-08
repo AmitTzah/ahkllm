@@ -27,7 +27,7 @@ manageCursorAndToolTip(action) {
             toolTipMessage .= " (Press ESC to cancel):"
             for key, data in getActiveModels() {
                 if (data.isLoading) {
-                    toolTipMessage .= "`n- " data.promptName " [" data.name "]"
+                    toolTipMessage .= "`n- " data.commandName " [" data.name "]"
                 }
             }
 

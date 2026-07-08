@@ -10,8 +10,8 @@ ai-automation/
 ├── ARCHITECTURE.md                  # This file
 │
 ├── app/                             # Application logic (loaded by Main.ahk)
-│   ├── PromptMenu.ahk               # Menu building: prompt menu, tags, submenus, options
-│   ├── PromptManager.ahk            # Prompt state management, window operations, send-to handlers
+│   ├── CommandMenu.ahk              # Menu building: command menu, tags, submenus, options
+│   ├── CommandManager.ahk           # Command state management, window operations, send-to handlers
 │   ├── RequestProcessor.ahk         # Clipboard capture (FIM/chat), model spawning, cURL request building
 │   ├── ModelTracker.ahk             # Active model tracking, loading state, reload coordination
 │   └── UiHelpers.ahk                # Cursor changes, tooltip display, suspend banner toggle
@@ -95,7 +95,7 @@ The application is an AutoHotkey v2 script that provides a hotkey-activated prom
 1. `Main.ahk` runs → `#Include <Config>` loads `lib/Config.ahk`
 2. `Config.ahk` loads vendor libs + application classes (`LLMClient.ahk`, `SSEParser.ahk`, `ApiLogger.ahk`, `CostCalculator.ahk`, `InputWindow.ahk`, `CustomMessages.ahk`, `ChatDB.ahk`)
 3. `Main.ahk` calls `ChatDB.Open()` to initialize the SQLite database, then `ChatDB.Thread_PurgeExpired()` to clean up expired trash
-4. `Main.ahk` creates `router := LLMClient(APIKey)` and a single `customPromptInputWindow` instance
+4. `Main.ahk` creates `router := LLMClient(APIKey)` and a single `customCommandInputWindow` instance
 5. `Main.ahk` spawns `ChatWindow.ahk` as a hidden sub-process with "prewarm" flag — WebView2 initializes in the background to avoid black flash on first open
 6. `Main.ahk` registers hotkeys (default: `` ` `` to open menu)
 7. `Main.ahk` loads application modules (`app/*.ahk`)
@@ -106,7 +106,7 @@ The application is an AutoHotkey v2 script that provides a hotkey-activated prom
 ### Chat Mode (pasteMode = "chat")
 
 ```
-User presses hotkey → buildPromptMenu() → promptMenuHandler()
+User presses hotkey → buildCommandMenu() → commandMenuHandler()
     │
     ▼
 processInitialRequest()                         # app/RequestProcessor.ahk
@@ -285,9 +285,9 @@ index.html
 
 `UserConfig.ahk` is a standard AHK file directly `#Include`d into the script. There is no config file parser — all settings are plain AHK variables and arrays.
 
-## How to Add a New Prompt
+## How to Add a New Command
 
-Edit `UserConfig.ahk` and add an entry to the `prompts` array. See the template at the top of the file for all available fields.
+Edit `UserConfig.ahk` and add an entry to the `commands` array. See the template at the top of the file for all available fields.
 
 ## pasteMode Values
 

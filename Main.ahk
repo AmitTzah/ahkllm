@@ -14,15 +14,15 @@ if FileExist(debugLogFile) {
 ; Hotkeys (registered dynamically from UserConfig.ahk)
 ; ----------------------------------------------------
 
-Hotkey(mainHotkey, (*) => mainScriptHotkeyActions("showPromptMenu"))
+Hotkey(mainHotkey, (*) => mainScriptHotkeyActions("showCommandMenu"))
 Hotkey(saveReloadHotkey, (*) => mainScriptHotkeyActions("saveAndReloadScript"))
 Hotkey(closeWindowsHotkey, (*) => mainScriptHotkeyActions("closeWindows"))
 Hotkey(suspendHotkey, (*) => mainScriptHotkeyActions("suspendHotkey"), "S")
 
 mainScriptHotkeyActions(action) {
     switch action {
-        case "showPromptMenu":
-            buildPromptMenu()
+        case "showCommandMenu":
+            buildCommandMenu()
 
         case "suspendHotkey":
             KeyWait "CapsLock", "L"
@@ -47,7 +47,7 @@ mainScriptHotkeyActions(action) {
 
         case "closeWindows":
             switch WinActive("A") {
-                case customPromptInputWindow.guiObj.hWnd: customPromptInputWindow.closeButtonAction()
+                case customCommandInputWindow.guiObj.hWnd: customCommandInputWindow.closeButtonAction()
             }
     }
 }
@@ -142,13 +142,13 @@ router := LLMClient(APIKey)
 ; Create Input Windows
 ; ----------------------------------------------------
 
-customPromptInputWindow := InputWindow("Custom prompt")
+customCommandInputWindow := InputWindow("Custom command")
 
 ; ----------------------------------------------------
 ; Register sendButtonActions
 ; ----------------------------------------------------
 
-customPromptInputWindow.sendButtonAction(customPromptSendButtonAction)
+customCommandInputWindow.sendButtonAction(customCommandSendButtonAction)
 
 ; ----------------------------------------------------
 ; Initialize Suspend GUI
@@ -172,8 +172,8 @@ CustomMessages.registerHandlers("mainScript", responseWindowState)
 ; Include application modules
 ; ----------------------------------------------------
 
-#Include app\PromptMenu.ahk
-#Include app\PromptManager.ahk
+#Include app\CommandMenu.ahk
+#Include app\CommandManager.ahk
 #Include app\RequestProcessor.ahk
 #Include app\ModelTracker.ahk
 #Include app\UiHelpers.ahk
