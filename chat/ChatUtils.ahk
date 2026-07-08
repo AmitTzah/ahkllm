@@ -2,15 +2,13 @@
 ; cURL process management
 ;--------------------------------------------------
 
-manageState(component, action, data := 0) {
+cURLState(action, data := 0) {
     static cURLPID := 0
 
-    if component = "cURL" {
-        switch action {
-            case "get": return cURLPID
-            case "set": cURLPID := data
-            case "close": ProcessClose(cURLPID), cURLPID := 0
-        }
+    switch action {
+        case "get": return cURLPID
+        case "set": cURLPID := data
+        case "close": ProcessClose(cURLPID), cURLPID := 0
     }
     return 0
 }

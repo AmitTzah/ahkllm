@@ -1,8 +1,15 @@
 ; ======================================================
 ; ChatRequestBuilder.ahk — LLM request pipeline
 ;
-; Builds JSON requests from thread state, writes temp files,
-; spawns cURL, handles stream cancellation.
+; BuildAndWriteRequestFiles has 3 responsibilities:
+;   1. VALIDATE — check API key is configured for the provider
+;   2. BUILD — construct the JSON request from DB messages + overrides
+;   3. WRITE — persist request + cURL command to temp files
+; These are kept together because they share intermediate state
+; (providerInfo, apiMessages, requestObj) that would be awkward
+; to pass between separate functions.
+;
+; Also: sendRequestToLLM (thin wrapper) and cancelStreamFromWebView.
 ; ======================================================
 
 BuildAndWriteRequestFiles() {
@@ -139,9 +146,9 @@ cancelStreamFromWebView() {
     ; ChatHotkeys("Esc") has window-hiding logic (hides window when no cURL is running),
     ; which is wrong for the Stop button — the Stop button should only cancel streaming,
     ; never hide the window.
-    curlPID := manageState("cURL", "get")
+    curlPID := cURLState("get")
     if curlPID && ProcessExist(curlPID) {
-        manageState("cURL", "close")
+        cURLState("close")
         requestParams["_streamCancelled"] := true
         postWebMessage("setChatButtonsEnabled", true)
     }

@@ -5,7 +5,7 @@
 ; NOTE: #Include'd by ChatWindow.ahk. Has access to:
 ;   activeThreadId, requestParams, chatWindow, ChatDB,
 ;   BuildAndWriteRequestFiles, postWebMessage,
-;   startLoadingCursor, sendRequestToLLM, manageState,
+;   startLoadingCursor, sendRequestToLLM, cURLState,
 ;   buildStructuredMessagesFromPath
 ; ======================================================
 

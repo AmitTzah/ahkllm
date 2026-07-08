@@ -11,6 +11,11 @@ debugLog(message) {
     FileAppend(timestamp " [RequestProcessor] " message "`n", A_Temp "\LLM_Debug_Log.txt")
 }
 
+; Entry point for any command-triggered LLM request (menu selection or custom input).
+; The 15 parameters mirror the command config schema from UserConfig.ahk.
+; This flat parameter list avoids coupling to the config object structure —
+; each caller (commandMenuHandler, customCommandSendButtonAction) passes
+; individual fields, keeping the config schema as the single source of truth.
 processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
     customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode)
@@ -162,48 +167,11 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
 
         uniqueID := A_TickCount
 
-        ; Build the JSON request — FIM or chat, with optional temperature/maxTokens/stop/stream/thinking
-        if isFIM {
-            chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
-                temperature, maxTokens, stop)
-        } else {
-            chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemMessage, userMessage,
-                temperature, maxTokens, stop, stream, thinking)
-        }
-
-        ; Generate sanitized filenames
-        chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json",
-            "[\/\\:*?`"<>|]", "")
-        cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" commandName "_" singleAPIModelName "_" uniqueID ".txt",
-            "[\/\\:*?`"<>|]", "")
-        cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" commandName "_" singleAPIModelName "_" uniqueID ".json",
-            "[\/\\:*?`"<>|]", "")
-        cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" commandName "_" singleAPIModelName "_" uniqueID ".txt",
-            "[\/\\:*?`"<>|]", "")
-
-        ; Write the JSON request and cURL command to files
-        FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
-        if isFIM {
-            cURLCommand := router.buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
-            debugLog("Built FIM cURL command. outputFile=" cURLOutputFile)
-        } else if stream && pasteMode = "chat" {
-            ; Use streaming cURL command for streaming requests
-            cURLCommand := router.buildStreamcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile, cURLErrorFile)
-            debugLog("Built STREAMING cURL command. outputFile=" cURLOutputFile)
-        } else {
-            cURLCommand := router.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
-            debugLog("Built NON-STREAMING cURL command. stream=" stream " pasteMode=" pasteMode " outputFile=" cURLOutputFile)
-        }
-        FileOpen(cURLCommandFile, "w", "UTF-8-RAW").Write(cURLCommand)
-        debugLog("Wrote cURL command to: " cURLCommandFile)
-        debugLog("JSON request written to: " chatHistoryJSONRequestFile)
-
-        ; For chat mode, route through the persistent ChatWindow
-        ; Note: multi-model (Council) is not supported in the single-window chat architecture.
-        ; Only the first model is used for chat mode.
+        ; For chat mode, route through the persistent ChatWindow.
+        ; Skip file creation — ChatWindow builds its own request from DB state.
+        ; Only the first model is used (single-window architecture).
         if pasteMode = "chat" {
             if APIModels.Length > 1 {
-                ; Log warning but proceed with first model
                 debugLog("WARNING: Multi-model not supported in chat mode. Using only first model: " APIModels[1])
             }
             ; Create a new thread in the DB
@@ -252,6 +220,29 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
             break
         } else {
             ; Non-chat mode: run LLM inline and paste result directly (no window)
+
+            ; Build the JSON request (FIM or standard)
+            if isFIM {
+                chatHistoryJSONRequest := router.createFIMRequest(fullAPIModelName, prefix, suffix,
+                    temperature, maxTokens, stop)
+            } else {
+                chatHistoryJSONRequest := router.createJSONRequest(fullAPIModelName, systemMessage, userMessage,
+                    temperature, maxTokens, stop, stream, thinking)
+            }
+
+            ; Generate sanitized filenames and write request/cURL files
+            chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json", "[\/\\:*?`"<>|]", "")
+            cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" commandName "_" singleAPIModelName "_" uniqueID ".txt", "[\/\\:*?`"<>|]", "")
+            cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" commandName "_" singleAPIModelName "_" uniqueID ".json", "[\/\\:*?`"<>|]", "")
+            cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" commandName "_" singleAPIModelName "_" uniqueID ".txt", "[\/\\:*?`"<>|]", "")
+            FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
+            if isFIM {
+                cURLCommand := router.buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+            } else {
+                cURLCommand := router.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+            }
+            FileOpen(cURLCommandFile, "w", "UTF-8-RAW").Write(cURLCommand)
+
             ; Track in active models during processing (for tooltip and reload deferral)
             getActiveModels()[uniqueID] := {
                 commandName: commandName,

@@ -21,10 +21,10 @@
 ChatHotkeys(action) {
     switch action {
         case "Esc":
-            curlPID := manageState("cURL", "get")
+            curlPID := cURLState("get")
             hadCurl := ProcessExist(curlPID)
             if hadCurl {
-                manageState("cURL", "close")
+                cURLState("close")
                 postWebMessage("setChatButtonsEnabled", true)
             }
             ; Only hide window if no cURL was running (don't hide after cancelling a request)
@@ -40,6 +40,16 @@ ChatHotkeys(action) {
 
 ; ----------------------------------------------------
 ; Initialize DB and request params
+;
+; ChatDB is opened here AND in Main.ahk — both processes need
+; direct DB access. Main.ahk creates threads/messages; this process
+; loads threads, saves responses, manages settings. SQLite WAL mode
+; allows safe concurrent access. Each process is single-threaded (AHK).
+;
+; requestParams is a shared Map used across ALL included modules:
+; ChatIPC, ChatSettings, ChatRequestBuilder, ChatUtils, StreamHandler,
+; and all ChatCallbacks_*.ahk files. It holds the current thread's
+; model, provider, overrides, stream state, and temp file paths.
 ; ----------------------------------------------------
 
 ChatDB.Open()

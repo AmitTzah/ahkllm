@@ -2,21 +2,21 @@
 ; Manage command states
 ; ----------------------------------------------------
 
-manageCommandState(component, action, data := {}) {
+manageCommandState(store, operation, data := {}) {
     static state := {
         commands: commands,
         selectedCommand: {}
     }
 
-    switch component {
+    switch store {
         case "commands":
-            switch action {
+            switch operation {
                 case "get": return state.commands
                 case "set": state.commands := data
             }
 
         case "selectedCommand":
-            switch action {
+            switch operation {
                 case "get": return state.selectedCommand
                 case "set": state.selectedCommand := data
             }

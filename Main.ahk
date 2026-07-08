@@ -54,6 +54,11 @@ mainScriptHotkeyActions(action) {
 
 ; ----------------------------------------------------
 ; Initialize Chat DB (persistent chat history)
+;
+; ChatDB is also opened by ChatWindow.ahk (separate process).
+; Both processes need direct DB access: Main creates threads/messages
+; for new commands; ChatWindow loads threads and saves responses.
+; SQLite WAL mode allows safe concurrent access between processes.
 ; ----------------------------------------------------
 
 ChatDB.Open()

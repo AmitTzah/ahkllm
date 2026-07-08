@@ -25,7 +25,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
 
     Run(cURLCommand, , "Hide", &cURLPID)
-    manageState("cURL", "set", cURLPID)
+    cURLState("set", cURLPID)
     debugLog("Streaming cURL PID: " cURLPID)
 
     requestParams["_streamOutputFile"]       := requestParams["cURLOutputFile"]
@@ -192,7 +192,7 @@ _handleStreamError() {
 
 _handleStreamCancelled() {
     debugLog("User cancelled streaming request")
-    manageState("cURL", "close")
+    cURLState("close")
 
     if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -223,7 +223,7 @@ _handleStreamCancelled() {
 
 _handleStreamComplete() {
     try {
-        manageState("cURL", "set", 0)
+        cURLState("set", 0)
 
         chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
         saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
