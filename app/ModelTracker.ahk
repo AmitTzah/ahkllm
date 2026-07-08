@@ -17,18 +17,6 @@ responseWindowState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
     static reloadScript := false
 
     switch state {
-        case CustomMessages.WM_RESPONSE_WINDOW_OPENED:
-            getActiveModels()[uniqueID].hWnd := responseWindowhWnd
-
-        case CustomMessages.WM_RESPONSE_WINDOW_CLOSED:
-            if getActiveModels().Has(uniqueID) {
-                getActiveModels().Delete(uniqueID)
-                manageCursorAndToolTip("Update")
-            }
-
-            if (getActiveModels().Count = 0) && reloadScript {
-                Reload()
-            }
         case CustomMessages.WM_RESPONSE_WINDOW_LOADING_START:
             if !getActiveModels().Has(uniqueID) {
                 return
@@ -38,7 +26,6 @@ responseWindowState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
             if (responseWindowLoadingCount = 1) {
                 manageCursorAndToolTip("Loading")
             }
-
             manageCursorAndToolTip("Update")
 
         case CustomMessages.WM_RESPONSE_WINDOW_LOADING_FINISH:
@@ -59,8 +46,5 @@ responseWindowState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
 
         case CustomMessages.WM_CHAT_WINDOW_OPENED:
             OnChatWindowOpened(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd)
-
-        case CustomMessages.WM_CHAT_WINDOW_CLOSED:
-            OnChatWindowClosed(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd)
     }
 }

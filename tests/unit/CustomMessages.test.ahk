@@ -23,16 +23,8 @@ class CustomMessagesTest {
             throw Error("WM_RESPONSE_WINDOW_LOADING_START wrong")
         if CustomMessages.WM_RESPONSE_WINDOW_LOADING_FINISH != 0x400 + 124
             throw Error("WM_RESPONSE_WINDOW_LOADING_FINISH wrong")
-        if CustomMessages.WM_RESPONSE_WINDOW_OPENED != 0x400 + 125
-            throw Error("WM_RESPONSE_WINDOW_OPENED wrong")
-        if CustomMessages.WM_RESPONSE_WINDOW_CLOSED != 0x400 + 126
-            throw Error("WM_RESPONSE_WINDOW_CLOSED wrong")
-        if CustomMessages.WM_SEND_TO_ALL_MODELS != 0x400 + 127
-            throw Error("WM_SEND_TO_ALL_MODELS wrong")
         if CustomMessages.WM_CHAT_WINDOW_OPENED != 0x500 + 0
             throw Error("WM_CHAT_WINDOW_OPENED wrong")
-        if CustomMessages.WM_CHAT_WINDOW_CLOSED != 0x500 + 1
-            throw Error("WM_CHAT_WINDOW_CLOSED wrong")
         if CustomMessages.WM_LOAD_THREAD != 0x500 + 2
             throw Error("WM_LOAD_THREAD wrong")
         if CustomMessages.WM_NEW_CHAT != 0x500 + 3

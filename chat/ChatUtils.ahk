@@ -127,18 +127,14 @@ generateThreadTitle(threadId) {
 
     ; Build and run cURL command
     cURLCommand := Format('cURL.exe -s --max-time 15 --connect-timeout 10 -X POST ' APIEndpoint ' -H "Authorization: Bearer ' router.APIKey '" -H "Content-Type: application/json" -d @"' tmpFile '" -o "' outFile '"')
-    FileAppend("[DEBUG-TITLE] Running title gen cURL...`n", A_Temp "\LLM_Debug_Log.txt")
     Run(cURLCommand, , "Hide", &cURLPID)
     while ProcessExist(cURLPID)
         Sleep 200
-    FileAppend("[DEBUG-TITLE] cURL completed, checking output...`n", A_Temp "\LLM_Debug_Log.txt")
 
     ; Parse response
     title := ""
     if FileExist(outFile) {
-        FileAppend("[DEBUG-TITLE] Output file exists`n", A_Temp "\LLM_Debug_Log.txt")
         raw := FileOpen(outFile, "r", "UTF-8-RAW").Read()
-        FileAppend("[DEBUG-TITLE] Raw response (" StrLen(raw) " bytes): " SubStr(raw, 1, 200) "`n", A_Temp "\LLM_Debug_Log.txt")
         try {
             parsed := jsongo.Parse(raw)
             if parsed.Has("choices") && parsed["choices"].Length > 0 {
@@ -159,11 +155,8 @@ generateThreadTitle(threadId) {
 
     ; Update DB and refresh sidebar if title was generated
     if title {
-        FileAppend("[DEBUG-TITLE] Generated title: '" title "'`n", A_Temp "\LLM_Debug_Log.txt")
         ChatDB.Thread_Update(threadId, title)
         postWebMessage("threadList", ChatDB.Thread_List())
-    } else {
-        FileAppend("[DEBUG-TITLE] No title generated (empty response or parse failed)`n", A_Temp "\LLM_Debug_Log.txt")
     }
 
     ; Log the title generation to API logs (transparency)

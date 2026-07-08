@@ -103,11 +103,6 @@ OnChatWindowOpened(uniqueID, lParam, msg, hWnd) {
     chatWindowhWnd := lParam
 }
 
-OnChatWindowClosed(uniqueID, lParam, msg, hWnd) {
-    global chatWindowhWnd
-    ; Window is hidden, don't clear hWnd — it still exists
-}
-
 ; Clean up ChatWindow sub-process when Main.ahk exits
 OnExit(KillChatWindow)
 KillChatWindow(ExitReason, ExitCode) {

@@ -212,11 +212,8 @@ _finalizeStreaming() {
         try {
             manageState("cURL", "set", 0)
 
-            debugLog("[DIAG-NORM] step1: about to copy chatHistory")
             chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
-            debugLog("[DIAG-NORM] step2: about to saveStreamResponse")
             saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
-            debugLog("[DIAG-NORM] step3: saveStreamResponse done")
 
             dbMsgData := ""
             if activeThreadId {
@@ -225,15 +222,13 @@ _finalizeStreaming() {
                     dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
             }
 
-            debugLog("[DIAG-NORM] step4: about to post streamDone")
             postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
-            debugLog("[DIAG-NORM] step5: streamDone posted")
 
             postThreadStats(activeThreadId)
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         } catch Error as normErr {
-            debugLog("[DIAG-NORM] ERROR at step: " normErr.Message "`nStack: " normErr.Stack)
+            debugLog("Stream completion error: " normErr.Message "`nStack: " normErr.Stack)
             postWebMessage("showError", { message: "Request failed: " normErr.Message })
         }
 
@@ -380,10 +375,6 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
     }
     fullResponse := jsongo.Stringify(logEntry)
 
-    if rawLastResponse
-        debugLog("RAW_LAST_CHUNK: " rawLastResponse)
-    if providerKey = "google" && rawSseChunks
-        debugLog("RAW_SSE_ALL: " StrReplace(rawSseChunks, "`n", " | "))
 
     latencyMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : A_TickCount - requestStartTime
 

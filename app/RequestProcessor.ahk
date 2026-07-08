@@ -197,7 +197,6 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
         FileOpen(cURLCommandFile, "w", "UTF-8-RAW").Write(cURLCommand)
         debugLog("Wrote cURL command to: " cURLCommandFile)
         debugLog("JSON request written to: " chatHistoryJSONRequestFile)
-        debugLog("stream field in responseWindowDataObj: " (stream && pasteMode = "chat"))
 
         ; For chat mode, route through the persistent ChatWindow
         ; Note: multi-model (Council) is not supported in the single-window chat architecture.
@@ -229,6 +228,18 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
                     role: "user",
                     content: userMessage,
                     parent_id: parentId
+                })
+            }
+
+            ; Save model override to DB so ChatWindow uses the correct model
+            ; (ChatWindow builds its own request — doesn't use the JSON files built above)
+            if fullAPIModelName != chatDefaultModel {
+                ChatDB.Thread_UpdateSettings(threadId, {
+                    modelOverride: fullAPIModelName,
+                    assistantId: "",
+                    systemOverride: "",
+                    reasoningOverride: "",
+                    temperatureOverride: ""
                 })
             }
 

@@ -17,7 +17,10 @@ ai-automation/
 │   └── UiHelpers.ahk                # Cursor changes, tooltip display, suspend banner toggle
 │
 ├── chat/                            # Persistent chat window (sub-process)
-│   ├── ChatWindow.ahk               # Orchestrator: hotkeys, WebView creation, cURL runner, message dispatch
+│   ├── ChatWindow.ahk               # Window lifecycle: hotkeys, WebView2 creation, show/hide, message dispatch, pre-warm
+│   ├── ChatIPC.ahk                  # IPC handlers: OnLoadThread, OnTriggerLLM, OnNewChat + unified LoadThreadIntoUI
+│   ├── ChatSettings.ahk             # Thread settings, assistant/model management, dropdown label
+│   ├── ChatRequestBuilder.ahk       # BuildAndWriteRequestFiles, sendRequestToLLM, cancelStream
 │   ├── ChatDB.ahk                   # SQLite wrapper: thread/message CRUD, branching, fork
 │   ├── ChatUtils.ahk                # postWebMessage, cURL PID management, title generation, debugLog
 │   ├── ChatCallbacks_Message.ahk    # Send + retry callbacks, buildStructuredMessagesFromPath
@@ -238,13 +241,9 @@ The main script (`Main.ahk`) and ChatWindow sub-process communicate via Windows 
 
 | Message | Direction | Purpose |
 |---------|-----------|---------|
-| `WM_RESPONSE_WINDOW_OPENED` (0x400+125) | sub → main | Registers Response Window for model tracking |
-| `WM_RESPONSE_WINDOW_CLOSED` (0x400+126) | sub → main | Unregisters Response Window |
 | `WM_CHAT_WINDOW_OPENED` (0x500) | sub → main | Registers ChatWindow for model tracking |
-| `WM_CHAT_WINDOW_CLOSED` (0x501) | sub → main | Unregisters ChatWindow |
-| `WM_RESPONSE_WINDOW_LOADING_START` (0x400+123) | sub → main | Notifies loading started |
+| `WM_RESPONSE_WINDOW_LOADING_START` (0x400+123) | sub → main | Notifies loading started (tooltip + cursor) |
 | `WM_RESPONSE_WINDOW_LOADING_FINISH` (0x400+124) | sub → main | Notifies loading finished |
-| `WM_SEND_TO_ALL_MODELS` (0x400+127) | main → sub | Triggers re-request with new user message |
 | `WM_LOAD_THREAD` (0x500+2) | main → sub | Load a specific thread in ChatWindow (async via PostMessage + temp file) |
 | `WM_NEW_CHAT` (0x500+3) | main → sub | Start a new chat in ChatWindow |
 | `WM_TRIGGER_LLM` (0x500+4) | main → sub | Fire LLM for current thread (sent after WM_LOAD_THREAD for command-triggered chats) |
@@ -310,7 +309,7 @@ When `APIModels` contains multiple comma-separated models and `pasteMode != "cha
 
 ## File Size Warnings
 
-No modified files exceed 300 lines. Largest is [`chat/ChatCallbacks_Edit.ahk`](ai-automation/chat/ChatCallbacks_Edit.ahk) at ~95 lines.
+No files exceed 300 lines. Largest is [`chat/ChatCallbacks_Sidebar.ahk`](ai-automation/chat/ChatCallbacks_Sidebar.ahk) at ~110 lines.
 [`webui/index.html`](ai-automation/webui/index.html) reduced from 652 to 127 lines by extracting CSS to [`webui/css/chat.css`](ai-automation/webui/css/chat.css).
 
 ## Testing
