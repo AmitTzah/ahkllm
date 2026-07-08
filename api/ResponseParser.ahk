@@ -61,21 +61,6 @@ class ResponseParser {
         return { type: "content", content: content, model: "", usage: {} }
     }
 
-    ; Extracts error response from both formats:
-    ;   Object:  {error: {message: "..."}}     — OpenAI, DeepSeek
-    ;   Array:   [{error: {message: "..."}}]   — Google Gemini
-    static ParseErrorResponse(var) {
-        errorObj := var
-        if Type(var) = "Array" && var.Length > 0
-            errorObj := var[1]
-        error := errorObj.Get("error").Get("message")
-        code := errorObj.Get("error").Get("code")
-        return {
-            error: error,
-            code: code,
-        }
-    }
-
     ; Extracts FIM response: choices[0].text
     static ParseFIMResponse(var) {
         response := var.Get("choices")[1].Get("text")

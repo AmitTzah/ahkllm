@@ -1,14 +1,13 @@
 ; ======================================================
 ; ChatIPC.ahk — IPC handlers + unified thread loading
 ;
-; Handles WM_LOAD_THREAD, WM_TRIGGER_LLM, WM_NEW_CHAT
-; from the main script. LoadThreadIntoUI is the unified
-; entry point used by both IPC and command-line-arg paths.
+; Handles WM_LOAD_THREAD and WM_TRIGGER_LLM from the main
+; script. LoadThreadIntoUI is the unified entry point used
+; by both IPC and command-line-arg paths.
 ; ======================================================
 
 ; Register IPC handlers for main-script commands
 OnMessage(CustomMessages.WM_LOAD_THREAD, OnLoadThread)
-OnMessage(CustomMessages.WM_NEW_CHAT, OnNewChat)
 OnMessage(CustomMessages.WM_TRIGGER_LLM, OnTriggerLLM)
 
 OnLoadThread(wParam, lParam, msg, hWnd) {
@@ -32,14 +31,6 @@ OnTriggerLLM(wParam, lParam, msg, hWnd) {
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     if path.Length > 0 && path[path.Length].role = "user"
         _BuildAndFireRequest()
-}
-
-OnNewChat(wParam, lParam, msg, hWnd) {
-    global activeThreadId
-    activeThreadId := ChatDB.Thread_Create()
-    _resetToDefaultSettings()
-    postWebMessage("initChatMode", [])
-    _sendDropdownLabel()
 }
 
 ; Unified thread loader — used by both IPC path (OnLoadThread) and

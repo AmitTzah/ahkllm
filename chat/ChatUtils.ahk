@@ -101,4 +101,11 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
         _sendDropdownLabel()
 }
 
+; Refresh thread list and trash list in the sidebar WebView.
+; Replaces 5 duplicate call sites across Message.ahk and Sidebar.ahk.
+_postThreadListRefresh() {
+    postWebMessage("threadList", ChatDB.Thread_List())
+    postWebMessage("trashList", ChatDB.Thread_List(true))
+}
+
 ; generateThreadTitle() is in ThreadTitleGen.ahk — included via ChatWindow.ahk

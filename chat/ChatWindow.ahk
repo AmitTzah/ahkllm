@@ -81,7 +81,7 @@ activeThreadId := ""
 ; Create WebView and LLM client
 ; ----------------------------------------------------
 
-responseWindow := WebViewToo(, , ,)
+global responseWindow := WebViewToo(, , ,)
 responseWindow.OnEvent("Close", (*) => responseWindow.Hide())
 global chatWindow := responseWindow
 

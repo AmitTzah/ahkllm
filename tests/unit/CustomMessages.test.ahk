@@ -27,8 +27,6 @@ class CustomMessagesTest {
             throw Error("WM_CHAT_WINDOW_OPENED wrong")
         if CustomMessages.WM_LOAD_THREAD != 0x500 + 2
             throw Error("WM_LOAD_THREAD wrong")
-        if CustomMessages.WM_NEW_CHAT != 0x500 + 3
-            throw Error("WM_NEW_CHAT wrong")
         if CustomMessages.WM_TRIGGER_LLM != 0x500 + 4
             throw Error("WM_TRIGGER_LLM wrong")
     }
@@ -58,14 +56,6 @@ class CustomMessagesTest {
             CustomMessages.notifyLoadThread("test-thread-id", 12345)
         } catch Error as err {
             throw Error("notifyLoadThread should not throw: " err.Message)
-        }
-    }
-
-    NotifyNewChat_DoesNotCrash() {
-        try {
-            CustomMessages.notifyNewChat(12345)
-        } catch Error as err {
-            throw Error("notifyNewChat should not throw: " err.Message)
         }
     }
 

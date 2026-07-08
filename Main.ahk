@@ -80,25 +80,26 @@ Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ah
 ; Chat window state (single persistent window)
 ; ----------------------------------------------------
 
+_spawnChatWindow(threadId := "") {
+    global chatWindowPID
+    mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")
+    if threadId
+        Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd, threadId), , , &chatWindowPID)
+    else
+        Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd), , , &chatWindowPID)
+}
+
 openChatWindow(threadId := "") {
     global chatWindowPID, chatWindowhWnd
 
     if chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
-        ; Show window immediately for responsive UX
         WinShow("ahk_id " chatWindowhWnd)
         WinActivate("ahk_id " chatWindowhWnd)
         if threadId {
-            ; Async IPC via PostMessage — non-blocking, ChatWindow loads thread in background
             CustomMessages.notifyLoadThread(threadId, chatWindowhWnd)
         }
     } else {
-        ; Get main script's hidden hWnd for IPC
-        mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")
-        ; Pass threadId as third argument (A_Args[2] in ChatWindow.ahk)
-        if threadId
-            Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd, threadId), , , &chatWindowPID)
-        else
-            Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd), , , &chatWindowPID)
+        _spawnChatWindow(threadId)
     }
 }
 
@@ -175,8 +176,8 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 
 #Include app\ClipboardCapture.ahk
 #Include app\InlineRequestRunner.ahk
-#Include app\CommandMenu.ahk
-#Include app\CommandState.ahk
+#Include app\menu\CommandMenu.ahk
+#Include app\menu\CommandState.ahk
 #Include app\RequestProcessor.ahk
 #Include app\LoadingTracker.ahk
 #Include app\LoadingUI.ahk

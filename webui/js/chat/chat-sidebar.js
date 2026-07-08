@@ -40,6 +40,42 @@ function closeSidebar() {
   sidebarOpen = false;
 }
 
+// Attach inline rename via double-click to a thread title span.
+function _attachInlineRename(titleSpan, titleDiv, thread) {
+  titleSpan.addEventListener('dblclick', function(e) {
+    e.stopPropagation();
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = thread.title || '';
+    input.style.cssText = 'width:140px;font-size:0.85rem;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid var(--bs-primary);border-radius:3px;padding:1px 4px;';
+
+    var finishRename = function() {
+      var newTitle = input.value.trim();
+      if (newTitle && newTitle !== (thread.title || '')) {
+        window.chrome.webview.postMessage(JSON.stringify({
+          action: 'sidebarAction',
+          subAction: 'renameThread',
+          threadId: thread.id,
+          title: newTitle
+        }));
+      }
+      titleSpan.style.display = '';
+      input.remove();
+    };
+
+    input.addEventListener('blur', finishRename);
+    input.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Enter') { finishRename(); }
+      if (ev.key === 'Escape') { input.remove(); titleSpan.style.display = ''; }
+    });
+
+    titleSpan.style.display = 'none';
+    titleDiv.insertBefore(input, titleSpan);
+    input.focus();
+    input.select();
+  });
+}
+
 // Called by AHK with thread list data
 function loadThreadList(threads) {
   var list = document.getElementById('thread-list');
@@ -74,38 +110,7 @@ function loadThreadList(threads) {
       titleSpan.style.cssText = 'cursor:text;';
       
       // Inline rename: double-click title to edit
-      titleSpan.addEventListener('dblclick', function(e) {
-        e.stopPropagation();
-        var input = document.createElement('input');
-        input.type = 'text';
-        input.value = t.title || '';
-        input.style.cssText = 'width:140px;font-size:0.85rem;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid var(--bs-primary);border-radius:3px;padding:1px 4px;';
-        
-        var finishRename = function() {
-          var newTitle = input.value.trim();
-          if (newTitle && newTitle !== (t.title || '')) {
-            window.chrome.webview.postMessage(JSON.stringify({
-              action: 'sidebarAction',
-              subAction: 'renameThread',
-              threadId: t.id,
-              title: newTitle
-            }));
-          }
-          titleSpan.style.display = '';
-          input.remove();
-        };
-        
-        input.addEventListener('blur', finishRename);
-        input.addEventListener('keydown', function(ev) {
-          if (ev.key === 'Enter') { finishRename(); }
-          if (ev.key === 'Escape') { input.remove(); titleSpan.style.display = ''; }
-        });
-        
-        titleSpan.style.display = 'none';
-        titleDiv.insertBefore(input, titleSpan);
-        input.focus();
-        input.select();
-      });
+      _attachInlineRename(titleSpan, titleDiv, t);
       
       titleDiv.appendChild(titleSpan);
 

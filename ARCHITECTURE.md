@@ -9,18 +9,25 @@ ai-automation/
 ├── lib/Config.ahk                   # Include chain — loads all vendor libs + application modules
 ├── ARCHITECTURE.md                  # This file
 │
+├── shared/                          # Shared application utilities
+│   ├── ModelParser.ahk              # Model ID parsing ("provider/model" → provider + name)
+│   ├── TokenEstimation.ahk          # Character-based token estimation (~4 chars/token)
+│   └── DebugLog.ahk                 # Shared debug logging + safeDelete helper
+│
 ├── app/                             # Application logic (loaded by Main.ahk)
-│   ├── CommandMenu.ahk              # Menu building: command menu, tags, submenus, options
-│   ├── CommandState.ahk             # Command state management + custom input send action
 │   ├── RequestProcessor.ahk         # Orchestrator: clipboard capture → LLM request dispatch
 │   ├── ClipboardCapture.ahk         # Text capture via clipboard (FIM + non-FIM)
 │   ├── InlineRequestRunner.ahk      # Non-chat cURL execution, response parsing, paste, cleanup
+│   ├── InputWindow.ahk              # InputWindow class: GUI popup for custom prompts
 │   ├── LoadingTracker.ahk           # Active request tracking, loading state, reload coordination
-│   └── LoadingUI.ahk                # Cursor changes, tooltip display, suspend banner toggle
+│   ├── LoadingUI.ahk                # Cursor changes, tooltip display, suspend banner toggle
+│   └── menu/                        # Command menu system
+│       ├── CommandMenu.ahk          # Menu building: command menu, tags, submenus, options
+│       └── CommandState.ahk         # Command state management + custom input send action
 │
 ├── chat/                            # Persistent chat window (sub-process)
 │   ├── ChatWindow.ahk               # Window lifecycle: hotkeys, WebView2 creation, show/hide, pre-warm
-│   ├── ChatIPC.ahk                  # IPC handlers: OnLoadThread, OnTriggerLLM, OnNewChat + LoadThreadIntoUI
+│   ├── ChatIPC.ahk                  # IPC handlers: OnLoadThread, OnTriggerLLM + LoadThreadIntoUI
 │   ├── ChatSettings.ahk             # Thread settings, assistant/model management, dropdown label
 │   ├── ChatRequestBuilder.ahk       # buildRequest, sendRequestToLLM, _BuildAndFireRequest, handleCancelStream
 │   ├── ChatUtils.ahk                # cURL management, WebView messaging, temp files, loading cursor, stats
@@ -49,18 +56,11 @@ ai-automation/
 │   ├── ProviderResolver.ahk         # Provider/endpoint resolution from model string
 │   └── ResponseParser.ahk           # Response parsing (chat, FIM, streaming, error)
 │
-├── ui/                              # UI components
-│   └── InputWindow.ahk              # InputWindow class: GUI popup for custom prompts
-│
 ├── ipc/                             # Inter-process communication
 │   └── CustomMessages.ahk           # CustomMessages class: WM_ message constants + helpers
 │
 ├── lib/                             # Vendor/third-party libraries
 │   ├── Config.ahk                   # Include chain (see below)
-│   ├── shared/                      # Shared application utilities
-│   │   ├── ModelParser.ahk          # Model ID parsing ("provider/model" → provider + name)
-│   │   ├── TokenEstimation.ahk      # Character-based token estimation (~4 chars/token)
-│   │   └── DebugLog.ahk             # Shared debug logging + safeDelete helper
 │   ├── SQLite/                      # SQLite3 database wrapper
 │   ├── ApiLogsViewer.ahk            # Standalone API logs viewer
 │   ├── Dark_Menu.ahk                # Dark theme for AHK menus
@@ -87,20 +87,29 @@ ai-automation/
     ├── Bootstrap/                   # Bootstrap framework files
     ├── css/
     │   ├── custom.css               # Custom styles
-    │   └── vendor/                  # Third-party CSS (katex, texmath, highlight)
+    │   ├── vendor/                  # Third-party CSS (katex, texmath, highlight)
+    │   └── chat/                    # Chat UI styles (split from chat.css)
+    │       ├── chat-base.css        # Layout, containers, title bar
+    │       ├── chat-messages.css    # Message bubbles, loading, streaming, thinking
+    │       ├── chat-actions.css     # Action buttons, branch nav, more dropdown
+    │       ├── chat-input.css       # Input area, buttons, token bar
+    │       └── chat-sidebar.css     # Bootstrap helpers, utility classes
     └── js/
-        ├── chat-core.js             # Core chat state, rendering, shared action buttons
-        ├── chat-settings.js         # Model settings modal + assistant dropdown
-        ├── chat-format.js           # Clipboard, format helpers, token bar
-        ├── chat-render.js           # Bubble creation, DOM rendering
-        ├── chat-input.js            # Send, loading, keyboard, retry handlers
-        ├── chat-branching.js        # D1-D4: Edit, Delete, Branch Nav, Tree Viz
-        ├── chat-sidebar.js          # D6: Thread list sidebar + message nav bar
-        ├── chat-quote.js            # D5: Quote from chat (button + selection popup)
-        ├── chat-feedback.js         # D8: Thumbs up/down feedback
-        ├── chat-undo.js             # D9: Undo/Redo (Ctrl+Z/Y)
+        ├── main.js                  # Message handler orchestrator + initialization
         ├── stream.js                # Streaming response rendering
-        └── main.js                  # Message handler orchestrator + initialization
+        └── chat/                    # Chat feature modules
+            ├── chat-core.js         # Core chat state, rendering
+            ├── chat-settings.js     # Assistant selector dropdown
+            ├── chat-settings-modal.js # Model settings modal functions
+            ├── chat-format.js       # Clipboard, format helpers, token bar
+            ├── chat-render.js       # Bubble creation, DOM rendering
+            ├── chat-actions.js      # Message action buttons
+            ├── chat-input.js        # Send, loading, keyboard, retry
+            ├── chat-branching.js    # Edit, Delete, Branch Nav, Tree Viz
+            ├── chat-sidebar.js      # Thread list sidebar + message nav bar
+            ├── chat-quote.js        # Quote from chat
+            ├── chat-feedback.js     # Thumbs up/down feedback
+            └── chat-undo.js         # Undo/Redo (Ctrl+Z/Y)
 ```
 
 ## Architecture Overview

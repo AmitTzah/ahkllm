@@ -31,11 +31,13 @@ TestErrorHandler(err, mode) {
 ; Override MsgBox/ExitApp BEFORE Config loads UserConfig
 ; -----------------------------------------------------------
 MsgBox(text, title := "", options := "") {
-    FileAppend("[MSGBOX] " title ": " text "`n", "*")
+    global TEST_LOG
+    FileAppend("[MSGBOX] " title ": " text "`n", TEST_LOG)
     return "OK"
 }
 ExitApp(ExitCode := 0) {
-    FileAppend("[EXITAPP suppressed in test mode]`n", "*")
+    global TEST_LOG
+    FileAppend("[EXITAPP suppressed in test mode]`n", TEST_LOG)
 }
 
 global testMode := true

@@ -1,0 +1,146 @@
+/* chat-input.css — Input area, buttons, token bar, FIM notice */
+
+#chat-input {
+    flex-grow: 1;
+    resize: none;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+    background-color: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color);
+    min-height: 40px;
+    max-height: 200px;
+}
+
+#chat-input:focus {
+    outline: none;
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* Send and Copy All buttons */
+#chat-send-btn {
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.5rem;
+    border: none;
+    background-color: var(--bs-primary);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    height: 40px;
+}
+
+#chat-send-btn:hover {
+    filter: brightness(1.1);
+}
+
+#chat-send-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#copy-entire-chat-btn {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    background-color: transparent;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    height: 40px;
+}
+
+#copy-entire-chat-btn:hover {
+    background-color: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+}
+
+/* FIM mode indicator in chat */
+#fim-notice {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+/* Token usage bar — modern compact info bar */
+#token-usage-bar {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    background-color: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: 0.5rem 1.25rem;
+    flex-shrink: 0;
+    box-shadow: inset 0 -2px 4px rgba(0,0,0,0.02);
+}
+
+#token-usage-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    column-gap: 1.5rem;
+    row-gap: 0.5rem;
+}
+
+/* Style the rows */
+#token-usage-bar .tu-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+#token-usage-bar .tu-row > span {
+    display: flex;
+    align-items: baseline;
+}
+
+/* Make the cost row look like a pill/badge */
+#token-usage-bar .tu-row.tu-cost {
+    background-color: rgba(25, 135, 84, 0.1);
+    color: var(--bs-success);
+    padding: 0.25rem 0.75rem;
+    border-radius: 2rem;
+    border: 1px solid rgba(25, 135, 84, 0.2);
+    font-size: 0.72rem;
+}
+
+[data-bs-theme="dark"] #token-usage-bar .tu-row.tu-cost {
+    background-color: rgba(117, 183, 152, 0.15);
+    color: #75b798;
+    border-color: rgba(117, 183, 152, 0.3);
+}
+
+#token-usage-bar .tu-label {
+    font-weight: 700;
+    opacity: 0.65;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.4rem;
+    color: inherit;
+}
+
+/* Highlight the actual token/cost values */
+#token-usage-bar span {
+    color: var(--bs-body-color);
+    font-weight: 500;
+}
+
+/* Inherit color properly for the cost pill */
+#token-usage-bar .tu-row.tu-cost span {
+    color: inherit !important;
+}
+
+#token-usage-bar .tu-asterisk {
+    font-size: 0.6rem;
+    opacity: 0.7;
+    vertical-align: super;
+    margin-left: 2px;
+}

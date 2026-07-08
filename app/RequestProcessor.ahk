@@ -33,20 +33,9 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
 
     ; STEP 2: Build request and execute
     for i, fullAPIModelName in APIModelsArr {
-        parts := ModelParser.Split(fullAPIModelName)
-        if parts.provider {
-            providerName := parts.provider
-            singleAPIModelName := parts.name
-        } else {
-            providerName := "deepseek"
-            for prefix, mappedProvider in providerMap {
-                if InStr(fullAPIModelName, prefix) {
-                    providerName := mappedProvider
-                    break
-                }
-            }
-            singleAPIModelName := fullAPIModelName
-        }
+        providerInfo := ProviderResolver.Resolve(fullAPIModelName)
+        providerName := providerInfo.providerKey
+        singleAPIModelName := providerInfo.modelName
 
         if pasteMode = "chat" {
             if APIModelsArr.Length > 1 {

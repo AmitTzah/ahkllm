@@ -16,18 +16,8 @@ onCommandInputSend(*) {
         return
 
     cmd := selectedCommand
+    params := _extractCommandParams(cmd, commandInputWindow.EditControl.Value)
     processInitialRequest(cmd.commandName, cmd.menuText, cmd.systemMessage,
-        cmd.APIModels,
-        cmd.HasProp("copyAsMarkdown") && cmd.copyAsMarkdown,
-        cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat",
-        cmd.HasProp("skipConfirmation") && cmd.skipConfirmation,
-        cmd.HasProp("isFIM") && cmd.isFIM,
-        commandInputWindow.EditControl.Value,
-        cmd.HasProp("temperature") ? cmd.temperature : "",
-        cmd.HasProp("maxTokens") ? cmd.maxTokens : "",
-        cmd.HasProp("stop") ? cmd.stop : "",
-        cmd.HasProp("stream") && cmd.stream,
-        cmd.HasProp("thinking") && cmd.thinking ? cmd.thinking["type"] : ""
-    )
+        cmd.APIModels, params*)
     commandInputWindow.EditControl.Value := ""
 }

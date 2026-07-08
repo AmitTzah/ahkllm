@@ -1,0 +1,96 @@
+/* chat-base.css — Layout, containers, title bar */
+
+:root {
+    --FauxTitleBarHeight: calc(33.25px);
+}
+
+main {
+    height: calc(100vh - (var(--FauxTitleBarHeight)));
+}
+
+/* Chat layout */
+#chat-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    zoom: 1.23;
+}
+
+#chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 2rem 1rem;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    scrollbar-gutter: stable;
+}
+
+#chat-input-area {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--bs-border-color);
+    background-color: var(--bs-body-bg);
+    align-items: flex-end;
+}
+
+@media (min-width: 932px) {
+    #chat-messages, #chat-input-area {
+        padding-left: calc((100% - 900px) / 2);
+        padding-right: calc((100% - 900px) / 2);
+    }
+}
+
+/* Make #page-content a flex container in column direction */
+#page-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Make #content expand and be scrollable */
+#content {
+    flex-grow: 1;
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+
+/* Web-based TitleBar */
+.ahk-titleBar {
+    cursor: default;
+    user-select: none;
+}
+
+.ahk-title-btn {
+    padding: 0.35em 1.0em;
+    cursor: pointer;
+    vertical-align: bottom;
+    font-family: Webdings;
+    font-size: 11pt;
+}
+
+#ahkTitleBar {
+    -webkit-app-region: drag;
+}
+
+body .ahk-title-btn-restore {
+    display: none
+}
+
+body.ahk-maximized .ahk-title-btn-restore {
+    display: block;
+}
+
+body.ahk-maximized .ahk-title-btn-maximize {
+    display: none;
+}
+
+.ahk-title-btn:hover {
+    background: rgba(0, 0, 0, .2);
+}
+
+.ahk-title-btn-close:hover {
+    background: #dc3545;
+}

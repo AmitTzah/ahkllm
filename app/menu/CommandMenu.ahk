@@ -56,9 +56,26 @@ buildCommandMenu() {
 ; Command menu handler function
 ; ----------------------------------------------------
 
+; Extract optional command properties shared by onCommandSelected and onCommandInputSend.
+; Returns a flat array for splatting into processInitialRequest after the first 4 required params.
+_extractCommandParams(cmd, customInputMessage := "") {
+    return [
+        cmd.HasProp("copyAsMarkdown") && cmd.copyAsMarkdown,
+        cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat",
+        cmd.HasProp("skipConfirmation") && cmd.skipConfirmation,
+        cmd.HasProp("isFIM") && cmd.isFIM,
+        customInputMessage,
+        cmd.HasProp("temperature") ? cmd.temperature : "",
+        cmd.HasProp("maxTokens") ? cmd.maxTokens : "",
+        cmd.HasProp("stop") ? cmd.stop : "",
+        cmd.HasProp("stream") && cmd.stream,
+        cmd.HasProp("thinking") && cmd.thinking ? cmd.thinking["type"] : ""
+    ]
+}
+
 onCommandSelected(index, *) {
     cmd := commands[index]
-    if (selectedCommand.HasProp("isCustomCommand") && selectedCommand.isCustomCommand) {
+    if (cmd.HasProp("isCustomCommand") && cmd.isCustomCommand) {
 
         ; Save the command for future reference in customCommandSendButtonAction(*)
         setSelectedCommand(cmd)
@@ -70,18 +87,9 @@ onCommandSelected(index, *) {
             ? cmd.customInputInitialMessage : unset, cmd.commandName, "ahk_id " commandInputWindow
         .guiObj.hWnd)
     } else {
-    processInitialRequest(cmd.commandName, cmd.menuText, cmd.systemMessage,
-        cmd.APIModels,
-        cmd.HasProp("copyAsMarkdown") && cmd.copyAsMarkdown,
-        cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat",
-        cmd.HasProp("skipConfirmation") && cmd.skipConfirmation,
-        cmd.HasProp("isFIM") && cmd.isFIM,
-        "",  ; customInputMessage (not applicable for non-custom commands)
-        cmd.HasProp("temperature") ? cmd.temperature : "",
-        cmd.HasProp("maxTokens") ? cmd.maxTokens : "",
-        cmd.HasProp("stop") ? cmd.stop : "",
-        cmd.HasProp("stream") && cmd.stream,
-        cmd.HasProp("thinking") && cmd.thinking ? cmd.thinking["type"] : "")
+        params := _extractCommandParams(cmd, "")  ; no custom input for non-custom commands
+        processInitialRequest(cmd.commandName, cmd.menuText, cmd.systemMessage,
+            cmd.APIModels, params*)
     }
 }
 

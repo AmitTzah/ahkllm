@@ -12,7 +12,6 @@ class CustomMessages {
     ; Collision with WebView2 internal messages causes access-violation crashes.
     static WM_CHAT_WINDOW_OPENED := 0x500 + 0
     static WM_LOAD_THREAD := 0x500 + 2
-    static WM_NEW_CHAT := 0x500 + 3
     static WM_TRIGGER_LLM := 0x500 + 4
 
     static registerHandlers(origin, handle) {
@@ -24,7 +23,7 @@ class CustomMessages {
                     OnMessage(msg, handle)
 
             case "subScript":
-                for msg in [this.WM_LOAD_THREAD, this.WM_NEW_CHAT]
+                for msg in [this.WM_LOAD_THREAD]
                     OnMessage(msg, handle)
         }
     }
@@ -50,11 +49,6 @@ class CustomMessages {
             FileOpen(A_Temp "\chat_load_thread.txt", "w", "UTF-8-RAW").Write(threadId)
             PostMessage(this.WM_LOAD_THREAD, 0, 0, , "ahk_id " chatWindowhWnd)
         }
-    }
-
-    ; Main → ChatWindow: tell it to start a new chat
-    static notifyNewChat(chatWindowhWnd) {
-        try PostMessage(this.WM_NEW_CHAT, 0, 0, , "ahk_id " chatWindowhWnd)
     }
 
     ; Main → ChatWindow: trigger LLM for the current thread (command-triggered chats)

@@ -63,16 +63,6 @@ class CurlBuilder {
             . '-o "' cURLOutputFile '"'
     }
 
-    buildStreamcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile, errorFile) {
-        return 'cURL.exe -s --no-buffer --connect-timeout 30 -X POST '
-            . APIEndpoint ' '
-            . '-H "Authorization: Bearer ' this.APIKey '" '
-            . '-H "Content-Type: application/json" '
-            . '-d @"' chatHistoryJSONRequestFile '" '
-            . '-o "' cURLOutputFile '" '
-            . '2>"' errorFile '"'
-    }
-
     buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . FIMEndpoint ' '

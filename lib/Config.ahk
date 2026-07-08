@@ -11,9 +11,9 @@
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
 ; Shared utilities
-#Include ..\lib\shared\ModelParser.ahk
-#Include ..\lib\shared\TokenEstimation.ahk
-#Include ..\lib\shared\DebugLog.ahk
+#Include ..\shared\ModelParser.ahk
+#Include ..\shared\TokenEstimation.ahk
+#Include ..\shared\DebugLog.ahk
 
 ; Application classes
 #Include ..\api\CurlBuilder.ahk
@@ -23,6 +23,6 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 #Include ..\api\SSEParser.ahk
 #Include ..\api\ApiLogger.ahk
 #Include ..\api\CostCalculator.ahk
-#Include ..\ui\InputWindow.ahk
+#Include ..\app\InputWindow.ahk
 #Include ..\ipc\CustomMessages.ahk
 #Include ..\chat\db\ChatDB.ahk       ; Chat persistence (SQLite-backed)

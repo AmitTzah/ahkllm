@@ -52,53 +52,52 @@ handleFeedback(params, *) {
 ; Button click actions
 ; ----------------------------------------------------
 
+; Find which message to retry: specific assistant by id, or last assistant in path.
+; Returns { targetMsg, parentMsg } — both empty if no retry target found.
+_findRetryTarget(path, messageId) {
+    if messageId && path.Length {
+        for i, msg in path {
+            if msg.id = messageId && msg.role = "assistant" {
+                parentMsg := i > 1 ? path[i - 1] : ""
+                return { targetMsg: msg, parentMsg: parentMsg }
+            }
+        }
+    }
+    if path.Length && path[path.Length].role = "assistant" {
+        parentMsg := path.Length > 1 ? path[path.Length - 1] : ""
+        return { targetMsg: path[path.Length], parentMsg: parentMsg }
+    }
+    return { targetMsg: "", parentMsg: "" }
+}
+
+; Ensure the message has a sibling_group, creating one if needed.
+; Sets sibling_index=0 on the message. Returns the sibling group UUID.
+_setupSiblingGroup(msg) {
+    sg := msg.sibling_group
+    if !sg {
+        sg := ChatDB._UUID()
+        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" msg.id "';")
+    }
+    return sg
+}
+
 retryAction(messageId := "") {
-    global activeThreadId, chatWindow, requestParams
-            if !activeThreadId
-                return
-            path := ChatDB.Msg_GetActivePath(activeThreadId)
-            targetMsg := ""
-            parentMsg := ""
-            if messageId && path.Length {
-                ; Find the specific assistant to retry (and its parent)
-                for i, msg in path {
-                    if msg.id = messageId && msg.role = "assistant" {
-                        targetMsg := msg
-                        if i > 1
-                            parentMsg := path[i - 1]
-                        break
-                    }
-                }
-            }
-            if targetMsg {
-                ; Retry specific assistant
-                siblingGroup := targetMsg.sibling_group
-                if !siblingGroup {
-                    siblingGroup := ChatDB._UUID()
-                    ChatDB.db.Exec("UPDATE messages SET sibling_group='" siblingGroup "', sibling_index=0 WHERE id='" targetMsg.id "';")
-                }
-                requestParams["pendingRetrySiblingGroup"] := siblingGroup
-                if parentMsg
-                    ChatDB.Msg_SetActiveLeaf(activeThreadId, parentMsg.id)
-            } else if path.Length && path[path.Length].role = "assistant" {
-                ; Legacy: retry last assistant
-                oldMsg := path[path.Length]
-                siblingGroup := oldMsg.sibling_group
-                if !siblingGroup {
-                    siblingGroup := ChatDB._UUID()
-                    ChatDB.db.Exec("UPDATE messages SET sibling_group='" siblingGroup "', sibling_index=0 WHERE id='" oldMsg.id "';")
-                }
-                requestParams["pendingRetrySiblingGroup"] := siblingGroup
-                if path.Length > 1
-                    ChatDB.Msg_SetActiveLeaf(activeThreadId, path[path.Length - 1].id)
-            } else if path.Length && path[path.Length].role = "user" {
-                ; Chat ends with user (e.g. assistant was deleted) — just resend
-                ; the current chat. No sibling group needed since we aren't
-                ; replacing an existing assistant. Clear any stale retry state.
-                if requestParams.Has("pendingRetrySiblingGroup")
-                    requestParams.Delete("pendingRetrySiblingGroup")
-            }
-            ; Send to LLM if we have a retry pending OR if chat ends with user
+    global activeThreadId, requestParams
+    if !activeThreadId
+        return
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    target := _findRetryTarget(path, messageId)
+
+    if target.targetMsg {
+        requestParams["pendingRetrySiblingGroup"] := _setupSiblingGroup(target.targetMsg)
+        if target.parentMsg
+            ChatDB.Msg_SetActiveLeaf(activeThreadId, target.parentMsg.id)
+    } else if path.Length && path[path.Length].role = "user" {
+        ; Chat ends with user (e.g. assistant was deleted). Clear stale retry state.
+        if requestParams.Has("pendingRetrySiblingGroup")
+            requestParams.Delete("pendingRetrySiblingGroup")
+    }
+
     if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user")
         _BuildAndFireRequest()
 }

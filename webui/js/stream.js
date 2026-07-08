@@ -80,6 +80,42 @@ function onStreamReasoning(data) {
   scrollToBottom();
 }
 
+// Persist a streamed message to chatMessages with dedup check.
+// Used by both onStreamDone() and cancelStreaming().
+function _persistStreamedMessage(content, modelName, dbMsg) {
+  var msg = { role: 'assistant', content: content };
+  if (modelName) msg.model = modelName;
+
+  // Apply DB fields
+  if (dbMsg) {
+    if (dbMsg.id) msg.id = dbMsg.id;
+    if (dbMsg.siblingInfo) msg.siblingInfo = dbMsg.siblingInfo;
+    if (dbMsg.reasoning) msg.reasoning = dbMsg.reasoning;
+    if (dbMsg.feedback) msg.feedback = dbMsg.feedback;
+    if (streamState.bubble && dbMsg.id) {
+      streamState.bubble.dataset.msgId = dbMsg.id;
+    }
+  }
+
+  // Dedup by id (preferred) or content (fallback)
+  var found = false;
+  if (dbMsg && dbMsg.id) {
+    for (var i = chatMessages.length - 1; i >= 0; i--) {
+      if (chatMessages[i].id === dbMsg.id) { found = true; break; }
+    }
+  } else {
+    for (var i = chatMessages.length - 1; i >= 0; i--) {
+      if (chatMessages[i].role === 'assistant' && chatMessages[i].content === content) {
+        found = true; break;
+      }
+    }
+  }
+  if (!found) {
+    chatMessages.push(msg);
+    sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
+  }
+}
+
 // Called when streaming is complete
 function onStreamDone(data) {
   // Support both legacy (string modelName) and new ({ model, dbMsg }) formats
@@ -124,46 +160,9 @@ function onStreamDone(data) {
 
   // Add the streaming message to chat history for persistence
   if (streamState.contentBuffer) {
-    var streamingMessage = { role: 'assistant', content: streamState.contentBuffer };
-    if (modelName) streamingMessage.model = modelName;
-    // Apply DB fields (id, siblingInfo, reasoning, feedback) if available
-    if (dbMsg) {
-      if (dbMsg.id) streamingMessage.id = dbMsg.id;
-      if (dbMsg.siblingInfo) streamingMessage.siblingInfo = dbMsg.siblingInfo;
-      if (dbMsg.reasoning) streamingMessage.reasoning = dbMsg.reasoning;
-      if (dbMsg.feedback) streamingMessage.feedback = dbMsg.feedback;
-      // Update the bubble's dataset with the DB id
-      if (streamState.bubble && dbMsg.id) {
-        streamState.bubble.dataset.msgId = dbMsg.id;
-      }
-    }
-
-    // Only add if not already in chatMessages (avoid duplicates — use id if available)
-    var found = false;
-    if (dbMsg && dbMsg.id) {
-      for (var i = chatMessages.length - 1; i >= 0; i--) {
-        if (chatMessages[i].id === dbMsg.id) {
-          found = true;
-          break;
-        }
-      }
-    } else {
-      // Fallback: content-based dedup (no id available from DB)
-      for (var i = chatMessages.length - 1; i >= 0; i--) {
-        if (chatMessages[i].role === 'assistant' && chatMessages[i].content === streamState.contentBuffer) {
-          found = true;
-          break;
-        }
-      }
-    }
-    if (!found) {
-      chatMessages.push(streamingMessage);
-      sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
-    }
-    // Add action buttons now that the message is in chatMessages
+    _persistStreamedMessage(streamState.contentBuffer, modelName, dbMsg);
     if (streamState.bubble) {
       addStreamingActions(streamState.bubble, chatMessages.length - 1);
-      // Branch arrows are handled inside addMessageActions — no separate badge needed
     }
   }
 
@@ -275,28 +274,9 @@ function cancelStreaming(data) {
   // Must also render when only thinking content exists (no text yet) —
   // otherwise Stop during reasoning leaves no action bar.
   if (dbMsg && (streamState.contentBuffer || streamState.thinkingBuffer)) {
-    var cancelledMsg = { role: 'assistant', content: streamState.contentBuffer };
-    if (streamState.modelName) cancelledMsg.model = streamState.modelName;
-    if (dbMsg.id) cancelledMsg.id = dbMsg.id;
-    if (dbMsg.siblingInfo) cancelledMsg.siblingInfo = dbMsg.siblingInfo;
-    if (dbMsg.reasoning) cancelledMsg.reasoning = dbMsg.reasoning;
-    if (streamState.bubble && dbMsg.id) {
-      streamState.bubble.dataset.msgId = dbMsg.id;
-    }
-
-    // Dedup check
-    var found = false;
-    if (dbMsg.id) {
-      for (var i = chatMessages.length - 1; i >= 0; i--) {
-        if (chatMessages[i].id === dbMsg.id) { found = true; break; }
-      }
-    }
-    if (!found) {
-      chatMessages.push(cancelledMsg);
-      sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
-      if (streamState.bubble) {
-        addStreamingActions(streamState.bubble, chatMessages.length - 1);
-      }
+    _persistStreamedMessage(streamState.contentBuffer, streamState.modelName, dbMsg);
+    if (streamState.bubble) {
+      addStreamingActions(streamState.bubble, chatMessages.length - 1);
     }
   }
 
