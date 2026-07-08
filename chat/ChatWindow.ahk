@@ -24,6 +24,8 @@ ChatHotkeys(action) {
             curlPID := cURLState("get")
             hadCurl := ProcessExist(curlPID)
             if hadCurl {
+                ; Mark as cancelled so _finalizeStreaming logs properly
+                requestParams["_streamCancelled"] := true
                 cURLState("close")
                 postWebMessage("setChatButtonsEnabled", true)
             }

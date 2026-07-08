@@ -142,14 +142,13 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
 }
 
 cancelStreamFromWebView() {
-    ; Directly kill the cURL process without going through ChatHotkeys("Esc").
-    ; ChatHotkeys("Esc") has window-hiding logic (hides window when no cURL is running),
-    ; which is wrong for the Stop button — the Stop button should only cancel streaming,
-    ; never hide the window.
+    ; Kill cURL to stop generation server-side (closing TCP connection).
+    ; Usage data is lost (only in final SSE chunk), but we avoid billing
+    ; for un-displayed tokens. Token estimates are computed from what we captured.
     curlPID := cURLState("get")
     if curlPID && ProcessExist(curlPID) {
         cURLState("close")
-        requestParams["_streamCancelled"] := true
-        postWebMessage("setChatButtonsEnabled", true)
     }
+    requestParams["_streamCancelled"] := true
+    postWebMessage("setChatButtonsEnabled", true)
 }

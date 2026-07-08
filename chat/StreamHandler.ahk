@@ -194,6 +194,21 @@ _handleStreamCancelled() {
     debugLog("User cancelled streaming request")
     cURLState("close")
 
+    ; Estimate token counts — real usage unavailable (only in final SSE chunk).
+    ; Use same estimates for DB insert AND API log so the UI token bar updates.
+    completionChars := StrLen(requestParams["_streamContent"]) + StrLen(requestParams["_streamReasoning"])
+    promptChars := 0
+    if activeThreadId {
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        for msg in path {
+            promptChars += StrLen(msg.content)
+        }
+    }
+    estPromptTokens := Max(1, promptChars // 4)
+    estCompletionTokens := Max(1, completionChars // 4)
+
+    _logCancelledRequest(estPromptTokens, estCompletionTokens)
+
     if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := path.Length ? path[path.Length].id : ""
@@ -203,12 +218,13 @@ _handleStreamCancelled() {
             model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
             parent_id: parentId, sibling_group: "", sibling_index: 0,
             reasoning: requestParams["_streamReasoning"],
-            prompt_tokens: requestParams["_streamUsage"].HasOwnProp("promptTokens") ? requestParams["_streamUsage"].promptTokens : 0,
-            completion_tokens: requestParams["_streamUsage"].HasOwnProp("completionTokens") ? requestParams["_streamUsage"].completionTokens : 0,
-            total_tokens: requestParams["_streamUsage"].HasOwnProp("totalTokens") ? requestParams["_streamUsage"].totalTokens : 0,
-            cached_tokens: requestParams["_streamUsage"].HasOwnProp("cachedTokens") ? requestParams["_streamUsage"].cachedTokens : 0
+            prompt_tokens: estPromptTokens,
+            completion_tokens: estCompletionTokens,
+            total_tokens: estPromptTokens + estCompletionTokens,
+            cached_tokens: 0
         })
         _maybeGenerateTitle(path)
+        postThreadStats(activeThreadId)  ; refresh token/cost bar in UI
         dbMsgData := buildStructuredMessagesFromPath([ChatDB.Msg_GetActivePath(activeThreadId)[ChatDB.Msg_GetActivePath(activeThreadId).Length]])[1]
         postWebMessage("streamCancelled", { dbMsg: dbMsgData })
     } else {
@@ -257,6 +273,43 @@ _maybeGenerateTitle(path) {
                 SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
         }
     }
+}
+
+; Log a cancelled API call with estimated token counts.
+; Character-based estimation (4 chars ≈ 1 token for English) works across
+; all providers (DeepSeek, OpenAI, Gemini). The estimated: true flag
+; distinguishes these from real API-reported usage.
+_logCancelledRequest(estPromptTokens, estCompletionTokens) {
+    latencyMs := requestParams["_streamFirstTokenTime"] > 0
+        ? requestParams["_streamFirstTokenTime"] - requestParams["_streamRequestStartTime"]
+        : A_TickCount - requestParams["_streamRequestStartTime"]
+    logEntry := {
+        choices: [{ message: { content: requestParams["_streamContent"] }, finish_reason: "cancelled" }],
+        model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
+        model_full: requestParams["singleAPIModelName"]
+    }
+    if requestParams["_streamReasoning"]
+        logEntry.choices[1].message.reasoning_content := requestParams["_streamReasoning"]
+    logEntry.usage := {
+        prompt_tokens: estPromptTokens,
+        completion_tokens: estCompletionTokens,
+        total_tokens: estPromptTokens + estCompletionTokens,
+        prompt_cache_hit_tokens: 0,
+        estimated: "true"
+    }
+    ApiLogger.LogRequest({
+        timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+        commandName: requestParams["responseWindowTitle"],
+        provider: requestParams["providerName"],
+        model: requestParams["singleAPIModelName"],
+        isFIM: false,
+        endpoint: APIEndpoint,
+        pasteMode: requestParams["pasteMode"],
+        request: requestParams["_streamChatHistoryJSONRequest"],
+        response: jsongo.Stringify(logEntry),
+        status: "cancelled",
+        latencyMs: latencyMs
+    })
 }
 
 _cleanupStreamState() {
@@ -370,8 +423,20 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
         _maybeGenerateTitle(path)
     }
 
+    ; Extract real finish_reason from the last SSE chunk (e.g., "stop", "length", "content_filter")
+    finishReason := "stop"
+    if rawLastResponse {
+        try {
+            parsedChunk := jsongo.Parse(rawLastResponse)
+            if parsedChunk.Has("choices") && parsedChunk["choices"].Length > 0 {
+                choice := parsedChunk["choices"][1]
+                if choice.Has("finish_reason") && choice["finish_reason"]
+                    finishReason := choice["finish_reason"]
+            }
+        }
+    }
     logEntry := {
-        choices: [{ message: { content: content }, finish_reason: "stop" }],
+        choices: [{ message: { content: content }, finish_reason: finishReason }],
         model: modelName ? modelName : requestParams["singleAPIModelName"],
         model_full: requestParams["singleAPIModelName"]
     }
