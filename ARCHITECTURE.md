@@ -245,10 +245,15 @@ The main script (`Main.ahk`) and ChatWindow sub-process communicate via Windows 
 | `WM_RESPONSE_WINDOW_LOADING_START` (0x400+123) | sub → main | Notifies loading started |
 | `WM_RESPONSE_WINDOW_LOADING_FINISH` (0x400+124) | sub → main | Notifies loading finished |
 | `WM_SEND_TO_ALL_MODELS` (0x400+127) | main → sub | Triggers re-request with new user message |
-| `WM_LOAD_THREAD` (0x500+2) | main → sub | Load a specific thread in ChatWindow |
+| `WM_LOAD_THREAD` (0x500+2) | main → sub | Load a specific thread in ChatWindow (async via PostMessage + temp file) |
 | `WM_NEW_CHAT` (0x500+3) | main → sub | Start a new chat in ChatWindow |
+| `WM_TRIGGER_LLM` (0x500+4) | main → sub | Fire LLM for current thread (sent after WM_LOAD_THREAD for command-triggered chats) |
 
 **Important:** WebView2 uses the 0x400–0x4FF range internally. ChatWindow messages use 0x500+ to avoid access-violation crashes.
+
+`WM_LOAD_THREAD` uses `PostMessage` (async) rather than `SendMessage` (sync) to avoid blocking the main script on slow WebView2 `ExecuteScript` calls. The threadId is passed via a temp file (`A_Temp\chat_load_thread.txt`) since `PostMessage` cannot carry string pointers.
+
+`WM_TRIGGER_LLM` is only sent by `processInitialRequest` for command-triggered chats (not sidebar clicks or branch switches), maintaining clean separation between "load thread" and "fire LLM" concerns.
 
 ## JavaScript Module Dependency Graph
 

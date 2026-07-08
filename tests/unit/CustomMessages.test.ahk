@@ -37,6 +37,8 @@ class CustomMessagesTest {
             throw Error("WM_LOAD_THREAD wrong")
         if CustomMessages.WM_NEW_CHAT != 0x500 + 3
             throw Error("WM_NEW_CHAT wrong")
+        if CustomMessages.WM_TRIGGER_LLM != 0x500 + 4
+            throw Error("WM_TRIGGER_LLM wrong")
     }
 
     ; --------------------
@@ -72,6 +74,41 @@ class CustomMessagesTest {
             CustomMessages.notifyNewChat(12345)
         } catch Error as err {
             throw Error("notifyNewChat should not throw: " err.Message)
+        }
+    }
+
+    ; --------------------
+    ; notifyLoadThread — temp file mechanism (uses PostMessage, not SendMessage)
+    ; --------------------
+
+    NotifyLoadThread_WritesThreadIdToTempFile() {
+        testThreadId := "regression-test-thread-123"
+        tempFile := A_Temp "\chat_load_thread.txt"
+        ; Clean up any leftover
+        if FileExist(tempFile)
+            FileDelete(tempFile)
+        try {
+            CustomMessages.notifyLoadThread(testThreadId, 12345)
+        } catch Error as err {
+            throw Error("notifyLoadThread should not throw: " err.Message)
+        }
+        if !FileExist(tempFile)
+            throw Error("notifyLoadThread should write threadId to temp file, but file not found")
+        content := FileOpen(tempFile, "r", "UTF-8-RAW").Read()
+        FileDelete(tempFile)
+        if content != testThreadId
+            throw Error("notifyLoadThread temp file content mismatch. Expected: '" testThreadId "', Got: '" content "'")
+    }
+
+    ; --------------------
+    ; notifyTriggerLLM — should not crash
+    ; --------------------
+
+    NotifyTriggerLLM_DoesNotCrash() {
+        try {
+            CustomMessages.notifyTriggerLLM(12345)
+        } catch Error as err {
+            throw Error("notifyTriggerLLM should not throw: " err.Message)
         }
     }
 }

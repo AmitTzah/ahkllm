@@ -59,18 +59,42 @@ activeThreadId := ""
 ; Register IPC handlers for main-script commands
 OnMessage(CustomMessages.WM_LOAD_THREAD, OnLoadThread)
 OnMessage(CustomMessages.WM_NEW_CHAT, OnNewChat)
+OnMessage(CustomMessages.WM_TRIGGER_LLM, OnTriggerLLM)
 
 OnLoadThread(wParam, lParam, msg, hWnd) {
     global activeThreadId
-    threadId := StrGet(wParam)
-    if threadId {
-        activeThreadId := threadId
-        _restoreThreadSettings(activeThreadId)
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
-        postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
-        postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
-        postThreadStats(activeThreadId)
-        _sendDropdownLabel()
+    ; Read threadId from temp file (set by notifyLoadThread via PostMessage)
+    threadFile := A_Temp "\chat_load_thread.txt"
+    if !FileExist(threadFile)
+        return
+    threadId := FileOpen(threadFile, "r", "UTF-8-RAW").Read()
+    FileDelete(threadFile)
+    if !threadId
+        return
+    activeThreadId := threadId
+    _restoreThreadSettings(activeThreadId)
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+    postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
+    postThreadStats(activeThreadId)
+    _sendDropdownLabel()
+}
+
+; Explicit trigger: fire LLM for the current thread if there's a pending user message.
+; Sent by processInitialRequest after loading a command-triggered thread.
+OnTriggerLLM(wParam, lParam, msg, hWnd) {
+    global activeThreadId
+    if !activeThreadId
+        return
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    if path.Length > 0 && path[path.Length].role = "user" {
+        postWebMessage("setChatButtonsEnabled", false)
+        chatHistoryJSONRequest := BuildAndWriteRequestFiles()
+        if chatHistoryJSONRequest {
+            sendRequestToLLM(&chatHistoryJSONRequest)
+        } else {
+            postWebMessage("setChatButtonsEnabled", true)
+        }
     }
 }
 

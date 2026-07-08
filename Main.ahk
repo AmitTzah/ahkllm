@@ -79,12 +79,13 @@ OpenOrSpawnChatWindow(threadId := "") {
     global chatWindowPID, chatWindowhWnd
 
     if chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
-        if threadId {
-            ; IPC: tell running ChatWindow to switch to this thread
-            CustomMessages.notifyLoadThread(threadId, chatWindowhWnd)
-        }
+        ; Show window immediately for responsive UX
         WinShow("ahk_id " chatWindowhWnd)
         WinActivate("ahk_id " chatWindowhWnd)
+        if threadId {
+            ; Async IPC via PostMessage — non-blocking, ChatWindow loads thread in background
+            CustomMessages.notifyLoadThread(threadId, chatWindowhWnd)
+        }
     } else {
         ; Get main script's hidden hWnd for IPC
         mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")

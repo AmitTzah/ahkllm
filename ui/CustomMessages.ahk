@@ -16,6 +16,7 @@ class CustomMessages {
     static WM_CHAT_WINDOW_CLOSED := 0x500 + 1
     static WM_LOAD_THREAD := 0x500 + 2
     static WM_NEW_CHAT := 0x500 + 3
+    static WM_TRIGGER_LLM := 0x500 + 4
 
     static registerHandlers(origin, handle) {
         switch origin {
@@ -48,13 +49,22 @@ class CustomMessages {
     ; --- Single-window chat IPC helpers ---
 
     ; Main → ChatWindow: tell it to load a different thread
-    ; Uses SendMessage (synchronous) so the StrPtr is still valid when the handler reads it
+    ; Uses PostMessage (async) via a temp file — avoids blocking the main script
+    ; on slow WebView2 ExecuteScript calls in the ChatWindow process.
     static notifyLoadThread(threadId, chatWindowhWnd) {
-        try SendMessage(this.WM_LOAD_THREAD, StrPtr(threadId), 0, , "ahk_id " chatWindowhWnd)
+        try {
+            FileOpen(A_Temp "\chat_load_thread.txt", "w", "UTF-8-RAW").Write(threadId)
+            PostMessage(this.WM_LOAD_THREAD, 0, 0, , "ahk_id " chatWindowhWnd)
+        }
     }
 
     ; Main → ChatWindow: tell it to start a new chat
     static notifyNewChat(chatWindowhWnd) {
         try PostMessage(this.WM_NEW_CHAT, 0, 0, , "ahk_id " chatWindowhWnd)
+    }
+
+    ; Main → ChatWindow: trigger LLM for the current thread (command-triggered chats)
+    static notifyTriggerLLM(chatWindowhWnd) {
+        try PostMessage(this.WM_TRIGGER_LLM, 0, 0, , "ahk_id " chatWindowhWnd)
     }
 }

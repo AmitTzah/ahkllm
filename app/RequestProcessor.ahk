@@ -234,6 +234,9 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
 
             ; Open the ChatWindow with this thread
             OpenOrSpawnChatWindow(threadId)
+            ; Trigger LLM — this is a command-triggered chat with a pending user message
+            ; Uses a short delay so WM_LOAD_THREAD (async) is processed first
+            SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd), -100)
             ; Only process the first model for chat mode (single-window limitation)
             break
         } else {
