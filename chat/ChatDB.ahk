@@ -126,13 +126,13 @@ class ChatDB {
         table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override FROM chat_threads WHERE id='" safeId "';")
         if table.count {
             row := table[1]
-            return {
-                assistantId: row[1],
-                modelOverride: row[2],
-                systemOverride: row[3],
-                reasoningOverride: row[4],
-                temperatureOverride: row[5]
-            }
+                return {
+                    assistantId: row.assistant_id,
+                    modelOverride: row.model_override,
+                    systemOverride: row.system_override,
+                    reasoningOverride: row.reasoning_override,
+                    temperatureOverride: row.temperature_override
+                }
         }
         return ""
     }

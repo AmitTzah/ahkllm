@@ -152,14 +152,7 @@ assistants := [
         temperature: "",
         isDefault: true
     },
-    {
-        name: "Quick Ask",
-        baseModel: "deepseek/deepseek-v4-flash",
-        systemPrompt: "",
-        reasoning: "",
-        temperature: "",
-        isDefault: false
-    },
+
     {
         name: "Gemini Pro",
         baseModel: "google/gemini-2.5-pro",

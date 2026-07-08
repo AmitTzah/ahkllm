@@ -555,4 +555,79 @@ class ChatDBTest {
 
         this._closeDb()
     }
+
+    ; ----------------------------------------------------
+    ; Thread settings persistence tests
+    ; ----------------------------------------------------
+
+    Thread_UpdateSettings_SavesModelOverride() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Test")
+
+        ChatDB.Thread_UpdateSettings(threadId, { modelOverride: "openai/gpt-4.1" })
+        settings := ChatDB.Thread_GetSettings(threadId)
+
+        if !settings || settings.modelOverride != "openai/gpt-4.1"
+            throw Error("Expected modelOverride 'openai/gpt-4.1', got: " (settings ? settings.modelOverride : "NULL"))
+        this._closeDb()
+    }
+
+    Thread_UpdateSettings_ClearsModelOverride() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Test")
+
+        ChatDB.Thread_UpdateSettings(threadId, { modelOverride: "openai/gpt-4.1" })
+        ChatDB.Thread_UpdateSettings(threadId, { modelOverride: "" })
+        settings := ChatDB.Thread_GetSettings(threadId)
+
+        if settings.modelOverride != ""
+            throw Error("Expected empty modelOverride after clear, got: " settings.modelOverride)
+        this._closeDb()
+    }
+
+    Thread_UpdateSettings_SavesAssistantId() {
+        this._openDb()
+        ChatDB.Assistant_Seed()
+        asstList := ChatDB.Assistant_List()
+        threadId := ChatDB.Thread_Create("Test")
+
+        ChatDB.Thread_UpdateSettings(threadId, { assistantId: asstList[1].id })
+        settings := ChatDB.Thread_GetSettings(threadId)
+
+        if !settings || settings.assistantId != asstList[1].id
+            throw Error("Expected assistantId to match, got: " (settings ? settings.assistantId : "NULL"))
+        this._closeDb()
+    }
+
+    Thread_UpdateSettings_SavesAllFields() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Test")
+
+        ChatDB.Thread_UpdateSettings(threadId, {
+            modelOverride: "openai/gpt-4.1",
+            systemOverride: "You are helpful",
+            reasoningOverride: "none",
+            temperatureOverride: 0.7
+        })
+        settings := ChatDB.Thread_GetSettings(threadId)
+
+        if settings.systemOverride != "You are helpful"
+            throw Error("Expected systemOverride, got: " settings.systemOverride)
+        if settings.reasoningOverride != "none"
+            throw Error("Expected reasoningOverride 'none', got: " settings.reasoningOverride)
+        if settings.temperatureOverride != "0.7"
+            throw Error("Expected temperatureOverride '0.7', got: " settings.temperatureOverride)
+        this._closeDb()
+    }
+
+    Thread_GetSettings_EmptyThread_ReturnsEmpty() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Test")
+
+        settings := ChatDB.Thread_GetSettings(threadId)
+
+        if settings.modelOverride || settings.systemOverride || settings.reasoningOverride || settings.temperatureOverride
+            throw Error("Expected all overrides to be empty for new thread")
+        this._closeDb()
+    }
 }
