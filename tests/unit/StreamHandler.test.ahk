@@ -153,6 +153,34 @@ class StreamHandlerTest {
         }
     }
 
+    ; SSEParser: usage-only chunk with empty choices (OpenAI stream_options: include_usage format)
+    SSEParser_EmptyChoicesWithUsage_ExtractsUsage() {
+        line := 'data: {"id":"test","choices":[],"model":"gpt-5.1","usage":{"prompt_tokens":20,"completion_tokens":8,"total_tokens":28,"prompt_cache_hit_tokens":5}}'
+        result := SSEParser.ParseLine(line)
+        if result.type != "finish"
+            throw Error("Expected type='finish' for usage-only chunk, got '" result.type "'")
+        if !result.HasOwnProp("usage")
+            throw Error("Expected usage prop in usage-only chunk")
+        if result.usage.promptTokens != 20
+            throw Error("Expected promptTokens=20, got " result.usage.promptTokens)
+        if result.usage.completionTokens != 8
+            throw Error("Expected completionTokens=8, got " result.usage.completionTokens)
+        if result.usage.totalTokens != 28
+            throw Error("Expected totalTokens=28, got " result.usage.totalTokens)
+        if result.usage.cachedTokens != 5
+            throw Error("Expected cachedTokens=5, got " result.usage.cachedTokens)
+        if result.model != "gpt-5.1"
+            throw Error("Expected model='gpt-5.1', got '" result.model "'")
+    }
+
+    ; SSEParser: empty choices without usage should still be ignored
+    SSEParser_EmptyChoicesNoUsage_ReturnsIgnore() {
+        line := 'data: {"id":"test","choices":[],"model":"gpt-5.1"}'
+        result := SSEParser.ParseLine(line)
+        if result.type != "ignore"
+            throw Error("Expected type='ignore' for empty choices without usage, got '" result.type "'")
+    }
+
     ; --------------------------------------------------------
     ; Error response parsing: Google Gemini returns errors as
     ; [{error: {message: "..."}}] (array), while OpenAI/DeepSeek

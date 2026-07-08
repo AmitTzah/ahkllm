@@ -27,8 +27,25 @@ class SSEParser {
         }
 
         choices := parsed["choices"]
-        if !choices || choices.Length = 0
+        if !choices || choices.Length = 0 {
+            ; OpenAI stream_options: include_usage sends the usage object
+            ; in a separate chunk with empty choices after the finish_reason
+            ; chunk. Extract it here so it isn't discarded.
+            if parsed.Has("usage") && IsObject(parsed["usage"]) {
+                usageObj := parsed["usage"]
+                result := { type: "finish" }
+                if parsed.Has("model") && parsed["model"] != ""
+                    result.model := parsed["model"]
+                result.usage := {
+                    promptTokens:     usageObj.Has("prompt_tokens") ? usageObj["prompt_tokens"] : 0,
+                    completionTokens: usageObj.Has("completion_tokens") ? usageObj["completion_tokens"] : 0,
+                    totalTokens:      usageObj.Has("total_tokens") ? usageObj["total_tokens"] : 0,
+                    cachedTokens:     usageObj.Has("prompt_cache_hit_tokens") ? usageObj["prompt_cache_hit_tokens"] : 0
+                }
+                return result
+            }
             return { type: "ignore" }
+        }
 
         delta := choices[1].Has("delta") ? choices[1]["delta"] : choices[1]
 
