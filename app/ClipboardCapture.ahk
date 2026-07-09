@@ -43,24 +43,26 @@ class ClipboardCapture {
             selRanges := textPattern.GetSelection()
             if !selRanges.Length {
                 A_Clipboard := clipboardBeforeCopy
-                return { success: false, error: "No text selected." }
+                return { success: false, error: "No text cursor found." }
             }
-            selRange := selRanges[1]
+            ; Gap range: selected text (if any), or degenerate cursor position
+            gapRange := selRanges[1]
+            hasSelection := gapRange.GetText() != ""
 
-            ; Prefix: from document start to selection start
+            ; Prefix: from document start to gap start
             prefixRange := docRange.Clone()
             prefixRange.MoveEndpointByRange(
                 UIA.TextPatternRangeEndpoint.End,
-                selRange,
+                gapRange,
                 UIA.TextPatternRangeEndpoint.Start
             )
             prefix := prefixRange.GetText()
 
-            ; Suffix: from selection end to document end
+            ; Suffix: from gap end to document end
             suffixRange := docRange.Clone()
             suffixRange.MoveEndpointByRange(
                 UIA.TextPatternRangeEndpoint.Start,
-                selRange,
+                gapRange,
                 UIA.TextPatternRangeEndpoint.End
             )
             suffix := suffixRange.GetText()
@@ -69,12 +71,14 @@ class ClipboardCapture {
             return { success: false, error: "UIA text capture failed: " e.Message }
         }
 
-        ; Cut the selection (no scroll — just removes text in place)
-        A_Clipboard := ""
-        SendInput("^x")
-        if !ClipWait(1) {
-            A_Clipboard := clipboardBeforeCopy
-            return { success: false, error: "Could not cut the selected text." }
+        ; Cut selected text (if any); no-op when cursor-only (zero-width gap)
+        if hasSelection {
+            A_Clipboard := ""
+            SendInput("^x")
+            if !ClipWait(1) {
+                A_Clipboard := clipboardBeforeCopy
+                return { success: false, error: "Could not cut the selected text." }
+            }
         }
 
         A_Clipboard := clipboardBeforeCopy
