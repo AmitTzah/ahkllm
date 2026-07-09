@@ -9,6 +9,7 @@
 #Include AutoXYWH.ahk               ; Auto-resizing of GUI controls
 #Include ToolTipEx.ahk              ; Tooltip tracking and dragging
 #Include SQLite\SQLite.ahk          ; SQLite database wrapper
+#Include UIA.ahk                      ; UI Automation library (Descolada) — programmatic access to UI controls
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
 ; Shared utilities

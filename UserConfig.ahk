@@ -303,7 +303,7 @@ commands := [
         APIModels: "deepseek/deepseek-v4-flash",
         pasteMode: "replace",
         isFIM: true,
-        maxTokens: 4000,
+        maxTokens: 300,
         directAccelerator: "&4",
 
         tags: ["&Text manipulation"],

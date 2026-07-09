@@ -16,16 +16,16 @@ class RequestProcessorTest {
     ; Root cause: commit 06c56db moved paste inline from ResponseWindow.ahk
     ; and removed the implicit inter-process delay that prevented the race.
     FIMPaste_HasSleepBetweenRightAndPaste() {
-        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         if !FileExist(srcPath)
-            throw Error("RequestProcessor.ahk not found at: " srcPath)
+            throw Error("InlineRequestRunner.ahk not found at: " srcPath)
 
         src := FileRead(srcPath)
 
         ; Find the paste block: locate "A_Clipboard := responseFromLLM.response"
         pasteStartPos := InStr(src, "A_Clipboard := responseFromLLM.response")
         if !pasteStartPos
-            throw Error("Paste block anchor not found in RequestProcessor.ahk")
+            throw Error("Paste block anchor not found in InlineRequestRunner.ahk")
 
         ; Extract a window: from the anchor line through ~15 lines after
         pasteBlock := SubStr(src, pasteStartPos, 600)
@@ -56,7 +56,7 @@ class RequestProcessorTest {
 
     ; Verifies that Sleep exists after ^v for scroll-to-cursor stability
     FIMPaste_HasSleepAfterPaste() {
-        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         src := FileRead(srcPath)
         pasteStartPos := InStr(src, "A_Clipboard := responseFromLLM.response")
         pasteBlock := SubStr(src, pasteStartPos, 600)

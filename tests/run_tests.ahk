@@ -80,12 +80,14 @@ RegisterTestClass(className) {
 }
 
 #Include unit\ChatDB.test.ahk
+#Include unit\ClipboardCapture.test.ahk
 #Include unit\LLMRequestBuilder.test.ahk
 #Include unit\ChatUtils.test.ahk
 #Include unit\StreamHandler.test.ahk
 #Include unit\ChatRequestBuilder.test.ahk
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
+#Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk
