@@ -284,6 +284,13 @@ class SQLite extends SQLite3 {
 		return !isTable ? res : SQLite3.Table(this, fixed_statement, pTable, rows, cols)
 
 		CreatesTable(sql) {
+			sql := Trim(sql)
+
+			; INSERT/UPDATE/DELETE without RETURNING never return rows.
+			; Skip expensive Sanitise regex (which can fail on large string literals).
+			if RegExMatch(sql, "i)^(INSERT|UPDATE|DELETE)\b") && !RegExMatch(sql, "i)\bRETURNING\b")
+				return false
+
 			sql := Sanitise(sql)
 
 			; Match EXPLAIN (optional), WITH-CTE (optional), then SELECT|PRAGMA
@@ -314,10 +321,14 @@ class SQLite extends SQLite3 {
 					"s)^(?:/\*.*?\*/\s*|--[^\n]*\R\s*)*"   ; leading comments, any amount
 				)
 
-				return RegExReplace(
-					sql,
-					"s)'(?:''|[^'])*'|`"(?:\`"\`"|[^`"])*`""
-				)
+				try {
+					return RegExReplace(
+						sql,
+						"s)'(?:''|[^'])*'|`"(?:\`"\`"|[^`"])*`""
+					)
+				} catch {
+					return sql  ; regex failed (large string), return unsanitised
+				}
 
 			}
 		}
