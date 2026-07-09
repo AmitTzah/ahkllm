@@ -24,54 +24,68 @@ class ClipboardCapture {
             return ClipboardCapture._CaptureFIM_Continue(clipboardBeforeCopy)
     }
 
-    ; FIM Fill (replace mode): gets prefix (before selection) and suffix (after selection)
-    ; using UIA TextPattern — zero visual impact, no scroll, no flash.
+    ; ----------------------------------------------------
+    ; UIA helpers
+    ; ----------------------------------------------------
+
+    ; Acquires the focused element's TextPattern. Throws on failure
+    ; (caught by caller's try block).
+    static _AcquireTextPattern() {
+        el := UIA.GetFocusedElement()
+        if !el.IsTextPatternAvailable
+            throw Error("This application does not support UIA text capture.")
+        return { el: el, tp: el.TextPattern }
+    }
+
+    ; Splits the document at a gap range, returning text before and after.
+    ; gapRange can be a selection or a degenerate cursor position.
+    static _SplitAt(docRange, gapRange) {
+        prefixRange := docRange.Clone()
+        prefixRange.MoveEndpointByRange(
+            UIA.TextPatternRangeEndpoint.End,
+            gapRange,
+            UIA.TextPatternRangeEndpoint.Start
+        )
+        suffixRange := docRange.Clone()
+        suffixRange.MoveEndpointByRange(
+            UIA.TextPatternRangeEndpoint.Start,
+            gapRange,
+            UIA.TextPatternRangeEndpoint.End
+        )
+        return { prefix: prefixRange.GetText(), suffix: suffixRange.GetText() }
+    }
+
+    ; ----------------------------------------------------
+    ; FIM Fill (replace mode)
+    ;
+    ; Gets prefix/suffix via UIA TextPattern — zero visual impact.
+    ; With text selected: selection = gap to fill, ^x cuts it.
+    ; Without selection: cursor = zero-width gap, no cut needed.
+    ; ----------------------------------------------------
     static _CaptureFIM_Fill(clipboardBeforeCopy) {
+        hasSelection := false
         prefix := "", suffix := ""
 
         try {
-            el := UIA.GetFocusedElement()
+            utp := ClipboardCapture._AcquireTextPattern()
+            docRange := utp.tp.DocumentRange
 
-            if !el.IsTextPatternAvailable {
-                A_Clipboard := clipboardBeforeCopy
-                return { success: false, error: "This application does not support UIA text capture." }
-            }
-
-            textPattern := el.TextPattern
-            docRange := textPattern.DocumentRange
-
-            selRanges := textPattern.GetSelection()
+            selRanges := utp.tp.GetSelection()
             if !selRanges.Length {
                 A_Clipboard := clipboardBeforeCopy
                 return { success: false, error: "No text cursor found." }
             }
-            ; Gap range: selected text (if any), or degenerate cursor position
             gapRange := selRanges[1]
             hasSelection := gapRange.GetText() != ""
 
-            ; Prefix: from document start to gap start
-            prefixRange := docRange.Clone()
-            prefixRange.MoveEndpointByRange(
-                UIA.TextPatternRangeEndpoint.End,
-                gapRange,
-                UIA.TextPatternRangeEndpoint.Start
-            )
-            prefix := prefixRange.GetText()
-
-            ; Suffix: from gap end to document end
-            suffixRange := docRange.Clone()
-            suffixRange.MoveEndpointByRange(
-                UIA.TextPatternRangeEndpoint.Start,
-                gapRange,
-                UIA.TextPatternRangeEndpoint.End
-            )
-            suffix := suffixRange.GetText()
+            parts := ClipboardCapture._SplitAt(docRange, gapRange)
+            prefix := parts.prefix
+            suffix := parts.suffix
         } catch Error as e {
             A_Clipboard := clipboardBeforeCopy
             return { success: false, error: "UIA text capture failed: " e.Message }
         }
 
-        ; Cut selected text (if any); no-op when cursor-only (zero-width gap)
         if hasSelection {
             A_Clipboard := ""
             SendInput("^x")
@@ -85,8 +99,12 @@ class ClipboardCapture {
         return { success: true, prefix: prefix, suffix: suffix, modelsStr: "", isFIM: true }
     }
 
-    ; FIM Continue (append mode): copies text selection as prefix if present (^c);
+    ; ----------------------------------------------------
+    ; FIM Continue (append mode)
+    ;
+    ; Copies text selection as prefix if present (^c);
     ; falls back to UIA for text-before-cursor when nothing is selected.
+    ; ----------------------------------------------------
     static _CaptureFIM_Continue(clipboardBeforeCopy) {
         A_Clipboard := ""
         Send("^c")
@@ -94,28 +112,14 @@ class ClipboardCapture {
         if !ClipWait(1) {
             ; No text selected — use UIA to get text from doc start to cursor
             try {
-                el := UIA.GetFocusedElement()
-
-                if !el.IsTextPatternAvailable {
-                    A_Clipboard := clipboardBeforeCopy
-                    return { success: false, error: "This application does not support UIA text capture." }
-                }
-
-                textPattern := el.TextPattern
-                selRanges := textPattern.GetSelection()
+                utp := ClipboardCapture._AcquireTextPattern()
+                selRanges := utp.tp.GetSelection()
                 if selRanges.Length {
-                    ; Degenerate (zero-width) range at cursor position
-                    cursorRange := selRanges[1]
-                    docRange := textPattern.DocumentRange
-                    prefixRange := docRange.Clone()
-                    prefixRange.MoveEndpointByRange(
-                        UIA.TextPatternRangeEndpoint.End,
-                        cursorRange,
-                        UIA.TextPatternRangeEndpoint.Start
-                    )
-                    prefix := prefixRange.GetText()
+                    docRange := utp.tp.DocumentRange
+                    parts := ClipboardCapture._SplitAt(docRange, selRanges[1])
                     A_Clipboard := clipboardBeforeCopy
-                    return { success: true, prefix: prefix, suffix: "", modelsStr: "", isFIM: true, needsDeselect: false }
+                    return { success: true, prefix: parts.prefix, suffix: "",
+                             modelsStr: "", isFIM: true, needsDeselect: false }
                 }
             } catch Error as e {
                 A_Clipboard := clipboardBeforeCopy
@@ -130,18 +134,20 @@ class ClipboardCapture {
         return { success: true, prefix: prefix, suffix: "", modelsStr: "", isFIM: true, needsDeselect: true }
     }
 
+    ; ----------------------------------------------------
+    ; Non-FIM capture (chat, refine, define, etc.)
+    ;
+    ; Tries UIA TextPattern first; falls back to clipboard cascade.
+    ; ----------------------------------------------------
     static _CaptureChat(clipboardBeforeCopy, customInputMessage) {
         userMessage := ""
 
         ; Try UIA text capture first (zero visual impact, no clipboard)
         try {
-            el := UIA.GetFocusedElement()
-            if el.IsTextPatternAvailable {
-                selRanges := el.TextPattern.GetSelection()
-                if selRanges.Length {
-                    userMessage := selRanges[1].GetText()
-                }
-            }
+            utp := ClipboardCapture._AcquireTextPattern()
+            selRanges := utp.tp.GetSelection()
+            if selRanges.Length
+                userMessage := selRanges[1].GetText()
         }
 
         ; Fall back to clipboard cascade if UIA didn't get text

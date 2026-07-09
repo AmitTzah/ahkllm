@@ -14,16 +14,10 @@ class ClipboardCaptureTest {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM_Fill")
 
-        if !InStr(method, "UIA.GetFocusedElement()")
-            throw Error("_CaptureFIM_Fill must use UIA.GetFocusedElement()")
-        if !InStr(method, "IsTextPatternAvailable")
-            throw Error("_CaptureFIM_Fill must check IsTextPatternAvailable")
-        if !InStr(method, "textPattern.DocumentRange")
-            throw Error("_CaptureFIM_Fill must use textPattern.DocumentRange (not el.DocumentRange)")
-        if !InStr(method, "textPattern.GetSelection()")
-            throw Error("_CaptureFIM_Fill must use textPattern.GetSelection() (not el.GetSelection())")
-        if !InStr(method, "MoveEndpointByRange")
-            throw Error("_CaptureFIM_Fill must use MoveEndpointByRange")
+        if !InStr(method, "_AcquireTextPattern()")
+            throw Error("_CaptureFIM_Fill must use _AcquireTextPattern()")
+        if !InStr(method, "_SplitAt")
+            throw Error("_CaptureFIM_Fill must use _SplitAt helper")
 
         ; Must NOT use scroll-causing keystrokes
         if InStr(method, "^+{Home}")
@@ -61,10 +55,8 @@ class ClipboardCaptureTest {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM_Continue")
 
-        if !InStr(method, "UIA.GetFocusedElement()")
-            throw Error("_CaptureFIM_Continue UIA fallback must use UIA.GetFocusedElement()")
-        if !InStr(method, "IsTextPatternAvailable")
-            throw Error("_CaptureFIM_Continue UIA fallback must check IsTextPatternAvailable")
+        if !InStr(method, "_AcquireTextPattern()")
+            throw Error("_CaptureFIM_Continue UIA fallback must use _AcquireTextPattern()")
 
         ; Must NOT use scroll-causing keystrokes in fallback
         if InStr(method, "^+{Home}")
@@ -82,6 +74,28 @@ class ClipboardCaptureTest {
             throw Error("_CaptureFIM must route replace to _CaptureFIM_Fill")
         if !InStr(method, "_CaptureFIM_Continue")
             throw Error("_CaptureFIM must route append to _CaptureFIM_Continue")
+    }
+
+    ; _AcquireTextPattern must use UIA.GetFocusedElement and check IsTextPatternAvailable
+    Helper_AcquireTextPattern() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "_AcquireTextPattern(")
+
+        if !InStr(method, "UIA.GetFocusedElement()")
+            throw Error("_AcquireTextPattern must use UIA.GetFocusedElement()")
+        if !InStr(method, "IsTextPatternAvailable")
+            throw Error("_AcquireTextPattern must check IsTextPatternAvailable")
+        if !InStr(method, "el.TextPattern")
+            throw Error("_AcquireTextPattern must access .TextPattern")
+    }
+
+    ; _SplitAt must use MoveEndpointByRange for both prefix and suffix
+    Helper_SplitAt() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "_SplitAt(")
+
+        if !InStr(method, "MoveEndpointByRange")
+            throw Error("_SplitAt must use MoveEndpointByRange")
     }
 
     ; --- Helpers ---
