@@ -11,10 +11,9 @@
 global APIKey := "sk-test-key"
 global APIEndpoint := "https://api.test/chat/completions"
 global FIMEndpoint := "https://api.test/beta/completions"
-global FIMMaxTokens := 4000
 global darkMode := false
 global responseWindowFontFace := "Arial"
-global chatDefaultModel := "deepseek-v4-flash"
+global chatDefaultModel := "deepseek/deepseek-v4-flash"
 global mainHotkey := "``"
 global saveReloadHotkey := "~^s"
 global closeWindowsHotkey := "~^w"
@@ -23,15 +22,11 @@ global apiLogMaxEntries := 20
 global iconOn := ""
 global iconOff := ""
 
-; Minimal pricing
-global modelPricing := Map(
-    "deepseek-v4-flash", {input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1048576}
-)
-
 global models := Map(
     "deepseek/deepseek-v4-flash", { provider: "deepseek", input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false },
     "google/gemini-2.5-flash", { provider: "google", input: 0.3, cachedInput: 0.03, output: 2.5, context: 1048576, reasoning: true, vision: true },
-    "google/gemini-3.5-flash", { provider: "google", input: 1.5, cachedInput: 0.15, output: 9, context: 1048576, reasoning: true, vision: true }
+    "google/gemini-3.5-flash", { provider: "google", input: 1.5, cachedInput: 0.15, output: 9, context: 1048576, reasoning: true, vision: true },
+    "google/gemma-4-31b-it", { provider: "google", input: 0, cachedInput: 0, output: 0, context: 262144, reasoning: true, vision: true }
 )
 
 global providers := Map(
@@ -52,7 +47,8 @@ global providerMap := Map(
 )
 
 global trayMenuItems := []
-global optionsMenuItems := []
+global quickAccessMenuItems := []
+global submenuOrder := []
 global commands := []
 
 ; ChatRequestBuilder/StreamHandler test setup globals

@@ -387,4 +387,58 @@ class LLMRequestBuilderTest {
         if !parsed.Has("stream") || parsed["stream"] != true
             throw Error("Expected stream:true, got: " parsed["stream"])
     }
+
+    ; ----------------------------------------------------
+    ; ApplyThinkingOverride — universal "enabled"/"disabled"
+    ; ----------------------------------------------------
+
+    ThinkingOverride_Enabled_DeepSeek() {
+        requestObj := {}
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "deepseek", "deepseek-v4-pro", "enabled")
+        if !requestObj.HasOwnProp("thinking") || requestObj.thinking.type != "enabled"
+            throw Error("DeepSeek 'enabled' should set thinking:{type:'enabled'}")
+    }
+
+    ThinkingOverride_Enabled_OpenAI() {
+        requestObj := {}
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "enabled")
+        if requestObj.reasoning_effort != "medium"
+            throw Error("OpenAI 'enabled' should set reasoning_effort:'medium', got: " requestObj.reasoning_effort)
+    }
+
+    ThinkingOverride_Enabled_Google() {
+        requestObj := {}
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "google", "gemini-3.5-flash", "enabled")
+        if !requestObj.HasOwnProp("extra_body")
+            throw Error("Google 'enabled' should set extra_body thinking_config")
+    }
+
+    ThinkingOverride_Disabled_DeepSeek() {
+        requestObj := {}
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "deepseek", "deepseek-v4-pro", "disabled")
+        if !requestObj.HasOwnProp("thinking") || requestObj.thinking.type != "disabled"
+            throw Error("DeepSeek 'disabled' should set thinking:{type:'disabled'}")
+    }
+
+    ThinkingOverride_Disabled_OpenAI() {
+        requestObj := {}
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "disabled")
+        if requestObj.reasoning_effort != "none"
+            throw Error("OpenAI 'disabled' should set reasoning_effort:'none'")
+    }
+
+    ThinkingOverride_Enabled_WithLevel() {
+        requestObj := {}
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "enabled", "high")
+        if requestObj.reasoning_effort != "high"
+            throw Error("OpenAI 'enabled' with level:'high' should set reasoning_effort:'high', got: " requestObj.reasoning_effort)
+    }
+
+    ThinkingOverride_EmptyString_NoOp() {
+        requestObj := {}
+        saved := requestObj.Clone()
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "")
+        if requestObj.HasOwnProp("reasoning_effort")
+            throw Error("Empty thinking should be a no-op")
+    }
 }

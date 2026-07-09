@@ -24,7 +24,7 @@ class LLMRequestBuilder {
     ; Builds the standard chat completions JSON request.
     ; Supports: provider/model ID, system prompt, user prompt, images, thinking.
     ; images: optional array of { data (base64), mimeType } objects
-    createJSONRequest(APIModel, systemMessage, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, reasoningEffort := "", images*) {
+    createJSONRequest(APIModel, systemMessage, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, reasoningEffort := "", reasoningLevel := "", images*) {
         providerInfo := ProviderResolver.Resolve(APIModel)
         modelName := providerInfo.modelName
         providerKey := providerInfo.providerKey
@@ -58,12 +58,12 @@ class LLMRequestBuilder {
         if maxTokens != ""
             requestObj.max_tokens := maxTokens
         if stop != "" && stop.Length > 0
-            requestObj.stop := stop
+            requestObj.stop := LLMRequestBuilder._normalizeStop(stop)
         if stream {
             requestObj.stream := true
         }
 
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, providerKey, modelName, reasoningEffort)
+        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, providerKey, modelName, reasoningEffort, reasoningLevel)
         return LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
     }
 
@@ -71,7 +71,7 @@ class LLMRequestBuilder {
     createFIMRequest(APIModel, prefix, suffix, temperature := "", maxTokens := "", stop := "") {
         modelName := ModelParser.StripProvider(APIModel)
 
-        maxTokens := (maxTokens != "") ? maxTokens : FIMMaxTokens
+        maxTokens := (maxTokens != "") ? maxTokens : 4000    ; default FIM max tokens
         requestObj := { model: modelName, prompt: prefix, max_tokens: maxTokens }
         if (suffix != "") {
             requestObj.suffix := suffix
@@ -79,7 +79,7 @@ class LLMRequestBuilder {
         if temperature != ""
             requestObj.temperature := temperature
         if stop != "" && stop.Length > 0
-            requestObj.stop := stop
+            requestObj.stop := LLMRequestBuilder._normalizeStop(stop)
         return jsongo.Stringify(requestObj)
     }
 
@@ -93,9 +93,31 @@ class LLMRequestBuilder {
     ;   DeepSeek: thinking toggle + reasoning_effort
     ;   OpenAI:   reasoning_effort
     ;   Google 2.5: reasoning_effort; Google 3.x: extra_body with thinking_level
-    static ApplyThinkingOverride(&requestObj, providerKey, modelName, reasoningVal) {
+    static ApplyThinkingOverride(&requestObj, providerKey, modelName, reasoningVal, reasoningLevel := "") {
         if reasoningVal = ""
             return
+
+        ; "enabled" / "disabled" are universal user-facing values.
+        ; The code translates them into provider-specific API format.
+        if reasoningVal = "enabled" {
+            level := reasoningLevel != "" ? reasoningLevel : "medium"
+            if providerKey = "deepseek" {
+                requestObj.thinking := { type: "enabled" }
+            } else if providerKey = "google" {
+                LLMRequestBuilder._applyGoogleThinking(&requestObj, modelName, level)
+            } else {
+                requestObj.reasoning_effort := level
+            }
+            return
+        }
+        if reasoningVal = "disabled" {
+            if providerKey = "deepseek" {
+                requestObj.thinking := { type: "disabled" }
+            } else {
+                requestObj.reasoning_effort := "none"
+            }
+            return
+        }
 
         if reasoningVal = "none" {
             if providerKey = "deepseek" {
@@ -111,32 +133,43 @@ class LLMRequestBuilder {
         }
 
         if providerKey = "google" {
-            ; Known Gemini families use extra_body for thought summaries:
-            ;   3.x models → thinking_level (string)
-            ;   2.5 models → thinking_budget (numeric)
-            ; Other Google models (Gemma, etc.) → reasoning_effort (safe default)
-            isGemini3x := InStr(modelName, "3.") > 0 || InStr(modelName, "gemini-3") > 0
-            isGemini25 := InStr(modelName, "2.5") > 0 || InStr(modelName, "gemini-2") > 0
-
-            if isGemini3x || isGemini25 {
-                tc := { include_thoughts: true }
-                if isGemini3x {
-                    tc.thinking_level := reasoningVal
-                } else {
-                    budgetMap := Map("minimal", 1024, "low", 4096, "medium", 8192, "high", 16384, "xhigh", 24576)
-                    if budgetMap.Has(reasoningVal)
-                        tc.thinking_budget := budgetMap[reasoningVal]
-                }
-                requestObj.extra_body := { google: { thinking_config: tc } }
-            } else {
-                ; Gemma and other Google models: use reasoning_effort
-                requestObj.reasoning_effort := reasoningVal
-            }
+            LLMRequestBuilder._applyGoogleThinking(&requestObj, modelName, reasoningVal)
         } else {
             requestObj.reasoning_effort := reasoningVal
             if providerKey = "deepseek" {
                 requestObj.thinking := { type: "enabled" }
             }
+        }
+    }
+
+    ; Translates user-friendly "\n" to actual newlines in stop sequences.
+    static _normalizeStop(stop) {
+        result := []
+        for item in stop {
+            result.Push(StrReplace(item, "\n", "`n"))
+        }
+        return result
+    }
+
+    ; Applies Google-specific thinking config to the request object.
+    ; Gemini 3.x → thinking_level (string), 2.5 → thinking_budget (numeric),
+    ; other Google models (Gemma, etc.) → reasoning_effort.
+    static _applyGoogleThinking(&requestObj, modelName, level) {
+        isGemini3x := InStr(modelName, "3.") > 0 || InStr(modelName, "gemini-3") > 0
+        isGemini25 := InStr(modelName, "2.5") > 0 || InStr(modelName, "gemini-2") > 0
+
+        if isGemini3x || isGemini25 {
+            tc := { include_thoughts: true }
+            if isGemini3x {
+                tc.thinking_level := level
+            } else {
+                budgetMap := Map("minimal", 1024, "low", 4096, "medium", 8192, "high", 16384, "xhigh", 24576)
+                if budgetMap.Has(level)
+                    tc.thinking_budget := budgetMap[level]
+            }
+            requestObj.extra_body := { google: { thinking_config: tc } }
+        } else {
+            requestObj.reasoning_effort := level
         }
     }
 

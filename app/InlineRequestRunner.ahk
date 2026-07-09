@@ -8,7 +8,7 @@
 
 class InlineRequestRunner {
 
-    static Run(commandName, fullAPIModelName, providerName, singleAPIModelName, captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking) {
+    static Run(commandName, fullAPIModelName, providerName, singleAPIModelName, captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking, thinkingLevel := "") {
         uniqueID := A_TickCount
 
         ; Build the JSON request
@@ -17,7 +17,7 @@ class InlineRequestRunner {
                 temperature, maxTokens, stop)
         } else {
             chatHistoryJSONRequest := llmClient.createJSONRequest(fullAPIModelName, systemMessage, captured.userMessage,
-                temperature, maxTokens, stop, stream, thinking)
+                temperature, maxTokens, stop, stream, thinking, thinkingLevel)
         }
 
         ; Generate sanitized filenames

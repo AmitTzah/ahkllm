@@ -17,7 +17,7 @@ onCommandInputSend(*) {
 
     cmd := selectedCommand
     params := _extractCommandParams(cmd, commandInputWindow.EditControl.Value)
-    processInitialRequest(cmd.commandName, cmd.menuText, cmd.systemMessage,
+    processInitialRequest(cmd.commandName, cmd.menuText, _resolveSystemMessage(cmd),
         cmd.APIModels, params*)
     commandInputWindow.EditControl.Value := ""
 }

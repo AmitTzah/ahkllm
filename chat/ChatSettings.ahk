@@ -15,6 +15,15 @@ _updateProviderFromModel(model) {
 
 ; Apply saved per-thread settings from DB to requestParams.
 _restoreThreadSettings(threadId) {
+    ; Always clear previous overrides before loading new ones.
+    ; Prevents system messages, reasoning, etc. from leaking across threads.
+    requestParams["systemOverride"] := ""
+    requestParams["reasoningOverride"] := ""
+    requestParams["temperatureOverride"] := ""
+    if requestParams.Has("activeAssistantId")
+        requestParams.Delete("activeAssistantId")
+    requestParams["singleAPIModelName"] := chatDefaultModel
+
     settings := ChatDB.Thread_GetSettings(threadId)
     if !settings
         return
@@ -129,6 +138,13 @@ handleSwitchAssistant(parsed) {
 }
 
 handleModelSettingsUpdate(parsed) {
+    global activeThreadId
+    ; Auto-create thread if none is active (e.g. ChatWindow opened from tray)
+    if !activeThreadId {
+        activeThreadId := ChatDB.Thread_Create()
+        postWebMessage("threadList", ChatDB.Thread_List())
+        postWebMessage("loadThread", activeThreadId)
+    }
     model := parsed.Get("model", "")
     systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
@@ -157,6 +173,29 @@ handleModelSettingsUpdate(parsed) {
             reasoningOverride: reasoning,
             temperatureOverride: temperature
         })
+
+        ; Upsert system message so "System Prompt" label appears in chat
+        if systemMessage != "" {
+            path := ChatDB.Msg_GetActivePath(activeThreadId)
+            existingSysId := ""
+            for msg in path {
+                if msg.role = "system" {
+                    existingSysId := msg.id
+                    break
+                }
+            }
+            if existingSysId {
+                ChatDB.Msg_Edit(existingSysId, systemMessage)
+            } else {
+                ChatDB.Msg_Insert({
+                    thread_id: activeThreadId, role: "system",
+                    content: systemMessage, parent_id: ""
+                })
+            }
+            ; Refresh chat view so label appears immediately
+            path := ChatDB.Msg_GetActivePath(activeThreadId)
+            postWebMessage("updateChatView", buildStructuredMessagesFromPath(path))
+        }
     }
 
     _sendDropdownLabel()

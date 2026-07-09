@@ -208,9 +208,8 @@ class TreeRepo {
 
         allTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL AND model != '' LIMIT 1;")
         if allTable.count && allTable[1, "model"] {
-            modelShort := ModelParser.StripProvider(allTable[1, "model"])
-            if IsSet(modelPricing) && modelPricing.Has(modelShort) {
-                pricing := modelPricing[modelShort]
+            pricing := TreeRepo._LookupPricing(allTable[1, "model"])
+            if pricing {
                 result.pricingUnit := {
                     input: pricing.HasOwnProp("input") ? pricing.input : 0,
                     cachedInput: pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
@@ -223,15 +222,29 @@ class TreeRepo {
         i := path.Length
         while i >= 1 {
             if path[i].role = "assistant" && path[i].model {
-                modelShort := ModelParser.StripProvider(path[i].model)
-                if modelPricing.Has(modelShort) && modelPricing[modelShort].HasOwnProp("context") {
-                    result.contextWindow := modelPricing[modelShort].context
+                pricing := TreeRepo._LookupPricing(path[i].model)
+                if pricing && pricing.HasOwnProp("context") {
+                    result.contextWindow := pricing.context
                     break
                 }
             }
             i--
         }
         return result
+    }
+
+    static _LookupPricing(modelName) {
+        ; Try full "provider/model" key first
+        if models.Has(modelName)
+            return models[modelName]
+
+        ; Fallback: strip provider prefix and search by short name
+        modelShort := ModelParser.StripProvider(modelName)
+        for fullKey, m in models {
+            if ModelParser.StripProvider(fullKey) = modelShort
+                return m
+        }
+        return ""
     }
 
     static _WalkToLeaf(msgId) {

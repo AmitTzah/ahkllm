@@ -9,8 +9,8 @@
 
 ; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
-processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMarkdown, pasteMode, skipConfirmation, isFIM,
-    customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "") {
+processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode, isFIM,
+    customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "") {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
 
     ; STEP 1: Capture text
@@ -62,9 +62,9 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
                 ChatDB.Thread_UpdateSettings(threadId, {
                     modelOverride: fullAPIModelName,
                     assistantId: "",
-                    systemOverride: "",
-                    reasoningOverride: "",
-                    temperatureOverride: ""
+                    systemOverride: systemMessage,
+                    reasoningOverride: thinking = "enabled" ? (thinkingLevel != "" ? thinkingLevel : "medium") : thinking,
+                    temperatureOverride: temperature
                 })
             }
 
@@ -73,7 +73,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, copyAsMar
             break
         } else {
             InlineRequestRunner.Run(commandName, fullAPIModelName, providerName, singleAPIModelName,
-                captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking)
+                captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking, thinkingLevel)
         }
     }
 }

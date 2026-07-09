@@ -38,7 +38,7 @@ class SSEParser {
                     result.model := parsed["model"]
                 result.usage := {
                     promptTokens:     usageObj.Has("prompt_tokens") ? usageObj["prompt_tokens"] : 0,
-                    completionTokens: usageObj.Has("completion_tokens") ? usageObj["completion_tokens"] : 0,
+                    completionTokens: _computeCompletion(usageObj),
                     totalTokens:      usageObj.Has("total_tokens") ? usageObj["total_tokens"] : 0,
                     cachedTokens:     usageObj.Has("prompt_cache_hit_tokens") ? usageObj["prompt_cache_hit_tokens"] : 0
                 }
@@ -120,7 +120,7 @@ class SSEParser {
                 usageObj := parsed["usage"]
                 result.usage := {
                     promptTokens:     usageObj.Has("prompt_tokens") ? usageObj["prompt_tokens"] : 0,
-                    completionTokens: usageObj.Has("completion_tokens") ? usageObj["completion_tokens"] : 0,
+                    completionTokens: _computeCompletion(usageObj),
                     totalTokens:      usageObj.Has("total_tokens") ? usageObj["total_tokens"] : 0,
                     cachedTokens:     usageObj.Has("prompt_cache_hit_tokens") ? usageObj["prompt_cache_hit_tokens"] : 0
                 }
@@ -135,4 +135,15 @@ class SSEParser {
 
         return { type: "ignore" }
     }
+}
+
+; Google: completion_tokens excludes thinking tokens.
+; Use total - prompt for the real output count.
+_computeCompletion(usageObj) {
+    prompt := usageObj.Has("prompt_tokens") ? usageObj["prompt_tokens"] : 0
+    completion := usageObj.Has("completion_tokens") ? usageObj["completion_tokens"] : 0
+    total := usageObj.Has("total_tokens") ? usageObj["total_tokens"] : 0
+    if total > prompt + completion
+        return total - prompt
+    return completion
 }

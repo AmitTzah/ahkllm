@@ -3,8 +3,7 @@
 ; ----------------------------------------------------
 
 class InputWindow {
-    __New(windowTitle, skipConfirmation := false) {
-        this.inputWindowSkipConfirmation := skipConfirmation
+    __New(windowTitle) {
 
         ; Create Input Window — uses settings from UserConfig.ahk
         this.guiObj := Gui("Resize", windowTitle)
@@ -73,7 +72,4 @@ class InputWindow {
         AutoXYWH("x0.5 y", this.SendButton)
     }
 
-    setSkipConfirmation(value) {
-        this.inputWindowSkipConfirmation := value
-    }
 }

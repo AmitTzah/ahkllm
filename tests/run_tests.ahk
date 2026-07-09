@@ -63,6 +63,7 @@ global responseWindow := {PostWebMessageAsJSON: (*) => ""}
 ; (ChatUtils, StreamHandler, and callbacks are loaded by ChatWindow.ahk
 ; but we need them directly in test mode)
 ; -----------------------------------------------------------
+#Include ..\app\menu\CommandMenu.ahk
 #Include ..\chat\ChatUtils.ahk
 #Include ..\chat\streaming\StreamHandler.ahk
 #Include ..\chat\callbacks\Message.ahk
@@ -84,6 +85,7 @@ RegisterTestClass(className) {
 #Include unit\StreamHandler.test.ahk
 #Include unit\ChatRequestBuilder.test.ahk
 #Include unit\CustomMessages.test.ahk
+#Include unit\UserConfig.test.ahk
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk
 

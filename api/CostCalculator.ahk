@@ -3,21 +3,20 @@
 ;
 ; Computes cost estimates for a given model and token usage.
 ; Looks up pricing from the global models map (defined in UserConfig.ahk).
-; Falls back to the old modelPricing map for backward compatibility.
-; Returns an object with formatted cost strings, or empty strings if pricing
-; is not available for the model.
+; Tries full "provider/model" key first, then falls back to a short-name
+; lookup by stripping the provider prefix.
 ; ----------------------------------------------------
 
 class CostCalculator {
     static ComputeTokenCosts(model, usage) {
         costs := { inputCost: "", outputCost: "", totalCost: "", contextWindow: "" }
 
-        ; First try the full "provider/model" key in the new models map
         contextWin := ""
         cachedInputPrice := 0
         inputPrice := 0
         outputPrice := 0
 
+        ; Lookup in the models map — try full "provider/model" key first
         if models.Has(model) {
             m := models[model]
             inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
@@ -26,16 +25,20 @@ class CostCalculator {
             contextWin       := m.HasOwnProp("context")     ? m.context     : ""
         }
 
-        ; Fallback: try the old modelPricing map (model name without provider prefix)
-        if !inputPrice && !outputPrice {
+        ; Fallback: if the full key wasn't found, iterate models map by short
+        ; name (strip provider prefix from each key) — some consumers pass
+        ; model names without "provider/"
+        if !models.Has(model) {
             modelShort := ModelParser.StripProvider(model)
 
-            if modelPricing.Has(modelShort) {
-                pricing := modelPricing[modelShort]
-                inputPrice       := pricing.HasOwnProp("input")       ? pricing.input       : 0
-                cachedInputPrice := pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (inputPrice * 0.1)
-                outputPrice      := pricing.HasOwnProp("output")      ? pricing.output      : 0
-                contextWin       := pricing.HasOwnProp("context")     ? pricing.context     : ""
+            for fullKey, m in models {
+                if ModelParser.StripProvider(fullKey) = modelShort {
+                    inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
+                    cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)
+                    outputPrice      := m.HasOwnProp("output")      ? m.output      : 0
+                    contextWin       := m.HasOwnProp("context")     ? m.context     : ""
+                    break
+                }
             }
         }
 

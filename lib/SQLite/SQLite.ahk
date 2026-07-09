@@ -301,6 +301,13 @@ class SQLite extends SQLite3 {
 
 			Sanitise(sql) {
 				sql := Trim(sql) ; strip whitespace
+
+				; Skip expensive regex if no comment markers exist.
+				; Large escaped strings (e.g., DeepSeek reasoning content) can exceed
+				; PCRE's backtracking limit in the regex below.
+				if !InStr(sql, "/*") && !InStr(sql, "--")
+					return sql
+
 				; yanked-from-PostgreSQL style: removes block- and line-comments
 				sql := RegExReplace(
 					sql,

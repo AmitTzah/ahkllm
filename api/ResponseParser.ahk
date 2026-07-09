@@ -20,6 +20,9 @@ class ResponseParser {
             usage.promptTokens := usageNode.Has("prompt_tokens") ? usageNode["prompt_tokens"] : 0
             usage.completionTokens := usageNode.Has("completion_tokens") ? usageNode["completion_tokens"] : 0
             usage.totalTokens := usageNode.Has("total_tokens") ? usageNode["total_tokens"] : 0
+            ; Google: completion_tokens excludes thinking tokens. Use total - prompt for real output.
+            if usage.totalTokens > usage.promptTokens + usage.completionTokens
+                usage.completionTokens := usage.totalTokens - usage.promptTokens
 
             if usageNode.Has("prompt_cache_hit_tokens") {
                 usage.cachedTokens := usageNode["prompt_cache_hit_tokens"]

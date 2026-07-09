@@ -13,7 +13,8 @@ class AssistantRepo {
             id := ChatDB._UUID()
             safeName := SQLite.Escape(a.name)
             safeModel := SQLite.Escape(a.baseModel)
-            safePrompt := SQLite.Escape(a.systemMessage)
+            prompt := AssistantRepo._resolveSystemMessage(a)
+            safePrompt := SQLite.Escape(prompt)
             safeReasoning := SQLite.Escape(a.reasoning)
             temp := a.temperature = "" ? "NULL" : a.temperature
             isDef := a.isDefault ? 1 : 0
@@ -56,5 +57,21 @@ class AssistantRepo {
             }
         }
         return ""
+    }
+
+    static _resolveSystemMessage(a) {
+        if a.HasProp("systemMessageFile") && a.systemMessageFile {
+            filePath := a.systemMessageFile
+            if !InStr(filePath, ":") && !InStr(filePath, "\\")
+                filePath := A_ScriptDir "\\" filePath
+            try {
+                return FileRead(filePath, "UTF-8")
+            } catch Error as e {
+                MsgBox("Failed to read assistant system message:`n" filePath "`n`n" e.Message,
+                    "System Message Error", "IconX")
+                return a.HasProp("systemMessage") ? a.systemMessage : ""
+            }
+        }
+        return a.HasProp("systemMessage") ? a.systemMessage : ""
     }
 }

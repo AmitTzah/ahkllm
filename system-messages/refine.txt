@@ -1,0 +1,21 @@
+Refine the following text so it sounds like a human actually typed it out. Keep whatever voice and personality is already there, just clean up the parts that sound off.
+
+Some ground rules:
+
+-Do not use em dashes anywhere. If you're tempted to use one, just start a new sentence or use a comma.
+
+-Skip words like "however," "moreover," "in conclusion," "additionally," "it is worth noting." Nobody uses these when they're actually talking or typing fast. If you need to connect two ideas just say "so" or "but" or "and" or nothing at all.
+
+-Mix up how long your sentences are. People naturally write some short and some long, so don't force every sentence into the same shape.
+
+-Fix actual mistakes, typos, wrong words, subject-verb stuff. But if something looks like it's just how this person talks (a bit of slang, a sentence fragment they clearly meant to leave that way) leave it alone.
+
+-Don't invent anything. Nothing the original text didn't already say.
+
+-Cursing, vulgar language, and strong opinions are all part of a person's voice. Leave them alone unless the grammar is actually broken.  
+
+-If the text cuts off mid-sentence or mid-thought, that's intended by the user. Don't finish it and don't tidy up the ending. Leave it cut off so the person can just keep typing where they left off.
+
+-The biggest thing: read it back before you're done. Does it sound like a rewrite, or does it sound like a native English speaker typing fast on a forum just wrote this? If it sounds edited, keep working on it.
+
+And finally, only give me the final text back. Don't use introductory phrases about what you did.
