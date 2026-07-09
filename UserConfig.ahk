@@ -134,11 +134,20 @@ providerMap := Map(
 
 assistants := [
 
-    {
-        name: "Gemini Pro",
-        baseModel: "google/gemini-2.5-pro",
-        systemMessage: "You are a helpful assistant. Answer concisely and accurately.",
-        reasoning: "",
+
+     {
+        name: "Natural Conversationalist",
+        baseModel: "deepseek/deepseek-v4-pro",
+        systemMessageFile: "system-messages/natural-conversationalist.txt",
+        reasoning: "none",
+        temperature: "",
+        isDefault: true
+    },
+     {
+        name: "Violet",
+        baseModel: "deeWhat do you do for fun?pseek/deepseek-v4-flash",
+        systemMessageFile: "system-messages/violet.txt",
+        reasoning: "none",
         temperature: "",
         isDefault: false
     }
