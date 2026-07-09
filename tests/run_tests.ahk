@@ -85,6 +85,7 @@ RegisterTestClass(className) {
 #Include unit\StreamHandler.test.ahk
 #Include unit\ChatRequestBuilder.test.ahk
 #Include unit\CustomMessages.test.ahk
+#Include unit\InlineRequestRunner.test.ahk
 #Include unit\UserConfig.test.ahk
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk
