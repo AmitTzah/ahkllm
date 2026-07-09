@@ -127,37 +127,56 @@ class ClipboardCapture {
     }
 
     static _CaptureChat(clipboardBeforeCopy, customInputMessage) {
-        A_Clipboard := ""
-        Critical("On")
-        SendInput("^c")
-        copied := ClipWait(0.5)
-        if !copied {
-            A_Clipboard := ""
-            Send("^c")
-            copied := ClipWait(1.5)
-        }
-        if !copied {
-            A_Clipboard := ""
-            Send("^{Insert}")
-            copied := ClipWait(1)
-        }
-        Critical("Off")
-
         userMessage := ""
-        if !copied {
-            if customInputMessage != "" {
-                userMessage := customInputMessage
-            } else {
-                A_Clipboard := clipboardBeforeCopy
-                return { success: false, error: "The attempt to copy text onto the clipboard failed." }
+
+        ; Try UIA text capture first (zero visual impact, no clipboard)
+        try {
+            el := UIA.GetFocusedElement()
+            if el.IsTextPatternAvailable {
+                selRanges := el.TextPattern.GetSelection()
+                if selRanges.Length {
+                    userMessage := selRanges[1].GetText()
+                }
             }
-        } else if customInputMessage != "" {
-            userMessage := customInputMessage "`n`n" A_Clipboard
-        } else {
-            userMessage := A_Clipboard
         }
+
+        ; Fall back to clipboard cascade if UIA didn't get text
+        if userMessage = "" {
+            A_Clipboard := ""
+            Critical("On")
+            SendInput("^c")
+            copied := ClipWait(0.5)
+            if !copied {
+                A_Clipboard := ""
+                Send("^c")
+                copied := ClipWait(1.5)
+            }
+            if !copied {
+                A_Clipboard := ""
+                Send("^{Insert}")
+                copied := ClipWait(1)
+            }
+            Critical("Off")
+
+            if !copied {
+                if customInputMessage != "" {
+                    userMessage := customInputMessage
+                } else {
+                    A_Clipboard := clipboardBeforeCopy
+                    return { success: false, error: "The attempt to copy text onto the clipboard failed." }
+                }
+            } else {
+                userMessage := A_Clipboard
+            }
+        }
+
+        ; Apply custom input message prefix
+        if customInputMessage != "" && userMessage != ""
+            userMessage := customInputMessage "`n`n" userMessage
 
         A_Clipboard := clipboardBeforeCopy
+        if userMessage = ""
+            return { success: false, error: "The attempt to copy text onto the clipboard failed." }
         return { success: true, userMessage: userMessage, modelsStr: "", isFIM: false }
     }
 }

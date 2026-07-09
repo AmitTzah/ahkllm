@@ -22,13 +22,13 @@ class RequestProcessorTest {
 
         src := FileRead(srcPath)
 
-        ; Find the paste block: locate "A_Clipboard := responseFromLLM.response"
-        pasteStartPos := InStr(src, "A_Clipboard := responseFromLLM.response")
+        ; Find the paste block: locate "responseText := responseFromLLM.response"
+        pasteStartPos := InStr(src, "responseText := responseFromLLM.response")
         if !pasteStartPos
             throw Error("Paste block anchor not found in InlineRequestRunner.ahk")
 
         ; Extract a window: from the anchor line through ~15 lines after
-        pasteBlock := SubStr(src, pasteStartPos, 600)
+        pasteBlock := SubStr(src, pasteStartPos, 2500)
 
         ; Find the Send("{Right}") line
         rightPos := InStr(pasteBlock, 'Send("{Right}")')
@@ -58,8 +58,8 @@ class RequestProcessorTest {
     FIMPaste_HasSleepAfterPaste() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         src := FileRead(srcPath)
-        pasteStartPos := InStr(src, "A_Clipboard := responseFromLLM.response")
-        pasteBlock := SubStr(src, pasteStartPos, 600)
+        pasteStartPos := InStr(src, "responseText := responseFromLLM.response")
+        pasteBlock := SubStr(src, pasteStartPos, 2500)
 
         pastePos := InStr(pasteBlock, 'Send("^v")')
         leftRightPos := InStr(pasteBlock, 'Send("{Left}{Right}")')

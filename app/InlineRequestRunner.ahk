@@ -73,22 +73,43 @@ class InlineRequestRunner {
         ; Paste result
         if IsObject(responseFromLLM) && responseFromLLM.HasProp("response") {
             latencyMs := A_TickCount - requestStartTime
-            A_Clipboard := responseFromLLM.response
-            if pasteMode = "append" {
-                if captured.HasOwnProp("needsDeselect") && captured.needsDeselect {
-                    Send("{Right}")
-                    Sleep 50
+            responseText := responseFromLLM.response
+
+            ; Try UIA paste for FIM (avoids clipboard; works for simple ValuePattern controls).
+            ; Non-FIM uses ^v to preserve undo history (ValuePattern.SetValue doesn't
+            ; create undo points in complex editors like VS Code).
+            pastedViaUIA := false
+            if isFIM {
+                try {
+                    el := UIA.GetFocusedElement()
+                    if el.IsValuePatternAvailable && !el.ValueIsReadOnly {
+                        if pasteMode = "replace"
+                            el.Value := captured.prefix . responseText . captured.suffix
+                        else
+                            el.Value := captured.prefix . responseText
+                        pastedViaUIA := true
+                    }
                 }
             }
-            Send("^v")
-            Sleep 50
-            if pasteMode = "append" {
-                Send("{Left}{Right}")
+
+            if !pastedViaUIA {
+                A_Clipboard := responseText
+                if pasteMode = "append" {
+                    if captured.HasOwnProp("needsDeselect") && captured.needsDeselect {
+                        Send("{Right}")
+                        Sleep 50
+                    }
+                }
+                Send("^v")
+                Sleep 50
+                if pasteMode = "append" {
+                    Send("{Left}{Right}")
+                }
             }
             ; Highlight inserted text so the user can immediately see what was added
             if isFIM {
                 Sleep 100  ; let the target app finish processing the paste
-                InlineRequestRunner.HighlightInsertedText(responseFromLLM.response)
+                InlineRequestRunner.HighlightInsertedText(responseText)
             }
             ApiLogger.LogRequest({
                 timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
