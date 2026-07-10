@@ -9,6 +9,7 @@
 #Include AutoXYWH.ahk               ; Auto-resizing of GUI controls
 #Include ToolTipEx.ahk              ; Tooltip tracking and dragging
 #Include SQLite\SQLite.ahk          ; SQLite database wrapper
+global IUIAutomationActivateScreenReader := false  ; Prevent UIA from setting SPI_SETSCREENREADER (system-wide flag → Word black highlight)
 #Include UIA.ahk                      ; UI Automation library (Descolada) — programmatic access to UI controls
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 

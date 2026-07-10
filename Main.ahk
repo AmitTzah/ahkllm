@@ -187,4 +187,21 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 ; ----------------------------------------------------
 #Include lib\ApiLogsViewer.ahk
 SetTimer(InitApiLogsViewer, -2000)
+
+; ----------------------------------------------------
+; UIA COM initialization sets SPI_SETSCREENREADER
+; (a system-wide flag) during CoCreateInstance. This
+; causes Word to switch to accessibility rendering
+; (solid black selection highlight). We monitor and
+; reset the flag immediately after UIA initializes.
+; Once reset, the timer deactivates itself.
+; ----------------------------------------------------
+ResetScreenReaderOnInit() {
+    DllCall("user32.dll\SystemParametersInfo", "uint", 0x0046, "uint", 0, "ptr*", &state:=0, "uint", 0)
+    if state {
+        DllCall("user32.dll\SystemParametersInfo", "uint", 0x0047, "uint", 0, "uint", 0, "int", 2)
+        SetTimer(, 0)  ; deactivate this timer — job done
+    }
+}
+SetTimer(ResetScreenReaderOnInit, 500)
 OnExit(CloseApiLogsViewer)
