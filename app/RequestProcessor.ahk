@@ -2,7 +2,7 @@
 ; RequestProcessor — Command-triggered LLM request orchestrator
 ;
 ; Entry point for any command-triggered LLM request.
-; Delegates clipboard capture to ClipboardCapture and
+; Delegates clipboard capture to TextCapture and
 ; inline cURL execution to InlineRequestRunner.
 ; Chat mode routes through the persistent ChatWindow.
 ; ----------------------------------------------------
@@ -17,7 +17,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     includeFullText := InStr(systemMessage, "{{fullText}}") || InStr(userMessageTemplate, "{{fullText}}")
 
     ; STEP 1: Capture text
-    captured := ClipboardCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines)
+    captured := TextCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines)
     if !captured.success {
         updateLoadingUI("Reset")
         MsgBox captured.error, (isFIM ? "FIM" : "No text copied"), "IconX"
@@ -26,11 +26,11 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
 
     ; Expand templates in system message
     if systemMessage
-        systemMessage := ClipboardCapture.ExpandTemplate(systemMessage, captured.userMessage, captured.fullText, inputText)
+        systemMessage := TextCapture.ExpandTemplate(systemMessage, captured.userMessage, captured.fullText, inputText)
 
     ; Compose user message from template (explicit only — no default)
     if userMessageTemplate
-        captured.userMessage := ClipboardCapture.ExpandTemplate(userMessageTemplate, captured.userMessage, captured.fullText, inputText)
+        captured.userMessage := TextCapture.ExpandTemplate(userMessageTemplate, captured.userMessage, captured.fullText, inputText)
     else if inputText
         captured.userMessage := inputText
     else

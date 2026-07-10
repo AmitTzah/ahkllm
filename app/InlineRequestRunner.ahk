@@ -74,7 +74,7 @@ class InlineRequestRunner {
         if IsObject(responseFromLLM) && responseFromLLM.HasProp("response") {
             latencyMs := A_TickCount - requestStartTime
             ; Normalise API response line endings (FIM models may return \r)
-            responseText := ClipboardCapture.NormalizeLineEndings(responseFromLLM.response, false)
+            responseText := TextCapture.NormalizeLineEndings(responseFromLLM.response, false)
 
             ; Paste via clipboard (^v).  UIA ValuePattern.SetValue wouldn't
             ; preserve undo history in editors like VS Code and Notepad.

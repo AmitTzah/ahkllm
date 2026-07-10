@@ -5,7 +5,7 @@
 ```
 ai-automation/
 ├── Main.ahk                         # Entry point — run this file
-├── UserConfig.ahk                   # User-facing configuration (API keys, prompts, theme, hotkeys)
+├── UserConfig.ahk                   # User-facing configuration (API keys, commands, theme, hotkeys)
 ├── lib/Config.ahk                   # Include chain — loads all vendor libs + application modules
 ├── ARCHITECTURE.md                  # This file
 │
@@ -14,9 +14,9 @@ ai-automation/
 │   ├── TokenEstimation.ahk          # Character-based token estimation (~4 chars/token)
 │   └── DebugLog.ahk                 # Shared debug logging + safeDelete helper
 │
-├── app/                             # Application logic (loaded by Main.ahk)
-│   ├── RequestProcessor.ahk         # Orchestrator: clipboard capture → LLM request dispatch
-│   ├── ClipboardCapture.ahk         # Text capture via clipboard (FIM + non-FIM)
+├── app/                             # Application logic
+│   ├── RequestProcessor.ahk         # Orchestrator: text capture → LLM request dispatch
+│   ├── TextCapture.ahk              # Text capture: UIA TextPattern (primary) + clipboard (fallback)
 │   ├── InlineRequestRunner.ahk      # Non-chat cURL execution, response parsing, paste, cleanup
 │   ├── InputWindow.ahk              # InputWindow class: GUI popup for custom prompts
 │   ├── LoadingTracker.ahk           # Active request tracking, loading state, reload coordination
@@ -61,8 +61,9 @@ ai-automation/
 │
 ├── lib/                             # Vendor/third-party libraries
 │   ├── Config.ahk                   # Include chain (see below)
+│   ├── UIA.ahk                      # UI Automation library (Descolada) — programmatic UI access
 │   ├── SQLite/                      # SQLite3 database wrapper
-│   ├── ApiLogsViewer.ahk            # Standalone API logs viewer
+│   ├── ApiLogsViewer.ahk            # API logs viewer (persistent WebView2, pre-created at startup)
 │   ├── Dark_Menu.ahk                # Dark theme for AHK menus
 │   ├── Dark_MsgBox.ahk              # Dark mode MsgBox and InputBox
 │   ├── WebViewToo.ahk               # WebView2 Framework
@@ -76,64 +77,77 @@ ai-automation/
 │   ├── 32bit/                       # 32-bit native binaries
 │   └── 64bit/                       # 64-bit native binaries
 │
-├── icons/                           # Provider icons
-│   ├── IconOn.ico                   # Tray icon when active
-│   ├── IconOff.ico                  # Tray icon when suspended
-│   └── ... (provider icons)
+├── system-messages/                 # System message text files for commands
+│   ├── define.txt
+│   ├── refine.txt
+│   ├── summarize.txt
+│   ├── translate-to-english.txt
+│   └── rephrase-in-context.txt      # Uses {{fullText}} template variable
 │
-└── webui/                           # WebView2 frontend
-    ├── index.html                   # Main chat UI
-    ├── api-logs.html                # API logs viewer UI
-    ├── Bootstrap/                   # Bootstrap framework files
-    ├── css/
-    │   ├── custom.css               # Custom styles
-    │   ├── vendor/                  # Third-party CSS (katex, texmath, highlight)
-    │   └── chat/                    # Chat UI styles (split from chat.css)
-    │       ├── chat-base.css        # Layout, containers, title bar
-    │       ├── chat-messages.css    # Message bubbles, loading, streaming, thinking
-    │       ├── chat-actions.css     # Action buttons, branch nav, more dropdown
-    │       ├── chat-input.css       # Input area, buttons, token bar
-    │       └── chat-sidebar.css     # Bootstrap helpers, utility classes
-    └── js/
-        ├── main.js                  # Message handler orchestrator + initialization
-        ├── stream.js                # Streaming response rendering
-        └── chat/                    # Chat feature modules
-            ├── chat-core.js         # Core chat state, rendering
-            ├── chat-settings.js     # Assistant selector dropdown
-            ├── chat-settings-modal.js # Model settings modal functions
-            ├── chat-format.js       # Clipboard, format helpers, token bar
-            ├── chat-render.js       # Bubble creation, DOM rendering
-            ├── chat-actions.js      # Message action buttons
-            ├── chat-input.js        # Send, loading, keyboard, retry
-            ├── chat-branching.js    # Edit, Delete, Branch Nav, Tree Viz
-            ├── chat-sidebar.js      # Thread list sidebar + message nav bar
-            ├── chat-quote.js        # Quote from chat
-            ├── chat-feedback.js     # Thumbs up/down feedback
-            └── chat-undo.js         # Undo/Redo (Ctrl+Z/Y)
+├── icons/                           # Provider icons
+├── webui/                           # WebView2 frontend (chat UI + API logs viewer UI)
+└── tests/                           # Unit + integration tests (166 tests)
 ```
 
 ## Architecture Overview
 
-The application is an AutoHotkey v2 script that provides a hotkey-activated prompt menu, sends text to an LLM API (OpenAI-compatible) via cURL, and displays responses in a WebView2-based chat window.
+The application is an AutoHotkey v2 script that provides a hotkey-activated command menu, sends text to LLM APIs via cURL, and displays responses in a WebView2-based chat window.
 
 ### Key Design Decisions
 
 - **Entry point**: `Main.ahk` — double-click to run.
-- **User config**: `UserConfig.ahk` — all prompts, API keys, hotkeys, and theme settings in one file. Changes take effect on save (Ctrl+S in Notepad → auto-reload).
-- **Persistent single-window model**: A single `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate). Re-opened via tray menu or command-line arg. No tray icon (managed by the main script).
-- **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode for concurrent access). Supports branching (parent-child tree + sibling groups), soft-delete, feedback, and reasoning content.
-- **WebView2 frontend**: The chat UI is an HTML/JS page rendered by Microsoft Edge WebView2. AHK sends messages via `PostWebMessageAsJSON`; JS sends back via `chrome.webview.postMessage()`.
-- **cURL for API calls**: The script writes JSON request files to `%TEMP%` and runs `cURL.exe` for API communication.
+- **User config**: `UserConfig.ahk` — all commands, API keys, hotkeys, and theme settings in one file.
+- **Persistent single-window model**: A single `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
+- **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Supports branching, soft-delete, feedback, and reasoning content.
+- **WebView2 frontend**: Chat UI rendered by Microsoft Edge WebView2. AHK ↔ JS via `PostWebMessageAsJSON` / `chrome.webview.postMessage()`.
+- **cURL for API calls**: JSON request files written to `%TEMP%`, `cURL.exe` used for API communication.
+- **UIA (UI Automation)**: Text is captured via Windows accessibility APIs (TextPattern) — zero scroll, no keystrokes. Clipboard capture retained as fallback.
+
+## Command System
+
+### Template Variables
+
+Commands compose prompts using template variables, available in `systemMessage`, `systemMessageFile`, and `userMessage`:
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `{{selection}}` | UIA TextPattern / clipboard | User's highlighted text |
+| `{{fullText}}` | UIA DocumentRange (lazy) | Entire document text (text editing controls only) |
+| `{{input}}` | Input box (if `showInputBox: true`) | User-typed instruction |
+
+### Command Fields
+
+| Field | Purpose | Default |
+|-------|---------|---------|
+| `commandName`, `menuText`, `APIModels` | Required | — |
+| `systemMessage` / `systemMessageFile` | System prompt (supports templates) | — |
+| `userMessage` | User prompt template | *(none — explicit only)* |
+| `showInputBox` | Open text input before sending | `false` |
+| `inputBoxDefault` | Pre-filled text in input box | `""` |
+| `pasteMode` | `"chat"`, `"replace"`, `"append"` | `"chat"` |
+| `isFIM` | Use FIM endpoint (ignores prompt fields) | `false` |
+| `expandNewlines` | Expand single `\n` → `\n\n` paragraph breaks | `false` |
+| `stream`, `thinking`, `temperature`, `maxTokens`, `stop` | API parameters | — |
+
+### Line Ending Normalization
+
+`TextCapture.NormalizeLineEndings()` runs on all captured text:
+- Always: `\r\n` / `\r` → `\n` (lossless, free)
+- Optional (`expandNewlines: true`): single `\n` → `\n\n` (paragraph breaks for LLM training data)
+
+### FIM (Fill In the Middle)
+
+FIM commands use a separate API endpoint (`fimEndpoint`). Prompt template fields are ignored. FIM Fill works with or without a text selection (cursor = zero-width gap). UIA TextPattern used for capture (zero scroll); paste uses `^v` (preserves undo history).
 
 ## Startup Flow
 
 1. `Main.ahk` runs → `#Include <Config>` loads `lib/Config.ahk`
-2. `Config.ahk` loads vendor libs + shared utilities + application classes
-3. `Main.ahk` calls `ChatDB.Open()` to initialize SQLite, then `ChatDB.Thread_PurgeExpired()`
+2. `Config.ahk` loads vendor libs (including `UIA.ahk`) + shared utilities + application classes
+3. `Main.ahk` calls `ChatDB.Open()` to initialize SQLite
 4. `Main.ahk` creates `llmClient := LLMRequestBuilder(APIKey)` and a `commandInputWindow` instance
 5. `Main.ahk` spawns `ChatWindow.ahk` as hidden sub-process with "prewarm" flag
 6. `Main.ahk` registers hotkeys (default: `` ` `` to open menu)
-7. `Main.ahk` loads application modules (`app/*.ahk`)
+7. `Main.ahk` pre-creates API Logs Viewer (hidden, deferred 2s)
 8. Script ready — tray icon appears, hotkeys active
 
 ## Request Flow
@@ -145,7 +159,8 @@ User presses hotkey → buildCommandMenu() → onCommandSelected()
     │
     ▼
 processInitialRequest()                         # app/RequestProcessor.ahk
-    │  ClipboardCapture.Capture() — text via clipboard
+    │  TextCapture.Capture() — UIA TextPattern → clipboard fallback
+    │  Template expansion: {{selection}}, {{fullText}}, {{input}}
     │  Creates thread in ChatDB (system + user messages)
     │  Calls openChatWindow(threadId)
     ▼
@@ -153,119 +168,38 @@ chat/ChatWindow.ahk                             # Sub-process (persistent)
     │  Loads thread from DB → initChatMode → WebView
     │  If last message is from user: auto-triggers LLM
     ▼
-buildRequest()                                  # Rebuilds API JSON from DB
-    │  → writes to %TEMP% → cURL command
-    ▼
-sendRequestToLLM() → sendStreamingRequest()     # cURL → API → parse response
-    │  (streaming or non-streaming)
-    ▼
-ChatDB.Msg_Insert()                             # Persist assistant response
-    │  → postWebMessage("appendChatMessage")
-    ▼
-User types → handleChatSend()                   # callbacks/Message.ahk
-    │  Inserts user message in DB → builds request → cURL → response
-    ▼
-ChatWindow stays open (hidden or visible)
+buildRequest() → sendRequestToLLM() → ChatDB.Msg_Insert()
 ```
 
 ### Non-Chat Mode (pasteMode = "replace"/"append")
 
 ```
 processInitialRequest()
-    │  ClipboardCapture.Capture()
+    │  TextCapture.Capture() — UIA TextPattern → clipboard fallback
+    │  Template expansion
     ▼
 InlineRequestRunner.Run()                       # app/InlineRequestRunner.ahk
     │  Builds cURL command → Run(cURL) → wait → parse
+    │  Normalizes API response line endings
     ▼
-A_Clipboard := response → Send("^v")           # Pastes into active app
+Send("^v") → highlights inserted text (UIA TextPattern for FIM)
 ```
 
 ## Data Model (SQLite)
 
-### `chat_threads`
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | TEXT PRIMARY KEY | UUID |
-| `title` | TEXT | Auto-generated by ThreadTitleGen |
-| `is_deleted` | INTEGER | 0=active, 1=trashed (soft-delete, 30-day auto-purge) |
-| `deleted_at` | TEXT | Timestamp when trashed |
-| `created_at` | TEXT | ISO 8601 |
-| `updated_at` | TEXT | ISO 8601 |
-| `active_leaf_id` | TEXT | Current position in message tree |
-| `active_path_tokens` | INTEGER | Context Used counter |
-| `cumulative_*` | INTEGER/REAL | Persisted token counts and costs |
-
-### `messages`
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | TEXT PRIMARY KEY | UUID |
-| `thread_id` | TEXT | FK to chat_threads |
-| `role` | TEXT | "system", "user", or "assistant" |
-| `content` | TEXT | Message body |
-| `model` | TEXT | Model name (assistant only) |
-| `parent_id` | TEXT | Previous message in path |
-| `sibling_group` | TEXT | Group UUID for branch variants |
-| `sibling_index` | INTEGER | Position within sibling group |
-| `feedback` | INTEGER | 1 (up), -1 (down), NULL (none) |
-| `reasoning` | TEXT | Thinking/reasoning content |
-| `*_tokens` | INTEGER | Token counts from API response |
-
-### Branching Model
-Messages form a tree via `parent_id`. When edited or retried, a new sibling is created with the same `sibling_group`. `active_leaf_id` tracks current position. `TreeRepo` handles navigation, stats, and visualization.
+[unchanged — see commit history for full schema]
 
 ## WebView ↔ AHK Communication
 
-### AHK → WebView (postWebMessage)
-```javascript
-postWebMessage("target", data) → JSON: {"target": "target", "data": data}
-```
-Handled by `handleWebMessage()` in `main.js`. Key targets:
-- `initChatMode` — initialize chat with message array
-- `appendChatMessage` — append a new message bubble
-- `streamContent` / `streamReasoning` / `streamDone` — streaming updates
-- `setChatButtonsEnabled` — enable/disable input during loading
-- `updateTokenUsage` — cost/token display
-- `updateBranchInfo` — branch navigation badge
-- `renderChatTree` — tree modal data
-- `threadList` / `loadThread` — sidebar thread operations
-
-### WebView → AHK (via postMessage)
-Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions:
-- `chatSend`, `retry`, `editMessage`, `deleteMessage`
-- `switchBranch`, `forkChat`, `setFeedback`
-- `sidebarAction`, `switchAssistant`, `updateModelSettings`
-- `cancelStream`, `requestAssistantList`, `requestCurrentSettings`
+[unchanged — see commit history]
 
 ## IPC (Inter-Process Communication)
 
-| Message | Direction | Purpose |
-|---------|-----------|---------|
-| `WM_CHAT_WINDOW_OPENED` (0x500) | sub → main | Registers ChatWindow |
-| `WM_LOADING_START` (0x400+123) | sub → main | Notifies loading started |
-| `WM_LOADING_FINISH` (0x400+124) | sub → main | Notifies loading finished |
-| `WM_LOAD_THREAD` (0x500+2) | main → sub | Load specific thread |
-| `WM_NEW_CHAT` (0x500+3) | main → sub | Start new chat |
-| `WM_TRIGGER_LLM` (0x500+4) | main → sub | Fire LLM for current thread |
+[unchanged — see commit history]
 
 ## JavaScript Module Dependency Graph
 
-Load order in `index.html` (bottom of `<body>`):
-```
-index.html
-  └── vendor (markdown-it, katex, highlight, texmath)
-       └── chat-core.js
-            ├── chat-settings.js
-            ├── chat-format.js
-            ├── chat-render.js
-            ├── chat-input.js
-            ├── chat-branching.js
-            ├── chat-sidebar.js
-            ├── chat-quote.js
-            ├── chat-feedback.js
-            ├── chat-undo.js
-            ├── stream.js
-            └── main.js (orchestrator)
-```
+[unchanged — see commit history for load order]
 
 ## Testing
 
@@ -280,7 +214,19 @@ ai-automation/tests/
 ├── test_config.ahk          # Test overrides (loaded after Config.ahk)
 ├── run_tests.ahk            # Entry point — discovers + runs all test classes
 ├── unit/                    # Isolated unit tests
-└── integration/             # Cross-module integration tests
+│   ├── TextCapture.test.ahk      # ExpandTemplate, NormalizeLineEndings, structural guards
+│   ├── RequestProcessor.test.ahk # Paste block structure, apilogs handler
+│   ├── ChatDB.test.ahk
+│   ├── LLMRequestBuilder.test.ahk
+│   ├── ChatUtils.test.ahk
+│   ├── StreamHandler.test.ahk
+│   ├── ChatRequestBuilder.test.ahk
+│   ├── CustomMessages.test.ahk
+│   ├── InlineRequestRunner.test.ahk
+│   └── UserConfig.test.ahk
+└── integration/
+    ├── ChatFlow.test.ahk
+    └── BranchFlow.test.ahk
 ```
 
 ### Output Format

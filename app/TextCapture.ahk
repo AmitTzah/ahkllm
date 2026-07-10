@@ -1,26 +1,26 @@
 ; ----------------------------------------------------
-; ClipboardCapture — Text capture via clipboard + UIA
+; TextCapture — Text capture via clipboard + UIA
 ;
 ; Handles both FIM and non-FIM capture.
 ; ----------------------------------------------------
 
-class ClipboardCapture {
+class TextCapture {
 
     ; Returns { success, userMessage?, prefix?, suffix?, fullText?, modelsStr }
     static Capture(isFIM, pasteMode, inputText := "", includeFullText := false, expandNewlines := false) {
         clipboardBeforeCopy := A_Clipboard
 
         if isFIM
-            return ClipboardCapture._CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines)
+            return TextCapture._CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines)
         else
-            return ClipboardCapture._CaptureChat(clipboardBeforeCopy, inputText, includeFullText, expandNewlines)
+            return TextCapture._CaptureSelection(clipboardBeforeCopy, inputText, includeFullText, expandNewlines)
     }
 
     static _CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines := false) {
         if pasteMode = "replace"
-            return ClipboardCapture._CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines)
+            return TextCapture._CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines)
         else
-            return ClipboardCapture._CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines)
+            return TextCapture._CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines)
     }
 
     ; ----------------------------------------------------
@@ -99,7 +99,7 @@ class ClipboardCapture {
         prefix := "", suffix := ""
 
         try {
-            utp := ClipboardCapture._AcquireTextPattern()
+            utp := TextCapture._AcquireTextPattern()
             docRange := utp.tp.DocumentRange
 
             selRanges := utp.tp.GetSelection()
@@ -110,7 +110,7 @@ class ClipboardCapture {
             gapRange := selRanges[1]
             hasSelection := gapRange.GetText() != ""
 
-            parts := ClipboardCapture._SplitAt(docRange, gapRange)
+            parts := TextCapture._SplitAt(docRange, gapRange)
             prefix := parts.prefix
             suffix := parts.suffix
         } catch Error as e {
@@ -128,8 +128,8 @@ class ClipboardCapture {
         }
 
         A_Clipboard := clipboardBeforeCopy
-        prefix := ClipboardCapture.NormalizeLineEndings(prefix, expandNewlines)
-        suffix := ClipboardCapture.NormalizeLineEndings(suffix, expandNewlines)
+        prefix := TextCapture.NormalizeLineEndings(prefix, expandNewlines)
+        suffix := TextCapture.NormalizeLineEndings(suffix, expandNewlines)
         return { success: true, prefix: prefix, suffix: suffix, modelsStr: "", isFIM: true }
     }
 
@@ -146,13 +146,13 @@ class ClipboardCapture {
         if !ClipWait(1) {
             ; No text selected — use UIA to get text from doc start to cursor
             try {
-                utp := ClipboardCapture._AcquireTextPattern()
+                utp := TextCapture._AcquireTextPattern()
                 selRanges := utp.tp.GetSelection()
                 if selRanges.Length {
                     docRange := utp.tp.DocumentRange
-                    parts := ClipboardCapture._SplitAt(docRange, selRanges[1])
+                    parts := TextCapture._SplitAt(docRange, selRanges[1])
                     A_Clipboard := clipboardBeforeCopy
-                    return { success: true, prefix: ClipboardCapture.NormalizeLineEndings(parts.prefix, expandNewlines), suffix: "",
+                    return { success: true, prefix: TextCapture.NormalizeLineEndings(parts.prefix, expandNewlines), suffix: "",
                              modelsStr: "", isFIM: true, needsDeselect: false }
                 }
             } catch Error as e {
@@ -163,7 +163,7 @@ class ClipboardCapture {
             return { success: false, error: "No text found before cursor." }
         }
 
-        prefix := ClipboardCapture.NormalizeLineEndings(A_Clipboard, expandNewlines)
+        prefix := TextCapture.NormalizeLineEndings(A_Clipboard, expandNewlines)
         A_Clipboard := clipboardBeforeCopy
         return { success: true, prefix: prefix, suffix: "", modelsStr: "", isFIM: true, needsDeselect: true }
     }
@@ -174,13 +174,13 @@ class ClipboardCapture {
     ; Captures selected text and optionally full document text.
     ; UIA-first, clipboard fallback for both.
     ; ----------------------------------------------------
-    static _CaptureChat(clipboardBeforeCopy, inputText := "", includeFullText := false, expandNewlines := false) {
+    static _CaptureSelection(clipboardBeforeCopy, inputText := "", includeFullText := false, expandNewlines := false) {
         userMessage := ""
         fullText := ""
 
         ; Try UIA text capture first (zero visual impact, no clipboard)
         try {
-            utp := ClipboardCapture._AcquireTextPattern()
+            utp := TextCapture._AcquireTextPattern()
             selRanges := utp.tp.GetSelection()
             if selRanges.Length
                 userMessage := selRanges[1].GetText()
@@ -226,8 +226,8 @@ class ClipboardCapture {
 
         ; Normalise line endings — different apps produce different formats
         ; (Notepad = CRLF, Chrome = LF).  The LLM API expects consistent \n.
-        userMessage := ClipboardCapture.NormalizeLineEndings(userMessage, expandNewlines)
-        fullText := ClipboardCapture.NormalizeLineEndings(fullText, expandNewlines)
+        userMessage := TextCapture.NormalizeLineEndings(userMessage, expandNewlines)
+        fullText := TextCapture.NormalizeLineEndings(fullText, expandNewlines)
 
         ; Allow empty userMessage (template may use only {{input}} or {{fullText}})
         return { success: true, userMessage: userMessage, fullText: fullText,

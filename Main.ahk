@@ -174,7 +174,7 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 ; Include application modules
 ; ----------------------------------------------------
 
-#Include app\ClipboardCapture.ahk
+#Include app\TextCapture.ahk
 #Include app\InlineRequestRunner.ahk
 #Include app\menu\CommandMenu.ahk
 #Include app\menu\CommandState.ahk
