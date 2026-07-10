@@ -188,8 +188,9 @@ class ClipboardCapture {
                 fullText := utp.tp.DocumentRange.GetText()
         }
 
-        ; Fall back to clipboard cascade for selection
-        if userMessage = "" {
+        ; Fall back to clipboard cascade for selection.
+        ; Skip if user already provided input via showInputBox (no selection needed).
+        if userMessage = "" && inputText = "" {
             A_Clipboard := ""
             Critical("On")
             SendInput("^c")
