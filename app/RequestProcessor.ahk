@@ -10,14 +10,14 @@
 ; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
 processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode, isFIM,
-    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false) {
+    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0) {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
 
     ; Determine if fullText is needed (lazy — avoid capturing 1M-word docs unnecessarily)
     includeFullText := InStr(systemMessage, "{{fullText}}") || InStr(userMessageTemplate, "{{fullText}}")
 
     ; STEP 1: Capture text
-    captured := TextCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines)
+    captured := TextCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines, maxContextWords)
     if !captured.success {
         updateLoadingUI("Reset")
         MsgBox captured.error, (isFIM ? "FIM" : "No text copied"), "IconX"

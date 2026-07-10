@@ -7,20 +7,20 @@
 class TextCapture {
 
     ; Returns { success, userMessage?, prefix?, suffix?, fullText?, modelsStr }
-    static Capture(isFIM, pasteMode, inputText := "", includeFullText := false, expandNewlines := false) {
+    static Capture(isFIM, pasteMode, inputText := "", includeFullText := false, expandNewlines := false, maxContextWords := 0) {
         clipboardBeforeCopy := A_Clipboard
 
         if isFIM
-            return TextCapture._CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines)
+            return TextCapture._CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines, maxContextWords)
         else
-            return TextCapture._CaptureSelection(clipboardBeforeCopy, inputText, includeFullText, expandNewlines)
+            return TextCapture._CaptureSelection(clipboardBeforeCopy, inputText, includeFullText, expandNewlines, maxContextWords)
     }
 
-    static _CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines := false) {
+    static _CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines := false, maxContextWords := 0) {
         if pasteMode = "replace"
-            return TextCapture._CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines)
+            return TextCapture._CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines, maxContextWords)
         else
-            return TextCapture._CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines)
+            return TextCapture._CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines, maxContextWords)
     }
 
     ; ----------------------------------------------------
@@ -41,6 +41,72 @@ class TextCapture {
             text := RegExReplace(text, "([^\n])\n$", "$1`n`n")
         }
         return text
+    }
+
+    ; ----------------------------------------------------
+    ; Context window truncation
+    ; ----------------------------------------------------
+
+    ; Truncates fullText so that at most maxContextWords words surround the
+    ; selection.  The selection itself is always fully included; only the
+    ; surrounding text is trimmed.  Whitespace (including newlines) is preserved
+    ; by _TruncateWords slicing at character positions rather than reconstructing.
+    static _TruncateAround(fullText, selection, maxContextWords) {
+        if !maxContextWords || !fullText || !selection
+            return fullText
+        selPos := InStr(fullText, selection)
+        if !selPos
+            return fullText
+        half := maxContextWords // 2
+        afterWords := maxContextWords - half   ; odd maxContextWords → extra word to after
+        before := SubStr(fullText, 1, selPos - 1)
+        after := SubStr(fullText, selPos + StrLen(selection))
+        before := half ? TextCapture._TruncateWords(before, half, true) : ""
+        after  := afterWords ? TextCapture._TruncateWords(after, afterWords, false) : ""
+        ; No manual space-padding needed — _TruncateWords preserves original
+        ; whitespace between words by slicing at character positions.
+        return before . selection . after
+    }
+
+    ; Truncates text to at most maxWords, taking from the end if fromEnd is true,
+    ; from the start otherwise.  Words are identified as runs of non-whitespace
+    ; characters, and the result is sliced from the original text — this preserves
+    ; ALL original whitespace (spaces, tabs, newlines) between words.
+    static _TruncateWords(text, maxWords, fromEnd := false) {
+        if !maxWords || text = ""
+            return text
+
+        ; Scan for word boundary positions
+        wordStarts := [], wordEnds := []
+        len := StrLen(text)
+        inWord := false
+
+        Loop len {
+            char := SubStr(text, A_Index, 1)
+            isSpace := RegExMatch(char, "\s")
+            if !isSpace && !inWord {
+                wordStarts.Push(A_Index)
+                inWord := true
+            } else if isSpace && inWord {
+                wordEnds.Push(A_Index - 1)
+                inWord := false
+            }
+        }
+        if inWord
+            wordEnds.Push(len)
+
+        if wordStarts.Length <= maxWords
+            return text
+
+        if fromEnd {
+            ; Take last maxWords words — slice from their start to end of text
+            start := wordStarts.Length - maxWords + 1
+            return SubStr(text, wordStarts[start])
+        }
+
+        ; Take first maxWords words + preserve original trailing whitespace
+        trailing := RegExMatch(text, "(\s*)$", &m) ? m[0] : ""
+        return SubStr(text, 1, wordEnds[maxWords]) . trailing
     }
 
     ; ----------------------------------------------------
@@ -94,7 +160,7 @@ class TextCapture {
     ; With text selected: selection = gap to fill, ^x cuts it.
     ; Without selection: cursor = zero-width gap, no cut needed.
     ; ----------------------------------------------------
-    static _CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines := false) {
+    static _CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines := false, maxContextWords := 0) {
         hasSelection := false
         prefix := "", suffix := ""
 
@@ -111,8 +177,17 @@ class TextCapture {
             hasSelection := gapRange.GetText() != ""
 
             parts := TextCapture._SplitAt(docRange, gapRange)
-            prefix := parts.prefix
-            suffix := parts.suffix
+            ; Normalise before truncation so \r\n → \n and expandNewlines work
+            prefix := TextCapture.NormalizeLineEndings(parts.prefix, expandNewlines)
+            suffix := TextCapture.NormalizeLineEndings(parts.suffix, expandNewlines)
+
+            ; Truncate context window: split limit evenly above/below cursor
+            if maxContextWords {
+                half := maxContextWords // 2
+                suffixWords := maxContextWords - half  ; odd count → extra word below cursor
+                prefix := half ? TextCapture._TruncateWords(prefix, half, true) : ""
+                suffix := suffixWords ? TextCapture._TruncateWords(suffix, suffixWords, false) : ""
+            }
         } catch Error as e {
             A_Clipboard := clipboardBeforeCopy
             return { success: false, error: "UIA text capture failed: " e.Message }
@@ -128,8 +203,6 @@ class TextCapture {
         }
 
         A_Clipboard := clipboardBeforeCopy
-        prefix := TextCapture.NormalizeLineEndings(prefix, expandNewlines)
-        suffix := TextCapture.NormalizeLineEndings(suffix, expandNewlines)
         return { success: true, prefix: prefix, suffix: suffix, modelsStr: "", isFIM: true }
     }
 
@@ -139,7 +212,7 @@ class TextCapture {
     ; Copies text selection as prefix if present (^c);
     ; falls back to UIA for text-before-cursor when nothing is selected.
     ; ----------------------------------------------------
-    static _CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines := false) {
+    static _CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines := false, maxContextWords := 0) {
         A_Clipboard := ""
         Send("^c")
 
@@ -151,8 +224,10 @@ class TextCapture {
                 if selRanges.Length {
                     docRange := utp.tp.DocumentRange
                     parts := TextCapture._SplitAt(docRange, selRanges[1])
+                    prefix := TextCapture.NormalizeLineEndings(parts.prefix, expandNewlines)
+                    prefix := maxContextWords ? TextCapture._TruncateWords(prefix, maxContextWords, true) : prefix
                     A_Clipboard := clipboardBeforeCopy
-                    return { success: true, prefix: TextCapture.NormalizeLineEndings(parts.prefix, expandNewlines), suffix: "",
+                    return { success: true, prefix: prefix, suffix: "",
                              modelsStr: "", isFIM: true, needsDeselect: false }
                 }
             } catch Error as e {
@@ -164,6 +239,12 @@ class TextCapture {
         }
 
         prefix := TextCapture.NormalizeLineEndings(A_Clipboard, expandNewlines)
+        try
+            prefix := maxContextWords ? TextCapture._TruncateWords(prefix, maxContextWords, true) : prefix
+        catch Error as e {
+            A_Clipboard := clipboardBeforeCopy
+            return { success: false, error: "Text truncation failed: " e.Message }
+        }
         A_Clipboard := clipboardBeforeCopy
         return { success: true, prefix: prefix, suffix: "", modelsStr: "", isFIM: true, needsDeselect: true }
     }
@@ -174,7 +255,7 @@ class TextCapture {
     ; Captures selected text and optionally full document text.
     ; UIA-first, clipboard fallback for both.
     ; ----------------------------------------------------
-    static _CaptureSelection(clipboardBeforeCopy, inputText := "", includeFullText := false, expandNewlines := false) {
+    static _CaptureSelection(clipboardBeforeCopy, inputText := "", includeFullText := false, expandNewlines := false, maxContextWords := 0) {
         userMessage := ""
         fullText := ""
 
@@ -228,6 +309,9 @@ class TextCapture {
         ; (Notepad = CRLF, Chrome = LF).  The LLM API expects consistent \n.
         userMessage := TextCapture.NormalizeLineEndings(userMessage, expandNewlines)
         fullText := TextCapture.NormalizeLineEndings(fullText, expandNewlines)
+
+        ; Truncate fullText around selection (selection always fully captured)
+        fullText := TextCapture._TruncateAround(fullText, userMessage, maxContextWords)
 
         ; Allow empty userMessage (template may use only {{input}} or {{fullText}})
         return { success: true, userMessage: userMessage, fullText: fullText,

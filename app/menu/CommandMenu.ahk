@@ -112,7 +112,8 @@ _extractCommandParams(cmd, inputText := "") {
         cmd.HasProp("thinking") && cmd.thinking ? cmd.thinking.type : "",
         cmd.HasProp("thinking") && cmd.thinking && cmd.thinking.HasOwnProp("level") ? cmd.thinking.level : "",
         cmd.HasProp("userMessage") ? cmd.userMessage : "",
-        cmd.HasProp("expandNewlines") && cmd.expandNewlines
+        cmd.HasProp("expandNewlines") && cmd.expandNewlines,
+        cmd.HasProp("maxContextWords") ? cmd.maxContextWords : 0
     ]
 }
 

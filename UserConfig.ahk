@@ -256,6 +256,17 @@ assistants := [
 ;                     happens regardless.  Useful for FIM and prose commands.
 ;                     Default: false.
 ;
+;   maxContextWords:   (Optional) Maximum words of surrounding context to send
+;                      to the API.  The selection/gap itself is always fully
+;                      captured; only surrounding text is truncated.
+;                      FIM Fill:  splits limit equally above and below cursor.
+;                      FIM Continue: controls words captured before cursor.
+;                      {{fullText}}: limits document context around selection.
+;                      Uses UIA DocumentRange for instant full-text access;
+;                      truncation is pure string ops (no scroll, no delay).
+;                      Default: 0 (no limit — entire document).
+;                      Example: maxContextWords: 3000
+;
 ;   temperature:      (Optional) Sampling temperature 0–2.  Higher = more
 ;                     creative/random, lower = more deterministic.
 ;                     Not set by default (API uses its own default).
