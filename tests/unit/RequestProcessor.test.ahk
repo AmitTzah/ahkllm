@@ -22,8 +22,8 @@ class RequestProcessorTest {
 
         src := FileRead(srcPath)
 
-        ; Find the paste block: locate "responseText := responseFromLLM.response"
-        pasteStartPos := InStr(src, "responseText := responseFromLLM.response")
+        ; Find the paste block: locate "NormalizeLineEndings(responseFromLLM.response"
+        pasteStartPos := InStr(src, "NormalizeLineEndings(responseFromLLM.response")
         if !pasteStartPos
             throw Error("Paste block anchor not found in InlineRequestRunner.ahk")
 
@@ -52,13 +52,26 @@ class RequestProcessorTest {
         ; Also verify that ^v comes AFTER {Right} (not before)
         if pastePos < rightPos
             throw Error("Send(`"^v`") appears before Send(`"{Right}`") — paste order is wrong")
+        ; runOptionsMenuAction must handle "apilogs:" special command
+        OptionsMenu_HandlesApiLogsCommand() {
+            srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+            if !FileExist(srcPath)
+                throw Error("RequestProcessor.ahk not found at: " srcPath)
+            src := FileRead(srcPath)
+    
+            if !InStr(src, '"apilogs:"')
+                throw Error("runOptionsMenuAction must handle apilogs: command")
+            if !InStr(src, "ShowApiLogs()")
+                throw Error("runOptionsMenuAction must call ShowApiLogs() for apilogs:")
+        }
+    
     }
 
     ; Verifies that Sleep exists after ^v for scroll-to-cursor stability
     FIMPaste_HasSleepAfterPaste() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         src := FileRead(srcPath)
-        pasteStartPos := InStr(src, "responseText := responseFromLLM.response")
+        pasteStartPos := InStr(src, "NormalizeLineEndings(responseFromLLM.response")
         pasteBlock := SubStr(src, pasteStartPos, 2500)
 
         pastePos := InStr(pasteBlock, 'Send("^v")')

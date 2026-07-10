@@ -1,6 +1,5 @@
 ; ----------------------------------------------------
-; ClipboardCapture.test.ahk — Structural regression tests
-; for UIA-based FIM capture (keystroke-free approach).
+; ClipboardCapture.test.ahk — Structural + behavioral tests
 ; ----------------------------------------------------
 
 class ClipboardCaptureTest {
@@ -9,7 +8,193 @@ class ClipboardCaptureTest {
         RegisterTestClass("ClipboardCaptureTest")
     }
 
-    ; _CaptureFIM_Fill must use UIA TextPattern, not keystroke selection
+    ; ======================================================
+    ; ExpandTemplate — behavioral (pure function, no UIA)
+    ; ======================================================
+
+    ExpandTemplate_ReplacesAllVars() {
+        result := ClipboardCapture.ExpandTemplate(
+            "S:{{selection}} F:{{fullText}} I:{{input}}",
+            "sel", "full", "inp")
+        if result != "S:sel F:full I:inp"
+            throw Error("Got: " result)
+    }
+
+    ExpandTemplate_EmptyInputsRenderEmpty() {
+        result := ClipboardCapture.ExpandTemplate(
+            "S:{{selection}} F:{{fullText}} I:{{input}}",
+            "", "", "")
+        if result != "S: F: I:"
+            throw Error("Got: " result)
+    }
+
+    ExpandTemplate_NoTemplates_ReturnsUnchanged() {
+        result := ClipboardCapture.ExpandTemplate(
+            "Hello world", "sel", "full", "inp")
+        if result != "Hello world"
+            throw Error("Got: " result)
+    }
+
+    ExpandTemplate_OmittedParams_DefaultToEmpty() {
+        result := ClipboardCapture.ExpandTemplate("S:{{selection}}F:{{fullText}}I:{{input}}")
+        if result != "S:F:I:"
+            throw Error("Got: " result)
+    }
+
+    ; ======================================================
+    ; NormalizeLineEndings — behavioral (pure function)
+    ; ======================================================
+
+    NormalizeLineEndings_CRLF_To_LF() {
+        ; Without expand: CRLF → LF only
+        result := ClipboardCapture.NormalizeLineEndings("line1`r`nline2")
+        if result != "line1`nline2"
+            throw Error("CRLF not normalised: " result)
+    }
+
+    NormalizeLineEndings_BareCR_To_LF() {
+        result := ClipboardCapture.NormalizeLineEndings("line1`rline2")
+        if result != "line1`nline2"
+            throw Error("Bare CR not normalised: " result)
+    }
+
+    NormalizeLineEndings_LF_Untouched() {
+        result := ClipboardCapture.NormalizeLineEndings("line1`nline2")
+        if result != "line1`nline2"
+            throw Error("LF should be untouched without expand: " result)
+    }
+
+    NormalizeLineEndings_Mixed_AllNormalised() {
+        result := ClipboardCapture.NormalizeLineEndings("a`r`nb`rc`n")
+        if result != "a`nb`nc`n"
+            throw Error("Mixed line endings not normalised: " result)
+    }
+
+    NormalizeLineEndings_SingleNewline_Expanded() {
+        result := ClipboardCapture.NormalizeLineEndings("para1`npara2", true)
+        if result != "para1`n`npara2"
+            throw Error("Single newline not expanded: " result)
+    }
+
+    NormalizeLineEndings_DoubleNewline_Preserved() {
+        result := ClipboardCapture.NormalizeLineEndings("para1`n`npara2", true)
+        if result != "para1`n`npara2"
+            throw Error("Double newline should be preserved: " result)
+    }
+
+    NormalizeLineEndings_TrailingNewline_Expanded() {
+        result := ClipboardCapture.NormalizeLineEndings("text`n", true)
+        if result != "text`n`n"
+            throw Error("Trailing newline not expanded: " result)
+    }
+
+    NormalizeLineEndings_EmptyString() {
+        result := ClipboardCapture.NormalizeLineEndings("")
+        if result != ""
+            throw Error("Empty string should stay empty: " result)
+    }
+
+    ; Normalize without expand — single \n stays single
+    NormalizeLineEndings_NoExpand_SingleStaysSingle() {
+        result := ClipboardCapture.NormalizeLineEndings("para1`npara2", false)
+        if result != "para1`npara2"
+            throw Error("Without expand, single LF should stay: " result)
+    }
+
+    ; ======================================================
+    ; ExpandTemplate — behavioral
+    ; ======================================================
+
+    ExpandTemplate_DuplicatePlaceholders() {
+        result := ClipboardCapture.ExpandTemplate(
+            "{{selection}} + {{selection}}", "x")
+        if result != "x + x"
+            throw Error("Got: " result)
+    }
+
+    ExpandTemplate_PartialPlaceholder_NotExpanded() {
+        result := ClipboardCapture.ExpandTemplate(
+            "{{selection_extra}} {{fullText_extra}}", "sel", "full")
+        if result != "{{selection_extra}} {{fullText_extra}}"
+            throw Error("Got: " result)
+    }
+
+    ; ======================================================
+    ; _CaptureChat — structural (UIA-dependent, guard rails)
+    ; ======================================================
+
+    Chat_AllowsEmptyUserMessage() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureChat(")
+
+        ; Must not return error when userMessage is empty
+        if InStr(method, 'error: "The attempt to copy')
+            throw Error("_CaptureChat must allow empty userMessage (templates may use only {{input}} or {{fullText}})")
+        ; Success return must not require userMessage
+        if !InStr(method, "success: true")
+            throw Error("_CaptureChat must return success even with empty userMessage")
+    }
+
+    Chat_HasFullTextClipboardFallback() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureChat(")
+
+        ; Must have ^a^c fallback for fullText
+        if !InStr(method, 'Send("^a")')
+            throw Error("_CaptureChat must have ^a fallback for fullText")
+        if !InStr(method, "fullText :=")
+            throw Error("_CaptureChat must populate fullText")
+    }
+
+    Chat_LazyFullText_ChecksIncludeFullText() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureChat(")
+
+        ; fullText capture must be guarded by includeFullText param
+        if !InStr(method, "includeFullText")
+            throw Error("_CaptureChat must check includeFullText before capturing fullText")
+    }
+
+    ; ======================================================
+    ; ExpandTemplate in _CaptureChat (structural)
+    ; ======================================================
+
+    Chat_UsesExpandTemplate() {
+        src := ClipboardCaptureTest._ReadSrc()
+        ; Check that ExpandTemplate exists as a separate method
+        method := ClipboardCaptureTest._ExtractMethod(src, "ExpandTemplate(")
+
+        if !InStr(method, "{{selection}}")
+            throw Error("ExpandTemplate must handle {{selection}}")
+        if !InStr(method, "{{fullText}}")
+            throw Error("ExpandTemplate must handle {{fullText}}")
+        if !InStr(method, "{{input}}")
+            throw Error("ExpandTemplate must handle {{input}}")
+    }
+
+    ; ======================================================
+    ; Capture signature — accepts includeFullText
+    ; ======================================================
+
+    Capture_AcceptsIncludeFullText() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "Capture(")
+
+        if !InStr(method, "includeFullText")
+            throw Error("Capture must accept includeFullText parameter")
+    }
+
+    Capture_AcceptsExpandNewlines() {
+        src := ClipboardCaptureTest._ReadSrc()
+        method := ClipboardCaptureTest._ExtractMethod(src, "Capture(")
+        if !InStr(method, "expandNewlines")
+            throw Error("Capture must accept expandNewlines parameter")
+    }
+
+    ; ======================================================
+    ; FIM Fill (unchanged, guard rails)
+    ; ======================================================
+
     Fill_UsesUIATextPattern() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM_Fill")
@@ -19,55 +204,45 @@ class ClipboardCaptureTest {
         if !InStr(method, "_SplitAt")
             throw Error("_CaptureFIM_Fill must use _SplitAt helper")
 
-        ; Must NOT use scroll-causing keystrokes
         if InStr(method, "^+{Home}")
             throw Error("_CaptureFIM_Fill must NOT use ^+{Home}")
         if InStr(method, "+^{End}")
             throw Error("_CaptureFIM_Fill must NOT use +^{End}")
 
-        ; Must cut selection (no scroll)
         if !InStr(method, 'SendInput("^x")')
             throw Error("_CaptureFIM_Fill must use SendInput(^x)")
     }
 
-    ; _CaptureFIM_Continue: ^c path must set needsDeselect: true
+    ; ======================================================
+    ; FIM Continue (unchanged, guard rails)
+    ; ======================================================
+
     Continue_CopyPath_SetsNeedsDeselect() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM_Continue")
-
-        ; The ^c success path returns needsDeselect: true
         if !InStr(method, "needsDeselect: true")
             throw Error("_CaptureFIM_Continue ^c path must set needsDeselect: true")
     }
 
-    ; _CaptureFIM_Continue: UIA fallback must set needsDeselect: false
     Continue_UIAFallback_SetsNeedsDeselectFalse() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM_Continue")
-
-        ; The UIA fallback returns needsDeselect: false
         if !InStr(method, "needsDeselect: false")
             throw Error("_CaptureFIM_Continue UIA fallback must set needsDeselect: false")
     }
 
-    ; _CaptureFIM_Continue: UIA fallback must use TextPattern
     Continue_UIAFallback_UsesTextPattern() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM_Continue")
-
         if !InStr(method, "_AcquireTextPattern()")
             throw Error("_CaptureFIM_Continue UIA fallback must use _AcquireTextPattern()")
-
-        ; Must NOT use scroll-causing keystrokes in fallback
         if InStr(method, "^+{Home}")
             throw Error("_CaptureFIM_Continue must NOT use ^+{Home}")
     }
 
-    ; _CaptureFIM routes to correct method based on pasteMode
     CaptureFIM_RoutesToFill_ForReplace() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_CaptureFIM(")
-
         if !InStr(method, 'pasteMode = "replace"')
             throw Error("_CaptureFIM must check pasteMode = replace")
         if !InStr(method, "_CaptureFIM_Fill")
@@ -76,11 +251,13 @@ class ClipboardCaptureTest {
             throw Error("_CaptureFIM must route append to _CaptureFIM_Continue")
     }
 
-    ; _AcquireTextPattern must use UIA.GetFocusedElement and check IsTextPatternAvailable
+    ; ======================================================
+    ; Helper guards
+    ; ======================================================
+
     Helper_AcquireTextPattern() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_AcquireTextPattern(")
-
         if !InStr(method, "UIA.GetFocusedElement()")
             throw Error("_AcquireTextPattern must use UIA.GetFocusedElement()")
         if !InStr(method, "IsTextPatternAvailable")
@@ -89,11 +266,9 @@ class ClipboardCaptureTest {
             throw Error("_AcquireTextPattern must access .TextPattern")
     }
 
-    ; _SplitAt must use MoveEndpointByRange for both prefix and suffix
     Helper_SplitAt() {
         src := ClipboardCaptureTest._ReadSrc()
         method := ClipboardCaptureTest._ExtractMethod(src, "_SplitAt(")
-
         if !InStr(method, "MoveEndpointByRange")
             throw Error("_SplitAt must use MoveEndpointByRange")
     }
@@ -108,12 +283,10 @@ class ClipboardCaptureTest {
     }
 
     static _ExtractMethod(src, methodName) {
-        ; Search for the method definition (static keyword), not call sites
         pos := InStr(src, "static " methodName)
         if !pos
             throw Error("Method static " methodName " not found in ClipboardCapture.ahk")
-        ; Extract a generous window around the method
-        return SubStr(src, pos, 2000)
+        return SubStr(src, pos, 2500)
     }
 
 }

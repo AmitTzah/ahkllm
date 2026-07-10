@@ -1,60 +1,40 @@
-#Requires AutoHotkey v2.0.18+
-#SingleInstance Off
-#NoTrayIcon
-#Include ..\lib\Config.ahk
-
 ; ----------------------------------------------------
-; API Logs Viewer
+; API Logs Viewer — persistent WebView2 window
+;
+; Created once at startup (hidden), shown/hidden on demand.
+; Included from Main.ahk, not run standalone.
 ; ----------------------------------------------------
-; Standalone script launched from Options > API Logs.
-; Reads the LLM_API_Log.json file and displays it in a
-; WebViewToo window with expandable request/response details.
 
-; If already open, bring to front and exit
-if WinExist("API Logs Viewer") {
-    WinActivate("API Logs Viewer")
-    ExitApp()
+global apiLogsViewer := unset
+
+InitApiLogsViewer() {
+    global apiLogsViewer
+    apiLogsViewer := WebViewToo(, , ,)
+    apiLogsViewer.OnEvent("Close", (*) => apiLogsViewer.Hide())
+    DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", apiLogsViewer.hWnd, "int", 20, "int*", true, "int", 4)
+    apiLogsViewer.AddHostObjectToScript("Logs", {
+        GetLogs: (*) => jsongo.Stringify(ApiLogger.ReadLogs()),
+        ClearLogs: (*) => (ApiLogger.ClearLogs(), "ok"),
+        IsDarkMode: (*) => (IsSet(darkMode) && darkMode) ? "true" : "false",
+        GetLogCount: (*) => ApiLogger.ReadLogs().Length
+    })
+    apiLogsViewer.Load("webui\api-logs.html")
 }
 
-; Create the Webview Window
-viewerWindow := WebViewToo(, , ,)
-viewerWindow.OnEvent("Close", (*) => ExitApp())
-viewerWindow.Load("..\webui\api-logs.html")
-
-; Apply dark mode to title bar
-DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", viewerWindow.hWnd, "int", 20, "int*", true, "int", 4)
-
-; Expose log read/clear and dark mode to JavaScript
-viewerWindow.AddHostObjectToScript("Logs", {
-    GetLogs: GetLogs,
-    ClearLogs: ClearLogs,
-    IsDarkMode: IsDarkMode,
-    GetLogCount: GetLogCount
-})
-
-; Show the window centered
-viewerWindow.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2 " w900 h600", "API Logs Viewer")
-
-; ----------------------------------------------------
-; Functions exposed to JavaScript via host object
-; ----------------------------------------------------
-; These must return values so the JS Promise resolves.
-
-GetLogs(*) {
-    logs := ApiLogger.ReadLogs()
-    return jsongo.Stringify(logs)
+ShowApiLogs() {
+    global apiLogsViewer
+    if !IsSet(apiLogsViewer) {
+        InitApiLogsViewer()
+        Sleep 500  ; let WebView2 finish initial render
+    } else {
+        apiLogsViewer.ExecuteScript("reloadLogs()")
+    }
+    apiLogsViewer.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2 " w900 h600", "API Logs Viewer")
 }
 
-ClearLogs(*) {
-    ApiLogger.ClearLogs()
-    return "ok"
-}
-
-IsDarkMode(*) {
-    return (IsSet(darkMode) && darkMode) ? "true" : "false"
-}
-
-GetLogCount(*) {
-    logs := ApiLogger.ReadLogs()
-    return logs.Length
+; Clean up on main script exit (called from Main.ahk)
+CloseApiLogsViewer(*) {
+    global apiLogsViewer
+    if IsSet(apiLogsViewer)
+        apiLogsViewer := unset
 }

@@ -1,27 +1,59 @@
 ; ----------------------------------------------------
-; ClipboardCapture — Text capture via clipboard
+; ClipboardCapture — Text capture via clipboard + UIA
 ;
-; Handles both FIM and non-FIM clipboard capture.
-; Extracted from RequestProcessor.ahk.
+; Handles both FIM and non-FIM capture.
 ; ----------------------------------------------------
 
 class ClipboardCapture {
 
-    ; Returns { success, userMessage?, prefix?, suffix?, modelsStr }
-    static Capture(isFIM, pasteMode, customInputMessage) {
+    ; Returns { success, userMessage?, prefix?, suffix?, fullText?, modelsStr }
+    static Capture(isFIM, pasteMode, inputText := "", includeFullText := false, expandNewlines := false) {
         clipboardBeforeCopy := A_Clipboard
 
         if isFIM
-            return ClipboardCapture._CaptureFIM(clipboardBeforeCopy, pasteMode)
+            return ClipboardCapture._CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines)
         else
-            return ClipboardCapture._CaptureChat(clipboardBeforeCopy, customInputMessage)
+            return ClipboardCapture._CaptureChat(clipboardBeforeCopy, inputText, includeFullText, expandNewlines)
     }
 
-    static _CaptureFIM(clipboardBeforeCopy, pasteMode) {
+    static _CaptureFIM(clipboardBeforeCopy, pasteMode, expandNewlines := false) {
         if pasteMode = "replace"
-            return ClipboardCapture._CaptureFIM_Fill(clipboardBeforeCopy)
+            return ClipboardCapture._CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines)
         else
-            return ClipboardCapture._CaptureFIM_Continue(clipboardBeforeCopy)
+            return ClipboardCapture._CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines)
+    }
+
+    ; ----------------------------------------------------
+    ; Text normalisation
+    ; ----------------------------------------------------
+
+    ; Normalises line endings to LF (\n).  Different apps produce different
+    ; endings (Notepad = CRLF, Chrome = LF, some = bare CR).  The LLM API
+    ; consistently expects \n, and paragraph breaks (\n\n) must be uniform.
+    static NormalizeLineEndings(text, expandSingle := false) {
+        ; CRLF before bare CR — order matters
+        text := StrReplace(text, "`r`n", "`n")
+        text := StrReplace(text, "`r", "`n")
+        if expandSingle {
+            ; Expand single \n between text to \n\n (preserves existing \n\n)
+            text := RegExReplace(text, "([^\n])\n([^\n])", "$1`n`n$2")
+            ; Also expand trailing single \n (browser collapses double-Enter at end)
+            text := RegExReplace(text, "([^\n])\n$", "$1`n`n")
+        }
+        return text
+    }
+
+    ; ----------------------------------------------------
+    ; Template expansion
+    ; ----------------------------------------------------
+
+    ; Replaces {{selection}}, {{fullText}}, {{input}} in a template string.
+    static ExpandTemplate(template, selection := "", fullText := "", input := "") {
+        result := template
+        result := StrReplace(result, "{{selection}}", selection)
+        result := StrReplace(result, "{{fullText}}", fullText)
+        result := StrReplace(result, "{{input}}", input)
+        return result
     }
 
     ; ----------------------------------------------------
@@ -62,7 +94,7 @@ class ClipboardCapture {
     ; With text selected: selection = gap to fill, ^x cuts it.
     ; Without selection: cursor = zero-width gap, no cut needed.
     ; ----------------------------------------------------
-    static _CaptureFIM_Fill(clipboardBeforeCopy) {
+    static _CaptureFIM_Fill(clipboardBeforeCopy, expandNewlines := false) {
         hasSelection := false
         prefix := "", suffix := ""
 
@@ -96,6 +128,8 @@ class ClipboardCapture {
         }
 
         A_Clipboard := clipboardBeforeCopy
+        prefix := ClipboardCapture.NormalizeLineEndings(prefix, expandNewlines)
+        suffix := ClipboardCapture.NormalizeLineEndings(suffix, expandNewlines)
         return { success: true, prefix: prefix, suffix: suffix, modelsStr: "", isFIM: true }
     }
 
@@ -105,7 +139,7 @@ class ClipboardCapture {
     ; Copies text selection as prefix if present (^c);
     ; falls back to UIA for text-before-cursor when nothing is selected.
     ; ----------------------------------------------------
-    static _CaptureFIM_Continue(clipboardBeforeCopy) {
+    static _CaptureFIM_Continue(clipboardBeforeCopy, expandNewlines := false) {
         A_Clipboard := ""
         Send("^c")
 
@@ -118,7 +152,7 @@ class ClipboardCapture {
                     docRange := utp.tp.DocumentRange
                     parts := ClipboardCapture._SplitAt(docRange, selRanges[1])
                     A_Clipboard := clipboardBeforeCopy
-                    return { success: true, prefix: parts.prefix, suffix: "",
+                    return { success: true, prefix: ClipboardCapture.NormalizeLineEndings(parts.prefix, expandNewlines), suffix: "",
                              modelsStr: "", isFIM: true, needsDeselect: false }
                 }
             } catch Error as e {
@@ -129,7 +163,7 @@ class ClipboardCapture {
             return { success: false, error: "No text found before cursor." }
         }
 
-        prefix := A_Clipboard
+        prefix := ClipboardCapture.NormalizeLineEndings(A_Clipboard, expandNewlines)
         A_Clipboard := clipboardBeforeCopy
         return { success: true, prefix: prefix, suffix: "", modelsStr: "", isFIM: true, needsDeselect: true }
     }
@@ -137,10 +171,12 @@ class ClipboardCapture {
     ; ----------------------------------------------------
     ; Non-FIM capture (chat, refine, define, etc.)
     ;
-    ; Tries UIA TextPattern first; falls back to clipboard cascade.
+    ; Captures selected text and optionally full document text.
+    ; UIA-first, clipboard fallback for both.
     ; ----------------------------------------------------
-    static _CaptureChat(clipboardBeforeCopy, customInputMessage) {
+    static _CaptureChat(clipboardBeforeCopy, inputText := "", includeFullText := false, expandNewlines := false) {
         userMessage := ""
+        fullText := ""
 
         ; Try UIA text capture first (zero visual impact, no clipboard)
         try {
@@ -148,9 +184,11 @@ class ClipboardCapture {
             selRanges := utp.tp.GetSelection()
             if selRanges.Length
                 userMessage := selRanges[1].GetText()
+            if includeFullText
+                fullText := utp.tp.DocumentRange.GetText()
         }
 
-        ; Fall back to clipboard cascade if UIA didn't get text
+        ; Fall back to clipboard cascade for selection
         if userMessage = "" {
             A_Clipboard := ""
             Critical("On")
@@ -168,25 +206,30 @@ class ClipboardCapture {
             }
             Critical("Off")
 
-            if !copied {
-                if customInputMessage != "" {
-                    userMessage := customInputMessage
-                } else {
-                    A_Clipboard := clipboardBeforeCopy
-                    return { success: false, error: "The attempt to copy text onto the clipboard failed." }
-                }
-            } else {
+            if copied
                 userMessage := A_Clipboard
-            }
         }
 
-        ; Apply custom input message prefix
-        if customInputMessage != "" && userMessage != ""
-            userMessage := customInputMessage "`n`n" userMessage
+        ; Fall back to ^a^c for fullText (one-time scroll, acceptable as rare fallback)
+        if includeFullText && fullText = "" {
+            Critical("On")
+            A_Clipboard := ""
+            Send("^a")
+            Send("^c")
+            if ClipWait(1)
+                fullText := A_Clipboard
+            Critical("Off")
+        }
 
         A_Clipboard := clipboardBeforeCopy
-        if userMessage = ""
-            return { success: false, error: "The attempt to copy text onto the clipboard failed." }
-        return { success: true, userMessage: userMessage, modelsStr: "", isFIM: false }
+
+        ; Normalise line endings — different apps produce different formats
+        ; (Notepad = CRLF, Chrome = LF).  The LLM API expects consistent \n.
+        userMessage := ClipboardCapture.NormalizeLineEndings(userMessage, expandNewlines)
+        fullText := ClipboardCapture.NormalizeLineEndings(fullText, expandNewlines)
+
+        ; Allow empty userMessage (template may use only {{input}} or {{fullText}})
+        return { success: true, userMessage: userMessage, fullText: fullText,
+                 modelsStr: "", isFIM: false }
     }
 }

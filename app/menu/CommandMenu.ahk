@@ -100,32 +100,35 @@ _resolveSystemMessage(cmd) {
 
 ; Extract optional command properties shared by onCommandSelected and onCommandInputSend.
 ; Returns a flat array for splatting into processInitialRequest after the first 4 required params.
-_extractCommandParams(cmd, customInputMessage := "") {
+_extractCommandParams(cmd, inputText := "") {
     return [
         cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat",
         cmd.HasProp("isFIM") && cmd.isFIM,
-        customInputMessage,
+        inputText,
         cmd.HasProp("temperature") ? cmd.temperature : "",
         cmd.HasProp("maxTokens") ? cmd.maxTokens : "",
         cmd.HasProp("stop") ? cmd.stop : "",
         cmd.HasProp("stream") && cmd.stream,
         cmd.HasProp("thinking") && cmd.thinking ? cmd.thinking.type : "",
-        cmd.HasProp("thinking") && cmd.thinking && cmd.thinking.HasOwnProp("level") ? cmd.thinking.level : ""
+        cmd.HasProp("thinking") && cmd.thinking && cmd.thinking.HasOwnProp("level") ? cmd.thinking.level : "",
+        cmd.HasProp("userMessage") ? cmd.userMessage : "",
+        cmd.HasProp("expandNewlines") && cmd.expandNewlines
     ]
 }
 
 onCommandSelected(index, *) {
     cmd := commands[index]
-    if (cmd.HasProp("isCustomCommand") && cmd.isCustomCommand) {
+    showInput := cmd.HasProp("showInputBox") && cmd.showInputBox
 
-        ; Save the command for future reference in customCommandSendButtonAction(*)
+    if showInput {
+        ; Save the command for future reference in onCommandInputSend
         setSelectedCommand(cmd)
 
-        commandInputWindow.showInputWindow(cmd.HasProp("customInputInitialMessage")
-            ? cmd.customInputInitialMessage : unset, cmd.commandName, "ahk_id " commandInputWindow
-        .guiObj.hWnd)
+        inputDefault := cmd.HasProp("inputBoxDefault") ? cmd.inputBoxDefault : ""
+        commandInputWindow.showInputWindow(inputDefault, cmd.commandName,
+            "ahk_id " commandInputWindow.guiObj.hWnd)
     } else {
-        params := _extractCommandParams(cmd, "")  ; no custom input for non-custom commands
+        params := _extractCommandParams(cmd, "")  ; no user input
         processInitialRequest(cmd.commandName, cmd.menuText, _resolveSystemMessage(cmd),
             cmd.APIModels, params*)
     }

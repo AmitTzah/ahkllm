@@ -145,7 +145,7 @@ assistants := [
     },
      {
         name: "Violet",
-        baseModel: "deeWhat do you do for fun?pseek/deepseek-v4-flash",
+        baseModel: "deepseek/deepseek-v4-flash",
         systemMessageFile: "system-messages/violet.txt",
         reasoning: "none",
         temperature: "",
@@ -168,15 +168,6 @@ assistants := [
 ;                     defines an accelerator key (e.g. "&1" lets the user
 ;                     press 1 to select that item).
 ;
-;   systemMessage:     The system message sent to the LLM. This sets the
-;                      model's role / behaviour for this specific command.
-;                      For longer messages, use systemMessageFile instead.
-;
-;   systemMessageFile: (Optional) Path to a .txt file containing the system
-;                      message. Easier to edit than inline text, especially
-;                      for multi-line prompts. Takes precedence over systemMessage.
-;                      Example: systemMessageFile: "system-messages/rephrase.txt"
-;
 ;   APIModels:        One or more model identifiers, comma-separated.
 ;                     Supports "provider/model" format (e.g. "openai/gpt-4o")
 ;                     or direct model names (e.g. "deepseek-v4-pro").
@@ -184,15 +175,52 @@ assistants := [
 ;                     opened for each one (multi-model "Council" mode).
 ;
 ; --- OPTIONAL FIELDS ---
+;   All fields below are optional.  Fields related to prompt composition
+;   (systemMessage, systemMessageFile, userMessage, showInputBox,
+;   inputBoxDefault, and template variables) are ignored when isFIM: true.
 ;
-;   isCustomCommand:  (Optional) When true, the user is shown a text input
-;                     window where they can type their own instruction instead
-;                     of using only the selected text.  For FIM commands this
-;                     input becomes the suffix.  Default: false.
+;   --- Prompt composition ---
+;   systemMessage:     Instructions for the LLM (system prompt).  Supports
+;                      template variables (see below).
+;                      Example: "Define: {{selection}}"
 ;
-;   customInputInitialMessage:
-;                     (Optional) Pre-filled text in the custom command input
-;                     window.  Only meaningful when isCustomCommand: true.
+;   systemMessageFile: Path to a .txt file containing the system message.
+;                      Supports the same template variables as systemMessage.
+;                      Takes precedence over systemMessage.
+;                      Example: systemMessageFile: "system-messages/define.txt"
+;
+;   userMessage:       The user message sent to the LLM.  Supports the same
+;                      template variables as systemMessage.
+;                      No default — if omitted, no user message is sent.
+;                      Typical: "{{selection}}" to operate on selected text,
+;                               "{{input}}" when showInputBox is true.
+;                      NOTE: AHK uses backtick-n (``n) for newlines, not \n.
+;
+;   showInputBox:     If true, opens a text box before sending.  Whatever the
+;                     user types becomes available as {{input}} in the prompt
+;                     fields above.  Ignored when isFIM: true.  Default: false.
+;
+;   inputBoxDefault:  Text pre-filled in the input box.  Only meaningful when
+;                     showInputBox is true.
+;
+;   --- Template Variables ---
+;   These placeholders work in systemMessage, systemMessageFile, and userMessage.
+;   They are replaced at runtime with the actual captured text.
+;   Ignored when isFIM: true.
+;
+;     {{selection}}  — the text the user highlighted before triggering the command
+;     {{fullText}}    — the entire document text (read via Windows accessibility API)
+;     {{input}}       — whatever the user typed in the input box (only if showInputBox: true)
+;
+;   --- Default Behaviour (no userMessage, no templates) ---
+;   If you omit userMessage and don't use any {{...}} variables, the command
+;   behaves exactly like it always did in past versions: the selected text is sent as-is to the
+;   LLM. If showInputBox is true, the typed text is prepended before the
+;   selection, separated by a blank line.
+;
+;   Template variables are optional — use them when you need the full
+;   document context ({{fullText}}) or want to control exactly how the
+;   selection and input are formatted in the prompt.
 ;
 ;   pasteMode:        (Optional) Where the LLM response goes:
 ;                       "chat"     — shows a full chat interface in the Response Window
@@ -210,15 +238,23 @@ assistants := [
 ;                     Optional "level" controls the thinking depth (defaults to "medium").
 ;                     Default: omitted (model default).
 ;
-;   isFIM:            (Optional) Use DeepSeek FIM (Fill In the Middle) beta
+;   isFIM:      (Optional) Use DeepSeek FIM (Fill In the Middle) beta
 ;                     endpoint instead of chat completions.
+;                     When true, the [CHAT] prompt fields above (systemMessage,
+;                     userMessage, showInputBox, template variables) are all
+;                     ignored — FIM uses a separate API format.
 ;                     FIM Fill (pasteMode: "replace"):
-;                       Selection = gap to fill.  Script copies the full text
-;                       with Ctrl+A, splits around the selection into prefix/suffix.
+;                       Fills the gap between prefix and suffix.  Works with or
+;                       without a selection (cursor = zero-width gap).
 ;                     FIM Continue (pasteMode: "append"):
-;                       Selection = prefix (no suffix needed).  If nothing is
-;                       selected, uses Ctrl+Shift+Home to grab text before cursor.
-;                     Max output: 4K tokens.  Default: false.
+;                       Continues from the cursor/selection.
+;                     Default: false.
+;
+;   expandNewlines:   (Optional) If true, single \n between text paragraphs
+;                     is expanded to \n\n (the universal paragraph break in
+;                     LLM training data).  Normalisation (\r\n → \n) always
+;                     happens regardless.  Useful for FIM and prose commands.
+;                     Default: false.
 ;
 ;   temperature:      (Optional) Sampling temperature 0–2.  Higher = more
 ;                     creative/random, lower = more deterministic.
@@ -249,24 +285,30 @@ assistants := [
 /*
     {
         commandName: "Your Command Name",
-        menuText: "&9 - Your Menu Label",        ; & defines accelerator key
+        menuText: "&9 - Your Menu Label",        
         systemMessage: "Your system message here. This sets the model's role.",
-        ; systemMessageFile: "system-messages/my-command.txt",  ; use instead of systemMessage
-        APIModels: "deepseek-v4-flash",          ; single model
-        ; APIModels: "deepseek-v4-pro, deepseek-v4-flash",  ; multi-model (Council)
-        ; APIModels: "openai/gpt-4o",            ; provider/model format
+        ; systemMessageFile: "system-messages/my-command.txt", 
+        APIModels: "deepseek-v4-flash",          
+        ; APIModels: "deepseek-v4-pro, deepseek-v4-flash",  
+        ; APIModels: "openai/gpt-4o",            
 
-        isCustomCommand: true,                   ; Shows input window
-        customInputInitialMessage: "",           ; (optional) pre-filled text
-        pasteMode: "replace",                    ; "chat", "replace", or "append"
-        stream: false,                           ; (optional, chat only) token-by-token response
-        thinking: { type: "enabled" },           ; (optional) { type:, level?: }
-        isFIM: false,                            ; Uses FIM beta endpoint
-        temperature: 0.7,                        ; (optional) 0 to 2
-        maxTokens: 500,                          ; (optional) max response tokens
-        stop: ["\n\n"],                          ; (optional) stop sequences
+        ; --- Prompt fields (ignored when isFIM: true) ---
+        ; userMessage: "{{selection}}",
+        showInputBox: true,
+        inputBoxDefault: "",
+
+        pasteMode: "replace",
+        stream: false,
+        thinking: { type: "enabled", level: "medium" },
+
+        ; --- Set to true to ignore all prompt fields above ---
+        isFIM: false,
+        
+        temperature: 0.7,                        
+        maxTokens: 500,                          
+        stop: ["\n"],                          
         tags: ["&Your tag"],
-        directAccelerator: "&y"                  ; (optional) ` then key shortcut
+        directAccelerator: "&y"                  
     },
 */
 ; ============================================================================
@@ -282,21 +324,22 @@ commands := [
         {
         commandName: "Quick ask (V4 Flash)",
         menuText: "&2 - Quick Ask DeepSeek V4 Flash",
-        APIModels: "deepseek-v4-flash",          ; single model
-        isCustomCommand: true,                   ; Shows input window
-        pasteMode: "chat",                    ; "chat", "replace", or "append"
-        stream: true,                           ; (optional, chat only) token-by-token response
-        thinking: { type: "disabled" },           ; (optional) DeepSeek reasoning (thinking blocks)
-        isFIM: false,                            ; Uses FIM beta endpoint
+        APIModels: "deepseek-v4-flash",          
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
+        pasteMode: "chat",                    
+        stream: true,                           
+        thinking: { type: "disabled" },           
+        isFIM: false,                            
     },
 
     {
         commandName: "FIM Continue",
         menuText: "&1 - FIM Continue",
-        systemMessage: "",
         APIModels: "deepseek/deepseek-v4-flash",
         pasteMode: "append",
         isFIM: true,
+        expandNewlines: true,
         temperature: 1,
         stop: ["\n"],
         maxTokens: 300,
@@ -312,37 +355,59 @@ commands := [
         APIModels: "deepseek/deepseek-v4-flash",
         pasteMode: "replace",
         isFIM: true,
+        expandNewlines: true,
         maxTokens: 300,
         directAccelerator: "&4",
 
         tags: ["&Text manipulation"],
 
     },
-    {
-        commandName: "Refine",
-        menuText: "&3 - Refine",
-        systemMessageFile: "system-messages/refine.txt",
+
+        {
+        commandName: "Rephrase in Context",
+        menuText: "&3 - Rephrase in Context",
+        systemMessageFile: "system-messages/rephrase-in-context.txt",
+        userMessage: "### Full document context:`n`n{{fullText}}`n`n### Text to rephrase:`n`n{{selection}}",
         APIModels: "deepseek/deepseek-v4-flash",
-        pasteMode: "replace",
         thinking: { type: "disabled" },
+        pasteMode: "replace",
         tags: ["&Text manipulation"],
         directAccelerator: "&5"
 
+
     },
+    {
+        commandName: "Refine",
+        menuText: "&4 - Refine",
+        systemMessageFile: "system-messages/refine.txt",
+        APIModels: "deepseek/deepseek-v4-flash",
+        userMessage: "{{selection}}",
+        pasteMode: "replace",
+        thinking: { type: "disabled" },
+        tags: ["&Text manipulation"],
+        directAccelerator: "&6"
+
+    },
+
+
+
      {
         commandName: "Auto-paste custom command",
-        menuText: "&4 - Auto-paste custom command",
+        menuText: "&5 - Auto-paste custom command",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "replace",
         tags: ["&Text manipulation"],
     },
+
 
      {
         commandName: "Summarize",
         menuText: "&1 - Summarize",
         systemMessageFile: "system-messages/summarize.txt",
         APIModels: "deepseek/deepseek-v4-pro",
+        userMessage: "{{selection}}",
         thinking: { type: "enabled" },
         pasteMode: "chat",
         tags: ["&Digest"]
@@ -353,27 +418,30 @@ commands := [
         menuText: "&2 - Translate to English",
         systemMessageFile: "system-messages/translate-to-english.txt",
         APIModels: "deepseek/deepseek-v4-pro",
+        userMessage: "{{selection}}",
         thinking: { type: "disabled" },
         pasteMode: "chat",
         tags: ["&Digest"]
 
     }
     , {
-        commandName: "Define",
-        menuText: "&3 - Define",
-        systemMessageFile: "system-messages/define.txt",
+        commandName: "Explain",
+        menuText: "&3 - Explain",
         APIModels: "deepseek/deepseek-v4-pro",
+        userMessage: "What does the following text mean?`n`n{{selection}}",
         thinking: { type: "disabled" },
         pasteMode: "chat",
         tags: ["&Digest"]
 
     }
+
 
     , {
         commandName: "Multi-Provider Council",
         menuText: "&1 - Council (V4 Pro + GPT-5.4 + Gemini 3.5 Flash)",
         APIModels: "deepseek/deepseek-v4-pro, openai/gpt-5.4, google/gemini-3.5-flash",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}",
         pasteMode: "chat",
         tags: ["&Multi-models"]
     }
@@ -382,7 +450,8 @@ commands := [
         commandName: "DeepSeek V4 Pro",
         menuText: "&1 - DeepSeek V4 Pro",
         APIModels: "deepseek/deepseek-v4-pro",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
         thinking: { type: "enabled" },
@@ -392,17 +461,19 @@ commands := [
         commandName: "DeepSeek V4 Flash",
         menuText: "&2 - DeepSeek V4 Flash",
         APIModels: "deepseek/deepseek-v4-flash",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
         thinking: { type: "enabled" },
-        tags: ["&DeepSeek"]
+        tags: ["&DeepSeek"],
     }
     , {
         commandName: "GPT-5.4",
         menuText: "&1 - GPT-5.4",
         APIModels: "openai/gpt-5.4",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
         thinking: { type: "enabled" },
@@ -412,7 +483,8 @@ commands := [
         commandName: "GPT-5.4 Mini",
         menuText: "&2 - GPT-5.4 Mini",
         APIModels: "openai/gpt-5.4-mini",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
         thinking: { type: "enabled" },
@@ -422,7 +494,8 @@ commands := [
         commandName: "Gemini 3.5 Flash",
         menuText: "&1 - Gemini 3.5 Flash",
         APIModels: "google/gemini-3.5-flash",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
         thinking: { type: "enabled" },
@@ -432,8 +505,8 @@ commands := [
         commandName: "Gemini 3.1 Pro",
         menuText: "&2 - Gemini 3.1 Pro",
         APIModels: "google/gemini-3.1-pro-preview",
-        systemMessage: "You are a brutal critic. Ask uses to provide a piece of text first",
-        isCustomCommand: true,
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
         thinking: { type: "enabled", level: "high" },
@@ -525,7 +598,7 @@ quickAccessMenuItems := [
     { menuText: "&2 - DeepSeek Usage",         command: "https://platform.deepseek.com/usage" },
     { menuText: "&3 - OpenAI Usage",         command: "https://platform.openai.com/settings/organization/usage" },
     { menuText: "&4 - Gemini Usage",         command: "https://aistudio.google.com/spend?project=gen-lang-client-0627530864" },
-    { menuText: "&5 - API Logs",               command: A_ScriptDir "\lib\ApiLogsViewer.ahk" },
+    { menuText: "&5 - API Logs",               command: "apilogs:" },
     { menuText: "&6 - Model Pricing",          command: "cmd /c powershell -ExecutionPolicy Bypass -File " A_ScriptDir "\Refresh-ModelPricing.ps1 && start " A_ScriptDir "\models_pricing.txt" },
     { menuText: "&7 - Debug Log",              command: A_Temp "\LLM_Debug_Log.txt" },
 

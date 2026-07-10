@@ -10,16 +10,31 @@
 ; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
 processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode, isFIM,
-    customInputMessage := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "") {
+    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false) {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
 
+    ; Determine if fullText is needed (lazy — avoid capturing 1M-word docs unnecessarily)
+    includeFullText := InStr(systemMessage, "{{fullText}}") || InStr(userMessageTemplate, "{{fullText}}")
+
     ; STEP 1: Capture text
-    captured := ClipboardCapture.Capture(isFIM, pasteMode, customInputMessage)
+    captured := ClipboardCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines)
     if !captured.success {
         updateLoadingUI("Reset")
         MsgBox captured.error, (isFIM ? "FIM" : "No text copied"), "IconX"
         return
     }
+
+    ; Expand templates in system message
+    if systemMessage
+        systemMessage := ClipboardCapture.ExpandTemplate(systemMessage, captured.userMessage, captured.fullText, inputText)
+
+    ; Compose user message from template (explicit only — no default)
+    if userMessageTemplate
+        captured.userMessage := ClipboardCapture.ExpandTemplate(userMessageTemplate, captured.userMessage, captured.fullText, inputText)
+    else if inputText
+        captured.userMessage := inputText
+    else
+        captured.userMessage := ""
 
     ; Parse models
     APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
@@ -82,6 +97,10 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
 ; If HTTP URLs open then immediately close: check uBlock Origin Lite →
 ;   Settings → uncheck "Enable pop-up blocking" (closes externally-launched tabs).
 runOptionsMenuAction(command, *) {
+    if command = "apilogs:" {
+        ShowApiLogs()
+        return
+    }
     if (spacePos := InStr(command, " ")) {
         firstWord := SubStr(command, 1, spacePos - 1)
         if !InStr(firstWord, "\") && !InStr(firstWord, ":") {

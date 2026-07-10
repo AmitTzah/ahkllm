@@ -181,3 +181,10 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 #Include app\RequestProcessor.ahk
 #Include app\LoadingTracker.ahk
 #Include app\LoadingUI.ahk
+
+; ----------------------------------------------------
+; API Logs Viewer — persistent, pre-created at startup
+; ----------------------------------------------------
+#Include lib\ApiLogsViewer.ahk
+SetTimer(InitApiLogsViewer, -2000)
+OnExit(CloseApiLogsViewer)
