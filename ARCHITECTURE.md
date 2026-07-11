@@ -259,29 +259,39 @@ ai-automation/
 │               ├── chat-settings.js         # Model/assistant/temperature/reasoning state
 │               └── chat-settings-modal.js   # Settings modal UI
 │
-├── tests/                           # Unit + integration tests (~252 AHK + 69 JS)
+├── tests/                           # Unit + integration tests (~262 AHK + 89 JS = 351)
 │   ├── run_all_tests.bat            # PRIMARY ENTRY POINT — runs both AHK and JS
 │   ├── run_ahk_tests.ahk            # AHK test runner (called by run_all_tests.bat)
 │   ├── run_js_tests.bat             # JS test runner (called by run_all_tests.bat)
 │   ├── test_config.ahk              # Test overrides (loaded after Config.ahk)
 │   ├── unit/                        # Unit tests — AHK (.test.ahk) and JS (.test.js) side by side
-│   │   ├── TextCapture.test.ahk
-│   │   ├── RequestProcessor.test.ahk
-│   │   ├── ChatDB.test.ahk
-│   │   ├── AttachmentRepo.test.ahk
-│   │   ├── AttachmentUtils.test.ahk
-│   │   ├── ImageUtils.test.ahk
-│   │   ├── SQLiteEscape.test.ahk
-│   │   ├── LLMRequestBuilder.test.ahk
-│   │   ├── ChatUtils.test.ahk
-│   │   ├── StreamHandler.test.ahk
+│   │   ├── AttachmentRepo.test.ahk       # Content-addressable storage, ref-count delete
+│   │   ├── AttachmentUtils.test.ahk      # HasVision, MIME classification
+│   │   ├── chat-attachments.test.js      # MIME, extensions, icons, constants (36 tests)
+│   │   ├── chat-format.test.js           # getMessageText, formatCost, formatCompact (22 tests)
+│   │   ├── chat-input.test.js            # onChatSend payload, retry logic (5 tests)
+│   │   ├── ChatDB.test.ahk               # Core DB operations
 │   │   ├── ChatRequestBuilder.test.ahk
+│   │   ├── ChatUtils.test.ahk
 │   │   ├── CustomMessages.test.ahk
+│   │   ├── edit-removed-attachments.test.js # _removedAttachmentIds, commitEdit payload (7 tests)
+│   │   ├── fork-function.test.js         # forkChat() definition, payload, guards (4 tests)
+│   │   ├── ImageUtils.test.ahk           # Base64 encode/decode, roundtrip
 │   │   ├── InlineRequestRunner.test.ahk
+│   │   ├── LLMRequestBuilder.test.ahk
+│   │   ├── ModelParser.test.ahk          # StripProvider parsing (4 tests)
+│   │   ├── RequestProcessor.test.ahk     # Paste block, apilogs handler
+│   │   ├── SQLiteEscape.test.ahk         # Escape correctness, SQL roundtrip
+│   │   ├── stream-state.test.js          # streamState, _persistStreamedMessage, cancel (10 tests)
+│   │   ├── StreamError.test.ahk          # Cancel-retry sibling_group preservation (2 tests)
+│   │   ├── StreamHandler.test.ahk
+│   │   ├── TextCapture.test.ahk          # ExpandTemplate, NormalizeLineEndings
+│   │   ├── TokenEstimation.test.ahk      # Character-based token estimation (4 tests)
 │   │   └── UserConfig.test.ahk
-│   └── integration/
+│   └── integration/                  # Integration tests — AHK and JS side by side (3 files)
+│       ├── BranchFlow.test.ahk           # Branch nav, fork (title, settings, siblings, UUIDs)
 │       ├── ChatFlow.test.ahk
-│       └── BranchFlow.test.ahk      # Branch nav, fork, sibling group, attachments
+│       └── edit-send-flow.test.js        # Cross-module: edit commit, attachment send, stream (5 tests)
 └── agent-workspace/                 # Feature development artifacts (transient)
     ├── feature/                     # Current feature plan, reference, state
     └── external-docs/               # Cached external API documentation
@@ -540,7 +550,7 @@ Copy and paste into terminal from the project root:
 tests\run_all_tests.bat
 ```
 
-This runs AHK tests (~252) then JS tests (69) — ~321 total. Alternatively:
+This runs AHK tests (~262) then JS tests (89) — ~351 total. Alternatively:
 
 ```
 tests\run_ahk_tests.ahk          # AHK only
@@ -549,37 +559,13 @@ tests\run_js_tests.bat           # JS only
 
 ### Test Structure
 
-AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side in the same directories, distinguished by file extension.
+AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side in the same directories, distinguished by file extension. See the directory tree above for the full listing. Summary:
 
-```
-ai-automation/tests/
-├── run_all_tests.bat              # PRIMARY ENTRY POINT — runs both AHK + JS
-├── run_ahk_tests.ahk              # AHK test runner (called by run_all_tests.bat)
-├── run_js_tests.bat               # JS test runner: node --test tests/unit/*.test.js
-├── test_config.ahk                # Test overrides (loaded after Config.ahk)
-├── unit/                          # Unit tests — AHK and JS side by side (18 files)
-│   ├── AttachmentRepo.test.ahk         # Content-addressable storage, ref-count delete
-│   ├── AttachmentUtils.test.ahk        # HasVision, MIME classification
-│   ├── chat-attachments.test.js        # MIME, extensions, icons, constants (36 tests)
-│   ├── chat-format.test.js             # getMessageText, formatCost, formatCompact (22 tests)
-│   ├── ChatDB.test.ahk                 # Core DB operations
-│   ├── ChatRequestBuilder.test.ahk
-│   ├── ChatUtils.test.ahk
-│   ├── CustomMessages.test.ahk
-│   ├── edit-removed-attachments.test.js # _removedAttachmentIds, commitEdit payload (7 tests)
-│   ├── fork-function.test.js           # forkChat() definition, payload, guards (4 tests)
-│   ├── ImageUtils.test.ahk             # Base64 encode/decode, roundtrip
-│   ├── InlineRequestRunner.test.ahk
-│   ├── LLMRequestBuilder.test.ahk
-│   ├── RequestProcessor.test.ahk       # Paste block, apilogs handler
-│   ├── SQLiteEscape.test.ahk           # Escape correctness, SQL roundtrip
-│   ├── StreamHandler.test.ahk
-│   ├── TextCapture.test.ahk            # ExpandTemplate, NormalizeLineEndings
-│   └── UserConfig.test.ahk
-└── integration/                    # Integration tests — AHK and JS side by side (2 files)
-    ├── BranchFlow.test.ahk             # Branch nav, fork (title, settings, siblings, UUIDs)
-    └── ChatFlow.test.ahk
-```
+| Directory | AHK Files | JS Files | Total Tests |
+|-----------|----------|----------|-------------|
+| `unit/` | 17 | 6 | ~301 |
+| `integration/` | 2 | 1 | ~50 |
+| **Total** | **19** | **7** | **~351** |
 
 ### Output Format
 
@@ -596,7 +582,7 @@ N tests run | X passed | Y failed
 ▶ getAttachmentTypeFromMime
   ✔ identifies images from MIME type
 ✔ getAttachmentTypeFromMime
-ℹ tests 69 | pass 69 | fail 0
+ℹ tests 89 | pass 89 | fail 0
 ```
 
-Tests: ~252 AHK + 69 JS = ~321 total. Run on every commit via `run_all_tests.bat`.
+Tests: ~262 AHK + 89 JS = ~351 total. Run on every commit via `run_all_tests.bat`.
