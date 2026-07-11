@@ -95,9 +95,12 @@ RegisterTestClass(className) {
 #Include unit\LLMRequestBuilder.test.ahk
 #Include unit\ChatUtils.test.ahk
 #Include unit\StreamHandler.test.ahk
+#Include unit\StreamError.test.ahk
 #Include unit\ChatRequestBuilder.test.ahk
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
+#Include unit\ModelParser.test.ahk
+#Include unit\TokenEstimation.test.ahk
 #Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
 #Include integration\ChatFlow.test.ahk
