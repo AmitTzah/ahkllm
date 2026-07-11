@@ -16,10 +16,11 @@ global TEST_LOG := A_Temp "\test_results.txt"
 try FileDelete(TEST_LOG)
 
 ; Write to both log file and stdout (for terminal visibility)
+; Stdout may not be available (e.g. when launched without console) — ignore errors.
 Log(msg) {
     global TEST_LOG
     FileAppend(msg, TEST_LOG)
-    FileAppend(msg, "*")
+    try FileAppend(msg, "*")
 }
 
 ; -----------------------------------------------------------
