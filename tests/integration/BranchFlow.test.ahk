@@ -405,10 +405,10 @@ class BranchFlowTest {
         usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "question"})
         sg := ChatDB._UUID()
         ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer A", parent_id: usrId, sibling_group: sg, sibling_index: 0})
-        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer B", parent_id: usrId, sibling_group: sg, sibling_index: 1})
+        aBId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer B", parent_id: usrId, sibling_group: sg, sibling_index: 1})
 
-        ; Fork at the user message
-        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+        ; Fork at the active leaf (answer B) — includes user + both siblings
+        newThreadId := ChatDB.Msg_ForkThread(threadId, aBId)
 
         ; Get forked path — should have 2 messages (user + one assistant)
         ; But more importantly, GetSiblings on the forked assistant should return 2
@@ -448,9 +448,9 @@ class BranchFlowTest {
 
         usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "q"})
         sg := ChatDB._UUID()
-        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a", parent_id: usrId, sibling_group: sg, sibling_index: 0})
+        asstId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a", parent_id: usrId, sibling_group: sg, sibling_index: 0})
 
-        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+        newThreadId := ChatDB.Msg_ForkThread(threadId, asstId)
 
         path := ChatDB.Msg_GetActivePath(newThreadId)
         newSg := ""
