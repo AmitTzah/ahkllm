@@ -15,15 +15,22 @@
 global TEST_LOG := A_Temp "\test_results.txt"
 try FileDelete(TEST_LOG)
 
+; Write to both log file and stdout (for terminal visibility)
+Log(msg) {
+    global TEST_LOG
+    FileAppend(msg, TEST_LOG)
+    FileAppend(msg, "*")
+}
+
 ; -----------------------------------------------------------
 ; Global error handler
 ; -----------------------------------------------------------
 OnError(TestErrorHandler, -1)
 TestErrorHandler(err, mode) {
     global TEST_LOG
-    try FileAppend("[RUNTIME ERROR] " err.Message "`n", TEST_LOG)
+    try Log("[RUNTIME ERROR] " err.Message "`n")
     if err.HasProp("Stack") && err.Stack
-        try FileAppend(err.Stack "`n", TEST_LOG)
+        try Log(err.Stack "`n")
     ExitApp(1)
 }
 
@@ -32,12 +39,12 @@ TestErrorHandler(err, mode) {
 ; -----------------------------------------------------------
 MsgBox(text, title := "", options := "") {
     global TEST_LOG
-    FileAppend("[MSGBOX] " title ": " text "`n", TEST_LOG)
+    Log("[MSGBOX] " title ": " text "`n")
     return "OK"
 }
 ExitApp(ExitCode := 0) {
     global TEST_LOG
-    FileAppend("[EXITAPP suppressed in test mode]`n", TEST_LOG)
+    Log("[EXITAPP suppressed in test mode]`n")
 }
 
 global testMode := true
@@ -113,12 +120,12 @@ RunAllTests(*) {
         RunTestClass(className)
     }
     total := totalPassed + totalFailed
-    FileAppend("`n---`n", TEST_LOG)
-    FileAppend(total " tests run | " totalPassed " passed | " totalFailed " failed`n", TEST_LOG)
+    Log("`n---`n")
+    Log(total " tests run | " totalPassed " passed | " totalFailed " failed`n")
     if failedDetails.Length > 0 {
-        FileAppend("`nFAILURES:`n", TEST_LOG)
+        Log("`nFAILURES:`n")
         for detail in failedDetails
-            FileAppend("  " detail "`n", TEST_LOG)
+            Log("  " detail "`n")
     }
     ExitApp(totalFailed > 0 ? 1 : 0)
 }
@@ -133,23 +140,24 @@ RunTestClass(className) {
                 continue
             try {
                 obj.%methodName%()
-                FileAppend("[PASS] " className "." methodName "`n", TEST_LOG)
+                Log("[PASS] " className "." methodName "`n")
                 totalPassed++
             } catch Error as err {
-                FileAppend("[FAIL] " className "." methodName " — " err.Message "`n", TEST_LOG)
+                Log("[FAIL] " className "." methodName " — " err.Message "`n")
                 totalFailed++
                 failedDetails.Push(className "." methodName ": " err.Message)
             }
         }
     } catch Error as err {
-        FileAppend("[FAIL] " className " (class init) — " err.Message "`n", TEST_LOG)
+        Log("[FAIL] " className " (class init) — " err.Message "`n")
         totalFailed++
     }
 }
 
 if MsgBox("test") != "OK" {
-    FileAppend("[CRITICAL] MsgBox override not active! Tests aborted.`n", TEST_LOG)
+    Log("[CRITICAL] MsgBox override not active! Tests aborted.`n")
     ExitApp(1)
 }
 
 RunAllTests()
+
