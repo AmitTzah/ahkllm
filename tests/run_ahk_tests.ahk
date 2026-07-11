@@ -15,12 +15,10 @@
 global TEST_LOG := A_Temp "\test_results.txt"
 try FileDelete(TEST_LOG)
 
-; Write to both log file and stderr (for terminal visibility)
-; Stderr is available even when stdout isn't (e.g., launched from batch file).
+; Write to log file. Batch file reads this after AHK completes.
 Log(msg) {
     global TEST_LOG
     FileAppend(msg, TEST_LOG)
-    FileAppend(msg, "**")
 }
 
 ; -----------------------------------------------------------
