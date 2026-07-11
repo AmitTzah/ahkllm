@@ -12,11 +12,14 @@ _extractErrorMsg(rawOutput) {
             return parsed[1]["error"]["message"]
         if parsed.Has("error") && parsed["error"].Has("message")
             return parsed["error"]["message"]
+    } catch Error as e {
+        debugLog("_extractErrorMsg parse error: " e.Message, "ErrorHandler")
     }
     return ""
 }
 
 _handleStreamError() {
+    try {
     errorFile := requestParams["cURLErrorFile"]
     if FileExist(errorFile) {
         errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
@@ -57,9 +60,17 @@ _handleStreamError() {
         status: "error",
         latencyMs: latencyMs
     })
+
+    } catch Error as e {
+        debugLog("_handleStreamError crashed: " e.Message "`n" e.Stack, "ErrorHandler")
+        postWebMessage("showError", { message: "Request failed: " e.Message })
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+    }
 }
 
 _handleStreamCancelled() {
+    try {
     debugLog("User cancelled streaming request")
     cURLState("close")
 
@@ -81,11 +92,15 @@ _handleStreamCancelled() {
     if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := path.Length ? path[path.Length].id : ""
+        retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
+        retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
+        if retrySiblingGroup
+            requestParams.Delete("pendingRetrySiblingGroup")
         ChatDB.Msg_Insert({
             thread_id: activeThreadId, role: "assistant",
             content: requestParams["_streamContent"],
             model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
-            parent_id: parentId, sibling_group: "", sibling_index: 0,
+            parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
             reasoning: requestParams["_streamReasoning"],
             prompt_tokens: estPromptTokens,
             completion_tokens: estCompletionTokens,
@@ -104,6 +119,15 @@ _handleStreamCancelled() {
     deleteTempFiles()
     startLoadingCursor(false)
     postWebMessage("setChatButtonsEnabled", true)
+
+    } catch Error as e {
+        debugLog("_handleStreamCancelled crashed: " e.Message "`n" e.Stack, "ErrorHandler")
+        _cleanupStreamState()
+        deleteTempFiles()
+        startLoadingCursor(false)
+        postWebMessage("setChatButtonsEnabled", true)
+        postWebMessage("showError", { message: "Cancellation error: " e.Message })
+    }
 }
 
 _logCancelledRequest(estPromptTokens, estCompletionTokens) {

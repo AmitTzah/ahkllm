@@ -5,6 +5,16 @@
 ; Extracted from ChatWindow.ahk for cleaner separation.
 ; ======================================================
 
+; Surface an error to both the debug log AND the chat UI.
+; Callable from any callback — re-enables buttons and shows red banner.
+_SurfaceError(context, err) {
+    errorMsg := "[" context "] " err.Message
+    debugLog("ERROR: " errorMsg "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler")
+    postWebMessage("showError", { message: errorMsg })
+    postWebMessage("setChatButtonsEnabled", true)
+    startLoadingCursor(false)
+}
+
 OnWebMessageReceived(sender, args) {
     try {
         msg := args.TryGetWebMessageAsString()
@@ -12,9 +22,13 @@ OnWebMessageReceived(sender, args) {
             return
         parsed := jsongo.Parse(msg)
         action := parsed.Get("action", "")
+        if action = "chatSend" || action = "deleteAttachment"
+            debugLog("[DISPATCH] Received " action " action, msgLen=" StrLen(msg), "AttachPipeline")
         switch action {
             case "chatSend":
-                handleChatSend(parsed.Get("message", ""))
+                handleChatSend(parsed)
+            case "deleteAttachment":
+                handleDeleteAttachment(parsed)
             case "retry":
                 handleRetry(parsed)
             case "editMessage":
@@ -40,6 +54,8 @@ OnWebMessageReceived(sender, args) {
             case "requestCurrentSettings":
                 postCurrentSettingsToWebView()
         }
+    } catch Error as e {
+        _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)
     }
 }
 

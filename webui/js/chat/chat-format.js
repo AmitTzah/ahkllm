@@ -2,19 +2,33 @@
 // chat-format.js — Clipboard, number formatting, token usage bar
 // ======================================================
 
-// Copy a single message's content to clipboard
-function copySingleMessage(index) {
-  var msg = chatMessages[index];
-  if (!msg) return;
-
+// Format a single message as text (role label + content + attachment extracted text)
+function getMessageText(msg) {
   var text = '';
   switch (msg.role) {
     case 'user': text = 'You:\n' + msg.content; break;
     case 'assistant': text = (msg.model || 'Assistant') + ':\n' + msg.content; break;
     case 'system': text = 'System Prompt:\n' + msg.content; break;
   }
+  if (msg.attachments && msg.attachments.length) {
+    for (var a = 0; a < msg.attachments.length; a++) {
+      var att = msg.attachments[a];
+      if (att.extracted_text && att.extracted_text !== '__SCANNED_PDF__' && att.extracted_text !== '__LIBRARY_UNAVAILABLE__' && att.extracted_text !== '(no text extracted)') {
+        var label = 'File';
+        if (att.attachment_type === 'pdf') label = 'PDF';
+        else if (att.attachment_type === 'docx') label = 'DOCX';
+        text += '\n\n[Attached ' + label + ': ' + (att.original_filename || 'file') + ']\n' + att.extracted_text;
+      }
+    }
+  }
+  return text;
+}
 
-  navigator.clipboard.writeText(text).then(function() {
+// Copy a single message's content to clipboard
+function copySingleMessage(index) {
+  var msg = chatMessages[index];
+  if (!msg) return;
+  navigator.clipboard.writeText(getMessageText(msg)).then(function() {
     showCopiedFeedback(index);
   }).catch(function(err) {
     console.error('Failed to copy: ', err);
@@ -25,12 +39,7 @@ function copySingleMessage(index) {
 function copyEntireChat() {
   var parts = [];
   for (var i = 0; i < chatMessages.length; i++) {
-    var msg = chatMessages[i];
-    switch (msg.role) {
-      case 'user': parts.push('You:\n' + msg.content); break;
-      case 'assistant': parts.push((msg.model || 'Assistant') + ':\n' + msg.content); break;
-      case 'system': parts.push('System Prompt:\n' + msg.content); break;
-    }
+    parts.push(getMessageText(chatMessages[i]));
   }
 
   var fullText = parts.join('\n\n---\n\n');

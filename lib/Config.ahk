@@ -17,6 +17,8 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 #Include ..\shared\ModelParser.ahk
 #Include ..\shared\TokenEstimation.ahk
 #Include ..\shared\DebugLog.ahk
+#Include ..\shared\ImageUtils.ahk
+#Include ..\shared\AttachmentUtils.ahk
 
 ; Application classes
 #Include ..\api\CurlBuilder.ahk

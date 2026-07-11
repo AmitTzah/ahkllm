@@ -34,6 +34,7 @@
         <link rel="stylesheet" href="./css/chat/chat-actions.css">
         <link rel="stylesheet" href="./css/chat/chat-input.css">
         <link rel="stylesheet" href="./css/chat/chat-sidebar.css">
+        <link rel="stylesheet" href="./css/chat/chat-attachments.css">
 
 		<script>
 			function collapsePanel(element) {
@@ -91,6 +92,9 @@
 				<!-- Chat bubbles will be rendered here -->
 			</div>
 				<div id="chat-input-area">
+					<div id="attachment-bar" style="display:none;"></div>
+					<input type="file" id="attachment-file-input" accept="image/*,.pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.txt,.md,.py,.js,.ahk,.json,.xml,.csv,.ini,.cfg,.yaml,.yml,.log,.html,.css,.sql,.bat,.ps1,.sh,.java,.c,.cpp,.h,.rs,.go,.ts,.tsx,.jsx,.toml" multiple style="display:none;">
+					<button type="button" id="attachment-browse-btn" title="Attach files">📎+</button>
 					<textarea id="chat-input" placeholder="Type a message..." rows="1"></textarea>
 					<button type="button" id="chat-send-btn">Send</button>
 					<button type="button" id="copy-entire-chat-btn" title="Copy entire chat">📋 Copy All</button>
@@ -165,6 +169,8 @@
         <script src="./js/vendor/katex.min.js"></script>
         <script src="./js/vendor/mhchem.min.js"></script>
         <script src="./js/vendor/texmath.min.js"></script>
+        <script src="./js/vendor/pdf.min.js"></script>
+        <script src="./js/vendor/officeparser.iife.js"></script>
 
 		<!--
 		Feature modules — LOAD ORDER IS CRITICAL.
@@ -187,10 +193,13 @@
 		    ↓ main.js (message handler, DOM init, orchestrator)
 		-->
 		<script src="./js/chat/chat-core.js"></script>
-		<script src="./js/chat/chat-settings.js"></script>
+		<script src="./js/chat/settings/chat-settings.js"></script>
 		<script src="./js/chat/chat-format.js"></script>
 		<script src="./js/chat/chat-render.js"></script>
 		<script src="./js/chat/chat-actions.js"></script>
+		<script src="./js/chat/attachments/chat-attachments.js"></script>
+		<script src="./js/chat/attachments/chat-attachments-extract.js"></script>
+		<script src="./js/chat/attachments/chat-attachments-setup.js"></script>
 		<script src="./js/chat/chat-input.js"></script>
 		<script src="./js/chat/chat-branching.js"></script>
 		<script src="./js/chat/chat-sidebar.js"></script>
@@ -198,7 +207,7 @@
 		<script src="./js/chat/chat-feedback.js"></script>
 		<script src="./js/chat/chat-undo.js"></script>
 		<script src="./js/stream.js"></script>
-		<script src="./js/chat/chat-settings-modal.js"></script>
+		<script src="./js/chat/settings/chat-settings-modal.js"></script>
 		<script src="./js/main.js"></script>
 	</body>
 </html>

@@ -9,6 +9,14 @@
 
 #Include ..\lib\Config.ahk
 #SingleInstance Off
+
+; Global error handler — surfaces errors to chat UI and debug log
+OnError((err, mode) => (
+    debugLog("RUNTIME ERROR: " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
+    (IsSet(postWebMessage) ? postWebMessage("showError", { message: "Runtime Error: " err.Message }) : ""),
+    (IsSet(startLoadingCursor) ? startLoadingCursor(false) : ""),
+    (IsSet(postWebMessage) ? postWebMessage("setChatButtonsEnabled", true) : "")
+), -1)
 #NoTrayIcon
 
 ; ----------------------------------------------------

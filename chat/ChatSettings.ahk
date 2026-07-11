@@ -194,7 +194,7 @@ handleModelSettingsUpdate(parsed) {
             }
             ; Refresh chat view so label appears immediately
             path := ChatDB.Msg_GetActivePath(activeThreadId)
-            postWebMessage("updateChatView", buildStructuredMessagesFromPath(path))
+            postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         }
     }
 

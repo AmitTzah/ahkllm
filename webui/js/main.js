@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function () {
     chatInput.addEventListener('input', autoResizeChatInput);
   }
 
-  // Track user scroll intent for streaming
+  // Scroll tracking for streaming auto-scroll
   var chatMessagesEl = document.getElementById('chat-messages');
   if (chatMessagesEl) {
     chatMessagesEl.addEventListener('scroll', function () {

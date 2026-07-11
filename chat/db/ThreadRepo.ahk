@@ -90,12 +90,18 @@ class ThreadRepo {
     static PurgeExpired() {
         if (IsSet(trashRetentionDays) && trashRetentionDays <= 0) || (!IsSet(trashRetentionDays))
             return
+        ; Clean up attachment files on disk BEFORE the raw SQL DELETEs.
+        ; The CASCADE FK would auto-delete message_attachments rows but leave orphan files.
+        expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
+        for row in expiredTable.rows
+            AttachmentRepo.DeleteByThread(row.id)
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days'));")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
     }
 
     ; Permanently delete a thread and all its messages.
     static Delete(threadId) {
+        AttachmentRepo.DeleteByThread(threadId)
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" threadId "';")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" threadId "';")
     }

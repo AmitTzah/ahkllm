@@ -313,4 +313,181 @@ class BranchFlowTest {
 
         this._teardown()
     }
+    ; --------------------
+    ; Regression: Branch switch preserves attachment data
+    ; --------------------
+    SwitchBranch_PreservesAttachments() {
+        threadId := this._setup()
+        ; Create a message with an attachment
+        msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "msg with file"})
+        ChatDB.Attachment_Insert(msgId, {
+            attachment_type: "pdf",
+            file_path: "attachments\test_switch.pdf",
+            mime_type: "application/pdf",
+            original_filename: "test.pdf",
+            file_size: 1000,
+            extracted_text: "test content"
+        })
+
+        ; Build structured messages with threadId — should include attachment
+        path := ChatDB.Msg_GetActivePath(threadId)
+        struct := buildStructuredMessagesFromPath(path, threadId)
+
+        if struct.Length != 1
+            throw Error("Expected 1 message, got " struct.Length)
+        if !struct[1].HasProp("attachments") || struct[1].attachments.Length != 1
+            throw Error("Expected 1 attachment in structured message with threadId")
+        if struct[1].attachments[1].attachment_type != "pdf"
+            throw Error("Expected pdf attachment type")
+
+        ; Build without threadId — should still work but without attachments
+        structNoId := buildStructuredMessagesFromPath(path)
+        if structNoId[1].HasProp("attachments")
+            throw Error("Expected NO attachments without threadId parameter")
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Regression: Fork creates thread with "Copy - [title]" name
+    ; --------------------
+    ForkThread_CreatesCopyTitle() {
+        threadId := this._setup()
+        ChatDB.Thread_Update(threadId, "My Research Chat")
+
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
+        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+
+        if !newThreadId
+            throw Error("ForkThread returned empty")
+
+        titleRow := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" newThreadId "';")
+        if !titleRow.count
+            throw Error("Forked thread not found")
+        if titleRow[1, "title"] != "Copy - My Research Chat"
+            throw Error("Expected 'Copy - My Research Chat', got '" titleRow[1, "title"] "'")
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Regression: Fork copies thread-level settings
+    ; --------------------
+    ForkThread_CopiesThreadSettings() {
+        threadId := this._setup()
+        ChatDB.Thread_UpdateSettings(threadId, {
+            modelOverride: "openai/gpt-4o",
+            temperatureOverride: "0.5",
+            reasoningOverride: "enabled"
+        })
+
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "test"})
+        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+
+        settings := ChatDB.Thread_GetSettings(newThreadId)
+        if settings.modelOverride != "openai/gpt-4o"
+            throw Error("modelOverride not copied, got '" settings.modelOverride "'")
+        if settings.temperatureOverride != "0.5"
+            throw Error("temperatureOverride not copied, got '" settings.temperatureOverride "'")
+        if settings.reasoningOverride != "enabled"
+            throw Error("reasoningOverride not copied, got '" settings.reasoningOverride "'")
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Regression: Fork copies ALL siblings in a group, not just active path
+    ; --------------------
+    ForkThread_CopiesAllSiblings() {
+        threadId := this._setup()
+
+        ; Create a path with two sibling branches
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "question"})
+        sg := ChatDB._UUID()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer A", parent_id: usrId, sibling_group: sg, sibling_index: 0})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer B", parent_id: usrId, sibling_group: sg, sibling_index: 1})
+
+        ; Fork at the user message
+        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+
+        ; Get forked path — should have 2 messages (user + one assistant)
+        ; But more importantly, GetSiblings on the forked assistant should return 2
+        path := ChatDB.Msg_GetActivePath(newThreadId)
+        if path.Length < 1
+            throw Error("Forked path is empty")
+
+        ; Find the assistant in the forked path
+        foundSg := ""
+        for msg in path {
+            if msg.role = "assistant" && msg.sibling_group {
+                foundSg := msg.sibling_group
+                break
+            }
+        }
+        if !foundSg
+            throw Error("No sibling_group found on forked assistant")
+
+        ; Query siblings in forked thread — should be 2
+        siblings := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM messages WHERE sibling_group='" foundSg "' AND thread_id='" newThreadId "';")
+        if !siblings.count || siblings[1, "cnt"] != 2
+            throw Error("Expected 2 siblings in fork, got " (siblings.count ? siblings[1, "cnt"] : 0))
+
+        ; Original should still have 2
+        origSibs := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM messages WHERE sibling_group='" sg "' AND thread_id='" threadId "';")
+        if !origSibs.count || origSibs[1, "cnt"] != 2
+            throw Error("Original should still have 2 siblings, got " (origSibs.count ? origSibs[1, "cnt"] : 0))
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Regression: Fork generates fresh sibling_group UUIDs (no cross-thread sharing)
+    ; --------------------
+    ForkThread_FreshSiblingGroups() {
+        threadId := this._setup()
+
+        usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "q"})
+        sg := ChatDB._UUID()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a", parent_id: usrId, sibling_group: sg, sibling_index: 0})
+
+        newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
+
+        path := ChatDB.Msg_GetActivePath(newThreadId)
+        newSg := ""
+        for msg in path {
+            if msg.sibling_group {
+                newSg := msg.sibling_group
+                break
+            }
+        }
+
+        ; Forked sibling_group must differ from original
+        if !newSg
+            throw Error("Forked message has no sibling_group")
+        if newSg = sg
+            throw Error("Fork must have fresh sibling_group UUID, but shares original: " sg)
+
+        this._teardown()
+    }
+
+    ; --------------------
+    ; Regression: GetSiblings is scoped to thread_id
+    ; --------------------
+    GetSiblings_ScopedToThread() {
+        threadId1 := this._setup()
+        threadId2 := ChatDB.Thread_Create("Thread 2")
+
+        ; Same sibling_group value in both threads
+        sharedSg := ChatDB._UUID()
+        ChatDB.Msg_Insert({thread_id: threadId1, role: "assistant", content: "t1a", parent_id: "", sibling_group: sharedSg, sibling_index: 0})
+        ChatDB.Msg_Insert({thread_id: threadId2, role: "assistant", content: "t2a", parent_id: "", sibling_group: sharedSg, sibling_index: 0})
+
+        ; GetSiblings in thread 1 should return only 1 (not counting t2)
+        path1 := ChatDB.Msg_GetActivePath(threadId1)
+        sibs1 := ChatDB.Msg_GetSiblings(path1[1].id)
+        if sibs1.Length != 1
+            throw Error("GetSiblings in thread 1 should return 1, got " sibs1.Length)
+
+        this._teardown()
+    }
 }

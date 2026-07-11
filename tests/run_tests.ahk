@@ -80,7 +80,11 @@ RegisterTestClass(className) {
     __TestClasses.Push(className)
 }
 
+#Include unit\AttachmentUtils.test.ahk
 #Include unit\ChatDB.test.ahk
+#Include unit\AttachmentRepo.test.ahk
+#Include unit\ImageUtils.test.ahk
+#Include unit\SQLiteEscape.test.ahk
 #Include unit\TextCapture.test.ahk
 #Include unit\LLMRequestBuilder.test.ahk
 #Include unit\ChatUtils.test.ahk

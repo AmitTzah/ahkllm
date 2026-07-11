@@ -11,6 +11,7 @@
 #Include MessageRepo.ahk
 #Include TreeRepo.ahk
 #Include AssistantRepo.ahk
+#Include AttachmentRepo.ahk
 
 class ChatDB {
     static db := unset
@@ -50,6 +51,8 @@ class ChatDB {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, active_path_tokens INTEGER DEFAULT 0, cumulative_prompt_tokens INTEGER DEFAULT 0, cumulative_completion_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_total_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL);")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, feedback INTEGER, reasoning TEXT DEFAULT '', prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS message_attachments (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, attachment_type TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT, original_filename TEXT, file_size INTEGER DEFAULT 0, extracted_text TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE);")
+        ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_attachments_message ON message_attachments(message_id);")
         try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN assistant_id TEXT;")
         try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN model_override TEXT;")
         try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN system_override TEXT;")
@@ -94,4 +97,13 @@ class ChatDB {
     static Assistant_Seed() => AssistantRepo.Seed()
     static Assistant_List() => AssistantRepo.List()
     static Assistant_Get(assistantId) => AssistantRepo.Get(assistantId)
+
+    ; Attachment operations — delegate to AttachmentRepo
+    static Attachment_Insert(msgId, attObj) => AttachmentRepo.Insert(msgId, attObj)
+    static Attachment_GetByMessage(msgId) => AttachmentRepo.GetByMessage(msgId)
+    static Attachment_GetByThread(threadId) => AttachmentRepo.GetByThread(threadId)
+    static Attachment_DeleteByMessage(msgId) => AttachmentRepo.DeleteByMessage(msgId)
+    static Attachment_DeleteByThread(threadId) => AttachmentRepo.DeleteByThread(threadId)
+    static Attachment_DeleteOne(attachmentId) => AttachmentRepo.DeleteOne(attachmentId)
+    static Attachment_CopyForMessage(srcMsgId, dstMsgId) => AttachmentRepo.CopyForMessage(srcMsgId, dstMsgId)
 }

@@ -18,13 +18,18 @@ cURLState(action, data := 0) {
 ; ----------------------------------------------------
 
 postWebMessage(target, data := unset) {
+    global responseWindow
+    if !IsSet(responseWindow) || !responseWindow {
+        return
+    }
+
     msgObj := { target: target }
 
     ; If data is provided, add it to the message object
     msgObj.data := IsSet(data) ? data : unset
 
     jsonStr := jsongo.Stringify(msgObj)
-    responseWindow.PostWebMessageAsJSON(jsonStr)
+    try responseWindow.PostWebMessageAsJSON(jsonStr)
 }
 
 ; ----------------------------------------------------
@@ -69,7 +74,33 @@ postThreadStats(threadId := "") {
 ; as a shared utility rather than in a callbacks file.
 ; ----------------------------------------------------
 
-buildStructuredMessagesFromPath(path) {
+buildStructuredMessagesFromPath(path, threadId := "") {
+    debugLog("[STRUCTMSG] ENTER pathLen=" path.Length " threadId=" threadId, "AttachPipeline")
+    ; Batch-load all attachments for this thread (if threadId provided)
+    allAttachments := Map()
+    if threadId {
+        attList := ChatDB.Attachment_GetByThread(threadId)
+        for att in attList {
+            msgId := att.message_id
+            if !allAttachments.Has(msgId)
+                allAttachments[msgId] := []
+            attObj := {
+                id: att.id,
+                attachment_type: att.attachment_type,
+                file_path: att.file_path,
+                mime_type: att.mime_type,
+                original_filename: att.original_filename,
+                file_size: att.file_size,
+                extracted_text: att.extracted_text
+            }
+            ; Include base64 for image thumbnails in message bubbles
+            if att.attachment_type = "image" {
+                attObj.base64 := ImageUtils.ReadAndEncode(att.file_path)
+            }
+            allAttachments[msgId].Push(attObj)
+        }
+    }
+
     structuredMessages := []
     for msg in path {
         msgObj := { role: msg.role, content: msg.content, id: msg.id }
@@ -83,6 +114,9 @@ buildStructuredMessagesFromPath(path) {
             msgObj.feedback := msg.feedback
         if msg.HasProp("reasoning") && msg.reasoning
             msgObj.reasoning := msg.reasoning
+        ; Include attachments for this message
+        if allAttachments.Has(msg.id)
+            msgObj.attachments := allAttachments[msg.id]
         structuredMessages.Push(msgObj)
     }
     return structuredMessages
@@ -94,7 +128,7 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     activeThreadId := threadId
     _restoreThreadSettings(activeThreadId)
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path))
+    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path, activeThreadId))
     postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
     postThreadStats(activeThreadId)
     if includeDropdownLabel

@@ -334,8 +334,11 @@ class SQLite extends SQLite3 {
 		}
 	}
 	static Escape(orig_str) {
+		; Only escape single quotes (' -> '') for SQL string literals.
+		; Double quotes (") are literal inside single-quoted SQL strings
+		; and do NOT need escaping. The previous " -> "" doubling was a bug
+		; that silently corrupted all text data stored via this function.
 		fixed_str := RegExReplace(orig_str, "'+", "''")
-		fixed_str := RegExReplace(fixed_str, '"+', '""')
 		return fixed_str
 	}
 	static UnEscape(orig_str) {

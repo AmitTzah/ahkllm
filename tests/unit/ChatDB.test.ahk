@@ -1,5 +1,5 @@
 ; ======================================================
-; ChatDB.test.ahk — Unit tests for ChatDB class
+; ChatDB.test.ahk â€” Unit tests for ChatDB class
 ;
 ; Tests: Msg_Insert, Msg_GetActivePath, Msg_HardDelete,
 ;        Msg_GetThreadStats, Msg_GetSiblings,
@@ -12,7 +12,7 @@ class ChatDBTest {
         RegisterTestClass("ChatDBTest")
     }
 
-    ; Each test opens its own temp DB — no shared state
+    ; Each test opens its own temp DB â€” no shared state
     _openDb() {
         if ChatDB.isOpen {
             oldPath := ChatDB.dbPath
@@ -144,7 +144,7 @@ class ChatDBTest {
         if path.Length != 4
             throw Error("Expected 4 before delete, got " path.Length)
 
-        ; Delete middle message (a1Id) — children should be re-parented to u1Id
+        ; Delete middle message (a1Id) â€” children should be re-parented to u1Id
         ChatDB.Msg_HardDelete(a1Id)
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length != 3
@@ -160,7 +160,7 @@ class ChatDBTest {
         threadId := this._setup()
         rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", parent_id: rootId})
-        ; Delete root — children should get parent_id=NULL
+        ; Delete root â€” children should get parent_id=NULL
         ChatDB.Msg_HardDelete(rootId)
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length < 1
@@ -302,7 +302,7 @@ class ChatDBTest {
         if stats.activePathTokens != 60
             throw Error("Expected active_path_tokens=60 (API value) for a2, got " stats.activePathTokens)
 
-        ; Switch to a1 branch — _SyncActivePathTokens recalculates with estimation: user(1) + a1(3) = 4
+        ; Switch to a1 branch â€” _SyncActivePathTokens recalculates with estimation: user(1) + a1(3) = 4
         result := ChatDB.Msg_SwitchBranch(threadId, a2Id, -1)
         if result.siblingInfo.index != 1
             throw Error("Expected sibling index 1 after switching, got " result.siblingInfo.index)
@@ -311,7 +311,7 @@ class ChatDBTest {
         if stats.activePathTokens != 4
             throw Error("Expected active_path_tokens=4 (estimated) for a1 branch after switch, got " stats.activePathTokens)
 
-        ; Switch back to a2 — estimation: user(1) + a2(6) = 7
+        ; Switch back to a2 â€” estimation: user(1) + a2(6) = 7
         ChatDB.Msg_SwitchBranch(threadId, a1Id, 1)
         stats := ChatDB.Msg_GetThreadStats(threadId)
         if stats.activePathTokens != 7
@@ -333,6 +333,39 @@ class ChatDBTest {
         path := ChatDB.Msg_GetActivePath(newId)
         if path.Length != 2
             throw Error("Expected 2 messages in forked thread, got " path.Length)
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
+    ; Regression: Fork copies attachments
+    ForkThread_CopiesAttachments() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1 with file"})
+        ChatDB.Attachment_Insert(u1Id, {
+            attachment_type: "pdf",
+            file_path: "attachments\test_fork.pdf",
+            mime_type: "application/pdf",
+            original_filename: "test.pdf",
+            file_size: 500,
+            extracted_text: "fork test"
+        })
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork")
+
+        ; Get forked message and check its attachments
+        path := ChatDB.Msg_GetActivePath(newId)
+        if path.Length != 2
+            throw Error("Expected 2 messages in forked thread")
+
+        atts := ChatDB.Attachment_GetByMessage(path[1].id)
+        if atts.Length != 1
+            throw Error("Expected 1 copied attachment after fork, got " atts.Length)
+        if atts[1].attachment_type != "pdf"
+            throw Error("Expected pdf attachment type after fork copy")
+
         ChatDB.Thread_Delete(newId)
         this._teardown()
     }
@@ -435,11 +468,11 @@ class ChatDBTest {
         afterCt := Integer(threadRow[1, "cumulative_completion_tokens"])
         afterTt := Integer(threadRow[1, "cumulative_total_tokens"])
         if afterPt != beforePt
-            throw Error("Cumulative prompt_tokens changed after delete: " beforePt " → " afterPt)
+            throw Error("Cumulative prompt_tokens changed after delete: " beforePt " â†’ " afterPt)
         if afterCt != beforeCt
-            throw Error("Cumulative completion_tokens changed: " beforeCt " → " afterCt)
+            throw Error("Cumulative completion_tokens changed: " beforeCt " â†’ " afterCt)
         if afterTt != beforeTt
-            throw Error("Cumulative total_tokens changed: " beforeTt " → " afterTt)
+            throw Error("Cumulative total_tokens changed: " beforeTt " â†’ " afterTt)
         this._teardown()
     }
 
@@ -453,22 +486,22 @@ class ChatDBTest {
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Very long original message to edit"})
         aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", model: "deepseek-v4-flash", prompt_tokens: 50, completion_tokens: 10, total_tokens: 60, cached_tokens: 0})
-        ; Msg_Edit only estimates tokens from content length — the assistant's 60 total_tokens
+        ; Msg_Edit only estimates tokens from content length â€” the assistant's 60 total_tokens
         ; (set by Msg_Insert) won't be used. Verify baseline is non-zero.
         beforeRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
         beforeTokens := Integer(beforeRow[1, "active_path_tokens"])
         if beforeTokens <= 0
             throw Error("Expected non-zero active_path_tokens baseline, got " beforeTokens)
 
-        ; Now edit the user message to shorter content — this adjusts estimated tokens
+        ; Now edit the user message to shorter content â€” this adjusts estimated tokens
         ChatDB.Msg_Edit(aId, "ok")
 
         afterRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
         afterTokens := Integer(afterRow[1, "active_path_tokens"])
-        ; Old content "response" (8 chars) → 8/4=2, New content "ok" (2 chars) → estimate = 1 (min)
+        ; Old content "response" (8 chars) â†’ 8/4=2, New content "ok" (2 chars) â†’ estimate = 1 (min)
         ; Delta = 1-2 = -1, so active_path_tokens should decrease by 1
         if afterTokens != beforeTokens - 1
-            throw Error("Expected active_path_tokens to decrease by 1 after shortening: " beforeTokens " → " afterTokens)
+            throw Error("Expected active_path_tokens to decrease by 1 after shortening: " beforeTokens " â†’ " afterTokens)
         this._teardown()
     }
 
@@ -630,4 +663,5 @@ class ChatDBTest {
             throw Error("Expected all overrides to be empty for new thread")
         this._closeDb()
     }
+
 }

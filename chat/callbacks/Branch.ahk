@@ -20,7 +20,7 @@ handleBranchSwitch(params, *) {
     id := params["id"]
     direction := params.Has("direction") ? params["direction"] : 1
     result := ChatDB.Msg_SwitchBranch(activeThreadId, id, direction)
-    postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path))
+    postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path, activeThreadId))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
 }

@@ -1,0 +1,209 @@
+/* chat-attachments.css — Attachment bar, thumbnails, file badges, themes */
+
+/* Attachment bar above the text input */
+#attachment-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-top: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+    min-height: 0;
+    align-items: center;
+    width: 100%;
+    flex-basis: 100%;
+    order: -1;
+}
+
+#attachment-bar:empty {
+    display: none;
+}
+
+/* Browse button */
+#attachment-browse-btn {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    font-size: 0.85rem;
+    height: 32px;
+    white-space: nowrap;
+}
+
+#attachment-browse-btn:hover {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+}
+
+/* Individual attachment item */
+.attachment-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg);
+    font-size: 0.8rem;
+    max-width: 200px;
+    position: relative;
+}
+
+.attachment-item .attachment-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 0.25rem;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.attachment-item .attachment-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.attachment-item .attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.attachment-item .attachment-remove {
+    background: none;
+    border: none;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.attachment-item .attachment-remove:hover {
+    color: var(--bs-danger);
+}
+
+/* Loading spinner for text extraction */
+.attachment-item .attachment-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--bs-border-color);
+    border-top: 2px solid var(--bs-primary);
+    border-radius: 50%;
+    animation: attach-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes attach-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Message bubble attachment rendering */
+.msg-attachment-image {
+    margin: 0.5rem 0;
+}
+
+.msg-attachment-image img {
+    max-width: 300px;
+    max-height: 300px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.msg-attachment-image img:hover {
+    transform: scale(1.02);
+}
+
+.msg-attachment-file {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    margin: 0.35rem 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background: var(--bs-tertiary-bg);
+    font-size: 0.8rem;
+}
+
+.msg-attachment-file .file-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.msg-attachment-file .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.msg-attachment-file .file-size {
+    color: var(--bs-secondary-color);
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
+
+.msg-attachment-delete {
+    background: none;
+    border: none;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 0.25rem;
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+.msg-attachment-delete:hover {
+    opacity: 1;
+    color: var(--bs-danger);
+}
+
+.msg-attachment-text-preview {
+    margin: 0.25rem 0;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background: var(--bs-tertiary-bg);
+    font-size: 0.75rem;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.msg-attachment-text-preview pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: "Cascadia Code", "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+}
+
+/* Full-size image overlay */
+.image-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 2000;
+    cursor: pointer;
+    justify-content: center;
+    align-items: center;
+}
+
+.image-overlay img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+}

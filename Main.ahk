@@ -10,6 +10,13 @@ if FileExist(debugLogFile) {
     FileDelete(debugLogFile)
 }
 
+; Global error handler for main script — surfaces to tooltip + debug log
+OnError((err, mode) => (
+    debugLog("RUNTIME ERROR (main): " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
+    ToolTip("Error: " err.Message, , , 19),
+    SetTimer(() => ToolTip(, , , 19), -5000)
+), -1)
+
 ; ----------------------------------------------------
 ; Hotkeys (registered dynamically from UserConfig.ahk)
 ; ----------------------------------------------------
@@ -20,6 +27,7 @@ Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"))
 Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S")
 
 handleHotkey(action) {
+    try {
     switch action {
         case "showCommandMenu":
             buildCommandMenu()
@@ -49,6 +57,11 @@ handleHotkey(action) {
             switch WinActive("A") {
                 case commandInputWindow.guiObj.hWnd: commandInputWindow.closeButtonAction()
             }
+    }
+    } catch Error as e {
+        debugLog("ERROR in handleHotkey(" action "): " e.Message "`n" e.Stack, "ErrorHandler")
+        ToolTip("Error: " e.Message, , , 19)
+        SetTimer(() => ToolTip(, , , 19), -5000)
     }
 }
 

@@ -67,6 +67,9 @@ class MessageRepo {
         }
 
         contentTable := ChatDB.db.Exec("SELECT content, reasoning FROM messages WHERE id='" msgId "';")
+        ; Delete attachments BEFORE the raw DELETE — ON DELETE CASCADE would remove
+        ; message_attachments rows before we can read file_path for disk cleanup.
+        AttachmentRepo.DeleteByMessage(msgId)
         ChatDB.db.Exec("DELETE FROM messages WHERE id='" msgId "';")
 
         if contentTable.count {

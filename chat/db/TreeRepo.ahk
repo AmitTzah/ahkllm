@@ -45,14 +45,15 @@ class TreeRepo {
     }
 
     static GetSiblings(msgId) {
-        table := ChatDB.db.Exec("SELECT sibling_group FROM messages WHERE id='" msgId "';")
+        table := ChatDB.db.Exec("SELECT sibling_group, thread_id FROM messages WHERE id='" msgId "';")
         if !table.count
             return []
         sg := table[1, "sibling_group"]
         if !sg
             return []
+        tid := table[1, "thread_id"]
 
-        table2 := ChatDB.db.Exec("SELECT id, role, content, model, sibling_index FROM messages WHERE sibling_group='" sg "' ORDER BY sibling_index;")
+        table2 := ChatDB.db.Exec("SELECT id, role, content, model, sibling_index FROM messages WHERE sibling_group='" sg "' AND thread_id='" tid "' ORDER BY sibling_index;")
         siblings := []
         for row in table2.rows {
             siblings.Push({
@@ -121,8 +122,29 @@ class TreeRepo {
         if !cutoff
             return ""
 
-        newThreadId := ThreadRepo.Create("Fork of " threadId)
+        ; Get original thread title for the fork name
+        oldTitle := "New Chat"
+        titleRow := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" threadId "';")
+        if titleRow.count && titleRow[1, "title"]
+            oldTitle := titleRow[1, "title"]
+
+        newThreadId := ThreadRepo.Create("Copy - " oldTitle)
+
+        ; Copy thread-level settings from original to fork
+        settings := ThreadRepo.GetSettings(threadId)
+        if settings.modelOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET model_override='" SQLite.Escape(settings.modelOverride) "' WHERE id='" newThreadId "';")
+        if settings.systemOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET system_override='" SQLite.Escape(settings.systemOverride) "' WHERE id='" newThreadId "';")
+        if settings.reasoningOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET reasoning_override='" SQLite.Escape(settings.reasoningOverride) "' WHERE id='" newThreadId "';")
+        if settings.temperatureOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET temperature_override=" settings.temperatureOverride " WHERE id='" newThreadId "';")
+        if settings.assistantId
+            ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" newThreadId "';")
+
         idMap := Map()
+        sgMap := Map()  ; old sibling_group → new sibling_group (fresh UUIDs per fork)
 
         for i, msg in path {
             if i > cutoff
@@ -135,8 +157,14 @@ class TreeRepo {
             safeContent := SQLite.Escape(msg.content)
             safeModel := msg.model ? SQLite.Escape(msg.model) : ""
             safeParent := newParentId ? "'" newParentId "'" : "NULL"
-            safeSiblingGroup := msg.sibling_group ? "'" msg.sibling_group "'" : "NULL"
+            ; Map old sibling_group to a fresh UUID so fork has independent sibling groups
+            safeSiblingGroup := "NULL"
             siblingIdx := msg.sibling_index
+            if msg.sibling_group {
+                if !sgMap.Has(msg.sibling_group)
+                    sgMap[msg.sibling_group] := ChatDB._UUID()
+                safeSiblingGroup := "'" sgMap[msg.sibling_group] "'"
+            }
             safeFeedback := msg.feedback ? msg.feedback : "NULL"
             safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
 
@@ -146,6 +174,36 @@ class TreeRepo {
             ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
 
             ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newId "', '" newThreadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " pt ", " ct ", " ckt ", " tt ");")
+            ; Copy attachments from source message to forked message
+            AttachmentRepo.CopyForMessage(msg.id, newId)
+        }
+
+        ; Second pass: copy any siblings NOT on the active path so branch nav works
+        for oldSg, newSg in sgMap {
+            siblings := ChatDB.db.Exec("SELECT * FROM messages WHERE sibling_group='" oldSg "' AND thread_id='" threadId "' ORDER BY sibling_index;")
+            for sibRow in siblings.rows {
+                if idMap.Has(sibRow.id)
+                    continue  ; already copied from active path
+                ; Only copy if parent was also copied (within fork range)
+                if sibRow.parent_id && !idMap.Has(sibRow.parent_id)
+                    continue
+
+                newSibId := ChatDB._UUID()
+                idMap[sibRow.id] := newSibId
+                mappedParent := sibRow.parent_id && idMap.Has(sibRow.parent_id) ? "'" idMap[sibRow.parent_id] "'" : "NULL"
+
+                safeC := SQLite.Escape(sibRow.content)
+                safeM := sibRow.model ? SQLite.Escape(sibRow.model) : ""
+                safeR := sibRow.Has("reasoning") && sibRow.reasoning ? SQLite.Escape(sibRow.reasoning) : ""
+                fb := sibRow.feedback ? sibRow.feedback : "NULL"
+                sPt := sibRow.prompt_tokens ? sibRow.prompt_tokens : 0
+                sCt := sibRow.completion_tokens ? sibRow.completion_tokens : 0
+                sTt := sibRow.total_tokens ? sibRow.total_tokens : 0
+                sCkt := sibRow.cached_tokens ? sibRow.cached_tokens : 0
+
+                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", " fb ", '" safeR "', " sPt ", " sCt ", " sCkt ", " sTt ");")
+                AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
+            }
         }
 
         newLeafId := idMap[path[cutoff].id]

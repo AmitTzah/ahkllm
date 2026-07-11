@@ -241,6 +241,8 @@ class TextCapture {
         prefix := TextCapture.NormalizeLineEndings(A_Clipboard, expandNewlines)
         try
             prefix := maxContextWords ? TextCapture._TruncateWords(prefix, maxContextWords, true) : prefix
+        catch Error as e
+            debugLog("TextCapture clipboard truncation error: " e.Message, "ErrorHandler")
         catch Error as e {
             A_Clipboard := clipboardBeforeCopy
             return { success: false, error: "Text truncation failed: " e.Message }

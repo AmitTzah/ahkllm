@@ -446,6 +446,19 @@ commands := [
 
     }
 
+  , {
+        commandName: "Screenshot",
+        menuText: "&4 - Send Screenshot",
+        APIModels: "openai/gpt-5.4-mini",
+        showInputBox: true,
+        userMessage: "{{input}}",
+        pasteMode: "chat",
+        stream: true,
+        includeImageContext:true,
+        thinking: { type: "enabled" },
+        tags: ["&Digest"]
+    }
+
 
     , {
         commandName: "Multi-Provider Council",

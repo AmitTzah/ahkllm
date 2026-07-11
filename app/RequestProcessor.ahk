@@ -10,7 +10,7 @@
 ; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
 processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode, isFIM,
-    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0) {
+    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0, includeImageContext := false) {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
 
     ; Determine if fullText is needed (lazy — avoid capturing 1M-word docs unnecessarily)
@@ -46,6 +46,18 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         pasteMode := (APIModelsArr.Length > 1) ? "chat" : pasteMode
     }
 
+    ; STEP 1.5: Screenshot capture for includeImageContext
+    if includeImageContext {
+        ; Vision gate: check model supports images
+        if !AttachmentUtils.HasVision(APIModelsArr[1]) {
+            ToolTip("This model does not support images", , , 19)
+            SetTimer(() => ToolTip(, , , 19), -3000)
+            return
+        }
+        captureMsgId := ChatDB._UUID()
+        screenshotPath := ImageUtils.CaptureScreen(captureMsgId)
+    }
+
     ; STEP 2: Build request and execute
     for i, fullAPIModelName in APIModelsArr {
         providerInfo := ProviderResolver.Resolve(fullAPIModelName)
@@ -64,12 +76,35 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
                     content: systemMessage, parent_id: ""
                 })
             }
+            userMsgId := ""
             if captured.HasOwnProp("userMessage") && captured.userMessage {
                 path := ChatDB.Msg_GetActivePath(threadId)
                 parentId := path.Length ? path[path.Length].id : ""
-                ChatDB.Msg_Insert({
+                userMsgId := ChatDB.Msg_Insert({
                     thread_id: threadId, role: "user",
                     content: captured.userMessage, parent_id: parentId
+                })
+            } else if includeImageContext && screenshotPath {
+                ; No user message text, but we have a screenshot — insert empty user message
+                path := ChatDB.Msg_GetActivePath(threadId)
+                parentId := path.Length ? path[path.Length].id : ""
+                userMsgId := ChatDB.Msg_Insert({
+                    thread_id: threadId, role: "user",
+                    content: "Describe this screenshot.", parent_id: parentId
+                })
+            }
+
+            ; Attach screenshot to user message
+            if includeImageContext && screenshotPath && userMsgId {
+                fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" screenshotPath
+                fileSize := FileExist(fullPath) ? FileGetSize(fullPath) : 0
+                ChatDB.Attachment_Insert(userMsgId, {
+                    attachment_type: "image",
+                    file_path: screenshotPath,
+                    mime_type: "image/png",
+                    original_filename: "screenshot.png",
+                    file_size: fileSize,
+                    extracted_text: ""
                 })
             }
 

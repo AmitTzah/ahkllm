@@ -13,8 +13,23 @@ function onChatSend() {
   }
 
   var message = input.value.trim();
-  if (message) {
-    // Normal send with typed text
+  var attachments = typeof getAttachmentsForSend === 'function' ? getAttachmentsForSend() : [];
+
+  // Check if any attachment is still loading
+  if (typeof attachmentState !== 'undefined') {
+    var anyLoading = false;
+    for (var a = 0; a < attachmentState.length; a++) {
+      console.log('[ATTACH-JS] send check: idx=' + a + ' loading=' + attachmentState[a].loading + ' type=' + attachmentState[a].type);
+      if (attachmentState[a].loading) { anyLoading = true; }
+    }
+    if (anyLoading) {
+      showErrorBanner('Please wait — file processing in progress');
+      return;
+    }
+  }
+
+  if (message || attachments.length > 0) {
+    // Normal send with typed text and/or attachments
     input.value = '';
     input.style.height = 'auto';
     isLoading = true;
@@ -22,7 +37,11 @@ function onChatSend() {
     var sendBtn = document.getElementById('chat-send-btn');
     if (sendBtn) sendBtn.disabled = true;
     input.disabled = true;
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'chatSend', message: message }));
+    var payload = { action: 'chatSend', message: message || 'Describe the attached content.' };
+    if (attachments.length > 0) payload.attachments = attachments;
+    console.log('[ATTACH-JS] Sending chatSend: msgLen=' + message.length + ' attCount=' + attachments.length + ' payloadLen=' + JSON.stringify(payload).length);
+    window.chrome.webview.postMessage(JSON.stringify(payload));
+    if (typeof clearAttachments === 'function') clearAttachments();
     return;
   }
 

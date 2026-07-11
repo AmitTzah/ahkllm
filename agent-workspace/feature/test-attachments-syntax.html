@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>chat-attachments.js Smoke Test</title></head>
+<body>
+<h1>chat-attachments.js Syntax Test</h1>
+<pre id="result">Loading...</pre>
+
+<!-- Load dependencies (some functions reference pdf.js and officeparser globals) -->
+<script src="../../webui/js/vendor/pdf.min.js"></script>
+<script src="../../webui/js/vendor/officeparser.iife.js"></script>
+<script src="../../webui/js/chat/chat-attachments.js"></script>
+<script>
+var result = document.getElementById('result');
+var checks = [];
+
+// Verify key functions exist
+checks.push({ name: 'addAttachment', pass: typeof addAttachment === 'function' });
+checks.push({ name: 'removeAttachment', pass: typeof removeAttachment === 'function' });
+checks.push({ name: 'extractPDFText', pass: typeof extractPDFText === 'function' });
+checks.push({ name: 'extractOfficeText', pass: typeof extractOfficeText === 'function' });
+checks.push({ name: 'getAttachmentsForSend', pass: typeof getAttachmentsForSend === 'function' });
+checks.push({ name: 'renderAttachmentBar', pass: typeof renderAttachmentBar === 'function' });
+checks.push({ name: 'clearAttachments', pass: typeof clearAttachments === 'function' });
+checks.push({ name: 'isAllowedFile', pass: typeof isAllowedFile === 'function' });
+checks.push({ name: 'setupAttachmentDropZone', pass: typeof setupAttachmentDropZone === 'function' });
+checks.push({ name: 'setupAttachmentPaste', pass: typeof setupAttachmentPaste === 'function' });
+checks.push({ name: 'setupAttachmentBrowse', pass: typeof setupAttachmentBrowse === 'function' });
+checks.push({ name: 'attachmentState', pass: Array.isArray(attachmentState) });
+
+var allPass = true;
+var output = '';
+for (var i = 0; i < checks.length; i++) {
+    var c = checks[i];
+    var status = c.pass ? 'PASS' : 'FAIL';
+    if (!c.pass) allPass = false;
+    output += '[' + status + '] ' + c.name + '\n';
+}
+
+// Check ALLOWED_EXTENSIONS includes key formats
+var exts = ['pdf', 'docx', 'pptx', 'xlsx', 'ahk', 'png'];
+for (var e = 0; e < exts.length; e++) {
+    var ext = exts[e];
+    var pass = ALLOWED_EXTENSIONS.indexOf(ext) !== -1;
+    if (!pass) allPass = false;
+    output += '[' + (pass ? 'PASS' : 'FAIL') + '] ALLOWED_EXTENSIONS contains .' + ext + '\n';
+}
+
+output += '\n' + (allPass ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED');
+result.textContent = output;
+result.style.color = allPass ? 'green' : 'red';
+</script>
+</body>
+</html>

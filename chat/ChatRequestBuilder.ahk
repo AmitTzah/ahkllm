@@ -13,11 +13,17 @@
 ; ======================================================
 
 buildRequest() {
-    if !activeThreadId
+    debugLog("[BUILDREQ] ENTER activeThreadId=" activeThreadId, "AttachPipeline")
+    if !activeThreadId {
+        debugLog("[BUILDREQ] ABORT: no activeThreadId", "AttachPipeline")
         return ""
+    }
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    if !path.Length
+    if !path.Length {
+        debugLog("[BUILDREQ] ABORT: empty path", "AttachPipeline")
         return ""
+    }
+    debugLog("[BUILDREQ] path length=" path.Length, "AttachPipeline")
 
     ; Resolve provider once — used for validation, cURL building, and provider-specific request fields
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
@@ -37,8 +43,102 @@ buildRequest() {
     ; Build messages array as AHK objects for safe JSON serialization
     apiMessages := []
     for msg in path {
-        apiMessages.Push({ role: msg.role, content: msg.content })
+        apiMessages.Push({ role: msg.role, content: msg.content, _msgId: msg.id })
     }
+
+    ; Find last user message and load its attachments
+    lastUserMsgId := ""
+    lastUserIdx := 0
+    Loop apiMessages.Length {
+        i := apiMessages.Length - A_Index + 1
+        if apiMessages[i].role = "user" {
+            lastUserMsgId := apiMessages[i]._msgId
+            lastUserIdx := i
+            break
+        }
+    }
+
+    debugLog("[BUILDREQ] lastUserMsgId=" lastUserMsgId " lastUserIdx=" lastUserIdx, "AttachPipeline")
+    if lastUserMsgId {
+        attachments := ChatDB.Attachment_GetByMessage(lastUserMsgId)
+        debugLog("[BUILDREQ] attachments loaded from DB: count=" attachments.Length, "AttachPipeline")
+        if attachments.Length > 0 {
+            ; Vision gating: check for images
+            hasImages := false
+            for att in attachments {
+                if att.attachment_type = "image" {
+                    hasImages := true
+                    break
+                }
+            }
+            if hasImages && !AttachmentUtils.HasVision(requestParams["singleAPIModelName"]) {
+                errorMsg := "Model '" requestParams["singleAPIModelName"] "' does not support vision. Remove images or switch models."
+                postWebMessage("showError", { message: errorMsg })
+                postWebMessage("setChatButtonsEnabled", true)
+                startLoadingCursor(false)
+                return ""
+            }
+
+            if lastUserIdx > 0 {
+                contentArray := []
+                ; Add image content parts
+                for att in attachments {
+                    debugLog("[BUILDREQ] att type=" att.attachment_type " file_path=" att.file_path, "AttachPipeline")
+                    if att.attachment_type = "image" {
+                        base64Data := ImageUtils.ReadAndEncode(att.file_path)
+                        debugLog("[BUILDREQ] ReadAndEncode returned len=" (base64Data ? StrLen(base64Data) : 0), "AttachPipeline")
+                        if base64Data {
+                            contentArray.Push({
+                                type: "image_url",
+                                image_url: { url: "data:" att.mime_type ";base64," base64Data }
+                            })
+                            debugLog("[BUILDREQ] added image_url to contentArray", "AttachPipeline")
+                        } else {
+                            debugLog("[BUILDREQ] WARNING: ReadAndEncode returned empty for " att.file_path, "AttachPipeline")
+                        }
+                    }
+                }
+                debugLog("[BUILDREQ] contentArray length=" contentArray.Length, "AttachPipeline")
+                ; Build content array with separate text parts for file content and user message.
+                ; Follows OpenAI ChatCompletionContentPart spec: each text block is distinct.
+                userMsg := apiMessages[lastUserIdx].content
+                fileContexts := ""
+                for att in attachments {
+                    if att.attachment_type != "image" {
+                        typeLabel := "File"
+                        if att.attachment_type = "pdf"
+                            typeLabel := "PDF"
+                        else if att.attachment_type = "docx"
+                            typeLabel := "DOCX"
+                        if att.extracted_text {
+                            fileContexts .= "[Attached " typeLabel ": " att.original_filename "]`n`n" att.extracted_text "`n`n"
+                        }
+                    }
+                }
+                ; Build content as array with separate text parts
+                textContent := ""
+                if !contentArray.Length && !fileContexts {
+                    ; No images and no file contexts — keep as plain string content
+                    textContent := userMsg
+                } else {
+                    ; Use content array: file contexts as separate text blocks, then user message
+                    if fileContexts
+                        contentArray.InsertAt(1, { type: "text", text: RTrim(fileContexts, "`n`n") })
+                    if userMsg
+                        contentArray.Push({ type: "text", text: userMsg })
+                }
+                if contentArray.Length > 0 {
+                    apiMessages[lastUserIdx] := { role: "user", content: contentArray }
+                }
+                ; else: keep original string content (no attachments at all)
+            }
+        }
+    }
+
+    ; Clean up internal _msgId fields
+    for msg in apiMessages
+        if msg.HasProp("_msgId")
+            msg.DeleteProp("_msgId")
 
     ; Apply system message override if set via Settings modal
     if requestParams.Has("systemOverride") && requestParams["systemOverride"] {
@@ -127,6 +227,7 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
 
 ; Build request, fire to LLM, handle errors. Replaces 5 duplicate call sites.
 _BuildAndFireRequest() {
+    try {
     chatHistoryJSONRequest := buildRequest()
     if !chatHistoryJSONRequest {
         postWebMessage("setChatButtonsEnabled", true)
@@ -137,9 +238,17 @@ _BuildAndFireRequest() {
     startLoadingCursor(true)
     sendRequestToLLM(&chatHistoryJSONRequest)
     return true
+    } catch Error as e {
+        debugLog("_BuildAndFireRequest error: " e.Message "`n" e.Stack, "ErrorHandler")
+        postWebMessage("showError", { message: "Request failed: " e.Message })
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+        return false
+    }
 }
 
 handleCancelStream() {
+    try {
     ; Kill cURL to stop generation server-side (closing TCP connection).
     ; Usage data is lost (only in final SSE chunk), but we avoid billing
     ; for un-displayed tokens. Token estimates are computed from what we captured.
@@ -149,4 +258,8 @@ handleCancelStream() {
     }
     requestParams["_streamCancelled"] := true
     postWebMessage("setChatButtonsEnabled", true)
+    } catch Error as e {
+        debugLog("handleCancelStream error: " e.Message "`n" e.Stack, "ErrorHandler")
+        postWebMessage("setChatButtonsEnabled", true)
+    }
 }
