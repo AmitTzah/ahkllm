@@ -259,9 +259,13 @@ ai-automation/
 │               ├── chat-settings.js         # Model/assistant/temperature/reasoning state
 │               └── chat-settings-modal.js   # Settings modal UI
 │
-├── tests/                           # Unit + integration tests (~252 tests)
-│   ├── run_tests.ahk               # Entry point — discovers + runs all test classes
+├── tests/                           # Unit + integration tests (~252 AHK + 11 JS)
+│   ├── run_all_tests.bat            # PRIMARY ENTRY POINT — runs both AHK and JS
+│   ├── run_ahk_tests.ahk            # AHK test runner (run_all_tests.bat calls this)
 │   ├── test_config.ahk              # Test overrides (loaded after Config.ahk)
+│   ├── js/                          # JavaScript unit tests (Node.js node:test, zero deps)
+│   │   └── unit/
+│   │       └── chat-attachments.test.js
 │   ├── unit/
 │   │   ├── TextCapture.test.ahk
 │   │   ├── RequestProcessor.test.ahk
@@ -531,36 +535,54 @@ cURL → LLM API
 ## Testing
 
 ### How to Run All Tests
+
+**Primary entry point (runs both AHK and JS tests):**
 ```bash
-"AutoHotkey64.exe" ai-automation/tests/run_tests.ahk
+tests\run_all_tests.bat
+```
+
+**AHK tests only:**
+```bash
+"AutoHotkey64.exe" tests\run_ahk_tests.ahk
+```
+
+**JS tests only:**
+```bash
+node --test tests/js/unit/*.test.js
 ```
 
 ### Test Structure
 ```
 ai-automation/tests/
-├── test_config.ahk              # Test overrides (loaded after Config.ahk)
-├── run_tests.ahk                # Entry point — discovers + runs all test classes
-├── unit/                        # Isolated unit tests (14 files)
-│   ├── AttachmentRepo.test.ahk       # Content-addressable storage, ref-count delete
-│   ├── AttachmentUtils.test.ahk      # HasVision, MIME classification
-│   ├── ChatDB.test.ahk               # Core DB operations
+├── run_all_tests.bat              # PRIMARY ENTRY POINT — runs both AHK + JS
+├── run_ahk_tests.ahk              # AHK test runner (called by run_all_tests.bat)
+├── test_config.ahk                # Test overrides (loaded after Config.ahk)
+├── js/                            # JavaScript unit tests (Node.js node:test, zero npm deps)
+│   └── unit/
+│       └── chat-attachments.test.js    # MIME classification, extension allow-list
+├── unit/                          # AHK unit tests (14 files, ~200 tests)
+│   ├── AttachmentRepo.test.ahk         # Content-addressable storage, ref-count delete
+│   ├── AttachmentUtils.test.ahk        # HasVision, MIME classification
+│   ├── ChatDB.test.ahk                 # Core DB operations
 │   ├── ChatRequestBuilder.test.ahk
 │   ├── ChatUtils.test.ahk
 │   ├── CustomMessages.test.ahk
-│   ├── ImageUtils.test.ahk           # Base64 encode/decode, roundtrip
+│   ├── ImageUtils.test.ahk             # Base64 encode/decode, roundtrip
 │   ├── InlineRequestRunner.test.ahk
 │   ├── LLMRequestBuilder.test.ahk
-│   ├── RequestProcessor.test.ahk     # Paste block, apilogs handler
-│   ├── SQLiteEscape.test.ahk         # Escape correctness, SQL roundtrip
+│   ├── RequestProcessor.test.ahk       # Paste block, apilogs handler
+│   ├── SQLiteEscape.test.ahk           # Escape correctness, SQL roundtrip
 │   ├── StreamHandler.test.ahk
-│   ├── TextCapture.test.ahk          # ExpandTemplate, NormalizeLineEndings
+│   ├── TextCapture.test.ahk            # ExpandTemplate, NormalizeLineEndings
 │   └── UserConfig.test.ahk
-└── integration/                  # Multi-component tests (2 files)
-    ├── BranchFlow.test.ahk           # Branch nav, fork (title, settings, siblings, UUIDs)
+└── integration/                    # AHK integration tests (2 files, ~50 tests)
+    ├── BranchFlow.test.ahk             # Branch nav, fork (title, settings, siblings, UUIDs)
     └── ChatFlow.test.ahk
 ```
 
 ### Output Format
+
+**AHK tests:**
 ```
 [PASS] ClassName.MethodName
 [FAIL] ClassName.MethodName — Error message
@@ -568,4 +590,13 @@ ai-automation/tests/
 N tests run | X passed | Y failed
 ```
 
-Tests: ~252 (unit + integration). Run on every commit via the feature workflow.
+**JS tests (node:test TAP output):**
+```
+▶ getAttachmentTypeFromMime
+  ✔ identifies images from MIME type
+  ✔ identifies PDF from MIME type
+✔ getAttachmentTypeFromMime
+ℹ tests 11 | pass 11 | fail 0
+```
+
+Tests: ~252 AHK + 11 JS (growing). Run on every commit via `run_all_tests.bat`.
