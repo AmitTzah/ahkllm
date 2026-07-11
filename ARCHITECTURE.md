@@ -540,7 +540,7 @@ Copy and paste into terminal from the project root:
 tests\run_all_tests.bat
 ```
 
-This runs AHK tests (~252) then JS tests (69). Alternatively:
+This runs AHK tests (~252) then JS tests (69) — ~321 total. Alternatively:
 
 ```
 tests\run_ahk_tests.ahk          # AHK only
@@ -599,4 +599,4 @@ N tests run | X passed | Y failed
 ℹ tests 69 | pass 69 | fail 0
 ```
 
-Tests: ~252 AHK + 69 JS. Run on every commit via `run_all_tests.bat`.
+Tests: ~252 AHK + 69 JS = ~321 total. Run on every commit via `run_all_tests.bat`.
