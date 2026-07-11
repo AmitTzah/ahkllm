@@ -272,8 +272,10 @@ class TextCapture {
         }
 
         ; Fall back to clipboard cascade for selection.
-        ; Skip if user already provided input via showInputBox (no selection needed).
-        if userMessage = "" && inputText = "" {
+        ; Always run when UIA didn't get text — clipboard may have a selection
+        ; from applications where UIA TextPattern isn't available.
+        ; Combine with inputText when both sources exist.
+        if userMessage = "" {
             A_Clipboard := ""
             Critical("On")
             SendInput("^c")

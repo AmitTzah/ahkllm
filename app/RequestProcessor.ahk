@@ -34,7 +34,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     else if inputText
         captured.userMessage := inputText
     else
-        captured.userMessage := ""
+        captured.userMessage := captured.userMessage
 
     ; Parse models
     APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
