@@ -74,7 +74,14 @@ _pollStreamTimer() {
 }
 
 _readStreamChunkFromParams() {
-    state := {
+    state := _StreamStateFromParams()
+    _readAndProcessStream(state, true)
+    _ParamsFromStreamState(state)
+}
+
+; Build a stream state Map from requestParams.
+_StreamStateFromParams() {
+    return {
         outputFile: requestParams["_streamOutputFile"],
         lastPos: requestParams["_streamLastPos"],
         content: requestParams["_streamContent"],
@@ -86,9 +93,10 @@ _readStreamChunkFromParams() {
         rawSseChunks: requestParams["_streamRawSseChunks"],
         rawLastResponse: requestParams["_streamRawLastResponse"]
     }
+}
 
-    _readAndProcessStream(state, true)
-
+; Write stream state back into requestParams.
+_ParamsFromStreamState(state) {
     requestParams["_streamLastPos"] := state.lastPos
     requestParams["_streamContent"] := state.content
     requestParams["_streamReasoning"] := state.reasoning

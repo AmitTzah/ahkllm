@@ -31,24 +31,21 @@ handleSidebarAction(params, *) {
             activeThreadId := ChatDB.Thread_Create()
             _resetToDefaultSettings()
             postWebMessage("loadThread", activeThreadId)
-            postWebMessage("threadList", ChatDB.Thread_List())
-            postWebMessage("trashList", ChatDB.Thread_List(true))
+            _postThreadListRefresh()
         case "deleteThread":
             if params.Has("threadId") {
                 threadId := params["threadId"]
                 ChatDB.Thread_SoftDelete(threadId)  ; soft-delete to trash
                 if activeThreadId = threadId
                     activeThreadId := ""
-                postWebMessage("threadList", ChatDB.Thread_List())
-                postWebMessage("trashList", ChatDB.Thread_List(true))
+                _postThreadListRefresh()
                 if !activeThreadId
                     postWebMessage("initChatMode", [])
             }
         case "restoreThread":
             if params.Has("threadId") {
                 ChatDB.Thread_Restore(params["threadId"])
-                postWebMessage("threadList", ChatDB.Thread_List())
-                postWebMessage("trashList", ChatDB.Thread_List(true))
+                _postThreadListRefresh()
             }
         case "deleteThreadForever":
             if params.Has("threadId") {
@@ -56,8 +53,7 @@ handleSidebarAction(params, *) {
                 ChatDB.Thread_Delete(threadId)  ; permanent hard delete
                 if activeThreadId = threadId
                     activeThreadId := ""
-                postWebMessage("threadList", ChatDB.Thread_List())
-                postWebMessage("trashList", ChatDB.Thread_List(true))
+                _postThreadListRefresh()
                 if !activeThreadId
                     postWebMessage("initChatMode", [])
             }
@@ -78,8 +74,7 @@ handleSidebarAction(params, *) {
                     postWebMessage("initChatMode", [])
                 }
             }
-            postWebMessage("threadList", ChatDB.Thread_List())
-            postWebMessage("trashList", ChatDB.Thread_List(true))
+            _postThreadListRefresh()
         case "renameThread":
             if params.Has("threadId") && params.Has("title") {
                 ChatDB.Thread_Update(params["threadId"], params["title"])

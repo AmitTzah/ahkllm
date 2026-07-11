@@ -24,17 +24,20 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         return
     }
 
-    ; Expand templates in system message
-    if systemMessage
+    ; Expand templates in system message (FIM has no user message — skip)
+    if systemMessage && !isFIM
         systemMessage := TextCapture.ExpandTemplate(systemMessage, captured.userMessage, captured.fullText, inputText)
 
-    ; Compose user message from template (explicit only — no default)
-    if userMessageTemplate
-        captured.userMessage := TextCapture.ExpandTemplate(userMessageTemplate, captured.userMessage, captured.fullText, inputText)
-    else if inputText
-        captured.userMessage := inputText
-    else
-        captured.userMessage := captured.userMessage
+    ; Compose user message from template (explicit only — no default).
+    ; FIM captures return {prefix, suffix} without userMessage — skip.
+    if !isFIM {
+        if userMessageTemplate
+            captured.userMessage := TextCapture.ExpandTemplate(userMessageTemplate, captured.userMessage, captured.fullText, inputText)
+        else if inputText
+            captured.userMessage := inputText
+        else
+            captured.userMessage := captured.userMessage
+    }
 
     ; Parse models
     APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")

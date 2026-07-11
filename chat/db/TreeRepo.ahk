@@ -122,63 +122,88 @@ class TreeRepo {
         if !cutoff
             return ""
 
-        ; Get original thread title for the fork name
-        oldTitle := "New Chat"
-        titleRow := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" threadId "';")
-        if titleRow.count && titleRow[1, "title"]
-            oldTitle := titleRow[1, "title"]
-
-        newThreadId := ThreadRepo.Create("Copy - " oldTitle)
+        newThreadId := TreeRepo._CreateForkThread(threadId)
 
         ; Copy thread-level settings from original to fork
-        settings := ThreadRepo.GetSettings(threadId)
-        if settings.modelOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET model_override='" SQLite.Escape(settings.modelOverride) "' WHERE id='" newThreadId "';")
-        if settings.systemOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET system_override='" SQLite.Escape(settings.systemOverride) "' WHERE id='" newThreadId "';")
-        if settings.reasoningOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET reasoning_override='" SQLite.Escape(settings.reasoningOverride) "' WHERE id='" newThreadId "';")
-        if settings.temperatureOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET temperature_override=" settings.temperatureOverride " WHERE id='" newThreadId "';")
-        if settings.assistantId
-            ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" newThreadId "';")
+        TreeRepo._CopyThreadSettings(threadId, newThreadId)
 
         idMap := Map()
         sgMap := Map()  ; old sibling_group → new sibling_group (fresh UUIDs per fork)
 
+        ; First pass: copy active path messages up to cutoff
         for i, msg in path {
             if i > cutoff
                 break
-
             newId := ChatDB._UUID()
             idMap[msg.id] := newId
             newParentId := msg.parent_id && idMap.Has(msg.parent_id) ? idMap[msg.parent_id] : ""
-
-            safeContent := SQLite.Escape(msg.content)
-            safeModel := msg.model ? SQLite.Escape(msg.model) : ""
-            safeParent := newParentId ? "'" newParentId "'" : "NULL"
-            ; Map old sibling_group to a fresh UUID so fork has independent sibling groups
-            safeSiblingGroup := "NULL"
-            siblingIdx := msg.sibling_index
-            if msg.sibling_group {
-                if !sgMap.Has(msg.sibling_group)
-                    sgMap[msg.sibling_group] := ChatDB._UUID()
-                safeSiblingGroup := "'" sgMap[msg.sibling_group] "'"
-            }
-            safeFeedback := msg.feedback ? msg.feedback : "NULL"
-            safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
-
-            pt := msg.HasProp("prompt_tokens") ? msg.prompt_tokens : 0
-            ct := msg.HasProp("completion_tokens") ? msg.completion_tokens : 0
-            tt := msg.HasProp("total_tokens") ? msg.total_tokens : 0
-            ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
-
-            ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newId "', '" newThreadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " pt ", " ct ", " ckt ", " tt ");")
-            ; Copy attachments from source message to forked message
+            safeSiblingGroup := TreeRepo._MapSiblingGroup(msg, &sgMap)
+            TreeRepo._InsertForkMessage(newId, newThreadId, msg, newParentId, safeSiblingGroup)
             AttachmentRepo.CopyForMessage(msg.id, newId)
         }
 
         ; Second pass: copy any siblings NOT on the active path so branch nav works
+        TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap)
+
+        newLeafId := idMap[path[cutoff].id]
+        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
+        return newThreadId
+    }
+
+    ; Create a new thread for the fork with "Copy - " prefix.
+    static _CreateForkThread(originalThreadId) {
+        oldTitle := "New Chat"
+        titleRow := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" originalThreadId "';")
+        if titleRow.count && titleRow[1, "title"]
+            oldTitle := titleRow[1, "title"]
+        return ThreadRepo.Create("Copy - " oldTitle)
+    }
+
+    ; Copy thread-level settings (model, system, reasoning, temperature, assistant) from original to fork.
+    static _CopyThreadSettings(sourceThreadId, targetThreadId) {
+        settings := ThreadRepo.GetSettings(sourceThreadId)
+        if settings.modelOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET model_override='" SQLite.Escape(settings.modelOverride) "' WHERE id='" targetThreadId "';")
+        if settings.systemOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET system_override='" SQLite.Escape(settings.systemOverride) "' WHERE id='" targetThreadId "';")
+        if settings.reasoningOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET reasoning_override='" SQLite.Escape(settings.reasoningOverride) "' WHERE id='" targetThreadId "';")
+        if settings.temperatureOverride
+            ChatDB.db.Exec("UPDATE chat_threads SET temperature_override=" settings.temperatureOverride " WHERE id='" targetThreadId "';")
+        if settings.assistantId
+            ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" targetThreadId "';")
+    }
+
+    ; Map an old sibling_group to a fresh UUID, creating one if needed.
+    ; Returns the SQL-safe sibling group string ("'uuid'" or "NULL").
+    static _MapSiblingGroup(msg, &sgMap) {
+        if msg.sibling_group {
+            if !sgMap.Has(msg.sibling_group)
+                sgMap[msg.sibling_group] := ChatDB._UUID()
+            return "'" sgMap[msg.sibling_group] "'"
+        }
+        return "NULL"
+    }
+
+    ; Insert a single message row into the fork thread.
+    static _InsertForkMessage(newId, threadId, msg, parentId, safeSiblingGroup) {
+        safeContent := SQLite.Escape(msg.content)
+        safeModel := msg.model ? SQLite.Escape(msg.model) : ""
+        safeParent := parentId ? "'" parentId "'" : "NULL"
+        siblingIdx := msg.sibling_index
+        safeFeedback := msg.feedback ? msg.feedback : "NULL"
+        safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
+
+        pt := msg.HasProp("prompt_tokens") ? msg.prompt_tokens : 0
+        ct := msg.HasProp("completion_tokens") ? msg.completion_tokens : 0
+        tt := msg.HasProp("total_tokens") ? msg.total_tokens : 0
+        ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
+
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " pt ", " ct ", " ckt ", " tt ");")
+    }
+
+    ; Copy sibling messages that are NOT on the active path (so branch navigation works in forks).
+    static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap) {
         for oldSg, newSg in sgMap {
             siblings := ChatDB.db.Exec("SELECT * FROM messages WHERE sibling_group='" oldSg "' AND thread_id='" threadId "' ORDER BY sibling_index;")
             for sibRow in siblings.rows {
@@ -205,10 +230,6 @@ class TreeRepo {
                 AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
             }
         }
-
-        newLeafId := idMap[path[cutoff].id]
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
-        return newThreadId
     }
 
     static SetActiveLeaf(threadId, msgId) {

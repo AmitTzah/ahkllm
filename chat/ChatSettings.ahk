@@ -13,16 +13,21 @@ _updateProviderFromModel(model) {
 ; model settings persistence.
 ; ======================================================
 
-; Apply saved per-thread settings from DB to requestParams.
-_restoreThreadSettings(threadId) {
-    ; Always clear previous overrides before loading new ones.
-    ; Prevents system messages, reasoning, etc. from leaking across threads.
+; Clear all request-level overrides to default state.
+_ClearRequestOverrides() {
     requestParams["systemOverride"] := ""
     requestParams["reasoningOverride"] := ""
     requestParams["temperatureOverride"] := ""
     if requestParams.Has("activeAssistantId")
         requestParams.Delete("activeAssistantId")
     requestParams["singleAPIModelName"] := chatDefaultModel
+}
+
+; Apply saved per-thread settings from DB to requestParams.
+_restoreThreadSettings(threadId) {
+    ; Always clear previous overrides before loading new ones.
+    ; Prevents system messages, reasoning, etc. from leaking across threads.
+    _ClearRequestOverrides()
 
     settings := ChatDB.Thread_GetSettings(threadId)
     if !settings
@@ -47,28 +52,25 @@ _restoreThreadSettings(threadId) {
     }
 }
 
-; Persist current requestParams settings to a thread (called on thread creation).
-_saveCurrentSettingsToThread(threadId) {
-    ChatDB.Thread_UpdateSettings(threadId, {
+; Build the settings object from current requestParams state.
+_CurrentSettingsObject() {
+    return {
         assistantId: requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : "",
         modelOverride: requestParams["singleAPIModelName"] != chatDefaultModel ? requestParams["singleAPIModelName"] : "",
         systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
         reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
         temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
-    })
+    }
+}
+
+; Persist current requestParams settings to a thread (called on thread creation).
+_saveCurrentSettingsToThread(threadId) {
+    ChatDB.Thread_UpdateSettings(threadId, _CurrentSettingsObject())
 }
 
 ; Reset settings to defaults (no assistant, default model, no overrides).
 _resetToDefaultSettings() {
-    requestParams["singleAPIModelName"] := chatDefaultModel
-    if requestParams.Has("systemOverride")
-        requestParams.Delete("systemOverride")
-    if requestParams.Has("reasoningOverride")
-        requestParams.Delete("reasoningOverride")
-    if requestParams.Has("temperatureOverride")
-        requestParams.Delete("temperatureOverride")
-    if requestParams.Has("activeAssistantId")
-        requestParams.Delete("activeAssistantId")
+    _ClearRequestOverrides()
 }
 
 ; Send current dropdown label to WebView (assistant name / model name / "Default Model").
@@ -97,13 +99,7 @@ handleSwitchAssistant(parsed) {
         ; User selected "Default Model" — clear assistant
         _resetToDefaultSettings()
         if activeThreadId {
-            ChatDB.Thread_UpdateSettings(activeThreadId, {
-                assistantId: "",
-                modelOverride: "",
-                systemOverride: "",
-                reasoningOverride: "",
-                temperatureOverride: ""
-            })
+            ChatDB.Thread_UpdateSettings(activeThreadId, _CurrentSettingsObject())
         }
         _sendDropdownLabel()
         return
@@ -166,13 +162,7 @@ handleModelSettingsUpdate(parsed) {
 
     ; Persist to DB
     if activeThreadId {
-        ChatDB.Thread_UpdateSettings(activeThreadId, {
-            assistantId: "",
-            modelOverride: requestParams["singleAPIModelName"] != chatDefaultModel ? requestParams["singleAPIModelName"] : "",
-            systemOverride: systemMessage,
-            reasoningOverride: reasoning,
-            temperatureOverride: temperature
-        })
+        ChatDB.Thread_UpdateSettings(activeThreadId, _CurrentSettingsObject())
 
         ; Upsert system message so "System Prompt" label appears in chat
         if systemMessage != "" {

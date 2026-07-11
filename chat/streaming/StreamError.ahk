@@ -40,10 +40,6 @@ _handleStreamError() {
         }
     }
 
-    if !errMsg && (!FileExist(requestParams["_streamOutputFile"]) || !FileOpen(requestParams["_streamOutputFile"], "r").Read()) {
-        postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
-    }
-
     latencyMs := requestParams["_streamRequestStartTime"] > 0
         ? A_TickCount - requestParams["_streamRequestStartTime"]
         : 0

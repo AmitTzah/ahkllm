@@ -2,7 +2,7 @@
 ; ImageUtils.ahk — Image file I/O and clipboard capture
 ;
 ; Base64 decode/save, clipboard bitmap to PNG, file cleanup.
-; No GDI+ dependency — uses PrintScreen + clipboard.
+; Uses GDI+ (gdiplus.dll) for screen capture and bitmap save.
 ; ======================================================
 
 class ImageUtils {
@@ -65,18 +65,10 @@ class ImageUtils {
     ; No clipboard or PrintScreen key — works regardless of Windows settings.
     static CaptureScreen(messageId) {
         ImageUtils.EnsureAttachmentDir()
+        ImageUtils._EnsureGdiPlusInitialized()
         fileName := messageId "_screenshot.png"
         filePath := "attachments\" fileName
         fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
-
-        ; Initialize GDI+
-        static GdipInitialized := false
-        if !GdipInitialized {
-            si := Buffer(24, 0)
-            NumPut("UInt", 1, si, 0)
-            DllCall("gdiplus.dll\GdiplusStartup", "PtrP", &gdipToken := 0, "Ptr", si, "Ptr", 0)
-            GdipInitialized := true
-        }
 
         ; Get screen dimensions
         hdcScreen := DllCall("GetDC", "Ptr", 0, "Ptr")
@@ -126,12 +118,7 @@ class ImageUtils {
         try {
             ImageUtils._SaveClipboardBitmapToPNG(fullPath)
         } catch Error as e {
-            ; If GDI+ fails, try alternative: use COM to save
-            try {
-                ImageUtils._SaveClipboardViaCOM(fullPath)
-            } catch Error as e2 {
-                return ""
-            }
+            return ""
         }
         return filePath
     }
@@ -245,14 +232,7 @@ class ImageUtils {
     static _SaveClipboardBitmapToPNG(filePath) {
         ; Use GDI+ to save clipboard bitmap as PNG
         ; Requires gdiplus.dll (available on all Windows)
-        static GdipInitialized := false
-        if !GdipInitialized {
-            ; Initialize GDI+
-            si := Buffer(24, 0)
-            NumPut("UInt", 1, si, 0)  ; GdiplusVersion = 1
-            DllCall("gdiplus.dll\GdiplusStartup", "PtrP", &gdipToken := 0, "Ptr", si, "Ptr", 0)
-            GdipInitialized := true
-        }
+        ImageUtils._EnsureGdiPlusInitialized()
 
         ; Open clipboard
         if !DllCall("OpenClipboard", "Ptr", 0)
@@ -277,37 +257,24 @@ class ImageUtils {
         DllCall("gdiplus.dll\GdipDisposeImage", "Ptr", pBitmap)
     }
 
-    static _SaveClipboardViaCOM(filePath) {
-        ; Fallback: use WIA COM to save clipboard image
-        ; This is less reliable but doesn't need GDI+
-        throw Error("COM fallback not implemented")
+
+    ; Initialize GDI+ once (shared by CaptureScreen and _SaveClipboardBitmapToPNG).
+    static _EnsureGdiPlusInitialized() {
+        static GdipInitialized := false
+        if !GdipInitialized {
+            si := Buffer(24, 0)
+            NumPut("UInt", 1, si, 0)
+            DllCall("gdiplus.dll\GdiplusStartup", "PtrP", &gdipToken := 0, "Ptr", si, "Ptr", 0)
+            GdipInitialized := true
+        }
     }
 
     static _GetEncoderCLSID(mimeType) {
-        ; Get the CLSID for the PNG encoder
-        ; Query GDI+ for encoder info
-        numEncoders := 0
-        size := 0
-        DllCall("gdiplus.dll\GdipGetImageEncodersSize", "UIntP", &numEncoders, "UIntP", &size)
-        if size = 0
-            return 0
-
-        buf := Buffer(size)
-        DllCall("gdiplus.dll\GdipGetImageEncoders", "UInt", numEncoders, "UInt", size, "Ptr", buf)
-
-        ; Iterate through encoders to find PNG
-        encoderSize := 0
-        ; ImageCodecInfo structure size varies, but the MimeType is at offset 32+16=48 as a wide string
-        loop numEncoders {
-            offset := (A_Index - 1) * 0
-            ; The structure is complex — use a simpler approach:
-            ; We know PNG encoder CLSID: {557CF406-1A04-11D3-9A73-0000F81EF32E}
-            if mimeType = "image/png" {
-                static pngCLSID := "{557CF406-1A04-11D3-9A73-0000F81EF32E}"
-                clsidBuf := Buffer(16)
-                DllCall("ole32.dll\CLSIDFromString", "Ptr", StrPtr(pngCLSID), "Ptr", clsidBuf)
-                return clsidBuf
-            }
+        if mimeType = "image/png" {
+            static pngCLSID := "{557CF406-1A04-11D3-9A73-0000F81EF32E}"
+            clsidBuf := Buffer(16)
+            DllCall("ole32.dll\CLSIDFromString", "Ptr", StrPtr(pngCLSID), "Ptr", clsidBuf)
+            return clsidBuf
         }
         return 0
     }

@@ -5,9 +5,6 @@
 ;   1. VALIDATE — check API key is configured for the provider
 ;   2. BUILD — construct the JSON request from DB messages + overrides
 ;   3. WRITE — persist request + cURL command to temp files
-; These are kept together because they share intermediate state
-; (providerInfo, apiMessages, requestObj) that would be awkward
-; to pass between separate functions.
 ;
 ; Also: sendRequestToLLM (thin wrapper) and handleCancelStream.
 ; ======================================================
@@ -30,23 +27,57 @@ buildRequest() {
 
     ; Validate: check API key is available for the selected provider
     if !providerInfo.apiKey {
-        pInfo := providers[providerInfo.providerKey]
-        envVar := pInfo ? pInfo.authEnvVar : providerInfo.providerKey
-        errorMsg := "No API key configured for " providerInfo.providerKey ". Set " envVar " environment variable."
-        postWebMessage("showError", { message: errorMsg })
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
-        debugLog("ERROR: " errorMsg)
-        return ""
+        return _ShowApiKeyError(providerInfo)
     }
 
-    ; Build messages array as AHK objects for safe JSON serialization
+    ; Build messages array from DB path
+    apiMessages := _BuildApiMessagesFromPath(path)
+
+    ; Process last user message's attachments
+    if !_ProcessAttachmentsForLastUser(&apiMessages, requestParams["singleAPIModelName"])
+        return ""
+
+    ; Clean up internal _msgId fields
+    _CleanApiMessages(apiMessages)
+
+    ; Build request object and apply overrides
+    requestObj := _BuildRequestObj(apiMessages, providerInfo)
+
+    return _WriteRequestFiles(requestObj, providerInfo)
+}
+
+; Show API key error and return "" so caller aborts.
+_ShowApiKeyError(providerInfo) {
+    pInfo := providers[providerInfo.providerKey]
+    envVar := pInfo ? pInfo.authEnvVar : providerInfo.providerKey
+    errorMsg := "No API key configured for " providerInfo.providerKey ". Set " envVar " environment variable."
+    postWebMessage("showError", { message: errorMsg })
+    postWebMessage("setChatButtonsEnabled", true)
+    startLoadingCursor(false)
+    debugLog("ERROR: " errorMsg)
+    return ""
+}
+
+; Build a plain {role, content, _msgId} array from the DB path.
+_BuildApiMessagesFromPath(path) {
     apiMessages := []
     for msg in path {
         apiMessages.Push({ role: msg.role, content: msg.content, _msgId: msg.id })
     }
+    return apiMessages
+}
 
-    ; Find last user message and load its attachments
+; Remove internal _msgId fields before serializing to JSON.
+_CleanApiMessages(apiMessages) {
+    for msg in apiMessages
+        if msg.HasProp("_msgId")
+            msg.DeleteProp("_msgId")
+}
+
+; Process attachments for the last user message in apiMessages.
+; Returns false if vision gate fails (model doesn't support images).
+_ProcessAttachmentsForLastUser(&apiMessages, modelName) {
+    ; Find last user message
     lastUserMsgId := ""
     lastUserIdx := 0
     Loop apiMessages.Length {
@@ -57,118 +88,107 @@ buildRequest() {
             break
         }
     }
-
     debugLog("[BUILDREQ] lastUserMsgId=" lastUserMsgId " lastUserIdx=" lastUserIdx, "AttachPipeline")
-    if lastUserMsgId {
-        attachments := ChatDB.Attachment_GetByMessage(lastUserMsgId)
-        debugLog("[BUILDREQ] attachments loaded from DB: count=" attachments.Length, "AttachPipeline")
-        if attachments.Length > 0 {
-            ; Vision gating: check for images
-            hasImages := false
-            for att in attachments {
-                if att.attachment_type = "image" {
-                    hasImages := true
-                    break
-                }
-            }
-            if hasImages && !AttachmentUtils.HasVision(requestParams["singleAPIModelName"]) {
-                errorMsg := "Model '" requestParams["singleAPIModelName"] "' does not support vision. Remove images or switch models."
-                postWebMessage("showError", { message: errorMsg })
-                postWebMessage("setChatButtonsEnabled", true)
-                startLoadingCursor(false)
-                return ""
-            }
+    if !lastUserMsgId || !lastUserIdx
+        return true
 
-            if lastUserIdx > 0 {
-                contentArray := []
-                ; Add image content parts
-                for att in attachments {
-                    debugLog("[BUILDREQ] att type=" att.attachment_type " file_path=" att.file_path, "AttachPipeline")
-                    if att.attachment_type = "image" {
-                        base64Data := ImageUtils.ReadAndEncode(att.file_path)
-                        debugLog("[BUILDREQ] ReadAndEncode returned len=" (base64Data ? StrLen(base64Data) : 0), "AttachPipeline")
-                        if base64Data {
-                            contentArray.Push({
-                                type: "image_url",
-                                image_url: { url: "data:" att.mime_type ";base64," base64Data }
-                            })
-                            debugLog("[BUILDREQ] added image_url to contentArray", "AttachPipeline")
-                        } else {
-                            debugLog("[BUILDREQ] WARNING: ReadAndEncode returned empty for " att.file_path, "AttachPipeline")
-                        }
-                    }
-                }
-                debugLog("[BUILDREQ] contentArray length=" contentArray.Length, "AttachPipeline")
-                ; Build content array with separate text parts for file content and user message.
-                ; Follows OpenAI ChatCompletionContentPart spec: each text block is distinct.
-                userMsg := apiMessages[lastUserIdx].content
-                fileContexts := ""
-                for att in attachments {
-                    if att.attachment_type != "image" {
-                        typeLabel := "File"
-                        if att.attachment_type = "pdf"
-                            typeLabel := "PDF"
-                        else if att.attachment_type = "docx"
-                            typeLabel := "DOCX"
-                        if att.extracted_text {
-                            fileContexts .= "[Attached " typeLabel ": " att.original_filename "]`n`n" att.extracted_text "`n`n"
-                        }
-                    }
-                }
-                ; Build content as array with separate text parts
-                textContent := ""
-                if !contentArray.Length && !fileContexts {
-                    ; No images and no file contexts — keep as plain string content
-                    textContent := userMsg
-                } else {
-                    ; Use content array: file contexts as separate text blocks, then user message
-                    if fileContexts
-                        contentArray.InsertAt(1, { type: "text", text: RTrim(fileContexts, "`n`n") })
-                    if userMsg
-                        contentArray.Push({ type: "text", text: userMsg })
-                }
-                if contentArray.Length > 0 {
-                    apiMessages[lastUserIdx] := { role: "user", content: contentArray }
-                }
-                ; else: keep original string content (no attachments at all)
+    attachments := ChatDB.Attachment_GetByMessage(lastUserMsgId)
+    debugLog("[BUILDREQ] attachments loaded from DB: count=" attachments.Length, "AttachPipeline")
+    if !attachments.Length
+        return true
+
+    ; Vision gating: check for images
+    if _HasImageAttachments(attachments) && !AttachmentUtils.HasVision(modelName) {
+        errorMsg := "Model '" modelName "' does not support vision. Remove images or switch models."
+        postWebMessage("showError", { message: errorMsg })
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+        return false
+    }
+
+    contentArray := _BuildImageContentParts(attachments)
+    debugLog("[BUILDREQ] contentArray length=" contentArray.Length, "AttachPipeline")
+
+    userMsg := apiMessages[lastUserIdx].content
+    fileContexts := _BuildFileContexts(attachments)
+
+    if contentArray.Length || fileContexts {
+        if fileContexts
+            contentArray.InsertAt(1, { type: "text", text: RTrim(fileContexts, "`n`n") })
+        if userMsg
+            contentArray.Push({ type: "text", text: userMsg })
+    }
+
+    if contentArray.Length > 0 {
+        apiMessages[lastUserIdx] := { role: "user", content: contentArray }
+    }
+    ; else: keep original string content (no attachments at all)
+
+    return true
+}
+
+; Check if any attachment is an image.
+_HasImageAttachments(attachments) {
+    for att in attachments {
+        if att.attachment_type = "image"
+            return true
+    }
+    return false
+}
+
+; Build image_url content parts from attachments.
+_BuildImageContentParts(attachments) {
+    contentArray := []
+    for att in attachments {
+        debugLog("[BUILDREQ] att type=" att.attachment_type " file_path=" att.file_path, "AttachPipeline")
+        if att.attachment_type = "image" {
+            base64Data := ImageUtils.ReadAndEncode(att.file_path)
+            debugLog("[BUILDREQ] ReadAndEncode returned len=" (base64Data ? StrLen(base64Data) : 0), "AttachPipeline")
+            if base64Data {
+                contentArray.Push({
+                    type: "image_url",
+                    image_url: { url: "data:" att.mime_type ";base64," base64Data }
+                })
+                debugLog("[BUILDREQ] added image_url to contentArray", "AttachPipeline")
+            } else {
+                debugLog("[BUILDREQ] WARNING: ReadAndEncode returned empty for " att.file_path, "AttachPipeline")
             }
         }
     }
+    return contentArray
+}
 
-    ; Clean up internal _msgId fields
-    for msg in apiMessages
-        if msg.HasProp("_msgId")
-            msg.DeleteProp("_msgId")
-
-    ; Apply system message override if set via Settings modal
-    if requestParams.Has("systemOverride") && requestParams["systemOverride"] {
-        found := false
-        for i, m in apiMessages {
-            if m.role = "system" {
-                apiMessages[i].content := requestParams["systemOverride"]
-                found := true
-                break
+; Build file context text from non-image attachments.
+_BuildFileContexts(attachments) {
+    fileContexts := ""
+    for att in attachments {
+        if att.attachment_type != "image" {
+            typeLabel := att.attachment_type = "pdf" ? "PDF"
+                      : att.attachment_type = "docx" ? "DOCX"
+                      : "File"
+            if att.extracted_text {
+                fileContexts .= "[Attached " typeLabel ": " att.original_filename "]`n`n" att.extracted_text "`n`n"
             }
         }
-        ; If no system message exists (e.g. thread started with empty system message),
-        ; prepend one so the override takes effect.
-        if !found {
-            apiMessages.InsertAt(1, { role: "system", content: requestParams["systemOverride"] })
-        }
     }
+    return fileContexts
+}
+
+; Build the request object and apply all overrides (system, reasoning, temperature, stream, Gemini).
+_BuildRequestObj(apiMessages, providerInfo) {
+    ; Apply system message override
+    _ApplySystemOverride(apiMessages)
 
     ; Strip provider prefix from model name for API call
     apiModelName := ModelParser.StripProvider(requestParams["singleAPIModelName"])
     requestObj := { model: apiModelName, messages: apiMessages }
 
-    ; Apply reasoning override with per-provider thinking control.
-    ; Delegates to shared LLMRequestBuilder.ApplyThinkingOverride for consistency
-    ; with the menu command flow (createJSONRequest).
+    ; Apply reasoning override
     if requestParams.Has("reasoningOverride") && requestParams["reasoningOverride"] != "" {
         LLMRequestBuilder.ApplyThinkingOverride(&requestObj, providerInfo.providerKey, providerInfo.modelName, requestParams["reasoningOverride"])
     }
 
-    ; Apply temperature override if set (use != "" not truthiness — "0" is falsy in AHK)
+    ; Apply temperature override (use != "" not truthiness — "0" is falsy in AHK)
     if requestParams.Has("temperatureOverride") && requestParams["temperatureOverride"] != "" {
         try {
             requestObj.temperature := Float(requestParams["temperatureOverride"])
@@ -179,14 +199,10 @@ buildRequest() {
 
     if requestParams["stream"] {
         requestObj.stream := true
-        ; stream_options tells OpenAI-compatible APIs to include usage in the final SSE chunk
         requestObj.stream_options := { include_usage: true }
     }
 
     ; Gemini-specific: when no reasoning override, request thought summaries
-    ; via extra_body at the model's default thinking level.
-    ; When an override IS set, the block above already sets extra_body with
-    ; the specific thinking_level + include_thoughts.
     if providerInfo.providerKey = "google" && (!requestParams.Has("reasoningOverride") || requestParams["reasoningOverride"] = "") {
         requestObj.extra_body := {
             google: {
@@ -197,6 +213,29 @@ buildRequest() {
         }
     }
 
+    return requestObj
+}
+
+; Apply system message override from requestParams or prepend one if missing.
+_ApplySystemOverride(apiMessages) {
+    if !requestParams.Has("systemOverride") || !requestParams["systemOverride"]
+        return
+
+    found := false
+    for i, m in apiMessages {
+        if m.role = "system" {
+            apiMessages[i].content := requestParams["systemOverride"]
+            found := true
+            break
+        }
+    }
+    if !found {
+        apiMessages.InsertAt(1, { role: "system", content: requestParams["systemOverride"] })
+    }
+}
+
+; Serialize request to JSON, write to temp files, store paths in requestParams.
+_WriteRequestFiles(requestObj, providerInfo) {
     payload := LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
 
     uniqueID := A_TickCount

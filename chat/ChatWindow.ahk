@@ -129,11 +129,8 @@ responseWindow.Load("..\webui\index.html")
 
 showChatWindow(initialRequest := true) {
     if initialRequest {
-        desiredW := 900
-        desiredH := 680
-        X := (A_ScreenWidth - desiredW) // 2
-        Y := (A_ScreenHeight - desiredH) // 4
-        chatWindow.Show(Format("x{} y{} w{} h{}", X, Y, desiredW, desiredH), "Chat")
+        _SetChatWindowSize()
+        chatWindow.Show(_WindowPosStr(), "Chat")
     } else {
         chatWindow.Show()
     }
@@ -154,11 +151,7 @@ prewarming := (A_Args.Length >= 2 && A_Args[2] = "prewarm")
 if prewarming {
     ; Pre-warm mode: initialize WebView2 in background, stay hidden.
     ; Set window size/position now so it appears centered when shown.
-    desiredW := 900
-    desiredH := 680
-    X := (A_ScreenWidth - desiredW) // 2
-    Y := (A_ScreenHeight - desiredH) // 4
-    WinMove(X, Y, desiredW, desiredH, "ahk_id " chatWindow.hWnd)
+    _SetChatWindowSize()
     ; Post config messages so they're ready when user opens.
     postWebMessage("setTheme", [darkMode])
     postWebMessage("setFontFace", [responseWindowFontFace])
@@ -180,4 +173,23 @@ if (A_Args.Length >= 2 && A_Args[2] != "" && A_Args[2] != "prewarm") {
     LoadThreadIntoUI(A_Args[2], true)  ; autoFire=true for command-line-arg path
     Sleep 500
     postWebMessage("setChatButtonsEnabled", true)
+}
+
+; Default chat window dimensions used by showChatWindow and prewarm.
+_ChatWindowDims() {
+    return { w: 900, h: 680,
+             x: (A_ScreenWidth - 900) // 2,
+             y: (A_ScreenHeight - 680) // 4 }
+}
+
+; Compute default chat window size and position, then move the window.
+_SetChatWindowSize() {
+    d := _ChatWindowDims()
+    WinMove(d.x, d.y, d.w, d.h, "ahk_id " chatWindow.hWnd)
+}
+
+; Return a position string "xX yY wW hH" for the default chat window layout.
+_WindowPosStr() {
+    d := _ChatWindowDims()
+    return Format("x{} y{} w{} h{}", d.x, d.y, d.w, d.h)
 }

@@ -22,8 +22,8 @@ class RequestProcessorTest {
 
         src := FileRead(srcPath)
 
-        ; Find the paste block: locate "NormalizeLineEndings(responseFromLLM.response"
-        pasteStartPos := InStr(src, "NormalizeLineEndings(responseFromLLM.response")
+        ; Find the paste block: locate "NormalizeLineEndings(result.response.response"
+        pasteStartPos := InStr(src, "NormalizeLineEndings(result.response.response")
         if !pasteStartPos
             throw Error("Paste block anchor not found in InlineRequestRunner.ahk")
 
@@ -52,17 +52,45 @@ class RequestProcessorTest {
         ; Also verify that ^v comes AFTER {Right} (not before)
         if pastePos < rightPos
             throw Error("Send(`"^v`") appears before Send(`"{Right}`") — paste order is wrong")
-        ; runOptionsMenuAction must handle "apilogs:" special command
-        OptionsMenu_HandlesApiLogsCommand() {
+    }
+
+    ; Verifies that runOptionsMenuAction handles the "apilogs:" special command.
+    OptionsMenu_HandlesApiLogsCommand() {
+        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        if !FileExist(srcPath)
+            throw Error("RequestProcessor.ahk not found at: " srcPath)
+        src := FileRead(srcPath)
+
+        if !InStr(src, '"apilogs:"')
+            throw Error("runOptionsMenuAction must handle apilogs: command")
+        if !InStr(src, "ShowApiLogs()")
+            throw Error("runOptionsMenuAction must call ShowApiLogs() for apilogs:")
+        ; Verifies that FIM path is guarded against accessing captured.userMessage.
+        ; Regression: FIM captures return {prefix, suffix} — no userMessage property.
+        ; The userMessage template block must be wrapped in `if !isFIM`.
+        FIMCapture_GuardsUserMessageAccess() {
             srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
             if !FileExist(srcPath)
                 throw Error("RequestProcessor.ahk not found at: " srcPath)
             src := FileRead(srcPath)
     
-            if !InStr(src, '"apilogs:"')
-                throw Error("runOptionsMenuAction must handle apilogs: command")
-            if !InStr(src, "ShowApiLogs()")
-                throw Error("runOptionsMenuAction must call ShowApiLogs() for apilogs:")
+            ; Find the user message composition block: "Compose user message from template"
+            templateStart := InStr(src, "Compose user message from template")
+            if !templateStart
+                throw Error("User message template block not found in RequestProcessor.ahk")
+    
+            ; Extract a window around the template block
+            block := SubStr(src, templateStart, 500)
+    
+            ; The block must guard with !isFIM before accessing captured.userMessage
+            if !InStr(block, "if !isFIM")
+                throw Error("FIM guard (!isFIM) missing in user message template block — FIM captures have no userMessage")
+    
+            ; Verify the guard appears BEFORE the first captured.userMessage access in the block
+            guardPos := InStr(block, "if !isFIM")
+            firstAccessPos := InStr(block, "captured.userMessage")
+            if guardPos > firstAccessPos
+                throw Error("FIM guard (!isFIM) appears AFTER captured.userMessage access — guard must come first")
         }
     
     }
@@ -71,7 +99,7 @@ class RequestProcessorTest {
     FIMPaste_HasSleepAfterPaste() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         src := FileRead(srcPath)
-        pasteStartPos := InStr(src, "NormalizeLineEndings(responseFromLLM.response")
+        pasteStartPos := InStr(src, "NormalizeLineEndings(result.response.response")
         pasteBlock := SubStr(src, pasteStartPos, 2500)
 
         pastePos := InStr(pasteBlock, 'Send("^v")')

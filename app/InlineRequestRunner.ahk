@@ -11,6 +11,39 @@ class InlineRequestRunner {
     static Run(commandName, fullAPIModelName, providerName, singleAPIModelName, captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking, thinkingLevel := "") {
         uniqueID := A_TickCount
 
+        files := InlineRequestRunner._BuildAndWriteRequest(commandName, fullAPIModelName, singleAPIModelName, captured, isFIM, systemMessage, temperature, maxTokens, stop, stream, thinking, thinkingLevel, uniqueID)
+
+        ; Track active model for tooltip
+        getActiveModels()[uniqueID] := {
+            commandName: commandName,
+            name: singleAPIModelName,
+            provider: llmClient,
+            JSONFile: files.requestFile,
+            cURLFile: files.curlFile,
+            outputFile: files.outputFile,
+            errorFile: files.errorFile,
+            isLoading: true
+        }
+        updateLoadingUI("Update")
+
+        ; Execute cURL and parse response
+        result := InlineRequestRunner._ExecuteCurlAndParse(files, isFIM)
+
+        ; Paste result if successful
+        if result.success {
+            InlineRequestRunner._PasteAndLogResponse(result, captured, isFIM, pasteMode, commandName, providerName, singleAPIModelName, files)
+        }
+
+        ; Cleanup
+        getActiveModels()[uniqueID].isLoading := false
+        updateLoadingUI("Update")
+        getActiveModels().Delete(uniqueID)
+        InlineRequestRunner._CleanupTempFiles(files)
+    }
+
+    ; Build the JSON request and write it + cURL command to temp files.
+    ; Returns object with request, JSON, and file paths.
+    static _BuildAndWriteRequest(commandName, fullAPIModelName, singleAPIModelName, captured, isFIM, systemMessage, temperature, maxTokens, stop, stream, thinking, thinkingLevel, uniqueID) {
         ; Build the JSON request
         if isFIM {
             chatHistoryJSONRequest := llmClient.createFIMRequest(fullAPIModelName, captured.prefix, captured.suffix,
@@ -22,44 +55,41 @@ class InlineRequestRunner {
 
         ; Generate sanitized filenames
         sanitizeRe := "[\/\\:*?`"<>|]"
-        chatHistoryJSONRequestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json", sanitizeRe, "")
-        cURLCommandFile := A_Temp "\" RegExReplace("cURLCommand_" commandName "_" singleAPIModelName "_" uniqueID ".txt", sanitizeRe, "")
-        cURLOutputFile := A_Temp "\" RegExReplace("cURLOutput_" commandName "_" singleAPIModelName "_" uniqueID ".json", sanitizeRe, "")
-        cURLErrorFile := A_Temp "\" RegExReplace("cURLError_" commandName "_" singleAPIModelName "_" uniqueID ".txt", sanitizeRe, "")
+        requestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json", sanitizeRe, "")
+        curlFile := A_Temp "\" RegExReplace("cURLCommand_" commandName "_" singleAPIModelName "_" uniqueID ".txt", sanitizeRe, "")
+        outputFile := A_Temp "\" RegExReplace("cURLOutput_" commandName "_" singleAPIModelName "_" uniqueID ".json", sanitizeRe, "")
+        errorFile := A_Temp "\" RegExReplace("cURLError_" commandName "_" singleAPIModelName "_" uniqueID ".txt", sanitizeRe, "")
 
-        FileOpen(chatHistoryJSONRequestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
+        FileOpen(requestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
         if isFIM {
-            cURLCommand := llmClient.buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+            cURLCommand := llmClient.buildFIMcURLCommand(requestFile, outputFile)
         } else {
-            cURLCommand := llmClient.buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile)
+            cURLCommand := llmClient.buildcURLCommand(requestFile, outputFile)
         }
-        FileOpen(cURLCommandFile, "w", "UTF-8-RAW").Write(cURLCommand)
+        FileOpen(curlFile, "w", "UTF-8-RAW").Write(cURLCommand)
 
-        ; Track active model for tooltip
-        getActiveModels()[uniqueID] := {
-            commandName: commandName,
-            name: singleAPIModelName,
-            provider: llmClient,
-            JSONFile: chatHistoryJSONRequestFile,
-            cURLFile: cURLCommandFile,
-            outputFile: cURLOutputFile,
-            errorFile: cURLErrorFile,
-            isLoading: true
+        return {
+            requestJSON: chatHistoryJSONRequest,
+            requestFile: requestFile,
+            curlFile: curlFile,
+            outputFile: outputFile,
+            errorFile: errorFile
         }
-        updateLoadingUI("Update")
+    }
 
-        ; Execute cURL and wait
+    ; Execute cURL synchronously and parse the response.
+    ; Returns { success: true/false, response: parsedResponse, rawJSON: rawResponseText }
+    static _ExecuteCurlAndParse(files, isFIM) {
         requestStartTime := A_TickCount
-        cURLCommand := FileOpen(cURLCommandFile, "r", "UTF-8-RAW").Read()
+        cURLCommand := FileOpen(files.curlFile, "r", "UTF-8-RAW").Read()
         Run(cURLCommand, , "Hide", &cURLPID)
         while ProcessExist(cURLPID)
             Sleep 250
 
-        ; Parse response
         responseFromLLM := ""
         JSONResponseFromLLM := ""
-        if FileExist(cURLOutputFile) {
-            JSONResponseFromLLM := FileOpen(cURLOutputFile, "r", "UTF-8-RAW").Read()
+        if FileExist(files.outputFile) {
+            JSONResponseFromLLM := FileOpen(files.outputFile, "r", "UTF-8-RAW").Read()
             try {
                 if isFIM
                     responseFromLLM := llmClient.extractFIMResponse(jsongo.Parse(JSONResponseFromLLM))
@@ -70,54 +100,59 @@ class InlineRequestRunner {
             }
         }
 
-        ; Paste result
-        if IsObject(responseFromLLM) && responseFromLLM.HasProp("response") {
-            latencyMs := A_TickCount - requestStartTime
-            ; Normalise API response line endings (FIM models may return \r)
-            responseText := TextCapture.NormalizeLineEndings(responseFromLLM.response, false)
-
-            ; Paste via clipboard (^v).  UIA ValuePattern.SetValue wouldn't
-            ; preserve undo history in editors like VS Code and Notepad.
-            A_Clipboard := responseText
-            if pasteMode = "append" {
-                if captured.HasOwnProp("needsDeselect") && captured.needsDeselect {
-                    Send("{Right}")
-                    Sleep 50
-                }
-            }
-            Send("^v")
-            Sleep 50
-            if pasteMode = "append" {
-                Send("{Left}{Right}")
-            }
-            ; Highlight inserted text so the user can immediately see what was added
-            if isFIM {
-                Sleep 100  ; let the target app finish processing the paste
-                InlineRequestRunner.HighlightInsertedText(responseText)
-            }
-            ApiLogger.LogRequest({
-                timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-                commandName: commandName,
-                provider: providerName,
-                model: singleAPIModelName,
-                isFIM: isFIM,
-                endpoint: isFIM ? FIMEndpoint : APIEndpoint,
-                pasteMode: pasteMode,
-                request: chatHistoryJSONRequest,
-                response: JSONResponseFromLLM,
-                status: "success",
-                latencyMs: latencyMs
-            })
+        return {
+            success: IsObject(responseFromLLM) && responseFromLLM.HasProp("response"),
+            response: responseFromLLM,
+            rawJSON: JSONResponseFromLLM,
+            latencyMs: A_TickCount - requestStartTime
         }
+    }
 
-        ; Cleanup
-        getActiveModels()[uniqueID].isLoading := false
-        updateLoadingUI("Update")
-        getActiveModels().Delete(uniqueID)
-        FileDelete(chatHistoryJSONRequestFile)
-        FileDelete(cURLCommandFile)
-        safeDelete(cURLOutputFile)
-        safeDelete(cURLErrorFile)
+    ; Paste the response and log it to the API logger.
+    static _PasteAndLogResponse(result, captured, isFIM, pasteMode, commandName, providerName, singleAPIModelName, files) {
+        responseText := TextCapture.NormalizeLineEndings(result.response.response, false)
+        
+        ; Paste via clipboard (^v).  UIA ValuePattern.SetValue wouldn't
+        ; preserve undo history in editors like VS Code and Notepad.
+
+        A_Clipboard := responseText
+        if pasteMode = "append" {
+            if captured.HasOwnProp("needsDeselect") && captured.needsDeselect {
+                Send("{Right}")
+                Sleep 50
+            }
+        }
+        Send("^v")
+        Sleep 50
+        if pasteMode = "append" {
+            Send("{Left}{Right}")
+        }
+        ; Highlight inserted text so the user can immediately see what was added
+        if isFIM {
+            Sleep 100  ; let the target app finish processing the paste
+            InlineRequestRunner.HighlightInsertedText(responseText)
+        }
+        ApiLogger.LogRequest({
+            timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+            commandName: commandName,
+            provider: providerName,
+            model: singleAPIModelName,
+            isFIM: isFIM,
+            endpoint: isFIM ? FIMEndpoint : APIEndpoint,
+            pasteMode: pasteMode,
+            request: files.requestJSON,
+            response: result.rawJSON,
+            status: "success",
+            latencyMs: result.latencyMs
+        })
+    }
+
+    ; Remove temp files created during the request.
+    static _CleanupTempFiles(files) {
+        FileDelete(files.requestFile)
+        FileDelete(files.curlFile)
+        safeDelete(files.outputFile)
+        safeDelete(files.errorFile)
     }
 
     ; ----------------------------------------------------
