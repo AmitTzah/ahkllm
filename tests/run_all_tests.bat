@@ -5,7 +5,7 @@ echo ============================================
 echo.
 
 echo [1/2] Running AHK tests...
-"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" "tests\run_ahk_tests.ahk"
+"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" "tests\run_ahk_tests.ahk" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [FAIL] AHK tests failed
     set AHK_FAIL=1
