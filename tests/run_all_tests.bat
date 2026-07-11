@@ -15,7 +15,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [2/2] Running JS tests...
-node --test "tests/js/unit/*.test.js"
+call tests\run_js_tests.bat
 if %ERRORLEVEL% NEQ 0 (
     echo [FAIL] JS tests failed
     set JS_FAIL=1
