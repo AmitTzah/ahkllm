@@ -534,19 +534,17 @@ cURL → LLM API
 
 ### How to Run All Tests
 
-**Primary entry point (runs both AHK and JS tests):**
-```bash
+Copy and paste into terminal from the project root:
+
+```
 tests\run_all_tests.bat
 ```
 
-**AHK tests only:**
-```bash
-"AutoHotkey64.exe" tests\run_ahk_tests.ahk
-```
+This runs AHK tests (~252) then JS tests (69). Alternatively:
 
-**JS tests only:**
-```bash
-tests\run_js_tests.bat
+```
+tests\run_ahk_tests.ahk          # AHK only
+tests\run_js_tests.bat           # JS only
 ```
 
 ### Test Structure
