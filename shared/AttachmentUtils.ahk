@@ -97,15 +97,4 @@ class AttachmentUtils {
         return result
     }
 
-    ; ---- Token estimation ----
-
-    ; Rough estimate of vision tokens consumed by an image.
-    ; OpenAI: images cost ~85 tokens for low detail, ~(width/512)*(height/512)*170 for high.
-    ; We use a conservative estimate: base64 length / 50 (empirically ~= token cost for vision).
-    static EstimateImageTokens(base64Length) {
-        if base64Length <= 0
-            return 0
-        ; Conservative: ~1 token per 50 base64 chars + 85 base cost
-        return Max(85, Integer(base64Length / 50) + 85)
-    }
 }

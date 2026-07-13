@@ -23,7 +23,7 @@ _handleStreamError() {
     errorFile := requestParams["cURLErrorFile"]
     if FileExist(errorFile) {
         errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
-        debugLog("cURL stderr: " Trim(errorContent))
+        debugLog("[STREAM] Error — stderr: " Trim(errorContent))
     }
 
     rawOutput := ""
@@ -31,16 +31,18 @@ _handleStreamError() {
 
     if FileExist(requestParams["_streamOutputFile"]) {
         rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
-        debugLog("cURL output (error): " SubStr(rawOutput, 1, 500))
+        debugLog("[STREAM] Error — output: " SubStr(rawOutput, 1, 500))
         errMsg := _extractErrorMsg(rawOutput)
         if errMsg {
             postWebMessage("showError", { message: errMsg })
         } else {
             postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
         }
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
     }
 
-    latencyMs := requestParams["_streamRequestStartTime"] > 0
+    responseTimeMs := requestParams["_streamRequestStartTime"] > 0
         ? A_TickCount - requestParams["_streamRequestStartTime"]
         : 0
     ApiLogger.LogRequest({
@@ -54,7 +56,7 @@ _handleStreamError() {
         request: requestParams.Has("_streamChatHistoryJSONRequest") ? requestParams["_streamChatHistoryJSONRequest"] : "{}",
         response: rawOutput ? rawOutput : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
         status: "error",
-        latencyMs: latencyMs
+        responseTimeMs: responseTimeMs
     })
 
     } catch Error as e {
@@ -67,23 +69,11 @@ _handleStreamError() {
 
 _handleStreamCancelled() {
     try {
-    debugLog("User cancelled streaming request")
+    contentLen := StrLen(requestParams.Has("_streamContent") ? requestParams["_streamContent"] : "")
+    debugLog("[STREAM] Cancelled — partial=" contentLen "chars")
     cURLState("close")
 
-    completionChars := StrLen(requestParams["_streamContent"]) + StrLen(requestParams["_streamReasoning"])
-    estPromptTokens := 0
-    if activeThreadId {
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
-        for msg in path {
-            estPromptTokens += TokenEstimation.Estimate(msg.content)
-            if msg.HasProp("reasoning") && msg.reasoning
-                estPromptTokens += TokenEstimation.Estimate(msg.reasoning)
-        }
-    }
-    estPromptTokens := Max(1, estPromptTokens)
-    estCompletionTokens := Max(1, TokenEstimation.Estimate(requestParams["_streamContent"] . requestParams["_streamReasoning"]))
-
-    _logCancelledRequest(estPromptTokens, estCompletionTokens)
+    _logCancelledRequest()
 
     if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -98,10 +88,10 @@ _handleStreamCancelled() {
             model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
             parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
             reasoning: requestParams["_streamReasoning"],
-            prompt_tokens: estPromptTokens,
-            completion_tokens: estCompletionTokens,
-            total_tokens: estPromptTokens + estCompletionTokens,
-            cached_tokens: 0
+            token_count: 0,
+            thinking_tokens: 0,
+            cached_tokens: 0,
+            response_time_ms: 0
         })
         _maybeGenerateTitle(path)
         postThreadStats(activeThreadId)
@@ -126,8 +116,8 @@ _handleStreamCancelled() {
     }
 }
 
-_logCancelledRequest(estPromptTokens, estCompletionTokens) {
-    latencyMs := requestParams["_streamFirstTokenTime"] > 0
+_logCancelledRequest() {
+    responseTimeMs := requestParams["_streamFirstTokenTime"] > 0
         ? requestParams["_streamFirstTokenTime"] - requestParams["_streamRequestStartTime"]
         : A_TickCount - requestParams["_streamRequestStartTime"]
     logEntry := {
@@ -138,11 +128,10 @@ _logCancelledRequest(estPromptTokens, estCompletionTokens) {
     if requestParams["_streamReasoning"]
         logEntry.choices[1].message.reasoning_content := requestParams["_streamReasoning"]
     logEntry.usage := {
-        prompt_tokens: estPromptTokens,
-        completion_tokens: estCompletionTokens,
-        total_tokens: estPromptTokens + estCompletionTokens,
-        prompt_cache_hit_tokens: 0,
-        estimated: "true"
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        prompt_cache_hit_tokens: 0
     }
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
@@ -155,6 +144,6 @@ _logCancelledRequest(estPromptTokens, estCompletionTokens) {
         request: requestParams["_streamChatHistoryJSONRequest"],
         response: jsongo.Stringify(logEntry),
         status: "cancelled",
-        latencyMs: latencyMs
+        responseTimeMs: responseTimeMs
     })
 }

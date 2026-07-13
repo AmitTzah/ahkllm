@@ -10,6 +10,7 @@ if FileExist(debugLogFile) {
     FileDelete(debugLogFile)
 }
 
+debugLog("[APP] Started")
 ; Global error handler for main script — surfaces to tooltip + debug log
 OnError((err, mode) => (
     debugLog("RUNTIME ERROR (main): " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
@@ -105,7 +106,7 @@ _spawnChatWindow(threadId := "") {
 openChatWindow(threadId := "") {
     global chatWindowPID, chatWindowhWnd
 
-    if chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
+    if IsSet(chatWindowhWnd) && chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
         WinShow("ahk_id " chatWindowhWnd)
         WinActivate("ahk_id " chatWindowhWnd)
         if threadId {
@@ -125,9 +126,34 @@ onChatWindowOpened(uniqueID, lParam, msg, hWnd) {
 ; Clean up ChatWindow sub-process when Main.ahk exits
 OnExit(closeChatWindow)
 closeChatWindow(ExitReason, ExitCode) {
+    debugLog("[APP] Exiting — reason=" ExitReason)
     global chatWindowPID
-    if chatWindowPID
+
+    ; Close child ChatWindow process. Try graceful close first,
+    ; then force kill. PID may be 0 if spawn failed.
+    if (chatWindowPID && ProcessExist(chatWindowPID)) {
+        try {
+            if WinExist("ahk_pid " chatWindowPID)
+                WinClose("ahk_pid " chatWindowPID)
+            Sleep 300
+        }
+    }
+    if (chatWindowPID && ProcessExist(chatWindowPID))
         ProcessClose(chatWindowPID)
+
+    ; Fallback: kill by window title if PID tracking failed
+    if WinExist("ChatWindow.ahk ahk_class AutoHotkey") {
+        try {
+            fallbackPID := WinGetPID("ChatWindow.ahk ahk_class AutoHotkey")
+            WinClose("ChatWindow.ahk ahk_class AutoHotkey")
+            Sleep 300
+            if ProcessExist(fallbackPID)
+                ProcessClose(fallbackPID)
+        }
+    }
+
+    ; Close Main's own DB connection AFTER child process cleanup
+    try ChatDB.Close()
 }
 
 ; ----------------------------------------------------
@@ -202,6 +228,12 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 SetTimer(InitApiLogsViewer, -2000)
 
 ; ----------------------------------------------------
+; Usage Dashboard — persistent, pre-created at startup
+; ----------------------------------------------------
+#Include lib\UsageDashboard.ahk
+SetTimer(InitUsageDashboard, -2500)
+
+; ----------------------------------------------------
 ; UIA COM initialization sets SPI_SETSCREENREADER
 ; (a system-wide flag) during CoCreateInstance. This
 ; causes Word to switch to accessibility rendering
@@ -218,3 +250,4 @@ ResetScreenReaderOnInit() {
 }
 SetTimer(ResetScreenReaderOnInit, 500)
 OnExit(CloseApiLogsViewer)
+OnExit(CloseUsageDashboard)

@@ -139,6 +139,10 @@ runOptionsMenuAction(command, *) {
         ShowApiLogs()
         return
     }
+    if command = "usage:" {
+        ShowUsageDashboard()
+        return
+    }
     if (spacePos := InStr(command, " ")) {
         firstWord := SubStr(command, 1, spacePos - 1)
         if !InStr(firstWord, "\") && !InStr(firstWord, ":") {

@@ -22,8 +22,6 @@ OnWebMessageReceived(sender, args) {
             return
         parsed := jsongo.Parse(msg)
         action := parsed.Get("action", "")
-        if action = "chatSend" || action = "deleteAttachment"
-            debugLog("[DISPATCH] Received " action " action, msgLen=" StrLen(msg), "AttachPipeline")
         switch action {
             case "chatSend":
                 handleChatSend(parsed)
@@ -53,6 +51,8 @@ OnWebMessageReceived(sender, args) {
                 handleCancelStream()
             case "requestCurrentSettings":
                 postCurrentSettingsToWebView()
+            case "openUsageDashboard":
+                CustomMessages.notifyOpenUsageDashboard(requestParams["mainScriptHiddenhWnd"])
         }
     } catch Error as e {
         _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)

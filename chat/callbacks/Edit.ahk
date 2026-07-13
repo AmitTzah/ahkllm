@@ -51,21 +51,17 @@ handleEdit(params, *) {
         newMsgId := ChatDB.Msg_Insert({ thread_id: activeThreadId, role: role, content: content, model: "", parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex })
         ; Copy attachments from old message to new branch message
         ChatDB.Attachment_CopyForMessage(id, newMsgId)
-        ; Save new attachments from edit
+        ; Save new attachments from edit (skip if already present on message)
         for att in attachments {
             if !IsObject(att)
                 continue
-            attType := att.Has("type") ? att["type"] : "text_file"
-            attMime := att.Has("mimeType") ? att["mimeType"] : ""
-            attFilename := att.Has("filename") ? att["filename"] : "unknown"
             attBase64 := att.Has("base64") ? att["base64"] : ""
-            attSize := att.Has("size") ? att["size"] : 0
-            attExtracted := att.Has("extractedText") ? att["extractedText"] : ""
-            attHash := att.Has("contentHash") ? att["contentHash"] : ""
             if attBase64 {
+                attFilename := att.Has("filename") ? att["filename"] : "unknown"
+                attHash := att.Has("contentHash") ? att["contentHash"] : ""
                 filePath := ImageUtils.SaveBase64ToFile(attBase64, newMsgId, attFilename, attHash)
                 if filePath && !_AttachmentExistsOnMessage(newMsgId, filePath)
-                    ChatDB.Attachment_Insert(newMsgId, { attachment_type: attType, file_path: filePath, mime_type: attMime, original_filename: attFilename, file_size: attSize, extracted_text: attExtracted })
+                    ChatDB.Attachment_Save(newMsgId, att)
             }
         }
         ; Trigger LLM request for the new branch (same as Retry flow)
@@ -78,19 +74,17 @@ handleEdit(params, *) {
         for att in attachments {
             if !IsObject(att)
                 continue
-            attType := att.Has("type") ? att["type"] : "text_file"
-            attFilename := att.Has("filename") ? att["filename"] : "unknown"
             attBase64 := att.Has("base64") ? att["base64"] : ""
-            attSize := att.Has("size") ? att["size"] : 0
-            attExtracted := att.Has("extractedText") ? att["extractedText"] : ""
-            attHash := att.Has("contentHash") ? att["contentHash"] : ""
             if attBase64 {
+                attFilename := att.Has("filename") ? att["filename"] : "unknown"
+                attHash := att.Has("contentHash") ? att["contentHash"] : ""
                 filePath := ImageUtils.SaveBase64ToFile(attBase64, id, attFilename, attHash)
                 if filePath && !_AttachmentExistsOnMessage(id, filePath)
-                    ChatDB.Attachment_Insert(id, { attachment_type: attType, file_path: filePath, mime_type: att.Has("mimeType") ? att["mimeType"] : "", original_filename: attFilename, file_size: attSize, extracted_text: attExtracted })
+                    ChatDB.Attachment_Save(id, att)
             }
         }
         ChatDB.Msg_Edit(id, content)
+        debugLog("[EDIT] Message — id=" id " thread=" activeThreadId)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
@@ -111,6 +105,7 @@ handleDelete(msgId, *) {
     ; re-parents children to the deleted message's parent and only moves
     ; active_leaf_id if the deleted message was the leaf itself.
     ChatDB.Msg_HardDelete(msgId)
+    debugLog("[DELETE] Message — id=" msgId " thread=" activeThreadId)
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))

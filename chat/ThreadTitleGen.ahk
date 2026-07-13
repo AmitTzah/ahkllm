@@ -3,16 +3,44 @@
 ;
 ; Generates a short thread title from the first
 ; user+assistant exchange using a cheap LLM call.
-; Extracted from ChatUtils.ahk.
 ; ----------------------------------------------------
 
 generateThreadTitle(threadId) {
-    if !IsSet(titleGenModel) || !titleGenModel
-        return
-    path := ChatDB.Msg_GetActivePath(threadId)
-    if path.Length < 2
+    if !autoTitleGenerationEnabled || !IsSet(titleGenModel) || !titleGenModel
         return
 
+    prompt := _TitleGen_BuildPrompt(threadId)
+    if !prompt
+        return
+
+    titleGenStart := A_TickCount
+    titleModel := ModelParser.StripProvider(titleGenModel)
+
+    payload := _TitleGen_BuildPayload(titleModel, prompt)
+    raw := _TitleGen_ExecuteRequest(payload)
+    result := _TitleGen_ParseResponse(raw)
+    title := result.title
+    promptTokens := result.promptTokens
+    completionTokens := result.completionTokens
+    thinkingTokens := result.thinkingTokens
+
+    debugLog("[API] Title gen — prompt=" promptTokens " completion=" completionTokens " model=" titleModel)
+
+    _TitleGen_TrackUsage(titleModel, promptTokens, completionTokens, thinkingTokens, titleGenStart)
+
+    if title {
+        ChatDB.Thread_Update(threadId, title)
+        postWebMessage("threadList", ChatDB.Thread_List())
+    }
+
+    _TitleGen_LogRequest(titleModel, payload, raw, title, titleGenStart)
+}
+
+; Build the prompt from the first user+assistant exchange.
+_TitleGen_BuildPrompt(threadId) {
+    path := ChatDB.Msg_GetActivePath(threadId)
+    if path.Length < 2
+        return ""
     firstUser := "", firstAsst := ""
     for msg in path {
         if msg.role = "user" && !firstUser
@@ -21,20 +49,22 @@ generateThreadTitle(threadId) {
             firstAsst := msg.content
     }
     if !firstUser || !firstAsst
-        return
+        return ""
+    return "User: " SubStr(firstUser, 1, 200) "`nAssistant: " SubStr(firstAsst, 1, 200)
+}
 
-    genPrompt := "User: " SubStr(firstUser, 1, 200) "`nAssistant: " SubStr(firstAsst, 1, 200)
-    titleGenStart := A_TickCount
-    titleModel := ModelParser.StripProvider(titleGenModel)
-
+; Build the JSON payload for the title generation request.
+_TitleGen_BuildPayload(titleModel, prompt) {
     requestObj := { model: titleModel, messages: [
         { role: "system", content: titleGenSystemPrompt },
-        { role: "user", content: genPrompt }
+        { role: "user", content: prompt }
     ], max_tokens: titleGenMaxTokens, thinking: { type: "disabled" } }
-
     payload := jsongo.Stringify(requestObj)
-    payload := StrReplace(payload, '"stream":1', '"stream":true')
+    return StrReplace(payload, '"stream":1', '"stream":true')
+}
 
+; Execute the title generation cURL request, return raw response text.
+_TitleGen_ExecuteRequest(payload) {
     tmpFile := A_Temp "\ChatWindow_TitleGen_" A_TickCount ".json"
     outFile := A_Temp "\ChatWindow_TitleGen_Out_" A_TickCount ".json"
     FileOpen(tmpFile, "w", "UTF-8-RAW").Write(payload)
@@ -44,31 +74,79 @@ generateThreadTitle(threadId) {
     while ProcessExist(cURLPID)
         Sleep 200
 
-    title := ""
-    if FileExist(outFile) {
+    raw := ""
+    if FileExist(outFile)
         raw := FileOpen(outFile, "r", "UTF-8-RAW").Read()
-        try {
-            parsed := jsongo.Parse(raw)
-            if parsed.Has("choices") && parsed["choices"].Length > 0 {
-                title := Trim(parsed["choices"][1]["message"]["content"])
-                if SubStr(title, 1, 1) = '"' || SubStr(title, 1, 1) = "'"
-                    title := SubStr(title, 2)
-                lastChar := SubStr(title, StrLen(title))
-                if lastChar = '"' || lastChar = "'"
-                    title := SubStr(title, 1, StrLen(title) - 1)
-                if SubStr(title, -1) = "."
-                    title := SubStr(title, 1, StrLen(title) - 1)
-                if StrLen(title) > 60
-                    title := SubStr(title, 1, 60)
+
+    safeDelete(tmpFile)
+    safeDelete(outFile)
+    return raw
+}
+
+; Parse the title and token usage from the raw JSON response.
+_TitleGen_ParseResponse(raw) {
+    title := "", promptTokens := 0, completionTokens := 0, thinkingTokens := 0
+    if !raw
+        return { title: title, promptTokens: promptTokens, completionTokens: completionTokens, thinkingTokens: thinkingTokens }
+
+    try {
+        parsed := jsongo.Parse(raw)
+        if parsed.Has("usage") {
+            u := parsed["usage"]
+            promptTokens := u.Has("prompt_tokens") ? u["prompt_tokens"] : 0
+            completionTokens := u.Has("completion_tokens") ? u["completion_tokens"] : 0
+            if u.Has("completion_tokens_details") {
+                d := u["completion_tokens_details"]
+                if d.Has("reasoning_tokens")
+                    thinkingTokens := d["reasoning_tokens"]
             }
         }
+        if parsed.Has("choices") && parsed["choices"].Length > 0 {
+            title := _TitleGen_CleanTitle(Trim(parsed["choices"][1]["message"]["content"]))
+        }
     }
+    return { title: title, promptTokens: promptTokens, completionTokens: completionTokens, thinkingTokens: thinkingTokens }
+}
 
-    if title {
-        ChatDB.Thread_Update(threadId, title)
-        postWebMessage("threadList", ChatDB.Thread_List())
-    }
+; Clean up the raw title: strip quotes, trailing period, truncate to 60 chars.
+_TitleGen_CleanTitle(rawTitle) {
+    if SubStr(rawTitle, 1, 1) = '"' || SubStr(rawTitle, 1, 1) = "'"
+        rawTitle := SubStr(rawTitle, 2)
+    lastChar := SubStr(rawTitle, StrLen(rawTitle))
+    if lastChar = '"' || lastChar = "'"
+        rawTitle := SubStr(rawTitle, 1, StrLen(rawTitle) - 1)
+    if SubStr(rawTitle, -1) = "."
+        rawTitle := SubStr(rawTitle, 1, StrLen(rawTitle) - 1)
+    if StrLen(rawTitle) > 60
+        rawTitle := SubStr(rawTitle, 1, 60)
+    return rawTitle
+}
 
+; Track title generation usage in the dashboard.
+_TitleGen_TrackUsage(titleModel, promptTokens, completionTokens, thinkingTokens, titleGenStart) {
+    if promptTokens <= 0
+        return
+    usage := { promptTokens: promptTokens, completionTokens: completionTokens, cachedTokens: 0 }
+    costs := CostCalculator.ComputeTokenCosts(titleModel, usage)
+    ChatDB.CommandUsage_Upsert({
+        date: FormatTime(, "yyyy-MM-dd"),
+        model: titleModel,
+        provider: "deepseek",
+        command_name: "Title Generation",
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        thinking_tokens: thinkingTokens,
+        cached_tokens: 0,
+        input_cost: costs.inputCost != "" ? costs.inputCost : 0,
+        cached_input_cost: costs.cachedInputCost != "" ? costs.cachedInputCost : 0,
+        output_cost: costs.outputCost != "" ? costs.outputCost : 0,
+        total_cost: costs.totalCost != "" ? costs.totalCost : 0,
+        response_time_ms: A_TickCount - titleGenStart
+    })
+}
+
+; Log the title generation API request.
+_TitleGen_LogRequest(titleModel, payload, raw, title, titleGenStart) {
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: "Thread Title Generation",
@@ -76,9 +154,6 @@ generateThreadTitle(threadId) {
         endpoint: APIEndpoint, pasteMode: "none",
         request: payload, response: raw,
         status: title ? "success" : "failed",
-        latencyMs: A_TickCount - titleGenStart
+        responseTimeMs: A_TickCount - titleGenStart
     })
-
-    FileDelete(tmpFile)
-    safeDelete(outFile)
 }

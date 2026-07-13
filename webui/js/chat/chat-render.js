@@ -75,15 +75,30 @@ function createMessageBubble(msg, index) {
 
   var bubbleContent = div;
 
-  // Role label
-  var label = document.createElement('div');
+  // Role label + timestamp on same line
+  var labelRow = document.createElement('div');
+  labelRow.style.cssText = 'display:flex;align-items:baseline;';
+  var label = document.createElement('span');
   label.className = 'message-label';
   switch (msg.role) {
     case 'user': label.textContent = 'You'; break;
     case 'assistant': label.textContent = msg.model || 'Assistant'; break;
     case 'system': label.textContent = 'System Prompt'; break;
   }
-  bubbleContent.appendChild(label);
+  labelRow.appendChild(label);
+
+  // Timestamp — right-aligned on same line as label
+  if (msg.createdAt) {
+    var d2 = new Date(msg.createdAt + 'Z');
+    if (!isNaN(d2.getTime())) {
+      var ts = document.createElement('span');
+      ts.className = 'message-timestamp';
+      ts.style.cssText = 'margin-left:auto;font-size:0.68rem;color:var(--bs-text-muted,#9ca3af);white-space:nowrap;';
+      ts.textContent = d2.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      labelRow.appendChild(ts);
+    }
+  }
+  bubbleContent.appendChild(labelRow);
 
   // Attachment previews (user messages only)
   if (msg.attachments && msg.attachments.length > 0 && msg.role === 'user') {
@@ -223,37 +238,6 @@ function createMessageBubble(msg, index) {
 }
 
 // Branch badge
-function createBranchBadge(msg) {
-  var badge = document.createElement('div');
-  badge.className = 'branch-badge';
-  badge.dataset.msgId = msg.id;
-  var prevBtn = document.createElement('button');
-  prevBtn.className = 'branch-arrow branch-arrow-prev';
-  prevBtn.textContent = '\u25C0';
-  prevBtn.title = 'Previous branch';
-  prevBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    switchBranch(msg.id, -1);
-  });
-  var label = document.createElement('span');
-  label.className = 'branch-label';
-  label.textContent = msg.siblingInfo.index + '/' + msg.siblingInfo.total;
-  var nextBtn = document.createElement('button');
-  nextBtn.className = 'branch-arrow branch-arrow-next';
-  nextBtn.textContent = '\u25B6';
-  nextBtn.title = 'Next branch';
-  nextBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    switchBranch(msg.id, 1);
-  });
-  badge.appendChild(prevBtn);
-  badge.appendChild(label);
-  badge.appendChild(nextBtn);
-  return badge;
-}
-
-function updateBranchBadges() {}
-
 function appendChatMessage(message) {
   chatMessages.push(message);
   var container = document.getElementById('chat-messages');

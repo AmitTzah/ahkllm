@@ -19,7 +19,6 @@ class ImageUtils {
     ; If contentHash is provided, uses hash-based filename for deduplication.
     ; Returns the relative file path.
     static SaveBase64ToFile(base64Data, messageId, filename, contentHash := "") {
-        debugLog("[IMGUTIL] SaveBase64ToFile: filename=" filename " base64Len=" StrLen(base64Data) " hash=" (contentHash ? SubStr(contentHash, 1, 8) "..." : "none"), "AttachPipeline")
         ImageUtils.EnsureAttachmentDir()
         safeExt := ""
         SplitPath(filename, , , &ext)
@@ -33,7 +32,6 @@ class ImageUtils {
             fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
             ; If file already exists (dedup hit), skip write
             if FileExist(fullPath) {
-                debugLog("[IMGUTIL] SaveBase64ToFile: DEDUP HIT, file exists at " fullPath, "AttachPipeline")
                 return filePath
             }
         } else {
@@ -42,22 +40,16 @@ class ImageUtils {
             filePath := "attachments\" safeName
             fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
         }
-        debugLog("[IMGUTIL] SaveBase64ToFile: fullPath=" fullPath, "AttachPipeline")
-
         ; Decode base64 to binary and write to file
         binData := ImageUtils._Base64Decode(base64Data)
         if binData {
-            debugLog("[IMGUTIL] SaveBase64ToFile: decoded " binData.Size " bytes, writing to disk", "AttachPipeline")
             f := FileOpen(fullPath, "w")
             f.RawWrite(binData, binData.Size)
             f.Close()
-            debugLog("[IMGUTIL] SaveBase64ToFile: file written, exists=" FileExist(fullPath), "AttachPipeline")
         } else {
-            debugLog("[IMGUTIL] SaveBase64ToFile: _Base64Decode returned false", "AttachPipeline")
             return ""
         }
 
-        debugLog("[IMGUTIL] SaveBase64ToFile result: filePath=" filePath, "AttachPipeline")
         return filePath
     }
 
@@ -101,83 +93,25 @@ class ImageUtils {
         return pBitmap ? filePath : ""
     }
 
-    ; Capture clipboard bitmap (from PrintScreen) and save as PNG to attachments/.
-    ; Returns the relative file path.
-    static SaveClipboardToFile(messageId) {
-        ImageUtils.EnsureAttachmentDir()
-        fileName := messageId "_screenshot.png"
-        filePath := "attachments\" fileName
-        fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
-
-        ; Use GDI+ via built-in SavePictureToFile approach.
-        ; AHK v2 can save clipboard content using FileAppend for PNG if
-        ; we first get the bitmap onto clipboard in PNG format.
-        ; Approach: use Send("{PrintScreen}") then save clipboard.
-        ; The clipboard should contain a bitmap at this point.
-        ; Convert to PNG via GDI+ SaveBitmapToFile (using built-in Gdip functions)
-        try {
-            ImageUtils._SaveClipboardBitmapToPNG(fullPath)
-        } catch Error as e {
-            return ""
-        }
-        return filePath
-    }
-
-    ; Delete a file from disk (full relative path from attachments dir).
-    static DeleteFile(filePath) {
-        fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
-        try FileDelete(fullPath)
-    }
-
-    ; Copy a file to a new path with a new message ID in the filename.
-    static CopyFile(srcPath, destMsgId) {
-        fullSrc := A_AppData "\LLM-AutoHotkey-Assistant\" srcPath
-        SplitPath(srcPath, &fileName)
-        ; Replace old message ID with new one in filename
-        ; Filename format: msg_OLDID_rest.ext → msg_NEWID_rest.ext
-        newFileName := ""
-        ; Find the message ID portion (between "msg_" and the next "_")
-        if InStr(fileName, "msg_") {
-            prefixEnd := InStr(fileName, "_", , , 2)  ; second underscore
-            if prefixEnd {
-                newFileName := "msg_" destMsgId "_" SubStr(fileName, prefixEnd + 1)
-            } else {
-                newFileName := "msg_" destMsgId "_" SubStr(fileName, InStr(fileName, "_") + 1)
-            }
-        } else {
-            newFileName := "msg_" destMsgId "_" fileName
-        }
-        newPath := "attachments\" newFileName
-        fullDest := A_AppData "\LLM-AutoHotkey-Assistant\" newPath
-        if FileExist(fullSrc)
-            try FileCopy(fullSrc, fullDest, true)
-        return newPath
-    }
-
     ; Read file and base64-encode its content.
     ; Used by buildRequest to read attachment files for API calls.
     static ReadAndEncode(filePath) {
         fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
-        debugLog("[IMGUTIL] ReadAndEncode: fullPath=" fullPath, "AttachPipeline")
         if !FileExist(fullPath) {
-            debugLog("[IMGUTIL] ReadAndEncode: FILE NOT FOUND", "AttachPipeline")
             return ""
         }
         fileSize := FileGetSize(fullPath)
-        debugLog("[IMGUTIL] ReadAndEncode: fileSize=" fileSize, "AttachPipeline")
         if !fileSize
             return ""
         buf := Buffer(fileSize)
         f := FileOpen(fullPath, "r")
         f.RawRead(buf, fileSize)
         f.Close()
-        debugLog("[IMGUTIL] ReadAndEncode: read " fileSize " bytes, encoding to base64", "AttachPipeline")
         encoded := ""
         try {
             encoded := ImageUtils._Base64Encode(buf, fileSize)
-            debugLog("[IMGUTIL] ReadAndEncode: encoded len=" StrLen(encoded), "AttachPipeline")
         } catch Error as e {
-            debugLog("[IMGUTIL] ReadAndEncode: _Base64Encode crashed: " e.Message, "AttachPipeline")
+            debugLog("ImageUtils.ReadAndEncode _Base64Encode crashed: " e.Message, "ErrorHandler")
         }
         return encoded
     }
@@ -216,49 +150,17 @@ class ImageUtils {
         requiredSize := 0
         DllCall("Crypt32.dll\CryptStringToBinaryW", "Ptr", StrPtr(b64), "UInt", StrLen(b64),
             "UInt", CRYPT_STRING_BASE64, "Ptr", 0, "UIntP", &requiredSize, "Ptr", 0, "Ptr", 0)
-        debugLog("[IMGUTIL] _Base64Decode: inputLen=" StrLen(b64) " requiredSize=" requiredSize, "AttachPipeline")
         if requiredSize <= 0 {
-            debugLog("[IMGUTIL] _Base64Decode: FAILED — requiredSize=" requiredSize, "AttachPipeline")
             return ""
         }
         ; Allocate buffer and decode — return Buffer for binary safety
         buf := Buffer(requiredSize)
         DllCall("Crypt32.dll\CryptStringToBinaryW", "Ptr", StrPtr(b64), "UInt", StrLen(b64),
             "UInt", CRYPT_STRING_BASE64, "Ptr", buf, "UIntP", &requiredSize, "Ptr", 0, "Ptr", 0)
-        debugLog("[IMGUTIL] _Base64Decode: decoded " requiredSize " bytes", "AttachPipeline")
         return buf
     }
 
-    static _SaveClipboardBitmapToPNG(filePath) {
-        ; Use GDI+ to save clipboard bitmap as PNG
-        ; Requires gdiplus.dll (available on all Windows)
-        ImageUtils._EnsureGdiPlusInitialized()
-
-        ; Open clipboard
-        if !DllCall("OpenClipboard", "Ptr", 0)
-            throw Error("Failed to open clipboard")
-        hBitmap := DllCall("GetClipboardData", "UInt", 2, "Ptr")  ; CF_BITMAP = 2
-        if !hBitmap {
-            DllCall("CloseClipboard")
-            throw Error("No bitmap on clipboard")
-        }
-
-        ; Create GDI+ bitmap from HBITMAP
-        DllCall("gdiplus.dll\GdipCreateBitmapFromHBITMAP", "Ptr", hBitmap, "Ptr", 0, "PtrP", &pBitmap := 0)
-        DllCall("CloseClipboard")
-
-        if !pBitmap
-            throw Error("Failed to create GDI+ bitmap")
-
-        ; Get PNG encoder CLSID
-        pngEncoder := ImageUtils._GetEncoderCLSID("image/png")
-        ; Save to file
-        DllCall("gdiplus.dll\GdipSaveImageToFile", "Ptr", pBitmap, "Ptr", StrPtr(filePath), "Ptr", pngEncoder, "Ptr", 0)
-        DllCall("gdiplus.dll\GdipDisposeImage", "Ptr", pBitmap)
-    }
-
-
-    ; Initialize GDI+ once (shared by CaptureScreen and _SaveClipboardBitmapToPNG).
+    ; Initialize GDI+ once (used by CaptureScreen).
     static _EnsureGdiPlusInitialized() {
         static GdipInitialized := false
         if !GdipInitialized {

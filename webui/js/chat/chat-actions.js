@@ -94,6 +94,9 @@ function addMessageActions(actionsContainer, msg, index) {
 
     _addBranchNav(actionsContainer, msg);
 
+    var tokenIcon = createTokenInfoIcon(msg);
+    if (tokenIcon) actionsContainer.appendChild(tokenIcon);
+
     // Hidden actions: Quote, Fork, Delete
     var moreItems = [
       { label: '\uD83D\uDCAC Quote', action: function() { quoteMessage(index); } },
@@ -136,6 +139,9 @@ function addMessageActions(actionsContainer, msg, index) {
   actionsContainer.appendChild(downBtn);
 
   _addBranchNav(actionsContainer, msg);
+
+  var tokenIcon = createTokenInfoIcon(msg);
+  if (tokenIcon) actionsContainer.appendChild(tokenIcon);
 
   // Hidden actions: Quote, Fork, Delete
   var moreItems = [

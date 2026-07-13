@@ -105,4 +105,36 @@ class ChatUtilsTest {
             responseWindow := saved
         }
     }
+    ; --- buildStructuredMessagesFromPath includes createdAt ---
+
+    StructuredMessages_IncludesCreatedAt() {
+        ; Minimal path with created_at set
+        msg := {
+            role: "user", content: "test", id: "msg-1",
+            token_count: 0, thinking_tokens: 0, cached_tokens: 0,
+            response_time_ms: 0, ttft_ms: 0,
+            created_at: "2026-07-12 15:30:00",
+            sibling_group: "", sibling_index: 0,
+            feedback: 0, reasoning: "", model: ""
+        }
+        result := buildStructuredMessagesFromPath([msg])
+        if result.Length != 1
+            throw Error("Expected 1 structured message, got " result.Length)
+        if result[1].createdAt != "2026-07-12 15:30:00"
+            throw Error("Expected createdAt='2026-07-12 15:30:00', got '" result[1].createdAt "'")
+    }
+
+    StructuredMessages_CreatedAtEmptyWhenMissing() {
+        msg := {
+            role: "user", content: "test", id: "msg-2",
+            token_count: 0, thinking_tokens: 0, cached_tokens: 0,
+            response_time_ms: 0, ttft_ms: 0,
+            sibling_group: "", sibling_index: 0,
+            feedback: 0, reasoning: "", model: ""
+        }
+        result := buildStructuredMessagesFromPath([msg])
+        if result[1].createdAt != ""
+            throw Error("Expected empty createdAt when missing, got '" result[1].createdAt "'")
+    }
+
 }

@@ -1,4 +1,4 @@
-// chat-format.test.js — Unit tests for chat-format.js: getMessageText, formatCost, formatCompact, formatNumber
+// chat-format.test.js — Unit tests for chat-format.js: getMessageText, formatCompact, formatNumber
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -14,7 +14,7 @@ const ctx = (() => {
         setTimeout: setTimeout,
         chatMessages: [],
         Number: Number, String: String,
-        formatNumber: undefined, formatCost: undefined, formatCompact: undefined, getMessageText: undefined,
+        formatNumber: undefined, formatCompact: undefined, getMessageText: undefined,
     };
     sandbox.global = sandbox;
     vm.runInContext(src, vm.createContext(sandbox));
@@ -108,29 +108,6 @@ describe('getMessageText', () => {
         };
         const text = ctx.getMessageText(msg);
         assert.ok(text.includes('[Attached File: photo.jpg]'));
-    });
-});
-
-describe('formatCost', () => {
-    it('returns empty for null/undefined/empty', () => {
-        assert.strictEqual(ctx.formatCost(''), '');
-        assert.strictEqual(ctx.formatCost(null), '');
-        assert.strictEqual(ctx.formatCost(undefined), '');
-    });
-
-    it('returns $0.00 for zero', () => {
-        assert.strictEqual(ctx.formatCost(0), '$0.00');
-    });
-
-    it('formats small dollar amounts with cents', () => {
-        assert.strictEqual(ctx.formatCost(0.005), '$0.005');
-        assert.strictEqual(ctx.formatCost(0.01), '$0.01');
-        assert.strictEqual(ctx.formatCost(1.50), '$1.50');
-    });
-
-    it('formats tiny fractions', () => {
-        const r = ctx.formatCost(0.000123);
-        assert.ok(r.startsWith('$0.000123') || r.startsWith('$0.00012'));
     });
 });
 

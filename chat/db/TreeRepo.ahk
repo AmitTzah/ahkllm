@@ -15,7 +15,7 @@ class TreeRepo {
         if !leafId
             return []
 
-        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" threadId "';")
+        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, created_at FROM messages WHERE thread_id='" threadId "';")
 
         msgMap := Map()
         for row in allTable.rows {
@@ -27,10 +27,12 @@ class TreeRepo {
                 sibling_index: row.sibling_index,
                 feedback: row.feedback ? Integer(row.feedback) : 0,
                 reasoning: row.Has("reasoning") && row["reasoning"] ? row["reasoning"] : "",
-                prompt_tokens: row.Has("prompt_tokens") && row.prompt_tokens ? Integer(row.prompt_tokens) : 0,
-                completion_tokens: row.Has("completion_tokens") && row.completion_tokens ? Integer(row.completion_tokens) : 0,
-                total_tokens: row.Has("total_tokens") && row.total_tokens ? Integer(row.total_tokens) : 0,
-                cached_tokens: row.Has("cached_tokens") && row.cached_tokens ? Integer(row.cached_tokens) : 0
+                token_count: row.Has("token_count") && row.token_count ? Integer(row.token_count) : 0,
+                thinking_tokens: row.Has("thinking_tokens") && row.thinking_tokens ? Integer(row.thinking_tokens) : 0,
+                cached_tokens: row.Has("cached_tokens") && row.cached_tokens ? Integer(row.cached_tokens) : 0,
+                response_time_ms: row.Has("response_time_ms") && row.response_time_ms ? Integer(row.response_time_ms) : 0,
+                ttft_ms: row.Has("ttft_ms") && row.ttft_ms ? Integer(row.ttft_ms) : 0,
+                created_at: row.created_at
             }
         }
 
@@ -194,12 +196,13 @@ class TreeRepo {
         safeFeedback := msg.feedback ? msg.feedback : "NULL"
         safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
 
-        pt := msg.HasProp("prompt_tokens") ? msg.prompt_tokens : 0
-        ct := msg.HasProp("completion_tokens") ? msg.completion_tokens : 0
-        tt := msg.HasProp("total_tokens") ? msg.total_tokens : 0
+        tc := msg.HasProp("token_count") ? msg.token_count : 0
+        tht := msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
         ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
+        lat := msg.HasProp("response_time_ms") ? msg.response_time_ms : 0
+        ttft := msg.HasProp("ttft_ms") ? msg.ttft_ms : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " pt ", " ct ", " ckt ", " tt ");")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ");")
     }
 
     ; Copy sibling messages that are NOT on the active path (so branch navigation works in forks).
@@ -221,12 +224,13 @@ class TreeRepo {
                 safeM := sibRow.model ? SQLite.Escape(sibRow.model) : ""
                 safeR := sibRow.Has("reasoning") && sibRow.reasoning ? SQLite.Escape(sibRow.reasoning) : ""
                 fb := sibRow.feedback ? sibRow.feedback : "NULL"
-                sPt := sibRow.prompt_tokens ? sibRow.prompt_tokens : 0
-                sCt := sibRow.completion_tokens ? sibRow.completion_tokens : 0
-                sTt := sibRow.total_tokens ? sibRow.total_tokens : 0
+                sTc := sibRow.token_count ? sibRow.token_count : 0
+                sTht := sibRow.thinking_tokens ? sibRow.thinking_tokens : 0
                 sCkt := sibRow.cached_tokens ? sibRow.cached_tokens : 0
+                sLat := sibRow.response_time_ms ? sibRow.response_time_ms : 0
+                sTtft := sibRow.ttft_ms ? sibRow.ttft_ms : 0
 
-                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", " fb ", '" safeR "', " sPt ", " sCt ", " sCkt ", " sTt ");")
+                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", " fb ", '" safeR "', " sTc ", " sTht ", " sCkt ", " sLat ", " sTtft ");")
                 AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
             }
         }
@@ -237,7 +241,7 @@ class TreeRepo {
         if !check.count
             return
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" msgId "', updated_at=datetime('now') WHERE id='" threadId "';")
-        TreeRepo._SyncActivePathTokens(threadId)
+        TreeRepo._RecomputeActivePath(threadId)
     }
 
     static SwitchBranch(threadId, msgId, direction := 1) {
@@ -261,22 +265,31 @@ class TreeRepo {
 
         newLeafId := TreeRepo._WalkToLeaf(newMsgId)
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" threadId "';")
-        TreeRepo._SyncActivePathTokens(threadId)
 
         path := TreeRepo.GetActivePath(threadId)
         return { path: path, siblingInfo: { index: newPos + 1, total: siblings.Length } }
     }
 
+    ; Returns token/cost stats for the token bar. activePathTokens is read from
+    ; the leaf message's active_path_tokens column (O(1) primary key lookup).
+    ; The column stores: prompt_tokens + token_count for assistants (API ground truth),
+    ; parent + token_count for others (prefix sum). No more thread-level storage
+    ; or path summation needed in the common case.
     static GetThreadStats(threadId) {
-        threadRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
-        activePathTokens := threadRow.count ? Integer(threadRow[1, "active_path_tokens"]) : 0
+        ; Read active_path_tokens from the leaf message (O(1))
+        threadRow := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='" threadId "';")
+        activePathTokens := 0
+        if threadRow.count && threadRow[1, "active_leaf_id"] {
+            leafRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" threadRow[1, "active_leaf_id"] "';")
+            if leafRow.count
+                activePathTokens := Integer(leafRow[1, "active_path_tokens"])
+        }
 
-        threadTable := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" threadId "';")
+        threadTable := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" threadId "';")
         result := {
             activePathTokens: activePathTokens, contextWindow: 1048576,
-            cumulativePromptTokens: threadTable.count ? Integer(threadTable[1, "cumulative_prompt_tokens"]) : 0,
-            cumulativeCompletionTokens: threadTable.count ? Integer(threadTable[1, "cumulative_completion_tokens"]) : 0,
-            cumulativeTotalTokens: threadTable.count ? Integer(threadTable[1, "cumulative_total_tokens"]) : 0,
+            cumulativeInputTokens: threadTable.count ? Integer(threadTable[1, "cumulative_input_tokens"]) : 0,
+            cumulativeOutputTokens: threadTable.count ? Integer(threadTable[1, "cumulative_output_tokens"]) : 0,
             cumulativeCachedTokens: threadTable.count ? Integer(threadTable[1, "cumulative_cached_tokens"]) : 0,
             cumulativeCost: threadTable.count ? Number(threadTable[1, "cumulative_cost"]) : 0,
             cumulativeInputCost: threadTable.count ? Number(threadTable[1, "cumulative_input_cost"]) : 0,
@@ -323,6 +336,14 @@ class TreeRepo {
             if ModelParser.StripProvider(fullKey) = modelShort
                 return m
         }
+        ; Second fallback: strip version suffix and try again
+        modelBase := ModelParser.StripVersion(modelShort)
+        if modelBase != modelShort {
+            for fullKey, m in models {
+                if ModelParser.StripVersion(ModelParser.StripProvider(fullKey)) = modelBase
+                    return m
+            }
+        }
         return ""
     }
 
@@ -337,14 +358,18 @@ class TreeRepo {
         return currentId
     }
 
-    static _SyncActivePathTokens(threadId) {
+    ; Walk the active path and recompute active_path_tokens as prefix sums
+    ; (each msg = previous msg's total + this msg's token_count).
+    ; Called after: insert with backfill, hard delete, edit.
+    ; This overwrites any API ground truth on assistants with computed prefix
+    ; sums — acceptable because the ground truth is stale after structural changes.
+    ; The next API call restores ground truth via Insert().
+    static _RecomputeActivePath(threadId) {
         path := TreeRepo.GetActivePath(threadId)
-        totalEstimate := 0
+        prev := 0
         for msg in path {
-            totalEstimate += TokenEstimation.Estimate(msg.content)
-            if msg.HasProp("reasoning") && msg.reasoning
-                totalEstimate += TokenEstimation.Estimate(msg.reasoning)
+            prev += msg.HasProp("token_count") ? msg.token_count : 0
+            ChatDB.db.Exec("UPDATE messages SET active_path_tokens=" prev " WHERE id='" msg.id "';")
         }
-        ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=" totalEstimate " WHERE id='" threadId "';")
     }
 }

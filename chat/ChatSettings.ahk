@@ -130,7 +130,7 @@ handleSwitchAssistant(parsed) {
     }
 
     _sendDropdownLabel()
-    debugLog("Switched to assistant: " asst.name " (" asst.baseModel ")")
+    debugLog("[MODEL] Switched to assistant: " asst.name " (" asst.baseModel ")")
 }
 
 handleModelSettingsUpdate(parsed) {
@@ -164,16 +164,16 @@ handleModelSettingsUpdate(parsed) {
     if activeThreadId {
         ChatDB.Thread_UpdateSettings(activeThreadId, _CurrentSettingsObject())
 
-        ; Upsert system message so "System Prompt" label appears in chat
-        if systemMessage != "" {
-            path := ChatDB.Msg_GetActivePath(activeThreadId)
-            existingSysId := ""
-            for msg in path {
-                if msg.role = "system" {
-                    existingSysId := msg.id
-                    break
-                }
+        ; Upsert or remove system message in chat
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        existingSysId := ""
+        for msg in path {
+            if msg.role = "system" {
+                existingSysId := msg.id
+                break
             }
+        }
+        if systemMessage != "" {
             if existingSysId {
                 ChatDB.Msg_Edit(existingSysId, systemMessage)
             } else {
@@ -182,14 +182,17 @@ handleModelSettingsUpdate(parsed) {
                     content: systemMessage, parent_id: ""
                 })
             }
-            ; Refresh chat view so label appears immediately
-            path := ChatDB.Msg_GetActivePath(activeThreadId)
-            postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
+        } else if existingSysId {
+            ; System message was cleared — delete the row from messages table
+            ChatDB.Msg_HardDelete(existingSysId)
         }
+        ; Refresh chat view so changes appear immediately
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
     }
 
     _sendDropdownLabel()
-    debugLog("Model settings updated: model=" (model ? model : chatDefaultModel "(default)"))
+    debugLog("[SETTINGS] Saved — thread=" activeThreadId " model=" (model ? model : chatDefaultModel) " systemMsg=" StrLen(systemMessage) "chars")
 }
 
 postCurrentSettingsToWebView() {

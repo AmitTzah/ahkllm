@@ -8,8 +8,16 @@
 ; ----------------------------------------------------
 
 class CostCalculator {
+    ; Extract pricing from a model object into the provided output variables
+    static _ResolvePricing(m, &inputPrice, &cachedInputPrice, &outputPrice, &contextWin) {
+        inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
+        cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)
+        outputPrice      := m.HasOwnProp("output")      ? m.output      : 0
+        contextWin       := m.HasOwnProp("context")     ? m.context     : ""
+    }
+
     static ComputeTokenCosts(model, usage) {
-        costs := { inputCost: "", outputCost: "", totalCost: "", contextWindow: "" }
+        costs := { inputCost: "", cachedInputCost: "", outputCost: "", totalCost: "", contextWindow: "" }
 
         contextWin := ""
         cachedInputPrice := 0
@@ -18,25 +26,16 @@ class CostCalculator {
 
         ; Lookup in the models map — try full "provider/model" key first
         if models.Has(model) {
-            m := models[model]
-            inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
-            cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)
-            outputPrice      := m.HasOwnProp("output")      ? m.output      : 0
-            contextWin       := m.HasOwnProp("context")     ? m.context     : ""
+            CostCalculator._ResolvePricing(models[model], &inputPrice, &cachedInputPrice, &outputPrice, &contextWin)
         }
 
-        ; Fallback: if the full key wasn't found, iterate models map by short
-        ; name (strip provider prefix from each key) — some consumers pass
-        ; model names without "provider/"
+        ; Fallback: strip provider prefix or version suffix
         if !models.Has(model) {
             modelShort := ModelParser.StripProvider(model)
-
             for fullKey, m in models {
-                if ModelParser.StripProvider(fullKey) = modelShort {
-                    inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
-                    cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)
-                    outputPrice      := m.HasOwnProp("output")      ? m.output      : 0
-                    contextWin       := m.HasOwnProp("context")     ? m.context     : ""
+                shortKey := ModelParser.StripProvider(fullKey)
+                if shortKey = modelShort || ModelParser.StripVersion(shortKey) = ModelParser.StripVersion(modelShort) {
+                    CostCalculator._ResolvePricing(m, &inputPrice, &cachedInputPrice, &outputPrice, &contextWin)
                     break
                 }
             }
@@ -57,6 +56,7 @@ class CostCalculator {
                 nonCachedCost := nonCachedTokens * inputPrice / 1000000
                 cachedCost := cachedTokens * cachedInputPrice / 1000000
                 costs.inputCost := Round(nonCachedCost + cachedCost, 6)
+                costs.cachedInputCost := Round(cachedCost, 6)
             }
 
             ; Calculate output cost

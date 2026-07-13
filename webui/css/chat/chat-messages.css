@@ -183,3 +183,45 @@
 .chat-message code {
     font-size: 0.85rem;
 }
+
+/* Token info tooltip */
+.token-info-btn {
+    position: relative;
+}
+.token-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 6px;
+    z-index: 10000;
+    background: #ffffff;
+    color: #1e1e2e;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    min-width: 240px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    pointer-events: none;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+.token-tooltip-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+    color: #1a56db;
+}
+.token-tooltip-row {
+    padding: 1px 0;
+}
+.token-tooltip-row span {
+    font-weight: 600;
+    color: #03543f;
+}
+.token-tooltip-sub {
+    padding: 0 0 0 8px;
+    color: #6b7280;
+    font-size: 0.75rem;
+}

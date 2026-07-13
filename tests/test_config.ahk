@@ -2,8 +2,8 @@
 ; test_config.ahk — Test mode configuration overrides
 ;
 ; Included AFTER lib/Config.ahk to override production
-; globals with test-safe values. Shared utilities (ModelParser,
-; TokenEstimation) are loaded by Config.ahk.
+; globals with test-safe values. Shared utilities (ModelParser)
+; are loaded by Config.ahk.
 ; ======================================================
 #Warn All, Off
 

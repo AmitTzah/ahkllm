@@ -6,6 +6,33 @@
 
 class AttachmentRepo {
 
+    ; Extract fields from a JS attachment object, save base64 to disk,
+    ; and insert a DB row. Returns the attachment ID, or "" on failure.
+    ; The att object uses JS camelCase keys: type, filename, base64, mimeType, size, extractedText, contentHash.
+    static SaveAttachment(msgId, att) {
+        if !IsObject(att)
+            return ""
+        attType := att.Has("type") ? att["type"] : "text_file"
+        attBase64 := att.Has("base64") ? att["base64"] : ""
+        if !attBase64
+            return ""
+        attFilename := att.Has("filename") ? att["filename"] : "unknown"
+        attHash := att.Has("contentHash") ? att["contentHash"] : ""
+        filePath := ImageUtils.SaveBase64ToFile(attBase64, msgId, attFilename, attHash)
+        if !filePath {
+            debugLog("[ATTACH] Save failed — file=" attFilename)
+            return ""
+        }
+        return AttachmentRepo.Insert(msgId, {
+            attachment_type: attType,
+            file_path: filePath,
+            mime_type: att.Has("mimeType") ? att["mimeType"] : "",
+            original_filename: attFilename,
+            file_size: att.Has("size") ? att["size"] : 0,
+            extracted_text: att.Has("extractedText") ? att["extractedText"] : ""
+        })
+    }
+
     static Insert(msgId, attObj) {
         id := ChatDB._UUID()
         safeType := SQLite.Escape(attObj.attachment_type)
@@ -20,7 +47,6 @@ class AttachmentRepo {
             encodedExtracted := ""
         }
         safeExtracted := SQLite.Escape(encodedExtracted)
-        debugLog("[ATTACHREPO] Insert: extracted_text rawLen=" StrLen(attObj.HasProp("extracted_text") ? attObj.extracted_text : "") " b64Len=" StrLen(encodedExtracted) " sqlLen=" StrLen(safeExtracted), "AttachPipeline")
 
         ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" id "', '" msgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
         return id

@@ -6,13 +6,8 @@
     gap: 0.15rem;
     align-items: center;
     margin-top: 0.25rem;
-    opacity: 0.6;
-    transition: opacity 0.15s ease;
 }
 
-.chat-message:hover .message-actions {
-    opacity: 1;
-}
 
 .chat-message.user .message-actions {
     justify-content: flex-end;

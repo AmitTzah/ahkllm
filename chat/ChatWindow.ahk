@@ -63,6 +63,21 @@ ChatHotkeys(action) {
 ; ----------------------------------------------------
 
 ChatDB.Open()
+
+; Clean up DB and cURL on exit (ProcessClose from Main.ahk is force-kill;
+; this runs when ChatWindow exits gracefully via WinClose or user action)
+_ChatWindowOnExit(*) {
+    try ChatDB.Close()
+    try {
+        if IsSet(cURLState) {
+            pid := cURLState("get")
+            if pid && ProcessExist(pid)
+                cURLState("close")
+        }
+    }
+}
+OnExit(_ChatWindowOnExit)
+
 requestParams := Map()
 requestParams["pasteMode"] := "chat"
 requestParams["uniqueID"] := A_TickCount A_NowUTC
@@ -159,6 +174,7 @@ if prewarming {
     ; Notify main script so it knows we exist (for WinShow later).
     CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
         requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
+    debugLog("[APP] ChatWindow prewarmed — hWnd=" chatWindow.hWnd)
 } else {
     showChatWindow(true)
     postWebMessage("setChatButtonsEnabled", true)

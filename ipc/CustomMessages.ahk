@@ -13,13 +13,15 @@ class CustomMessages {
     static WM_CHAT_WINDOW_OPENED := 0x500 + 0
     static WM_LOAD_THREAD := 0x500 + 2
     static WM_TRIGGER_LLM := 0x500 + 4
+    static WM_OPEN_USAGE_DASHBOARD := 0x500 + 5
 
     static registerHandlers(origin, handle) {
         switch origin {
             case "mainScript":
                 for msg in [this.WM_LOADING_START,
                     this.WM_LOADING_FINISH,
-                    this.WM_CHAT_WINDOW_OPENED]
+                    this.WM_CHAT_WINDOW_OPENED,
+                    this.WM_OPEN_USAGE_DASHBOARD]
                     OnMessage(msg, handle)
 
             case "subScript":
@@ -54,5 +56,10 @@ class CustomMessages {
     ; Main → ChatWindow: trigger LLM for the current thread (command-triggered chats)
     static notifyTriggerLLM(chatWindowhWnd) {
         try PostMessage(this.WM_TRIGGER_LLM, 0, 0, , "ahk_id " chatWindowhWnd)
+    }
+
+    ; ChatWindow → Main: open the usage dashboard
+    static notifyOpenUsageDashboard(mainScriptHiddenhWnd) {
+        try PostMessage(this.WM_OPEN_USAGE_DASHBOARD, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
     }
 }

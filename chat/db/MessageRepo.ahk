@@ -17,30 +17,115 @@ class MessageRepo {
         safeReasoning := msgObj.HasProp("reasoning") && msgObj.reasoning ? SQLite.Escape(msgObj.reasoning) : ""
         safeFeedback := msgObj.HasProp("feedback") && msgObj.feedback ? msgObj.feedback : "NULL"
 
-        pt := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : 0
-        ct := msgObj.HasProp("completion_tokens") ? msgObj.completion_tokens : 0
-        tt := msgObj.HasProp("total_tokens") ? msgObj.total_tokens : 0
+        tc := msgObj.HasProp("token_count") ? msgObj.token_count : 0
+        tht := msgObj.HasProp("thinking_tokens") ? msgObj.thinking_tokens : 0
         ckt := msgObj.HasProp("cached_tokens") ? msgObj.cached_tokens : 0
+        lat := msgObj.HasProp("response_time_ms") ? msgObj.response_time_ms : 0
+        ttft := msgObj.HasProp("ttft_ms") ? msgObj.ttft_ms : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, feedback, prompt_tokens, completion_tokens, cached_tokens, total_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " safeFeedback ", " pt ", " ct ", " ckt ", " tt ");")
+        ; Per-message attribution: if this is an assistant with API data,
+        ; backfill the user message's token_count via subtraction.
+        new_input := 0
+        existing_sum := 0
+        if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") && msgObj.prompt_tokens > 0 {
+            new_input := MessageRepo._BackfillUserTokens(msgObj.thread_id, msgObj.prompt_tokens, &existing_sum)
+        }
+
+        ; active_path_tokens: total context tokens from root to this message.
+        ; Assistants store API prompt_tokens + token_count (ground truth).
+        ; User/system messages store parent.active_path_tokens + token_count (prefix sum).
+        ; This column is read by GetThreadStats() for the UI token bar ("Context Used").
+        activePathTokens := tc
+        if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") {
+            activePathTokens := msgObj.prompt_tokens + tc
+        } else if msgObj.HasProp("parent_id") && msgObj.parent_id {
+            parentRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" msgObj.parent_id "';")
+            if parentRow.count
+                activePathTokens := Integer(parentRow[1, "active_path_tokens"]) + tc
+        }
+
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, feedback, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " safeFeedback ", " tc ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
 
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
+        promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
         if msgObj.HasProp("model") && msgObj.model {
-            usage := { promptTokens: pt, completionTokens: ct, totalTokens: tt, cachedTokens: ckt }
+            usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
             costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
             if costs.inputCost != "" {
                 inputCost := costs.inputCost
+                cachedInputCost := costs.cachedInputCost != "" ? costs.cachedInputCost : 0
                 outputCost := costs.outputCost != "" ? costs.outputCost : 0
                 totalCost := costs.totalCost != "" ? costs.totalCost : 0
-                if ckt > 0 && inputCost > 0
-                    cachedInputCost := Round(ckt * inputCost / Max(1, pt) * 0.1, 6)
             }
         }
 
-        activePathUpdate := msgObj.role = "assistant" && tt > 0 ? "active_path_tokens=" tt "," : ""
-        ChatDB.db.Exec("UPDATE chat_threads SET " activePathUpdate "active_leaf_id='" id "', updated_at=datetime('now'), cumulative_prompt_tokens=cumulative_prompt_tokens+" pt ", cumulative_completion_tokens=cumulative_completion_tokens+" ct ", cumulative_cached_tokens=cumulative_cached_tokens+" ckt ", cumulative_total_tokens=cumulative_total_tokens+" tt ", cumulative_cost=cumulative_cost+" totalCost ", cumulative_input_cost=cumulative_input_cost+" inputCost ", cumulative_cached_input_cost=cumulative_cached_input_cost+" cachedInputCost ", cumulative_output_cost=cumulative_output_cost+" outputCost " WHERE id='" msgObj.thread_id "';")
+        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now'), cumulative_input_tokens=cumulative_input_tokens+" promptTotal ", cumulative_output_tokens=cumulative_output_tokens+" (tc + tht) ", cumulative_cached_tokens=cumulative_cached_tokens+" ckt ", cumulative_cost=cumulative_cost+" totalCost ", cumulative_input_cost=cumulative_input_cost+" inputCost ", cumulative_cached_input_cost=cumulative_cached_input_cost+" cachedInputCost ", cumulative_output_cost=cumulative_output_cost+" outputCost " WHERE id='" msgObj.thread_id "';")
+
+        ; Note: _RecomputeActivePath is NOT called here because Insert already sets
+        ; active_path_tokens correctly (API ground truth for assistants, prefix sum for others).
+        ; Backfill already updates the user's active_path_tokens directly.
+        ; _RecomputeActivePath is only needed after structural changes (delete, edit).
+
+        ; Track chat usage for dashboard (daily aggregation)
+        if msgObj.role = "assistant" && msgObj.HasProp("model") && msgObj.model {
+            provider := ModelParser.Split(msgObj.model).provider
+            if provider = "" {
+                ; Fallback: look up provider from UserConfig models map
+                for fullKey, m in models {
+                    shortKey := ModelParser.StripProvider(fullKey)
+                    if shortKey = msgObj.model || ModelParser.StripVersion(shortKey) = ModelParser.StripVersion(msgObj.model) {
+                        provider := ModelParser.Split(fullKey).provider
+                        break
+                    }
+                }
+            }
+            ChatDB.ChatUsage_Upsert({
+                date: FormatTime(, "yyyy-MM-dd"),
+                model: msgObj.model,
+                provider: provider,
+                prompt_tokens: promptTotal,
+                completion_tokens: tc + tht,
+                thinking_tokens: tht,
+                cached_tokens: ckt,
+                input_cost: inputCost,
+                cached_input_cost: cachedInputCost,
+                output_cost: outputCost,
+                total_cost: totalCost,
+                response_time_ms: lat,
+                ttft_ms: ttft
+            })
+        }
 
         return id
+    }
+
+    ; Backfill the user message's token_count based on API prompt_tokens.
+    ; Returns new_input (tokens the user message contributed).
+    ; @param existing_sum — output: sum of existing token_count values in path before backfill
+    static _BackfillUserTokens(threadId, promptTokens, &existing_sum := 0) {
+        path := TreeRepo.GetActivePath(threadId)
+        existing_sum := 0
+        for msg in path {
+            existing_sum += msg.HasProp("token_count") ? msg.token_count : 0
+        }
+        new_input := Max(0, promptTokens - existing_sum)
+
+        ; Find the last user message in the path and backfill its token_count.
+        ; Only backfill if still 0 — user messages are shared across branches,
+        ; and retry/switch must not overwrite the original attribution.
+        i := path.Length
+        while i >= 1 {
+            if path[i].role = "user" {
+                currentTC := path[i].HasProp("token_count") ? path[i].token_count : 0
+                if currentTC = 0 {
+                    ChatDB.db.Exec("UPDATE messages SET token_count=" new_input " WHERE id='" path[i].id "';")
+                }
+                break
+            }
+            i--
+        }
+
+        return new_input
     }
 
     static HardDelete(msgId) {
@@ -66,40 +151,24 @@ class MessageRepo {
                 ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id=NULL WHERE id='" threadId "';")
         }
 
-        contentTable := ChatDB.db.Exec("SELECT content, reasoning FROM messages WHERE id='" msgId "';")
         ; Delete attachments BEFORE the raw DELETE — ON DELETE CASCADE would remove
         ; message_attachments rows before we can read file_path for disk cleanup.
         AttachmentRepo.DeleteByMessage(msgId)
         ChatDB.db.Exec("DELETE FROM messages WHERE id='" msgId "';")
 
-        if contentTable.count {
-            deletedContent := contentTable[1, "content"]
-            estimatedTokens := TokenEstimation.Estimate(deletedContent)
-            if contentTable[1].Has("reasoning") && contentTable[1, "reasoning"]
-                estimatedTokens += TokenEstimation.Estimate(contentTable[1, "reasoning"])
-            ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=MAX(0, active_path_tokens-" estimatedTokens "), updated_at=datetime('now') WHERE id='" threadId "';")
-        }
+        TreeRepo._RecomputeActivePath(threadId)
     }
 
     static Edit(msgId, newContent) {
-        oldTable := ChatDB.db.Exec("SELECT content, thread_id FROM messages WHERE id='" msgId "';")
+        oldTable := ChatDB.db.Exec("SELECT thread_id FROM messages WHERE id='" msgId "';")
         threadId := oldTable.count ? oldTable[1, "thread_id"] : ""
-        oldEstimate := 0
-        if oldTable.count
-            oldEstimate := TokenEstimation.Estimate(oldTable[1, "content"])
-        newEstimate := TokenEstimation.Estimate(newContent)
-        tokenDelta := newEstimate - oldEstimate
 
         safeContent := SQLite.Escape(newContent)
         ChatDB.db.Exec("UPDATE messages SET content='" safeContent "' WHERE id='" msgId "';")
         MessageRepo._TouchThreadByMsg(msgId)
 
-        if threadId && tokenDelta != 0 {
-            if tokenDelta > 0
-                ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=active_path_tokens+" tokenDelta " WHERE id='" threadId "';")
-            else
-                ChatDB.db.Exec("UPDATE chat_threads SET active_path_tokens=MAX(0, active_path_tokens" tokenDelta ") WHERE id='" threadId "';")
-        }
+        if threadId
+            TreeRepo._RecomputeActivePath(threadId)
     }
 
     static SetFeedback(msgId, rating) {

@@ -543,8 +543,9 @@ commands := [
 ; §6 THREAD TITLE AUTO-GENERATION
 ; ============================================================================
 ; After the first exchange in a chat thread, generates a short title via a
-; separate, cheap LLM call. Set titleGenModel to "" to disable.
+; separate, cheap LLM call. Toggle with autoTitleGenerationEnabled.
 
+autoTitleGenerationEnabled := true
 titleGenModel := "deepseek/deepseek-v4-flash"
 titleGenSystemPrompt := "Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary."
 titleGenMaxTokens := 50
@@ -625,6 +626,7 @@ quickAccessMenuItems := [
     { menuText: "&5 - API Logs",               command: "apilogs:" },
     { menuText: "&6 - Model Pricing",          command: "cmd /c powershell -ExecutionPolicy Bypass -File " A_ScriptDir "\Refresh-ModelPricing.ps1 && start " A_ScriptDir "\models_pricing.txt" },
     { menuText: "&7 - Debug Log",              command: A_Temp "\LLM_Debug_Log.txt" },
+    { menuText: "&8 - Usage Dashboard",        command: "usage:" },
 
 ]
 

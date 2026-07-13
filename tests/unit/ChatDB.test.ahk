@@ -1,5 +1,5 @@
 ; ======================================================
-; ChatDB.test.ahk â€” Unit tests for ChatDB class
+; ChatDB.test.ahk — Unit tests for ChatDB class
 ;
 ; Tests: Msg_Insert, Msg_GetActivePath, Msg_HardDelete,
 ;        Msg_GetThreadStats, Msg_GetSiblings,
@@ -12,7 +12,7 @@ class ChatDBTest {
         RegisterTestClass("ChatDBTest")
     }
 
-    ; Each test opens its own temp DB â€” no shared state
+    ; Each test opens its own temp DB — no shared state
     _openDb() {
         if ChatDB.isOpen {
             oldPath := ChatDB.dbPath
@@ -74,10 +74,10 @@ class ChatDBTest {
         threadId := this._setup()
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "system"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello"})
-        id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi there!", model: "deepseek-v4-flash", prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cached_tokens: 0})
+        id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi there!", model: "deepseek-v4-flash", token_count: 15, cached_tokens: 0})
         path := ChatDB.Msg_GetActivePath(threadId)
-        if path[path.Length].total_tokens != 15
-            throw Error("Expected total_tokens=15, got " path[path.Length].total_tokens)
+        if path[path.Length].token_count != 15
+            throw Error("Expected token_count=15, got " path[path.Length].token_count)
         if path[path.Length].cached_tokens != 0
             throw Error("Expected cached_tokens=0, got " path[path.Length].cached_tokens)
         this._teardown()
@@ -144,7 +144,7 @@ class ChatDBTest {
         if path.Length != 4
             throw Error("Expected 4 before delete, got " path.Length)
 
-        ; Delete middle message (a1Id) â€” children should be re-parented to u1Id
+        ; Delete middle message (a1Id) — children should be re-parented to u1Id
         ChatDB.Msg_HardDelete(a1Id)
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length != 3
@@ -160,7 +160,7 @@ class ChatDBTest {
         threadId := this._setup()
         rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", parent_id: rootId})
-        ; Delete root â€” children should get parent_id=NULL
+        ; Delete root — children should get parent_id=NULL
         ChatDB.Msg_HardDelete(rootId)
         path := ChatDB.Msg_GetActivePath(threadId)
         if path.Length < 1
@@ -181,8 +181,10 @@ class ChatDBTest {
         stats := ChatDB.Msg_GetThreadStats(threadId)
         if stats.activePathTokens != 0
             throw Error("Expected 0 activePathTokens, got " stats.activePathTokens)
-        if stats.cumulativeTotalTokens != 0
-            throw Error("Expected 0 cumulativeTotalTokens, got " stats.cumulativeTotalTokens)
+        if stats.cumulativeInputTokens != 0
+            throw Error("Expected 0 cumulativeInputTokens, got " stats.cumulativeInputTokens)
+        if stats.cumulativeOutputTokens != 0
+            throw Error("Expected 0 cumulativeOutputTokens, got " stats.cumulativeOutputTokens)
         this._teardown()
     }
 
@@ -190,12 +192,12 @@ class ChatDBTest {
         threadId := this._setup()
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "system"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "user message"})
-        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", model: "deepseek-v4-flash", prompt_tokens: 15, completion_tokens: 5, total_tokens: 20})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", model: "deepseek-v4-flash", token_count: 20})
         stats := ChatDB.Msg_GetThreadStats(threadId)
         if stats.activePathTokens <= 0
             throw Error("Expected activePathTokens > 0, got " stats.activePathTokens)
-        if stats.cumulativeTotalTokens <= 0
-            throw Error("Expected cumulativeTotalTokens > 0, got " stats.cumulativeTotalTokens)
+        if stats.cumulativeOutputTokens <= 0
+            throw Error("Expected cumulativeOutputTokens > 0, got " stats.cumulativeOutputTokens)
         this._teardown()
     }
 
@@ -293,29 +295,28 @@ class ChatDBTest {
     SwitchBranch_UpdatesActivePathTokens() {
         threadId := this._setup()
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
-        ; Two sibling assistants with different content lengths
-        ; Estimation: "hello" (5 chars)=1, "short reply" (11 chars)=3, "longer detailed response" (24 chars)=6
-        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "short reply", parent_id: u1Id, sibling_group: "test-sg", sibling_index: 0, model: "deepseek-v4-flash", prompt_tokens: 20, completion_tokens: 5, total_tokens: 25, cached_tokens: 0})
-        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "longer detailed response", parent_id: u1Id, sibling_group: "test-sg", sibling_index: 1, model: "deepseek-v4-flash", prompt_tokens: 50, completion_tokens: 10, total_tokens: 60, cached_tokens: 0})
-        ; After insert, active_path_tokens is set to API total_tokens (60 for a2)
+        ; Two sibling assistants — token_count = visible output
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "short reply", parent_id: u1Id, sibling_group: "test-sg", sibling_index: 0, model: "deepseek-v4-flash", token_count: 5, cached_tokens: 0})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "longer detailed response", parent_id: u1Id, sibling_group: "test-sg", sibling_index: 1, model: "deepseek-v4-flash", token_count: 10, cached_tokens: 0})
+        ; After insert, active_path_tokens = token_count of last assistant (10)
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 60
-            throw Error("Expected active_path_tokens=60 (API value) for a2, got " stats.activePathTokens)
+        if stats.activePathTokens != 10
+            throw Error("Expected active_path_tokens=10 for a2, got " stats.activePathTokens)
 
-        ; Switch to a1 branch â€” _SyncActivePathTokens recalculates with estimation: user(1) + a1(3) = 4
+        ; Switch to a1 branch — _SyncActivePathTokens sums token_count: a1(5) = 5
         result := ChatDB.Msg_SwitchBranch(threadId, a2Id, -1)
         if result.siblingInfo.index != 1
             throw Error("Expected sibling index 1 after switching, got " result.siblingInfo.index)
 
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 4
-            throw Error("Expected active_path_tokens=4 (estimated) for a1 branch after switch, got " stats.activePathTokens)
+        if stats.activePathTokens != 5
+            throw Error("Expected active_path_tokens=5 for a1 branch after switch, got " stats.activePathTokens)
 
-        ; Switch back to a2 â€” estimation: user(1) + a2(6) = 7
+        ; Switch back to a2 — token_count sum: a2(10) = 10
         ChatDB.Msg_SwitchBranch(threadId, a1Id, 1)
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 7
-            throw Error("Expected active_path_tokens=7 (estimated) for a2 branch after switch back, got " stats.activePathTokens)
+        if stats.activePathTokens != 10
+            throw Error("Expected active_path_tokens=10 for a2 branch after switch back, got " stats.activePathTokens)
         this._teardown()
     }
 
@@ -453,55 +454,45 @@ class ChatDBTest {
         threadId := this._setup()
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello"})
-        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cached_tokens: 0})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", token_count: 15, cached_tokens: 0})
         ; Capture cumulative counters before delete
-        threadRow := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens FROM chat_threads WHERE id='" threadId "';")
-        beforePt := Integer(threadRow[1, "cumulative_prompt_tokens"])
-        beforeCt := Integer(threadRow[1, "cumulative_completion_tokens"])
-        beforeTt := Integer(threadRow[1, "cumulative_total_tokens"])
+        threadRow := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
+        beforeIn := Integer(threadRow[1, "cumulative_input_tokens"])
+        beforeOut := Integer(threadRow[1, "cumulative_output_tokens"])
 
         ChatDB.Msg_HardDelete(a1Id)
 
         ; Verify cumulative counters unchanged
-        threadRow := ChatDB.db.Exec("SELECT cumulative_prompt_tokens, cumulative_completion_tokens, cumulative_total_tokens FROM chat_threads WHERE id='" threadId "';")
-        afterPt := Integer(threadRow[1, "cumulative_prompt_tokens"])
-        afterCt := Integer(threadRow[1, "cumulative_completion_tokens"])
-        afterTt := Integer(threadRow[1, "cumulative_total_tokens"])
-        if afterPt != beforePt
-            throw Error("Cumulative prompt_tokens changed after delete: " beforePt " â†’ " afterPt)
-        if afterCt != beforeCt
-            throw Error("Cumulative completion_tokens changed: " beforeCt " â†’ " afterCt)
-        if afterTt != beforeTt
-            throw Error("Cumulative total_tokens changed: " beforeTt " â†’ " afterTt)
+        threadRow := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
+        afterIn := Integer(threadRow[1, "cumulative_input_tokens"])
+        afterOut := Integer(threadRow[1, "cumulative_output_tokens"])
+        if afterIn != beforeIn
+            throw Error("Cumulative input_tokens changed after delete: " beforeIn " -> " afterIn)
+        if afterOut != beforeOut
+            throw Error("Cumulative output_tokens changed: " beforeOut " -> " afterOut)
         this._teardown()
     }
 
     ; --------------------
-    ; Msg_Edit active_path_tokens adjustment
+    ; Msg_Edit active_path_tokens recalculation
     ; --------------------
 
     Edit_AdjustsActivePathTokens() {
         threadId := this._setup()
-        ; Establish a non-zero baseline by inserting an assistant message with total_tokens
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Very long original message to edit"})
-        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", model: "deepseek-v4-flash", prompt_tokens: 50, completion_tokens: 10, total_tokens: 60, cached_tokens: 0})
-        ; Msg_Edit only estimates tokens from content length â€” the assistant's 60 total_tokens
-        ; (set by Msg_Insert) won't be used. Verify baseline is non-zero.
-        beforeRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
-        beforeTokens := Integer(beforeRow[1, "active_path_tokens"])
-        if beforeTokens <= 0
-            throw Error("Expected non-zero active_path_tokens baseline, got " beforeTokens)
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", model: "deepseek-v4-flash", token_count: 10, cached_tokens: 0})
+        ; After insert, active_path_tokens = prefix sum (0+0+10=10)
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.activePathTokens != 10
+            throw Error("Expected activePathTokens=10 baseline, got " stats.activePathTokens)
 
-        ; Now edit the user message to shorter content â€” this adjusts estimated tokens
+        ; Edit the assistant message — _RecomputeActivePath recalculates from token_count (still 10)
         ChatDB.Msg_Edit(aId, "ok")
 
-        afterRow := ChatDB.db.Exec("SELECT active_path_tokens FROM chat_threads WHERE id='" threadId "';")
-        afterTokens := Integer(afterRow[1, "active_path_tokens"])
-        ; Old content "response" (8 chars) â†’ 8/4=2, New content "ok" (2 chars) â†’ estimate = 1 (min)
-        ; Delta = 1-2 = -1, so active_path_tokens should decrease by 1
-        if afterTokens != beforeTokens - 1
-            throw Error("Expected active_path_tokens to decrease by 1 after shortening: " beforeTokens " â†’ " afterTokens)
+        stats2 := ChatDB.Msg_GetThreadStats(threadId)
+        if stats2.activePathTokens != 10
+            throw Error("Expected activePathTokens=10 after edit, got " stats2.activePathTokens)
         this._teardown()
     }
 
@@ -661,6 +652,308 @@ class ChatDBTest {
 
         if settings.modelOverride || settings.systemOverride || settings.reasoningOverride || settings.temperatureOverride
             throw Error("Expected all overrides to be empty for new thread")
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; Usage_Query — now queries chat_usage table
+    ; ----------------------------------------------------
+
+    UsageQuery_AcceptsMapInput() {
+        this._openDb()
+
+        ; Populate chat_usage directly (same as real inserts would)
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 30, completion_tokens: 60, thinking_tokens: 10, thinking_tokens: 0, cached_tokens: 5, input_cost: 0.0000042, cached_input_cost: 0.000000014, output_cost: 0.0000168, total_cost: 0.0000210})
+
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 20, completion_tokens: 30, thinking_tokens: 0, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000028, output_cost: 0.0000084, total_cost: 0.0000112})
+
+        ; Simulate jsongo.Parse() returning a Map (bracket-only access)
+        filters := Map("timeRange", "all", "model", "", "type", "all")
+        result := ChatDB.Usage_Query(filters)
+
+        if result.chat.Length = 0
+            throw Error("Expected chat rows > 0 with Map input, got " result.chat.Length)
+        if result.models.Length = 0
+            throw Error("Expected at least 1 model, got " result.models.Length)
+
+        ; Verify chat row has aggregated values: call_count=2, prompt=50, comp=90
+        first := result.chat[1]
+        if first.input_tokens != 50
+            throw Error("Expected input_tokens=50, got " first.input_tokens)
+        if first.output_tokens != 90
+            throw Error("Expected output_tokens=90, got " first.output_tokens)
+        if first.message_count != 2
+            throw Error("Expected 2 calls grouped, got " first.message_count)
+
+        this._closeDb()
+    }
+
+    UsageQuery_RespectsTimeRangeFilter() {
+        this._openDb()
+
+        ; Insert today's chat usage
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070})
+
+        ; "day" filter should return today's data
+        filters := Map("timeRange", "day", "model", "", "type", "all")
+        result := ChatDB.Usage_Query(filters)
+        if result.chat.Length = 0
+            throw Error("Expected chat rows with 'day' filter, got 0")
+
+        ; "month" filter should also return today's data
+        filtersMonth := Map("timeRange", "month", "model", "", "type", "all")
+        resultMonth := ChatDB.Usage_Query(filtersMonth)
+        if resultMonth.chat.Length = 0
+            throw Error("Expected chat rows with 'month' filter, got 0")
+
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; chat_usage — ChatUsage_Upsert
+    ; ----------------------------------------------------
+
+    ChatUsage_Upsert_InsertsNewRow() {
+        this._openDb()
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070, response_time_ms: 1200})
+
+        row := ChatDB.db.Exec("SELECT * FROM chat_usage WHERE date='" FormatTime(, "yyyy-MM-dd") "' AND model='deepseek-v4-flash'")
+        if row.count != 1
+            throw Error("Expected 1 row, got " row.count)
+        if Integer(row[1,"call_count"]) != 1
+            throw Error("Expected call_count=1, got " row[1,"call_count"])
+        if Integer(row[1,"prompt_tokens"]) != 10
+            throw Error("Expected prompt_tokens=10, got " row[1,"prompt_tokens"])
+        this._closeDb()
+    }
+
+    ChatUsage_Upsert_UpdatesExistingRow() {
+        this._openDb()
+        date := FormatTime(, "yyyy-MM-dd")
+        ChatDB.ChatUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070})
+        ChatDB.ChatUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 15, completion_tokens: 25, thinking_tokens: 0, cached_tokens: 5, input_cost: 0.0000021, cached_input_cost: 0.000000014, output_cost: 0.0000070, total_cost: 0.0000091})
+
+        row := ChatDB.db.Exec("SELECT * FROM chat_usage WHERE date='" date "' AND model='deepseek-v4-flash'")
+        if row.count != 1
+            throw Error("Expected 1 row (UPSERT), got " row.count)
+        if Integer(row[1,"call_count"]) != 2
+            throw Error("Expected call_count=2, got " row[1,"call_count"])
+        if Integer(row[1,"prompt_tokens"]) != 25
+            throw Error("Expected prompt_tokens=25, got " row[1,"prompt_tokens"])
+        if Integer(row[1,"completion_tokens"]) != 45
+            throw Error("Expected completion_tokens=45, got " row[1,"completion_tokens"])
+        this._closeDb()
+    }
+
+    ChatUsage_Upsert_TracksCachedInputCost() {
+        this._openDb()
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 100, completion_tokens: 50, thinking_tokens: 0, cached_tokens: 40, input_cost: 0.000014, cached_input_cost: 0.000000112, output_cost: 0.000014, total_cost: 0.000028})
+
+        row := ChatDB.db.Exec("SELECT * FROM chat_usage WHERE date='" FormatTime(, "yyyy-MM-dd") "' AND model='deepseek-v4-flash'")
+        if Number(row[1,"cached_input_cost"]) != 0.000000112
+            throw Error("Expected cached_input_cost=0.000000112, got " row[1,"cached_input_cost"])
+        if Number(row[1,"input_cost"]) != 0.000014
+            throw Error("Expected input_cost=0.000014, got " row[1,"input_cost"])
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; Usage_Query — type filter
+    ; ----------------------------------------------------
+
+    UsageQuery_TypeFilter_ChatOnly() {
+        this._openDb()
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070})
+        ChatDB.CommandUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek", command_name: "Refine",
+            prompt_tokens: 50, completion_tokens: 30, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.000007, output_cost: 0.0000084, total_cost: 0.0000154})
+
+        filters := Map("timeRange", "all", "model", "", "type", "chat")
+        result := ChatDB.Usage_Query(filters)
+        if result.chat.Length != 1
+            throw Error("Expected 1 chat row with type=chat, got " result.chat.Length)
+        if result.commands.Length != 0
+            throw Error("Expected 0 command rows with type=chat, got " result.commands.Length)
+        this._closeDb()
+    }
+
+    UsageQuery_TypeFilter_CommandOnly() {
+        this._openDb()
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070})
+        ChatDB.CommandUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek", command_name: "Refine",
+            prompt_tokens: 50, completion_tokens: 30, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.000007, output_cost: 0.0000084, total_cost: 0.0000154})
+
+        filters := Map("timeRange", "all", "model", "", "type", "command")
+        result := ChatDB.Usage_Query(filters)
+        if result.chat.Length != 0
+            throw Error("Expected 0 chat rows with type=command, got " result.chat.Length)
+        if result.commands.Length != 1
+            throw Error("Expected 1 command row with type=command, got " result.commands.Length)
+        this._closeDb()
+    }
+
+    UsageQuery_ProviderFilter_ChatOnly() {
+        this._openDb()
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek/deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070})
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "google/gemini-2.5-flash", provider: "google",
+            prompt_tokens: 30, completion_tokens: 40, thinking_tokens: 0, cached_tokens: 0, input_cost: 0.000009, output_cost: 0.000100, total_cost: 0.000109})
+
+        filters := Map("timeRange", "all", "model", "", "provider", "deepseek", "type", "all")
+        result := ChatDB.Usage_Query(filters)
+        if result.chat.Length != 1
+            throw Error("Expected 1 chat row with provider=deepseek, got " result.chat.Length)
+        if result.chat[1].input_tokens != 10
+            throw Error("Expected deepseek input_tokens=10, got " result.chat[1].input_tokens)
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; chat_usage — TTFT tracking
+    ; ----------------------------------------------------
+
+    ChatUsage_Upsert_TracksTTFT() {
+        this._openDb()
+        date := FormatTime(, "yyyy-MM-dd")
+        ; Insert with ttft_ms — should persist to total_ttft_ms
+        ChatDB.ChatUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0,
+            input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070,
+            response_time_ms: 1200, ttft_ms: 350})
+        row := ChatDB.db.Exec("SELECT total_ttft_ms, call_count FROM chat_usage WHERE date='" date "' AND model='deepseek-v4-flash'")
+        if Integer(row[1,"total_ttft_ms"]) != 350
+            throw Error("Expected total_ttft_ms=350 on INSERT, got " row[1,"total_ttft_ms"])
+
+        ; Second upsert — should accumulate ttft_ms
+        ChatDB.ChatUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 5, completion_tokens: 10, thinking_tokens: 0, cached_tokens: 0,
+            input_cost: 0.0000007, output_cost: 0.0000028, total_cost: 0.0000035,
+            response_time_ms: 800, ttft_ms: 200})
+        row2 := ChatDB.db.Exec("SELECT total_ttft_ms, call_count FROM chat_usage WHERE date='" date "' AND model='deepseek-v4-flash'")
+        if Integer(row2[1,"total_ttft_ms"]) != 550
+            throw Error("Expected total_ttft_ms=550 on UPDATE (350+200), got " row2[1,"total_ttft_ms"])
+        if Integer(row2[1,"call_count"]) != 2
+            throw Error("Expected call_count=2, got " row2[1,"call_count"])
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; command_usage — TTFT tracking
+    ; ----------------------------------------------------
+
+    CommandUsage_Upsert_TracksTTFT() {
+        this._openDb()
+        date := FormatTime(, "yyyy-MM-dd")
+        ; Insert with ttft_ms
+        ChatDB.CommandUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek", command_name: "Summarize",
+            prompt_tokens: 50, completion_tokens: 100, thinking_tokens: 0, cached_tokens: 0,
+            input_cost: 0.000007, output_cost: 0.000028, total_cost: 0.000035,
+            response_time_ms: 2500, ttft_ms: 800})
+        row := ChatDB.db.Exec("SELECT total_ttft_ms FROM command_usage WHERE date='" date "' AND model='deepseek-v4-flash' AND command_name='Summarize'")
+        if Integer(row[1,"total_ttft_ms"]) != 800
+            throw Error("Expected total_ttft_ms=800, got " row[1,"total_ttft_ms"])
+
+        ; Accumulate
+        ChatDB.CommandUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek", command_name: "Summarize",
+            prompt_tokens: 30, completion_tokens: 50, thinking_tokens: 0, cached_tokens: 0,
+            input_cost: 0.0000042, output_cost: 0.000014, total_cost: 0.0000182,
+            response_time_ms: 1200, ttft_ms: 400})
+        row2 := ChatDB.db.Exec("SELECT total_ttft_ms, call_count FROM command_usage WHERE date='" date "' AND model='deepseek-v4-flash' AND command_name='Summarize'")
+        if Integer(row2[1,"total_ttft_ms"]) != 1200
+            throw Error("Expected total_ttft_ms=1200 on UPSERT (800+400), got " row2[1,"total_ttft_ms"])
+        if Integer(row2[1,"call_count"]) != 2
+            throw Error("Expected call_count=2, got " row2[1,"call_count"])
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; Usage_Query — total_ttft_ms in chat results
+    ; ----------------------------------------------------
+
+    UsageQuery_IncludesTTFT_Chat() {
+        this._openDb()
+        ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 5, cached_tokens: 0,
+            input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070,
+            response_time_ms: 900, ttft_ms: 300})
+        filters := Map("timeRange", "all", "model", "", "type", "all")
+        result := ChatDB.Usage_Query(filters)
+        if result.chat.Length != 1
+            throw Error("Expected 1 chat row, got " result.chat.Length)
+        if result.chat[1].total_ttft_ms != 300
+            throw Error("Expected total_ttft_ms=300 in query result, got " result.chat[1].total_ttft_ms)
+        if result.chat[1].total_response_time_ms != 900
+            throw Error("Expected total_response_time_ms=900 in query result, got " result.chat[1].total_response_time_ms)
+        this._closeDb()
+    }
+
+    ; ----------------------------------------------------
+    ; Usage_Query — total_ttft_ms in command results
+    ; ----------------------------------------------------
+
+    UsageQuery_IncludesTTFT_Command() {
+        this._openDb()
+        ChatDB.CommandUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek", command_name: "Refine",
+            prompt_tokens: 50, completion_tokens: 30, thinking_tokens: 0, cached_tokens: 0,
+            input_cost: 0.000007, output_cost: 0.0000084, total_cost: 0.0000154,
+            response_time_ms: 1500, ttft_ms: 500})
+        filters := Map("timeRange", "all", "model", "", "type", "all")
+        result := ChatDB.Usage_Query(filters)
+        if result.commands.Length != 1
+            throw Error("Expected 1 command row, got " result.commands.Length)
+        if result.commands[1].total_ttft_ms != 500
+            throw Error("Expected total_ttft_ms=500 in query result, got " result.commands[1].total_ttft_ms)
+        this._closeDb()
+        ; ----------------------------------------------------
+        ; Usage_Query — output_tokens is the total (includes thinking),
+        ; so JS must NOT add thinking_tokens again for speed calc.
+        ; Bug: dashboard double-counted thinking, inflating tok/s.
+        ; ----------------------------------------------------
+    
+        UsageQuery_OutputTokensIncludesThinking() {
+            this._openDb()
+            ; completion_tokens=50 is the TOTAL (visible 40 + thinking 10)
+            ChatDB.ChatUsage_Upsert({date: FormatTime(, "yyyy-MM-dd"), model: "deepseek-v4-flash", provider: "deepseek",
+                prompt_tokens: 100, completion_tokens: 50, thinking_tokens: 10, cached_tokens: 0,
+                input_cost: 0.000014, output_cost: 0.000014, total_cost: 0.000028,
+                response_time_ms: 500, ttft_ms: 150})
+            filters := Map("timeRange", "all", "model", "", "type", "all")
+            result := ChatDB.Usage_Query(filters)
+            ; output_tokens = completion_tokens = 50 (already includes the 10 thinking tokens)
+            if result.chat[1].output_tokens != 50
+                throw Error("Expected output_tokens=50 (total completion), got " result.chat[1].output_tokens)
+            ; thinking_tokens is separate metadata — adding it again would double-count
+            if result.chat[1].thinking_tokens != 10
+                throw Error("Expected thinking_tokens=10, got " result.chat[1].thinking_tokens)
+            ; The correct output for speed = output_tokens (50), NOT output_tokens + thinking_tokens (60)
+            this._closeDb()
+        }
+    
+    }
+
+    ; ----------------------------------------------------
+    ; chat_usage — TTFT defaults to 0 when not provided
+    ; ----------------------------------------------------
+
+    ChatUsage_Upsert_TTFT_DefaultsToZero() {
+        this._openDb()
+        date := FormatTime(, "yyyy-MM-dd")
+        ; Insert without ttft_ms — should default to 0
+        ChatDB.ChatUsage_Upsert({date: date, model: "deepseek-v4-flash", provider: "deepseek",
+            prompt_tokens: 10, completion_tokens: 20, thinking_tokens: 0, cached_tokens: 0,
+            input_cost: 0.0000014, output_cost: 0.0000056, total_cost: 0.0000070,
+            response_time_ms: 500})
+        row := ChatDB.db.Exec("SELECT total_ttft_ms FROM chat_usage WHERE date='" date "' AND model='deepseek-v4-flash'")
+        if Integer(row[1,"total_ttft_ms"]) != 0
+            throw Error("Expected total_ttft_ms=0 when not provided, got " row[1,"total_ttft_ms"])
         this._closeDb()
     }
 

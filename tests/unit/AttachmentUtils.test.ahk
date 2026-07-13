@@ -157,23 +157,4 @@ class AttachmentUtilsTest {
             throw Error("Empty filename should return default")
     }
 
-    ; ---- Token Estimation ----
-
-    EstimateImageTokens_SmallImage_ReturnsMinimum() {
-        tokens := AttachmentUtils.EstimateImageTokens(1000)
-        if tokens < 85
-            throw Error("Expected at least 85 tokens, got " tokens)
-    }
-
-    EstimateImageTokens_LargeImage_ReturnsHigher() {
-        small := AttachmentUtils.EstimateImageTokens(1000)
-        large := AttachmentUtils.EstimateImageTokens(50000)
-        if large <= small
-            throw Error("Larger base64 should estimate more tokens: " small " vs " large)
-    }
-
-    EstimateImageTokens_Zero_ReturnsZero() {
-        if AttachmentUtils.EstimateImageTokens(0) != 0
-            throw Error("Expected 0 tokens for 0-length base64")
-    }
 }

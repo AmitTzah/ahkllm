@@ -13,13 +13,24 @@ _handleStreamComplete() {
         saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
 
         dbMsgData := ""
+        userTokenCount := 0
         if activeThreadId {
             path := ChatDB.Msg_GetActivePath(activeThreadId)
-            if path.Length
+            if path.Length {
                 dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
+                ; Find last user message's backfilled token_count
+                i := path.Length
+                while i >= 1 {
+                    if path[i].role = "user" {
+                        userTokenCount := path[i].HasProp("token_count") ? path[i].token_count : 0
+                        break
+                    }
+                    i--
+                }
+            }
         }
 
-        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], dbMsg: dbMsgData })
+        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], dbMsg: dbMsgData, userTokenCount: userTokenCount })
 
         postThreadStats(activeThreadId)
         postWebMessage("setChatButtonsEnabled", true)
@@ -31,7 +42,7 @@ _handleStreamComplete() {
 }
 
 _maybeGenerateTitle(path) {
-    if IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
+    if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
         threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
         if threadInfo.count {
             currentTitle := threadInfo[1, "title"]
@@ -55,13 +66,16 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
     requestBeforeAppend := chatHistoryJSONRequest
     llmClient.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
 
-    if activeThreadId
-        _persistStreamResponse(content, modelName, reasoning, usage)
+    if activeThreadId {
+        responseTimeMs := A_TickCount - requestStartTime
+        ttftMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : 0
+        _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs, ttftMs)
+    }
 
     _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime)
 }
 
-_persistStreamResponse(content, modelName, reasoning, usage) {
+_persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0) {
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     parentId := path.Length ? path[path.Length].id : ""
     retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
@@ -69,51 +83,58 @@ _persistStreamResponse(content, modelName, reasoning, usage) {
     if retrySiblingGroup
         requestParams.Delete("pendingRetrySiblingGroup")
 
+    completionTokens := usage.HasProp("completionTokens") ? usage.completionTokens : 0
+    thinkingTokens := usage.HasProp("thinkingTokens") ? usage.thinkingTokens : 0
+    promptTokens := usage.HasProp("promptTokens") ? usage.promptTokens : 0
+
     ChatDB.Msg_Insert({
         thread_id: activeThreadId, role: "assistant", content: content, model: modelName,
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
         reasoning: reasoning,
-        prompt_tokens: usage.HasProp("promptTokens") ? usage.promptTokens : 0,
-        completion_tokens: usage.HasProp("completionTokens") ? usage.completionTokens : 0,
-        total_tokens: usage.HasProp("totalTokens") ? usage.totalTokens : 0,
-        cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0
+        prompt_tokens: promptTokens,
+        token_count: Max(0, completionTokens - thinkingTokens),
+        thinking_tokens: thinkingTokens,
+        cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0,
+        response_time_ms: responseTimeMs,
+        ttft_ms: ttftMs
     })
     _maybeGenerateTitle(path)
 }
 
 _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime) {
-    finishReason := "stop"
-    if rawLastResponse {
+    responseTimeMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : A_TickCount - requestStartTime
+
+    pt := usage.HasProp("promptTokens") ? usage.promptTokens : 0
+    ct := usage.HasProp("completionTokens") ? usage.completionTokens : 0
+    tht := usage.HasProp("thinkingTokens") ? usage.thinkingTokens : 0
+    ckt := usage.HasProp("cachedTokens") ? usage.cachedTokens : 0
+    debugLog("[API] Chat done — prompt=" pt " completion=" ct " cached=" ckt " latency=" responseTimeMs "ms model=" modelName)
+    debugLog("[USAGE] Chat — prompt=" pt " completion=" ct " cached=" ckt)
+    costs := CostCalculator.ComputeTokenCosts(modelName, usage)
+    if costs.totalCost != ""
+        debugLog("[COST] Chat — input=$" costs.inputCost " cached=$" costs.cachedInputCost " output=$" costs.outputCost " total=$" costs.totalCost)
+
+    ; Build response: real API data from last chunk, but with accumulated content
+    responseStr := rawLastResponse
+    if content && rawLastResponse {
         try {
-            parsedChunk := jsongo.Parse(rawLastResponse)
-            if parsedChunk.Has("choices") && parsedChunk["choices"].Length > 0 {
-                choice := parsedChunk["choices"][1]
-                if choice.Has("finish_reason") && choice["finish_reason"]
-                    finishReason := choice["finish_reason"]
+            parsed := jsongo.Parse(rawLastResponse)
+            if parsed.Has("choices") && parsed["choices"].Length > 0 {
+                parsed["choices"][1]["delta"]["content"] := content
+                if reasoning
+                    parsed["choices"][1]["delta"]["reasoning_content"] := reasoning
+                responseStr := jsongo.Stringify(parsed)
             }
         }
     }
-    logEntry := {
-        choices: [{ message: { content: content }, finish_reason: finishReason }],
-        model: modelName ? modelName : requestParams["singleAPIModelName"],
-        model_full: requestParams["singleAPIModelName"]
-    }
-    if reasoning
-        logEntry.choices[1].message.reasoning_content := reasoning
-    if usage.HasProp("totalTokens") && usage.totalTokens > 0 {
-        logEntry.usage := {
-            prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens,
-            total_tokens: usage.totalTokens, prompt_cache_hit_tokens: usage.cachedTokens
-        }
-    }
-
-    latencyMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : A_TickCount - requestStartTime
 
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: requestParams["windowTitle"], provider: requestParams["providerName"],
         model: requestParams["singleAPIModelName"], isFIM: false, endpoint: _getProviderEndpoint(),
-        pasteMode: requestParams["pasteMode"], request: requestBeforeAppend, response: jsongo.Stringify(logEntry),
-        status: "success", latencyMs: latencyMs
+        pasteMode: requestParams["pasteMode"], request: requestBeforeAppend,
+        response: responseStr,
+        status: "success", responseTimeMs: responseTimeMs
     })
 }
+

@@ -257,6 +257,7 @@ function toggleNavBar() {
 
 function showError(data) {
   // data is { message: string }
+  hideLoadingIndicator();
   var msg = (typeof data === 'string') ? data : (data && data.message ? data.message : 'An error occurred');
   var chatMessages = document.getElementById('chat-messages');
   if (!chatMessages) return;

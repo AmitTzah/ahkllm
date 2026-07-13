@@ -35,8 +35,6 @@ function initChatMode(messages) {
   var sendBtn = document.getElementById('chat-send-btn');
   if (sendBtn) sendBtn.disabled = false;
 
-  updateBranchBadges();
-
   // Only show loading if a request is already in-flight AND last message isn't assistant
   if (isLoading && chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role !== 'assistant') {
     showLoadingIndicator();

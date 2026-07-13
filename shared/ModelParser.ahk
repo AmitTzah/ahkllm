@@ -22,4 +22,14 @@ class ModelParser {
     static Sanitize(fullId) {
         return StrReplace(ModelParser.StripProvider(fullId), ":", "-")
     }
+
+    ; Strip version/date suffixes from model names.
+    ; "gpt-4.1-2025-04-14" → "gpt-4.1"
+    ; "claude-3-5-sonnet-20241022" → "claude-3-5-sonnet"
+    static StripVersion(modelName) {
+        ; Match trailing date suffix: -YYYY-MM-DD or -YYYYMMDD
+        if RegExMatch(modelName, "-\d{4}-?\d{2}-?\d{2}$")
+            return RegExReplace(modelName, "-\d{4}-?\d{2}-?\d{2}$", "")
+        return modelName
+    }
 }

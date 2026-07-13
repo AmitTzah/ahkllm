@@ -10,17 +10,15 @@
 ; ======================================================
 
 buildRequest() {
-    debugLog("[BUILDREQ] ENTER activeThreadId=" activeThreadId, "AttachPipeline")
     if !activeThreadId {
-        debugLog("[BUILDREQ] ABORT: no activeThreadId", "AttachPipeline")
         return ""
     }
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     if !path.Length {
-        debugLog("[BUILDREQ] ABORT: empty path", "AttachPipeline")
         return ""
     }
-    debugLog("[BUILDREQ] path length=" path.Length, "AttachPipeline")
+    modelName := requestParams["singleAPIModelName"]
+    debugLog("[API] Chat send — model=" modelName " thread=" activeThreadId " pathLen=" path.Length)
 
     ; Resolve provider once — used for validation, cURL building, and provider-specific request fields
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
@@ -88,12 +86,10 @@ _ProcessAttachmentsForLastUser(&apiMessages, modelName) {
             break
         }
     }
-    debugLog("[BUILDREQ] lastUserMsgId=" lastUserMsgId " lastUserIdx=" lastUserIdx, "AttachPipeline")
     if !lastUserMsgId || !lastUserIdx
         return true
 
     attachments := ChatDB.Attachment_GetByMessage(lastUserMsgId)
-    debugLog("[BUILDREQ] attachments loaded from DB: count=" attachments.Length, "AttachPipeline")
     if !attachments.Length
         return true
 
@@ -107,7 +103,6 @@ _ProcessAttachmentsForLastUser(&apiMessages, modelName) {
     }
 
     contentArray := _BuildImageContentParts(attachments)
-    debugLog("[BUILDREQ] contentArray length=" contentArray.Length, "AttachPipeline")
 
     userMsg := apiMessages[lastUserIdx].content
     fileContexts := _BuildFileContexts(attachments)
@@ -140,18 +135,13 @@ _HasImageAttachments(attachments) {
 _BuildImageContentParts(attachments) {
     contentArray := []
     for att in attachments {
-        debugLog("[BUILDREQ] att type=" att.attachment_type " file_path=" att.file_path, "AttachPipeline")
         if att.attachment_type = "image" {
             base64Data := ImageUtils.ReadAndEncode(att.file_path)
-            debugLog("[BUILDREQ] ReadAndEncode returned len=" (base64Data ? StrLen(base64Data) : 0), "AttachPipeline")
             if base64Data {
                 contentArray.Push({
                     type: "image_url",
                     image_url: { url: "data:" att.mime_type ";base64," base64Data }
                 })
-                debugLog("[BUILDREQ] added image_url to contentArray", "AttachPipeline")
-            } else {
-                debugLog("[BUILDREQ] WARNING: ReadAndEncode returned empty for " att.file_path, "AttachPipeline")
             }
         }
     }

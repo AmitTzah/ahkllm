@@ -109,24 +109,22 @@ class BranchFlowTest {
         threadId := this._setup()
         sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "short sys"})
         usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "short user", parent_id: sysId})
-        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "short asst", model: "deepseek-v4-flash", parent_id: usrId, prompt_tokens: 20, completion_tokens: 5, total_tokens: 25})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "short asst", model: "deepseek-v4-flash", parent_id: usrId, token_count: 25})
 
         ; Create sibling with different tokens
         sg := ChatDB._UUID()
         ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" a1Id "';")
-        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "longer assistant response with more tokens", model: "deepseek-v4-flash", parent_id: usrId, sibling_group: sg, sibling_index: 1, prompt_tokens: 20, completion_tokens: 10, total_tokens: 30})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "longer assistant response with more tokens", model: "deepseek-v4-flash", parent_id: usrId, sibling_group: sg, sibling_index: 1, token_count: 30})
 
         ; Stats for active path (first sibling)
         stats := ChatDB.Msg_GetThreadStats(threadId)
         ; Context used should be last assistant's total_tokens
         if stats.activePathTokens <= 0
             throw Error("Expected activePathTokens > 0")
-        ; Cumulative cost should be > 0
-        if stats.cumulativeCost <= 0
-            throw Error("Expected cumulativeCost > 0")
         ; Cumulative tokens should include both paths
-        if stats.cumulativeTotalTokens <= 0
-            throw Error("Expected cumulativeTotalTokens > 0")
+        totalTokens := stats.cumulativeInputTokens + stats.cumulativeOutputTokens
+        if totalTokens <= 0
+            throw Error("Expected cumulativeInput+Output > 0, got " totalTokens)
 
         this._teardown()
     }

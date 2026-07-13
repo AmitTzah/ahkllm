@@ -182,6 +182,47 @@ class StreamHandlerTest {
     }
 
     ; --------------------------------------------------------
+    ; SSEParser: Gemini thinking tokens via total - prompt - completion
+    ; --------------------------------------------------------
+
+    SSEParser_GeminiUsage_ExtractsThinkingTokens() {
+        line := 'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"model":"gemini-2.5-flash","usage":{"prompt_tokens":2,"completion_tokens":7,"total_tokens":473}}'
+        result := SSEParser.ParseLine(line)
+        if result.type != "finish"
+            throw Error("Expected type='finish', got '" result.type "'")
+        if result.usage.thinkingTokens != 464
+            throw Error("Expected thinkingTokens=464 (473-2-7), got " result.usage.thinkingTokens)
+        if result.usage.completionTokens != 471
+            throw Error("Expected completionTokens=471 (total-prompt), got " result.usage.completionTokens)
+    }
+
+    SSEParser_DeepSeekUsage_ExtractsThinkingTokens() {
+        line := 'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"model":"deepseek","usage":{"prompt_tokens":100,"completion_tokens":200,"total_tokens":300,"completion_tokens_details":{"reasoning_tokens":50}}}'
+        result := SSEParser.ParseLine(line)
+        if result.usage.thinkingTokens != 50
+            throw Error("Expected thinkingTokens=50 from details, got " result.usage.thinkingTokens)
+        if result.usage.completionTokens != 200
+            throw Error("Expected completionTokens=200, got " result.usage.completionTokens)
+    }
+
+    ; Gemini cached tokens via prompt_tokens_details.cached_tokens
+    SSEParser_GeminiUsage_ExtractsCachedTokens() {
+        line := 'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"model":"gemini-2.5-flash","usage":{"prompt_tokens":4663,"completion_tokens":664,"total_tokens":6651,"prompt_tokens_details":{"cached_tokens":3009}}}'
+        result := SSEParser.ParseLine(line)
+        if result.usage.cachedTokens != 3009
+            throw Error("Expected cachedTokens=3009 from prompt_tokens_details, got " result.usage.cachedTokens)
+    }
+
+    SSEParser_NormalUsage_NoThinking() {
+        line := 'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+        result := SSEParser.ParseLine(line)
+        if result.usage.thinkingTokens != 0
+            throw Error("Expected thinkingTokens=0, got " result.usage.thinkingTokens)
+        if result.usage.completionTokens != 5
+            throw Error("Expected completionTokens=5, got " result.usage.completionTokens)
+    }
+
+    ; --------------------------------------------------------
     ; Error response parsing: Google Gemini returns errors as
     ; [{error: {message: "..."}}] (array), while OpenAI/DeepSeek
     ; return {error: {message: "..."}} (object).

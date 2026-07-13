@@ -79,18 +79,6 @@ function formatNumber(n) {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-function formatCost(cost) {
-  if (cost === "" || cost === null || cost === undefined) return "";
-  var num = Number(cost);
-  if (num === 0) return "$0.00";
-  var s = num.toFixed(6);
-  s = s.replace(/\.?0+$/, "");
-  if (s.indexOf(".") === -1) s += ".00";
-  var parts = s.split(".");
-  if (parts.length < 2 || parts[1].length < 2) s = num.toFixed(2);
-  return "$" + s;
-}
-
 // Compact number format: 1234567 -> "1.2m", 1234 -> "1.2k"
 function formatCompact(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'm';
@@ -125,8 +113,8 @@ function updateTokenUsage(data) {
 
   var cu = data.activePathTokens || 0;
   var cw = data.contextWindow || 0;
-  var pt = data.cumulativePromptTokens || 0;
-  var ct = data.cumulativeCompletionTokens || 0;
+  var pt = data.cumulativeInputTokens || 0;
+  var ct = data.cumulativeOutputTokens || 0;
   var ckt = data.cumulativeCachedTokens || 0;
 
   // Build pricing tooltip (per 1M tokens from UserConfig modelPricing)

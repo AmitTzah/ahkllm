@@ -100,11 +100,14 @@ RegisterTestClass(className) {
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
 #Include unit\ModelParser.test.ahk
-#Include unit\TokenEstimation.test.ahk
 #Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
+#Include unit\CostCalculator.test.ahk
+#Include unit\UsageTracking.test.ahk
+#Include unit\UsageDashboard.test.ahk
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk
+#Include integration\UsageFlow.test.ahk
 
 ; -----------------------------------------------------------
 ; Test runner
@@ -129,6 +132,8 @@ RunAllTests(*) {
         for detail in failedDetails
             Log("  " detail "`n")
     }
+    ; Write result marker for batch file (ExitApp doesn't propagate to process exit code)
+    Log("`nRESULT: " (totalFailed > 0 ? "FAIL" : "PASS") "`n")
     ExitApp(totalFailed > 0 ? 1 : 0)
 }
 

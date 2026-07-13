@@ -14,20 +14,31 @@ class ResponseParser {
         response := var.Get("choices")[1].Get("message").Get("content")
         model := var.Get("model")
 
-        usage := { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
+        usage := { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, thinkingTokens: 0 }
         if var.Has("usage") {
             usageNode := var["usage"]
             usage.promptTokens := usageNode.Has("prompt_tokens") ? usageNode["prompt_tokens"] : 0
             usage.completionTokens := usageNode.Has("completion_tokens") ? usageNode["completion_tokens"] : 0
             usage.totalTokens := usageNode.Has("total_tokens") ? usageNode["total_tokens"] : 0
-            ; Google: completion_tokens excludes thinking tokens. Use total - prompt for real output.
-            if usage.totalTokens > usage.promptTokens + usage.completionTokens
-                usage.completionTokens := usage.totalTokens - usage.promptTokens
+            ; Google: completion_tokens excludes thinking tokens.
+            ; Capture original before inflating, then inflate for cost/aggregate.
+            if usage.totalTokens > usage.promptTokens + usage.completionTokens {
+                delta := usage.totalTokens - usage.promptTokens - usage.completionTokens
+                usage.thinkingTokens := delta   ; Gemini thinking = total - prompt - visible
+                usage.completionTokens := usage.totalTokens - usage.promptTokens  ; inflate to include thinking
+            }
 
             if usageNode.Has("prompt_cache_hit_tokens") {
                 usage.cachedTokens := usageNode["prompt_cache_hit_tokens"]
             } else if usageNode.Has("prompt_tokens_details") && usageNode["prompt_tokens_details"].Has("cached_tokens") {
                 usage.cachedTokens := usageNode["prompt_tokens_details"]["cached_tokens"]
+            }
+
+            ; Extract thinking/reasoning tokens (OpenAI/DeepSeek format)
+            if usageNode.Has("completion_tokens_details") {
+                details := usageNode["completion_tokens_details"]
+                if IsObject(details) && details.Has("reasoning_tokens")
+                    usage.thinkingTokens := details["reasoning_tokens"]
             }
         }
 

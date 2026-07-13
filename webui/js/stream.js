@@ -92,6 +92,11 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
     if (dbMsg.siblingInfo) msg.siblingInfo = dbMsg.siblingInfo;
     if (dbMsg.reasoning) msg.reasoning = dbMsg.reasoning;
     if (dbMsg.feedback) msg.feedback = dbMsg.feedback;
+    if (dbMsg.tokenCount !== undefined) msg.tokenCount = dbMsg.tokenCount;
+    if (dbMsg.thinkingTokens !== undefined) msg.thinkingTokens = dbMsg.thinkingTokens;
+    if (dbMsg.cachedTokens !== undefined) msg.cachedTokens = dbMsg.cachedTokens;
+    if (dbMsg.responseTimeMs !== undefined) msg.responseTimeMs = dbMsg.responseTimeMs;
+    if (dbMsg.ttftMs !== undefined) msg.ttftMs = dbMsg.ttftMs;
     if (streamState.bubble && dbMsg.id) {
       streamState.bubble.dataset.msgId = dbMsg.id;
     }
@@ -118,57 +123,74 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
 
 // Called when streaming is complete
 function onStreamDone(data) {
-  // Support both legacy (string modelName) and new ({ model, dbMsg }) formats
   var modelName = typeof data === 'string' ? data : (data && data.model ? data.model : '');
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
 
-  // Always scroll to bottom on completion and reset the flag
   streamState.userScrolledUp = false;
   var container = document.getElementById('chat-messages');
-  if (container) {
-    container.scrollTop = container.scrollHeight;
-  }
-
+  if (container) container.scrollTop = container.scrollHeight;
   streamState.modelName = modelName;
 
-  // Update the bubble's label to the model name
-  if (streamState.bubble) {
-    var label = streamState.bubble.querySelector('.message-label');
-    if (label) {
-      label.textContent = modelName || 'Assistant';
-    }
-  }
+  _finalizeStreamBubble(modelName, dbMsg);
+  _finalizeThinkingBlock();
+  _finalizeStreamContent();
 
-  // Update thinking block to show it's done
-  if (streamState.thinkingDetails) {
-    var summary = streamState.thinkingDetails.querySelector('summary');
-    var charCount = streamState.thinkingBuffer.length;
-    summary.textContent = charCount > 0
-      ? '🧠 Thought (' + charCount + ' chars)'
-      : '🧠 Thinking';
-
-    // Remove the pulse animation
-    var pulse = streamState.thinkingDetails.querySelector('.thinking-pulse');
-    if (pulse) pulse.remove();
-  }
-
-  // Remove the streaming cursor from content
-  if (streamState.contentDiv) {
-    // Re-render final content without cursor
-    streamState.contentDiv.innerHTML = md.render(streamState.contentBuffer);
-  }
-
-  // Add the streaming message to chat history for persistence
   if (streamState.contentBuffer) {
     _persistStreamedMessage(streamState.contentBuffer, modelName, dbMsg);
-    if (streamState.bubble) {
-      addStreamingActions(streamState.bubble, chatMessages.length - 1);
-    }
+    if (streamState.bubble) addStreamingActions(streamState.bubble, chatMessages.length - 1);
   }
 
-  // Enable the chat input
+  _updateUserTokenCount(data);
+
   setChatButtonsEnabled(true);
   streamState.active = false;
+}
+
+function _finalizeStreamBubble(modelName, dbMsg) {
+  if (!streamState.bubble) return;
+  var label = streamState.bubble.querySelector('.message-label');
+  if (label) label.textContent = modelName || 'Assistant';
+
+  // Add timestamp if available from DB message
+  if (dbMsg && dbMsg.createdAt) {
+    var existingTs = streamState.bubble.querySelector('.message-timestamp');
+    if (!existingTs) {
+      var d2 = new Date(dbMsg.createdAt + 'Z');
+      if (!isNaN(d2.getTime())) {
+        var ts = document.createElement('span');
+        ts.className = 'message-timestamp';
+        ts.style.cssText = 'margin-left:auto;font-size:0.68rem;color:var(--bs-text-muted,#9ca3af);white-space:nowrap;';
+        ts.textContent = d2.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+        var labelRow = label.parentNode;
+        if (labelRow) labelRow.appendChild(ts);
+      }
+    }
+  }
+}
+
+function _finalizeThinkingBlock() {
+  if (!streamState.thinkingDetails) return;
+  var summary = streamState.thinkingDetails.querySelector('summary');
+  summary.textContent = streamState.thinkingBuffer.length > 0
+    ? '🧠 Thought (' + streamState.thinkingBuffer.length + ' chars)'
+    : '🧠 Thinking';
+  var pulse = streamState.thinkingDetails.querySelector('.thinking-pulse');
+  if (pulse) pulse.remove();
+}
+
+function _finalizeStreamContent() {
+  if (!streamState.contentDiv) return;
+  streamState.contentDiv.innerHTML = md.render(streamState.contentBuffer);
+}
+
+function _updateUserTokenCount(data) {
+  if (!(data && data.userTokenCount > 0)) return;
+  for (var i = chatMessages.length - 1; i >= 0; i--) {
+    if (chatMessages[i].role === 'user') {
+      chatMessages[i].tokenCount = data.userTokenCount;
+      break;
+    }
+  }
 }
 
 // Create a streaming assistant bubble (empty, with cursor)
@@ -179,10 +201,14 @@ function createStreamingBubble() {
   bubble.className = 'chat-message assistant';
   bubble.id = 'streaming-bubble';
 
-  var label = document.createElement('div');
+  // Label row — same structure as createMessageBubble for timestamp support
+  var labelRow = document.createElement('div');
+  labelRow.style.cssText = 'display:flex;align-items:baseline;';
+  var label = document.createElement('span');
   label.className = 'message-label';
   label.textContent = 'Streaming...';
-  bubble.appendChild(label);
+  labelRow.appendChild(label);
+  bubble.appendChild(labelRow);
 
   streamState.contentDiv = document.createElement('div');
   streamState.contentDiv.className = 'message-content';

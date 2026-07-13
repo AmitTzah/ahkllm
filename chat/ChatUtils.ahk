@@ -75,7 +75,6 @@ postThreadStats(threadId := "") {
 ; ----------------------------------------------------
 
 buildStructuredMessagesFromPath(path, threadId := "") {
-    debugLog("[STRUCTMSG] ENTER pathLen=" path.Length " threadId=" threadId, "AttachPipeline")
     ; Batch-load all attachments for this thread (if threadId provided)
     allAttachments := Map()
     if threadId {
@@ -103,7 +102,13 @@ buildStructuredMessagesFromPath(path, threadId := "") {
 
     structuredMessages := []
     for msg in path {
-        msgObj := { role: msg.role, content: msg.content, id: msg.id }
+        msgObj := { role: msg.role, content: msg.content, id: msg.id,
+            tokenCount: msg.HasProp("token_count") ? msg.token_count : 0,
+            thinkingTokens: msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0,
+            cachedTokens: msg.HasProp("cached_tokens") ? msg.cached_tokens : 0,
+            responseTimeMs: msg.HasProp("response_time_ms") ? msg.response_time_ms : 0,
+            ttftMs: msg.HasProp("ttft_ms") ? msg.ttft_ms : 0,
+            createdAt: msg.HasProp("created_at") ? msg.created_at : "" }
         if msg.role = "assistant" && msg.model
             msgObj.model := msg.model
         if msg.sibling_group {

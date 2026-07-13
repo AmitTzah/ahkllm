@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usage Dashboard</title>
+<link rel="stylesheet" href="./Bootstrap/bootstrap.min.css">
+<style>
+  html, body { background: #ffffff !important; color: #1a1a2e !important; font-size: 0.88rem; font-family: system-ui, -apple-system, sans-serif; }
+  html, body { height: 100%; }
+  body { margin: 0; padding: 16px 20px; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; }
+  .form-select, .form-select-sm, .btn { background: #fff; color: #1a1a2e; border-color: #d0d0d0; }
+  .stat-card { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 18px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+  .stat-card .value { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; }
+  .stat-card .label { font-size: 0.75rem; color: #6b7280; margin-top: 2px; }
+  .chart-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin-bottom: 14px; position: relative; }
+  .chart-card h6 { font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  .main-chart { flex: 2 1 0; display: flex; flex-direction: column; min-height: 280px; }
+  .chart-container { position: relative; flex: 1 1 auto; min-height: 220px; }
+  .chart-container-sm { position: relative; flex: 1 1 auto; min-height: 160px; width: 100%; }
+  .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .toggle-group { display: inline-flex; border: 1px solid #d0d0d0; border-radius: 6px; overflow: hidden; }
+  .toggle-group button { background: #fff; border: none; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; color: #6b7280; }
+  .toggle-group button.active { background: #1a56db; color: #fff; }
+  #modelSections { flex: 3 1 0; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+  .model-section { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 200px; margin-bottom: 14px; }
+  .model-section:last-child { margin-bottom: 0; }
+  .model-section h6 { font-size: 0.8rem; font-weight: 600; color: #4b5563; margin-bottom: 4px; }
+  .model-section .row { flex: 1 1 auto; min-height: 0; }
+  .model-section .row > div { display: flex; }
+  .page-link { color: #1a56db; }
+  .table th { cursor: pointer; user-select: none; white-space: nowrap; }
+  .table td { font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h4 style="font-weight:600;color:#1a1a2e;">📊 Usage Dashboard</h4>
+
+<div class="filter-bar">
+  <select id="timeRange" class="form-select form-select-sm" style="width:auto"><option value="all">All Time</option><option value="month" selected>Last 30 Days</option><option value="thisMonth">This Month</option><option value="lastMonth">Last Month</option><option value="day">Last 24 Hours</option></select>
+  <select id="providerFilter" class="form-select form-select-sm" style="width:auto"><option value="">All Providers</option></select>
+  <select id="modelFilter" class="form-select form-select-sm" style="width:auto"><option value="">All Models</option></select>
+  <select id="typeFilter" class="form-select form-select-sm" style="width:auto"><option value="all">Chat + Commands</option><option value="chat">Chat Only</option><option value="command">Commands Only</option></select>
+  <button id="refreshBtn" class="btn btn-sm btn-outline-secondary">🔄 Refresh</button>
+  <button id="apiLogsBtn" class="btn btn-sm btn-outline-secondary" onclick="chrome.webview.postMessage(JSON.stringify({action:'showApiLogs'}))">📋 API Logs</button>
+  <button id="exportBtn" class="btn btn-sm btn-outline-secondary">📥 CSV</button>
+</div>
+
+<div class="d-flex g-3 mb-3" id="summaryRow" style="gap:0.75rem;">
+  <div style="flex:1"><div class="stat-card"><div class="value" id="totalCost">$0.00</div><div class="label">Total Cost <span id="costInfoIcon" style="cursor:help;font-size:0.75rem;opacity:0.5;" title="">ⓘ</span></div></div></div>
+  <div style="flex:1"><div class="stat-card"><div class="value" id="totalCalls">0</div><div class="label">API Requests</div></div></div>
+  <div style="flex:1"><div class="stat-card"><div class="value" id="totalTokens">0</div><div class="label">Total Tokens</div></div></div>
+  <div style="flex:1"><div class="stat-card"><div class="value" id="speedValue">—</div><div class="label">Speed</div></div></div>
+  <div style="flex:1"><div class="stat-card"><div class="value" id="ttftValue">—</div><div class="label">Latency (ttft)</div></div></div>
+</div>
+
+<div class="chart-card main-chart">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h6 style="margin:0;">Cost Over Time</h6>
+    <div class="toggle-group" id="stackToggle">
+      <button data-mode="model" class="active">Model</button>
+      <button data-mode="provider">Provider</button>
+    </div>
+  </div>
+  <div class="chart-container"><canvas id="mainChart"></canvas></div>
+</div>
+
+<div id="modelSections"></div>
+
+
+<script src="./Bootstrap/bootstrap.bundle.min.js"></script>
+<script src="./Bootstrap/chart.umd.min.js"></script>
+<script src="./js/usage-dashboard.js"></script>
+</body>
+</html>

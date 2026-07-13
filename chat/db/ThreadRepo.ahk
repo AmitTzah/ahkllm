@@ -78,6 +78,7 @@ class ThreadRepo {
 
     ; Trash a thread (soft-delete).
     static SoftDelete(threadId) {
+        debugLog("[THREAD] Deleted — id=" threadId)
         ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" threadId "';")
     }
 
@@ -101,6 +102,7 @@ class ThreadRepo {
 
     ; Permanently delete a thread and all its messages.
     static Delete(threadId) {
+        debugLog("[THREAD] Deleted — id=" threadId)
         AttachmentRepo.DeleteByThread(threadId)
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" threadId "';")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" threadId "';")

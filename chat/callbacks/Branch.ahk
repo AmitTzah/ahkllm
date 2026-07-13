@@ -20,6 +20,7 @@ handleBranchSwitch(params, *) {
     id := params["id"]
     direction := params.Has("direction") ? params["direction"] : 1
     result := ChatDB.Msg_SwitchBranch(activeThreadId, id, direction)
+    debugLog("[BRANCH] Switch — thread=" activeThreadId " leaf=" id)
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path, activeThreadId))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
@@ -34,6 +35,7 @@ handleFork(msgId, *) {
     if !msgId || !activeThreadId
         return
     newThreadId := ChatDB.Msg_ForkThread(activeThreadId, msgId)
+    debugLog("[THREAD] Forked — id=" newThreadId " from=" activeThreadId)
     if newThreadId
         postWebMessage("threadForked", { newThreadId: newThreadId })
 }

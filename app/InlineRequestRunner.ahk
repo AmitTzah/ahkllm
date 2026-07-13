@@ -104,7 +104,7 @@ class InlineRequestRunner {
             success: IsObject(responseFromLLM) && responseFromLLM.HasProp("response"),
             response: responseFromLLM,
             rawJSON: JSONResponseFromLLM,
-            latencyMs: A_TickCount - requestStartTime
+            responseTimeMs: A_TickCount - requestStartTime
         }
     }
 
@@ -143,8 +143,32 @@ class InlineRequestRunner {
             request: files.requestJSON,
             response: result.rawJSON,
             status: "success",
-            latencyMs: result.latencyMs
+            responseTimeMs: result.responseTimeMs
         })
+
+        ; Track command usage for the dashboard (daily aggregation)
+        usage := InlineRequestRunner._ExtractUsage(result, commandName)
+        if IsSet(usage) {
+            costs := CostCalculator.ComputeTokenCosts(singleAPIModelName, usage)
+            debugLog("[API] Command '" commandName "' done — prompt=" usage.promptTokens " completion=" usage.completionTokens " model=" singleAPIModelName)
+            debugLog("[USAGE] Command '" commandName "' — prompt=" usage.promptTokens " completion=" usage.completionTokens)
+            debugLog("[COST] Command '" commandName "' — input=$" (costs.inputCost != "" ? costs.inputCost : "0") " cached=$" (costs.cachedInputCost != "" ? costs.cachedInputCost : "0") " output=$" (costs.outputCost != "" ? costs.outputCost : "0") " total=$" (costs.totalCost != "" ? costs.totalCost : "0"))
+            ChatDB.CommandUsage_Upsert({
+                date: FormatTime(, "yyyy-MM-dd"),
+                model: singleAPIModelName,
+                provider: providerName,
+                command_name: commandName,
+                prompt_tokens: usage.promptTokens,
+                completion_tokens: usage.completionTokens,
+                thinking_tokens: usage.HasOwnProp("thinkingTokens") ? usage.thinkingTokens : 0,
+                cached_tokens: usage.cachedTokens,
+                input_cost: costs.inputCost != "" ? costs.inputCost : 0,
+                cached_input_cost: costs.cachedInputCost != "" ? costs.cachedInputCost : 0,
+                output_cost: costs.outputCost != "" ? costs.outputCost : 0,
+                total_cost: costs.totalCost != "" ? costs.totalCost : 0,
+                response_time_ms: result.responseTimeMs
+            })
+        }
     }
 
     ; Remove temp files created during the request.
@@ -190,5 +214,39 @@ class InlineRequestRunner {
         } catch Error as e {
             debugLog("HighlightInsertedText UIA failed: " e.Message, "InlineRequestRunner")
         }
+    }
+
+    ; Extract usage from command response — handles both normal and FIM formats
+    static _ExtractUsage(result, commandName) {
+        if result.response.HasOwnProp("usage") {
+            return result.response.usage
+        }
+        ; FIM responses don't include usage — parse from raw JSON
+        try {
+            rawParsed := jsongo.Parse(result.rawJSON)
+            if !rawParsed.Has("usage") {
+                return
+            }
+            rawUsage := rawParsed["usage"]
+            pt := rawUsage.Has("prompt_tokens") ? Integer(rawUsage["prompt_tokens"]) : 0
+            ct := rawUsage.Has("completion_tokens") ? Integer(rawUsage["completion_tokens"]) : 0
+            tht := 0
+            if rawUsage.Has("completion_tokens_details") {
+                ctd := rawUsage["completion_tokens_details"]
+                if ctd.Has("reasoning_tokens")
+                    tht := Integer(ctd["reasoning_tokens"])
+            }
+            ckt := 0
+            if rawUsage.Has("prompt_tokens_details") {
+                ptd := rawUsage["prompt_tokens_details"]
+                if ptd.Has("cached_tokens")
+                    ckt := Integer(ptd["cached_tokens"])
+            }
+            tt := rawUsage.Has("total_tokens") ? Integer(rawUsage["total_tokens"]) : pt + ct
+            return { promptTokens: pt, completionTokens: ct, thinkingTokens: tht, cachedTokens: ckt, totalTokens: tt }
+        } catch Error as e {
+            debugLog("Command FIM usage parse error: " e.Message, "ErrorHandler")
+        }
+        return
     }
 }

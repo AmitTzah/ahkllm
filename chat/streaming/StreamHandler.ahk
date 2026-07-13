@@ -10,7 +10,7 @@
 #Include StreamError.ahk
 
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
-    debugLog("sendStreamingRequest entered. initialRequest=" initialRequest)
+    debugLog("[STREAM] Started — thread=" activeThreadId)
     try {
 
     requestStartTime := A_TickCount
@@ -28,7 +28,6 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 
     Run(cURLCommand, , "Hide", &cURLPID)
     cURLState("set", cURLPID)
-    debugLog("Streaming cURL PID: " cURLPID)
 
     requestParams["_streamOutputFile"]       := requestParams["cURLOutputFile"]
     requestParams["_streamLastPos"]          := 0
@@ -129,7 +128,7 @@ _readAndProcessStream(state, doPostMessage := false) {
         if (line = "")
             continue
 
-        if state.providerKey = "google" && InStr(line, "data: ")
+        if InStr(line, "data: ")
             state.rawSseChunks .= line "`n"
 
         if InStr(line, "data: {") {
@@ -138,50 +137,53 @@ _readAndProcessStream(state, doPostMessage := false) {
         }
 
         chunk := SSEParser.ParseLine(line)
+        _processChunk(state, chunk, doPostMessage)
+    }
+}
 
-        switch chunk.type {
-            case "content":
-                if (state.firstTokenTime = 0)
-                    state.firstTokenTime := A_TickCount
-                state.content .= chunk.content
-                if doPostMessage
-                    postWebMessage("streamContent", chunk.content)
-                if chunk.HasOwnProp("model") && chunk.model
-                    state.modelName := ModelParser.Sanitize(chunk.model)
-                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
-                    state.usage := chunk.usage
+; Apply a parsed SSE chunk to the stream state, posting to WebView if needed.
+_processChunk(state, chunk, doPostMessage) {
+    switch chunk.type {
+        case "content":
+            if (state.firstTokenTime = 0)
+                state.firstTokenTime := A_TickCount
+            state.content .= chunk.content
+            if doPostMessage
+                postWebMessage("streamContent", chunk.content)
+            if chunk.HasOwnProp("model") && chunk.model
+                state.modelName := ModelParser.Sanitize(chunk.model)
+            if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                state.usage := chunk.usage
 
-            case "reasoning":
-                state.reasoning .= chunk.content
-                collapseFlag := false
-                if state.reasoning = chunk.content {
-                    if providers.Has(state.providerKey) {
-                        p := providers[state.providerKey]
-                        if p.HasOwnProp("collapseThinking")
-                            collapseFlag := p.collapseThinking
-                    }
+        case "reasoning":
+            state.reasoning .= chunk.content
+            collapseFlag := false
+            if state.reasoning = chunk.content {
+                if providers.Has(state.providerKey) {
+                    p := providers[state.providerKey]
+                    if p.HasOwnProp("collapseThinking")
+                        collapseFlag := p.collapseThinking
                 }
-                if doPostMessage
-                    postWebMessage("streamReasoning", { content: chunk.content, collapsed: collapseFlag })
+            }
+            if doPostMessage
+                postWebMessage("streamReasoning", { content: chunk.content, collapsed: collapseFlag })
 
-            case "finish":
-                if chunk.HasOwnProp("model") && chunk.model
-                    state.modelName := ModelParser.Sanitize(chunk.model)
-                if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
-                    state.usage := chunk.usage
+        case "finish":
+            if chunk.HasOwnProp("model") && chunk.model
+                state.modelName := ModelParser.Sanitize(chunk.model)
+            if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                state.usage := chunk.usage
 
-            case "done":
-        }
+        case "done":
     }
 }
 
 _finalizeStreaming() {
     try {
-        pollCount := requestParams["_streamPollCount"]
-        debugLog("Streaming while loop exited. Poll iterations=" pollCount)
-
         _readStreamChunkFromParams()
-        debugLog("After final readStreamChunk. Total content length=" StrLen(requestParams["_streamContent"]) " reasoning length=" StrLen(requestParams["_streamReasoning"]))
+        contentLen := StrLen(requestParams["_streamContent"])
+        reasoningLen := StrLen(requestParams["_streamReasoning"])
+        debugLog("[STREAM] Done — content=" contentLen "chars reasoning=" reasoningLen "chars polls=" requestParams["_streamPollCount"])
 
         if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
             _handleStreamError()

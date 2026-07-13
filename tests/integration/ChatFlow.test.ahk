@@ -39,9 +39,9 @@ class ChatFlowTest {
         ; Insert messages with proper parent chain
         sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "You are helpful."})
         usr1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello", parent_id: sysId})
-        asst1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", parent_id: usr1Id, prompt_tokens: 15, completion_tokens: 3, total_tokens: 18})
+        asst1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", parent_id: usr1Id, token_count: 18})
         usr2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "What is 2+2?", parent_id: asst1Id})
-        asst2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "4", model: "deepseek-v4-flash", parent_id: usr2Id, prompt_tokens: 25, completion_tokens: 1, total_tokens: 26})
+        asst2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "4", model: "deepseek-v4-flash", parent_id: usr2Id, token_count: 26})
 
         ; Verify path length
         path := ChatDB.Msg_GetActivePath(threadId)
@@ -59,10 +59,9 @@ class ChatFlowTest {
         stats := ChatDB.Msg_GetThreadStats(threadId)
         if stats.activePathTokens <= 0
             throw Error("Expected activePathTokens > 0, got " stats.activePathTokens)
-        if stats.cumulativeTotalTokens <= 0
-            throw Error("Expected cumulativeTotalTokens > 0")
-        if stats.cumulativeCost <= 0
-            throw Error("Expected cumulativeCost > 0, got " stats.cumulativeCost)
+        totalTokens := stats.cumulativeInputTokens + stats.cumulativeOutputTokens
+        if totalTokens <= 0
+            throw Error("Expected cumulativeInput+Output > 0, got " totalTokens)
         if stats.cumulativeCachedTokens < 0
             throw Error("Expected cumulativeCachedTokens >= 0")
 
@@ -129,7 +128,7 @@ class ChatFlowTest {
         threadId := this._setup()
         sysId := ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "system"})
         usrId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "user msg", parent_id: sysId})
-        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "asst response", model: "deepseek-v4-flash", parent_id: usrId, prompt_tokens: 10, completion_tokens: 5, total_tokens: 15})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "asst response", model: "deepseek-v4-flash", parent_id: usrId, token_count: 15})
 
         newThreadId := ChatDB.Msg_ForkThread(threadId, usrId)
         if !newThreadId

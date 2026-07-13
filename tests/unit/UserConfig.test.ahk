@@ -240,6 +240,9 @@ class UserConfigTest {
             throw Error("Google completion should be 121-6=115, got " result.usage.completionTokens)
         if result.usage.totalTokens != 121
             throw Error("Google total should be 121, got " result.usage.totalTokens)
+        ; thinking = total - prompt - visible_completion = 121 - 6 - 2 = 113
+        if result.usage.thinkingTokens != 113
+            throw Error("Google thinking should be 121-6-2=113, got " result.usage.thinkingTokens)
     }
 
     GoogleTokens_NormalResponse() {
