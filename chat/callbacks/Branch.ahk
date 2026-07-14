@@ -1,6 +1,6 @@
 ; ======================================================
 ; ChatCallbacks_Branch.ahk — Branch navigation, fork,
-; feedback, and button click (Retry) callbacks
+; and button click (Retry) callbacks
 ;
 ; NOTE: #Include'd by ChatWindow.ahk. Has access to:
 ;   activeThreadId, requestParams, chatWindow, ChatDB,
@@ -38,16 +38,6 @@ handleFork(msgId, *) {
     debugLog("[THREAD] Forked — id=" newThreadId " from=" activeThreadId)
     if newThreadId
         postWebMessage("threadForked", { newThreadId: newThreadId })
-}
-
-; ----------------------------------------------------
-; Set message feedback from WebView (D8)
-; ----------------------------------------------------
-
-handleFeedback(params, *) {
-    if !params.Has("id")
-        return
-    ChatDB.Msg_SetFeedback(params["id"], params.Has("rating") ? params["rating"] : 0)
 }
 
 ; ----------------------------------------------------

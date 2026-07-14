@@ -207,15 +207,6 @@ main {
     user-select: none;
 }
 
-/* Feedback active states */
-.msg-action-btn.feedback-active-up {
-    color: var(--bs-success);
-}
-
-.msg-action-btn.feedback-active-down {
-    color: var(--bs-danger);
-}
-
 /* More dropdown menu */
 .more-dropdown {
     position: relative;

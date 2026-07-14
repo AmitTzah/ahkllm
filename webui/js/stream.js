@@ -91,7 +91,6 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
     if (dbMsg.id) msg.id = dbMsg.id;
     if (dbMsg.siblingInfo) msg.siblingInfo = dbMsg.siblingInfo;
     if (dbMsg.reasoning) msg.reasoning = dbMsg.reasoning;
-    if (dbMsg.feedback) msg.feedback = dbMsg.feedback;
     if (dbMsg.tokenCount !== undefined) msg.tokenCount = dbMsg.tokenCount;
     if (dbMsg.thinkingTokens !== undefined) msg.thinkingTokens = dbMsg.thinkingTokens;
     if (dbMsg.cachedTokens !== undefined) msg.cachedTokens = dbMsg.cachedTokens;

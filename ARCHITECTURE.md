@@ -193,7 +193,7 @@ ai-automation/
 │   ├── ThreadTitleGen.ahk           # Fire-and-forget thread title generation via cheap LLM call
 │   ├── callbacks/
 │   │   ├── Dispatch.ahk             # OnWebMessageReceived + callback includes
-│   │   ├── Branch.ahk               # Branch nav, fork, feedback, Retry callbacks
+│   │   ├── Branch.ahk               # Branch nav, fork, Retry callbacks
 │   │   ├── Edit.ahk                 # Edit and delete callbacks (hard-delete with re-parenting)
 │   │   ├── Message.ahk              # Send + attachment delete callbacks
 │   │   └── Sidebar.ahk              # Thread list, load, new, delete, trash, restore, rename, sidebar
@@ -277,11 +277,10 @@ ai-automation/
 │           ├── chat-input.js        # Send, loading, retry, paste handling
 │           ├── chat-branching.js    # Edit, delete, fork, branch nav, tree modal
 │           ├── chat-sidebar.js      # Thread list, trash, fork callback
-│           ├── chat-actions.js      # Message action buttons (copy, edit, retry, feedback)
+│           ├── chat-actions.js      # Message action buttons (copy, edit, retry)
 │           ├── chat-format.js       # Copy, cost formatting, token usage bar
 │           ├── chat-quote.js        # Quote message in input
-│           ├── chat-feedback.js     # Thumbs up/down feedback
-│           ├── chat-undo.js         # Undo edit/delete operations
+│           ├── chat-undo.js        # Undo edit/delete operations
 │           ├── chat-token-tooltip.js # Per-message token info tooltip (📊 icon hover)
 │           ├── attachments/         # Attachment subsystem
 │           │   ├── chat-attachments.js        # State, render bar, add/remove, SHA-256 hash
@@ -342,7 +341,7 @@ The application is an AutoHotkey v2 script that provides a hotkey-activated comm
 - **Entry point**: `Main.ahk` — double-click to run.
 - **User config**: `UserConfig.ahk` — all commands, API keys, hotkeys, and theme settings in one file.
 - **Persistent single-window model**: A single `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
-- **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Supports branching, soft-delete, feedback, reasoning, file/image attachments, and usage tracking.
+- **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Supports branching, soft-delete, reasoning, file/image attachments, and usage tracking.
 - **Content-addressable attachment storage**: Files stored by SHA-256 hash filename in `attachments/`. O(1) FileExist() dedup. Reference-counted deletion prevents orphaned files.
 - **WebView2 frontend**: Chat UI rendered by Microsoft Edge WebView2. AHK ↔ JS via `PostWebMessageAsJSON` / `chrome.webview.postMessage()`.
 - **cURL for API calls**: JSON request files written to `%TEMP%`, `cURL.exe` used for API communication.
@@ -478,7 +477,6 @@ Send("^v") → highlights inserted text (UIA TextPattern for FIM)
 | `parent_id` | TEXT | Previous message in path |
 | `sibling_group` | TEXT | Group UUID for branch variants |
 | `sibling_index` | INTEGER | Position within sibling group |
-| `feedback` | INTEGER | 1 (up), -1 (down), NULL (none) |
 | `reasoning` | TEXT | Thinking/reasoning content |
 | `token_count` | INTEGER | This message's context contribution (visible tokens; thinking excluded) |
 | `thinking_tokens` | INTEGER | Reasoning tokens (billed, not in context) |
@@ -584,7 +582,7 @@ postWebMessage("target", data) → JSON: {"target": "target", "data": data}
 Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `updateBranchInfo`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`.
 
 ### WebView → AHK (via postMessage)
-Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `setFeedback`, `sidebarAction`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `openUsageDashboard`.
+Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `openUsageDashboard`.
 
 ## IPC (Inter-Process Communication)
 
@@ -616,7 +614,6 @@ index.html
             ├── chat/chat-branching.js
             ├── chat/chat-sidebar.js
             ├── chat/chat-quote.js
-            ├── chat/chat-feedback.js
             ├── chat/chat-undo.js
             ├── chat/chat-actions.js
             ├── stream.js

@@ -122,22 +122,6 @@ function addMessageActions(actionsContainer, msg, index) {
     editMessage(index);
   }));
 
-  // Feedback buttons
-  var upBtn = _iconBtn('\uD83D\uDC4D', 'Thumbs up', function() {
-    var rating = msg.feedback === 1 ? 0 : 1;
-    setFeedback(msg.id, rating, upBtn, downBtn, msg);
-  });
-  if (msg.feedback === 1) upBtn.classList.add('feedback-active-up');
-
-  var downBtn = _iconBtn('\uD83D\uDC4E', 'Thumbs down', function() {
-    var rating = msg.feedback === -1 ? 0 : -1;
-    setFeedback(msg.id, rating, upBtn, downBtn, msg);
-  });
-  if (msg.feedback === -1) downBtn.classList.add('feedback-active-down');
-
-  actionsContainer.appendChild(upBtn);
-  actionsContainer.appendChild(downBtn);
-
   _addBranchNav(actionsContainer, msg);
 
   var tokenIcon = createTokenInfoIcon(msg);

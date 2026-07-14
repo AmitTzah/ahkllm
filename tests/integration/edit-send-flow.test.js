@@ -102,12 +102,11 @@ describe('Stream state integration', () => {
         ctx.chatMessages = [];
         ctx.streamState.bubble = { dataset: {} };
         ctx._persistStreamedMessage('response', 'gpt-4o', {
-            id: 'db-1', siblingInfo: { index: 2, total: 3 }, reasoning: 'thought...', feedback: 1
+            id: 'db-1', siblingInfo: { index: 2, total: 3 }, reasoning: 'thought...'
         });
         const msg = ctx.chatMessages[0];
         assert.strictEqual(msg.id, 'db-1');
         assert.strictEqual(msg.siblingInfo.index, 2);
         assert.strictEqual(msg.reasoning, 'thought...');
-        assert.strictEqual(msg.feedback, 1);
     });
 });

@@ -37,8 +37,6 @@ OnWebMessageReceived(sender, args) {
                 handleBranchSwitch(parsed)
             case "forkChat":
                 handleFork(parsed.Get("id", ""))
-            case "setFeedback":
-                handleFeedback(parsed)
             case "sidebarAction":
                 handleSidebarAction(parsed)
             case "requestAssistantList":

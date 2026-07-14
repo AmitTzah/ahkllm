@@ -1,4 +1,4 @@
-/* chat-actions.css — Action buttons, branch nav, more dropdown, feedback */
+/* chat-actions.css — Action buttons, branch nav, more dropdown */
 
 /* Per-message action buttons — minimal icon-only design */
 .chat-message .message-actions {
@@ -47,15 +47,6 @@
     font-size: 0.75rem;
     padding: 0 2px;
     user-select: none;
-}
-
-/* Feedback active states */
-.msg-action-btn.feedback-active-up {
-    color: var(--bs-success);
-}
-
-.msg-action-btn.feedback-active-down {
-    color: var(--bs-danger);
 }
 
 /* More dropdown menu */

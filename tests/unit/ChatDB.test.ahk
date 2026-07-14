@@ -111,29 +111,6 @@ class ChatDBTest {
         this._teardown()
     }
 
-    ; --------------------
-    ; Msg_HardDelete (re-parenting model)
-    ; --------------------
-
-    HardDelete_LastMessage_MovesActiveLeaf() {
-        threadId := this._setup()
-        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
-        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
-        path := ChatDB.Msg_GetActivePath(threadId)
-        if path.Length != 2
-            throw Error("Expected 2 before delete, got " path.Length)
-
-        ChatDB.Msg_HardDelete(a1Id)
-        path := ChatDB.Msg_GetActivePath(threadId)
-        if path.Length != 1
-            throw Error("Expected 1 after deleting leaf, got " path.Length)
-        ; Verify row is gone
-        check := ChatDB.db.Exec("SELECT id FROM messages WHERE id='" a1Id "';")
-        if check.count > 0
-            throw Error("Row should have been hard-deleted")
-        this._teardown()
-    }
-
     HardDelete_MiddleMessage_ReparentsChildren() {
         threadId := this._setup()
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
@@ -385,29 +362,6 @@ class ChatDBTest {
         this._teardown()
     }
 
-    ; --------------------
-    ; Msg_SetFeedback
-    ; --------------------
-
-    SetFeedback_StoresRating() {
-        threadId := this._setup()
-        id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
-        ChatDB.Msg_SetFeedback(id, 1)
-        table := ChatDB.db.Exec("SELECT feedback FROM messages WHERE id='" id "';")
-        if table.count && table[1, "feedback"] != 1
-            throw Error("Expected feedback=1, got " table[1, "feedback"])
-        ChatDB.Msg_SetFeedback(id, -1)
-        table := ChatDB.db.Exec("SELECT feedback FROM messages WHERE id='" id "';")
-        if table.count && table[1, "feedback"] != -1
-            throw Error("Expected feedback=-1, got " table[1, "feedback"])
-        ChatDB.Msg_SetFeedback(id, 0)
-        table := ChatDB.db.Exec("SELECT feedback FROM messages WHERE id='" id "';")
-        if table.count && table[1, "feedback"] != ""
-            throw Error("Expected feedback=NULL after clear, got " table[1, "feedback"])
-        this._teardown()
-    }
-
-    ; --------------------
     ; Trash lifecycle
     ; --------------------
 

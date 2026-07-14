@@ -115,8 +115,6 @@ buildStructuredMessagesFromPath(path, threadId := "") {
             siblings := ChatDB.Msg_GetSiblings(msg.id)
             msgObj.siblingInfo := { index: msg.sibling_index + 1, total: siblings.Length }
         }
-        if msg.feedback
-            msgObj.feedback := msg.feedback
         if msg.HasProp("reasoning") && msg.reasoning
             msgObj.reasoning := msg.reasoning
         ; Include attachments for this message

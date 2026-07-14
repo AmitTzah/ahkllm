@@ -1,8 +1,5 @@
 ; ======================================================
 ; MessageRepo.ahk — Message CRUD operations
-;
-; Insert, delete, edit, feedback. Tree operations
-; delegated to TreeRepo.ahk.
 ; ======================================================
 
 class MessageRepo {
@@ -15,7 +12,6 @@ class MessageRepo {
         safeSiblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? "'" msgObj.sibling_group "'" : "NULL"
         siblingIdx := msgObj.HasProp("sibling_index") ? msgObj.sibling_index : 0
         safeReasoning := msgObj.HasProp("reasoning") && msgObj.reasoning ? SQLite.Escape(msgObj.reasoning) : ""
-        safeFeedback := msgObj.HasProp("feedback") && msgObj.feedback ? msgObj.feedback : "NULL"
 
         tc := msgObj.HasProp("token_count") ? msgObj.token_count : 0
         tht := msgObj.HasProp("thinking_tokens") ? msgObj.thinking_tokens : 0
@@ -44,7 +40,7 @@ class MessageRepo {
                 activePathTokens := Integer(parentRow[1, "active_path_tokens"]) + tc
         }
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, feedback, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " safeFeedback ", " tc ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
 
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
@@ -169,13 +165,6 @@ class MessageRepo {
 
         if threadId
             TreeRepo._RecomputeActivePath(threadId)
-    }
-
-    static SetFeedback(msgId, rating) {
-        if rating = 0
-            ChatDB.db.Exec("UPDATE messages SET feedback=NULL WHERE id='" msgId "';")
-        else
-            ChatDB.db.Exec("UPDATE messages SET feedback=" rating " WHERE id='" msgId "';")
     }
 
     static GetMaxSiblingIndex(siblingGroup) {

@@ -115,7 +115,7 @@ class ChatUtilsTest {
             response_time_ms: 0, ttft_ms: 0,
             created_at: "2026-07-12 15:30:00",
             sibling_group: "", sibling_index: 0,
-            feedback: 0, reasoning: "", model: ""
+            reasoning: "", model: ""
         }
         result := buildStructuredMessagesFromPath([msg])
         if result.Length != 1
@@ -130,7 +130,7 @@ class ChatUtilsTest {
             token_count: 0, thinking_tokens: 0, cached_tokens: 0,
             response_time_ms: 0, ttft_ms: 0,
             sibling_group: "", sibling_index: 0,
-            feedback: 0, reasoning: "", model: ""
+            reasoning: "", model: ""
         }
         result := buildStructuredMessagesFromPath([msg])
         if result[1].createdAt != ""

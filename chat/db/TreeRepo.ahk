@@ -15,7 +15,7 @@ class TreeRepo {
         if !leafId
             return []
 
-        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, created_at FROM messages WHERE thread_id='" threadId "';")
+        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, created_at FROM messages WHERE thread_id='" threadId "';")
 
         msgMap := Map()
         for row in allTable.rows {
@@ -25,7 +25,6 @@ class TreeRepo {
                 parent_id: row.parent_id ? row.parent_id : "",
                 sibling_group: row.sibling_group ? row.sibling_group : "",
                 sibling_index: row.sibling_index,
-                feedback: row.feedback ? Integer(row.feedback) : 0,
                 reasoning: row.Has("reasoning") && row["reasoning"] ? row["reasoning"] : "",
                 token_count: row.Has("token_count") && row.token_count ? Integer(row.token_count) : 0,
                 thinking_tokens: row.Has("thinking_tokens") && row.thinking_tokens ? Integer(row.thinking_tokens) : 0,
@@ -193,7 +192,6 @@ class TreeRepo {
         safeModel := msg.model ? SQLite.Escape(msg.model) : ""
         safeParent := parentId ? "'" parentId "'" : "NULL"
         siblingIdx := msg.sibling_index
-        safeFeedback := msg.feedback ? msg.feedback : "NULL"
         safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
 
         tc := msg.HasProp("token_count") ? msg.token_count : 0
@@ -202,7 +200,7 @@ class TreeRepo {
         lat := msg.HasProp("response_time_ms") ? msg.response_time_ms : 0
         ttft := msg.HasProp("ttft_ms") ? msg.ttft_ms : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", " safeFeedback ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ");")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ");")
     }
 
     ; Copy sibling messages that are NOT on the active path (so branch navigation works in forks).
@@ -223,14 +221,13 @@ class TreeRepo {
                 safeC := SQLite.Escape(sibRow.content)
                 safeM := sibRow.model ? SQLite.Escape(sibRow.model) : ""
                 safeR := sibRow.Has("reasoning") && sibRow.reasoning ? SQLite.Escape(sibRow.reasoning) : ""
-                fb := sibRow.feedback ? sibRow.feedback : "NULL"
                 sTc := sibRow.token_count ? sibRow.token_count : 0
                 sTht := sibRow.thinking_tokens ? sibRow.thinking_tokens : 0
                 sCkt := sibRow.cached_tokens ? sibRow.cached_tokens : 0
                 sLat := sibRow.response_time_ms ? sibRow.response_time_ms : 0
                 sTtft := sibRow.ttft_ms ? sibRow.ttft_ms : 0
 
-                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, feedback, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", " fb ", '" safeR "', " sTc ", " sTht ", " sCkt ", " sLat ", " sTtft ");")
+                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", '" safeR "', " sTc ", " sTht ", " sCkt ", " sLat ", " sTtft ");")
                 AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
             }
         }
