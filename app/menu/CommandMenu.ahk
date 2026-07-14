@@ -88,7 +88,10 @@ _resolveSystemMessage(cmd) {
         if !InStr(filePath, ":") && !InStr(filePath, "\\")
             filePath := A_ScriptDir "\\" filePath
         try {
-            return FileRead(filePath, "UTF-8")
+            content := FileRead(filePath, "UTF-8")
+            ; Normalize all line endings to LF: `r`n pairs first, then any stray `r
+            content := StrReplace(content, "`r`n", "`n")
+            return StrReplace(content, "`r", "`n")
         } catch Error as e {
             MsgBox("Failed to read system message file:`n" filePath "`n`n" e.Message,
                 "System Message Error", "IconX")

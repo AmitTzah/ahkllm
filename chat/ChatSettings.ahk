@@ -200,13 +200,11 @@ postCurrentSettingsToWebView() {
     systemMessage := requestParams.Has("systemOverride") ? requestParams["systemOverride"] : ""
     reasoning := requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : ""
     temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
-    isReadOnly := requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] != ""
     postWebMessage("currentSettings", {
         model: model,
         systemMessage: systemMessage,
         reasoning: reasoning,
-        temperature: temperature,
-        readOnly: isReadOnly
+        temperature: temperature
     })
 }
 

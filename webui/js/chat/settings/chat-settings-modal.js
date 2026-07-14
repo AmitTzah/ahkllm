@@ -31,7 +31,6 @@ function populateCurrentSettings(settings) {
   var systemPrompt = settings.systemMessage || '';
   var reasoning = settings.reasoning || '';
   var temperature = settings.temperature || '';
-  var readOnly = settings.readOnly || false;
 
   // Set model: extract provider prefix to select correct dropdowns
   if (model && window.modelList) {
@@ -41,12 +40,10 @@ function populateCurrentSettings(settings) {
       var providerSelect = document.getElementById('settings-provider');
       if (providerSelect) {
         providerSelect.value = providerKey;
-        providerSelect.disabled = readOnly;
         onSettingsProviderChange();
         var modelSelect = document.getElementById('settings-model');
         if (modelSelect) {
           modelSelect.value = model;
-          modelSelect.disabled = readOnly;
         }
       }
     }
@@ -55,32 +52,14 @@ function populateCurrentSettings(settings) {
   var sysPromptEl = document.getElementById('settings-system-prompt');
   var reasoningEl = document.getElementById('settings-reasoning');
   var tempEl = document.getElementById('settings-temperature');
-  var saveBtn = document.querySelector('#model-settings-modal button[onclick="saveModelSettings()"]');
 
-  if (sysPromptEl) { sysPromptEl.value = systemPrompt; sysPromptEl.disabled = readOnly; }
-  if (reasoningEl) { reasoningEl.value = reasoning; reasoningEl.disabled = readOnly; }
-  if (tempEl) { tempEl.value = temperature; tempEl.disabled = readOnly; }
+  if (sysPromptEl) sysPromptEl.value = systemPrompt;
+  if (reasoningEl) reasoningEl.value = reasoning;
+  if (tempEl) tempEl.value = temperature;
 
-  // Hide Save button and show read-only banner when assistant profile is active
-  if (saveBtn) saveBtn.style.display = readOnly ? 'none' : '';
-
-  // Update modal title to show read-only state
-  var title = document.querySelector('#model-settings-modal h3');
-  if (title) title.textContent = readOnly ? 'Model Settings (Read-Only)' : 'Model Settings';
-
-  var modalContent = document.querySelector('#model-settings-modal > div');
+  // Remove any leftover read-only banner
   var bannerEl = document.getElementById('settings-readonly-banner');
-  if (readOnly) {
-    if (!bannerEl) {
-      bannerEl = document.createElement('div');
-      bannerEl.id = 'settings-readonly-banner';
-      bannerEl.style.cssText = 'background:var(--bs-warning-bg-subtle,#fff3cd);color:var(--bs-warning-text,#664d03);padding:8px 12px;border-radius:4px;font-size:0.8rem;margin-bottom:0.75rem;border:1px solid var(--bs-warning-border-subtle,#ffecb5);';
-      bannerEl.textContent = 'ⓘ This is an assistant profile. Edit it in UserConfig.ahk.';
-      if (modalContent) modalContent.insertBefore(bannerEl, modalContent.children[1]);
-    }
-  } else {
-    if (bannerEl) bannerEl.remove();
-  }
+  if (bannerEl) bannerEl.remove();
 }
 
 function updateDropdownLabel(data) {
