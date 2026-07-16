@@ -283,8 +283,41 @@ class TreeRepo {
         }
 
         threadTable := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" threadId "';")
+        ; Determine context window from current model
+        contextWin := 1048576
+        ; Priority 1: current request model (what user selected)
+        if IsSet(requestParams) && requestParams.Has("singleAPIModelName") && requestParams["singleAPIModelName"] {
+            pricing := TreeRepo._LookupPricing(requestParams["singleAPIModelName"])
+            if pricing && pricing.HasOwnProp("context")
+                contextWin := pricing.context
+        }
+        ; Priority 2: thread model override from DB
+        if contextWin = 1048576 {
+            threadRow := ChatDB.db.Exec("SELECT model_override FROM chat_threads WHERE id='" threadId "';")
+            if threadRow.count && threadRow[1, "model_override"] {
+                pricing := TreeRepo._LookupPricing(threadRow[1, "model_override"])
+                if pricing && pricing.HasOwnProp("context")
+                    contextWin := pricing.context
+            }
+        }
+        ; Priority 3: last assistant message model
+        if contextWin = 1048576 {
+            path := TreeRepo.GetActivePath(threadId)
+            i := path.Length
+            while i >= 1 {
+                if path[i].role = "assistant" && path[i].model {
+                    pricing := TreeRepo._LookupPricing(path[i].model)
+                    if pricing && pricing.HasOwnProp("context") {
+                        contextWin := pricing.context
+                        break
+                    }
+                }
+                i--
+            }
+        }
+
         result := {
-            activePathTokens: activePathTokens, contextWindow: 1048576,
+            activePathTokens: activePathTokens, contextWindow: contextWin,
             cumulativeInputTokens: threadTable.count ? Integer(threadTable[1, "cumulative_input_tokens"]) : 0,
             cumulativeOutputTokens: threadTable.count ? Integer(threadTable[1, "cumulative_output_tokens"]) : 0,
             cumulativeCachedTokens: threadTable.count ? Integer(threadTable[1, "cumulative_cached_tokens"]) : 0,
@@ -307,18 +340,6 @@ class TreeRepo {
             }
         }
 
-        path := TreeRepo.GetActivePath(threadId)
-        i := path.Length
-        while i >= 1 {
-            if path[i].role = "assistant" && path[i].model {
-                pricing := TreeRepo._LookupPricing(path[i].model)
-                if pricing && pricing.HasOwnProp("context") {
-                    result.contextWindow := pricing.context
-                    break
-                }
-            }
-            i--
-        }
         return result
     }
 

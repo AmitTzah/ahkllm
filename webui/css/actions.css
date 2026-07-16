@@ -1,0 +1,52 @@
+/* actions.css — Message action buttons, branch nav, stat popover */
+/* Extracted from chat-ui-mock.html lines 368-409 */
+
+.msg-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-left: 6px; opacity: 1; }
+
+.msg-action-btn { 
+  background: transparent; border: none; border-radius: var(--radius-sm); padding: 8px; 
+  color: var(--text-tertiary); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center;
+}
+.msg-action-btn svg { width: 16px; height: 16px; }
+.msg-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.msg-action-btn.danger-hover:hover { color: var(--danger); background: var(--danger-light); }
+.msg-action-btn.regen-active { color: var(--accent-primary); }
+
+.branch-nav { display: flex; align-items: center; gap: 4px; margin: 0 12px 0 0; }
+.branch-label { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text-tertiary); padding: 0 6px; user-select: none; }
+.branch-nav .msg-action-btn { padding: 6px; }
+
+/* More dropdown */
+.more-dropdown { position: relative; display: inline-flex; }
+.more-menu {
+  position: absolute; bottom: calc(100% + 4px); right: 0;
+  background: var(--bg-panel); border: 1px solid var(--border-main);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-modal);
+  padding: 0.25rem 0; min-width: 140px; z-index: 100; display: none;
+}
+.more-menu-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 6px 14px; font-size: 0.8rem; color: var(--text-primary); cursor: pointer;
+  transition: background 0.1s ease;
+}
+.more-menu-item:hover { background: var(--bg-hover); }
+
+/* Stat Popover */
+.stat-toggle { position: relative; display: flex; align-items: center; }
+.stat-popover {
+  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
+  background: var(--bg-panel); border: 1px solid var(--border-main);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-modal);
+  padding: 20px; width: max-content; min-width: 240px; z-index: 50; 
+  opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.stat-toggle.pop-open .stat-popover { opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+
+.stat-popover::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border-width: 7px; border-style: solid; border-color: var(--bg-panel) transparent transparent transparent;
+}
+.stat-popover::before {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border-width: 8px; border-style: solid; border-color: var(--border-main) transparent transparent transparent; z-index: -1;
+}

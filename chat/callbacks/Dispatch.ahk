@@ -49,8 +49,9 @@ OnWebMessageReceived(sender, args) {
                 handleCancelStream()
             case "requestCurrentSettings":
                 postCurrentSettingsToWebView()
-            case "openUsageDashboard":
-                CustomMessages.notifyOpenUsageDashboard(requestParams["mainScriptHiddenhWnd"])
+            case "showApiLogs":
+                debugLog("[DISPATCH] showApiLogs received, sending IPC to Main")
+                CustomMessages.notifyShowApiLogs(requestParams["mainScriptHiddenhWnd"])
         }
     } catch Error as e {
         _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)

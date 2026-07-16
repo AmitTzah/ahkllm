@@ -11,7 +11,7 @@ function setupAttachmentDropZone() {
     area.addEventListener('dragover', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        area.style.outline = '2px dashed var(--bs-primary)';
+        area.style.outline = '2px dashed var(--accent-primary)';
     });
 
     area.addEventListener('dragleave', function(e) {

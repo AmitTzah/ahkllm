@@ -1,0 +1,117 @@
+/* center.css — Center panel: topbar, thread, composer */
+/* Extracted from chat-ui-mock.html lines 263-455 */
+
+.center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-panel); }
+
+/* Topbar */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 32px; flex-shrink: 0; border-bottom: 1px solid var(--border-light);
+  background: var(--bg-panel); min-height: 76px;
+  flex-wrap: wrap;
+}
+.topbar-left { flex: 1; min-width: 0; display: flex; align-items: center; }
+.chat-title-topbar { 
+  font-weight: 600; font-size: 20px; color: var(--text-primary); 
+  display: flex; align-items: center; gap: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.title-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.rename-chat-btn { 
+  background: transparent; border: none; color: var(--text-tertiary); 
+  padding: 6px; border-radius: var(--radius-sm); 
+  display: flex; align-items: center; transition: all 0.2s; opacity: 1;
+}
+.rename-chat-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.chat-title-topbar .fold { 
+  font-family: var(--font-mono); font-size: 13px; color: var(--text-tertiary); 
+  background: var(--bg-hover); padding: 4px 12px; border-radius: var(--radius-full); margin-left: 6px;
+}
+
+/* Token Stats Bar */
+.token-bar {
+  flex: 0 1 auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 32px; overflow: hidden;
+  font-family: var(--font-mono); color: var(--text-secondary); white-space: nowrap;
+}
+.tu-item { display: flex; align-items: center; gap: 8px; cursor: default; }
+.tu-icon { color: var(--text-tertiary); width: 18px; height: 18px; }
+.tu-val { font-weight: 600; font-size: 16px; color: var(--text-primary); }
+
+.topbar-right { flex: 1; min-width: 0; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+
+/* Font Size Controls */
+.font-size-ctrl {
+  display: flex; align-items: center; gap: 6px; margin-right: 16px;
+  color: var(--text-secondary); padding-right: 16px; border-right: 1px solid var(--border-main);
+  flex-shrink: 0;
+}
+/* Responsive: simplified two-row topbar on narrow screens */
+@media (max-width: 1100px) {
+  .topbar { flex-direction: column; row-gap: 4px; padding: 10px 20px; min-height: auto; align-items: center; }
+  .topbar-left { flex: none; width: 100%; justify-content: center; }
+  .chat-title-topbar .rename-chat-btn,
+  .chat-title-topbar .fold { display: none; }
+  .topbar-right { display: none; }
+  .token-bar { flex: none; width: 100%; justify-content: center; gap: 32px; }
+}
+.font-size-ctrl > i { color: var(--text-tertiary); }
+.font-size-ctrl .icon-btn { 
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-secondary); border-radius: var(--radius-sm);
+}
+.font-size-ctrl .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.font-size-ctrl span { 
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600; 
+  width: 38px; text-align: center; user-select: none; color: var(--text-primary);
+}
+
+/* Thread */
+.thread { flex: 1; overflow-y: auto; padding: 32px 0; scroll-behavior: smooth; }
+.thread-inner { max-width: 1080px; margin: 0 auto; width: 100%; padding: 0 40px; display: flex; flex-direction: column; gap: 40px; }
+
+/* Composer */
+.composer { padding: 0 32px 32px; background: linear-gradient(to top, var(--bg-panel) 70%, transparent); flex-shrink: 0; }
+.composer-inner { 
+  max-width: 1080px; margin: 0 auto; display: flex; align-items: flex-end; gap: 16px;
+  background: var(--bg-panel); border: 1px solid var(--border-main); border-radius: var(--radius-lg); 
+  padding: 16px 20px; box-shadow: var(--shadow-sm); transition: border-color 0.2s, box-shadow 0.2s;
+}
+.composer-inner:focus-within { border-color: var(--accent-primary); box-shadow: 0 0 0 4px var(--accent-light); }
+
+.composer-tools { display: flex; align-items: center; gap: 4px; padding-bottom: 2px; flex-shrink: 0; }
+.composer-tools .icon-btn { width: 40px; height: 40px; color: var(--text-tertiary); border-radius: var(--radius-sm); border: none; background: transparent; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.composer-tools .icon-btn svg { width: 20px; height: 20px; }
+.composer-tools .icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.tools-dropdown { position: relative; display: flex; }
+.tools-menu {
+  position: absolute; bottom: calc(100% + 12px); left: 0; z-index: 40;
+  background: var(--bg-panel); border: 1px solid var(--border-main);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-modal);
+  padding: 16px; width: 260px; display: none; flex-direction: column; gap: 10px;
+}
+.tools-dropdown.menu-open .tools-menu { display: flex; }
+.tools-menu-header { font-size: 13px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.tool-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.tool-toggle-row .lbl { font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 10px; font-weight: 500;}
+
+.composer-inner textarea { 
+  flex: 1; border: none; background: transparent; font-family: var(--font-ui); font-size: 16px;
+  color: var(--text-primary); outline: none; resize: none; max-height: 250px; padding: 8px 0; line-height: 1.6;
+}
+.composer-inner textarea::placeholder { color: var(--text-tertiary); }
+
+.composer-actions { display: flex; align-items: center; gap: 4px; padding-bottom: 2px; flex-shrink: 0; }
+
+.composer-actions .icon-btn { width: 40px; height: 40px; color: var(--text-tertiary); border-radius: var(--radius-sm); border: none; background: transparent; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.composer-actions .icon-btn svg { width: 20px; height: 20px; }
+.composer-actions .icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.send-btn { 
+  background: transparent; color: var(--accent-primary); border: none; 
+  padding: 10px; border-radius: var(--radius-md); transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+}
+.send-btn svg { width: 22px; height: 22px; }
+.send-btn:hover { background: var(--accent-light); }

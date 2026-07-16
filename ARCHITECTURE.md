@@ -1,12 +1,31 @@
 # LLM AutoHotkey Assistant — Architecture Guide
 
+## Contents
+
+- [Data Storage Locations](#data-storage-locations)
+- [Layered Architecture (For Beginners)](#layered-architecture-for-beginners)
+- [Directory Structure](#directory-structure)
+- [Architecture Overview](#architecture-overview)
+- [Command System](#command-system)
+- [Startup Flow](#startup-flow)
+- [Request Flow](#request-flow)
+- [Data Model (SQLite)](#data-model-sqlite)
+- [WebView ↔ AHK Communication](#webview--ahk-communication)
+- [IPC (Inter-Process Communication)](#ipc-inter-process-communication)
+- [JavaScript Module Dependency Graph](#javascript-module-dependency-graph)
+- [Usage Dashboard](#usage-dashboard)
+- [Debug Logging](#debug-logging)
+- [Testing](#testing)
+
+---
+
 ## Data Storage Locations
 
 All persistent data lives under `%APPDATA%\LLM-AutoHotkey-Assistant\`:
 
 | Path | What | Format |
 |---|---|---|
-| `chat_history.db` | Chat threads, messages, attachments, assistants, usage | SQLite (WAL mode) |
+| `chat_history.db` | Chat threads, messages, attachments, assistants, folders, usage | SQLite (WAL mode) |
 | `attachments\` | User-uploaded files (images, PDFs, DOCX) | SHA-256 hash filenames |
 | `models_pricing.txt` (project dir) | Model pricing data | Key-value text |
 
@@ -25,7 +44,7 @@ All temporary data lives in `%TEMP%\`:
 | `cURLError_*.txt` | Inline command stderr | Per request |
 | `LLM_Debug_Log.txt` | Rolling debug log (~500KB) | Across sessions |
 
-User configuration: `UserConfig.ahk` (project root) — API keys, commands, hotkeys, theme.
+User configuration: `UserConfig.ahk` (project root) — API keys, commands, hotkeys, theme (light only).
 
 ## Layered Architecture (For Beginners)
 
@@ -64,6 +83,7 @@ Instead, every operation must round-trip through AutoHotkey, which acts as the b
 │ • Calls LLM APIs via cURL subprocess              │
 │ • Reads files, encodes to base64 for API          │
 │ • Sends results back to JS: postWebMessage()      │
+│ • Hosts inline dashboard + API logs viewer        │
 │ • CANNOT: render HTML/CSS (that's Layer 1's job)  │
 └──────────────────┬───────────────────────────────┘
                    │  WM_ messages (true IPC)
@@ -75,7 +95,8 @@ Instead, every operation must round-trip through AutoHotkey, which acts as the b
 │ • Shows command menu, captures text via UIA       │
 │ • Spawns and manages ChatWindow sub-process       │
 │ • Handles inline (non-chat) LLM requests          │
-│ • Hosts API Logs Viewer and Usage Dashboard       │
+│ • Hosts API Logs Viewer (pre-created at startup)  │
+│ • Provides ShowApiLogs() + ShowUsageDashboard()   │
 │ • Reloads ChatWindow if it crashes                │
 └──────────────────────────────────────────────────┘
 ```
@@ -127,28 +148,6 @@ Here's what actually happens when you paste an image and press Send — trace th
 
 Every arrow crossing from Layer 1 to Layer 2 is `chrome.webview.postMessage()` → JSON serialization → AHK handler. There is no shortcut.
 
-### How Normal Web Apps Do This (For Contrast)
-
-```
-[YOU] Paste image → click Send
-  │
-  ▼ Browser JS
-  │  FormData.append('file', imageFile)
-  │  fetch('/api/chat', {method:'POST', body: formData})
-  │
-  ▼ Server (Node.js/Express, separate machine or localhost)
-  │  multer saves file to disk
-  │  db.attachments.insert({...})  ← direct DB access
-  │  fs.readFileSync(path)         ← direct filesystem
-  │  fetch('https://api.openai.com/...', {body: ...})  ← direct HTTP
-  │  res.json({reply: "..."})
-  │
-  ▼ Browser JS
-     Renders response
-```
-
-In a normal web app, the JavaScript `fetch()` call goes directly to a server that has full system access. Here, `chrome.webview.postMessage()` goes to AHK in the same process, which then orchestrates everything. The architecture is the same pattern (UI → backend → response) but compressed into a single desktop application.
-
 ### Communication Mechanisms (Quick Reference)
 
 | You Write | What Happens | Speed | Scope |
@@ -162,172 +161,169 @@ In a normal web app, the JavaScript `fetch()` call goes directly to a server tha
 ```
 ai-automation/
 ├── Main.ahk                         # Entry point — run this file
-├── UserConfig.ahk                   # User-facing configuration (API keys, commands, theme, hotkeys)
+├── UserConfig.ahk                   # User-facing configuration (API keys, commands, hotkeys)
 ├── lib/Config.ahk                   # Include chain — loads all vendor libs + application modules
 ├── ARCHITECTURE.md                  # This file
 ├── models_pricing.txt               # Model pricing data (refreshed via Refresh-ModelPricing.ps1)
 │
 ├── shared/                          # Shared application utilities
-│   ├── ModelParser.ahk              # Model ID parsing ("provider/model" → provider + name), version suffix stripping
-│   ├── AttachmentUtils.ahk          # Vision gate (HasVision), MIME-type classification, file size checks
-│   ├── ImageUtils.ahk               # Base64 encode/decode (Crypt32), GDI+ screenshot capture, file I/O
-│   └── DebugLog.ahk                 # Shared debug logging (rolling ~500KB in %TEMP%) + safeDelete helper
+│   ├── ModelParser.ahk              # Model ID parsing ("provider/model" → provider + name)
+│   ├── AttachmentUtils.ahk          # Vision gate, MIME-type classification, file size checks
+│   ├── ImageUtils.ahk               # Base64 encode/decode, GDI+ screenshot capture, file I/O
+│   └── DebugLog.ahk                 # Rolling debug log (~500KB in %TEMP%) + safeDelete helper
 │
 ├── app/                             # Application logic
-│   ├── RequestProcessor.ahk         # Orchestrator: text capture → screenshot → LLM request dispatch
-│   ├── TextCapture.ahk              # Text capture: UIA TextPattern (primary) + clipboard (fallback)
-│   ├── InlineRequestRunner.ahk      # Non-chat cURL execution, response parsing, paste, cleanup, usage tracking
-│   ├── InputWindow.ahk              # InputWindow class: GUI popup for custom prompts
-│   ├── LoadingTracker.ahk           # Active request tracking, loading state, reload coordination
+│   ├── RequestProcessor.ahk         # Orchestrator: text capture → LLM request dispatch
+│   ├── TextCapture.ahk              # UIA TextPattern (primary) + clipboard (fallback)
+│   ├── InlineRequestRunner.ahk      # Non-chat cURL execution, response parsing, paste
+│   ├── InputWindow.ahk              # GUI popup for custom prompts (light mode only)
+│   ├── LoadingTracker.ahk           # Active request tracking, loading state, IPC handler
 │   ├── LoadingUI.ahk                # Cursor changes, tooltip display, suspend banner toggle
 │   └── menu/                        # Command menu system
-│       ├── CommandMenu.ahk          # Menu building: command menu, tags, submenus, options
-│       └── CommandState.ahk         # Command state management + custom input send action
+│       ├── CommandMenu.ahk          # Menu building: command menu, tags, submenus
+│       └── CommandState.ahk         # Command state management
 │
 ├── chat/                            # Persistent chat window (sub-process)
-│   ├── ChatWindow.ahk               # Window lifecycle: hotkeys, WebView2 creation, show/hide, pre-warm
-│   ├── ChatIPC.ahk                  # IPC handlers: OnLoadThread, OnTriggerLLM + LoadThreadIntoUI
+│   ├── ChatWindow.ahk               # Window lifecycle, WebView2 creation, show/hide, pre-warm,
+│   │                                #   Dashboard host object, WM_SHOW_DASHBOARD handler
+│   ├── ChatIPC.ahk                  # IPC handlers: OnLoadThread, OnTriggerLLM
 │   ├── ChatSettings.ahk             # Thread settings, assistant/model management, dropdown label
-│   ├── ChatRequestBuilder.ahk       # buildRequest, sendRequestToLLM, _BuildAndFireRequest, handleCancelStream
-│   ├── ChatUtils.ahk                # Structured message building, cURL management, WebView messaging
-│   ├── ThreadTitleGen.ahk           # Fire-and-forget thread title generation via cheap LLM call
+│   ├── ChatRequestBuilder.ahk       # buildRequest, sendRequestToLLM, cancel stream
+│   ├── ChatUtils.ahk                # Structured message building, cURL state, postWebMessage
+│   ├── ThreadTitleGen.ahk           # Fire-and-forget thread title generation
 │   ├── callbacks/
 │   │   ├── Dispatch.ahk             # OnWebMessageReceived + callback includes
-│   │   ├── Branch.ahk               # Branch nav, fork, Retry callbacks
-│   │   ├── Edit.ahk                 # Edit and delete callbacks (hard-delete with re-parenting)
+│   │   │                            #   Includes showApiLogs IPC handler
+│   │   ├── Branch.ahk               # Branch navigation, fork, retry
+│   │   ├── Edit.ahk                 # Edit and delete callbacks
 │   │   ├── Message.ahk              # Send + attachment delete callbacks
-│   │   └── Sidebar.ahk              # Thread list, load, new, delete, trash, restore, rename, sidebar
+│   │   └── Sidebar.ahk              # Thread list, folders, trash, rename, navigation
 │   ├── streaming/
-│   │   ├── StreamHandler.ahk        # Streaming: cURL polling loop, SSE dispatch, finalization
-│   │   ├── StreamCompletion.ahk     # Successful stream: DB persistence, API logging, title trigger
+│   │   ├── StreamHandler.ahk        # Streaming: cURL polling, SSE dispatch, finalization
+│   │   ├── StreamCompletion.ahk     # Successful stream: DB persistence, API logging
 │   │   └── StreamError.ahk          # Error + cancellation: partial save, logging
 │   └── db/
-│       ├── ChatDB.ahk               # Facade — Open/Close, usage queries, chat_usage/command_usage UPSERT
-│       ├── ThreadRepo.ahk           # Thread CRUD, settings get/set, soft-delete, restore, list
-│       ├── MessageRepo.ahk          # Message CRUD, per-message token attribution, hard-delete with re-parenting
-│       ├── TreeRepo.ahk             # Branch navigation, tree visualization, fork, stats, pricing lookup
-│       ├── AttachmentRepo.ahk       # Attachment CRUD, content-addressable storage, ref-counted delete
-│       └── AssistantRepo.ahk        # Assistant CRUD operations
+│       ├── ChatDB.ahk               # Facade — Open/Close, usage queries, schema
+│       ├── ThreadRepo.ahk           # Thread CRUD, settings, soft-delete, restore
+│       ├── MessageRepo.ahk          # Message CRUD, token attribution, hard-delete
+│       ├── TreeRepo.ahk             # Branch navigation, tree viz, fork, stats, pricing
+│       ├── AttachmentRepo.ahk       # Content-addressable storage, ref-counted delete
+│       └── AssistantRepo.ahk        # Assistant CRUD (includes description field)
 │
 ├── api/                             # API client
-│   ├── LLMRequestBuilder.ahk        # JSON request building, FIM, chat history, thinking config
-│   ├── SSEParser.ahk                # SSE streaming line parser (static), thinking token extraction
-│   ├── ApiLogger.ahk                # API request/response logging (static)
-│   ├── CostCalculator.ahk           # Token cost calculation — cached input cost, version-stripped pricing
-│   ├── CurlBuilder.ahk              # cURL command construction (static + instance)
-│   ├── ProviderResolver.ahk         # Provider/endpoint resolution from model string
-│   └── ResponseParser.ahk           # Response parsing (chat, FIM, streaming, error), usage extraction
+│   ├── LLMRequestBuilder.ahk        # JSON request building, FIM, thinking config
+│   ├── SSEParser.ahk                # SSE streaming line parser
+│   ├── ApiLogger.ahk                # API request/response logging
+│   ├── CostCalculator.ahk           # Token cost calculation
+│   ├── CurlBuilder.ahk              # cURL command construction
+│   ├── ProviderResolver.ahk         # Provider/endpoint resolution
+│   └── ResponseParser.ahk           # Response parsing, usage extraction
 │
 ├── ipc/                             # Inter-process communication
-│   └── CustomMessages.ahk           # CustomMessages class: WM_ message constants + helpers
+│   └── CustomMessages.ahk           # WM_ message constants + helpers
+│                                    #   WM_SHOW_DASHBOARD, WM_SHOW_API_LOGS, WM_LOAD_THREAD
 │
 ├── lib/                             # Vendor/third-party libraries
-│   ├── Config.ahk                   # Include chain (see below)
-│   ├── UIA.ahk                      # UI Automation library (Descolada) — programmatic UI access
-│   ├── SQLite/                      # SQLite3 database wrapper (WAL mode, SQLite.Escape helper)
-│   ├── ApiLogsViewer.ahk            # API logs viewer (persistent WebView2, pre-created at startup)
-│   ├── UsageDashboard.ahk           # Usage dashboard (persistent WebView2, Chart.js graphs)
-│   ├── Dark_Menu.ahk                # Dark theme for AHK menus
-│   ├── Dark_MsgBox.ahk              # Dark mode MsgBox and InputBox
+│   ├── Config.ahk                   # Include chain
+│   ├── UIA.ahk                      # UI Automation library (Descolada)
+│   ├── SQLite/                      # SQLite3 wrapper (WAL mode)
+│   ├── ApiLogsViewer.ahk            # API logs viewer (persistent WebView2)
+│   ├── UsageDashboard.ahk           # IPC relay — sends showDashboard to ChatWindow
 │   ├── WebViewToo.ahk               # WebView2 Framework
 │   ├── WebView2.ahk                 # WebView2 Core
-│   ├── jsongo.v2.ahk                # JSON parsing/serialization (returns AHK Map objects)
+│   ├── jsongo.v2.ahk                # JSON parsing/serialization
 │   ├── AutoXYWH.ahk                 # GUI auto-resizing
 │   ├── ToolTipEx.ahk                # Enhanced tooltips
-│   ├── SystemThemeAwareToolTip.ahk  # Dark theme tooltips
 │   ├── Promise.ahk                  # Promise/A+ implementation
 │   ├── ComVar.ahk                   # COM utility
 │   ├── RuntimeResolver.ahk          # Runtime path resolution
 │   ├── 32bit/                       # 32-bit WebView2Loader.dll
 │   └── 64bit/                       # 64-bit WebView2Loader.dll
 │
-├── system-messages/                 # System message text files for commands
+├── system-messages/                 # System message text files for commands/assistants
 │   ├── brutal-critic.txt
 │   ├── natural-conversationalist.txt
 │   ├── refine.txt
-│   ├── rephrase-in-context.txt      # Uses {{fullText}} template variable
+│   ├── rephrase-in-context.txt
 │   ├── summarize.txt
 │   ├── translate-to-english.txt
 │   └── violet.txt
 │
-├── icons/                           # Provider icons (.ico)
-├── webui/                           # WebView2 frontend
-│   ├── index.html                   # Chat UI (charset=utf-8, Bootstrap 5 dark mode)
-│   ├── api-logs.html                # API logs viewer UI
-│   ├── usage-dashboard.html         # Usage dashboard (Chart.js graphs, filtering)
-│   ├── Bootstrap/                   # Bootstrap 5.3 + Chart.js (local, no CDN)
-│   │   └── chart.umd.min.js         # Chart.js for usage dashboard
-│   ├── css/
-│   │   ├── chat.css                 # Chat layout
-│   │   ├── custom.css               # Global custom styles
-│   │   └── chat/                    # Chat-specific CSS modules
-│   │       ├── chat-actions.css     # Message action buttons, dropdowns
-│   │       ├── chat-attachments.css # Attachment bar, thumbnails, file badges
-│   │       ├── chat-base.css        # Base chat layout
-│   │       ├── chat-input.css       # Input area, textarea
-│   │       ├── chat-messages.css    # Message bubbles, thinking animation, token tooltip
-│   │       └── chat-sidebar.css     # Thread sidebar, nav bar
-│   └── js/
-│       ├── main.js                  # WebMessage dispatch, error display, nav toggle
-│       ├── stream.js                # Streaming: SSE content rendering, cancel, persist
-│       ├── usage-dashboard.js       # Usage dashboard: Chart.js graphs, filtering, CSV export
-│       └── chat/                    # Chat JS modules
-│           ├── chat-core.js         # initChatMode, renderMarkdown
-│           ├── chat-render.js       # Message bubble creation, attachment rendering, timestamps
-│           ├── chat-input.js        # Send, loading, retry, paste handling
-│           ├── chat-branching.js    # Edit, delete, fork, branch nav, tree modal
-│           ├── chat-sidebar.js      # Thread list, trash, fork callback
-│           ├── chat-actions.js      # Message action buttons (copy, edit, retry)
-│           ├── chat-format.js       # Copy, cost formatting, token usage bar
-│           ├── chat-quote.js        # Quote message in input
-│           ├── chat-undo.js        # Undo edit/delete operations
-│           ├── chat-token-tooltip.js # Per-message token info tooltip (📊 icon hover)
-│           ├── attachments/         # Attachment subsystem
-│           │   ├── chat-attachments.js        # State, render bar, add/remove, SHA-256 hash
-│           │   ├── chat-attachments-extract.js # pdf.js + officeParser text extraction
-│           │   └── chat-attachments-setup.js   # Drop zone, paste, browse, delete delegation
-│           └── settings/            # Settings subsystem
-│               ├── chat-settings.js         # Model/assistant/temperature/reasoning state
-│               └── chat-settings-modal.js   # Settings modal UI
+├── icons/                           # Provider icons (.ico) + tray icons
+│   ├── anthropic.ico, deepseek.ico, google.ico, openai.ico, openrouter.ico, perplexity.ico
+│   └── IconOn.ico, IconOff.ico, Scribblemate.ico
 │
-├── tests/                           # Unit + integration tests (211 AHK + 89 JS + 4 SQLite = 304)
-│   ├── run_all_tests.bat            # PRIMARY ENTRY POINT — runs both AHK and JS
-│   ├── run_ahk_tests.ahk            # AHK test runner (called by run_all_tests.bat)
-│   ├── run_js_tests.bat             # JS test runner (called by run_all_tests.bat)
+├── webui/                           # WebView2 frontend (light mode only)
+│   ├── index.html                   # Main chat UI — 4-column SaaS layout
+│   │                                #   Includes inline Usage Dashboard panel
+│   ├── api-logs.html                # API logs viewer UI (light mode only)
+│   ├── usage-dashboard.html         # Standalone dashboard page (Chart.js, CSS variables)
+│   ├── fonts/                       # Local fonts (Inter + JetBrains Mono, no CDN)
+│   │   ├── fonts.css                # Imports inter.css + jetbrains-mono.css
+│   │   ├── inter.css                # @font-face declarations (400,500,600,700)
+│   │   ├── inter-latin-*.ttf
+│   │   ├── jetbrains-mono.css       # @font-face declarations (400,500,600)
+│   │   └── jetbrains-mono-latin-*.ttf
+│   ├── css/                         # Modular CSS (10 files, no Bootstrap)
+│   │   ├── theme.css                # CSS variables, reset, font-face
+│   │   ├── layout.css               # App layout, panels, seams, resizers
+│   │   ├── left-panel.css           # Folders, chat items, trash
+│   │   ├── center.css               # Topbar, thread, composer
+│   │   ├── messages.css             # Message bubbles, thinking block, edit UI
+│   │   ├── actions.css              # Action buttons, branch nav, stat popover
+│   │   ├── right-panel.css          # Config fields, model card, thread map
+│   │   ├── modals.css               # Tree modal, sysmsg modal
+│   │   ├── popover.css              # Model/assistant popover
+│   │   ├── components.css           # Buttons, switches, scrollbars, tooltips
+│   │   └── vendor/                  # Katex, texmath, highlight themes
+│   └── js/
+│       ├── main.js                  # WebMessage dispatch, dashboard toggle, sidebar toggle
+│       ├── stream.js                # Streaming: SSE content rendering, cancel, persist
+│       ├── mock-ui.js               # Panel resize, font controls, tree zoom, composer resize
+│       ├── usage-dashboard.js       # Inline dashboard: Chart.js graphs, filtering, CSV export
+│       ├── vendor/                  # Local JS libraries (no CDN)
+│       │   ├── lucide.min.js        # Icon library (replaces emoji)
+│       │   ├── chart.umd.min.js     # Chart.js for usage dashboard
+│       │   ├── markdown-it.min.js, katex.min.js, mhchem.min.js
+│       │   ├── texmath.min.js, highlight.min.js
+│       │   ├── pdf.min.js, pdf.worker.min.js, officeparser.iife.js
+│       └── chat/                    # Chat JS modules (all stateful)
+│           ├── chat-core.js         # initChatMode, renderMarkdown, escHtml (shared)
+│           ├── chat-render.js       # Message bubble HTML generation (extracted helpers)
+│           │                        #   _buildMetaText, _buildReasoningHtml, _buildAttachmentHtml, _buildEditUiHtml
+│           ├── chat-input.js        # Send, loading indicator, retry
+│           ├── chat-branching.js    # Edit, delete, fork, branch nav, tree modal
+│           ├── chat-sidebar.js      # Thread list, folders, trash, thread map, inline rename
+│           │                        #   Extracted: _wireRenameHandler, _wireMoveToFolderHandler, _buildFolderSection
+│           ├── chat-actions.js      # Message action buttons (Lucide icons)
+│           ├── chat-format.js       # Copy, cost formatting, token usage bar
+│           ├── chat-quote.js        # Quote message
+│           ├── chat-undo.js         # Undo edit/delete operations
+│           ├── chat-token-tooltip.js # Per-message token info popover
+│           ├── attachments/         # Attachment subsystem
+│           │   ├── chat-attachments.js        # State, render bar, add/remove, SHA-256
+│           │   ├── chat-attachments-extract.js # pdf.js + officeParser text extraction
+│           │   └── chat-attachments-setup.js   # Drop zone, paste, browse, delete
+│           └── settings/            # Settings subsystem
+│               ├── chat-settings.js         # Model/assistant popover, provider icons
+│               │                            #   Split: _populateAssistantsTab, _populateModelsTab
+│               └── chat-settings-modal.js   # Right panel config: system prompt, temperature, thinking
+│
+├── tests/                           # Unit + integration tests (143 JS)
+│   ├── run_all_tests.bat            # PRIMARY ENTRY POINT
+│   ├── run_ahk_tests.ahk            # AHK test runner
+│   ├── run_js_tests.bat             # JS test runner (node:test)
 │   ├── test_config.ahk              # Test overrides (loaded after Config.ahk)
-│   ├── unit/                        # Unit tests — AHK (.test.ahk) and JS (.test.js) side by side
-│   │   ├── AttachmentRepo.test.ahk       # Content-addressable storage, ref-count delete
-│   │   ├── AttachmentUtils.test.ahk      # HasVision, MIME classification
-│   │   ├── chat-attachments.test.js      # MIME, extensions, icons, constants (36 tests)
-│   │   ├── chat-format.test.js           # getMessageText, formatCost, formatCompact (22 tests)
-│   │   ├── chat-input.test.js            # onChatSend payload, retry logic (5 tests)
-│   │   ├── ChatDB.test.ahk               # Core DB operations, chat_usage, command_usage
-│   │   ├── ChatRequestBuilder.test.ahk
-│   │   ├── ChatUtils.test.ahk            # Structured messages with token fields + createdAt
-│   │   ├── CostCalculator.test.ahk       # Cached input cost, pricing lookup, version stripping
-│   │   ├── CustomMessages.test.ahk
-│   │   ├── edit-removed-attachments.test.js # _removedAttachmentIds, commitEdit payload (7 tests)
-│   │   ├── fork-function.test.js         # forkChat() definition, payload, guards (4 tests)
-│   │   ├── ImageUtils.test.ahk           # Base64 encode/decode, roundtrip
-│   │   ├── InlineRequestRunner.test.ahk  # FIM, command usage tracking
-│   │   ├── LLMRequestBuilder.test.ahk
-│   │   ├── ModelParser.test.ahk          # StripProvider, StripVersion parsing
-│   │   ├── RequestProcessor.test.ahk     # Paste block, apilogs handler
-│   │   ├── SQLiteEscape.test.ahk         # Escape correctness, SQL roundtrip
-│   │   ├── stream-state.test.js          # streamState, _persistStreamedMessage, cancel (10 tests)
-│   │   ├── StreamError.test.ahk          # Cancel-retry sibling_group preservation (2 tests)
-│   │   ├── StreamHandler.test.ahk
-│   │   ├── TextCapture.test.ahk          # ExpandTemplate, NormalizeLineEndings
-│   │   ├── UsageDashboard.test.ahk       # Dashboard lifecycle, CloseUsageDashboard
-│   │   ├── UsageTracking.test.ahk        # Per-message attribution, backfill, multi-turn, commands
-│   │   └── UserConfig.test.ahk
-│   └── integration/                  # Integration tests — AHK and JS side by side
-│       ├── BranchFlow.test.ahk           # Branch nav, fork (title, settings, siblings, UUIDs)
+│   ├── unit/                        # Unit tests — AHK (.test.ahk) and JS (.test.js)
+│   │   └── [19 AHK + 13 JS test files]
+│   └── integration/                 # Integration tests
+│       ├── BranchFlow.test.ahk
 │       ├── ChatFlow.test.ahk
-│       ├── UsageFlow.test.ahk            # Full pipeline, multi-model, time range
-│       └── edit-send-flow.test.js        # Cross-module: edit commit, attachment send, stream (5 tests)
+│       ├── UsageFlow.test.ahk
+│       ├── chat-folders.test.js     # Folder-aware thread list
+│       └── edit-send-flow.test.js
 └── agent-workspace/                 # Feature development artifacts (transient)
-    ├── feature/                     # Current feature plan, reference, state
+    ├── feature/
     │   └── archive/                 # Completed feature records
     └── external-docs/               # Cached external API documentation
 ```
@@ -339,25 +335,52 @@ The application is an AutoHotkey v2 script that provides a hotkey-activated comm
 ### Key Design Decisions
 
 - **Entry point**: `Main.ahk` — double-click to run.
-- **User config**: `UserConfig.ahk` — all commands, API keys, hotkeys, and theme settings in one file.
+- **User config**: `UserConfig.ahk` — all commands, API keys, hotkeys, and theme in one file.
 - **Persistent single-window model**: A single `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
-- **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Supports branching, soft-delete, reasoning, file/image attachments, and usage tracking.
-- **Content-addressable attachment storage**: Files stored by SHA-256 hash filename in `attachments/`. O(1) FileExist() dedup. Reference-counted deletion prevents orphaned files.
+- **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Supports branching, soft-delete, reasoning, file/image attachments, folders, and usage tracking.
+- **Content-addressable attachment storage**: Files stored by SHA-256 hash. O(1) FileExist() dedup. Reference-counted deletion.
 - **WebView2 frontend**: Chat UI rendered by Microsoft Edge WebView2. AHK ↔ JS via `PostWebMessageAsJSON` / `chrome.webview.postMessage()`.
 - **cURL for API calls**: JSON request files written to `%TEMP%`, `cURL.exe` used for API communication.
-- **UIA (UI Automation)**: Text is captured via Windows accessibility APIs (TextPattern) — zero scroll, no keystrokes. Clipboard capture retained as fallback.
-- **All vendor libraries local**: Bootstrap, Chart.js, pdf.js, officeParser, highlight.js, katex, markdown-it — all bundled locally, no CDN dependencies.
+- **UIA (UI Automation)**: Text captured via Windows accessibility APIs (TextPattern) — zero scroll, no keystrokes.
+- **All vendor libraries local**: Lucide, Chart.js, pdf.js, officeParser, highlight.js, katex, markdown-it — all bundled locally, no CDN dependencies.
+- **Light mode only**: Dark mode removed. CSS variable system supports future dark mode addition.
+- **Inline dashboard**: Usage dashboard embedded in main GUI (toggled via icon rail). No separate window.
+- **Folder persistence**: `chat_folders` SQLite table with `folder_id` FK on `chat_threads`. Full CRUD via sidebar.
+
+### UI Design System
+
+The chat UI uses a custom 4-column SaaS-style layout with CSS custom properties:
+
+```
+┌──────┬────────────────┬──────────────────────┬──────────┐
+│ Icon │  Left Panel    │  Center (Chat/        │  Right   │
+│ Rail │  (340px)       │   Dashboard)          │  Panel   │
+│ 80px │  ┌──────────┐  │  flex: 1              │ (400px)  │
+│      │  │ Folders  │  │  ┌────────────────┐  │ ┌──────┐ │
+│  💬   │  │ Chats    │  │  │ Topbar / Dash  │  │ │Config│ │
+│  📊   │  │ Search   │  │  │ Thread Area    │  │ │Model │ │
+│  ⚙    │  │ Trash    │  │  │ Composer       │  │ │Temp  │ │
+│      │  └──────────┘  │  └────────────────┘  │ │Think │ │
+└──────┴────────────────┴──────────────────────┴──────────┘
+        ↕ resizable        ↕ resizable          ↕ resizable
+```
+
+- **Icon Rail**: Brand mark, Chats (active), Dashboard, Settings icons
+- **Left Panel**: Folder-based chat list with inline rename, move-to-folder dropdown, collapsible trash
+- **Center**: Chat thread OR inline Usage Dashboard (toggled via icon rail)
+- **Right Panel**: Configuration (model card, system prompt, temperature, thinking), Thread Map
+- **Modals**: Conversation Tree (zoomable/pannable), System Prompt editor, Model/Assistant popover
+
+Fonts: Inter (UI) + JetBrains Mono (code), loaded locally. Icons: Lucide (replaces emoji).
 
 ## Command System
 
 ### Template Variables
 
-Commands compose prompts using template variables, available in `systemMessage`, `systemMessageFile`, and `userMessage`:
-
 | Variable | Source | Description |
 |----------|--------|-------------|
 | `{{selection}}` | UIA TextPattern / clipboard | User's highlighted text |
-| `{{fullText}}` | UIA DocumentRange (lazy) | Entire document text (text editing controls only) |
+| `{{fullText}}` | UIA DocumentRange (lazy) | Entire document text |
 | `{{input}}` | Input box (if `showInputBox: true`) | User-typed instruction |
 
 ### Command Fields
@@ -366,40 +389,24 @@ Commands compose prompts using template variables, available in `systemMessage`,
 |-------|---------|---------|
 | `commandName`, `menuText`, `APIModels` | Required | — |
 | `systemMessage` / `systemMessageFile` | System prompt (supports templates) | — |
-| `userMessage` | User prompt template | *(none — explicit only)* |
+| `userMessage` | User prompt template | *(none)* |
 | `showInputBox` | Open text input before sending | `false` |
-| `inputBoxDefault` | Pre-filled text in input box | `""` |
 | `pasteMode` | `"chat"`, `"replace"`, `"append"` | `"chat"` |
-| `includeImageContext` | Capture screenshot + attach to chat message | `false` |
-| `isFIM` | Use FIM endpoint (ignores prompt fields) | `false` |
-| `expandNewlines` | Expand single `\n` → `\n\n` paragraph breaks | `false` |
+| `includeImageContext` | Capture screenshot + attach to chat | `false` |
+| `isFIM` | Use FIM endpoint | `false` |
+| `expandNewlines` | Expand `\n` → `\n\n` paragraph breaks | `false` |
 | `stream`, `thinking`, `temperature`, `maxTokens`, `stop` | API parameters | — |
-| `maxContextWords` | Truncate captured text to word limit | `0` (unlimited) |
-
-### `includeImageContext`
-When `true`, `RequestProcessor` captures a screenshot via GDI+ `BitBlt` (no PrintScreen key, no clipboard) before building the request. The screenshot is saved as a PNG attachment and linked to the user message. A vision-gate check (`AttachmentUtils.HasVision()`) blocks non-vision models with a tooltip error.
-
-### Line Ending Normalization
-
-`TextCapture.NormalizeLineEndings()` runs on all captured text:
-- Always: `\r\n` / `\r` → `\n` (lossless, free)
-- Optional (`expandNewlines: true`): single `\n` → `\n\n` (paragraph breaks for LLM training data)
-
-### FIM (Fill In the Middle)
-
-FIM commands use a separate API endpoint (`fimEndpoint`). Prompt template fields are ignored. FIM Fill works with or without a text selection (cursor = zero-width gap). UIA TextPattern used for capture (zero scroll); paste uses `^v` (preserves undo history).
 
 ## Startup Flow
 
 1. `Main.ahk` runs → `#Include <Config>` loads `lib/Config.ahk`
-2. `Config.ahk` loads vendor libs (including `UIA.ahk`) + shared utilities + application classes
-3. `Main.ahk` clears previous debug log, logs `[APP] Started`
-4. `Main.ahk` calls `ChatDB.Open()` to initialize SQLite, logs `[DB] Opened`
-5. `Main.ahk` creates `llmClient := LLMRequestBuilder(APIKey)` and a `commandInputWindow` instance
-6. `Main.ahk` spawns `ChatWindow.ahk` as hidden sub-process with "prewarm" flag
-7. `Main.ahk` registers hotkeys (default: `` ` `` to open menu)
-8. `Main.ahk` pre-creates API Logs Viewer (hidden, deferred 2s) and Usage Dashboard (deferred 2.5s)
-9. Script ready — tray icon appears, hotkeys active
+2. `Config.ahk` loads vendor libs + shared utilities + application classes
+3. `Main.ahk` clears debug log, logs `[APP] Started`
+4. `Main.ahk` calls `ChatDB.Open()` to initialize SQLite
+5. `Main.ahk` spawns `ChatWindow.ahk` as hidden sub-process with "prewarm" flag
+6. `Main.ahk` registers hotkeys (default: `` ` `` to open menu)
+7. `Main.ahk` pre-creates API Logs Viewer (deferred 2s)
+8. Script ready — tray icon appears ("LLM AutoHotkey Assistant"), hotkeys active
 
 ## Request Flow
 
@@ -426,45 +433,35 @@ buildRequest() → sendRequestToLLM() → ChatDB.Msg_Insert()
     │  chat_usage daily aggregation UPSERT
 ```
 
-### Non-Chat Mode (pasteMode = "replace"/"append")
-
-```
-processInitialRequest()
-    │  TextCapture.Capture() — UIA TextPattern → clipboard fallback
-    │  Template expansion
-    ▼
-InlineRequestRunner.Run()                       # app/InlineRequestRunner.ahk
-    │  Builds cURL command → Run(cURL) → wait → parse
-    │  Normalizes API response line endings
-    │  Extracts usage, computes costs, upserts command_usage
-    ▼
-Send("^v") → highlights inserted text (UIA TextPattern for FIM)
-```
-
 ## Data Model (SQLite)
+
+### `chat_folders`
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PRIMARY KEY | UUID |
+| `name` | TEXT NOT NULL | Folder display name |
+| `created_at` | TEXT | ISO 8601 |
 
 ### `chat_threads`
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | TEXT PRIMARY KEY | UUID |
 | `title` | TEXT | Auto-generated by ThreadTitleGen |
+| `folder_id` | TEXT | FK to chat_folders (NULL = unfiled) |
 | `is_deleted` | INTEGER | 0=active, 1=trashed (soft-delete) |
 | `deleted_at` | TEXT | Timestamp when trashed |
 | `created_at` | TEXT | ISO 8601 |
 | `updated_at` | TEXT | ISO 8601 |
-| `active_leaf_id` | TEXT | Current leaf in message tree. GetThreadStats() reads this message's active_path_tokens for the token bar. |
+| `active_leaf_id` | TEXT | Current leaf in message tree |
 | `model_override` | TEXT | Per-thread model override |
 | `system_override` | TEXT | Per-thread system message override |
 | `reasoning_override` | TEXT | Per-thread reasoning setting |
 | `temperature_override` | REAL | Per-thread temperature |
-| `assistant_id` | TEXT | Per-thread assistant (pre-defined config) |
-| `cumulative_input_tokens` | INTEGER | Sum of all prompt_tokens across all API calls in this thread |
-| `cumulative_output_tokens` | INTEGER | Sum of all completion_tokens across all API calls |
-| `cumulative_cached_tokens` | INTEGER | Sum of all cached_tokens across all API calls |
+| `assistant_id` | TEXT | Per-thread assistant |
+| `cumulative_input_tokens` | INTEGER | Sum of prompt_tokens |
+| `cumulative_output_tokens` | INTEGER | Sum of completion_tokens |
+| `cumulative_cached_tokens` | INTEGER | Sum of cached_tokens |
 | `cumulative_cost` | REAL | Total cost in USD |
-| `cumulative_input_cost` | REAL | Input token cost |
-| `cumulative_cached_input_cost` | REAL | Cached input token cost |
-| `cumulative_output_cost` | REAL | Output token cost |
 
 ### `messages`
 | Column | Type | Description |
@@ -478,25 +475,12 @@ Send("^v") → highlights inserted text (UIA TextPattern for FIM)
 | `sibling_group` | TEXT | Group UUID for branch variants |
 | `sibling_index` | INTEGER | Position within sibling group |
 | `reasoning` | TEXT | Thinking/reasoning content |
-| `token_count` | INTEGER | This message's context contribution (visible tokens; thinking excluded) |
+| `token_count` | INTEGER | Context contribution (visible tokens) |
 | `thinking_tokens` | INTEGER | Reasoning tokens (billed, not in context) |
-| `cached_tokens` | INTEGER | Cache hit tokens for the API call |
+| `cached_tokens` | INTEGER | Cache hit tokens |
 | `response_time_ms` | INTEGER | Total response time in ms |
 | `ttft_ms` | INTEGER | Time to first token in ms |
-| `active_path_tokens` | INTEGER | Total context tokens from root to this message. For assistants: API prompt_tokens + token_count (ground truth). For user/system: parent + token_count (prefix sum). Read by GetThreadStats() from leaf message — O(1). |
-| `created_at` | TEXT | ISO 8601 |
-
-### `message_attachments`
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | TEXT PRIMARY KEY | UUID |
-| `message_id` | TEXT | FK to messages |
-| `attachment_type` | TEXT | "image", "pdf", "docx", "text_file", etc. |
-| `file_path` | TEXT | Relative path in attachments/ dir |
-| `mime_type` | TEXT | MIME type |
-| `original_filename` | TEXT | User-visible filename |
-| `file_size` | INTEGER | File size in bytes |
-| `extracted_text` | TEXT | Text extracted from PDF/office files (base64 encoded) |
+| `active_path_tokens` | INTEGER | Total context from root to this message |
 | `created_at` | TEXT | ISO 8601 |
 
 ### `assistants`
@@ -504,224 +488,114 @@ Send("^v") → highlights inserted text (UIA TextPattern for FIM)
 |--------|------|-------------|
 | `id` | TEXT PRIMARY KEY | UUID |
 | `name` | TEXT | Display name |
-| `base_model` | TEXT | Model ID (e.g. "openai/gpt-4.1") |
+| `base_model` | TEXT | Model ID |
 | `system_prompt` | TEXT | System message |
+| `description` | TEXT | Short description (shown in model card) |
 | `reasoning` | TEXT | Reasoning setting |
 | `temperature` | REAL | Temperature |
 | `is_default` | INTEGER | 1 if default assistant |
-| `created_at` | TEXT | ISO 8601 |
-
-### `chat_usage` — Chat API usage (daily aggregation)
-| Column | Type | Description |
-|--------|------|-------------|
-| `date` | TEXT | 'YYYY-MM-DD' |
-| `model` | TEXT | Model name |
-| `provider` | TEXT | Provider (openai, deepseek, etc.) |
-| `call_count` | INTEGER | Number of API calls |
-| `prompt_tokens` | INTEGER | Total prompt tokens |
-| `completion_tokens` | INTEGER | Total completion tokens |
-| `thinking_tokens` | INTEGER | Total reasoning tokens |
-| `cached_tokens` | INTEGER | Total cache hit tokens |
-| `input_cost` | REAL | Input token cost |
-| `cached_input_cost` | REAL | Cached input token cost |
-| `output_cost` | REAL | Output token cost |
-| `total_cost` | REAL | Total cost |
-| `total_response_time_ms` | INTEGER | Sum of response times |
-| `total_ttft_ms` | INTEGER | Sum of time-to-first-token |
-| PRIMARY KEY | (date, model, provider) | |
-
-### `command_usage` — Command API usage (daily aggregation)
-| Column | Type | Description |
-|--------|------|-------------|
-| `date` | TEXT | 'YYYY-MM-DD' |
-| `model` | TEXT | Model name |
-| `provider` | TEXT | Provider |
-| `command_name` | TEXT | Command name (Refine, FIM, etc.) |
-| `call_count` | INTEGER | Number of calls |
-| `prompt_tokens` | INTEGER | Total prompt tokens |
-| `completion_tokens` | INTEGER | Total completion tokens |
-| `thinking_tokens` | INTEGER | Total reasoning tokens |
-| `cached_tokens` | INTEGER | Total cache hit tokens |
-| `input_cost` | REAL | Input token cost |
-| `cached_input_cost` | REAL | Cached input token cost |
-| `output_cost` | REAL | Output token cost |
-| `total_cost` | REAL | Total cost |
-| `total_response_time_ms` | INTEGER | Sum of response times |
-| `total_ttft_ms` | INTEGER | Sum of time-to-first-token |
-| PRIMARY KEY | (date, model, provider, command_name) | |
 
 ### Branching Model
-Messages form a tree via `parent_id`. When edited or retried, a new sibling is created with the same `sibling_group` and incremented `sibling_index`. `active_leaf_id` tracks current position. `TreeRepo` handles navigation, stats, fork, and visualization. `GetSiblings()` is scoped per `thread_id` to prevent cross-thread contamination.
-
-### Per-Message Token Attribution
-When an assistant message is inserted with API usage data:
-1. `existing_sum = SUM(token_count)` of all messages in active path
-2. `new_input = Max(0, prompt_tokens - existing_sum)` — clamped, never negative
-3. Last user message's `token_count` is backfilled to `new_input`
-4. Assistant gets `token_count = completion_tokens - thinking_tokens` (visible output only)
-5. `active_path_tokens = existing_sum + new_input + token_count` (thinking excluded from context)
+Messages form a tree via `parent_id`. When edited or retried, a new sibling is created with the same `sibling_group` and incremented `sibling_index`. `active_leaf_id` tracks current position. `TreeRepo` handles navigation, stats, fork, and visualization.
 
 ### Fork Design
-`TreeRepo.ForkThread()` creates a complete copy of the conversation up to a fork point:
-1. Copies the active path with fresh message UUIDs
-2. Generates new `sibling_group` UUIDs mapped from originals (no cross-thread sharing)
-3. Second pass copies ALL siblings in each group (not just active path) so branch nav works
-4. Copies thread-level settings (model, temperature, reasoning, assistant)
-5. Copies attachments via `AttachmentRepo.CopyForMessage()` (shares content-addressable files)
-6. Title: "Copy - [original title]"
-
-### Attachment Storage
-Files are stored with SHA-256 content hashes as filenames (e.g., `abc123...png`) under `%APPDATA%\LLM-AutoHotkey-Assistant\attachments\`. `SaveBase64ToFile()` checks `FileExist()` before writing — O(1) dedup. `AttachmentRepo._DeleteFileIfOrphaned()` uses reference counting: only deletes the physical file when no remaining `message_attachments` rows reference it.
+`TreeRepo.ForkThread()` creates a complete copy of the conversation up to a fork point: copies active path with fresh UUIDs, generates new `sibling_group` UUIDs, copies all siblings (not just active path), copies thread-level settings, copies attachments via content-addressable storage. Title: "Copy - [original title]".
 
 ## WebView ↔ AHK Communication
 
 ### AHK → WebView (postWebMessage)
-```javascript
-postWebMessage("target", data) → JSON: {"target": "target", "data": data}
-```
-Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `updateBranchInfo`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`.
+Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`.
 
 ### WebView → AHK (via postMessage)
-Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `openUsageDashboard`.
+Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `showApiLogs`.
 
 ## IPC (Inter-Process Communication)
 
 | Message | Direction | Purpose |
 |---------|-----------|---------|
-| `WM_CHAT_WINDOW_OPENED` (0x500+0) | sub → main | Registers ChatWindow |
+| `WM_CHAT_WINDOW_OPENED` (0x500+0) | sub → main | Registers ChatWindow hWnd |
 | `WM_LOADING_START` (0x400+123) | sub → main | Notifies loading started |
 | `WM_LOADING_FINISH` (0x400+124) | sub → main | Notifies loading finished |
 | `WM_LOAD_THREAD` (0x500+2) | main → sub | Load specific thread |
 | `WM_TRIGGER_LLM` (0x500+4) | main → sub | Fire LLM for current thread |
-| `WM_OPEN_USAGE_DASHBOARD` (0x500+5) | main → sub | Open usage dashboard from command menu |
+| `WM_SHOW_DASHBOARD` (0x500+6) | main → sub | Show inline dashboard |
+| `WM_SHOW_API_LOGS` (0x500+7) | sub → main | Open API logs viewer |
 
 ## JavaScript Module Dependency Graph
 
 Load order in `index.html` (bottom of `<body>`):
 ```
-index.html
-  └── vendor (markdown-it, katex, highlight, texmath, pdf.js, pdf.worker, officeParser)
-       └── chat/chat-core.js
-            ├── chat/chat-format.js
-            ├── chat/chat-render.js
-            ├── chat/chat-token-tooltip.js
-            ├── chat/attachments/chat-attachments.js
-            │    ├── chat/attachments/chat-attachments-extract.js
-            │    └── chat/attachments/chat-attachments-setup.js
-            ├── chat/settings/chat-settings.js
-            │    └── chat/settings/chat-settings-modal.js
-            ├── chat/chat-input.js
-            ├── chat/chat-branching.js
-            ├── chat/chat-sidebar.js
-            ├── chat/chat-quote.js
-            ├── chat/chat-undo.js
-            ├── chat/chat-actions.js
-            ├── stream.js
-            └── main.js (orchestrator + WebMessage dispatch)
+vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, officeParser)
+  └── usage-dashboard.js            # Inline dashboard (Chart.js graphs)
+  └── chat/chat-core.js             # State, escHtml (shared), initChatMode
+       ├── chat/settings/chat-settings.js        # Model/assistant popover
+       ├── chat/chat-format.js                   # Token bar, copy
+       ├── chat/chat-render.js                   # Message bubbles
+       ├── chat/chat-token-tooltip.js            # Token popover
+       ├── chat/chat-actions.js                  # Lucide icon buttons
+       ├── chat/attachments/chat-attachments.js  # Attachment state
+       │    ├── chat-attachments-extract.js      # pdf.js text extraction
+       │    └── chat-attachments-setup.js        # Drop/paste/browse
+       ├── chat/chat-input.js                    # Send, loading, retry
+       ├── chat/chat-branching.js                # Edit, delete, tree modal
+       ├── chat/chat-sidebar.js                  # Folders, threads, trash
+       ├── chat/chat-quote.js                    # Quote in input
+       ├── chat/chat-undo.js                     # Undo/redo
+       ├── stream.js                             # SSE streaming
+       ├── chat/settings/chat-settings-modal.js  # Right panel config
+       ├── main.js                               # WebMessage dispatch, dashboard toggle
+       └── mock-ui.js                            # Panel resize, font, zoom
 ```
 
 ## Usage Dashboard
 
-A separate WebView2 window accessed from the tray menu or chat UI. Charts rendered with Chart.js (bundled locally):
+Embedded inline in the main ChatWindow GUI (toggled via 📊 icon in the left rail). Rendered with Chart.js:
 
-- **Summary cards**: Total tokens, total cost (with ⓘ cost breakdown tooltip), total API calls
-- **Main chart**: Stacked bar chart of costs over time (toggle: cost/tokens)
-- **Per-model sections**: Line/area chart for requests + stacked bar chart for tokens per model
-- **Filters**: Time range (All Time, Last 30 Days, This Month, Last Month, Last 24 Hours), type (All/Chat/Commands), provider, model
-- **CSV export**: Full data export with all token and cost columns
+- **Summary cards**: Total Cost (with breakdown tooltip), API Requests, Total Tokens, Speed, Latency
+- **Main chart**: Stacked bar chart of costs over time (toggle: Model/Provider grouping)
+- **Per-model sections**: Line chart for requests + stacked bar for tokens per model
+- **Filters**: Time range, type (All/Chat/Commands), provider, model
+- **CSV export**: Full data export
 - Data sourced from `chat_usage` and `command_usage` tables via `ChatDB.Usage_Query()`
+- Quick Access menu item sends IPC to ChatWindow to show inline dashboard
 
 ## Debug Logging
 
-Rolling log at `%TEMP%\LLM_Debug_Log.txt` (~500KB kept when file exceeds 1MB). Structured prefixes for grep-ability:
+Rolling log at `%TEMP%\LLM_Debug_Log.txt` (~500KB kept when file exceeds 1MB):
 
 | Prefix | When | Example |
 |--------|------|---------|
-| `[APP]` | Startup/shutdown/ChatWindow | `[APP] Started` |
+| `[APP]` | Startup/shutdown | `[APP] Started` |
 | `[DB]` | Database open | `[DB] Opened — path=...` |
-| `[API]` | LLM requests | `[API] Chat done — prompt=1500 completion=300 cached=50 response_time=1200ms model=gpt-4.1` |
-| `[STREAM]` | Stream lifecycle | `[STREAM] Started/Done/Cancelled/Error` |
+| `[API]` | LLM requests | `[API] Chat done — prompt=1500 completion=300` |
+| `[STREAM]` | Stream lifecycle | `[STREAM] Started/Done/Cancelled` |
 | `[THREAD]` | Thread operations | `[THREAD] Created/Deleted/Forked` |
 | `[BRANCH]` | Branch switches | `[BRANCH] Switch — thread=42 leaf=abc` |
-| `[EDIT]` / `[DELETE]` | Message edits/deletes | `[EDIT] Message — id=...` |
-| `[ATTACH]` | Attachment operations | `[ATTACH] Sent — 3 files (image=1 doc=2)` |
-| `[SETTINGS]` | Thread settings | `[SETTINGS] Saved — thread=42 model=gpt-4.1 systemMsg=0chars` |
-| `[MODEL]` | Model/assistant switches | `[MODEL] Switched to assistant: Coder (gpt-4.1)` |
-| `[USAGE]` | Token attribution | `[USAGE] Chat — prompt=1500 completion=300 cached=50` |
-| `[COST]` | Cost calculation | `[COST] Chat — input=$0.0030 cached=$0.0002 output=$0.0120 total=$0.0152` |
-| `[DASHBOARD]` | Usage dashboard | `[DASHBOARD] Opened / Query — chat=5 rows cmd=3 rows` |
-
-## Attachment Pipeline (JS → AHK → DB → API)
-
-```
-User drags/pastes/browses file
-    │  chat-attachments-setup.js: event → addAttachment()
-    ▼
-chat-attachments.js: FileReader → base64 + SHA-256 hash
-    │  pdf.js / officeParser: text extraction (async)
-    │  renderAttachmentBar(): thumbnail or file badge with ×
-    ▼
-chat-input.js: onChatSend() → getAttachmentsForSend()
-    │  Payload: { action: "chatSend", content, attachments: [{type, filename, base64, contentHash, ...}] }
-    ▼
-chat/callbacks/Message.ahk: handleChatSend()
-    │  ImageUtils.SaveBase64ToFile(base64, msgId, filename, contentHash)
-    │  → content-addressable: SHA-256 hash as filename, FileExist() dedup
-    │  ChatDB.Attachment_Insert(msgId, {type, file_path, mime_type, ...})
-    │  Logs: [ATTACH] Sent — N files (image=X doc=Y)
-    ▼
-chat/ChatRequestBuilder.ahk: buildRequest()
-    │  ImageUtils.ReadAndEncode(filePath) → base64 for API
-    │  AttachmentUtils.HasVision(model) → vision gate
-    │  Includes images as vision content blocks in API request
-    │  Logs: [API] Chat send — model=... thread=... pathLen=...
-    ▼
-cURL → LLM API
-```
+| `[EDIT]` / `[DELETE]` | Message edits | `[EDIT] Message — id=...` |
+| `[ATTACH]` | Attachments | `[ATTACH] Sent — 3 files` |
+| `[SETTINGS]` | Thread settings | `[SETTINGS] Saved — model=gpt-4.1` |
+| `[MODEL]` | Model switches | `[MODEL] Switched to assistant: Coder` |
+| `[USAGE]` | Token attribution | `[USAGE] Chat — prompt=1500 completion=300` |
+| `[COST]` | Cost calculation | `[COST] Chat — total=$0.0152` |
+| `[DASHBOARD]` | Dashboard | `[DASHBOARD] Query/Sent` |
+| `[DISPATCH]` | WebMessage dispatch | `[DISPATCH] showApiLogs received` |
+| `[APILOGS]` | API logs viewer | `[APILOGS] ShowApiLogs called` |
 
 ## Testing
 
-### How to Run All Tests
-
-Copy and paste into terminal from the project root:
-
+### How to Run
 ```
-tests\run_all_tests.bat
-```
-
-This runs AHK tests (211) then JS tests (89) and SQLite tests (4) — 304 total. Alternatively:
-
-```
-tests\run_ahk_tests.ahk          # AHK only
-tests\run_js_tests.bat           # JS only
+tests\run_all_tests.bat              # All tests
+tests\run_js_tests.bat               # JS only (143 tests)
+tests\run_ahk_tests.ahk              # AHK only
 ```
 
 ### Test Structure
-
-AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side in the same directories, distinguished by file extension. See the directory tree above for the full listing. Summary:
+AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side:
 
 | Directory | AHK Files | JS Files | Total Tests |
 |-----------|----------|----------|-------------|
-| `unit/` | 19 | 6 | ~254 |
-| `integration/` | 3 | 1 | ~50 |
-| **Total** | **22** | **7** | **~304** |
+| `unit/` | 19 | 13 | ~254 |
+| `integration/` | 3 | 2 | ~50 |
 
-### Output Format
-
-**AHK tests:**
-```
-[PASS] ClassName.MethodName
-[FAIL] ClassName.MethodName — Error message
----
-N tests run | X passed | Y failed
-```
-
-**JS tests (node:test TAP output):**
-```
-▶ getAttachmentTypeFromMime
-  ✔ identifies images from MIME type
-✔ getAttachmentTypeFromMime
-ℹ tests 89 | pass 89 | fail 0
-```
-
-Tests: 211 AHK + 89 JS + 4 SQLite = 304 total. Run on every commit via `run_all_tests.bat`.
+Tests run via `node:test` (JS) and custom runner (AHK). **143 JS tests pass.**

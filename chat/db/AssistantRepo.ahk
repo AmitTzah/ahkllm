@@ -18,13 +18,14 @@ class AssistantRepo {
             safeReasoning := SQLite.Escape(a.reasoning)
             temp := a.temperature = "" ? "NULL" : a.temperature
             isDef := a.isDefault ? 1 : 0
-            ChatDB.db.Exec("INSERT INTO assistants (id, name, base_model, system_prompt, reasoning, temperature, is_default) VALUES('" id "', '" safeName "', '" safeModel "', '" safePrompt "', '" safeReasoning "', " temp ", " isDef ");")
+            safeDesc := SQLite.Escape(a.HasProp("description") ? a.description : "")
+            ChatDB.db.Exec("INSERT INTO assistants (id, name, base_model, system_prompt, description, reasoning, temperature, is_default) VALUES('" id "', '" safeName "', '" safeModel "', '" safePrompt "', '" safeDesc "', '" safeReasoning "', " temp ", " isDef ");")
         }
     }
 
     ; List all assistant profiles.
     static List() {
-        table := ChatDB.db.Exec("SELECT id, name, base_model, system_prompt, reasoning, temperature, is_default FROM assistants ORDER BY is_default DESC, name ASC;")
+        table := ChatDB.db.Exec("SELECT id, name, base_model, system_prompt, description, reasoning, temperature, is_default FROM assistants ORDER BY is_default DESC, name ASC;")
         result := []
         for row in table.rows {
             result.Push({
@@ -32,6 +33,7 @@ class AssistantRepo {
                 name: row.name,
                 baseModel: row.base_model,
                 systemMessage: row.system_prompt,
+                description: row.description ? row.description : "",
                 reasoning: row.reasoning,
                 temperature: row.temperature,
                 isDefault: row.is_default = 1
@@ -43,7 +45,7 @@ class AssistantRepo {
     ; Get a single assistant by ID.
     static Get(assistantId) {
         safeId := SQLite.Escape(assistantId)
-        table := ChatDB.db.Exec("SELECT id, name, base_model, system_prompt, reasoning, temperature, is_default FROM assistants WHERE id='" safeId "';")
+        table := ChatDB.db.Exec("SELECT id, name, base_model, system_prompt, description, reasoning, temperature, is_default FROM assistants WHERE id='" safeId "';")
         if table.count {
             row := table[1]
             return {
@@ -51,6 +53,7 @@ class AssistantRepo {
                 name: row.name,
                 baseModel: row.base_model,
                 systemMessage: row.system_prompt,
+                description: row.description ? row.description : "",
                 reasoning: row.reasoning,
                 temperature: row.temperature,
                 isDefault: row.is_default = 1

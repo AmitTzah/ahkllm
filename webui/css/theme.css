@@ -1,0 +1,63 @@
+/* theme.css — CSS variables, reset, base styles */
+/* Extracted from chat-ui-mock.html lines 13-73 */
+
+:root {
+  --bg-main: #FAFAFA;
+  --bg-panel: #FFFFFF;
+  --bg-hover: #F3F4F6;
+  --bg-active: #EEF2FF;
+  
+  --text-primary: #111827;
+  --text-secondary: #4B5563;
+  --text-tertiary: #9CA3AF;
+  
+  --accent-primary: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-light: #E0E7FF;
+  
+  --border-light: #F3F4F6;
+  --border-main: #E5E7EB;
+  --border-focus: #C7D2FE;
+  
+  --danger: #EF4444;
+  --danger-light: #FEF2F2;
+  
+  --user-msg-bg: #F3F4F6;
+  --user-msg-text: #111827;
+  
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+  
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  --chat-font-size: 17px;
+}
+
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button, input, textarea, select { font-family: inherit; font-size: inherit; }
+
+button { transition: all 0.15s ease; cursor: pointer; }
+.icon-btn:active, .chat-action-btn:active, .msg-action-btn:active, .btn-primary:active, .ghost-btn:active, .send-btn:active, .tree-launch:active { 
+  transform: scale(0.92); 
+}

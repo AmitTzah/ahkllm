@@ -47,29 +47,33 @@ function copyEntireChat() {
   navigator.clipboard.writeText(fullText).then(function() {
     var btn = document.getElementById('copy-entire-chat-btn');
     if (!btn) return;
-    var originalText = btn.innerHTML;
-    btn.innerHTML = '✅ Copied!';
-    btn.disabled = true;
+    var originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i data-lucide="check" style="width:20px;height:20px;"></i>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     setTimeout(function() {
-      btn.innerHTML = originalText;
-      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     }, 2000);
   }).catch(function(err) {
     console.error('Failed to copy chat: ', err);
   });
 }
 
-// Show "Copied!" feedback on a message button
+// Show checkmark feedback on a message's copy button
 function showCopiedFeedback(index) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
-  var bubbles = container.querySelectorAll('.chat-message');
+  var bubbles = container.querySelectorAll('.msg');
   if (bubbles[index]) {
-    var copyBtn = bubbles[index].querySelector('[data-action="copy"]');
+    var copyBtn = bubbles[index].querySelector('.msg-action-btn[title="Copy"]');
     if (copyBtn) {
       var originalHTML = copyBtn.innerHTML;
-      copyBtn.innerHTML = '✅';
-      setTimeout(function() { copyBtn.innerHTML = originalHTML; }, 2000);
+      copyBtn.innerHTML = '<i data-lucide="check"></i>';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      setTimeout(function() {
+        copyBtn.innerHTML = originalHTML;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }, 2000);
     }
   }
 }
@@ -88,9 +92,8 @@ function formatCompact(n) {
 
 // Token usage bar
 function showTokenUsageBar() {
-  var bar = document.getElementById('token-usage-bar');
-  var content = document.getElementById('token-usage-content');
-  if (!bar || !content) return;
+  var bar = document.getElementById('tokenBar');
+  if (!bar) return;
 
   // Always show zeros — updated by postThreadStats when data is available
   updateTokenUsage({
@@ -107,51 +110,38 @@ function showTokenUsageBar() {
 }
 
 function updateTokenUsage(data) {
-  var bar = document.getElementById('token-usage-bar');
-  var content = document.getElementById('token-usage-content');
-  if (!bar || !content) return;
+  var bar = document.getElementById('tokenBar');
+  if (!bar) return;
 
   var cu = data.activePathTokens || 0;
   var cw = data.contextWindow || 0;
   var pt = data.cumulativeInputTokens || 0;
   var ct = data.cumulativeOutputTokens || 0;
   var ckt = data.cumulativeCachedTokens || 0;
+  var cost = Number(data.cumulativeCost || 0).toFixed(2);
 
-  // Build pricing tooltip (per 1M tokens from UserConfig modelPricing)
-  var pricingTip = '';
-  if (data.pricingUnit && data.pricingUnit.input > 0) {
-    var p = data.pricingUnit;
-    pricingTip = '\n$' + p.input + '/1M input · $' + p.cachedInput + '/1M cached · $' + p.output + '/1M output';
-  }
+  // Cost gets dynamic breakdown; others get field explanation
+  var costTip = 'Input: $' + (Number(data.cumulativeInputCost) || 0).toFixed(4) +
+    '  |  Cached: $' + (Number(data.cumulativeCachedInputCost) || 0).toFixed(4) +
+    '  |  Output: $' + (Number(data.cumulativeOutputCost) || 0).toFixed(4);
 
-  var html = '';
+  bar.innerHTML =
+    '<div class="tu-item" title="Context used from the active conversation path">' +
+      '<i data-lucide="hash" class="tu-icon"></i>' +
+      '<span class="tu-val">' + formatCompact(cu) + (cw ? ' / ' + formatCompact(cw) : '') + '</span>' +
+    '</div>' +
+    '<div class="tu-item" title="Culminative Input/output token usage across all conversation branches">' +
+      '<i data-lucide="activity" class="tu-icon"></i>' +
+      '<span class="tu-val">\u2191 ' + formatCompact(pt) + ' &nbsp;\u2193 ' + formatCompact(ct) + '</span>' +
+    '</div>' +
+    '<div class="tu-item" title="Input tokens that were cache hits">' +
+      '<i data-lucide="database" class="tu-icon"></i>' +
+      '<span class="tu-val">' + formatCompact(ckt) + '</span>' +
+    '</div>' +
+    '<div class="tu-item" title="' + costTip + '">' +
+      '<i data-lucide="dollar-sign" class="tu-icon"></i>' +
+      '<span class="tu-val">$' + cost + '</span>' +
+    '</div>';
 
-  // Row 1: Context Used (current conversation tree)
-  html += '<div class="tu-row" title="Context usage for the current conversation tree. Shows how much of the model\u2019s context window is filled by messages in this branch.">';
-  html += '<span><span class="tu-label">🔢 Context Used:</span> ' +
-    formatNumber(cu) + (cw ? ' / ' + formatNumber(cw) : '') +
-    '</span></div>';
-
-  // Row 2: Tokens ↑↓ (all branches)
-  html += '<div class="tu-row" title="Input/output tokens across ALL conversation branches. Input includes cumulative prompt from each API request (context re-sent and billed per-request). Output is completion tokens only. Values come directly from API usage data.">';
-  html += '<span><span class="tu-label">📊 Tokens</span> \u2191 ' + formatCompact(pt) +
-    '  \u2193 ' + formatCompact(ct) +
-    '</span></div>';
-
-  // Row 3: Cache (all branches)
-  html += '<div class="tu-row" title="Input tokens that were cache hits across ALL branches.">';
-  html += '<span><span class="tu-label">💾 Cache</span> ' + formatCompact(ckt) + '</span></div>';
-
-  // Row 4: API Cost (all branches, with pricing tooltip)
-  var costTip = 'Total cost across all conversation branches.' + pricingTip;
-  html += '<div class="tu-row tu-cost" title="' + costTip + '">';
-  html += '<span><span class="tu-label">💲 API Cost</span>';
-  html += ' $' + Number(data.cumulativeCost).toFixed(2);
-  html += '  |  Input: $' + (Number(data.cumulativeInputCost) || 0).toFixed(4);
-  html += '  |  Cached: $' + (Number(data.cumulativeCachedInputCost) || 0).toFixed(4);
-  html += '  |  Output: $' + (Number(data.cumulativeOutputCost) || 0).toFixed(4);
-  html += '</span></div>';
-
-  content.innerHTML = html;
-  bar.style.display = 'block';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }

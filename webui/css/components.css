@@ -1,0 +1,29 @@
+/* components.css — Scrollbars, switch toggle */
+/* Extracted from chat-ui-mock.html lines 540-658 */
+
+.switch { width: 44px; height: 26px; border-radius: 26px; background: var(--border-main); position: relative; cursor: pointer; transition: background 0.2s; }
+.switch.on { background: var(--accent-primary); }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: white; transition: left 0.2s, box-shadow 0.2s; box-shadow: var(--shadow-sm); }
+.switch.on .knob { left: 20px; }
+
+/* Cost breakdown tooltip */
+.cost-info { position: relative; }
+.cost-info .cost-tooltip {
+  display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--bg-panel); color: var(--text-primary); font-size: 11px; font-family: var(--font-mono);
+  white-space: pre; padding: 8px 12px; border-radius: var(--radius-sm); pointer-events: none; z-index: 100; line-height: 1.6;
+  border: 1px solid var(--border-main); box-shadow: var(--shadow-sm);
+}
+.cost-info:hover .cost-tooltip { display: block; }
+
+/* Dashboard buttons */
+.filter-bar button, .filter-bar select { transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.filter-bar button:hover { background: var(--bg-hover); border-color: var(--border-focus); }
+.filter-bar button:active { background: var(--bg-active); transform: scale(0.97); }
+.filter-bar select:hover { border-color: var(--border-focus); }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }

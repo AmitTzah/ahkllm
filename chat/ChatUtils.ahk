@@ -48,6 +48,9 @@ deleteTempFiles() {
 ; ----------------------------------------------------
 
 startLoadingCursor(status) {
+    global requestParams
+    if !IsSet(requestParams)
+        return
     status ? CustomMessages.notifyLoadingState(CustomMessages.WM_LOADING_START,
         requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
             : CustomMessages.notifyLoadingState(CustomMessages.WM_LOADING_FINISH,
@@ -141,8 +144,19 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
 ; Refresh thread list and trash list in the sidebar WebView.
 ; Replaces 5 duplicate call sites across Message.ahk and Sidebar.ahk.
 _postThreadListRefresh() {
-    postWebMessage("threadList", ChatDB.Thread_List())
+    threads := ChatDB.Thread_List()
+    folders := _GetFolders()
+    postWebMessage("threadList", { threads: threads, folders: folders })
     postWebMessage("trashList", ChatDB.Thread_List(true))
+}
+
+_GetFolders() {
+    table := ChatDB.db.Exec("SELECT id, name FROM chat_folders ORDER BY name;")
+    folders := []
+    for row in table.rows {
+        folders.Push({ id: row.id, name: row.name })
+    }
+    return folders
 }
 
 ; generateThreadTitle() is in ThreadTitleGen.ahk — included via ChatWindow.ahk

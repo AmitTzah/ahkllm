@@ -1,12 +1,4 @@
-; ======================================================
-; ChatCallbacks_Edit.ahk — Edit and delete callbacks
-;
-; NOTE: #Include'd by ChatWindow.ahk. Has access to:
-;   activeThreadId, requestParams, ChatDB,
-;   BuildAndWriteRequestFiles, postWebMessage,
-;   startLoadingCursor, sendRequestToLLM,
-;   buildStructuredMessagesFromPath
-; ======================================================
+; Edit and delete callbacks
 
 ; ----------------------------------------------------
 ; Edit message from WebView (D1)

@@ -1,213 +1,374 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM AutoHotkey Assistant</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/left-panel.css">
+<link rel="stylesheet" href="css/center.css">
+<link rel="stylesheet" href="css/messages.css">
+<link rel="stylesheet" href="css/actions.css">
+<link rel="stylesheet" href="css/right-panel.css">
+<link rel="stylesheet" href="css/modals.css">
+<link rel="stylesheet" href="css/popover.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/vendor/katex.min.css">
+<link rel="stylesheet" href="css/vendor/texmath.min.css">
+<link rel="stylesheet" href="css/vendor/highlight/atom-one-dark.min.css">
+<script src="js/vendor/lucide.min.js"></script>
+<script src="js/vendor/highlight.min.js"></script>
+</head>
+<body>
 
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<meta name="description" content="">
-		<meta name="author" content="Mark Otto, Jacob Thornton, and Bootstrap contributors">
-		<meta name="generator" content="Hugo 0.115.4">
-		<title>LLM AutoHotkey Assistant</title>
+<div class="app" id="app">
 
-		<script src="Bootstrap/bootstrap.bundle.min.js"></script>
-		<script src="Bootstrap/sidebars.js"></script>
-		<script src="./js/vendor/highlight.min.js"></script>
+  <!-- Global Nav -->
+  <div class="icon-rail">
+    <div class="brand-mark"><i data-lucide="layers"></i></div>
+    <button class="nav-icon active" title="Chats" id="sidebar-toggle"><i data-lucide="message-square"></i></button>
+    <button class="nav-icon" title="Dashboard" id="dashboard-icon"><i data-lucide="bar-chart-2"></i></button>
+    <button class="nav-icon" title="Settings"><i data-lucide="settings"></i></button>
+    <div class="icon-rail-spacer"></div>
+    <div class="nav-avatar" title="Account">JD</div>
+  </div>
 
-		
-		<link href="Bootstrap/sidebars.css" rel="stylesheet">
-		<link href="Bootstrap/bootstrap.min.css" rel="stylesheet">
-		<!--	
-			The following resources are added to the page only so they can be
-		 	properly extracted with a compiled .exe
-			<link href="Bootstrap/fonts/glyphicons-halflings-regular.ttf" rel="stylesheet">
-			<link href="Bootstrap/fonts/glyphicons-halflings-regular.woff" rel="stylesheet">
-			<link href="Bootstrap/fonts/glyphicons-halflings-regular.woff2" rel="stylesheet">
-		-->
+  <!-- LEFT: Chats -->
+  <div class="rail-left" id="railLeft">
+    <div class="rail-left-head">
+      <div class="rail-title"><i data-lucide="message-circle" style="width:24px;height:24px;"></i><span>Chats</span></div>
+      <div class="rail-head-actions">
+        <button class="icon-btn" title="New folder"><i data-lucide="folder-plus" style="width:20px;height:20px;"></i></button>
+        <button class="icon-btn" title="New chat" id="new-chat-btn"><i data-lucide="edit" style="width:20px;height:20px;"></i></button>
+      </div>
+    </div>
 
-        <!-- Additional stylesheets for markdown rendering -->
-		<link rel="stylesheet" href="./css/vendor/highlight/atom-one-dark.min.css">
-        <link rel="stylesheet" href="./css/custom.css">
-        <link rel="stylesheet" href="./css/vendor/katex.min.css">
-        <link rel="stylesheet" href="./css/vendor/texmath.min.css">
-        <link rel="stylesheet" href="./css/chat/chat-base.css">
-        <link rel="stylesheet" href="./css/chat/chat-messages.css">
-        <link rel="stylesheet" href="./css/chat/chat-actions.css">
-        <link rel="stylesheet" href="./css/chat/chat-input.css">
-        <link rel="stylesheet" href="./css/chat/chat-sidebar.css">
-        <link rel="stylesheet" href="./css/chat/chat-attachments.css">
+    <div class="search-wrap">
+      <i data-lucide="search" class="search-icon"></i>
+      <input type="text" class="search-input" placeholder="Search chats...">
+    </div>
 
-		<script>
-			function collapsePanel(element) {
-				var navText = document.getElementsByClassName("nav-text");
-				for (i = 0; i < navText.length; i++) {
-					if (navText[i].style.display === "none") {
-						navText[i].style.display = "inline-block";
-						element.innerText = "Collapse Panel";
-					}
-					else {
-						navText[i].style.display = "none";
-						element.innerText = "Expand Panel";
-					}
-				}
-			}
-		</script>
-	</head>
-	<body class="bg-body-tertiary">
-		
-		<div class="b-example-divider bg-body-tertiary" style="height:1px;"></div>
+    <div class="rail-left-scroll" id="thread-list">
+      <!-- Chat items rendered dynamically by chat-sidebar.js -->
+    </div>
 
-		<main class="d-flex flex-nowrap mt-2" style="height:calc(100vh - 40px);">
-			
-			<!-- Sidebar (D6: Thread list sidebar) -->
-			<div id="chat-sidebar" style="display:none;flex-direction:column;width:260px;min-width:260px;border-right:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);height:100%;overflow:hidden;">
-				<div style="padding:0.75rem;border-bottom:1px solid var(--bs-border-color);display:flex;justify-content:space-between;align-items:center;">
-					<strong style="font-size:0.9rem;">📚 Chats</strong>
-					<button id="new-chat-btn" style="background:var(--bs-primary);color:white;border:none;border-radius:0.25rem;padding:2px 10px;font-size:0.75rem;cursor:pointer;">+ New</button>
-				</div>
-				<div id="thread-list" style="flex:1;overflow-y:auto;">
-					<!-- Thread list populated by chat-sidebar.js -->
-				</div>
-			</div>
+    <div class="trash-wrap collapsed" id="trashWrap">
+      <div class="trash-head" id="trashToggle">
+        <i data-lucide="chevron-down" class="folder-chevron"></i>
+        <span class="lbl"><i data-lucide="trash-2" style="width:18px;height:18px;"></i> Trash</span>
+      </div>
+      <div class="trash-items">
+        <!-- Trash items rendered dynamically -->
+      </div>
+    </div>
+  </div>
 
-			<!-- Page Content -->
-		<div class="flex-grow-1 flex-column bg-body-tertiary" id="page-content">
-			<!-- Toolbar -->
-			<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0.75rem;border-bottom:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);flex-shrink:0;">
-				<button id="sidebar-toggle" title="Chats" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">☰</button>
-				<button id="tree-view-btn" title="Chat Tree" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">🌳</button>
-				<button id="usage-dashboard-btn" title="Usage Dashboard" onclick="chrome.webview.postMessage(JSON.stringify({action:'openUsageDashboard'}))" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">📊</button>
-				<button id="nav-toggle" title="Message Navigator" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">📋</button>
-				<span style="color:var(--bs-secondary-color);font-size:0.75rem;margin-left:0.5rem;">Assistant:</span>
-				<select id="assistant-selector" onchange="onAssistantSelect()" style="font-size:0.8rem;padding:2px 4px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);max-width:180px;">
-					<option value="">Default Model</option>
-				</select>
-				<button id="settings-btn" title="Model Settings" onclick="openModelSettings()" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;">⚙</button>
-			</div>
-			<!-- Chat Layout (shown for pasteMode "chat") -->
-		<div id="chat-layout">
-			<div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
-			<div id="token-usage-bar" style="display:none;">
-				<div id="token-usage-content"></div>
-			</div>
-			<div id="chat-messages">
-				<!-- Chat bubbles will be rendered here -->
-			</div>
-				<div id="chat-input-area">
-					<div id="attachment-bar" style="display:none;"></div>
-					<input type="file" id="attachment-file-input" accept="image/*,.pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.txt,.md,.py,.js,.ahk,.json,.xml,.csv,.ini,.cfg,.yaml,.yml,.log,.html,.css,.sql,.bat,.ps1,.sh,.java,.c,.cpp,.h,.rs,.go,.ts,.tsx,.jsx,.toml" multiple style="display:none;">
-					<button type="button" id="attachment-browse-btn" title="Attach files">📎+</button>
-					<textarea id="chat-input" placeholder="Type a message..." rows="1"></textarea>
-					<button type="button" id="chat-send-btn">Send</button>
-					<button type="button" id="copy-entire-chat-btn" title="Copy entire chat">📋 Copy All</button>
-				</div>
-			</div>
-			<!-- Fallback content for non-chat modes (e.g. FIM) -->
-			<div id="content">
-				<!-- Markdown content will be rendered here for non-chat modes -->
-			</div>
-		</div>
+  <div class="seam" id="seamLeft"><div class="seam-notch" id="notchLeft"><i data-lucide="chevron-left" style="width:12px;height:12px;"></i></div></div>
 
-			<!-- Nav Bar (D6: scrollable message list) -->
-			<div id="chat-nav-bar" style="display:none;flex-direction:column;width:200px;min-width:200px;border-left:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);height:100%;overflow:hidden;">
-				<div style="padding:0.5rem;border-bottom:1px solid var(--bs-border-color);">
-					<strong style="font-size:0.8rem;">📋 Messages</strong>
-				</div>
-				<div id="nav-message-list" style="flex:1;overflow-y:auto;">
-					<!-- Populated by chat-sidebar.js renderNavList() -->
-				</div>
-			</div>
-			<!-- End Page Content -->
-		</main>
+  <!-- CENTER -->
+  <div class="center" id="chat-layout">
+    <div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="chat-title-topbar">
+          <span class="title-text"></span>
+          <button class="rename-chat-btn" title="Rename Chat"><i data-lucide="edit-2" style="width:18px;height:18px;"></i></button>
+          <span class="fold"></span>
+        </div>
+      </div>
 
-		<!-- Model Settings Modal -->
-		<div id="model-settings-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:1000;">
-			<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bs-body-bg);border:1px solid var(--bs-border-color);border-radius:8px;padding:1.5rem;min-width:420px;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,0.2);">
-				<h3 style="margin:0 0 1rem 0;font-size:1rem;">Model Settings</h3>
+      <div class="token-bar" id="tokenBar">
+        <div class="tu-item" title="Context Used: 43,441 / 1,000,000">
+          <i data-lucide="hash" class="tu-icon"></i>
+          <span class="tu-val">43,441 / 1M</span>
+        </div>
+        <div class="tu-item" title="Tokens: ↑ 20.1k ↓ 31k">
+          <i data-lucide="activity" class="tu-icon"></i>
+          <span class="tu-val">↑ 20.1k &nbsp;↓ 31k</span>
+        </div>
+        <div class="tu-item" title="Cache: 0">
+          <i data-lucide="database" class="tu-icon"></i>
+          <span class="tu-val">0</span>
+        </div>
+        <div class="tu-item" title="Input: $0.0088 | Cached: $0.0000 | Output: $0.0269">
+          <i data-lucide="dollar-sign" class="tu-icon"></i>
+          <span class="tu-val">$0.04</span>
+        </div>
+      </div>
 
-				<div style="margin-bottom:0.75rem;">
-					<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Provider</label>
-					<select id="settings-provider" onchange="onSettingsProviderChange()" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
-						<option value="">Select provider...</option>
-					</select>
-				</div>
-				<div style="margin-bottom:0.75rem;">
-					<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Model</label>
-					<select id="settings-model" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
-						<option value="">Select model...</option>
-					</select>
-				</div>
-				<div style="margin-bottom:0.75rem;">
-					<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">System Prompt</label>
-					<textarea id="settings-system-prompt" rows="6" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);resize:vertical;min-height:100px;"></textarea>
-				</div>
-				<div style="margin-bottom:0.75rem;display:flex;gap:1rem;">
-					<div style="flex:1;">
-						<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Reasoning</label>
-						<select id="settings-reasoning" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
-							<option value="">Default</option>
-							<option value="none">None</option>
-							<option value="minimal">Minimal</option>
-							<option value="low">Low</option>
-							<option value="medium">Medium</option>
-							<option value="high">High</option>
-							<option value="xhigh">XHigh</option>
-						</select>
-					</div>
-					<div style="flex:1;">
-						<label style="display:block;font-size:0.8rem;color:var(--bs-secondary-color);margin-bottom:0.25rem;">Temperature</label>
-						<input id="settings-temperature" type="number" step="0.1" min="0" max="2" placeholder="default" style="width:100%;font-size:0.85rem;padding:4px 8px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);">
-					</div>
-				</div>
-				<div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
-					<button onclick="closeModelSettings()" style="padding:6px 16px;border:1px solid var(--bs-border-color);border-radius:4px;background:var(--bs-body-bg);color:var(--bs-body-color);cursor:pointer;">Cancel</button>
-					<button onclick="saveModelSettings()" style="padding:6px 16px;border:none;border-radius:4px;background:var(--bs-primary);color:white;cursor:pointer;">Save</button>
-				</div>
-			</div>
-		</div>
+      <div class="topbar-right">
+        <div class="font-size-ctrl">
+          <button class="icon-btn" id="btn-font-dec" title="Decrease font size"><i data-lucide="minus" style="width:16px;height:16px;"></i></button>
+          <span id="font-size-display">17px</span>
+          <button class="icon-btn" id="btn-font-inc" title="Increase font size"><i data-lucide="plus" style="width:16px;height:16px;"></i></button>
+        </div>
 
-		<!-- Additional scripts for markdown rendering -->
-        <script src="./js/vendor/markdown-it.min.js"></script>
-        <script src="./js/vendor/katex.min.js"></script>
-        <script src="./js/vendor/mhchem.min.js"></script>
-        <script src="./js/vendor/texmath.min.js"></script>
-        <script src="./js/vendor/pdf.min.js"></script>
-        <script src="./js/vendor/officeparser.iife.js"></script>
+        <button class="icon-btn" id="copy-entire-chat-btn" title="Copy entire chat"><i data-lucide="copy" style="width:20px;height:20px;"></i></button>
+        <button class="icon-btn" title="Export"><i data-lucide="download" style="width:20px;height:20px;"></i></button>
+      </div>
+    </div>
 
-		<!--
-		Feature modules — LOAD ORDER IS CRITICAL.
-		chat-core.js must be first (defines chatMessages, initChatMode, addMessageActions).
-		main.js must be last (orchestrates all modules via handleWebMessage).
-		Dependency chain:
-		  chat-core.js (state: chatMessages, isChatMode, isLoading, activeThreadId)
-		    ↓ chat-settings.js (assistant selector dropdown)
-		    ↓ chat-format.js (clipboard, format helpers, token bar — depends on chatMessages)
-		    ↓ chat-render.js (bubble creation, DOM rendering, incremental updates — depends on chatMessages, copySingleMessage)
-		    ↓ chat-actions.js (message action buttons — depends on chat-sidebar functions)
-		    ↓ chat-input.js (send, loading, keyboard, retry — depends on chatMessages, removeLastAssistantMessage)
-		    ↓ chat-branching.js (edit, delete, branch nav, tree viz)
-		    ↓ chat-sidebar.js (thread list sidebar, nav bar)
-		    ↓ chat-quote.js (text selection popup — uses autoResizeChatInput)
-		    ↓ chat-undo.js (Ctrl+Z/Y — reads chatMessages)
-		    ↓ stream.js (streaming — uses addMessageActions, createBranchBadge)
-		    ↓ chat-settings-modal.js (model settings modal — depends on stream.js functions)
-		    ↓ main.js (message handler, DOM init, orchestrator)
-		-->
-		<script src="./js/chat/chat-core.js"></script>
-		<script src="./js/chat/settings/chat-settings.js"></script>
-		<script src="./js/chat/chat-format.js"></script>
-		<script src="./js/chat/chat-render.js"></script>
-		<script src="./js/chat/chat-token-tooltip.js"></script>
-		<script src="./js/chat/chat-actions.js"></script>
-		<script src="./js/chat/attachments/chat-attachments.js"></script>
-		<script src="./js/chat/attachments/chat-attachments-extract.js"></script>
-		<script src="./js/chat/attachments/chat-attachments-setup.js"></script>
-		<script src="./js/chat/chat-input.js"></script>
-		<script src="./js/chat/chat-branching.js"></script>
-		<script src="./js/chat/chat-sidebar.js"></script>
-		<script src="./js/chat/chat-quote.js"></script>
-		<script src="./js/chat/chat-undo.js"></script>
-		<script src="./js/stream.js"></script>
-		<script src="./js/chat/settings/chat-settings-modal.js"></script>
-		<script src="./js/main.js"></script>
-	</body>
+    <div class="thread" id="chat-scroll">
+      <div class="thread-inner" id="chat-messages">
+        <!-- Messages rendered dynamically -->
+      </div>
+    </div>
+    <div id="content" style="display:none;"><!-- FIM markdown fallback --></div>
+
+    <div class="composer" id="chat-input-area">
+      <div id="attachment-bar" style="display:none;"></div>
+      <input type="file" id="attachment-file-input" accept="image/*,.pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.txt,.md,.py,.js,.ahk,.json,.xml,.csv,.ini,.cfg,.yaml,.yml,.log,.html,.css,.sql,.bat,.ps1,.sh,.java,.c,.cpp,.h,.rs,.go,.ts,.tsx,.jsx,.toml" multiple style="display:none;">
+      <div class="composer-inner">
+        <div class="composer-tools">
+          <button class="icon-btn" id="attachment-browse-btn" title="Attach Context"><i data-lucide="paperclip"></i></button>
+
+          <div class="tools-dropdown">
+            <button class="icon-btn tools-toggle" title="Tools"><i data-lucide="blocks"></i></button>
+            <div class="tools-menu">
+              <div class="tools-menu-header">Enabled Tools</div>
+              <div class="tool-toggle-row">
+                <span class="lbl"><i data-lucide="globe" style="width:18px;height:18px;"></i> Web Search</span>
+                <div class="switch"><div class="knob"></div></div>
+              </div>
+              <div class="tool-toggle-row">
+                <span class="lbl"><i data-lucide="terminal" style="width:18px;height:18px;"></i> Code Execution</span>
+                <div class="switch on"><div class="knob"></div></div>
+              </div>
+              <div class="tool-toggle-row">
+                <span class="lbl"><i data-lucide="calculator" style="width:18px;height:18px;"></i> Calculator</span>
+                <div class="switch"><div class="knob"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <textarea id="chat-input" placeholder="Type a message... (Shift+Enter for newline)" rows="1"></textarea>
+
+        <div class="composer-actions">
+          <button class="icon-btn" title="Voice Message"><i data-lucide="mic"></i></button>
+          <button class="send-btn" id="chat-send-btn" title="Send message"><i data-lucide="send"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Panel (hidden by default, toggled via icon rail) -->
+  <div class="center" id="dashboard-panel" style="display:none;flex-direction:column;overflow-y:auto;">
+    <div class="dash-header" style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;flex-shrink:0;">
+      <span class="dash-title" style="font-size:18px;font-weight:700;color:var(--text-primary);">Usage Dashboard</span>
+      <span style="font-size:12px;color:var(--text-tertiary);">Data from API logs</span>
+    </div>
+    <div class="filter-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 20px 14px;flex-shrink:0;">
+      <select id="timeRange" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);"><option value="all">All Time</option><option value="month" selected>Last 30 Days</option><option value="thisMonth">This Month</option><option value="lastMonth">Last Month</option><option value="day">Last 24 Hours</option></select>
+      <select id="providerFilter" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);"><option value="">All Providers</option></select>
+      <select id="modelFilter" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);"><option value="">All Models</option></select>
+      <select id="typeFilter" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);"><option value="all">Chat + Commands</option><option value="chat">Chat Only</option><option value="command">Commands Only</option></select>
+      <button id="refreshBtn" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);cursor:pointer;">Refresh</button>
+      <button id="apiLogsBtn" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);cursor:pointer;">API Logs</button>
+      <button id="exportBtn" style="font-family:var(--font-ui);font-size:13px;padding:6px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);color:var(--text-primary);cursor:pointer;">CSV</button>
+    </div>
+    <div class="summary-row" id="summaryRow" style="display:flex;gap:12px;padding:0 20px 14px;flex-shrink:0;">
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;position:relative;"><div class="value" id="totalCost" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">$0.00</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Total Cost <span class="cost-info" id="costInfoIcon" style="cursor:help;display:inline-block;vertical-align:middle;color:var(--text-tertiary);"><i data-lucide="info" style="width:13px;height:13px;"></i><span class="cost-tooltip" id="costTooltip"></span></span></div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="totalCalls" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">0</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">API Requests</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="totalTokens" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">0</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Total Tokens</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="speedValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Speed</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="ttftValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Latency (ttft)</div></div>
+    </div>
+    <div class="chart-card" style="background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px;margin:0 20px 14px;">
+      <div class="chart-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h6 style="font-size:13px;font-weight:600;color:var(--text-secondary);margin:0;">Cost Over Time</h6>
+        <div class="toggle-group" id="stackToggle" style="display:inline-flex;border:1px solid var(--border-main);border-radius:var(--radius-sm);overflow:hidden;">
+          <button data-mode="model" class="active" style="border:none;padding:5px 12px;font-size:12px;color:var(--text-tertiary);background:var(--accent-primary);color:#fff;cursor:pointer;font-family:var(--font-ui);">Model</button>
+          <button data-mode="provider" style="border:none;padding:5px 12px;font-size:12px;color:var(--text-tertiary);background:transparent;cursor:pointer;font-family:var(--font-ui);">Provider</button>
+        </div>
+      </div>
+      <div class="chart-container" style="position:relative;min-height:240px;"><canvas id="mainChart"></canvas></div>
+    </div>
+    <div class="models-section" id="modelSections" style="margin:0 20px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;"></div>
+  </div>
+
+  <div class="seam" id="seamRight"><div class="seam-notch" id="notchRight"><i data-lucide="chevron-right" style="width:12px;height:12px;"></i></div></div>
+
+  <!-- RIGHT: Config & Nav -->
+  <div class="rail-right" id="railRight">
+
+    <div class="rr-panel" id="rr-session">
+      <div class="rr-panel-head"><div class="rr-panel-title">Configuration</div></div>
+      <div class="rr-panel-body">
+
+        <div class="model-card" id="modelCardTrigger">
+          <div class="model-card-top">
+            <div>
+              <div class="name"></div>
+              <div class="id"></div>
+            </div>
+            <button class="change-btn">Change <i data-lucide="chevron-right"></i></button>
+          </div>
+          <div class="desc"></div>
+        </div>
+
+        <div class="field">
+          <div class="field-label"><span>System prompt</span><button class="expand-link" id="expandSysMsg"><i data-lucide="maximize-2"></i> Expand</button></div>
+          <textarea class="sysinput" id="sysMsgMini"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="field-label"><span>Temperature</span><span class="val" id="tempVal">Default</span><button class="temp-reset" id="tempReset" title="Reset to model default" style="display:none;"><i data-lucide="x"></i></button></div>
+          <input type="range" min="0" max="2" step="0.1" value="1" id="tempSlider" class="temp-default">
+        </div>
+
+        <div class="field">
+          <div class="field-label">Thinking Level</div>
+          <select class="dropdown" id="reasoningDropdown">
+            <option value="">Model Default</option>
+            <option value="none">None (Disabled)</option>
+            <option value="minimal">Minimal</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="xhigh">Extra High</option>
+          </select>
+        </div>
+
+        <div class="advanced-wrap" id="advancedWrap">
+          <div class="advanced-toggle" id="advancedToggle"><span class="lbl">Advanced</span><i data-lucide="chevron-down"></i></div>
+          <div class="advanced-body">
+            <div class="toggle-row"><span class="lbl">Structured Outputs</span><div class="switch"><div class="knob"></div></div></div>
+            <div class="toggle-row"><span class="lbl">Code Execution</span><div class="switch on"><div class="knob"></div></div></div>
+            <div class="toggle-row"><span class="lbl">Web Search</span><div class="switch"><div class="knob"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="h-seam" id="seamVertical" title="Drag to resize"></div>
+
+    <div class="rr-panel" id="rr-thread">
+      <div class="rr-panel-head">
+        <div class="rr-panel-title">Thread Map</div>
+        <button class="tree-launch" id="treeBtn"><i data-lucide="git-merge"></i> View Tree</button>
+      </div>
+      <div class="rr-panel-body">
+
+        <div class="search-wrap in-panel">
+          <i data-lucide="search" class="search-icon"></i>
+          <input type="text" class="search-input" placeholder="Search in chat...">
+        </div>
+
+        <div id="nav-message-list">
+          <!-- Thread map items rendered dynamically -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Popover (Assistant/Model Selection) -->
+<div class="popover-overlay" id="popoverOverlay"></div>
+<div class="model-popover" id="modelPopover">
+  <div class="popover-header">
+    <button class="popover-tab active" data-target="tab-assistants">Assistants</button>
+    <button class="popover-tab" data-target="tab-models">Models</button>
+  </div>
+  <div class="popover-content">
+    <div id="tab-assistants" class="popover-pane active">
+      <!-- Assistant items rendered dynamically -->
+    </div>
+    <div id="tab-models" class="popover-pane">
+      <!-- Model items rendered dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- Tree Modal -->
+<div class="modal-overlay" id="treeOverlay">
+  <div class="modal-box tree-modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Conversation Tree</div>
+        <div class="tree-modal-sub">Viewing active path</div>
+      </div>
+      <div class="tree-controls">
+        <div class="zoom-controls">
+          <button id="zoomOut"><i data-lucide="minus"></i></button>
+          <span class="zoom-pct" id="zoomPct">100%</span>
+          <button id="zoomIn"><i data-lucide="plus"></i></button>
+          <button id="zoomFit" title="Fit to screen"><i data-lucide="maximize"></i></button>
+        </div>
+        <button class="icon-btn modal-close" id="treeClose"><i data-lucide="x" style="width:24px;height:24px;"></i></button>
+      </div>
+    </div>
+    <div class="tree-canvas-wrap" id="treeCanvasWrap">
+      <div class="tree-zoom-layer" id="treeZoomLayer">
+        <div class="tree-canvas">
+          <svg id="treeSvg" width="1000" height="600" style="position:absolute;top:0;left:0;pointer-events:none;">
+            <!-- Connector paths rendered dynamically -->
+          </svg>
+          <!-- Tree nodes rendered dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SysMsg Modal -->
+<div class="modal-overlay" id="sysMsgOverlay">
+  <div class="modal-box sysmsg-modal">
+    <div class="modal-head">
+      <div class="modal-title">Edit System Prompt</div>
+      <button class="icon-btn modal-close" id="sysMsgClose"><i data-lucide="x" style="width:24px;height:24px;"></i></button>
+    </div>
+    <div class="sysmsg-body">
+      <textarea id="sysMsgFull"></textarea>
+    </div>
+    <div class="sysmsg-foot">
+      <span style="font-family:var(--font-mono); font-size:14px; color:var(--text-tertiary);" id="charCount">0 chars</span>
+      <div style="display:flex; gap:16px;">
+        <button class="ghost-btn" id="sysMsgCancel">Cancel</button>
+        <button class="btn-primary" id="sysMsgSave">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/vendor/markdown-it.min.js"></script>
+<script src="js/vendor/katex.min.js"></script>
+<script src="js/vendor/mhchem.min.js"></script>
+<script src="js/vendor/texmath.min.js"></script>
+<script src="js/vendor/pdf.min.js"></script>
+<script src="js/vendor/officeparser.iife.js"></script>
+<script src="js/chat/chat-core.js"></script>
+<script src="js/vendor/chart.umd.min.js"></script>
+<script src="js/usage-dashboard.js"></script>
+<script src="js/chat/settings/chat-settings.js"></script>
+<script src="js/chat/chat-format.js"></script>
+<script src="js/chat/chat-render.js"></script>
+<script src="js/chat/chat-token-tooltip.js"></script>
+<script src="js/chat/chat-actions.js"></script>
+<script src="js/chat/attachments/chat-attachments.js"></script>
+<script src="js/chat/attachments/chat-attachments-extract.js"></script>
+<script src="js/chat/attachments/chat-attachments-setup.js"></script>
+<script src="js/chat/chat-input.js"></script>
+<script src="js/chat/chat-branching.js"></script>
+<script src="js/chat/chat-sidebar.js"></script>
+<script src="js/chat/chat-quote.js"></script>
+<script src="js/chat/chat-undo.js"></script>
+<script src="js/stream.js"></script>
+<script src="js/chat/settings/chat-settings-modal.js"></script>
+<script src="js/main.js"></script>
+<script src="js/mock-ui.js"></script>
+<script>
+  lucide.createIcons();
+  function refreshIcons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
+  window.MockUI.initFontControls();
+  window.MockUI.initComposerResize();
+  window.MockUI.setupResize('seamLeft', 'notchLeft', document.getElementById('railLeft'), 'left', 64, 600, 340);
+  window.MockUI.setupResize('seamRight', 'notchRight', document.getElementById('railRight'), 'right', 260, 800, 400);
+  window.MockUI.setupVerticalResize('seamVertical', document.getElementById('rr-session'));
+  window.MockUI.initAutoCollapse();
+</script>
+</body>
 </html>

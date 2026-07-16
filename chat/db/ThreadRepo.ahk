@@ -56,8 +56,8 @@ class ThreadRepo {
 
     ; Get threads sorted by most recent first.
     static List(showTrash := false) {
-        query := "SELECT id, title, created_at, updated_at FROM chat_threads WHERE is_deleted=" (showTrash ? 1 : 0)
-        query .= " ORDER BY updated_at DESC"
+        query := "SELECT t.id, t.title, t.created_at, t.updated_at, t.folder_id, COALESCE(f.name, '') AS folder_name FROM chat_threads t LEFT JOIN chat_folders f ON t.folder_id = f.id WHERE t.is_deleted=" (showTrash ? 1 : 0)
+        query .= " ORDER BY t.updated_at DESC"
         table := ChatDB.db.Exec(query)
         threads := []
         for row in table.rows {
@@ -70,7 +70,9 @@ class ThreadRepo {
                 title: row.title,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
-                model: model
+                model: model,
+                folder_id: row.folder_id ? row.folder_id : "",
+                folder_name: row.folder_name ? row.folder_name : ""
             })
         }
         return threads

@@ -136,6 +136,25 @@ describe('formatCompact', () => {
     });
 });
 
+describe('updateTokenUsage', () => {
+    it('no-ops when token-usage-bar is missing', () => {
+        assert.doesNotThrow(() => ctx.updateTokenUsage({ activePathTokens: 100, contextWindow: 1000 }));
+    });
+
+    it('no-ops when token-usage-content is missing', () => {
+        const origGetEl = ctx.document.getElementById;
+        ctx.document.getElementById = (id) => id === 'token-usage-bar' ? { style: {} } : null;
+        assert.doesNotThrow(() => ctx.updateTokenUsage({ activePathTokens: 0, contextWindow: 0 }));
+        ctx.document.getElementById = origGetEl;
+    });
+});
+
+describe('showTokenUsageBar', () => {
+    it('no-ops when token-usage-bar is missing', () => {
+        assert.doesNotThrow(() => ctx.showTokenUsageBar());
+    });
+});
+
 describe('formatNumber', () => {
     it('adds commas', () => {
         assert.strictEqual(ctx.formatNumber(1000), '1,000');

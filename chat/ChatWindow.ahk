@@ -106,6 +106,7 @@ activeThreadId := ""
 
 global responseWindow := WebViewToo(, , ,)
 responseWindow.OnEvent("Close", (*) => responseWindow.Hide())
+responseWindow.Title := "LLM AutoHotkey Assistant"
 global chatWindow := responseWindow
 
 ; Set window icon (title bar / taskbar) to match the main script's tray icon
@@ -118,14 +119,23 @@ if hIcon {
 ; Set up WebMessageReceived handler for JS→AHK communication via postMessage
 responseWindow.WebMessageReceived(OnWebMessageReceived)
 
-if (darkMode)
-    DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", responseWindow.hWnd, "int", 20, "int*", true, "int", 4)
+; Register Dashboard host object for inline usage dashboard
+responseWindow.AddHostObjectToScript("Dashboard", {
+    QueryUsage: (filtersJson) => jsongo.Stringify(ChatDB.Usage_Query(jsongo.Parse(filtersJson)))
+})
 
 llmClient := LLMRequestBuilder(APIKey)
 
 ; ----------------------------------------------------
 ; Utility modules, dispatch, and callbacks
 ; ----------------------------------------------------
+
+; Handle inline dashboard IPC from Main.ahk
+OnMessage(CustomMessages.WM_SHOW_DASHBOARD, (*) => (
+    postWebMessage("showDashboard"),
+    chatWindow.Show(),
+    WinActivate("ahk_id " chatWindow.hWnd)
+))
 
 #Include ChatUtils.ahk
 #Include ThreadTitleGen.ahk
@@ -152,8 +162,6 @@ showChatWindow(initialRequest := true) {
     if !WinActive("ahk_id " chatWindow.hWnd)
         chatWindow.Flash()
     Sleep 500
-    postWebMessage("setTheme", [darkMode])
-    postWebMessage("setFontFace", [responseWindowFontFace])
     if initialRequest && requestParams["mainScriptHiddenhWnd"] {
         CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
             requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
@@ -168,8 +176,6 @@ if prewarming {
     ; Set window size/position now so it appears centered when shown.
     _SetChatWindowSize()
     ; Post config messages so they're ready when user opens.
-    postWebMessage("setTheme", [darkMode])
-    postWebMessage("setFontFace", [responseWindowFontFace])
     postWebMessage("setChatButtonsEnabled", true)
     ; Notify main script so it knows we exist (for WinShow later).
     CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,

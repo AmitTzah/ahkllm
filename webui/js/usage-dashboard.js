@@ -106,11 +106,12 @@ function renderSummary() {
   }
   document.getElementById('totalCost').textContent = fmtCostShort(cost);
   var infoIcon = document.getElementById('costInfoIcon');
-  if (infoIcon) {
+  var tooltip = document.getElementById('costTooltip');
+  if (infoIcon && tooltip) {
     var pct = function(v) { return cost > 0 ? ' (' + Math.round(v / cost * 100) + '%)' : ''; };
-    infoIcon.title = 'Cache hit: ' + fmtCost(costBreakdown.cacheHit) + pct(costBreakdown.cacheHit) +
-      '\nCache miss: ' + fmtCost(Math.max(0, costBreakdown.cacheMiss)) + pct(Math.max(0, costBreakdown.cacheMiss)) +
-      '\nOutput: ' + fmtCost(costBreakdown.output) + pct(costBreakdown.output);
+    tooltip.textContent = 'Cache hit:  ' + fmtCost(costBreakdown.cacheHit) + pct(costBreakdown.cacheHit) + '\n' +
+      'Cache miss: ' + fmtCost(Math.max(0, costBreakdown.cacheMiss)) + pct(Math.max(0, costBreakdown.cacheMiss)) + '\n' +
+      'Output:     ' + fmtCost(costBreakdown.output) + pct(costBreakdown.output);
   }
   document.getElementById('totalCalls').textContent = fmtNum(calls);
   document.getElementById('totalTokens').textContent = fmtNum(tokens);
@@ -340,4 +341,9 @@ document.querySelector('#stackToggle').addEventListener('click', function(e) {
   renderMainChart();
 });
 
-loadData();
+// Don't auto-load — called when dashboard panel is shown
+
+// Wire API Logs button (inline onclick may not fire in complex DOM)
+document.getElementById('apiLogsBtn').addEventListener('click', function() {
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'showApiLogs' }));
+});

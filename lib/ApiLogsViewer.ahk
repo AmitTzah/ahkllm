@@ -9,22 +9,28 @@ global apiLogsViewer := unset
 
 InitApiLogsViewer() {
     global apiLogsViewer
-    apiLogsViewer := WebViewToo(, , ,)
+    debugLog("[APILOGS] InitApiLogsViewer: creating WebViewToo")
+    try {
+        apiLogsViewer := WebViewToo(, , ,)
+        debugLog("[APILOGS] WebViewToo created, hWnd=" apiLogsViewer.hWnd)
+    } catch Error as e {
+        debugLog("[APILOGS] WebViewToo FAILED: " e.Message)
+        return
+    }
     apiLogsViewer.OnEvent("Close", (*) => apiLogsViewer.Hide())
-    if (IsSet(darkMode) && darkMode)
-        DllCall("Dwmapi\DwmSetWindowAttribute", "ptr", apiLogsViewer.hWnd, "int", 20, "int*", true, "int", 4)
     apiLogsViewer.AddHostObjectToScript("Logs", {
         GetLogs: (*) => jsongo.Stringify(ApiLogger.ReadLogs()),
         ClearLogs: (*) => (ApiLogger.ClearLogs(), "ok"),
-        IsDarkMode: (*) => (IsSet(darkMode) && darkMode) ? "true" : "false",
         GetLogCount: (*) => ApiLogger.ReadLogs().Length
     })
     apiLogsViewer.Load("webui\api-logs.html")
 }
 
 ShowApiLogs() {
+    debugLog("[APILOGS] ShowApiLogs called, IsSet(apiLogsViewer)=" IsSet(apiLogsViewer))
     global apiLogsViewer
     if !IsSet(apiLogsViewer) {
+        debugLog("[APILOGS] Initializing new viewer window")
         InitApiLogsViewer()
         Sleep 500  ; let WebView2 finish initial render
     } else {
@@ -34,7 +40,13 @@ ShowApiLogs() {
         ; ExecuteScript completion callback.
         apiLogsViewer.ExecuteScriptAsync("reloadLogs()")
     }
-    apiLogsViewer.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2 " w900 h600", "API Logs Viewer")
+    debugLog("[APILOGS] About to show viewer at x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2)
+    try {
+        apiLogsViewer.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2 " w900 h600", "API Logs Viewer")
+        debugLog("[APILOGS] Show() succeeded, hWnd=" apiLogsViewer.hWnd)
+    } catch Error as e {
+        debugLog("[APILOGS] Show() FAILED: " e.Message)
+    }
 }
 
 ; Clean up on main script exit (called from Main.ahk)

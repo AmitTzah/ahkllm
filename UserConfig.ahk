@@ -124,7 +124,8 @@ providerMap := Map(
 ; ============================================================================
 ; §4 ASSISTANTS — Named chat profiles
 ; ============================================================================
-; Each assistant: name, baseModel ("provider/model"), systemMessage (or systemMessageFile), reasoning, temperature, isDefault.
+; Each assistant: name, baseModel ("provider/model"), systemMessage (or systemMessageFile), description, reasoning, temperature, isDefault.
+;   description: short description shown in the model card (optional). Keep it one sentence or less.
 ;   Use systemMessageFile: "system-messages/my-assistant.txt" for longer prompts.
 ;   reasoning: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" or "" for model default.
 ;     DeepSeek: "none" uses thinking:{type:"disabled"}; low/medium→high, xhigh→max
@@ -141,14 +142,16 @@ assistants := [
         systemMessageFile: "system-messages/natural-conversationalist.txt",
         reasoning: "none",
         temperature: "",
+        description : "A friendly, natural conversationalist that responds in a human-like manner.",
         isDefault: true
     },
      {
         name: "Violet",
-        baseModel: "deepseek/deepseek-v4-flash",
+        baseModel: "google/gemma-4-31b-it",
         systemMessageFile: "system-messages/violet.txt",
         reasoning: "none",
         temperature: "",
+        description : "Violet is pretty crazy. Talk to her at your own risk.",
         isDefault: false
     }
 ]
@@ -554,8 +557,8 @@ titleGenMaxTokens := 50
 ; ============================================================================
 ; §7 THEME
 ; ============================================================================
+; Currently only supports light mode. Dark theme to be implemented in a future release. (E.g. when my fucked up Keratoconus eyes are fixed and I can see white on black without pain.)
 
-darkMode := false    ; true = dark mode; false = light/system theme
 
 
 ; ============================================================================

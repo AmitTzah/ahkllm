@@ -221,7 +221,7 @@ function renderAttachmentBar() {
         // Scanned PDF warning
         if (att.extractedText === '__SCANNED_PDF__') {
             var scanWarn = document.createElement('span');
-            scanWarn.style.cssText = 'font-size:0.6rem;color:var(--bs-warning);flex-shrink:0;';
+            scanWarn.style.cssText = 'font-size:0.6rem;color:var(--warning);flex-shrink:0;';
             scanWarn.textContent = '\u26A0\uFE0F Scanned';
             item.appendChild(scanWarn);
         }
@@ -229,7 +229,7 @@ function renderAttachmentBar() {
         // CDN unavailable warning
         if (att.extractedText === '__LIBRARY_UNAVAILABLE__') {
             var warnSpan = document.createElement('span');
-            warnSpan.style.cssText = 'font-size:0.65rem;color:var(--bs-warning);flex-shrink:0;';
+            warnSpan.style.cssText = 'font-size:0.65rem;color:var(--warning);flex-shrink:0;';
             warnSpan.textContent = 'âš ï¸ Text extraction unavailable';
             item.appendChild(warnSpan);
         }
@@ -284,7 +284,7 @@ function showErrorBanner(message) {
     if (!container) return;
     var el = document.createElement('div');
     el.className = 'error-banner';
-    el.style.cssText = 'background:var(--bs-danger);color:var(--bs-light);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
+    el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
     el.innerHTML = '<span>' + message.replace(/</g, '<').replace(/>/g, '>') + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
     container.appendChild(el);
     container.scrollTop = container.scrollHeight;

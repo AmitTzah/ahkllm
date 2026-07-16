@@ -1,11 +1,4 @@
-; ======================================================
-; ChatCallbacks_Sidebar.ahk — Thread list and sidebar
-; navigation callbacks (D6)
-;
-; NOTE: #Include'd by ChatWindow.ahk. Has access to:
-;   activeThreadId, ChatDB, postWebMessage,
-;   buildStructuredMessagesFromPath
-; ======================================================
+; Thread list and sidebar navigation callbacks
 
 ; ----------------------------------------------------
 ; Sidebar actions from WebView (D6)
@@ -16,9 +9,12 @@ handleSidebarAction(params, *) {
     subAction := params.Has("subAction") ? params["subAction"] : params["action"]
     switch subAction {
         case "loadThreadList":
-            postWebMessage("threadList", ChatDB.Thread_List())
+            _postThreadListRefresh()
         case "loadTrashList":
             postWebMessage("trashList", ChatDB.Thread_List(true))
+        case "loadTree":
+            if activeThreadId
+                postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
         case "loadThread":
             if params.Has("threadId")
                 _LoadThreadAndRefreshUI(params["threadId"])
@@ -78,7 +74,7 @@ handleSidebarAction(params, *) {
         case "renameThread":
             if params.Has("threadId") && params.Has("title") {
                 ChatDB.Thread_Update(params["threadId"], params["title"])
-                postWebMessage("threadList", ChatDB.Thread_List())
+                _postThreadListRefresh()
                 ; Also update window title if this is the active thread
                 if activeThreadId = params["threadId"] {
                     threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" params["threadId"] "';")
@@ -86,5 +82,29 @@ handleSidebarAction(params, *) {
                         chatWindow.Title := "Chat — " threadInfo[1, "title"]
                 }
             }
+        case "createFolder":
+            if params.Has("name") {
+                id := ChatDB._UUID()
+                ChatDB.db.Exec("INSERT INTO chat_folders (id, name) VALUES('" id "', '" SQLite.Escape(params["name"]) "');")
+                _postThreadListRefresh()
+            }
+        case "renameFolder":
+            if params.Has("folderId") && params.Has("name") {
+                ChatDB.db.Exec("UPDATE chat_folders SET name='" SQLite.Escape(params["name"]) "' WHERE id='" params["folderId"] "';")
+                _postThreadListRefresh()
+            }
+        case "deleteFolder":
+            if params.Has("folderId") {
+                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=NULL WHERE folder_id='" params["folderId"] "';")
+                ChatDB.db.Exec("DELETE FROM chat_folders WHERE id='" params["folderId"] "';")
+                _postThreadListRefresh()
+            }
+        case "moveToFolder":
+            if params.Has("threadId") && params.Has("folderId") {
+                fid := params["folderId"] = "__none__" ? "NULL" : "'" params["folderId"] "'"
+                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=" fid " WHERE id='" params["threadId"] "';")
+                _postThreadListRefresh()
+            }
     }
 }
+

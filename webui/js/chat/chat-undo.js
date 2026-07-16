@@ -127,7 +127,7 @@ function showUndoNotification(message) {
   var notif = document.createElement('div');
   notif.id = 'undo-notification';
   notif.textContent = message;
-  notif.style.cssText = 'position:fixed;bottom:80px;right:20px;background:var(--bs-tertiary-bg);color:var(--bs-body-color);padding:8px 16px;border-radius:0.5rem;font-size:0.8rem;border:1px solid var(--bs-border-color);z-index:9999;opacity:0.95;';
+  notif.style.cssText = 'position:fixed;bottom:80px;right:20px;background:var(--bg-panel);color:var(--text-primary);padding:8px 16px;border-radius:0.5rem;font-size:0.8rem;border:1px solid var(--border-main);z-index:9999;opacity:0.95;';
   document.body.appendChild(notif);
 
   undoNotificationTimeout = setTimeout(function() {

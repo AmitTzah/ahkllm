@@ -85,7 +85,7 @@
     .copy-btn { font-size: 11px; padding: 2px 10px; margin-left: 8px; }
 </style>
 </head>
-<body>
+<body class="light">
 <div class="header">
     <h1>API Logs</h1>
     <div class="header-controls">
@@ -123,13 +123,6 @@ function reloadLogs() {
         try { logData = JSON.parse(jsonStr); } catch(e) { logData = []; }
         renderTable();
         lastLogCount = logData.length;
-    });
-}
-
-function applyTheme() {
-    window.chrome.webview.hostObjects.Logs.IsDarkMode().then(function(val) {
-        var isDark = (val === 'true');
-        document.body.className = isDark ? 'dark' : 'light';
     });
 }
 
@@ -274,7 +267,6 @@ function esc(s) {
 }
 
 window.addEventListener('load', function() {
-    applyTheme();
     reloadLogs();
 });
 </script>

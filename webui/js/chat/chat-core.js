@@ -21,11 +21,8 @@ function initChatMode(messages) {
   isChatMode = true;
   chatMessages = messages || [];
 
-  // Show chat layout, hide the old content fallback
-  var chatLayout = document.getElementById('chat-layout');
-  if (chatLayout) chatLayout.style.display = 'flex';
-  var content = document.getElementById('content');
-  if (content) content.style.display = 'none';
+  var fimNotice = document.getElementById('fim-notice');
+  if (fimNotice) fimNotice.style.display = 'none';
 
   renderChatMessages(chatMessages);
   showTokenUsageBar();
@@ -56,15 +53,25 @@ function initChatMode(messages) {
 function renderMarkdown(content) {
   var contentToRender = content || 'There is no content available.';
   sessionStorage.setItem('preMarkdownText', contentToRender);
-
   var result = md.render(contentToRender);
   var contentElement = document.getElementById('content');
   if (contentElement) contentElement.innerHTML = result;
-
   if (!isChatMode) {
-    var chatLayout = document.getElementById('chat-layout');
-    var contentEl = document.getElementById('content');
-    if (chatLayout) chatLayout.style.display = 'none';
-    if (contentEl) contentEl.style.display = 'block';
+    var fimNotice = document.getElementById('fim-notice');
+    if (fimNotice) fimNotice.style.display = 'block';
+    var chatMessagesEl = document.getElementById('chat-messages');
+    if (chatMessagesEl) chatMessagesEl.style.display = 'none';
+    if (contentElement) contentElement.style.display = 'block';
+  } else {
+    var chatMessagesEl2 = document.getElementById('chat-messages');
+    if (chatMessagesEl2) chatMessagesEl2.style.display = '';
+    var contentEl2 = document.getElementById('content');
+    if (contentEl2) contentEl2.style.display = 'none';
   }
+}
+
+// Shared HTML escape utility (used by multiple chat modules)
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
 }

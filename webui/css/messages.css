@@ -1,0 +1,74 @@
+/* messages.css — Message bubbles, thinking block, edit UI, flash animation */
+/* Extracted from chat-ui-mock.html lines 319-389 */
+
+.msg { display: flex; flex-direction: column; width: 100%; }
+
+.msg-body { flex: 1; min-width: 0; display: flex; flex-direction: column; transition: background-color 0.3s; padding: 6px; margin: -6px; border-radius: 10px;}
+
+.msg-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; padding-left: 6px; }
+.msg-author { font-weight: 600; font-size: 18px; color: var(--text-primary); }
+.msg.bot .msg-author { color: var(--accent-primary); }
+
+.msg-meta { font-family: var(--font-mono); font-size: 14px; color: var(--text-tertiary); }
+
+.msg-content { font-size: var(--chat-font-size); line-height: 1.6; color: var(--text-primary); word-wrap: break-word; transition: font-size 0.2s ease-out; }
+
+.msg.you .msg-content { 
+  background: var(--user-msg-bg); padding: 14px 24px; border-radius: var(--radius-lg); 
+  border-top-left-radius: 4px; display: inline-block; max-width: fit-content;
+}
+.msg.bot .msg-content { max-width: 100%; padding: 0 6px; }
+
+/* Thinking block */
+.thinking-block { margin-bottom: 16px; margin-left: 6px; max-width: 100%; border-left: 2px solid var(--border-main); padding-left: 14px; }
+.thinking-block summary {
+  cursor: pointer; font-size: calc(var(--chat-font-size) - 3px); font-weight: 500; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 8px; user-select: none; transition: color 0.2s;
+}
+.thinking-block summary:hover { color: var(--text-primary); }
+.thinking-block summary::marker { display: none; content: ""; }
+.thinking-content {
+  font-size: calc(var(--chat-font-size) - 3px); color: var(--text-secondary); white-space: pre-wrap; margin-top: 10px;
+  font-family: var(--font-mono); line-height: 1.6; opacity: 0.9;
+}
+
+/* Edit UI within message */
+.msg-edit-ui { display: none; flex-direction: column; gap: 16px; width: 100%; margin-top: 6px; padding: 0 6px; }
+.msg.editing .msg-edit-ui { display: flex; }
+.msg.editing .msg-content, .msg.editing .msg-actions, .msg.editing .thinking-block { display: none; }
+
+.msg-edit-textarea {
+  width: 100%; min-height: 120px; padding: 16px; border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-md); font-family: var(--font-ui); font-size: var(--chat-font-size);
+  line-height: 1.6; color: var(--text-primary); outline: none; resize: vertical;
+  background: var(--bg-panel); box-shadow: 0 0 0 4px var(--accent-light); transition: font-size 0.2s;
+}
+.msg-edit-actions { display: flex; align-items: center; justify-content: space-between; }
+
+/* Loading indicator */
+.loading-indicator {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.5rem 0;
+}
+.loading-indicator .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-tertiary);
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+.loading-indicator .dot:nth-child(1) { animation-delay: -0.32s; }
+.loading-indicator .dot:nth-child(2) { animation-delay: -0.16s; }
+.loading-indicator .dot:nth-child(3) { animation-delay: 0s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+/* Flash animation for tree-node click */
+.msg.flash .msg-body { animation: flash 1.5s ease-out; }
+@keyframes flash { 
+  0% { background-color: var(--accent-light); box-shadow: 0 0 0 6px var(--accent-light); } 
+  100% { background-color: transparent; box-shadow: 0 0 0 0 transparent; } 
+}

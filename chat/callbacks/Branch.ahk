@@ -1,13 +1,4 @@
-; ======================================================
-; ChatCallbacks_Branch.ahk — Branch navigation, fork,
-; and button click (Retry) callbacks
-;
-; NOTE: #Include'd by ChatWindow.ahk. Has access to:
-;   activeThreadId, requestParams, chatWindow, ChatDB,
-;   BuildAndWriteRequestFiles, postWebMessage,
-;   startLoadingCursor, sendRequestToLLM, cURLState,
-;   buildStructuredMessagesFromPath
-; ======================================================
+; Branch callbacks — navigation, fork, retry
 
 ; ----------------------------------------------------
 ; Switch branch from WebView (D3)

@@ -8,207 +8,39 @@ var _removedAttachmentIds = [];
 
 function editMessage(index) {
   var msg = chatMessages[index];
-  // Track editing state for deferred attachment removal
   _editingMessageId = msg.id;
   _removedAttachmentIds = [];
   if (!msg || isLoading) return;
 
-  var container = document.getElementById('chat-messages');
-  var bubble = container.querySelectorAll('.chat-message')[index];
+  var bubble = document.querySelectorAll('.msg')[index];
   if (!bubble) return;
 
-  // Get raw content (strip markdown — just use plain text)
-  var contentDiv = bubble.querySelector('.message-content');
-  var rawText = msg.content;
+  // Use mock's pre-rendered .msg-edit-ui — just add .editing class
+  bubble.classList.add('editing');
+  var textarea = bubble.querySelector('.msg-edit-textarea');
+  if (textarea) { textarea.value = msg.content || ''; textarea.focus(); }
 
-  // Replace content with textarea
-  contentDiv.innerHTML = '';
-  var textarea = document.createElement('textarea');
-  textarea.className = 'edit-textarea';
-  textarea.value = rawText;
-  textarea.style.cssText = 'width:100%;min-height:100px;font-family:inherit;font-size:0.95rem;padding:0.5rem;border-radius:0.5rem;border:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);color:var(--bs-body-color);';
-  contentDiv.appendChild(textarea);
+  // Wire buttons (use onclick to replace any previous handler)
+  var cancelBtn = bubble.querySelector('.cancel-edit');
+  if (cancelBtn) cancelBtn.onclick = function() { bubble.classList.remove('editing'); };
 
-  // Action buttons
-  var actions = bubble.querySelector('.message-actions');
-  if (actions) actions.style.display = 'none';
+  var overwriteBtn = bubble.querySelector('.save-overwrite');
+  if (overwriteBtn) overwriteBtn.onclick = function() {
+    var v = textarea.value.trim(); if (!v) return;
+    commitEdit(index, msg.id, v, 'overwrite');
+    bubble.classList.remove('editing');
+  };
 
-  var editActions = document.createElement('div');
-  editActions.className = 'edit-actions';
-  editActions.style.cssText = 'display:flex;gap:0.5rem;margin-top:0.5rem;';
+  var branchBtn = bubble.querySelector('.save-branch');
+  if (branchBtn) branchBtn.onclick = function() {
+    var v = textarea.value.trim(); if (!v) return;
+    commitEdit(index, msg.id, v, 'branch');
+    bubble.classList.remove('editing');
+  };
 
-  var saveBtn = document.createElement('button');
-  saveBtn.textContent = '💾 Save (Overwrite)';
-  saveBtn.style.cssText = 'padding:4px 12px;border-radius:0.25rem;border:1px solid var(--bs-border-color);cursor:pointer;background:var(--bs-primary);color:white;font-size:0.8rem;';
-  saveBtn.addEventListener('click', function() {
-    var newContent = textarea.value.trim();
-    if (!newContent) return;
-    // If nothing changed and no new attachments, just close the edit window (same as Cancel)
-    if (newContent === msg.content && _editAttachments.length === 0 && _removedAttachmentIds.length === 0) {
-      _editingMessageId = null;
-      _removedAttachmentIds = [];
-      contentDiv.innerHTML = md.render(msg.content);
-      // Restore any attachments that were hidden during edit
-      var bubble = container.querySelectorAll('.chat-message')[index];
-      if (bubble) {
-        var hidden = bubble.querySelectorAll('.msg-attachment-image[style*="display: none"], .msg-attachment-file[style*="display: none"]');
-        for (var h = 0; h < hidden.length; h++) {
-          hidden[h].style.display = '';
-        }
-      }
-      if (actions) actions.style.display = 'flex';
-      editActions.remove();
-      return;
-    }
-    commitEdit(index, msg.id, newContent, 'overwrite');
-  });
-
-  var branchBtn = document.createElement('button');
-  branchBtn.textContent = '⑂ Save as Branch';
-  branchBtn.style.cssText = 'padding:4px 12px;border-radius:0.25rem;border:1px solid var(--bs-border-color);cursor:pointer;background:var(--bs-tertiary-bg);color:var(--bs-body-color);font-size:0.8rem;';
-  branchBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    var newContent = textarea.value.trim();
-    if (!newContent) return;
-    commitEdit(index, msg.id, newContent, 'branch');
-  });
-
-  var cancelBtn = document.createElement('button');
-  cancelBtn.textContent = '✖ Cancel';
-  cancelBtn.style.cssText = 'padding:4px 12px;border-radius:0.25rem;border:1px solid var(--bs-border-color);cursor:pointer;background:var(--bs-body-bg);color:var(--bs-secondary-color);font-size:0.8rem;';
-  cancelBtn.addEventListener('click', function() {
-    _editingMessageId = null;
-    _removedAttachmentIds = [];
-    contentDiv.innerHTML = md.render(msg.content);
-    // Restore any attachments that were hidden during edit
-    var bubble = container.querySelectorAll('.chat-message')[index];
-    if (bubble) {
-      var hidden = bubble.querySelectorAll('.msg-attachment-image[style*="display: none"], .msg-attachment-file[style*="display: none"]');
-      for (var h = 0; h < hidden.length; h++) {
-        hidden[h].style.display = '';
-      }
-    }
-    if (actions) actions.style.display = 'flex';
-    editActions.remove();
-  });
-
-  editActions.appendChild(saveBtn);
-  editActions.appendChild(branchBtn);
-
-  // Attach file button for editing — uses a dedicated file input
-  var editFileInput = document.createElement('input');
-  editFileInput.type = 'file';
-  editFileInput.accept = 'image/*,.pdf,.docx,.txt,.md,.py,.js,.json,.xml,.csv,.ini,.cfg,.yaml,.yml,.log,.html,.css,.sql,.bat,.ps1,.sh,.java,.c,.cpp,.h,.rs,.go,.ts,.tsx,.jsx,.toml';
-  editFileInput.multiple = true;
-  editFileInput.style.display = 'none';
-  contentDiv.appendChild(editFileInput);
-
-  var attachBtn = document.createElement('button');
-  attachBtn.textContent = '📎 Attach';
-  attachBtn.style.cssText = 'padding:4px 12px;border-radius:0.25rem;border:1px solid var(--bs-border-color);cursor:pointer;background:var(--bs-tertiary-bg);color:var(--bs-body-color);font-size:0.8rem;';
-  attachBtn.addEventListener('click', function() { editFileInput.click(); });
-  editActions.appendChild(attachBtn);
-
-  editActions.appendChild(cancelBtn);
-  contentDiv.appendChild(editActions);
-
-  // Track attachments and extraction promises
-  _editAttachments = [];
-  _editExtractPromises = [];
-  var editAttBar = document.createElement('div');
-  editAttBar.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.25rem;margin-top:0.25rem;';
-  contentDiv.insertBefore(editAttBar, editActions);
-
-  // Helper to add file to edit attachments
-  function addEditAttachment(file) {
-    if (_editAttachments.length >= 10) { showErrorBanner('Max 10 attachments'); return; }
-    if (file.size > MAX_FILE_SIZE) { showErrorBanner('File too large'); return; }
-    var reader = new FileReader();
-    reader.onload = (function(f, fname, fmime) {
-      return function(e) {
-        var arr = new Uint8Array(e.target.result);
-        var bin = ''; for (var b = 0; b < arr.byteLength; b++) bin += String.fromCharCode(arr[b]);
-        var b64 = btoa(bin);
-        var attType = getAttachmentTypeFromMime(fmime, fname);
-        var att = { type: attType, filename: fname, mimeType: fmime, base64: b64, size: f.size, extractedText: '', contentHash: '' };
-        // Compute SHA-256 for content-addressable dedup (same as send flow)
-        var hashPromise = crypto.subtle.digest('SHA-256', e.target.result.slice(0)).then(function(hashBuffer) {
-          var hashArray = Array.from(new Uint8Array(hashBuffer));
-          att.contentHash = hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
-        }).catch(function() { att.contentHash = ''; });
-        _editHashPromises.push(hashPromise);
-        // Extract text for PDF/DOCX
-        if (attType === 'pdf' && typeof pdfjsLib !== 'undefined') {
-            try {
-                var p = pdfjsLib.getDocument({ data: e.target.result.slice(0) }).promise.then(function(pdf) {
-                    var pages = []; for (var p = 1; p <= pdf.numPages; p++) pages.push(pdf.getPage(p).then(function(page) {
-                        return page.getTextContent().then(function(tc) { return tc.items.map(function(it) { return it.str; }).join(' '); });
-                    }));
-                    return Promise.all(pages);
-                }).then(function(texts) {
-                    att.extractedText = texts.join('\n\n') || '(no text extracted)';
-                    if (att.badge) att.badge.title = 'Extracted: ' + att.extractedText.substring(0, 100);
-                }).catch(function() { att.extractedText = '(no text extracted)'; });
-                _editExtractPromises.push(p);
-            } catch(ex) { att.extractedText = '(no text extracted)'; }
-        } else if (attType === 'docx' && typeof mammoth !== 'undefined') {
-            try {
-                var p = mammoth.extractRawText({ arrayBuffer: e.target.result }).then(function(r) {
-                    att.extractedText = r.value || '(no text extracted)';
-                    if (att.badge) att.badge.title = 'Extracted: ' + att.extractedText.substring(0, 100);
-                }).catch(function() { att.extractedText = '(no text extracted)'; });
-                _editExtractPromises.push(p);
-            } catch(ex) { att.extractedText = '(no text extracted)'; }
-        }
-        _editAttachments.push(att);
-        var badge = document.createElement('span');
-        badge.style.cssText = 'display:inline-flex;align-items:center;gap:0.25rem;padding:0.15rem 0.4rem;border:1px solid var(--bs-border-color);border-radius:0.25rem;font-size:0.7rem;background:var(--bs-body-bg);cursor:pointer;';
-        if (attType === 'image' && b64) {
-            var thumb = document.createElement('img');
-            thumb.src = 'data:' + fmime + ';base64,' + b64;
-            thumb.style.cssText = 'width:32px;height:32px;object-fit:cover;border-radius:3px;';
-            badge.appendChild(thumb);
-        }
-        var label = document.createElement('span');
-        label.textContent = (attType === 'image' ? '' : '\uD83D\uDCCE ') + fname + ' \u00D7';
-        badge.appendChild(label);
-        badge.onclick = function() { var idx = _editAttachments.indexOf(att); if (idx >= 0) { _editAttachments.splice(idx, 1); badge.remove(); } };
-        att.badge = badge;  // store ref for extraction callback
-        editAttBar.appendChild(badge);
-      };
-    })(file, file.name, file.type);
-    reader.readAsArrayBuffer(file);
-  }
-
-  // File input change
-  editFileInput.addEventListener('change', function() {
-    for (var f = 0; f < editFileInput.files.length; f++) addEditAttachment(editFileInput.files[f]);
-    editFileInput.value = '';
-  });
-
-  // Drag-drop on edit area
-  contentDiv.addEventListener('dragover', function(e) { e.preventDefault(); });
-  contentDiv.addEventListener('drop', function(e) {
-    e.preventDefault();
-    var files = e.dataTransfer.files;
-    for (var f = 0; f < files.length; f++) addEditAttachment(files[f]);
-  });
-
-  // Paste images into edit textarea
-  textarea.addEventListener('paste', function(e) {
-    var items = e.clipboardData && e.clipboardData.items;
-    if (!items) return;
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') === 0) {
-        e.preventDefault();
-        addEditAttachment(items[i].getAsFile());
-        return;
-      }
-    }
-  });
 }
 
-// Module-level variables for edit attachments
+// Module-level variables for edit attachments (kept for commitEdit compatibility)
 var _editAttachments = [];
 var _editExtractPromises = [];
 var _editHashPromises = [];
@@ -258,12 +90,11 @@ function deleteMessage(index) {
   var msg = chatMessages[index];
   if (!msg || isLoading) return;
 
-  if (!confirm('Delete this message? This removes it from the current view but data is preserved.')) return;
-
-  // Record undo state before deleting
-  recordUndo('delete', msg.id, { content: msg.content, role: msg.role });
-
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteMessage', id: msg.id }));
+  _showConfirm('Delete this message? This removes it from the current view but data is preserved.', function() {
+    // Record undo state before deleting
+    recordUndo('delete', msg.id, { content: msg.content, role: msg.role });
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteMessage', id: msg.id }));
+  });
 }
 
 // D3: Switch branch
@@ -279,95 +110,286 @@ function switchBranch(msgId, direction) {
 var treeModalOpen = false;
 
 function toggleTreeModal() {
-  if (treeModalOpen) {
-    closeTreeModal();
+  var overlay = document.getElementById('treeOverlay');
+  if (!overlay) return;
+  if (overlay.classList.contains('open')) {
+    overlay.classList.remove('open');
   } else {
-    openTreeModal();
+    overlay.classList.add('open');
+    // Reset zoom/pan to default
+    var layer = document.getElementById('treeZoomLayer');
+    var pct = document.getElementById('zoomPct');
+    if (layer) layer.style.transform = 'translate(0px,0px) scale(1)';
+    if (pct) pct.textContent = '100%';
+    // Request tree data — AHK will send renderChatTree message
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTree' }));
   }
 }
 
-function openTreeModal() {
-  var existing = document.getElementById('tree-modal');
-  if (existing) existing.remove();
+// Wire tree close button, overlay click, and zoom/pan (guarded for test sandboxes)
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('DOMContentLoaded', function() {
+    var treeClose = document.getElementById('treeClose');
+    var treeOverlay = document.getElementById('treeOverlay');
+    if (treeClose) treeClose.addEventListener('click', function() { treeOverlay.classList.remove('open'); });
+    if (treeOverlay) treeOverlay.addEventListener('click', function(e) { if (e.target === treeOverlay) treeOverlay.classList.remove('open'); });
 
-  var modal = document.createElement('div');
-  modal.id = 'tree-modal';
-  modal.className = 'tree-modal';
-  modal.innerHTML = '<div class="tree-modal-content"><h4>🌳 Chat Tree</h4><div id="tree-container"></div><button id="tree-close-btn">Close</button></div>';
-  document.body.appendChild(modal);
+    // Tree modal pan & zoom (matches mock)
+    var canvasWrap = document.getElementById('treeCanvasWrap');
+    var layer = document.getElementById('treeZoomLayer');
+    var pct = document.getElementById('zoomPct');
+    if (!canvasWrap || !layer || !pct) return;
 
-  document.getElementById('tree-close-btn').addEventListener('click', closeTreeModal);
-  modal.addEventListener('click', function(e) {
-    if (e.target === modal) closeTreeModal();
+    var zoom = 1, panX = 0, panY = 0, panning = false, panStart = {x:0,y:0}, origPan = {x:0,y:0};
+
+    function applyZoom() {
+      layer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+      pct.textContent = Math.round(zoom * 100) + '%';
+    }
+
+    document.getElementById('zoomIn').addEventListener('click', function() { zoom = Math.min(2, zoom + 0.15); applyZoom(); });
+    document.getElementById('zoomOut').addEventListener('click', function() { zoom = Math.max(0.4, zoom - 0.15); applyZoom(); });
+    document.getElementById('zoomFit').addEventListener('click', function() { zoom = 1; panX = 0; panY = 0; applyZoom(); });
+
+    canvasWrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.tree-node') || e.target.closest('button')) return;
+      panning = true; canvasWrap.classList.add('panning');
+      panStart = {x: e.clientX, y: e.clientY}; origPan = {x: panX, y: panY};
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!panning) return;
+      panX = origPan.x + (e.clientX - panStart.x); panY = origPan.y + (e.clientY - panStart.y);
+      applyZoom();
+    });
+    window.addEventListener('mouseup', function() { panning = false; if (canvasWrap) canvasWrap.classList.remove('panning'); });
+    canvasWrap.addEventListener('wheel', function(e) {
+      e.preventDefault(); zoom = Math.min(2, Math.max(0.4, zoom + (e.deltaY > 0 ? -0.05 : 0.05))); applyZoom();
+    }, {passive: false});
   });
-
-  treeModalOpen = true;
 }
 
-function closeTreeModal() {
-  var modal = document.getElementById('tree-modal');
-  if (modal) modal.remove();
-  treeModalOpen = false;
-}
-
-// Called by AHK with tree data
+// Called by AHK with tree data.
+// Matches mock design: absolute-positioned nodes, SVG connectors, active-path highlighting.
 function renderChatTree(tree) {
-  var container = document.getElementById('tree-container');
+  var container = document.querySelector('.tree-canvas');
   if (!container) return;
 
+  // Clear previous nodes and SVG
+  container.innerHTML = '';
+
   if (!tree || tree.length === 0) {
-    container.innerHTML = '<p style="color:var(--bs-secondary-color);">No messages yet.</p>';
+    container.innerHTML = '<p style="color:var(--text-tertiary);padding:2rem;text-align:center;">No messages yet.</p>';
+    var sub2 = document.querySelector('.tree-modal-sub');
+    if (sub2) sub2.textContent = 'Viewing active path · 0 nodes';
     return;
   }
 
-  container.innerHTML = '';
+  // Fill in missing models (branched messages may lack model) — inherit from parent
+  _inheritModels(tree, '');
+
+  // Update subtitle
+  var sub = document.querySelector('.tree-modal-sub');
+  if (sub) {
+    var total = _countTreeNodes(tree);
+    sub.textContent = 'Viewing active path · ' + total + ' node' + (total !== 1 ? 's' : '');
+  }
+
+  // Collect active-path IDs (first child at each level)
+  var activeIds = {};
+  _collectActivePath(activeIds);
+
+  // Layout: bottom-up — children first, parent centered between them
+  var svgPaths = [];
+  var allNodes = [];
+  _layoutTreeNodes(tree, 0, 60, activeIds, svgPaths, allNodes);
+
+  // Auto-size canvas
+  var maxBottom = 60;
+  for (var i = 0; i < allNodes.length; i++) {
+    if (allNodes[i].top + 100 > maxBottom) maxBottom = allNodes[i].top + 100;
+  }
+  var maxRight = 40;
+  for (var i2 = 0; i2 < allNodes.length; i2++) {
+    if (allNodes[i2].left + 280 > maxRight) maxRight = allNodes[i2].left + 280;
+  }
+  container.style.width = Math.max(1200, maxRight + 40) + 'px';
+  container.style.height = Math.max(800, maxBottom + 40) + 'px';
+
+  // Render SVG connectors
+  var svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svgEl.setAttribute('width', container.style.width);
+  svgEl.setAttribute('height', container.style.height);
+  svgEl.setAttribute('style', 'position:absolute;top:0;left:0;pointer-events:none;');
+  for (var si = 0; si < svgPaths.length; si++) {
+    var p = svgPaths[si];
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M ' + p.x1 + ' ' + p.y1 + ' C ' + (p.x1 + 50) + ' ' + p.y1 + ' ' + (p.x2 - 50) + ' ' + p.y2 + ' ' + p.x2 + ' ' + p.y2);
+    path.setAttribute('stroke', p.active ? 'var(--accent-primary)' : 'var(--border-main)');
+    path.setAttribute('stroke-width', p.active ? '2.5' : '2');
+    path.setAttribute('fill', 'none');
+    svgEl.appendChild(path);
+  }
+  container.appendChild(svgEl);
+
+  // Render nodes
+  for (var ni = 0; ni < allNodes.length; ni++) {
+    var nd = allNodes[ni];
+    var el = document.createElement('div');
+    el.className = 'tree-node' + (nd.active ? ' active-path' : '');
+    el.setAttribute('data-target', nd.id);
+    el.style.cssText = 'position:absolute;left:' + nd.left + 'px;top:' + nd.top + 'px;' + (nd.active ? '' : 'opacity:0.7;');
+    el.innerHTML =
+      '<div class="tree-node-role"' + (nd.isLastAssistant ? ' style="color:var(--accent-primary);"' : '') + '>' +
+        escHtml(nd.roleLabel) + (nd.isLastAssistant ? ' (Current)' : '') +
+      '</div>' +
+      '<div class="tree-node-text">' + escHtml(nd.preview) + '</div>';
+    el.addEventListener('click', function(targetId) {
+      return function(e) {
+        e.stopPropagation();
+        var leafId = _findDefaultLeaf(targetId, window._treeData);
+        var resolvedId = leafId || targetId;
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'navigateToMessage', messageId: resolvedId }));
+        // Highlight the target message immediately (same as thread map click)
+        closeTreeModal();
+        setTimeout(function() {
+          for (var i = 0; i < chatMessages.length; i++) {
+            if (chatMessages[i].id === resolvedId) { scrollToMessage(i); break; }
+          }
+        }, 150);
+      };
+    }(nd.id));
+    container.appendChild(el);
+  }
+}
+
+function closeTreeModal() {
+  var overlay = document.getElementById('treeOverlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+// Recursively fill in missing model names (branched messages may lack them)
+function _inheritModels(nodes, parentModel) {
+  if (!nodes) return;
+  for (var i = 0; i < nodes.length; i++) {
+    if (!nodes[i].model && nodes[i].role === 'assistant') {
+      nodes[i].model = parentModel || 'Assistant';
+    }
+    _inheritModels(nodes[i].children || [], nodes[i].model || parentModel);
+  }
+}
+
+// Count total nodes in tree (recursive)
+function _countTreeNodes(tree) {
+  var count = 0;
   for (var i = 0; i < tree.length; i++) {
-    container.appendChild(renderTreeNode(tree[i], 0));
+    count += 1 + _countTreeNodes(tree[i].children || []);
+  }
+  return count;
+}
+
+// Walk the first-child chain from a node to find the default leaf ID
+function _findDefaultLeaf(nodeId, tree) {
+  function _walk(nodes) {
+    if (!nodes || nodes.length === 0) return null;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].id === nodeId) {
+        // Found the node — now walk its last-child chain to the bottom (final version)
+        var current = nodes[i];
+        var children = current.children || [];
+        while (children.length > 0) {
+          current = children[children.length - 1];
+          children = current.children || [];
+        }
+        return current.id;
+      }
+      var found = _walk(nodes[i].children || []);
+      if (found) return found;
+    }
+    return null;
+  }
+  return _walk(tree || []);
+}
+
+// Collect active-path node IDs from the actually-loaded chat messages
+function _collectActivePath(activeIds) {
+  // Use chatMessages (the active path) as the source of truth
+  for (var i = 0; i < (typeof chatMessages !== 'undefined' ? chatMessages.length : 0); i++) {
+    if (chatMessages[i].id) activeIds[chatMessages[i].id] = true;
   }
 }
 
-function renderTreeNode(node, depth) {
-  var div = document.createElement('div');
-  div.className = 'tree-node';
-  div.style.cssText = 'margin-left:' + (depth * 20) + 'px;padding:6px 10px;margin-bottom:4px;border-radius:0.5rem;cursor:pointer;border:1px solid var(--bs-border-color);';
+// Layout nodes bottom-up: children first, then center parent between them.
+// Matches mock: parent positioned between siblings, connectors to ALL children.
+// Returns the bottommost Y used by this subtree.
+function _layoutTreeNodes(nodes, depth, startY, activeIds, svgPaths, allNodes) {
+  if (!nodes || nodes.length === 0) return startY;
+  var x = 40 + depth * 340;
+  var NODE_H = 90;   // approximate node height
+  var SIBLING_GAP = 160; // vertical gap between siblings
 
-  var roleIcon = { user: '👤', assistant: '🤖', system: '⚙️' };
-  var preview = node.content_preview || '(empty)';
-  if (preview.length > 60) preview = preview.substring(0, 60) + '...';
+  // First pass: recursively layout children of each node, collecting child positions
+  var childInfo = []; // [{ node, childTops: [y1, y2, ...] }]
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    var children = node.children || [];
+    // Layout children: they get positioned sequentially
+    var childTops = [];
+    var childY = startY;
+    for (var ci = 0; ci < children.length; ci++) {
+      childTops.push(childY);
+      childY = _layoutTreeNodes([children[ci]], depth + 1, childY, activeIds, svgPaths, allNodes);
+      childY += SIBLING_GAP - NODE_H; // gap between siblings
+    }
+    // Adjust last sibling gap (remove extra)
+    if (children.length > 0) childY -= (SIBLING_GAP - NODE_H);
 
-  div.innerHTML = '<span style="font-size:0.8rem;">' + (roleIcon[node.role] || '') + ' <strong>' + node.role + '</strong></span><br><span style="font-size:0.75rem;color:var(--bs-secondary-color);">' + preview + '</span>';
-
-  if (node.sibling_group) {
-    div.innerHTML += ' <span style="font-size:0.65rem;background:var(--bs-primary);color:white;padding:1px 6px;border-radius:1rem;">' + (node.sibling_index + 1) + '</span>';
+    childInfo.push({ node: node, childTops: childTops, bottomY: childY });
   }
 
-  div.addEventListener('click', function(e) {
-    e.stopPropagation();
-    // Navigate to this specific message (set as active leaf)
-    window.chrome.webview.postMessage(JSON.stringify({
-      action: 'sidebarAction',
-      subAction: 'navigateToMessage',
-      messageId: node.id
-    }));
-    closeTreeModal();
-  });
+  // Second pass: position each node centered among its children, collect all nodes
+  for (var i2 = 0; i2 < childInfo.length; i2++) {
+    var info = childInfo[i2];
+    var nd = info.node;
+    var ctops = info.childTops;
+    var isActive = !!activeIds[nd.id];
+    var roleLabel = nd.role === 'user' ? 'You' : (nd.role === 'assistant' ? (nd.model || 'Assistant') : 'System');
+    var preview = (nd.content_preview || '(empty)');
+    if (preview.length > 55) preview = preview.substring(0, 55) + '...';
+    var children = nd.children || [];
+    var isLastAssistant = isActive && nd.role === 'assistant' && (!children.length || !activeIds[children[0].id]);
 
-  // Render children
-  for (var i = 0; i < node.children.length; i++) {
-    div.appendChild(renderTreeNode(node.children[i], depth + 1));
+    // Position node: center between children, or at bottom of previous
+    var nodeTop;
+    if (ctops.length > 0) {
+      var firstChildCenter = ctops[0] + NODE_H / 2;
+      var lastChildCenter = ctops[ctops.length - 1] + NODE_H / 2;
+      nodeTop = (firstChildCenter + lastChildCenter) / 2 - NODE_H / 2;
+    } else {
+      nodeTop = info.bottomY;
+      info.bottomY = nodeTop + NODE_H;
+    }
+
+    allNodes.push({ id: nd.id, left: x, top: Math.round(nodeTop), active: isActive, roleLabel: roleLabel, preview: preview, isLastAssistant: isLastAssistant });
+
+    // Draw connectors from this node to ALL children
+    var childX = 40 + (depth + 1) * 340;
+    var parentCenterX = x + 260;
+    var parentCenterY = Math.round(nodeTop) + NODE_H / 2;
+    for (var ci2 = 0; ci2 < ctops.length; ci2++) {
+      var childCenterY = ctops[ci2] + NODE_H / 2;
+      var childActive = isActive && !!activeIds[(children[ci2] || {}).id];
+      svgPaths.push({
+        x1: parentCenterX, y1: parentCenterY,
+        x2: childX, y2: Math.round(childCenterY),
+        active: childActive
+      });
+    }
   }
 
-  return div;
-}
-
-// Update branch info label after branch switch
-function updateBranchInfo(data) {
-  var container = document.getElementById('chat-messages');
-  if (!container) return;
-  // Find the message bubble and its inline branch label
-  var bubble = container.querySelector('.chat-message[data-msg-id="' + data.msgId + '"]');
-  if (bubble) {
-    var label = bubble.querySelector('.branch-label-inline');
-    if (label) label.textContent = data.siblingInfo.index + '/' + data.siblingInfo.total;
+  // Return bottommost Y
+  var maxBottom = startY;
+  for (var i3 = 0; i3 < childInfo.length; i3++) {
+    if (childInfo[i3].bottomY > maxBottom) maxBottom = childInfo[i3].bottomY;
   }
+  return maxBottom;
 }

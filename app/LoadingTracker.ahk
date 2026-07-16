@@ -46,7 +46,7 @@ handleLoadingState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
         case CustomMessages.WM_CHAT_WINDOW_OPENED:
             onChatWindowOpened(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd)
 
-        case CustomMessages.WM_OPEN_USAGE_DASHBOARD:
-            ShowUsageDashboard()
+        case CustomMessages.WM_SHOW_API_LOGS:
+            ShowApiLogs()
     }
 }

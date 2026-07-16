@@ -17,10 +17,10 @@ var streamState = {
 function scrollToBottom() {
   if (streamState.userScrolledUp) return;
 
-  var container = document.getElementById('chat-messages');
-  if (!container) return;
+  var scrollEl = document.getElementById('chat-scroll');
+  if (!scrollEl) return;
 
-  container.scrollTop = container.scrollHeight;
+  scrollEl.scrollTop = scrollEl.scrollHeight;
 }
 
 // Start streaming - called automatically when first stream content/reasoning arrives
@@ -74,8 +74,8 @@ function onStreamReasoning(data) {
 
   // Update the summary label with character count
   var summary = streamState.thinkingDetails.querySelector('summary');
-  summary.innerHTML = '🧠 Thinking (' + streamState.thinkingBuffer.length + ' chars)' +
-    ' <span class="thinking-pulse">⏳</span>';
+  summary.innerHTML = '<i data-lucide="brain" style="width:16px;height:16px;"></i> Thought Process <span class="thinking-pulse">⏳</span>';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 
   scrollToBottom();
 }
@@ -143,36 +143,36 @@ function onStreamDone(data) {
 
   setChatButtonsEnabled(true);
   streamState.active = false;
+
+  // Refresh thread map (right panel nav)
+  if (typeof renderNavList === 'function') renderNavList();
 }
 
 function _finalizeStreamBubble(modelName, dbMsg) {
   if (!streamState.bubble) return;
-  var label = streamState.bubble.querySelector('.message-label');
-  if (label) label.textContent = modelName || 'Assistant';
+  var author = streamState.bubble.querySelector('.msg-author');
+  if (author) author.textContent = modelName || 'Assistant';
 
-  // Add timestamp if available from DB message
-  if (dbMsg && dbMsg.createdAt) {
-    var existingTs = streamState.bubble.querySelector('.message-timestamp');
-    if (!existingTs) {
+  var meta = streamState.bubble.querySelector('.msg-meta');
+  if (meta) {
+    var timeStr = '';
+    if (dbMsg && dbMsg.createdAt) {
       var d2 = new Date(dbMsg.createdAt + 'Z');
       if (!isNaN(d2.getTime())) {
-        var ts = document.createElement('span');
-        ts.className = 'message-timestamp';
-        ts.style.cssText = 'margin-left:auto;font-size:0.68rem;color:var(--bs-text-muted,#9ca3af);white-space:nowrap;';
-        ts.textContent = d2.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-        var labelRow = label.parentNode;
-        if (labelRow) labelRow.appendChild(ts);
+        timeStr = d2.toLocaleString(undefined, {hour:'2-digit',minute:'2-digit',hour12:false});
       }
     }
+    meta.textContent = (modelName || '') + (timeStr ? ' · ' + timeStr : '');
   }
 }
 
 function _finalizeThinkingBlock() {
   if (!streamState.thinkingDetails) return;
   var summary = streamState.thinkingDetails.querySelector('summary');
-  summary.textContent = streamState.thinkingBuffer.length > 0
-    ? '🧠 Thought (' + streamState.thinkingBuffer.length + ' chars)'
-    : '🧠 Thinking';
+  summary.innerHTML = streamState.thinkingBuffer.length > 0
+    ? '<i data-lucide="brain" style="width:16px;height:16px;"></i> Thought (' + streamState.thinkingBuffer.length + ' chars)'
+    : '<i data-lucide="brain" style="width:16px;height:16px;"></i> Thought Process';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
   var pulse = streamState.thinkingDetails.querySelector('.thinking-pulse');
   if (pulse) pulse.remove();
 }
@@ -196,24 +196,31 @@ function _updateUserTokenCount(data) {
 function createStreamingBubble() {
   var container = document.getElementById('chat-messages');
 
-  var bubble = document.createElement('div');
-  bubble.className = 'chat-message assistant';
-  bubble.id = 'streaming-bubble';
+  // Build HTML matching mock assistant message structure exactly
+  var html = '<div class="msg bot" id="streaming-bubble">';
+  html += '<div class="msg-body">';
+  html += '<div class="msg-head">';
+  html += '<span class="msg-author">Assistant</span>';
+  html += '<span class="msg-meta"></span>';
+  html += '</div>';
+  html += '<div class="msg-content"></div>';
+  html += '<div class="msg-edit-ui">';
+  html += '<textarea class="msg-edit-textarea"></textarea>';
+  html += '<div class="msg-edit-actions">';
+  html += '<button class="ghost-btn cancel-edit">Cancel</button>';
+  html += '<div style="display:flex; gap:12px;">';
+  html += '<button class="ghost-btn save-branch"><i data-lucide="git-branch" style="width:16px;height:16px;"></i> Save as Branch</button>';
+  html += '<button class="btn-primary save-overwrite">Overwrite</button>';
+  html += '</div></div></div>';
+  html += '<div class="msg-actions"></div>';
+  html += '</div></div>';
 
-  // Label row — same structure as createMessageBubble for timestamp support
-  var labelRow = document.createElement('div');
-  labelRow.style.cssText = 'display:flex;align-items:baseline;';
-  var label = document.createElement('span');
-  label.className = 'message-label';
-  label.textContent = 'Streaming...';
-  labelRow.appendChild(label);
-  bubble.appendChild(labelRow);
-
-  streamState.contentDiv = document.createElement('div');
-  streamState.contentDiv.className = 'message-content';
-  bubble.appendChild(streamState.contentDiv);
-
+  var template = document.createElement('div');
+  template.innerHTML = html;
+  var bubble = template.firstElementChild;
   container.appendChild(bubble);
+
+  streamState.contentDiv = bubble.querySelector('.msg-content');
   scrollToBottom();
   return bubble;
 }
@@ -234,7 +241,7 @@ function createThinkingBlock(collapsed) {
   details.open = !collapsed;  // Collapsed by default for OpenAI/Gemini (useless summaries), expanded for DeepSeek
 
   var summary = document.createElement('summary');
-  summary.innerHTML = '🧠 Thinking (0 chars) <span class="thinking-pulse">⏳</span>';
+  summary.innerHTML = '<i data-lucide="brain" style="width:16px;height:16px;"></i> Thought Process <span class="thinking-pulse">⏳</span>';
   details.appendChild(summary);
 
   var content = document.createElement('div');
@@ -242,7 +249,9 @@ function createThinkingBlock(collapsed) {
   details.appendChild(content);
 
   // Insert inside the bubble, between the label and the message-content div
-  streamState.bubble.insertBefore(details, streamState.contentDiv);
+  var bodyEl = streamState.bubble.querySelector('.msg-body');
+  if (bodyEl) bodyEl.insertBefore(details, streamState.contentDiv);
+  else streamState.bubble.insertBefore(details, streamState.contentDiv);
 
   scrollToBottom();
   return details;
@@ -310,14 +319,13 @@ function cancelStreaming(data) {
 
 // Add action buttons to a streaming bubble after completion
 function addStreamingActions(bubble, index) {
-  // Avoid adding twice
-  if (bubble.querySelector('.message-actions')) return;
-
   var msg = chatMessages[index];
   if (!msg) return;
 
-  var actions = document.createElement('div');
-  actions.className = 'message-actions';
-  addMessageActions(actions, msg, index);
-  bubble.appendChild(actions);
+  var existing = bubble.querySelector('.msg-actions');
+  if (!existing) return;
+
+  // Clear any existing content and re-add
+  existing.innerHTML = '';
+  addMessageActions(existing, msg, index);
 }

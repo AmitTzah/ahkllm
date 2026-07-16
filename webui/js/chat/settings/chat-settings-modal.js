@@ -1,123 +1,189 @@
 // ======================================================
-// chat-settings-modal.js — Model settings modal functions
-// Extracted from main.js for single-responsibility.
+// chat-settings-modal.js — Right panel config + system prompt modal
 // ======================================================
 
 function openModelSettings() {
-  var modal = document.getElementById('model-settings-modal');
-  if (!modal) return;
-
-  // Request current settings from AHK to pre-populate fields
+  // Settings are always visible in right panel — no modal to open
+  // Request current settings from AHK
   window.chrome.webview.postMessage(JSON.stringify({ action: 'requestCurrentSettings' }));
-
-  // Populate provider dropdown from modelList
-  var providerSelect = document.getElementById('settings-provider');
-  if (providerSelect && window.modelList) {
-    while (providerSelect.options.length > 1) providerSelect.remove(1);
-    for (var key in window.modelList) {
-      var opt = document.createElement('option');
-      opt.value = key;
-      opt.textContent = key.charAt(0).toUpperCase() + key.slice(1);
-      providerSelect.appendChild(opt);
-    }
-  }
-
-  modal.style.display = 'block';
 }
 
 function populateCurrentSettings(settings) {
   if (!settings) return;
-  var model = settings.model || '';
-  var systemPrompt = settings.systemMessage || '';
-  var reasoning = settings.reasoning || '';
-  var temperature = settings.temperature || '';
 
-  // Set model: extract provider prefix to select correct dropdowns
-  if (model && window.modelList) {
-    var slashPos = model.indexOf('/');
-    if (slashPos > 0) {
-      var providerKey = model.substring(0, slashPos);
-      var providerSelect = document.getElementById('settings-provider');
-      if (providerSelect) {
-        providerSelect.value = providerKey;
-        onSettingsProviderChange();
-        var modelSelect = document.getElementById('settings-model');
-        if (modelSelect) {
-          modelSelect.value = model;
+  // Store all values (keep empty as empty — don't default to 1.0)
+  window._currentSettings = {
+    model: settings.model || '',
+    systemMessage: settings.systemMessage || '',
+    reasoning: settings.reasoning || '',
+    temperature: settings.temperature || '',
+    assistantName: settings.assistantName || '',
+    assistantBaseModel: settings.assistantBaseModel || '',
+    assistantDescription: settings.assistantDescription || ''
+  };
+
+  // Update model card
+  _updateModelCard();
+
+  // System prompt mini textarea
+  var mini = document.getElementById('sysMsgMini');
+  if (mini) mini.value = settings.systemMessage || '';
+
+  // Temperature slider
+  var tempSlider = document.getElementById('tempSlider');
+  var tempVal = document.getElementById('tempVal');
+  var tempReset = document.getElementById('tempReset');
+  if (tempSlider) {
+    var hasTemp = settings.temperature && settings.temperature !== '';
+    if (hasTemp) {
+      tempSlider.value = settings.temperature;
+      tempSlider.classList.remove('temp-default');
+      if (tempVal) tempVal.textContent = parseFloat(tempSlider.value).toFixed(1);
+      if (tempReset) tempReset.style.display = '';
+    } else {
+      tempSlider.value = '1.0';
+      tempSlider.classList.add('temp-default');
+      if (tempVal) tempVal.textContent = 'Default';
+      if (tempReset) tempReset.style.display = 'none';
+    }
+  }
+
+  // Thinking dropdown
+  var thinkingDropdown = document.getElementById('reasoningDropdown');
+  if (thinkingDropdown && settings.reasoning !== undefined) {
+    thinkingDropdown.value = settings.reasoning;
+  }
+}
+
+// Called by main.js when dropdownLabel arrives
+function updateDropdownLabel(data) {
+  if (!data || !window._currentSettings) return;
+  if (!data.isAssistant && data.text) {
+    // Only update model if not already set (avoids overwriting full model ID)
+    if (!window._currentSettings.model || window._currentSettings.model.indexOf(data.text) < 0) {
+      window._currentSettings.model = data.text;
+    }
+    window._currentSettings.assistantName = '';
+    _updateModelCard();
+  }
+  if (data.isAssistant && data.text) {
+    window._currentSettings.assistantName = data.text;
+    // Find assistant in list to get base model and description
+    if (window._assistantList) {
+      for (var i = 0; i < window._assistantList.length; i++) {
+        if (window._assistantList[i].name === data.text) {
+          window._currentSettings.assistantBaseModel = window._assistantList[i].baseModel || '';
+          window._currentSettings.assistantDescription = window._assistantList[i].description || '';
+          break;
         }
       }
     }
-  }
-
-  var sysPromptEl = document.getElementById('settings-system-prompt');
-  var reasoningEl = document.getElementById('settings-reasoning');
-  var tempEl = document.getElementById('settings-temperature');
-
-  if (sysPromptEl) sysPromptEl.value = systemPrompt;
-  if (reasoningEl) reasoningEl.value = reasoning;
-  if (tempEl) tempEl.value = temperature;
-
-  // Remove any leftover read-only banner
-  var bannerEl = document.getElementById('settings-readonly-banner');
-  if (bannerEl) bannerEl.remove();
-}
-
-function updateDropdownLabel(data) {
-  var selector = document.getElementById('assistant-selector');
-  if (!selector || !data) return;
-  // Update the first option (Default Model) text to show current state
-  if (data.text && !data.isAssistant) {
-    selector.options[0].textContent = data.text;
-  }
-  // If assistant, select it in the dropdown
-  if (data.isAssistant && data.text) {
-    for (var i = 1; i < selector.options.length; i++) {
-      if (selector.options[i].textContent === data.text) {
-        selector.value = selector.options[i].value;
-        return;
-      }
-    }
-  } else if (!data.isAssistant) {
-    selector.value = '';
+    _updateModelCard();
   }
 }
 
 function closeModelSettings() {
-  var modal = document.getElementById('model-settings-modal');
-  if (modal) modal.style.display = 'none';
+  // No-op in new UI
 }
 
-function onSettingsProviderChange() {
-  var provider = document.getElementById('settings-provider').value;
-  var modelSelect = document.getElementById('settings-model');
-  if (!modelSelect) return;
+// Wire right panel controls
+if (typeof document !== 'undefined' && document.addEventListener) {
+document.addEventListener('DOMContentLoaded', function() {
+  window._currentSettings = { model: '', systemMessage: '', reasoning: '', temperature: '' };
 
-  while (modelSelect.options.length > 1) modelSelect.remove(1);
-
-  if (!provider || !window.modelList || !window.modelList[provider]) return;
-
-  var models = window.modelList[provider];
-  for (var i = 0; i < models.length; i++) {
-    var opt = document.createElement('option');
-    opt.value = models[i].fullId;
-    opt.textContent = models[i].id;
-    modelSelect.appendChild(opt);
+  // Temperature slider — auto-enable on interaction, reset to default
+  var tempSlider = document.getElementById('tempSlider');
+  var tempVal = document.getElementById('tempVal');
+  var tempReset = document.getElementById('tempReset');
+  if (tempSlider) {
+    tempSlider.addEventListener('input', function() {
+      // Auto-enable on first interaction
+      if (tempSlider.classList.contains('temp-default')) {
+        tempSlider.classList.remove('temp-default');
+        if (tempReset) tempReset.style.display = '';
+      }
+      if (tempVal) tempVal.textContent = parseFloat(tempSlider.value).toFixed(1);
+    });
+    tempSlider.addEventListener('change', function() {
+      window._currentSettings.temperature = tempSlider.value;
+      _sendAllSettings();
+    });
   }
-}
+  if (tempReset) {
+    tempReset.addEventListener('click', function() {
+      tempSlider.value = '1.0';
+      tempSlider.classList.add('temp-default');
+      if (tempVal) tempVal.textContent = 'Default';
+      tempReset.style.display = 'none';
+      window._currentSettings.temperature = '';
+      _sendAllSettings();
+    });
+  }
 
-function saveModelSettings() {
-  var model = document.getElementById('settings-model')?.value || '';
-  var systemPrompt = document.getElementById('settings-system-prompt')?.value || '';
-  var reasoning = document.getElementById('settings-reasoning')?.value || '';
-  var temperature = document.getElementById('settings-temperature')?.value || '';
+  // System prompt expand modal
+  var expandBtn = document.getElementById('expandSysMsg');
+  if (expandBtn) expandBtn.addEventListener('click', function() {
+    var overlay = document.getElementById('sysMsgOverlay');
+    var mini = document.getElementById('sysMsgMini');
+    var full = document.getElementById('sysMsgFull');
+    if (overlay && mini && full) {
+      full.value = mini.value;
+      overlay.classList.add('open');
+    }
+  });
 
-  window.chrome.webview.postMessage(JSON.stringify({
-    action: 'updateModelSettings',
-    model: model,
-    systemMessage: systemPrompt,
-    reasoning: reasoning,
-    temperature: temperature
-  }));
+  // System prompt save
+  var sysMsgSave = document.getElementById('sysMsgSave');
+  if (sysMsgSave) sysMsgSave.addEventListener('click', function() {
+    var full = document.getElementById('sysMsgFull');
+    var mini = document.getElementById('sysMsgMini');
+    var overlay = document.getElementById('sysMsgOverlay');
+    if (full && mini) {
+      mini.value = full.value;
+      window._currentSettings.systemMessage = full.value;
+      _sendAllSettings();
+    }
+    if (overlay) overlay.classList.remove('open');
+  });
 
-  closeModelSettings();
-}
+  // System prompt close/cancel
+  var sysMsgClose = document.getElementById('sysMsgClose');
+  var sysMsgCancel = document.getElementById('sysMsgCancel');
+  if (sysMsgClose) sysMsgClose.addEventListener('click', function() {
+    document.getElementById('sysMsgOverlay').classList.remove('open');
+  });
+  if (sysMsgCancel) sysMsgCancel.addEventListener('click', function() {
+    document.getElementById('sysMsgOverlay').classList.remove('open');
+  });
+  // Overlay background click
+  var sysMsgOverlay = document.getElementById('sysMsgOverlay');
+  if (sysMsgOverlay) sysMsgOverlay.addEventListener('click', function(e) {
+    if (e.target === sysMsgOverlay) sysMsgOverlay.classList.remove('open');
+  });
+
+  // Thinking level dropdown
+  var thinkingDropdown = document.getElementById('reasoningDropdown');
+  if (thinkingDropdown) thinkingDropdown.addEventListener('change', function() {
+    window._currentSettings.reasoning = thinkingDropdown.value;
+    _sendAllSettings();
+  });
+
+  // Advanced toggle
+  var advToggle = document.getElementById('advancedToggle');
+  var advWrap = document.getElementById('advancedWrap');
+  if (advToggle && advWrap) advToggle.addEventListener('click', function() {
+    advWrap.classList.toggle('open');
+  });
+
+  // Toggle switches
+  document.querySelectorAll('.toggle-row .switch').forEach(function(sw) {
+    sw.addEventListener('click', function() {
+      sw.classList.toggle('on');
+      _sendAllSettings();
+    });
+  });
+
+  // Model card click — handled by chat-settings.js
+});
+
+} // end DOMContentLoaded guard

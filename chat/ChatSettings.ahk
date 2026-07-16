@@ -83,13 +83,13 @@ _sendDropdownLabel() {
         }
     }
     model := requestParams["singleAPIModelName"]
-    if model && model != chatDefaultModel {
-        ; Show model name without provider prefix
+    if model {
+        ; Always show actual model name, never "Default Model"
         displayModel := ModelParser.StripProvider(model)
         postWebMessage("dropdownLabel", { text: displayModel, isAssistant: false })
         return
     }
-    postWebMessage("dropdownLabel", { text: "Default Model", isAssistant: false })
+    postWebMessage("dropdownLabel", { text: ModelParser.StripProvider(chatDefaultModel), isAssistant: false })
 }
 
 handleSwitchAssistant(parsed) {
@@ -130,6 +130,9 @@ handleSwitchAssistant(parsed) {
     }
 
     _sendDropdownLabel()
+    postCurrentSettingsToWebView()
+    if activeThreadId
+        postThreadStats(activeThreadId)
     debugLog("[MODEL] Switched to assistant: " asst.name " (" asst.baseModel ")")
 }
 
@@ -163,32 +166,8 @@ handleModelSettingsUpdate(parsed) {
     ; Persist to DB
     if activeThreadId {
         ChatDB.Thread_UpdateSettings(activeThreadId, _CurrentSettingsObject())
+        postThreadStats(activeThreadId)
 
-        ; Upsert or remove system message in chat
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
-        existingSysId := ""
-        for msg in path {
-            if msg.role = "system" {
-                existingSysId := msg.id
-                break
-            }
-        }
-        if systemMessage != "" {
-            if existingSysId {
-                ChatDB.Msg_Edit(existingSysId, systemMessage)
-            } else {
-                ChatDB.Msg_Insert({
-                    thread_id: activeThreadId, role: "system",
-                    content: systemMessage, parent_id: ""
-                })
-            }
-        } else if existingSysId {
-            ; System message was cleared — delete the row from messages table
-            ChatDB.Msg_HardDelete(existingSysId)
-        }
-        ; Refresh chat view so changes appear immediately
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
-        postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
     }
 
     _sendDropdownLabel()
@@ -200,11 +179,28 @@ postCurrentSettingsToWebView() {
     systemMessage := requestParams.Has("systemOverride") ? requestParams["systemOverride"] : ""
     reasoning := requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : ""
     temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
+
+    ; Include assistant metadata when active
+    assistantName := ""
+    assistantBaseModel := ""
+    assistantDescription := ""
+    if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
+        asst := ChatDB.Assistant_Get(requestParams["activeAssistantId"])
+        if asst {
+            assistantName := asst.name
+            assistantBaseModel := asst.baseModel ? asst.baseModel : ""
+            assistantDescription := asst.description ? asst.description : ""
+        }
+    }
+
     postWebMessage("currentSettings", {
         model: model,
         systemMessage: systemMessage,
         reasoning: reasoning,
-        temperature: temperature
+        temperature: temperature,
+        assistantName: assistantName,
+        assistantBaseModel: assistantBaseModel,
+        assistantDescription: assistantDescription
     })
 }
 

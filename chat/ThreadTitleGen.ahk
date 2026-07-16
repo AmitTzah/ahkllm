@@ -31,6 +31,7 @@ generateThreadTitle(threadId) {
     if title {
         ChatDB.Thread_Update(threadId, title)
         postWebMessage("threadList", ChatDB.Thread_List())
+        postWebMessage("updateTopbarTitle", { text: title, folder: "Unfiled" })
     }
 
     _TitleGen_LogRequest(titleModel, payload, raw, title, titleGenStart)

@@ -5,16 +5,6 @@
 
 window.chrome.webview.addEventListener('message', handleWebMessage);
 
-// Set Bootstrap theme based on darkMode config
-function setTheme(isDark) {
-  document.documentElement.setAttribute("data-bs-theme", isDark ? "dark" : "light");
-}
-
-// Apply font face to the document body (from user config)
-function setFontFace(fontFamily) {
-  document.body.style.fontFamily = fontFamily;
-}
-
 // Initialize markdown-it with options
 var md = window.markdownit({
   html: true,
@@ -55,14 +45,6 @@ function handleWebMessage(event) {
     var data = message.data;
 
     switch (target) {
-      case 'setTheme':
-        setTheme(Array.isArray(data) ? data[0] : data);
-        break;
-
-      case 'setFontFace':
-        setFontFace(Array.isArray(data) ? data[0] : data);
-        break;
-
       case 'initChatMode':
         initChatMode(data);
         renderNavList();
@@ -70,6 +52,7 @@ function handleWebMessage(event) {
 
       case 'appendChatMessage':
         appendChatMessage(data);
+        renderNavList();
         break;
 
       case 'removeLastAssistantMessage':
@@ -92,24 +75,26 @@ function handleWebMessage(event) {
         updateChatMessages(data);
         break;
 
-      case 'updateBranchInfo':
-        updateBranchInfo(data);
-        break;
-
       case 'undeleteMessage':
         // Handled by AHK via message passing — no JS action needed
         break;
 
       case 'renderChatTree':
-        // Only render tree content — don't auto-open modal on thread switch
-        var treeContainer = document.getElementById('tree-container');
-        if (treeContainer) {
+        window._treeData = data;
+        var treeOverlay = document.getElementById('treeOverlay');
+        if (treeOverlay && treeOverlay.classList.contains('open')) {
           renderChatTree(data);
         }
         break;
 
       case 'threadList':
-        loadThreadList(data);
+        if (Array.isArray(data)) {
+          loadThreadList(data, []);
+        } else if (data && data.threads) {
+          loadThreadList(data.threads, data.folders || []);
+        } else {
+          loadThreadList(data, []);
+        }
         break;
 
       case 'trashList':
@@ -132,11 +117,13 @@ function handleWebMessage(event) {
         break;
 
       case 'assistantList':
-        populateAssistantDropdown(data);
+        window.assistantList = data;
+        if (typeof populateAssistantDropdown === 'function') populateAssistantDropdown(data);
         break;
 
       case 'modelList':
         window.modelList = data;
+        if (typeof _populatePopover === 'function') _populatePopover();
         break;
 
       case 'showError':
@@ -144,11 +131,16 @@ function handleWebMessage(event) {
         break;
 
       case 'currentSettings':
-        populateCurrentSettings(data);
+        if (typeof populateCurrentSettings === 'function') populateCurrentSettings(data);
+        break;
+
+      case 'showDashboard':
+        if (typeof window._showDashboard === 'function') window._showDashboard();
         break;
 
       case 'dropdownLabel':
-        updateDropdownLabel(data);
+        window._dropdownLabel = data;
+        if (typeof updateDropdownLabel === 'function') updateDropdownLabel(data);
         break;
 
       default:
@@ -170,8 +162,78 @@ function handleWebMessage(event) {
 
 // Attach event listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', function () {
-  // Show token usage bar immediately (zero state, updated by postThreadStats)
+  // Dashboard toggle via icon rail
+  var chatLayout = document.getElementById('chat-layout');
+  var dashPanel = document.getElementById('dashboard-panel');
+  function showDashboard() {
+    if (chatLayout) chatLayout.style.display = 'none';
+    if (dashPanel) { dashPanel.style.display = 'flex'; if (typeof loadData === 'function') loadData(); }
+    var di = document.getElementById('dashboard-icon'); if (di) di.classList.add('active');
+    var st = document.getElementById('sidebar-toggle'); if (st) st.classList.remove('active');
+  }
+  function showChat() {
+    if (chatLayout) chatLayout.style.display = '';
+    if (dashPanel) dashPanel.style.display = 'none';
+    var di = document.getElementById('dashboard-icon'); if (di) di.classList.remove('active');
+    var st = document.getElementById('sidebar-toggle'); if (st) st.classList.add('active');
+  }
+  window._showDashboard = showDashboard;
+  window._showChat = showChat;
+
+  var dashIcon = document.getElementById('dashboard-icon');
+  if (dashIcon) dashIcon.addEventListener('click', showDashboard);
+  var sidebarToggle = document.getElementById('sidebar-toggle');
+  if (sidebarToggle) sidebarToggle.addEventListener('click', function() {
+    showChat();
+    var railLeft = document.getElementById('railLeft');
+    if (railLeft && (railLeft.style.width === '0px' || railLeft.style.width === '' || railLeft.classList.contains('mini'))) {
+      railLeft.style.width = '340px';
+      railLeft.classList.remove('mini');
+    }
+    toggleSidebar();
+  });
+
   showTokenUsageBar();
+
+  // Request settings to populate right panel on load
+  if (typeof openModelSettings === 'function') openModelSettings();
+
+  // Request thread list and trash list on load (sidebar always visible in new UI)
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTrashList' }));
+
+  // Wire topbar rename button — inline editing
+  var renameBtn = document.querySelector('.rename-chat-btn');
+  if (renameBtn) renameBtn.addEventListener('click', function() {
+    var titleEl = document.querySelector('.title-text');
+    if (!titleEl || titleEl.querySelector('input')) return; // already editing
+    var currentTitle = titleEl.textContent;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentTitle;
+    input.style.cssText = 'font:inherit;color:inherit;background:var(--bg-hover);border:1px solid var(--border-main);border-radius:6px;padding:2px 8px;width:300px;outline:none;';
+    titleEl.textContent = '';
+    titleEl.appendChild(input);
+    input.focus();
+    input.select();
+    var save = function() {
+      var newTitle = input.value.trim();
+      titleEl.textContent = newTitle || currentTitle;
+      if (newTitle && newTitle !== currentTitle) {
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameThread', threadId: activeThreadId, title: newTitle }));
+      }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { input.blur(); } if (e.key === 'Escape') { titleEl.textContent = currentTitle; } });
+  });
+
+  // Wire tree button
+  var treeBtn = document.getElementById('treeBtn');
+  if (treeBtn) treeBtn.addEventListener('click', function() {
+    if (typeof toggleTreeModal === 'function') toggleTreeModal();
+  });
+
+  // Sidebar toggle handled above (chat↔dashboard toggle)
 
   // Chat send button
   // NOTE: Do NOT add a click listener here. setChatButtonsEnabled() manages
@@ -201,9 +263,45 @@ document.addEventListener('DOMContentLoaded', function () {
   var copyAllBtn = document.getElementById('copy-entire-chat-btn');
   if (copyAllBtn) copyAllBtn.addEventListener('click', copyEntireChat);
 
-  // Sidebar toggle
-  var sidebarToggle = document.getElementById('sidebar-toggle');
-  if (sidebarToggle) sidebarToggle.addEventListener('click', toggleSidebar);
+
+  // Tools dropdown toggle (matching mock)
+  document.querySelectorAll('.tools-toggle').forEach(function(t) {
+    t.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var parent = this.closest('.tools-dropdown');
+      var wasOpen = parent.classList.contains('menu-open');
+      document.querySelectorAll('.tools-dropdown.menu-open').forEach(function(d) { d.classList.remove('menu-open'); });
+      if (!wasOpen) parent.classList.add('menu-open');
+    });
+  });
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.tools-dropdown')) {
+      document.querySelectorAll('.tools-dropdown.menu-open').forEach(function(d) { d.classList.remove('menu-open'); });
+    }
+  });
+
+  // New folder button — inline input (no prompt)
+  var newFolderBtn = document.querySelector('.rail-head-actions button[title="New folder"]');
+  if (newFolderBtn) newFolderBtn.addEventListener('click', function() {
+    var headActions = document.querySelector('.rail-head-actions');
+    if (!headActions || headActions.querySelector('.inline-folder-input')) return;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'inline-folder-input';
+    input.placeholder = 'Folder name';
+    input.style.cssText = 'font-size:0.85rem;padding:4px 8px;border:1px solid var(--border-main);border-radius:4px;background:var(--bg-panel);color:var(--text-primary);width:120px;outline:none;';
+    headActions.appendChild(input);
+    input.focus();
+    var save = function() {
+      var name = input.value.trim();
+      input.remove();
+      if (name) {
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'createFolder', name: name }));
+      }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { input.blur(); } if (e.key === 'Escape') { input.remove(); } });
+  });
 
   // New chat button in sidebar
   var newChatBtn = document.getElementById('new-chat-btn');
@@ -212,10 +310,6 @@ document.addEventListener('DOMContentLoaded', function () {
   // Tree view button
   var treeBtn = document.getElementById('tree-view-btn');
   if (treeBtn) treeBtn.addEventListener('click', toggleTreeModal);
-
-  // Nav bar toggle
-  var navToggle = document.getElementById('nav-toggle');
-  if (navToggle) navToggle.addEventListener('click', toggleNavBar);
 
   // Restore chat state from sessionStorage if available (reload persistence)
   var storedIsChatMode = sessionStorage.getItem('isChatMode');
@@ -238,23 +332,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 
-// D6: Nav bar toggle
-var navBarOpen = false;
-
-function toggleNavBar() {
-  var navBar = document.getElementById('chat-nav-bar');
-  if (!navBar) return;
-
-  if (navBarOpen) {
-    navBar.style.display = 'none';
-    navBarOpen = false;
-  } else {
-    navBar.style.display = 'flex';
-    navBarOpen = true;
-    renderNavList();
-  }
-}
-
 function showError(data) {
   // data is { message: string }
   hideLoadingIndicator();
@@ -263,7 +340,7 @@ function showError(data) {
   if (!chatMessages) return;
   var el = document.createElement('div');
   el.className = 'error-banner';
-  el.style.cssText = 'background:var(--bs-danger);color:var(--bs-light);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
+  el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
   el.innerHTML = '<span>' + msg.replace(/</g, '<').replace(/>/g, '>') + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
   chatMessages.appendChild(el);
   chatMessages.scrollTop = chatMessages.scrollHeight;

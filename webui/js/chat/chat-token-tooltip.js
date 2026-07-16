@@ -1,32 +1,39 @@
 // ======================================================
-// chat-token-tooltip.js — Per-message token info tooltip
-// Click to toggle, click elsewhere to dismiss
+// chat-token-tooltip.js — Per-message token info popover
+// Matches mock's .stat-toggle / .stat-popover structure exactly
 // ======================================================
 
-function createTokenInfoIcon(msg) {
+function createTokenInfoIcon(msg, index) {
+  var wrapper = document.createElement('div');
+  wrapper.className = 'stat-toggle';
+
   var btn = document.createElement('button');
-  btn.className = 'msg-action-btn token-info-btn';
-  btn.textContent = '\uD83D\uDCCA';
-  btn.title = 'Click for token usage info';
+  btn.className = 'msg-action-btn stat-btn';
+  btn.title = 'Token Usage';
+  btn.innerHTML = '<i data-lucide="bar-chart-2"></i>';
+
+  var popover = document.createElement('div');
+  popover.className = 'stat-popover';
+  wrapper.appendChild(popover);
 
   btn.addEventListener('click', function(e) {
     e.stopPropagation();
-    var existing = btn.querySelector('.token-tooltip');
-    if (existing) {
-      existing.remove();
-    } else {
-      closeAllTokenTooltips();
-      showTokenTooltip(btn, msg);
+    var wasOpen = wrapper.classList.contains('pop-open');
+    // Close all other popovers
+    document.querySelectorAll('.stat-toggle.pop-open').forEach(function(p) { p.classList.remove('pop-open'); });
+    if (!wasOpen) {
+      // Always read from chatMessages (not closure) to get latest token data
+      var currentMsg = (typeof chatMessages !== 'undefined' && index < chatMessages.length) ? chatMessages[index] : msg;
+      showTokenTooltip(popover, currentMsg);
+      wrapper.classList.add('pop-open');
     }
   });
 
-  return btn;
+  wrapper.appendChild(btn);
+  return wrapper;
 }
 
-function showTokenTooltip(btn, msg) {
-  var tooltip = document.createElement('div');
-  tooltip.className = 'token-tooltip';
-
+function showTokenTooltip(popover, msg) {
   if (msg.role === 'assistant') {
     var visibleTokens = msg.tokenCount || 0;
     var thinkingTokens = msg.thinkingTokens || 0;
@@ -34,49 +41,46 @@ function showTokenTooltip(btn, msg) {
     var responseTimeMs = msg.responseTimeMs || 0;
     var ttftMs = msg.ttftMs || 0;
     var totalOutput = visibleTokens + thinkingTokens;
+    var tokPerSec = responseTimeMs > 0 && totalOutput > 0 ? Math.round(totalOutput / (responseTimeMs / 1000)) : 0;
+    var totalTime = (responseTimeMs / 1000).toFixed(1);
 
-    var tokPerSec = '';
-    if (responseTimeMs > 0 && totalOutput > 0) {
-      tokPerSec = Math.round(totalOutput / (responseTimeMs / 1000));
-    }
-
-    var lines = [];
-    lines.push('<div class="token-tooltip-title">\uD83D\uDCCA Token Usage</div>');
-    lines.push('<div class="token-tooltip-row">Output: <span>' + formatNumber(totalOutput) + ' tokens</span></div>');
-    lines.push('<div class="token-tooltip-sub">  \u251C Visible: <span>' + formatNumber(visibleTokens) + ' tokens</span></div>');
-    lines.push('<div class="token-tooltip-sub">  \u2514 Thinking: <span>' + formatNumber(thinkingTokens) + ' tokens</span></div>');
-    lines.push('<div class="token-tooltip-row">Cache: <span>' + formatNumber(cachedTokens) + ' tokens</span></div>');
-    if (tokPerSec) {
-      lines.push('<div class="token-tooltip-row">Speed: <span>' + formatNumber(tokPerSec) + ' tok/sec</span></div>');
-    }
-    if (responseTimeMs > 0) {
-      if (ttftMs > 0) {
-        lines.push('<div class="token-tooltip-row">TTFT: <span>' + (ttftMs / 1000).toFixed(2) + 's</span></div>');
-      }
-      lines.push('<div class="token-tooltip-row">Total time: <span>' + (responseTimeMs / 1000).toFixed(1) + 's</span></div>');
-    }
-    tooltip.innerHTML = lines.join('');
+    popover.innerHTML =
+      '<div style="font-weight:600; font-size:15px; margin-bottom:14px; display:flex; align-items:center; gap:8px; color:var(--accent-primary);">' +
+        '<i data-lucide="bar-chart-2" style="width:18px;height:18px;"></i> Token Usage' +
+      '</div>' +
+      '<div style="font-size:14px; line-height:1.6; color:var(--text-secondary);">' +
+        '<div>Output: <span style="font-weight:600;color:var(--text-primary);">' + formatNumber(totalOutput) + ' tokens</span></div>' +
+        '<div style="padding-left:16px; border-left:2px solid var(--border-main); margin-left:8px; margin-top:4px;">' +
+          '<div>Visible: ' + formatNumber(visibleTokens) + ' tokens</div>' +
+          '<div>Thinking: ' + formatNumber(thinkingTokens) + ' tokens</div>' +
+        '</div>' +
+        '<div style="margin-top:8px;">Cache: <span style="font-weight:600;color:var(--text-primary);">' + formatNumber(cachedTokens) + ' tokens</span></div>' +
+        (tokPerSec > 0 ? '<div style="margin-top:4px;">Speed: <span style="font-weight:600;color:var(--text-primary);">' + formatNumber(tokPerSec) + ' tok/sec</span></div>' : '') +
+        (ttftMs > 0 ? '<div style="margin-top:4px;">TTFT: <span style="font-weight:600;color:var(--text-primary);">' + (ttftMs / 1000).toFixed(2) + 's</span></div>' : '') +
+        '<div style="margin-top:6px; padding-top:6px; border-top:1px solid var(--border-light);">Total time: <span style="font-weight:600;color:var(--text-primary);">' + totalTime + 's</span></div>' +
+      '</div>';
   } else if (msg.role === 'user') {
     var inputTokens = msg.tokenCount || 0;
-    tooltip.innerHTML =
-      '<div class="token-tooltip-title">\uD83D\uDCCA Token Usage</div>' +
-      '<div class="token-tooltip-row">Input: <span>' + formatNumber(inputTokens) + ' tokens</span></div>' +
-      '<div class="token-tooltip-sub">(contribution to context)</div>';
+    popover.innerHTML =
+      '<div style="font-weight:600; font-size:15px; margin-bottom:14px; display:flex; align-items:center; gap:8px; color:var(--accent-primary);">' +
+        '<i data-lucide="bar-chart-2" style="width:18px;height:18px;"></i> Token Usage' +
+      '</div>' +
+      '<div style="font-size:14px; line-height:1.6; color:var(--text-secondary);">' +
+        '<div>Input: <span style="font-weight:600;color:var(--text-primary);">' + formatNumber(inputTokens) + ' tokens</span></div>' +
+        '<div style="padding-left:16px; border-left:2px solid var(--border-main); margin-left:8px; margin-top:4px;">(contribution to context)</div>' +
+      '</div>';
   }
 
-  btn.appendChild(tooltip);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function closeAllTokenTooltips() {
-  var tooltips = document.querySelectorAll('.token-tooltip');
-  for (var i = 0; i < tooltips.length; i++) {
-    tooltips[i].remove();
-  }
+  document.querySelectorAll('.stat-toggle.pop-open').forEach(function(p) { p.classList.remove('pop-open'); });
 }
 
-// Close any open tooltip when clicking elsewhere
+// Close popovers when clicking outside
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.token-info-btn')) {
+  if (!e.target.closest('.stat-toggle')) {
     closeAllTokenTooltips();
   }
 });

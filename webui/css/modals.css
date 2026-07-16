@@ -1,0 +1,42 @@
+/* modals.css — Modal overlays, tree modal, system message modal */
+/* Extracted from chat-ui-mock.html lines 557-596 */
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); backdrop-filter: blur(2px); display: none; align-items: center; justify-content: center; z-index: 50; }
+.modal-overlay.open { display: flex; }
+
+.modal-box { background: var(--bg-panel); border-radius: var(--radius-lg); box-shadow: var(--shadow-modal); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-main); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 24px 32px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
+.modal-title { font-weight: 600; font-size: 20px; color: var(--text-primary); }
+
+.tree-modal { width: 900px; max-width: 95vw; height: 700px; max-height: 90vh; }
+.tree-modal-sub { font-size: 14px; color: var(--text-tertiary); margin-top: 6px; }
+.tree-controls { display: flex; align-items: center; gap: 20px; }
+.zoom-controls { display: flex; align-items: center; background: var(--bg-hover); border-radius: var(--radius-sm); padding: 4px; }
+.zoom-controls button { border: none; background: transparent; color: var(--text-secondary); width: 36px; height: 36px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.zoom-controls button:hover { background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.zoom-controls button svg { width: 18px; height: 18px; }
+.zoom-pct { font-family: var(--font-mono); font-size: 14px; width: 50px; text-align: center; color: var(--text-secondary); font-weight: 500;}
+
+.tree-canvas-wrap { flex: 1; overflow: hidden; position: relative; background: radial-gradient(circle, var(--border-main) 1px, transparent 1px) 0 0 / 24px 24px; background-color: var(--bg-main); cursor: grab; }
+.tree-canvas-wrap.panning { cursor: grabbing; }
+.tree-zoom-layer { transform-origin: 0 0; width: 100%; height: 100%; }
+.tree-canvas { position: relative; width: 1200px; height: 800px; padding: 40px; }
+
+.tree-node {
+  position: absolute; width: 260px; border: 1px solid var(--border-main); border-radius: var(--radius-md);
+  background: var(--bg-panel); padding: 16px 20px; transition: all 0.2s; cursor: pointer;
+}
+.tree-node:hover { border-color: var(--accent-primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.tree-node.active-path { border-color: var(--accent-primary); border-width: 2px; }
+.tree-node-role { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text-tertiary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.tree-node-text { font-size: 15px; color: var(--text-primary); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+.sysmsg-modal { width: 720px; max-width: 90vw; height: 600px; max-height: 85vh; }
+.sysmsg-body { flex: 1; padding: 32px; display: flex; flex-direction: column; background: var(--bg-main); }
+.sysmsg-body textarea { 
+  flex: 1; width: 100%; border: 1px solid var(--border-main); border-radius: var(--radius-sm); padding: 20px; 
+  font-family: var(--font-mono); font-size: 15px; line-height: 1.6; resize: none; outline: none; color: var(--text-primary);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.02);
+}
+.sysmsg-body textarea:focus { border-color: var(--accent-primary); background: var(--bg-panel); }
+.sysmsg-foot { display: flex; align-items: center; justify-content: space-between; padding: 20px 32px; border-top: 1px solid var(--border-light); background: var(--bg-panel); }

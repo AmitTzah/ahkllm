@@ -18,46 +18,6 @@ function _iconBtn(icon, title, onClick) {
 }
 
 // Create the "More" dropdown menu
-function _createMoreDropdown(items) {
-  var wrapper = document.createElement('span');
-  wrapper.className = 'more-dropdown';
-
-  var toggleBtn = _iconBtn('\u22EF', 'More actions', function() {});
-  toggleBtn.classList.add('more-toggle');
-
-  // Toggle menu on click
-  toggleBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    var menu = wrapper.querySelector('.more-menu');
-    var isOpen = menu.style.display === 'block';
-    // Close all other open menus first
-    document.querySelectorAll('.more-menu').forEach(function(m) {
-      m.style.display = 'none';
-    });
-    menu.style.display = isOpen ? 'none' : 'block';
-  });
-
-  var menu = document.createElement('div');
-  menu.className = 'more-menu';
-  menu.style.display = 'none';
-
-  items.forEach(function(item) {
-    var itemBtn = document.createElement('button');
-    itemBtn.className = 'more-menu-item';
-    itemBtn.textContent = item.label;
-    itemBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      item.action();
-      menu.style.display = 'none';
-    });
-    menu.appendChild(itemBtn);
-  });
-
-  wrapper.appendChild(toggleBtn);
-  wrapper.appendChild(menu);
-  return wrapper;
-}
-
 // Add branch nav when multiple branches exist
 function _addBranchNav(container, msg) {
   var totalBranches = msg.siblingInfo ? msg.siblingInfo.total : 1;
@@ -80,58 +40,31 @@ function _addBranchNav(container, msg) {
 // Main entry point — called by createMessageBubble (chat-render.js)
 // and addStreamingActions (stream.js)
 function addMessageActions(actionsContainer, msg, index) {
-  // --- USER MESSAGE ACTIONS ---
+  // --- USER: branch-nav | copy | edit | quote | fork | delete | token ---
   if (msg.role === 'user') {
-    var copyBtn = _iconBtn('\uD83D\uDCCB', 'Copy', function() {
-      copySingleMessage(index);
-    });
-    copyBtn.dataset.action = 'copy';
-    actionsContainer.appendChild(copyBtn);
-
-    actionsContainer.appendChild(_iconBtn('\u270F\uFE0F', 'Edit', function() {
-      editMessage(index);
-    }));
-
     _addBranchNav(actionsContainer, msg);
 
-    var tokenIcon = createTokenInfoIcon(msg);
-    if (tokenIcon) actionsContainer.appendChild(tokenIcon);
+    actionsContainer.appendChild(_iconBtn('<i data-lucide="copy"></i>', 'Copy', function() { copySingleMessage(index); }));
+    actionsContainer.appendChild(_iconBtn('<i data-lucide="edit-2"></i>', 'Edit', function() { editMessage(index); }));
+    actionsContainer.appendChild(_iconBtn('<i data-lucide="message-square-quote"></i>', 'Quote', function() { quoteMessage(index); }));
+    actionsContainer.appendChild(_iconBtn('<i data-lucide="git-branch"></i>', 'Fork', function() { forkChat(index); }));
+    actionsContainer.appendChild(_iconBtn('<i data-lucide="trash-2"></i>', 'Delete', function() { deleteMessage(index); }));
 
-    // Hidden actions: Quote, Fork, Delete
-    var moreItems = [
-      { label: '\uD83D\uDCAC Quote', action: function() { quoteMessage(index); } },
-      { label: '\u21AA Fork',  action: function() { forkChat(index); } },
-      { label: '\uD83D\uDDD1\uFE0F Delete', action: function() { deleteMessage(index); } }
-    ];
-    actionsContainer.appendChild(_createMoreDropdown(moreItems));
+    var tokenIcon = createTokenInfoIcon(msg, index);
+    if (tokenIcon) actionsContainer.appendChild(tokenIcon);
     return;
   }
 
-  // --- ASSISTANT MESSAGE ACTIONS ---
-  var copyBtn = _iconBtn('\uD83D\uDCCB', 'Copy', function() {
-    copySingleMessage(index);
-  });
-  copyBtn.dataset.action = 'copy';
-  actionsContainer.appendChild(copyBtn);
-
-  actionsContainer.appendChild(_iconBtn('\uD83D\uDD04', 'Retry', function() {
-    retryLastAssistantMessage(msg.id);
-  }));
-
-  actionsContainer.appendChild(_iconBtn('\u270F\uFE0F', 'Edit', function() {
-    editMessage(index);
-  }));
-
+  // --- ASSISTANT: branch-nav | copy | retry | edit | quote | fork | delete | token ---
   _addBranchNav(actionsContainer, msg);
 
-  var tokenIcon = createTokenInfoIcon(msg);
-  if (tokenIcon) actionsContainer.appendChild(tokenIcon);
+  actionsContainer.appendChild(_iconBtn('<i data-lucide="copy"></i>', 'Copy', function() { copySingleMessage(index); }));
+  actionsContainer.appendChild(_iconBtn('<i data-lucide="refresh-cw"></i>', 'Retry', function() { retryLastAssistantMessage(msg.id); }));
+  actionsContainer.appendChild(_iconBtn('<i data-lucide="edit-2"></i>', 'Edit', function() { editMessage(index); }));
+  actionsContainer.appendChild(_iconBtn('<i data-lucide="message-square-quote"></i>', 'Quote', function() { quoteMessage(index); }));
+  actionsContainer.appendChild(_iconBtn('<i data-lucide="git-branch"></i>', 'Fork', function() { forkChat(index); }));
+  actionsContainer.appendChild(_iconBtn('<i data-lucide="trash-2"></i>', 'Delete', function() { deleteMessage(index); }));
 
-  // Hidden actions: Quote, Fork, Delete
-  var moreItems = [
-    { label: '\uD83D\uDCAC Quote', action: function() { quoteMessage(index); } },
-    { label: '\u21AA Fork',  action: function() { forkChat(index); } },
-    { label: '\uD83D\uDDD1\uFE0F Delete', action: function() { deleteMessage(index); } }
-  ];
-  actionsContainer.appendChild(_createMoreDropdown(moreItems));
+  var tokenIcon = createTokenInfoIcon(msg, index);
+  if (tokenIcon) actionsContainer.appendChild(tokenIcon);
 }

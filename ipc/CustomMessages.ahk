@@ -13,7 +13,8 @@ class CustomMessages {
     static WM_CHAT_WINDOW_OPENED := 0x500 + 0
     static WM_LOAD_THREAD := 0x500 + 2
     static WM_TRIGGER_LLM := 0x500 + 4
-    static WM_OPEN_USAGE_DASHBOARD := 0x500 + 5
+    static WM_SHOW_DASHBOARD := 0x500 + 6
+    static WM_SHOW_API_LOGS := 0x500 + 7
 
     static registerHandlers(origin, handle) {
         switch origin {
@@ -21,7 +22,7 @@ class CustomMessages {
                 for msg in [this.WM_LOADING_START,
                     this.WM_LOADING_FINISH,
                     this.WM_CHAT_WINDOW_OPENED,
-                    this.WM_OPEN_USAGE_DASHBOARD]
+                    this.WM_SHOW_API_LOGS]
                     OnMessage(msg, handle)
 
             case "subScript":
@@ -58,8 +59,13 @@ class CustomMessages {
         try PostMessage(this.WM_TRIGGER_LLM, 0, 0, , "ahk_id " chatWindowhWnd)
     }
 
-    ; ChatWindow → Main: open the usage dashboard
-    static notifyOpenUsageDashboard(mainScriptHiddenhWnd) {
-        try PostMessage(this.WM_OPEN_USAGE_DASHBOARD, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
+    ; Main → ChatWindow: show inline dashboard
+    static notifyShowDashboard(chatWindowhWnd) {
+        try PostMessage(this.WM_SHOW_DASHBOARD, 0, 0, , "ahk_id " chatWindowhWnd)
+    }
+
+    ; ChatWindow → Main: open API logs viewer
+    static notifyShowApiLogs(mainScriptHiddenhWnd) {
+        try PostMessage(this.WM_SHOW_API_LOGS, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
     }
 }

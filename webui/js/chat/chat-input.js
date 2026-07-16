@@ -93,14 +93,15 @@ function setChatButtonsEnabled(enabled) {
   var input = document.getElementById('chat-input');
   if (sendBtn) {
     if (enabled) {
-      sendBtn.textContent = 'Send';
+      sendBtn.innerHTML = '<i data-lucide="send"></i>';
       sendBtn.disabled = false;
       sendBtn.onclick = onChatSend;
     } else {
-      sendBtn.textContent = 'Stop';
+      sendBtn.innerHTML = '<i data-lucide="square"></i>';
       sendBtn.disabled = false;
       sendBtn.onclick = onStopStreaming;
     }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   if (input) input.disabled = !enabled;
   if (enabled && input) input.focus();

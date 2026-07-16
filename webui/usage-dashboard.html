@@ -4,60 +4,83 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Usage Dashboard</title>
-<link rel="stylesheet" href="./Bootstrap/bootstrap.min.css">
 <style>
-  html, body { background: #ffffff !important; color: #1a1a2e !important; font-size: 0.88rem; font-family: system-ui, -apple-system, sans-serif; }
-  html, body { height: 100%; }
-  body { margin: 0; padding: 16px 20px; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; }
-  .form-select, .form-select-sm, .btn { background: #fff; color: #1a1a2e; border-color: #d0d0d0; }
-  .stat-card { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 18px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-  .stat-card .value { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; }
-  .stat-card .label { font-size: 0.75rem; color: #6b7280; margin-top: 2px; }
-  .chart-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin-bottom: 14px; position: relative; }
-  .chart-card h6 { font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 8px; }
-  .main-chart { flex: 2 1 0; display: flex; flex-direction: column; min-height: 280px; }
-  .chart-container { position: relative; flex: 1 1 auto; min-height: 220px; }
-  .chart-container-sm { position: relative; flex: 1 1 auto; min-height: 160px; width: 100%; }
-  .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-  .toggle-group { display: inline-flex; border: 1px solid #d0d0d0; border-radius: 6px; overflow: hidden; }
-  .toggle-group button { background: #fff; border: none; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; color: #6b7280; }
-  .toggle-group button.active { background: #1a56db; color: #fff; }
-  #modelSections { flex: 3 1 0; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
-  .model-section { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 200px; margin-bottom: 14px; }
-  .model-section:last-child { margin-bottom: 0; }
-  .model-section h6 { font-size: 0.8rem; font-weight: 600; color: #4b5563; margin-bottom: 4px; }
-  .model-section .row { flex: 1 1 auto; min-height: 0; }
-  .model-section .row > div { display: flex; }
-  .page-link { color: #1a56db; }
-  .table th { cursor: pointer; user-select: none; white-space: nowrap; }
-  .table td { font-size: 0.8rem; }
+  :root {
+    --bg-main: #FAFAFA; --bg-panel: #FFFFFF; --bg-hover: #F3F4F6; --bg-active: #EEF2FF;
+    --text-primary: #111827; --text-secondary: #4B5563; --text-tertiary: #9CA3AF;
+    --accent-primary: #4F46E5; --accent-hover: #4338CA; --accent-light: #E0E7FF;
+    --border-light: #F3F4F6; --border-main: #E5E7EB; --border-focus: #C7D2FE;
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05); --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+    --font-ui: 'Inter', system-ui, sans-serif; --font-mono: 'JetBrains Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; background: var(--bg-main); color: var(--text-primary); font-family: var(--font-ui); font-size: 14px; }
+  body { display: flex; flex-direction: column; overflow-y: auto; }
+
+  .dash-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; flex-shrink: 0; }
+  .dash-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+
+  .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 20px 14px; flex-shrink: 0; }
+  .filter-bar select, .filter-bar button {
+    font-family: var(--font-ui); font-size: 13px; padding: 6px 12px; border: 1px solid var(--border-main);
+    border-radius: var(--radius-sm); background: var(--bg-panel); color: var(--text-primary); cursor: pointer; outline: none;
+  }
+  .filter-bar select:hover, .filter-bar button:hover { border-color: var(--border-focus); }
+  .filter-bar button { display: inline-flex; align-items: center; gap: 4px; }
+  .toggle-group { display: inline-flex; border: 1px solid var(--border-main); border-radius: var(--radius-sm); overflow: hidden; }
+  .toggle-group button { border: none; border-radius: 0; padding: 5px 12px; font-size: 12px; color: var(--text-tertiary); }
+  .toggle-group button.active { background: var(--accent-primary); color: #fff; }
+
+  .summary-row { display: flex; gap: 12px; padding: 0 20px 14px; flex-shrink: 0; }
+  .stat-card { flex: 1; background: var(--bg-panel); border: 1px solid var(--border-main); border-radius: var(--radius-md); padding: 14px 16px; text-align: center; }
+  .stat-card .value { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); }
+  .stat-card .label { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+  .stat-card .cost-info { cursor: help; font-size: 11px; opacity: 0.5; display: inline-block; margin-left: 2px; }
+
+  .chart-card { background: var(--bg-panel); border: 1px solid var(--border-main); border-radius: var(--radius-md); padding: 14px; margin: 0 20px 14px; }
+  .chart-card h6 { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 0 0 8px; }
+  .chart-header { display: flex; justify-content: space-between; align-items: center; }
+  .chart-container { position: relative; min-height: 240px; }
+  .chart-container-sm { position: relative; min-height: 170px; width: 100%; }
+
+  .models-section { margin: 0 20px; display: flex; flex-direction: column; gap: 14px; }
+  .model-section { display: flex; flex-direction: column; }
+  .model-section h6 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0 0 6px; }
+  .model-charts { display: flex; gap: 12px; }
+  .model-charts > div { flex: 1; min-width: 0; }
+
+  .empty-state { color: var(--text-tertiary); font-size: 13px; text-align: center; padding: 20px; }
 </style>
 </head>
 <body>
 
-<h4 style="font-weight:600;color:#1a1a2e;">📊 Usage Dashboard</h4>
+<div class="dash-header">
+  <span class="dash-title">Usage Dashboard</span>
+  <span style="font-size:12px;color:var(--text-tertiary);">Data from API logs</span>
+</div>
 
 <div class="filter-bar">
-  <select id="timeRange" class="form-select form-select-sm" style="width:auto"><option value="all">All Time</option><option value="month" selected>Last 30 Days</option><option value="thisMonth">This Month</option><option value="lastMonth">Last Month</option><option value="day">Last 24 Hours</option></select>
-  <select id="providerFilter" class="form-select form-select-sm" style="width:auto"><option value="">All Providers</option></select>
-  <select id="modelFilter" class="form-select form-select-sm" style="width:auto"><option value="">All Models</option></select>
-  <select id="typeFilter" class="form-select form-select-sm" style="width:auto"><option value="all">Chat + Commands</option><option value="chat">Chat Only</option><option value="command">Commands Only</option></select>
-  <button id="refreshBtn" class="btn btn-sm btn-outline-secondary">🔄 Refresh</button>
-  <button id="apiLogsBtn" class="btn btn-sm btn-outline-secondary" onclick="chrome.webview.postMessage(JSON.stringify({action:'showApiLogs'}))">📋 API Logs</button>
-  <button id="exportBtn" class="btn btn-sm btn-outline-secondary">📥 CSV</button>
+  <select id="timeRange"><option value="all">All Time</option><option value="month" selected>Last 30 Days</option><option value="thisMonth">This Month</option><option value="lastMonth">Last Month</option><option value="day">Last 24 Hours</option></select>
+  <select id="providerFilter"><option value="">All Providers</option></select>
+  <select id="modelFilter"><option value="">All Models</option></select>
+  <select id="typeFilter"><option value="all">Chat + Commands</option><option value="chat">Chat Only</option><option value="command">Commands Only</option></select>
+  <button id="refreshBtn">Refresh</button>
+  <button id="apiLogsBtn" onclick="chrome.webview.postMessage(JSON.stringify({action:'showApiLogs'}))">API Logs</button>
+  <button id="exportBtn">CSV</button>
 </div>
 
-<div class="d-flex g-3 mb-3" id="summaryRow" style="gap:0.75rem;">
-  <div style="flex:1"><div class="stat-card"><div class="value" id="totalCost">$0.00</div><div class="label">Total Cost <span id="costInfoIcon" style="cursor:help;font-size:0.75rem;opacity:0.5;" title="">ⓘ</span></div></div></div>
-  <div style="flex:1"><div class="stat-card"><div class="value" id="totalCalls">0</div><div class="label">API Requests</div></div></div>
-  <div style="flex:1"><div class="stat-card"><div class="value" id="totalTokens">0</div><div class="label">Total Tokens</div></div></div>
-  <div style="flex:1"><div class="stat-card"><div class="value" id="speedValue">—</div><div class="label">Speed</div></div></div>
-  <div style="flex:1"><div class="stat-card"><div class="value" id="ttftValue">—</div><div class="label">Latency (ttft)</div></div></div>
+<div class="summary-row" id="summaryRow">
+  <div class="stat-card"><div class="value" id="totalCost">$0.00</div><div class="label">Total Cost <span class="cost-info" id="costInfoIcon" title="">?</span></div></div>
+  <div class="stat-card"><div class="value" id="totalCalls">0</div><div class="label">API Requests</div></div>
+  <div class="stat-card"><div class="value" id="totalTokens">0</div><div class="label">Total Tokens</div></div>
+  <div class="stat-card"><div class="value" id="speedValue">—</div><div class="label">Speed</div></div>
+  <div class="stat-card"><div class="value" id="ttftValue">—</div><div class="label">Latency (ttft)</div></div>
 </div>
 
-<div class="chart-card main-chart">
-  <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h6 style="margin:0;">Cost Over Time</h6>
+<div class="chart-card">
+  <div class="chart-header">
+    <h6>Cost Over Time</h6>
     <div class="toggle-group" id="stackToggle">
       <button data-mode="model" class="active">Model</button>
       <button data-mode="provider">Provider</button>
@@ -66,11 +89,9 @@
   <div class="chart-container"><canvas id="mainChart"></canvas></div>
 </div>
 
-<div id="modelSections"></div>
+<div class="models-section" id="modelSections"></div>
 
-
-<script src="./Bootstrap/bootstrap.bundle.min.js"></script>
-<script src="./Bootstrap/chart.umd.min.js"></script>
-<script src="./js/usage-dashboard.js"></script>
+<script src="js/vendor/chart.umd.min.js"></script>
+<script src="js/usage-dashboard.js"></script>
 </body>
 </html>

@@ -228,10 +228,9 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 SetTimer(InitApiLogsViewer, -2000)
 
 ; ----------------------------------------------------
-; Usage Dashboard — persistent, pre-created at startup
+; Usage Dashboard — inline in ChatWindow via IPC
 ; ----------------------------------------------------
 #Include lib\UsageDashboard.ahk
-SetTimer(InitUsageDashboard, -2500)
 
 ; ----------------------------------------------------
 ; UIA COM initialization sets SPI_SETSCREENREADER
@@ -250,4 +249,3 @@ ResetScreenReaderOnInit() {
 }
 SetTimer(ResetScreenReaderOnInit, 500)
 OnExit(CloseApiLogsViewer)
-OnExit(CloseUsageDashboard)

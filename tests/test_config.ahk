@@ -11,7 +11,6 @@
 global APIKey := "sk-test-key"
 global APIEndpoint := "https://api.test/chat/completions"
 global FIMEndpoint := "https://api.test/beta/completions"
-global darkMode := false
 global responseWindowFontFace := "Arial"
 global chatDefaultModel := "deepseek/deepseek-v4-flash"
 global mainHotkey := "``"

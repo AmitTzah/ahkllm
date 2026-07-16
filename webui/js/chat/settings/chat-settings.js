@@ -1,28 +1,206 @@
 // ======================================================
-// chat-settings.js — Assistant selector dropdown
-//
-// Handles assistant selection and dropdown population.
-// Model settings modal functions moved to chat-settings-modal.js.
+// chat-settings.js — Model/Assistant popover (right panel)
+// Matches mock's .selector-item structure exactly
 // ======================================================
 
-function onAssistantSelect() {
-  var selector = document.getElementById('assistant-selector');
-  if (!selector) return;
-  var val = selector.value;
-  window.chrome.webview.postMessage(JSON.stringify({
-    action: 'switchAssistant',
-    assistantId: val
-  }));
+// Shared helpers (used by both chat-settings.js and chat-settings-modal.js)
+
+var _settingsTimer = null;
+function _sendAllSettings() {
+  if (_settingsTimer) clearTimeout(_settingsTimer);
+  _settingsTimer = setTimeout(function() {
+    var s = window._currentSettings || {};
+    window.chrome.webview.postMessage(JSON.stringify({
+      action: 'updateModelSettings',
+      model: s.model || '',
+      systemMessage: s.systemMessage || '',
+      reasoning: s.reasoning || '',
+      temperature: s.temperature || ''
+    }));
+  }, 300);
+}
+
+function _updateModelCard() {
+  var s = window._currentSettings || {};
+  var card = document.getElementById('modelCardTrigger');
+  if (!card) return;
+  var nameEl = card.querySelector('.name');
+  var idEl = card.querySelector('.id');
+  var descEl = card.querySelector('.desc');
+
+  if (s.assistantName) {
+    // Assistant mode: name = assistant name, id = base model, desc = system prompt
+    if (nameEl) nameEl.textContent = s.assistantName;
+    if (idEl) idEl.textContent = s.assistantBaseModel || s.model || '';
+    if (descEl) descEl.textContent = s.assistantDescription || '';
+  } else if (s.model) {
+    // Direct model mode: name = model name, id = full model
+    var parts = s.model.split('/');
+    if (nameEl) nameEl.textContent = parts[parts.length - 1] || s.model;
+    if (idEl) idEl.textContent = s.model;
+    if (descEl) descEl.textContent = '';
+  }
+}
+
+// Map model name → provider icon file
+function _providerIconFile(model) {
+  if (!model) return '../icons/openrouter.ico';
+  var m = model.toLowerCase();
+  if (m.indexOf('deepseek') >= 0) return '../icons/deepseek.ico';
+  if (m.indexOf('gpt') >= 0 || m.indexOf('o1') >= 0 || m.indexOf('o3') >= 0 || m.indexOf('openai') >= 0) return '../icons/openai.ico';
+  if (m.indexOf('claude') >= 0 || m.indexOf('anthropic') >= 0) return '../icons/anthropic.ico';
+  if (m.indexOf('gemini') >= 0 || m.indexOf('google') >= 0) return '../icons/google.ico';
+  if (m.indexOf('perplexity') >= 0) return '../icons/perplexity.ico';
+  return '../icons/openrouter.ico';
 }
 
 function populateAssistantDropdown(assistants) {
-  var selector = document.getElementById('assistant-selector');
-  if (!selector || !assistants) return;
-  while (selector.options.length > 1) selector.remove(1);
-  for (var i = 0; i < assistants.length; i++) {
-    var opt = document.createElement('option');
-    opt.value = assistants[i].id;
-    opt.textContent = assistants[i].name;
-    selector.appendChild(opt);
+  window._assistantList = assistants || [];
+  _populatePopover();
+}
+
+// Wire model card trigger click → open popover
+if (typeof document !== 'undefined' && document.addEventListener) {
+document.addEventListener('DOMContentLoaded', function() {
+  var trigger = document.getElementById('modelCardTrigger');
+  if (!trigger) return;
+
+  trigger.addEventListener('click', function() {
+    var popover = document.getElementById('modelPopover');
+    var overlay = document.getElementById('popoverOverlay');
+    if (!popover) return;
+    if (popover.classList.contains('open')) {
+      popover.classList.remove('open');
+      if (overlay) overlay.style.display = 'none';
+      return;
+    }
+    _populatePopover();
+    var rect = trigger.getBoundingClientRect();
+    popover.classList.add('open');
+    popover.style.left = Math.max(10, rect.left - 316) + 'px';
+    popover.style.top = rect.top + 'px';
+    if (overlay) overlay.style.display = 'block';
+  });
+
+  // Close on overlay click
+  var popoverOverlay = document.getElementById('popoverOverlay');
+  if (popoverOverlay) popoverOverlay.addEventListener('click', function() {
+    var p = document.getElementById('modelPopover');
+    if (p) p.classList.remove('open');
+    popoverOverlay.style.display = 'none';
+  });
+
+  // Wire popover tabs
+  document.querySelectorAll('.popover-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.popover-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.popover-pane').forEach(function(p) { p.classList.remove('active'); });
+      tab.classList.add('active');
+      var target = document.getElementById(tab.getAttribute('data-target'));
+      if (target) target.classList.add('active');
+    });
+  });
+});
+} // end DOMContentLoaded guard
+
+function _populatePopover() {
+  _populateAssistantsTab();
+  _populateModelsTab();
+}
+
+function _populateAssistantsTab() {
+  var pane = document.getElementById('tab-assistants');
+  if (!pane || !window._assistantList) return;
+  pane.innerHTML = '';
+  for (var a = 0; a < window._assistantList.length; a++) {
+    var asst = window._assistantList[a];
+    var item = document.createElement('div');
+    item.className = 'selector-item';
+    if (window._currentSettings && window._currentSettings.assistantName === asst.name) {
+      item.classList.add('active');
+    }
+    var iconSrc = _providerIconFile(asst.baseModel);
+    item.innerHTML =
+      '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="width:22px;height:22px;mix-blend-mode:multiply;" alt=""></div>' +
+      '<div class="si-text">' +
+        '<div class="si-name">' + escHtml(asst.name || '') + '</div>' +
+        '<div class="si-desc">' + escHtml(asst.description || '') + (asst.baseModel ? ' · ' + escHtml(asst.baseModel) : '') + '</div>' +
+      '</div>' +
+      '<div class="si-radio"></div>';
+    item.addEventListener('click', _makeAssistantClickHandler(item, asst.id));
+    pane.appendChild(item);
   }
 }
+
+function _makeAssistantClickHandler(el, asstId) {
+  return function() {
+    var allItems = el.parentElement.querySelectorAll('.selector-item');
+    for (var si = 0; si < allItems.length; si++) allItems[si].classList.remove('active');
+    el.classList.add('active');
+    var sysPrompt = '';
+    if (window._assistantList) {
+      for (var ai = 0; ai < window._assistantList.length; ai++) {
+        if (window._assistantList[ai].id === asstId) { sysPrompt = window._assistantList[ai].systemMessage || ''; break; }
+      }
+    }
+    var mini = document.getElementById('sysMsgMini');
+    if (mini) mini.value = sysPrompt;
+    if (!window._currentSettings) window._currentSettings = {};
+    window._currentSettings.systemMessage = sysPrompt;
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'switchAssistant', assistantId: asstId }));
+    var p = document.getElementById('modelPopover'); if (p) p.classList.remove('open');
+    var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
+  };
+}
+
+function _populateModelsTab() {
+  var pane = document.getElementById('tab-models');
+  if (!pane || !window.modelList) return;
+  pane.innerHTML = '';
+  var providerKeys = Object.keys(window.modelList).sort();
+  for (var p = 0; p < providerKeys.length; p++) {
+    var provider = providerKeys[p];
+    var models = window.modelList[provider];
+    var groupLabel = document.createElement('div');
+    groupLabel.className = 'si-group-label';
+    groupLabel.textContent = provider.charAt(0).toUpperCase() + provider.slice(1);
+    if (p > 0) groupLabel.style.paddingTop = '8px';
+    pane.appendChild(groupLabel);
+    for (var m = 0; m < models.length; m++) {
+      var model = models[m];
+      var mItem = document.createElement('div');
+      mItem.className = 'selector-item';
+      var hasAsst = window._currentSettings && window._currentSettings.assistantName;
+      var curModel = !hasAsst ? ((window._currentSettings && window._currentSettings.model) || '') : '';
+      var curShort = curModel.indexOf('/') >= 0 ? curModel.split('/').pop() : curModel;
+      if (!hasAsst && (curModel === model.fullId || curShort === model.id || curModel === model.id)) {
+        mItem.classList.add('active');
+      }
+      var iconSrc = _providerIconFile(model.fullId);
+      mItem.innerHTML =
+        '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="width:22px;height:22px;mix-blend-mode:multiply;" alt=""></div>' +
+        '<div class="si-text">' +
+          '<div class="si-name">' + escHtml(model.id || '') + '</div>' +
+          '<div class="si-desc">' + escHtml(provider) + '</div>' +
+        '</div>' +
+        '<div class="si-radio"></div>';
+      mItem.addEventListener('click', _makeModelClickHandler(mItem, model.fullId));
+      pane.appendChild(mItem);
+    }
+  }
+}
+
+function _makeModelClickHandler(el, fullId) {
+  return function() {
+    var allItems = document.querySelectorAll('#tab-models .selector-item');
+    for (var si = 0; si < allItems.length; si++) allItems[si].classList.remove('active');
+    el.classList.add('active');
+    if (!window._currentSettings) window._currentSettings = {};
+    window._currentSettings.model = fullId;
+    _sendAllSettings();
+    _updateModelCard();
+    var pop = document.getElementById('modelPopover'); if (pop) pop.classList.remove('open');
+    var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
+  };
+}
+
