@@ -215,3 +215,68 @@ describe('removeLastAssistantMessage', () => {
         assert.strictEqual(ctx.chatMessages.length, 3);
     });
 });
+
+describe('_buildMetaText', () => {
+    it('returns empty for no createdAt', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._buildMetaText({}), '');
+    });
+
+    it('returns user format with · prefix', () => {
+        const ctx = loadRenderModule();
+        const meta = ctx._buildMetaText({ role: 'user', createdAt: '2025-01-01T12:00:00' });
+        assert.ok(meta.indexOf('· ') === 0);
+    });
+
+    it('returns assistant format with model prefix', () => {
+        const ctx = loadRenderModule();
+        const meta = ctx._buildMetaText({ role: 'assistant', model: 'deepseek-v4', createdAt: '2025-01-01T12:00:00' });
+        assert.ok(meta.indexOf('deepseek-v4') >= 0);
+        assert.ok(meta.indexOf('·') > 0);
+    });
+});
+
+describe('_buildReasoningHtml', () => {
+    it('returns empty for no reasoning', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._buildReasoningHtml({}), '');
+    });
+
+    it('returns thinking block HTML when reasoning present', () => {
+        const ctx = loadRenderModule();
+        const html = ctx._buildReasoningHtml({ reasoning: 'Let me think...' });
+        assert.ok(html.indexOf('thinking-block') >= 0);
+        assert.ok(html.indexOf('Let me think...') >= 0);
+    });
+});
+
+describe('_buildAttachmentHtml', () => {
+    it('returns empty for no attachments', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._buildAttachmentHtml({}), '');
+    });
+
+    it('returns empty for non-user roles', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._buildAttachmentHtml({ role: 'assistant', attachments: [{ attachment_type: 'image' }] }), '');
+    });
+
+    it('returns image HTML for image attachments', () => {
+        const ctx = loadRenderModule();
+        const html = ctx._buildAttachmentHtml({
+            role: 'user',
+            attachments: [{ attachment_type: 'image', base64: 'abc123', mime_type: 'image/png', original_filename: 'test.png' }]
+        });
+        assert.ok(html.indexOf('msg-attachment-image') >= 0);
+    });
+});
+
+describe('_buildEditUiHtml', () => {
+    it('returns edit UI with cancel and save buttons', () => {
+        const ctx = loadRenderModule();
+        const html = ctx._buildEditUiHtml({ content: 'test' });
+        assert.ok(html.indexOf('msg-edit-ui') >= 0);
+        assert.ok(html.indexOf('cancel-edit') >= 0);
+        assert.ok(html.indexOf('save-overwrite') >= 0);
+    });
+});

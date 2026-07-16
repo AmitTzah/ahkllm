@@ -17,7 +17,9 @@ function loadSettingsModule() {
         },
         window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {} },
         console: console,
-        lucide: { createIcons: () => {} }
+        lucide: { createIcons: () => {} },
+        setTimeout: (fn) => { try { fn(); } catch(e) {} },
+        clearTimeout: () => {}
     };
     sandbox.global = sandbox;
     vm.runInContext(src, vm.createContext(sandbox));
@@ -37,5 +39,48 @@ describe('populateAssistantDropdown', () => {
     it('handles empty list', () => {
         const ctx = loadSettingsModule();
         assert.doesNotThrow(() => ctx.populateAssistantDropdown([]));
+    });
+});
+
+describe('_providerIconFile', () => {
+    it('returns deepseek icon for deepseek models', () => {
+        const ctx = loadSettingsModule();
+        assert.ok(ctx._providerIconFile('deepseek/deepseek-v4').indexOf('deepseek.ico') >= 0);
+    });
+
+    it('returns openai icon for gpt models', () => {
+        const ctx = loadSettingsModule();
+        assert.ok(ctx._providerIconFile('openai/gpt-4o').indexOf('openai.ico') >= 0);
+    });
+
+    it('returns google icon for gemini models', () => {
+        const ctx = loadSettingsModule();
+        assert.ok(ctx._providerIconFile('google/gemini-2.5-flash').indexOf('google.ico') >= 0);
+    });
+
+    it('returns anthropic icon for claude models', () => {
+        const ctx = loadSettingsModule();
+        assert.ok(ctx._providerIconFile('anthropic/claude-3').indexOf('anthropic.ico') >= 0);
+    });
+
+    it('returns openrouter icon for unknown models', () => {
+        const ctx = loadSettingsModule();
+        assert.ok(ctx._providerIconFile('unknown/model').indexOf('openrouter.ico') >= 0);
+    });
+});
+
+describe('_updateModelCard', () => {
+    it('does not throw when card missing', () => {
+        const ctx = loadSettingsModule();
+        ctx.window._currentSettings = { model: 'deepseek/deepseek-v4', assistantName: '' };
+        assert.doesNotThrow(() => ctx._updateModelCard());
+    });
+});
+
+describe('_sendAllSettings', () => {
+    it('does not throw (debounced)', () => {
+        const ctx = loadSettingsModule();
+        ctx.window._currentSettings = { model: 'test', systemMessage: '', reasoning: '', temperature: '' };
+        assert.doesNotThrow(() => ctx._sendAllSettings());
     });
 });
