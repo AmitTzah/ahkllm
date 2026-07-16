@@ -42,6 +42,9 @@ class MessageRepo {
 
         ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
 
+        ; Sync FTS5 index
+        ChatDB.FTS_Sync(id, msgObj.content)
+
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
         if msgObj.HasProp("model") && msgObj.model {
@@ -150,6 +153,7 @@ class MessageRepo {
         ; Delete attachments BEFORE the raw DELETE — ON DELETE CASCADE would remove
         ; message_attachments rows before we can read file_path for disk cleanup.
         AttachmentRepo.DeleteByMessage(msgId)
+        ChatDB.FTS_Remove(msgId)
         ChatDB.db.Exec("DELETE FROM messages WHERE id='" msgId "';")
 
         TreeRepo._RecomputeActivePath(threadId)
@@ -161,6 +165,7 @@ class MessageRepo {
 
         safeContent := SQLite.Escape(newContent)
         ChatDB.db.Exec("UPDATE messages SET content='" safeContent "' WHERE id='" msgId "';")
+        ChatDB.FTS_Sync(msgId, newContent)
         MessageRepo._TouchThreadByMsg(msgId)
 
         if threadId

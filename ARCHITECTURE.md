@@ -25,7 +25,7 @@ All persistent data lives under `%APPDATA%\LLM-AutoHotkey-Assistant\`:
 
 | Path | What | Format |
 |---|---|---|
-| `chat_history.db` | Chat threads, messages, attachments, assistants, folders, usage | SQLite (WAL mode) |
+| `chat_history.db` | Chat threads, messages, attachments, assistants, folders, usage, FTS5 search index | SQLite (WAL mode) |
 | `attachments\` | User-uploaded files (images, PDFs, DOCX) | SHA-256 hash filenames |
 | `models_pricing.txt` (project dir) | Model pricing data | Key-value text |
 
@@ -500,6 +500,25 @@ Messages form a tree via `parent_id`. When edited or retried, a new sibling is c
 
 ### Fork Design
 `TreeRepo.ForkThread()` creates a complete copy of the conversation up to a fork point: copies active path with fresh UUIDs, generates new `sibling_group` UUIDs, copies all siblings (not just active path), copies thread-level settings, copies attachments via content-addressable storage. Title: "Copy - [original title]".
+
+### `messages_fts` (FTS5 Virtual Table)
+| Column | Type | Description |
+|--------|------|-------------|
+| `msg_id` | TEXT | FK to messages.id — kept in sync by MessageRepo Insert/Edit/HardDelete |
+| `content` | TEXT | Indexed message content (tokenized by FTS5 default tokenizer) |
+
+FTS5 full-text search index for real-time message search. Created as `CREATE VIRTUAL TABLE IF NOT EXISTS` — SQLite manages it internally. Sync is explicit (no triggers): `ChatDB.FTS_Sync()` on Insert/Edit, `ChatDB.FTS_Remove()` on HardDelete. Existing messages are backfilled on first run if the FTS table is empty.
+
+### Message Search
+Two search inputs in the UI:
+- **"Search chats..."** (left panel): searches all messages across all non-deleted threads + matches thread titles
+- **"Search in chat..."** (right panel): searches messages within the active thread only
+
+**Search engine**: Two-phase query in `ChatDB.SearchMessages()`:
+1. **FTS5** (primary): two-step — query `messages_fts MATCH 'term1 AND term2'` for matching msg_ids, then `SELECT ... FROM messages WHERE id IN (...)`. Word-level, case-insensitive, ranked by relevance.
+2. **LIKE** (fallback): `content LIKE '%term%'` — catches substrings FTS5 tokenization misses (e.g., "err" in "error"). Only runs if FTS5 returns 0 results.
+
+**Frontend**: `chat-search.js` manages debounced input (250ms), dropdown with `<mark>`-highlighted previews, keyboard navigation (Arrow/Enter/Escape), stale response guard via `queryId` counter, and click-to-navigate reusing `scrollToMessageById()`.
 
 ## WebView ↔ AHK Communication
 

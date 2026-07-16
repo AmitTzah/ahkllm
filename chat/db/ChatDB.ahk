@@ -11,6 +11,7 @@
 #Include MessageRepo.ahk
 #Include TreeRepo.ahk
 #Include AssistantRepo.ahk
+#Include SearchRepo.ahk
 #Include AttachmentRepo.ahk
 
 class ChatDB {
@@ -69,6 +70,33 @@ class ChatDB {
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
 
+        ; FTS5 full-text search — maintained incrementally by MessageRepo (FTS_Sync).
+        ; Repair on startup only if counts mismatch (first run or corruption).
+        ChatDB.db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(msg_id, content);")
+        ftsCount := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM messages_fts;")
+        msgCount := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM messages;")
+        if Integer(ftsCount[1, "cnt"]) != Integer(msgCount[1, "cnt"]) {
+            ChatDB.db.Exec("DELETE FROM messages_fts;")
+            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages;")
+            debugLog("[DB] FTS5 rebuilt — " Integer(msgCount[1, "cnt"]) " messages indexed")
+        }
+
+    }
+
+    ; FTS5 sync — called from MessageRepo. Uses msg_id (TEXT) for identity.
+    static FTS_Sync(msgId, content) {
+        ; Delete old entry then insert new (DELETE+INSERT = upsert replacement)
+        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" msgId "';")
+        safeContent := SQLite.Escape(content)
+        try {
+            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) VALUES('" msgId "', " safeContent ");")
+        } catch Error as e {
+            debugLog("[FTS] Sync ERROR: " e.Message, "FTS")
+        }
+    }
+
+    static FTS_Remove(msgId) {
+        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" msgId "';")
     }
 
     static _UUID() {
@@ -226,91 +254,8 @@ class ChatDB {
         }
     }
 
-    ; ----------------------------------------------------
-    ; SearchMessages — LIKE-based message search
-    ;
-    ; Case-insensitive substring match via LIKE (default for ASCII).
-    ; Global search (no threadId) also searches thread titles.
-    ;
-    ; Returns array of {threadId, threadTitle, messageId,
-    ;   contentPreview, role, model, createdAt}
-    ; ----------------------------------------------------
-    static SearchMessages(query, threadId := "") {
-        safeQuery := SQLite.Escape(query)
-
-        ; Message content search — LIKE '%term%' (case-insensitive for ASCII)
-        results := ChatDB._SearchMessagesByLike(safeQuery, threadId)
-
-        ; Title search: only for global (un-scoped) queries
-        if !threadId {
-            titleResults := ChatDB._SearchThreadTitles(safeQuery)
-            combined := []
-            for tr in titleResults
-                combined.Push(tr)
-            for mr in results
-                combined.Push(mr)
-            if combined.Length > 20 {
-                trimmed := []
-                loop 20
-                    trimmed.Push(combined[A_Index])
-                combined := trimmed
-            }
-            results := combined
-        }
-
-        return results
-    }
-
-    ; LIKE '%term%' substring match — case-insensitive for ASCII (SQLite LIKE default)
-    static _SearchMessagesByLike(safeQuery, threadId := "") {
-        whereClause := "t.is_deleted=0 AND m.content LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'"
-        if threadId
-            whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
-
-        sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
-             . " SUBSTR(m.content, 1, 100) AS contentPreview,"
-             . " m.model, m.created_at AS createdAt,"
-             . " t.title AS threadTitle"
-             . " FROM messages m"
-             . " JOIN chat_threads t ON m.thread_id = t.id"
-             . " WHERE " whereClause
-             . " ORDER BY m.created_at DESC"
-             . " LIMIT 20"
-
-        return ChatDB._BuildSearchResults(sql)
-    }
-
-    ; Title search: find threads whose title matches (LIKE, case-insensitive by default)
-    static _SearchThreadTitles(safeQuery) {
-        sql := "SELECT NULL AS messageId, t.id AS threadId, 'system' AS role,"
-             . " '' AS contentPreview, '' AS model, t.created_at AS createdAt,"
-             . " t.title AS threadTitle"
-             . " FROM chat_threads t"
-             . " WHERE t.is_deleted=0"
-             . " AND t.title LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'"
-             . " ORDER BY t.updated_at DESC"
-             . " LIMIT 10"
-
-        return ChatDB._BuildSearchResults(sql)
-    }
-
-    ; Convert SQL result rows to search result objects
-    static _BuildSearchResults(sql) {
-        table := ChatDB.db.Exec(sql)
-        results := []
-        for row in table.rows {
-            results.Push({
-                threadId: row.threadId,
-                threadTitle: row.threadTitle ? row.threadTitle : "New Chat",
-                messageId: row.messageId ? row.messageId : "",
-                contentPreview: row.contentPreview ? row.contentPreview : "",
-                role: row.role ? row.role : "",
-                model: row.model ? row.model : "",
-                createdAt: row.createdAt ? row.createdAt : ""
-            })
-        }
-        return results
-    }
+    ; Search operations — delegate to SearchRepo
+    static SearchMessages(query, threadId := "") => SearchRepo.Search(query, threadId)
 
     ; Chat usage — daily aggregation UPSERT
     static ChatUsage_Upsert(data) {

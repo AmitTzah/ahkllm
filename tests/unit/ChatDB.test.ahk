@@ -1112,8 +1112,50 @@ class ChatDBTest {
             throw Error("Expected path: [user, assistant], got: [" path[1].role ", " path[2].role "]")
 
         this._teardown()
+        ; Verify FTS5 works independently (not just LIKE fallback).
+        ; FTS5 finds whole-word matches; LIKE finds substrings.
+        ; Test: search for a whole word → FTS5 should find it.
+        ; Then search for a substring → LIKE fallback should find it.
+        SearchMessages_FTS5_DirectMatch() {
+            threadId := this._setup()
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "the zebra crossed the road"})
+    
+            ; Whole-word search — FTS5 should find "zebra"
+            results := ChatDB.SearchMessages("zebra", threadId)
+            if results.Length != 1
+                throw Error("Expected 1 FTS5 match for whole word 'zebra', got " results.Length)
+    
+            ; Substring search — LIKE fallback should find "oss" in "crossed"
+            results2 := ChatDB.SearchMessages("oss", threadId)
+            if results2.Length != 1
+                throw Error("Expected 1 LIKE fallback match for substring 'oss', got " results2.Length)
+    
+            this._teardown()
+        }
+    
+        ; Regression: FTS5 MATCH must use proper quoting ('term' not bare term).
+        ; SQLite.Escape escapes internal quotes but does NOT wrap in quotes.
+        ; If we used SQLite.Escape directly, MATCH would see bare words as column names.
+        SearchMessages_FTS5_WithApostrophe() {
+            threadId := this._setup()
+            ; Content with apostrophe: "user's" — FTS5 should match the word
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "the user's input was helpful"})
+    
+            ; Search for "user's" — FTS5 tokenizes on apostrophe, matches "user"
+            results := ChatDB.SearchMessages("user", threadId)
+            if results.Length != 1
+                throw Error("Expected 1 FTS5 match for 'user' in 'user''s', got " results.Length)
+    
+            ; Search for exact word "input" — should definitely match
+            results2 := ChatDB.SearchMessages("input", threadId)
+            if results2.Length != 1
+                throw Error("Expected 1 FTS5 match for 'input', got " results2.Length)
+    
+            this._teardown()
+        }
+    
     }
-
-}
+    
+    }
 
 }
