@@ -1,0 +1,21 @@
+{
+  "feature_name": "Real-Time Message Search with Dropdown",
+  "branch_name": "feature/real-time-message-search",
+  "git_automation_enabled": true,
+  "hands_off_mode": true,
+  "current_phase": 5,
+  "plan_status": "archived",
+  "total_steps": 3,
+  "current_step": 3,
+  "e2e_regression_status": "skipped",
+  "skipped_smoke_tests": [
+    {
+      "step": 3,
+      "name": "Human Verification — Interactive Search Behavior",
+      "classification": "Human",
+      "description": "13-step interactive smoke test. See plan.md Step 3.",
+      "status": "verified",
+      "qa_notes": "QA found bugs: stale activeThreadId (fixed via optimistic loadThread), cross-thread truncation (fixed via _WalkToLeaf), tree scroll target (fixed to use targetId), escape race (fixed via stopPropagation + JS ownership). User verified all steps pass."
+    }
+  ]
+}

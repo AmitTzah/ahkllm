@@ -23,24 +23,10 @@ OnError((err, mode) => (
 ; Hotkeys
 ; ----------------------------------------------------
 
-~Esc:: ChatHotkeys("Esc")
 ~^w:: ChatHotkeys("closeWindows")
 
 ChatHotkeys(action) {
     switch action {
-        case "Esc":
-            curlPID := cURLState("get")
-            hadCurl := ProcessExist(curlPID)
-            if hadCurl {
-                ; Mark as cancelled so _finalizeStreaming logs properly
-                requestParams["_streamCancelled"] := true
-                cURLState("close")
-                postWebMessage("setChatButtonsEnabled", true)
-            }
-            ; Only hide window if no cURL was running (don't hide after cancelling a request)
-            if WinActive("ahk_id " chatWindow.hWnd) && !hadCurl {
-                chatWindow.Hide()
-            }
         case "closeWindows":
             switch WinActive("A") {
                 case chatWindow.hWnd: chatWindow.Hide()

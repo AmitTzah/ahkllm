@@ -504,10 +504,10 @@ Messages form a tree via `parent_id`. When edited or retried, a new sibling is c
 ## WebView ↔ AHK Communication
 
 ### AHK → WebView (postWebMessage)
-Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`.
+Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`.
 
 ### WebView → AHK (via postMessage)
-Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `showApiLogs`.
+Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `showApiLogs`.
 
 ## IPC (Inter-Process Communication)
 
@@ -538,7 +538,8 @@ vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, o
        │    └── chat-attachments-setup.js        # Drop/paste/browse
        ├── chat/chat-input.js                    # Send, loading, retry
        ├── chat/chat-branching.js                # Edit, delete, tree modal
-       ├── chat/chat-sidebar.js                  # Folders, threads, trash
+       ├── chat/chat-sidebar.js                  # Folders, threads, trash, scrollToMessage
+       ├── chat/chat-search.js                   # Real-time search dropdown
        ├── chat/chat-quote.js                    # Quote in input
        ├── chat/chat-undo.js                     # Undo/redo
        ├── stream.js                             # SSE streaming
@@ -580,13 +581,14 @@ Rolling log at `%TEMP%\LLM_Debug_Log.txt` (~500KB kept when file exceeds 1MB):
 | `[DASHBOARD]` | Dashboard | `[DASHBOARD] Query/Sent` |
 | `[DISPATCH]` | WebMessage dispatch | `[DISPATCH] showApiLogs received` |
 | `[APILOGS]` | API logs viewer | `[APILOGS] ShowApiLogs called` |
+| `[SEARCH]` | Message search | `[SEARCH] Error: ...` |
 
 ## Testing
 
 ### How to Run
 ```
 tests\run_all_tests.bat              # All tests
-tests\run_js_tests.bat               # JS only (143 tests)
+tests\run_js_tests.bat               # JS only (230 tests)
 tests\run_ahk_tests.ahk              # AHK only
 ```
 
@@ -595,7 +597,7 @@ AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side:
 
 | Directory | AHK Files | JS Files | Total Tests |
 |-----------|----------|----------|-------------|
-| `unit/` | 19 | 13 | ~254 |
+| `unit/` | 19 | 14 | ~270 |
 | `integration/` | 3 | 2 | ~50 |
 
-Tests run via `node:test` (JS) and custom runner (AHK). **143 JS tests pass.**
+Tests run via `node:test` (JS) and custom runner (AHK). **230 JS tests pass.**

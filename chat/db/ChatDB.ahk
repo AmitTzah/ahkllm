@@ -68,6 +68,7 @@ class ChatDB {
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
+
     }
 
     static _UUID() {
@@ -223,6 +224,92 @@ class ChatDB {
         } else {
             ChatDB.db.Exec("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES('" date "', '" SQLite.Escape(model) "', '" SQLite.Escape(provider) "', '" SQLite.Escape(cmd) "', 1, " data.prompt_tokens ", " data.completion_tokens ", " tht ", " ckt ", " data.input_cost ", " cci ", " data.output_cost ", " data.total_cost ", " lat ", " ttft ");")
         }
+    }
+
+    ; ----------------------------------------------------
+    ; SearchMessages — LIKE-based message search
+    ;
+    ; Case-insensitive substring match via LIKE (default for ASCII).
+    ; Global search (no threadId) also searches thread titles.
+    ;
+    ; Returns array of {threadId, threadTitle, messageId,
+    ;   contentPreview, role, model, createdAt}
+    ; ----------------------------------------------------
+    static SearchMessages(query, threadId := "") {
+        safeQuery := SQLite.Escape(query)
+
+        ; Message content search — LIKE '%term%' (case-insensitive for ASCII)
+        results := ChatDB._SearchMessagesByLike(safeQuery, threadId)
+
+        ; Title search: only for global (un-scoped) queries
+        if !threadId {
+            titleResults := ChatDB._SearchThreadTitles(safeQuery)
+            combined := []
+            for tr in titleResults
+                combined.Push(tr)
+            for mr in results
+                combined.Push(mr)
+            if combined.Length > 20 {
+                trimmed := []
+                loop 20
+                    trimmed.Push(combined[A_Index])
+                combined := trimmed
+            }
+            results := combined
+        }
+
+        return results
+    }
+
+    ; LIKE '%term%' substring match — case-insensitive for ASCII (SQLite LIKE default)
+    static _SearchMessagesByLike(safeQuery, threadId := "") {
+        whereClause := "t.is_deleted=0 AND m.content LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'"
+        if threadId
+            whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
+
+        sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
+             . " SUBSTR(m.content, 1, 100) AS contentPreview,"
+             . " m.model, m.created_at AS createdAt,"
+             . " t.title AS threadTitle"
+             . " FROM messages m"
+             . " JOIN chat_threads t ON m.thread_id = t.id"
+             . " WHERE " whereClause
+             . " ORDER BY m.created_at DESC"
+             . " LIMIT 20"
+
+        return ChatDB._BuildSearchResults(sql)
+    }
+
+    ; Title search: find threads whose title matches (LIKE, case-insensitive by default)
+    static _SearchThreadTitles(safeQuery) {
+        sql := "SELECT NULL AS messageId, t.id AS threadId, 'system' AS role,"
+             . " '' AS contentPreview, '' AS model, t.created_at AS createdAt,"
+             . " t.title AS threadTitle"
+             . " FROM chat_threads t"
+             . " WHERE t.is_deleted=0"
+             . " AND t.title LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'"
+             . " ORDER BY t.updated_at DESC"
+             . " LIMIT 10"
+
+        return ChatDB._BuildSearchResults(sql)
+    }
+
+    ; Convert SQL result rows to search result objects
+    static _BuildSearchResults(sql) {
+        table := ChatDB.db.Exec(sql)
+        results := []
+        for row in table.rows {
+            results.Push({
+                threadId: row.threadId,
+                threadTitle: row.threadTitle ? row.threadTitle : "New Chat",
+                messageId: row.messageId ? row.messageId : "",
+                contentPreview: row.contentPreview ? row.contentPreview : "",
+                role: row.role ? row.role : "",
+                model: row.model ? row.model : "",
+                createdAt: row.createdAt ? row.createdAt : ""
+            })
+        }
+        return results
     }
 
     ; Chat usage — daily aggregation UPSERT

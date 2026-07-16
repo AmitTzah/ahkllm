@@ -134,7 +134,7 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     activeThreadId := threadId
     _restoreThreadSettings(activeThreadId)
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    postWebMessage("initChatMode", buildStructuredMessagesFromPath(path, activeThreadId))
+    postWebMessage("initChatMode", { messages: buildStructuredMessagesFromPath(path, activeThreadId), threadId: activeThreadId })
     postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
     postThreadStats(activeThreadId)
     if includeDropdownLabel

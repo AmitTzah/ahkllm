@@ -27,3 +27,41 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+/* Search dropdown */
+.search-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: var(--bg-panel); border: 1px solid var(--border-main);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  max-height: 320px; overflow-y: auto; z-index: 100; margin-top: 4px;
+}
+.search-wrap { position: relative; }
+.search-result-item {
+  padding: 10px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.1s;
+}
+.search-result-item:hover,
+.search-result-item.active { background: var(--bg-hover); }
+.search-result-item:last-child { border-bottom: none; }
+.search-result-thread {
+  font-size: 11px; color: var(--text-tertiary);
+  margin-bottom: 2px; font-weight: 500;
+}
+.search-result-preview {
+  font-size: 13px; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.4;
+}
+.search-result-preview mark {
+  background: var(--accent-primary); color: #fff;
+  border-radius: 2px; padding: 0 1px;
+}
+.search-result-role {
+  font-size: 11px; color: var(--text-secondary);
+  font-weight: 500; margin-bottom: 1px;
+}
+.search-empty, .search-loading {
+  padding: 16px; text-align: center;
+  color: var(--text-tertiary); font-size: 13px;
+}

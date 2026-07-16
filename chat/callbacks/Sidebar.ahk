@@ -20,7 +20,11 @@ handleSidebarAction(params, *) {
                 _LoadThreadAndRefreshUI(params["threadId"])
         case "navigateToMessage":
             if params.Has("messageId") && activeThreadId {
-                ChatDB.Msg_SetActiveLeaf(activeThreadId, params["messageId"])
+                ; Walk to the branch leaf so the full path (including children
+                ; after the target message) is preserved. The JS side scrolls
+                ; to the specific clicked/search node separately.
+                leafId := TreeRepo._WalkToLeaf(params["messageId"])
+                ChatDB.Msg_SetActiveLeaf(activeThreadId, leafId)
                 _LoadThreadAndRefreshUI(activeThreadId, false)
             }
         case "newChat":
@@ -32,11 +36,12 @@ handleSidebarAction(params, *) {
             if params.Has("threadId") {
                 threadId := params["threadId"]
                 ChatDB.Thread_SoftDelete(threadId)  ; soft-delete to trash
-                if activeThreadId = threadId
+                if activeThreadId = threadId {
                     activeThreadId := ""
-                _postThreadListRefresh()
-                if !activeThreadId
+                    postWebMessage("loadThread", "")  ; clear JS activeThreadId + topbar
                     postWebMessage("initChatMode", [])
+                }
+                _postThreadListRefresh()
             }
         case "restoreThread":
             if params.Has("threadId") {
@@ -47,11 +52,12 @@ handleSidebarAction(params, *) {
             if params.Has("threadId") {
                 threadId := params["threadId"]
                 ChatDB.Thread_Delete(threadId)  ; permanent hard delete
-                if activeThreadId = threadId
+                if activeThreadId = threadId {
                     activeThreadId := ""
-                _postThreadListRefresh()
-                if !activeThreadId
+                    postWebMessage("loadThread", "")  ; clear JS activeThreadId + topbar
                     postWebMessage("initChatMode", [])
+                }
+                _postThreadListRefresh()
             }
         case "emptyTrash":
             ; Hard-delete ALL trashed threads permanently

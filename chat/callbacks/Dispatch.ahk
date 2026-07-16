@@ -25,6 +25,8 @@ OnWebMessageReceived(sender, args) {
         switch action {
             case "chatSend":
                 handleChatSend(parsed)
+            case "searchMessages":
+                handleSearch(parsed)
             case "deleteAttachment":
                 handleDeleteAttachment(parsed)
             case "retry":
@@ -47,6 +49,9 @@ OnWebMessageReceived(sender, args) {
                 handleSwitchAssistant(parsed)
             case "cancelStream":
                 handleCancelStream()
+            case "hideWindow":
+                global chatWindow
+                chatWindow.Hide()
             case "requestCurrentSettings":
                 postCurrentSettingsToWebView()
             case "showApiLogs":
@@ -62,3 +67,4 @@ OnWebMessageReceived(sender, args) {
 #Include Edit.ahk
 #Include Branch.ahk
 #Include Sidebar.ahk
+#Include Search.ahk

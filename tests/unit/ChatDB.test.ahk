@@ -911,4 +911,209 @@ class ChatDBTest {
         this._closeDb()
     }
 
+    ; ----------------------------------------------------
+    ; SearchMessages — full-text message search
+    ; ----------------------------------------------------
+
+    SearchMessages_MatchesContent() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello world testing"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response here"})
+        results := ChatDB.SearchMessages("hello", threadId)
+        if results.Length != 1
+            throw Error("Expected 1 match for 'hello', got " results.Length)
+        if results[1].messageId = ""
+            throw Error("Expected non-empty messageId")
+        if results[1].role != "user"
+            throw Error("Expected role 'user', got '" results[1].role "'")
+        if results[1].contentPreview != "hello world testing"
+            throw Error("Expected contentPreview 'hello world testing', got '" results[1].contentPreview "'")
+        if results[1].threadTitle != "Test Thread"
+            throw Error("Expected threadTitle 'Test Thread', got '" results[1].threadTitle "'")
+        this._teardown()
+    }
+
+    SearchMessages_NoMatches() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
+        results := ChatDB.SearchMessages("xyznonexistent", threadId)
+        if results.Length != 0
+            throw Error("Expected 0 matches for nonexistent term, got " results.Length)
+        this._teardown()
+    }
+
+    SearchMessages_ScopedToThread() {
+        this._openDb()
+        thread1 := ChatDB.Thread_Create("Thread 1")
+        thread2 := ChatDB.Thread_Create("Thread 2")
+        ChatDB.Msg_Insert({thread_id: thread1, role: "user", content: "unique phrase alpha"})
+        ChatDB.Msg_Insert({thread_id: thread2, role: "user", content: "completely different beta"})
+
+        ; Scoped to thread1 — should only find thread1's message
+        results := ChatDB.SearchMessages("unique", thread1)
+        if results.Length != 1
+            throw Error("Expected 1 match scoped to thread1, got " results.Length)
+        if results[1].threadId != thread1
+            throw Error("Expected threadId to be thread1, got " results[1].threadId)
+
+        ; Scoped to thread2 — should NOT find thread1's message
+        results2 := ChatDB.SearchMessages("unique", thread2)
+        if results2.Length != 0
+            throw Error("Expected 0 matches for 'unique' scoped to thread2, got " results2.Length)
+
+        ; Unscoped (global) — should find the message from thread1
+        results3 := ChatDB.SearchMessages("unique")
+        if results3.Length != 1
+            throw Error("Expected 1 global match for 'unique', got " results3.Length)
+
+        ChatDB.Thread_Delete(thread1)
+        ChatDB.Thread_Delete(thread2)
+        this._closeDb()
+    }
+
+    SearchMessages_ExcludesDeletedThreads() {
+        this._openDb()
+        thread1 := ChatDB.Thread_Create("Active Thread")
+        thread2 := ChatDB.Thread_Create("Deleted Thread")
+        ChatDB.Msg_Insert({thread_id: thread1, role: "user", content: "visible message"})
+        ChatDB.Msg_Insert({thread_id: thread2, role: "user", content: "hidden message"})
+
+        ; Before soft-delete — both visible
+        results := ChatDB.SearchMessages("message")
+        if results.Length != 2
+            throw Error("Expected 2 matches before delete, got " results.Length)
+
+        ; Soft-delete thread2
+        ChatDB.Thread_SoftDelete(thread2)
+
+        ; After soft-delete — only thread1 visible
+        results2 := ChatDB.SearchMessages("message")
+        if results2.Length != 1
+            throw Error("Expected 1 match after delete (deleted thread excluded), got " results2.Length)
+        if results2[1].threadId != thread1
+            throw Error("Expected remaining result from active thread, got threadId=" results2[1].threadId)
+
+        ChatDB.Thread_Delete(thread1)
+        ChatDB.Thread_Delete(thread2)
+        this._closeDb()
+    }
+
+    SearchMessages_SafeWithSpecialCharacters() {
+        threadId := this._setup()
+        ; Insert message with SQL-significant chars in content (but search term is safe due to SQLite.Escape)
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "test with apostrophe's and quotes"})
+        ; Search for a term containing apostrophe — should be safe due to SQLite.Escape
+        results := ChatDB.SearchMessages("apostrophe's")
+        if results.Length != 1
+            throw Error("Expected 1 match for term with apostrophe, got " results.Length)
+        ; Search for % sign — SQL LIKE wildcard, should be escaped
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "50% discount"})
+        results2 := ChatDB.SearchMessages("50%")
+        if results2.Length != 1
+            throw Error("Expected 1 match for term with percent sign, got " results2.Length)
+        this._teardown()
+    }
+
+    SearchMessages_LimitEnforced() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Bulk Thread")
+        ; Insert 25 messages with the same keyword
+        loop 25 {
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "keyword match " A_Index})
+        }
+        results := ChatDB.SearchMessages("keyword", threadId)
+        if results.Length > 20
+            throw Error("Expected at most 20 results (LIMIT), got " results.Length)
+        if results.Length < 2
+            throw Error("Expected at least some results, got " results.Length)
+        ChatDB.Thread_Delete(threadId)
+        this._closeDb()
+    }
+
+    ; Case-insensitive: SQLite LIKE is case-insensitive for ASCII by default
+    SearchMessages_CaseInsensitive() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "This is an Error message"})
+        ; Search in uppercase — FTS5 matches case-insensitively
+        results := ChatDB.SearchMessages("ERROR", threadId)
+        if results.Length != 1
+            throw Error("Expected 1 case-insensitive match for 'ERROR', got " results.Length)
+        ; Search in mixed case
+        results2 := ChatDB.SearchMessages("ErRoR", threadId)
+        if results2.Length != 1
+            throw Error("Expected 1 match for mixed-case 'ErRoR', got " results2.Length)
+        this._teardown()
+    }
+
+    ; Substring match: LIKE finds mid-word substrings
+    SearchMessages_Substring() {
+        threadId := this._setup()
+        ; "err" is a substring of "error" — LIKE finds it
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "error occurred"})
+        results := ChatDB.SearchMessages("err", threadId)
+        if results.Length != 1
+            throw Error("Expected 1 LIKE fallback match for substring 'err', got " results.Length)
+        this._teardown()
+    }
+
+    ; Title search: global (un-scoped) search also matches thread titles
+    SearchMessages_TitleMatch() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Python Debugging Guide")
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "how do I fix this bug"})
+
+        ; Search for "Python" — title matches, but no message content has "Python"
+        results := ChatDB.SearchMessages("Python")
+        ; Should find at least the title match
+        found := false
+        for r in results {
+            if r.threadId = threadId && r.messageId = ""
+                found := true
+        if !found
+            throw Error("Expected title match for 'Python' in 'Python Debugging Guide'")
+        ; Title result should have empty messageId and role='system'
+        for r in results {
+            if r.threadId = threadId && r.messageId = "" {
+                if r.role != "system"
+                    throw Error("Expected title result role='system', got '" r.role "'")
+                if r.threadTitle != "Python Debugging Guide"
+                    throw Error("Expected threadTitle 'Python Debugging Guide', got '" r.threadTitle "'")
+            }
+        }
+
+        ChatDB.Thread_Delete(threadId)
+        this._closeDb()
+    }
+
+    ; Regression: _WalkToLeaf finds the branch leaf, not the given message itself.
+    ; When navigateToMessage is called with a user message that has assistant
+    ; children, the active leaf must be the last child, not the user message.
+    NavigateToMessage_WalksToLeaf() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", parent_id: uId})
+
+        ; Walk from user message — should find assistant as the leaf
+        leafId := TreeRepo._WalkToLeaf(uId)
+        if leafId != aId
+            throw Error("Expected _WalkToLeaf to find assistant (" aId ") as leaf, got " leafId)
+
+        ; Walk from assistant — should return itself (no children)
+        leafId2 := TreeRepo._WalkToLeaf(aId)
+        if leafId2 != aId
+            throw Error("Expected _WalkToLeaf to return assistant itself, got " leafId2)
+
+        ; Set active leaf and verify path includes both messages
+        ChatDB.Msg_SetActiveLeaf(threadId, leafId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 2
+            throw Error("Expected path length 2 after navigating to user message, got " path.Length)
+        if path[1].role != "user" || path[2].role != "assistant"
+            throw Error("Expected path: [user, assistant], got: [" path[1].role ", " path[2].role "]")
+
+        this._teardown()
+    }
+
+}
+
 }

@@ -248,12 +248,13 @@ function renderChatTree(tree) {
         e.stopPropagation();
         var leafId = _findDefaultLeaf(targetId, window._treeData);
         var resolvedId = leafId || targetId;
+        // Set active leaf to the branch's end (preserves full path),
+        // but scroll to the specific clicked node for visual targeting.
         window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'navigateToMessage', messageId: resolvedId }));
-        // Highlight the target message immediately (same as thread map click)
         closeTreeModal();
         setTimeout(function() {
           for (var i = 0; i < chatMessages.length; i++) {
-            if (chatMessages[i].id === resolvedId) { scrollToMessage(i); break; }
+            if (chatMessages[i].id === targetId) { scrollToMessage(i); break; }
           }
         }, 150);
       };

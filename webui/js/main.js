@@ -143,6 +143,10 @@ function handleWebMessage(event) {
         if (typeof updateDropdownLabel === 'function') updateDropdownLabel(data);
         break;
 
+      case 'searchResults':
+        if (typeof handleSearchResults === 'function') handleSearchResults(data);
+        break;
+
       default:
         // Try calling as a function name for backward compatibility
         if (typeof window[target] === 'function') {
@@ -306,6 +310,9 @@ document.addEventListener('DOMContentLoaded', function () {
   // New chat button in sidebar
   var newChatBtn = document.getElementById('new-chat-btn');
   if (newChatBtn) newChatBtn.addEventListener('click', newChat);
+
+  // Initialize search inputs
+  if (typeof initSearch === 'function') initSearch();
 
   // Tree view button
   var treeBtn = document.getElementById('tree-view-btn');

@@ -16,10 +16,17 @@ document.addEventListener('click', function() {
   }
 });
 
-// Initialize chat mode — called by AHK when a thread loads
-function initChatMode(messages) {
+// Initialize chat mode — called by AHK when a thread loads.
+// Accepts either an array of messages (legacy) or { messages: [], threadId: "..." }
+function initChatMode(data) {
   isChatMode = true;
-  chatMessages = messages || [];
+  var messages = Array.isArray(data) ? data : (data && data.messages ? data.messages : []);
+  chatMessages = messages;
+
+  // Set activeThreadId if provided (fixes first-message scoped search)
+  if (data && data.threadId && !activeThreadId) {
+    activeThreadId = data.threadId;
+  }
 
   var fimNotice = document.getElementById('fim-notice');
   if (fimNotice) fimNotice.style.display = 'none';
@@ -47,6 +54,10 @@ function initChatMode(messages) {
   if (typeof clearUndoStack === 'function') {
     clearUndoStack();
   }
+
+  // Re-enable scoped search and handle cross-thread search navigation
+  if (typeof updateScopedSearchState === 'function') updateScopedSearchState();
+  if (typeof onSearchCrossThreadLoaded === 'function') onSearchCrossThreadLoaded();
 }
 
 // Markdown rendering for non-chat modes (FIM fallback)
@@ -75,3 +86,41 @@ function escHtml(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
 }
+
+// Global Escape handler: closes any open overlay (search, confirm, tree).
+// If nothing was open, posts hideWindow to AHK (unless streaming — cancels that first).
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+
+  // Search dropdown
+  if (typeof closeSearchDropdown === 'function' && typeof _searchDropdownEl !== 'undefined') {
+    if (_searchDropdownEl && _searchDropdownEl.style.display !== 'none') {
+      closeSearchDropdown();
+      return;
+    }
+  }
+
+  // Confirm dialog
+  var confirmOverlay = document.getElementById('customConfirmOverlay');
+  if (confirmOverlay) {
+    confirmOverlay.remove();
+    if (typeof _confirmCallback !== 'undefined') window._confirmCallback = null;
+    return;
+  }
+
+  // Tree modal
+  var treeOverlay = document.getElementById('treeOverlay');
+  if (treeOverlay && treeOverlay.classList.contains('open')) {
+    treeOverlay.classList.remove('open');
+    return;
+  }
+
+  // Streaming — cancel it (don't hide window)
+  if (typeof isLoading !== 'undefined' && isLoading) {
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'cancelStream' }));
+    return;
+  }
+
+  // Nothing open — hide window
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'hideWindow' }));
+});

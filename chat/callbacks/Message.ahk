@@ -14,6 +14,7 @@ handleChatSend(params, *) {
     ; Auto-create thread if first message
     if !activeThreadId {
         activeThreadId := ChatDB.Thread_Create("New Chat")
+        postWebMessage("loadThread", activeThreadId)
         debugLog("[THREAD] Created — id=" activeThreadId " title=New Chat")
         _saveCurrentSettingsToThread(activeThreadId)
         _postThreadListRefresh()

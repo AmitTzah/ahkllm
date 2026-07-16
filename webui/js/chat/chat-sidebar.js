@@ -1,26 +1,16 @@
 // ======================================================
 // chat-sidebar.js — Thread list sidebar, trash, thread map
-// Matches mock's folder/chat-item/trash structure
 // ======================================================
 
-var sidebarOpen = false;
-// Map of threadId → { title, folder } — populated by loadThreadList, the single source of truth
+// Map of threadId → { title, folder } — populated by loadThreadList, single source of truth
 var _threadMeta = {};
 // Array of { id, name } — available folders, populated by loadThreadList
 var _folders = [];
 
 function toggleSidebar() {
-  if (sidebarOpen) closeSidebar();
-  else openSidebar();
-}
-
-function openSidebar() {
-  sidebarOpen = true;
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTrashList' }));
 }
-
-function closeSidebar() { sidebarOpen = false; }
 
 // -----------------------------------------------------------
 // Topbar title — one sync point, always reads _threadMeta
@@ -172,26 +162,47 @@ function createChatItem(t) {
 // Trash
 // -----------------------------------------------------------
 
+// Creates an inline text input over an element for renaming.
+// Calls onSave(newValue) on blur/Enter, restores original on Escape.
+function _makeInlineEditor(el, currentValue, onSave, inputWidth) {
+  if (!el || el.querySelector('input')) return;
+  var input = document.createElement('input');
+  input.type = 'text'; input.value = currentValue;
+  input.style.cssText = 'font:inherit;color:inherit;background:var(--bg-hover);border:1px solid var(--border-main);border-radius:4px;padding:0 4px;width:' + (inputWidth || '100%') + ';outline:none;font-size:0.85rem;';
+  el.textContent = ''; el.appendChild(input); input.focus(); input.select();
+  var save = function() {
+    var newVal = input.value.trim();
+    el.textContent = newVal || currentValue;
+    if (newVal && newVal !== currentValue) onSave(newVal);
+  };
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') input.blur();
+    if (ev.key === 'Escape') { el.textContent = currentValue; }
+  });
+}
+
 function _wireRenameHandler(item, t) {
   item.querySelector('.chat-action-btn[title="Rename"]').addEventListener('click', function(e) {
     e.stopPropagation();
-    var nameEl = item.querySelector('.chat-name');
-    if (!nameEl || nameEl.querySelector('input')) return;
-    var currentTitle = nameEl.textContent;
-    var input = document.createElement('input');
-    input.type = 'text'; input.value = currentTitle;
-    input.style.cssText = 'font:inherit;color:inherit;background:var(--bg-hover);border:1px solid var(--border-main);border-radius:4px;padding:0 4px;width:100%;outline:none;font-size:0.85rem;';
-    nameEl.textContent = ''; nameEl.appendChild(input); input.focus(); input.select();
-    var save = function() {
-      var newTitle = input.value.trim();
-      nameEl.textContent = newTitle || currentTitle;
-      if (newTitle && newTitle !== currentTitle) {
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameThread', threadId: t.id, title: newTitle }));
-      }
-    };
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') { input.blur(); } if (ev.key === 'Escape') { nameEl.textContent = currentTitle; } });
+    _makeInlineEditor(item.querySelector('.chat-name'), item.querySelector('.chat-name').textContent, function(newTitle) {
+      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameThread', threadId: t.id, title: newTitle }));
+    });
   });
+}
+
+function _addFolderPickItem(dd, label, folderId, threadId) {
+  var item = document.createElement('div');
+  item.textContent = label;
+  item.style.cssText = 'padding:8px 12px;cursor:pointer;border-radius:4px;font-size:0.85rem;';
+  item.addEventListener('mouseenter', function() { this.style.background = 'var(--bg-hover)'; });
+  item.addEventListener('mouseleave', function() { this.style.background = ''; });
+  item.addEventListener('click', function(ev) {
+    ev.stopPropagation();
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'moveToFolder', threadId: threadId, folderId: folderId }));
+    dd.remove();
+  });
+  dd.appendChild(item);
 }
 
 function _wireMoveToFolderHandler(item, t) {
@@ -200,42 +211,16 @@ function _wireMoveToFolderHandler(item, t) {
     var btn = this;
     var existing = document.querySelector('.folder-pick-dropdown');
     if (existing) existing.remove();
-    if (existing && existing._btn === btn) return;
 
     var dd = document.createElement('div');
     dd.className = 'folder-pick-dropdown';
     dd.style.cssText = 'position:fixed;z-index:100;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:8px;box-shadow:var(--shadow-modal);padding:4px;min-width:150px;';
-    dd._btn = btn;
     var rect = btn.getBoundingClientRect();
     dd.style.left = rect.left + 'px'; dd.style.top = (rect.bottom + 2) + 'px';
 
-    var unfiledItem = document.createElement('div');
-    unfiledItem.textContent = 'Unfiled (no folder)';
-    unfiledItem.style.cssText = 'padding:8px 12px;cursor:pointer;border-radius:4px;font-size:0.85rem;color:var(--text-secondary);';
-    unfiledItem.addEventListener('mouseenter', function() { this.style.background = 'var(--bg-hover)'; });
-    unfiledItem.addEventListener('mouseleave', function() { this.style.background = ''; });
-    unfiledItem.addEventListener('click', function(ev) {
-      ev.stopPropagation();
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'moveToFolder', threadId: t.id, folderId: '__none__' }));
-      dd.remove();
-    });
-    dd.appendChild(unfiledItem);
-
+    _addFolderPickItem(dd, 'Unfiled (no folder)', '__none__', t.id);
     for (var fi = 0; fi < _folders.length; fi++) {
-      var folder = _folders[fi];
-      var folderItem = document.createElement('div');
-      folderItem.textContent = folder.name;
-      folderItem.style.cssText = 'padding:8px 12px;cursor:pointer;border-radius:4px;font-size:0.85rem;';
-      folderItem.addEventListener('mouseenter', function() { this.style.background = 'var(--bg-hover)'; });
-      folderItem.addEventListener('mouseleave', function() { this.style.background = ''; });
-      folderItem.addEventListener('click', function(folderId) {
-        return function(ev) {
-          ev.stopPropagation();
-          window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'moveToFolder', threadId: t.id, folderId: folderId }));
-          dd.remove();
-        };
-      }(folder.id));
-      dd.appendChild(folderItem);
+      _addFolderPickItem(dd, _folders[fi].name, _folders[fi].id, t.id);
     }
     document.body.appendChild(dd);
     setTimeout(function() {
@@ -268,22 +253,9 @@ function _buildFolderSection(folder, threads) {
   });
   head.querySelector('.folder-action-btn:not(.danger)').addEventListener('click', function(e) {
     e.stopPropagation();
-    var nameSpan = this.closest('.folder-head').querySelector('.folder-name');
-    if (!nameSpan || nameSpan.querySelector('input')) return;
-    var currentName = nameSpan.textContent;
-    var input = document.createElement('input');
-    input.type = 'text'; input.value = currentName;
-    input.style.cssText = 'font:inherit;color:inherit;background:var(--bg-hover);border:1px solid var(--border-main);border-radius:4px;padding:0 4px;width:120px;outline:none;font-size:0.85rem;';
-    nameSpan.textContent = ''; nameSpan.appendChild(input); input.focus(); input.select();
-    var save = function() {
-      var newName = input.value.trim();
-      nameSpan.textContent = newName || currentName;
-      if (newName && newName !== currentName) {
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameFolder', folderId: folder.id, name: newName }));
-      }
-    };
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') { input.blur(); } if (ev.key === 'Escape') { nameSpan.textContent = currentName; } });
+    _makeInlineEditor(this.closest('.folder-head').querySelector('.folder-name'), folder.name, function(newName) {
+      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameFolder', folderId: folder.id, name: newName }));
+    }, '120px');
   });
   head.querySelector('.folder-delete-btn').addEventListener('click', function(e) {
     e.stopPropagation();
@@ -385,19 +357,20 @@ function scrollToMessage(index) {
   }
 }
 
+// Shared helper: find message by ID and scroll with flash.
+// Used by tree modal, search dropdown, and thread map fallback.
+function scrollToMessageById(messageId) {
+  for (var i = 0; i < chatMessages.length; i++) {
+    if (chatMessages[i].id === messageId) { scrollToMessage(i); return true; }
+  }
+  return false;
+}
+
 // -----------------------------------------------------------
 // Thread switching
 // -----------------------------------------------------------
 
-function loadThread(threadId) {
-  // Switch to chat view if currently showing dashboard
-  if (typeof window._showChat === 'function') window._showChat();
-  activeThreadId = threadId;
-  // Title is read from _threadMeta (populated by loadThreadList).
-  // If not yet loaded, it will be "New Chat" until threadList arrives.
-  updateTopbarTitle();
-
-  // Update active highlight immediately (sidebar may not re-render)
+function _setActiveHighlight(threadId) {
   var allItems = document.querySelectorAll('.chat-item');
   for (var i = 0; i < allItems.length; i++) {
     var chatId = allItems[i].getAttribute('data-chat');
@@ -407,18 +380,26 @@ function loadThread(threadId) {
       allItems[i].classList.remove('active');
     }
   }
+}
 
+function loadThread(threadId) {
+  if (!threadId) {
+    activeThreadId = "";
+    updateTopbarTitle();
+    if (typeof updateScopedSearchState === 'function') updateScopedSearchState();
+    return;
+  }
+  if (typeof window._showChat === 'function') window._showChat();
+  activeThreadId = threadId;
+  updateTopbarTitle();
+  _setActiveHighlight(threadId);
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThread', threadId: threadId }));
 }
 
 function newChat() {
   activeThreadId = '';
   updateTopbarTitle();
-  // Clear active highlight
-  var allItems = document.querySelectorAll('.chat-item');
-  for (var i = 0; i < allItems.length; i++) {
-    allItems[i].classList.remove('active');
-  }
+  _setActiveHighlight('');
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'newChat' }));
 }
 
