@@ -6,6 +6,9 @@
 ; ----------------------------------------------------
 
 ShowUsageDashboard() {
+    ; Don't send IPC in test mode — would activate the running Chat window
+    if IsSet(testMode) && testMode
+        return
     ; Find ChatWindow and tell it to show the inline dashboard
     if WinExist("Chat ahk_exe AutoHotkey64.exe") {
         hwnd := WinExist("Chat ahk_exe AutoHotkey64.exe")
