@@ -174,6 +174,10 @@ class TreeRepo {
 
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
+
+        ; Bulk FTS sync for all copied messages in the forked thread
+        ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id='" newThreadId "';")
+
         return newThreadId
     }
 
