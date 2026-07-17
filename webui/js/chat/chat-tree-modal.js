@@ -140,6 +140,7 @@ function renderChatTree(tree) {
 
   var maxBottom = 60;
   for (var i = 0; i < allNodes.length; i++) {
+    // 100 = layout NODE_H (90) + slack, since real rendered nodes can exceed NODE_H.
     if (allNodes[i].top + 100 > maxBottom) maxBottom = allNodes[i].top + 100;
   }
   var maxRight = 40;
@@ -241,15 +242,23 @@ function _collectActivePath(activeIds) {
 
 // Layout nodes bottom-up: children first, parent centered between them.
 // Siblings at the same level stack vertically (newest on top via TreeRepo sorting).
+// Root-level branches (multiple nodes in the `nodes` array) get the same
+// SIBLING_GAP cushion as child subtrees so adjacent subtrees never touch/overlap.
 function _layoutTreeNodes(nodes, depth, startY, activeIds, svgPaths, allNodes) {
   if (!nodes || nodes.length === 0) return startY;
   var x = 40 + depth * 340;
+  // NODE_H is the layout-math node height. Real rendered height is ~81-126px
+  // (.tree-node in modals.css: padding + role line + up to 3 clamped text lines),
+  // so the effective visual gap is (SIBLING_GAP - NODE_H) minus the overflow.
   var NODE_H = 90;
   var SIBLING_GAP = 160;
 
   var childInfo = [];
   var currentY = startY;
   for (var i = 0; i < nodes.length; i++) {
+    // Cushion between consecutive subtrees in this array (root-level branches;
+    // mirrors the inner loop's child-subtree gap below).
+    if (i > 0) currentY += SIBLING_GAP - NODE_H;
     var node = nodes[i];
     var children = node.children || [];
     var childTops = [];

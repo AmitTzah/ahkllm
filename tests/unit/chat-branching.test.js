@@ -207,6 +207,84 @@ describe('_inheritModels', () => {
     });
 });
 
+describe('_layoutTreeNodes', () => {
+    // Layout constants mirrored from chat-tree-modal.js (_layoutTreeNodes).
+    // MUST be kept in sync with the source — they are function-locals there.
+    const NODE_H = 90;
+    const SIBLING_GAP = 160;
+
+    function layout(ctx, tree) {
+        var svgPaths = [], allNodes = [];
+        ctx._layoutTreeNodes(tree, 0, 60, {}, svgPaths, allNodes);
+        return allNodes;
+    }
+
+    function assertNoColumnOverlap(allNodes) {
+        // Group nodes by column (left), sort by top, and require the sibling
+        // cushion (SIBLING_GAP - NODE_H) between consecutive vertical spans.
+        var byColumn = {};
+        allNodes.forEach(function(n) {
+            (byColumn[n.left] = byColumn[n.left] || []).push(n);
+        });
+        Object.keys(byColumn).forEach(function(col) {
+            var nodes = byColumn[col].sort(function(a, b) { return a.top - b.top; });
+            for (var i = 1; i < nodes.length; i++) {
+                var gap = nodes[i].top - (nodes[i - 1].top + NODE_H);
+                assert.ok(gap >= SIBLING_GAP - NODE_H,
+                    'nodes "' + nodes[i - 1].id + '" and "' + nodes[i].id + '" in column ' + col +
+                    ' are only ' + gap + 'px apart (need >= ' + (SIBLING_GAP - NODE_H) + 'px)');
+            }
+        });
+    }
+
+    it('regression: child of edited branch does not overlap retried response of original branch', () => {
+        // Repro: send "hi", retry assistant (2/2), edit "hi" -> "hello" saved as branch.
+        // TreeRepo sorts newest-first: "hello" subtree renders above "hi" subtree.
+        const ctx = loadBranchingModule();
+        var tree = [
+            { id: 'hello', role: 'user', content_preview: 'hello', children: [
+                { id: 'respH', role: 'assistant', content_preview: 'Hello! How can I help?', children: [] }
+            ]},
+            { id: 'hi', role: 'user', content_preview: 'hi', children: [
+                { id: 'resp2', role: 'assistant', content_preview: 'Hi there! (2/2)', children: [] },
+                { id: 'resp1', role: 'assistant', content_preview: 'Hey! (1/2)', children: [] }
+            ]}
+        ];
+        var allNodes = layout(ctx, tree);
+        var respH = allNodes.find(function(n) { return n.id === 'respH'; });
+        var resp2 = allNodes.find(function(n) { return n.id === 'resp2'; });
+        assert.ok(respH && resp2, 'both assistant nodes must be laid out');
+        assert.strictEqual(respH.left, resp2.left, 'both assistant nodes share a column');
+        var gap = resp2.top - (respH.top + NODE_H);
+        assert.ok(gap >= SIBLING_GAP - NODE_H,
+            'child of "hello" must not overlap 2/2 response of "hi" (gap was ' + gap + 'px)');
+        assertNoColumnOverlap(allNodes);
+    });
+
+    it('keeps sibling cushion between child subtrees of the same parent', () => {
+        const ctx = loadBranchingModule();
+        var tree = [
+            { id: 'q', role: 'user', content_preview: 'Q', children: [
+                { id: 'a2', role: 'assistant', content_preview: 'A2', children: [] },
+                { id: 'a1', role: 'assistant', content_preview: 'A1', children: [] }
+            ]}
+        ];
+        assertNoColumnOverlap(layout(ctx, tree));
+    });
+
+    it('single root still starts at startY and returns correct subtree bottom', () => {
+        const ctx = loadBranchingModule();
+        var tree = [
+            { id: 'only', role: 'user', content_preview: 'Q', children: [] }
+        ];
+        var allNodes = [];
+        var bottom = ctx._layoutTreeNodes(tree, 0, 60, {}, [], allNodes);
+        assert.strictEqual(allNodes.length, 1);
+        assert.strictEqual(allNodes[0].top, 60);
+        assert.strictEqual(bottom, 60 + NODE_H, 'single leaf root returns startY + NODE_H');
+    });
+});
+
 describe('forkChat', () => {
     it('does nothing when isLoading', () => {
         const ctx = loadBranchingModule();
