@@ -107,6 +107,7 @@ function handleWebMessage(event) {
 
       case 'streamContent':
       case 'streamReasoning':
+      case 'streamModelName':
       case 'streamDone':
       case 'streamCancelled':
         handleStreamMessage(target, data);

@@ -33,7 +33,18 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     requestParams["_streamLastPos"]          := 0
     requestParams["_streamContent"]          := ""
     requestParams["_streamReasoning"]        := ""
-    requestParams["_streamModelName"]        := ""
+    sanitizedModel := ModelParser.Sanitize(requestParams["singleAPIModelName"])
+    requestParams["_streamModelName"]        := sanitizedModel
+
+    ; Use assistant name as display title when active
+    if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
+        asst := ChatDB.Assistant_Get(requestParams["activeAssistantId"])
+        displayName := asst && asst.name ? asst.name : sanitizedModel
+    } else {
+        displayName := sanitizedModel
+    }
+    requestParams["_streamDisplayName"] := displayName
+
     requestParams["_streamFirstTokenTime"]   := 0
     requestParams["_streamUsage"]            := {}
     requestParams["_streamProviderKey"]      := providerInfo.providerKey
@@ -45,8 +56,10 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     requestParams["_streamPID"]              := cURLPID
     requestParams["_streamCancelled"]        := false
 
-    SetTimer(_pollStreamTimer, 100)
+    ; Post display title to UI immediately for bubble author during streaming
+    postWebMessage("streamModelName", displayName)
 
+    SetTimer(_pollStreamTimer, 100)
     } catch Error as e {
         debugLog("sendStreamingRequest error: " e.Message)
         postWebMessage("setChatButtonsEnabled", true)
@@ -152,7 +165,7 @@ _processChunk(state, chunk, doPostMessage) {
                 postWebMessage("streamContent", chunk.content)
             if chunk.HasOwnProp("model") && chunk.model
                 state.modelName := ModelParser.Sanitize(chunk.model)
-            if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+            if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
                 state.usage := chunk.usage
 
         case "reasoning":
@@ -171,7 +184,7 @@ _processChunk(state, chunk, doPostMessage) {
         case "finish":
             if chunk.HasOwnProp("model") && chunk.model
                 state.modelName := ModelParser.Sanitize(chunk.model)
-            if chunk.HasOwnProp("usage") && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+            if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
                 state.usage := chunk.usage
 
         case "done":
@@ -215,6 +228,7 @@ _cleanupStreamState() {
     requestParams.Delete("_streamContent")
     requestParams.Delete("_streamReasoning")
     requestParams.Delete("_streamModelName")
+    requestParams.Delete("_streamDisplayName")
     requestParams.Delete("_streamFirstTokenTime")
     requestParams.Delete("_streamUsage")
     requestParams.Delete("_streamProviderKey")

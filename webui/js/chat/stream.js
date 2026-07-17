@@ -30,7 +30,6 @@ function startStreaming() {
   streamState.thinkingBuffer = '';
   streamState.thinkingDetails = null;
   streamState.bubble = null;       // Reset bubble so a fresh one is created each session
-  streamState.modelName = '';
 
   // Remove the loading indicator since we're now showing live content
   hideLoadingIndicator();
@@ -123,14 +122,15 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
 // Called when streaming is complete
 function onStreamDone(data) {
   var modelName = typeof data === 'string' ? data : (data && data.model ? data.model : '');
+  var displayName = (data && data.displayName) ? data.displayName : modelName;
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
 
   streamState.userScrolledUp = false;
   var container = document.getElementById('chat-messages');
   if (container) container.scrollTop = container.scrollHeight;
-  streamState.modelName = modelName;
+  streamState.modelName = displayName;
 
-  _finalizeStreamBubble(modelName, dbMsg);
+  _finalizeStreamBubble(displayName, modelName, dbMsg);
   _finalizeThinkingBlock();
   _finalizeStreamContent();
 
@@ -148,10 +148,10 @@ function onStreamDone(data) {
   if (typeof renderNavList === 'function') renderNavList();
 }
 
-function _finalizeStreamBubble(modelName, dbMsg) {
+function _finalizeStreamBubble(displayName, modelName, dbMsg) {
   if (!streamState.bubble) return;
   var author = streamState.bubble.querySelector('.msg-author');
-  if (author) author.textContent = modelName || 'Assistant';
+  if (author) author.textContent = displayName || 'Assistant';
 
   var meta = streamState.bubble.querySelector('.msg-meta');
   if (meta) {
@@ -197,10 +197,11 @@ function createStreamingBubble() {
   var container = document.getElementById('chat-messages');
 
   // Build HTML matching mock assistant message structure exactly
+  var displayName = streamState.modelName || 'Assistant';
   var html = '<div class="msg bot" id="streaming-bubble">';
   html += '<div class="msg-body">';
   html += '<div class="msg-head">';
-  html += '<span class="msg-author">Assistant</span>';
+  html += '<span class="msg-author">' + displayName + '</span>';
   html += '<span class="msg-meta"></span>';
   html += '</div>';
   html += '<div class="msg-content"></div>';
@@ -266,6 +267,9 @@ function handleStreamMessage(target, data) {
     case 'streamReasoning':
       onStreamReasoning(data);
       break;
+    case 'streamModelName':
+      onStreamModelName(data);
+      break;
     case 'streamDone':
       onStreamDone(data);
       break;
@@ -273,6 +277,16 @@ function handleStreamMessage(target, data) {
       cancelStreaming(data);
       break;
   }
+}
+
+// Update the streaming bubble's author to the actual model name as soon as it's known
+function onStreamModelName(modelName) {
+  if (!modelName) return;
+  streamState.modelName = modelName;
+
+  if (!streamState.bubble) return;
+  var author = streamState.bubble.querySelector('.msg-author');
+  if (author) author.textContent = modelName;
 }
 
 // Clean up after user cancellation (Esc or Stop button).
