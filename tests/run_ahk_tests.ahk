@@ -72,6 +72,7 @@ global responseWindow := {PostWebMessageAsJSON: (*) => ""}
 #Include ..\app\TextCapture.ahk
 #Include ..\app\menu\CommandMenu.ahk
 #Include ..\chat\ChatUtils.ahk
+#Include ..\chat\ChatSettings.ahk
 #Include ..\chat\streaming\StreamHandler.ahk
 #Include ..\chat\callbacks\Message.ahk
 #Include ..\chat\ChatRequestBuilder.ahk
@@ -100,6 +101,7 @@ RegisterTestClass(className) {
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
 #Include unit\ModelParser.test.ahk
+#Include unit\ChatSettings.test.ahk
 #Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
 #Include unit\CostCalculator.test.ahk

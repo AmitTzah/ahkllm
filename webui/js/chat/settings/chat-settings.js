@@ -10,9 +10,13 @@ function _sendAllSettings() {
   if (_settingsTimer) clearTimeout(_settingsTimer);
   _settingsTimer = setTimeout(function() {
     var s = window._currentSettings || {};
+    // When assistant is active, don't send the base model as the model field.
+    // The assistant manages the model — sending it would cause AHK to treat it
+    // as an explicit model switch and clear the assistant.
+    var modelToSend = s.assistantName ? '' : (s.model || '');
     window.chrome.webview.postMessage(JSON.stringify({
       action: 'updateModelSettings',
-      model: s.model || '',
+      model: modelToSend,
       systemMessage: s.systemMessage || '',
       reasoning: s.reasoning || '',
       temperature: s.temperature || ''
@@ -191,16 +195,20 @@ function _populateModelsTab() {
 }
 
 function _makeModelClickHandler(el, fullId) {
-  return function() {
-    var allItems = document.querySelectorAll('#tab-models .selector-item');
-    for (var si = 0; si < allItems.length; si++) allItems[si].classList.remove('active');
-    el.classList.add('active');
-    if (!window._currentSettings) window._currentSettings = {};
-    window._currentSettings.model = fullId;
-    _sendAllSettings();
-    _updateModelCard();
-    var pop = document.getElementById('modelPopover'); if (pop) pop.classList.remove('open');
-    var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
-  };
+    return function() {
+        var allItems = document.querySelectorAll('#tab-models .selector-item');
+        for (var si = 0; si < allItems.length; si++) allItems[si].classList.remove('active');
+        el.classList.add('active');
+        if (!window._currentSettings) window._currentSettings = {};
+        window._currentSettings.model = fullId;
+        // Clear assistant when user explicitly picks a model
+        window._currentSettings.assistantName = '';
+        window._currentSettings.assistantBaseModel = '';
+        window._currentSettings.assistantDescription = '';
+        _sendAllSettings();
+        _updateModelCard();
+        var pop = document.getElementById('modelPopover'); if (pop) pop.classList.remove('open');
+        var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
+    };
 }
 

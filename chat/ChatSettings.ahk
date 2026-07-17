@@ -138,24 +138,22 @@ handleSwitchAssistant(parsed) {
 
 handleModelSettingsUpdate(parsed) {
     global activeThreadId
-    ; Auto-create thread if none is active (e.g. ChatWindow opened from tray)
-    if !activeThreadId {
-        activeThreadId := ChatDB.Thread_Create()
-        postWebMessage("threadList", ChatDB.Thread_List())
-        postWebMessage("loadThread", activeThreadId)
-    }
     model := parsed.Get("model", "")
     systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
     temperature := parsed.Get("temperature", "")
 
-    ; Clear assistant when user manually changes settings via gear
-    if requestParams.Has("activeAssistantId")
-        requestParams.Delete("activeAssistantId")
-
+    ; Only clear assistant when user explicitly changes the model (non-empty).
+    ; When model is empty, the user is adjusting side settings (reasoning, temperature, etc.)
+    ; while an assistant is active — preserve the assistant.
     if model {
+        if requestParams.Has("activeAssistantId")
+            requestParams.Delete("activeAssistantId")
         requestParams["singleAPIModelName"] := model
         _updateProviderFromModel(model)
+    } else if requestParams.Has("activeAssistantId") {
+        ; Assistant is active — keep current model (assistant's base model)
+        ; Only update reasoning/temperature/systemMessage below
     } else {
         requestParams["singleAPIModelName"] := chatDefaultModel
     }
