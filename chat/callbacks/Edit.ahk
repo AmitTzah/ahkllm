@@ -57,10 +57,14 @@ handleEdit(params, *) {
             }
         }
         ; Trigger LLM request for the new branch (same as Retry flow)
+        ; Only auto-fire when branching a user message — branching an assistant
+        ; message just creates a sibling and updates the view.
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
-        _BuildAndFireRequest()
+        if (role = "user") {
+            _BuildAndFireRequest()
+        }
     } else {
         ; Append any new attachments — never delete existing ones (× button handles removal)
         for att in attachments {
