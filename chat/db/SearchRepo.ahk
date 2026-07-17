@@ -71,6 +71,8 @@ class SearchRepo {
             ftsExpr .= "*"
         }
 
+        ; Escape single quotes and wrap in SQL quotes for MATCH.
+        ; SQLite.Escape doubles quotes but doesn't wrap — MATCH needs 'term'.
         safeFTS := StrReplace(ftsExpr, "'", "''")
 
         ; Two-step: query FTS for matching msg_ids, then messages by ID

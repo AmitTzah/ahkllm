@@ -1154,6 +1154,28 @@ class ChatDBTest {
             this._teardown()
         }
     
+        ; Regression: FTS5 sync must handle content with single quotes.
+        ; SQLite.Escape doubles internal quotes (' → '') but does NOT wrap in quotes.
+        ; The caller must add wrapping quotes: '" SQLite.Escape(val) "'
+        SearchMessages_FTS5_SyncWithQuotes() {
+            threadId := this._setup()
+            ; Content with apostrophe/single quote — must survive FTS sync round-trip
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "it's working"})
+            ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "don't panic"})
+    
+            ; FTS5 should find "it's" content (tokenized as "it" and "s")
+            results := ChatDB.SearchMessages("working", threadId)
+            if results.Length != 1
+                throw Error("Expected 1 FTS5 match for 'working' after quote content sync, got " results.Length)
+    
+            ; FTS5 should find "don't" content
+            results2 := ChatDB.SearchMessages("panic", threadId)
+            if results2.Length != 1
+                throw Error("Expected 1 FTS5 match for 'panic' after quote content sync, got " results2.Length)
+    
+            this._teardown()
+        }
+    
     }
     
     }

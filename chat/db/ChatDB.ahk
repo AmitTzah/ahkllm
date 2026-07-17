@@ -83,13 +83,17 @@ class ChatDB {
 
     }
 
-    ; FTS5 sync — called from MessageRepo. Uses msg_id (TEXT) for identity.
+    ; FTS5 sync — called from MessageRepo on Insert/Edit.
+    ; NOTE: SQLite.Escape only doubles internal single quotes (' → ''),
+    ; it does NOT wrap in quotes. The caller must add wrapping quotes.
+    ;   WRONG: VALUES(..., SQLite.Escape(val))     → VALUES(..., Hi)
+    ;   RIGHT: VALUES(..., '" SQLite.Escape(val) "') → VALUES(..., 'Hi')
     static FTS_Sync(msgId, content) {
-        ; Delete old entry then insert new (DELETE+INSERT = upsert replacement)
         ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" msgId "';")
         safeContent := SQLite.Escape(content)
         try {
-            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) VALUES('" msgId "', " safeContent ");")
+            ; Wrapping quotes around safeContent: '" safeContent "'
+            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) VALUES('" msgId "', '" safeContent "');")
         } catch Error as e {
             debugLog("[FTS] Sync ERROR: " e.Message, "FTS")
         }
