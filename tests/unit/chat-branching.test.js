@@ -6,7 +6,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadBranchingModule() {
-    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-branching.js'), 'utf-8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-branching.js'), 'utf-8')
+        + '\n' + fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-tree-modal.js'), 'utf-8');
     let postedMessages = [];
     let createdElements = [];
     function makeEl(tag) {
