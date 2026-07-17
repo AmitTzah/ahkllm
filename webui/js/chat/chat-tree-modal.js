@@ -13,6 +13,7 @@ function toggleTreeModal() {
   if (overlay.classList.contains('open')) {
     overlay.classList.remove('open');
   } else {
+    _resetTreeFullscreen();
     overlay.classList.add('open');
     var layer = document.getElementById('treeZoomLayer');
     var pct = document.getElementById('zoomPct');
@@ -22,9 +23,44 @@ function toggleTreeModal() {
   }
 }
 
+var treeFullscreen = false;
+
+function _resetTreeFullscreen() {
+  treeFullscreen = false;
+  var box = document.querySelector('.tree-modal');
+  if (box) box.classList.remove('fullscreen');
+  var icon = document.querySelector('#treeFullscreenBtn i');
+  if (icon) icon.setAttribute('data-lucide', 'maximize2');
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+function toggleTreeFullscreen() {
+  var box = document.querySelector('.tree-modal');
+  var btn = document.getElementById('treeFullscreenBtn');
+  var icon = btn ? btn.querySelector('i') : null;
+  if (!box) return;
+  treeFullscreen = !treeFullscreen;
+  if (treeFullscreen) {
+    box.classList.add('fullscreen');
+    if (icon) icon.setAttribute('data-lucide', 'minimize2');
+  } else {
+    box.classList.remove('fullscreen');
+    if (icon) icon.setAttribute('data-lucide', 'maximize2');
+  }
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+  // Re-fit after transition
+  var layer = document.getElementById('treeZoomLayer');
+  var pct = document.getElementById('zoomPct');
+  if (layer) layer.style.transform = 'translate(0px,0px) scale(1)';
+  if (pct) pct.textContent = '100%';
+}
+
 function closeTreeModal() {
   var overlay = document.getElementById('treeOverlay');
-  if (overlay) overlay.classList.remove('open');
+  if (overlay) {
+    overlay.classList.remove('open');
+    _resetTreeFullscreen();
+  }
 }
 
 // Wire tree close button, overlay click, and zoom/pan (guarded for test sandboxes)
@@ -32,8 +68,8 @@ if (typeof document !== 'undefined' && document.addEventListener) {
   document.addEventListener('DOMContentLoaded', function() {
     var treeClose = document.getElementById('treeClose');
     var treeOverlay = document.getElementById('treeOverlay');
-    if (treeClose) treeClose.addEventListener('click', function() { treeOverlay.classList.remove('open'); });
-    if (treeOverlay) treeOverlay.addEventListener('click', function(e) { if (e.target === treeOverlay) treeOverlay.classList.remove('open'); });
+    if (treeClose) treeClose.addEventListener('click', function() { closeTreeModal(); });
+    if (treeOverlay) treeOverlay.addEventListener('click', function(e) { if (e.target === treeOverlay) closeTreeModal(); });
 
     var canvasWrap = document.getElementById('treeCanvasWrap');
     var layer = document.getElementById('treeZoomLayer');

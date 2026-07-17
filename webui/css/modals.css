@@ -8,7 +8,8 @@
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 24px 32px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
 .modal-title { font-weight: 600; font-size: 20px; color: var(--text-primary); }
 
-.tree-modal { width: 900px; max-width: 95vw; height: 700px; max-height: 90vh; }
+.tree-modal { width: 900px; max-width: 95vw; height: 700px; max-height: 90vh; transition: width 0.25s ease, height 0.25s ease, max-width 0.25s ease, max-height 0.25s ease, border-radius 0.25s ease; }
+.tree-modal.fullscreen { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
 .tree-modal-sub { font-size: 14px; color: var(--text-tertiary); margin-top: 6px; }
 .tree-controls { display: flex; align-items: center; gap: 20px; }
 .zoom-controls { display: flex; align-items: center; background: var(--bg-hover); border-radius: var(--radius-sm); padding: 4px; }
