@@ -91,7 +91,9 @@ class TreeRepo {
             if parentKey = "__root__"
                 continue
             if nodeMap.Has(parentKey) {
-                for cid in childIds {
+                ; Sort by sibling_index descending: newest (2/2) on top
+                sorted := TreeRepo._SortTreeChildren(childIds, nodeMap)
+                for cid in sorted {
                     if nodeMap.Has(cid)
                         nodeMap[parentKey].children.Push(nodeMap[cid])
                 }
@@ -100,12 +102,36 @@ class TreeRepo {
 
         roots := []
         if childrenMap.Has("__root__") {
-            for cid in childrenMap["__root__"] {
+            sortedRoots := TreeRepo._SortTreeChildren(childrenMap["__root__"], nodeMap)
+            for cid in sortedRoots {
                 if nodeMap.Has(cid)
                     roots.Push(nodeMap[cid])
             }
         }
         return roots
+    }
+
+    ; Sort child IDs by sibling_index descending (newest first).
+    ; Messages without sibling_group/sibling_index sort after those with.
+    static _SortTreeChildren(childIds, nodeMap) {
+        result := []
+        for cid in childIds
+            result.Push(cid)
+        ; Bubble sort by sibling_index descending
+        loop result.Length - 1 {
+            for i, cid in result {
+                if i >= result.Length
+                    break
+                current := nodeMap.Has(cid) ? nodeMap[cid].sibling_index : -1
+                next := result.Has(i + 1) && nodeMap.Has(result[i + 1]) ? nodeMap[result[i + 1]].sibling_index : -1
+                if current < next {
+                    temp := result[i]
+                    result[i] := result[i + 1]
+                    result[i + 1] := temp
+                }
+            }
+        }
+        return result
     }
 
     static ForkThread(threadId, upToMsgId) {
