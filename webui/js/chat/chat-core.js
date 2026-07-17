@@ -50,11 +50,6 @@ function initChatMode(data) {
   sessionStorage.setItem('isChatMode', 'true');
   sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
 
-  // Clear undo stack when switching threads (new context = clean undo history)
-  if (typeof clearUndoStack === 'function') {
-    clearUndoStack();
-  }
-
   // Re-enable scoped search and handle cross-thread search navigation
   if (typeof updateScopedSearchState === 'function') updateScopedSearchState();
   if (typeof onSearchCrossThreadLoaded === 'function') onSearchCrossThreadLoaded();

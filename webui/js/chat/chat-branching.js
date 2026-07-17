@@ -49,10 +49,6 @@ function commitEdit(index, msgId, newContent, mode) {
   // Wait for any pending PDF/DOCX extractions AND SHA-256 hash computations to complete
   var allPromises = _editExtractPromises.concat(_editHashPromises);
   var doCommit = function() {
-    var msg = chatMessages[index];
-    if (msg && mode === 'overwrite') {
-      recordUndo('edit', msgId, { content: msg.content }, { content: newContent });
-    }
     var payload = { action: 'editMessage', id: msgId, content: newContent, mode: mode };
     if (_removedAttachmentIds.length > 0) {
       payload.removedAttachmentIds = _removedAttachmentIds.slice();
@@ -91,8 +87,6 @@ function deleteMessage(index) {
   if (!msg || isLoading) return;
 
   _showConfirm('Delete this message? This removes it from the current view but data is preserved.', function() {
-    // Record undo state before deleting
-    recordUndo('delete', msg.id, { content: msg.content, role: msg.role });
     window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteMessage', id: msg.id }));
   });
 }

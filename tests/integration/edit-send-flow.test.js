@@ -28,7 +28,7 @@ function loadModule(filePath, extraGlobals = {}) {
         MAX_FILE_SIZE: 50 * 1024 * 1024, MAX_BASE64_SIZE: 10 * 1024 * 1024, ALLOWED_EXTENSIONS: [],
         getAttachmentTypeFromMime: () => 'text_file', findAttachmentById: () => null,
         renderAttachmentBar: () => {}, showErrorBanner: () => {},
-        recordUndo: () => {}, clearAttachments: () => {},
+        clearAttachments: () => {},
         ...extraGlobals,
     };
     sandbox.global = sandbox;

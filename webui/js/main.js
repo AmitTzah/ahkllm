@@ -75,10 +75,6 @@ function handleWebMessage(event) {
         updateChatMessages(data);
         break;
 
-      case 'undeleteMessage':
-        // Handled by AHK via message passing — no JS action needed
-        break;
-
       case 'renderChatTree':
         window._treeData = data;
         var treeOverlay = document.getElementById('treeOverlay');

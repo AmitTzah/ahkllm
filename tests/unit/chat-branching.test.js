@@ -85,7 +85,6 @@ function loadBranchingModule() {
         _editAttachments: [],
         _editExtractPromises: [],
         _editHashPromises: [],
-        recordUndo: () => {},
         showErrorBanner: () => {},
         MAX_FILE_SIZE: 52428800,
         getAttachmentTypeFromMime: () => 'text_file',

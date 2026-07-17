@@ -29,7 +29,6 @@ function loadBranchingModule() {
         chatMessages: [],
         isLoading: false,
         md: { render: (c) => c },
-        recordUndo: () => {},
         _editingMessageId: null,
         _removedAttachmentIds: [],
         _editAttachments: [],
