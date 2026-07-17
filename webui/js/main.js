@@ -249,10 +249,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // Scroll tracking for streaming auto-scroll
-  var chatMessagesEl = document.getElementById('chat-messages');
-  if (chatMessagesEl) {
-    chatMessagesEl.addEventListener('scroll', function () {
-      var distanceFromBottom = chatMessagesEl.scrollHeight - chatMessagesEl.scrollTop - chatMessagesEl.clientHeight;
+  var chatScrollEl = document.getElementById('chat-scroll');
+  if (chatScrollEl) {
+    chatScrollEl.addEventListener('scroll', function () {
+      var distanceFromBottom = chatScrollEl.scrollHeight - chatScrollEl.scrollTop - chatScrollEl.clientHeight;
       if (typeof streamState !== 'undefined') {
         streamState.userScrolledUp = distanceFromBottom > 5;
       }
