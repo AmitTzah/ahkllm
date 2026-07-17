@@ -194,6 +194,12 @@ function renderChatTree(tree) {
   }
 }
 
+function _formatModelName(model) {
+  if (!model) return 'Assistant';
+  var parts = model.split('/');
+  return parts[parts.length - 1];
+}
+
 // Recursively fill in missing model names (branched messages may lack them)
 function _inheritModels(nodes, parentModel) {
   if (!nodes) return;
@@ -279,16 +285,29 @@ function _layoutTreeNodes(nodes, depth, startY, activeIds, svgPaths, allNodes) {
     var nd = info.node;
     var ctops = info.childTops;
     var isActive = !!activeIds[nd.id];
-    var roleLabel = nd.role === 'user' ? 'You' : (nd.role === 'assistant' ? (nd.model || 'Assistant') : 'System');
+    var roleLabel = nd.role === 'user' ? 'You' : (nd.role === 'assistant' ? _formatModelName(nd.model) : 'System');
     var preview = (nd.content_preview || '(empty)');
     if (preview.length > 55) preview = preview.substring(0, 55) + '...';
     var children = nd.children || [];
     var isLastAssistant = isActive && nd.role === 'assistant' && (!children.length || !activeIds[children[0].id]);
 
+    var childNodes = [];
+    if (ctops.length > 0) {
+      for (var c = 0; c < children.length; c++) {
+        var found = null;
+        for (var a = 0; a < allNodes.length; a++) {
+          if (allNodes[a].id === children[c].id) { found = allNodes[a]; break; }
+        }
+        childNodes.push(found);
+      }
+    }
+
     var nodeTop;
     if (ctops.length > 0) {
-      var firstChildCenter = ctops[0] + NODE_H / 2;
-      var lastChildCenter = ctops[ctops.length - 1] + NODE_H / 2;
+      var firstChildTop = childNodes[0] ? childNodes[0].top : ctops[0];
+      var lastChildTop = childNodes[childNodes.length - 1] ? childNodes[childNodes.length - 1].top : ctops[ctops.length - 1];
+      var firstChildCenter = firstChildTop + NODE_H / 2;
+      var lastChildCenter = lastChildTop + NODE_H / 2;
       nodeTop = (firstChildCenter + lastChildCenter) / 2 - NODE_H / 2;
     } else {
       nodeTop = info.bottomY;
@@ -301,7 +320,8 @@ function _layoutTreeNodes(nodes, depth, startY, activeIds, svgPaths, allNodes) {
     var parentCenterX = x + 260;
     var parentCenterY = Math.round(nodeTop) + NODE_H / 2;
     for (var ci2 = 0; ci2 < ctops.length; ci2++) {
-      var childCenterY = ctops[ci2] + NODE_H / 2;
+      var childTop = childNodes[ci2] ? childNodes[ci2].top : ctops[ci2];
+      var childCenterY = childTop + NODE_H / 2;
       var childActive = isActive && !!activeIds[(children[ci2] || {}).id];
       svgPaths.push({
         x1: parentCenterX, y1: parentCenterY,
