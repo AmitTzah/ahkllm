@@ -49,12 +49,15 @@ class SearchRepo {
     static _FTS5(query, threadId := "") {
         words := StrSplit(query, " ")
         ftsExpr := ""
+        firstWord := ""
         wordCount := 0
         for w in words {
             trimmed := Trim(w)
             if StrLen(trimmed) = 0
                 continue
             wordCount++
+            if !firstWord
+                firstWord := trimmed
             if StrLen(ftsExpr) > 0
                 ftsExpr .= " AND "
             ftsExpr .= trimmed
@@ -92,8 +95,18 @@ class SearchRepo {
         if threadId
             whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
 
+        ; Extract a snippet window around the first match (case-insensitive).
+        ; FTS5 MATCH is case-insensitive, so use LOWER() for INSTR to match.
+        ; Only add "..." prefix/suffix when content is actually truncated.
+        safeFirstWordLower := SQLite.Escape(StrLower(firstWord))
+        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), '" safeFirstWordLower "') > 0 THEN"
+                     . " CASE WHEN INSTR(LOWER(m.content), '" safeFirstWordLower "') > 31 THEN '...' ELSE '' END"
+                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), '" safeFirstWordLower "') - 30), 100)"
+                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), '" safeFirstWordLower "') - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
+                     . " ELSE SUBSTR(m.content, 1, 100) END"
+
         sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
-             . " SUBSTR(m.content, 1, 100) AS contentPreview,"
+             . " " snippetExpr " AS contentPreview,"
              . " m.model, m.created_at AS createdAt,"
              . " t.title AS threadTitle"
              . " FROM messages m"
@@ -111,8 +124,17 @@ class SearchRepo {
         if threadId
             whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
 
+        ; Extract a snippet window around the first match (case-insensitive).
+        ; SQLite LIKE is case-insensitive for ASCII, so use LOWER() for INSTR.
+        ; Only add "..." prefix/suffix when content is actually truncated.
+        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), LOWER('" safeQuery "')) > 0 THEN"
+                     . " CASE WHEN INSTR(LOWER(m.content), LOWER('" safeQuery "')) > 31 THEN '...' ELSE '' END"
+                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), LOWER('" safeQuery "')) - 30), 100)"
+                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), LOWER('" safeQuery "')) - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
+                     . " ELSE SUBSTR(m.content, 1, 100) END"
+
         sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
-             . " SUBSTR(m.content, 1, 100) AS contentPreview,"
+             . " " snippetExpr " AS contentPreview,"
              . " m.model, m.created_at AS createdAt,"
              . " t.title AS threadTitle"
              . " FROM messages m"

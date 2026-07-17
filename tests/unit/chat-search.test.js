@@ -373,4 +373,29 @@ describe('chat-search', function() {
             assert.strictEqual(dropdown.style.display, 'none', 'dropdown should be hidden after Escape');
         });
     });
+
+    describe('highlightTerm with snippet format (search repo now extracts window around match)', function() {
+        it('highlights term in middle of snippet with ... prefix', function() {
+            var ctx = loadSearchModule();
+            // Simulate a snippet from the middle of a message: "...window around match..."
+            var result = ctx.highlightTerm('...30 chars before historical event here...', 'historical');
+            assert.ok(result.indexOf('<mark>historical</mark>') >= 0,
+                'should highlight term even when snippet has leading ...');
+        });
+
+        it('highlights term at beginning of snippet (no ... prefix)', function() {
+            var ctx = loadSearchModule();
+            var result = ctx.highlightTerm('The Bastille was a medieval fortress...', 'Bastille');
+            assert.ok(result.indexOf('<mark>Bastille</mark>') >= 0,
+                'should highlight term at beginning of snippet');
+        });
+
+        it('returns plain text when term not in snippet', function() {
+            var ctx = loadSearchModule();
+            var result = ctx.highlightTerm('The Bastille was a medieval fortress...', 'revolution');
+            // 'revolution' is not in this snippet — should return escaped text without marks
+            assert.ok(result.indexOf('<mark>') === -1,
+                'should not add mark tags when term is not in the snippet');
+        });
+    });
 });
