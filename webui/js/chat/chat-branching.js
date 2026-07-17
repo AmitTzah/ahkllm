@@ -328,14 +328,16 @@ function _layoutTreeNodes(nodes, depth, startY, activeIds, svgPaths, allNodes) {
   var NODE_H = 90;   // approximate node height
   var SIBLING_GAP = 160; // vertical gap between siblings
 
-  // First pass: recursively layout children of each node, collecting child positions
+  // First pass: recursively layout children of each node, collecting child positions.
+  // Each sibling's subtree starts below the previous sibling's subtree.
   var childInfo = []; // [{ node, childTops: [y1, y2, ...] }]
+  var currentY = startY;
   for (var i = 0; i < nodes.length; i++) {
     var node = nodes[i];
     var children = node.children || [];
     // Layout children: they get positioned sequentially
     var childTops = [];
-    var childY = startY;
+    var childY = currentY;
     for (var ci = 0; ci < children.length; ci++) {
       childTops.push(childY);
       childY = _layoutTreeNodes([children[ci]], depth + 1, childY, activeIds, svgPaths, allNodes);
@@ -345,6 +347,10 @@ function _layoutTreeNodes(nodes, depth, startY, activeIds, svgPaths, allNodes) {
     if (children.length > 0) childY -= (SIBLING_GAP - NODE_H);
 
     childInfo.push({ node: node, childTops: childTops, bottomY: childY });
+    // Next sibling's subtree starts below this one.
+    // If this node has children, childY already accounts for their height.
+    // If leaf, just advance by one node height.
+    currentY = Math.max(childY, currentY + NODE_H);
   }
 
   // Second pass: position each node centered among its children, collect all nodes
