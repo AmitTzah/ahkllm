@@ -1,5 +1,5 @@
 // ======================================================
-// chat-core.js — Core chat state and initialization
+// chat-core.js — Core chat state, initialization, and shared utilities
 // ======================================================
 
 // Chat state
@@ -85,6 +85,56 @@ function renderMarkdown(content) {
 function escHtml(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+}
+
+// Shared inline editor — creates a text input over an element for renaming.
+// Calls onSave(newValue) on blur/Enter, restores original on Escape.
+function _makeInlineEditor(el, currentValue, onSave, inputWidth) {
+  if (!el || el.querySelector('input')) return;
+  var input = document.createElement('input');
+  input.type = 'text'; input.value = currentValue;
+  input.style.cssText = 'font:inherit;color:inherit;background:var(--bg-hover);border:1px solid var(--border-main);border-radius:4px;padding:0 4px;width:' + (inputWidth || '100%') + ';outline:none;font-size:0.85rem;';
+  el.textContent = ''; el.appendChild(input); input.focus(); input.select();
+  var save = function() {
+    var newVal = input.value.trim();
+    el.textContent = newVal || currentValue;
+    if (newVal && newVal !== currentValue) onSave(newVal);
+  };
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') input.blur();
+    if (ev.key === 'Escape') { el.textContent = currentValue; }
+  });
+}
+
+// Shared custom confirmation dialog — no browser prompt()
+var _confirmCallback = null;
+function _showConfirm(message, onYes) {
+  var existing = document.getElementById('customConfirmOverlay');
+  if (existing) existing.remove();
+
+  _confirmCallback = onYes;
+  var overlay = document.createElement('div');
+  overlay.id = 'customConfirmOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(17,24,39,0.4);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:200;';
+  overlay.innerHTML =
+    '<div style="background:var(--bg-panel);border:1px solid var(--border-main);border-radius:12px;padding:24px;max-width:360px;box-shadow:var(--shadow-modal);">' +
+      '<div style="font-size:15px;color:var(--text-primary);margin-bottom:16px;line-height:1.5;">' + escHtml(message) + '</div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;">' +
+        '<button class="cancel-confirm-btn" style="padding:8px 16px;border:1px solid var(--border-main);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;">Cancel</button>' +
+        '<button class="yes-confirm-btn" style="padding:8px 16px;border:none;border-radius:6px;background:var(--danger);color:#fff;cursor:pointer;">Delete</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('.cancel-confirm-btn').addEventListener('click', function() { overlay.remove(); _confirmCallback = null; });
+  overlay.querySelector('.yes-confirm-btn').addEventListener('click', function() {
+    overlay.remove();
+    var cb = _confirmCallback;
+    _confirmCallback = null;
+    if (cb) cb();
+  });
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) { overlay.remove(); _confirmCallback = null; } });
 }
 
 // Global Escape handler: closes any open overlay (search, confirm, tree).

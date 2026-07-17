@@ -356,21 +356,23 @@
 <script src="js/chat/chat-branching.js"></script>
 <script src="js/chat/chat-tree-modal.js"></script>
 <script src="js/chat/chat-sidebar.js"></script>
+<script src="js/chat/chat-threadmap.js"></script>
+<script src="js/chat/chat-trash.js"></script>
 <script src="js/chat/chat-quote.js"></script>
-<script src="js/stream.js"></script>
+<script src="js/chat/stream.js"></script>
 <script src="js/chat/settings/chat-settings-modal.js"></script>
 <script src="js/chat/chat-search.js"></script>
 <script src="js/main.js"></script>
-<script src="js/mock-ui.js"></script>
+<script src="js/ui-controls.js"></script>
 <script>
   lucide.createIcons();
   function refreshIcons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
-  window.MockUI.initFontControls();
-  window.MockUI.initComposerResize();
-  window.MockUI.setupResize('seamLeft', 'notchLeft', document.getElementById('railLeft'), 'left', 64, 600, 340);
-  window.MockUI.setupResize('seamRight', 'notchRight', document.getElementById('railRight'), 'right', 260, 800, 400);
-  window.MockUI.setupVerticalResize('seamVertical', document.getElementById('rr-session'));
-  window.MockUI.initAutoCollapse();
+  window.UiControls.initFontControls();
+  window.UiControls.initComposerResize();
+  window.UiControls.setupResize('seamLeft', 'notchLeft', document.getElementById('railLeft'), 'left', 64, 600, 340);
+  window.UiControls.setupResize('seamRight', 'notchRight', document.getElementById('railRight'), 'right', 260, 800, 400);
+  window.UiControls.setupVerticalResize('seamVertical', document.getElementById('rr-session'));
+  window.UiControls.initAutoCollapse();
 </script>
 </body>
 </html>

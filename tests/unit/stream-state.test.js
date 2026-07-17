@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadStreamModule() {
-    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'stream.js'), 'utf-8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'stream.js'), 'utf-8');
     let postedMessages = [];
     const sandbox = {
         document: {

@@ -98,7 +98,7 @@ describe('Attachment → Send integration', () => {
 
 describe('Stream state integration', () => {
     it('_persistStreamedMessage applies dbMsg fields to message', () => {
-        const { ctx } = loadModule('stream.js');
+        const { ctx } = loadModule('chat/stream.js');
         ctx.chatMessages = [];
         ctx.streamState.bubble = { dataset: {} };
         ctx._persistStreamedMessage('response', 'gpt-4o', {

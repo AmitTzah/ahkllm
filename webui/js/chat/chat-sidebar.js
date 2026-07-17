@@ -1,5 +1,5 @@
 // ======================================================
-// chat-sidebar.js — Thread list sidebar, trash, thread map
+// chat-sidebar.js — Thread list sidebar, folders, thread switching
 // ======================================================
 
 // Map of threadId → { title, folder } — populated by loadThreadList, single source of truth
@@ -158,30 +158,6 @@ function createChatItem(t) {
   return item;
 }
 
-// -----------------------------------------------------------
-// Trash
-// -----------------------------------------------------------
-
-// Creates an inline text input over an element for renaming.
-// Calls onSave(newValue) on blur/Enter, restores original on Escape.
-function _makeInlineEditor(el, currentValue, onSave, inputWidth) {
-  if (!el || el.querySelector('input')) return;
-  var input = document.createElement('input');
-  input.type = 'text'; input.value = currentValue;
-  input.style.cssText = 'font:inherit;color:inherit;background:var(--bg-hover);border:1px solid var(--border-main);border-radius:4px;padding:0 4px;width:' + (inputWidth || '100%') + ';outline:none;font-size:0.85rem;';
-  el.textContent = ''; el.appendChild(input); input.focus(); input.select();
-  var save = function() {
-    var newVal = input.value.trim();
-    el.textContent = newVal || currentValue;
-    if (newVal && newVal !== currentValue) onSave(newVal);
-  };
-  input.addEventListener('blur', save);
-  input.addEventListener('keydown', function(ev) {
-    if (ev.key === 'Enter') input.blur();
-    if (ev.key === 'Escape') { el.textContent = currentValue; }
-  });
-}
-
 function _wireRenameHandler(item, t) {
   item.querySelector('.chat-action-btn[title="Rename"]').addEventListener('click', function(e) {
     e.stopPropagation();
@@ -274,98 +250,6 @@ function _buildFolderSection(folder, threads) {
   return folderDiv;
 }
 
-function loadTrashList(threads) {
-  var trashItems = document.querySelector('.trash-items');
-  if (!trashItems) return;
-  trashItems.innerHTML = '';
-
-  if (!threads || threads.length === 0) {
-    // Re-collapse trash when empty so chevron rotates back
-    var trashWrap2 = document.getElementById('trashWrap');
-    if (trashWrap2) trashWrap2.classList.add('collapsed');
-    return;
-  }
-
-  for (var i = 0; i < threads.length; i++) {
-    var t = threads[i];
-    var item = document.createElement('div');
-    item.className = 'trash-item';
-    item.innerHTML =
-      '<div class="chat-name">' + escHtml(t.title || 'New Chat') + '</div>' +
-      '<div class="trash-item-acts">' +
-        '<button title="Restore"><i data-lucide="rotate-ccw" style="width:16px;height:16px;"></i></button>' +
-        '<button class="danger" title="Delete forever"><i data-lucide="x" style="width:16px;height:16px;"></i></button>' +
-      '</div>';
-
-    item.querySelector('button[title="Restore"]').addEventListener('click', function() {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'restoreThread', threadId: t.id }));
-    });
-    item.querySelector('button.danger').addEventListener('click', function() {
-      _showConfirm('Permanently delete?', function() {
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThreadForever', threadId: t.id }));
-      });
-    });
-
-    trashItems.appendChild(item);
-  }
-
-  var trashWrap = document.getElementById('trashWrap');
-  if (trashWrap) trashWrap.classList.remove('collapsed');
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-}
-
-// -----------------------------------------------------------
-// Thread map (right panel nav)
-// -----------------------------------------------------------
-
-function renderNavList() {
-  var navList = document.getElementById('nav-message-list');
-  if (!navList) return;
-  navList.innerHTML = '';
-
-  for (var i = 0; i < chatMessages.length; i++) {
-    var msg = chatMessages[i];
-    var item = document.createElement('div');
-    var role = msg.role === 'user' ? 'you-row' : (msg.role === 'assistant' ? 'bot-row' : '');
-    item.className = 'thread-item ' + role;
-    item.setAttribute('data-target', 'msg-' + i);
-
-    var who = msg.role === 'user' ? 'You' : (msg.model || 'Assistant');
-    var snippet = (msg.content || '').substring(0, 60).replace(/\n/g, ' ');
-
-    item.innerHTML = '<span class="who">' + who + '</span><span class="snippet">' + escHtml(snippet) + '</span>';
-
-    item.addEventListener('click', function(targetIdx) {
-      return function() {
-        scrollToMessage(targetIdx);
-      };
-    }(i));
-
-    navList.appendChild(item);
-  }
-}
-
-function scrollToMessage(index) {
-  var container = document.getElementById('chat-messages');
-  if (!container) return;
-  var bubbles = container.querySelectorAll('.msg');
-  if (bubbles[index]) {
-    bubbles[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
-    bubbles[index].classList.remove('flash');
-    void bubbles[index].offsetWidth;
-    bubbles[index].classList.add('flash');
-  }
-}
-
-// Shared helper: find message by ID and scroll with flash.
-// Used by tree modal, search dropdown, and thread map fallback.
-function scrollToMessageById(messageId) {
-  for (var i = 0; i < chatMessages.length; i++) {
-    if (chatMessages[i].id === messageId) { scrollToMessage(i); return true; }
-  }
-  return false;
-}
-
 // -----------------------------------------------------------
 // Thread switching
 // -----------------------------------------------------------
@@ -406,51 +290,4 @@ function newChat() {
 function threadForked(data) {
   loadThread(data.newThreadId);
   window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
-}
-
-// -----------------------------------------------------------
-// Trash toggle
-// -----------------------------------------------------------
-
-if (typeof document !== 'undefined' && document.addEventListener) {
-  document.addEventListener('DOMContentLoaded', function() {
-    var trashToggle = document.getElementById('trashToggle');
-    if (trashToggle) {
-      trashToggle.addEventListener('click', function() {
-        document.getElementById('trashWrap').classList.toggle('collapsed');
-      });
-    }
-  });
-}
-
-
-// Shared custom confirmation dialog — no browser prompt()
-var _confirmCallback = null;
-function _showConfirm(message, onYes) {
-  // Remove any existing confirm
-  var existing = document.getElementById('customConfirmOverlay');
-  if (existing) existing.remove();
-
-  _confirmCallback = onYes;
-  var overlay = document.createElement('div');
-  overlay.id = 'customConfirmOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(17,24,39,0.4);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:200;';
-  overlay.innerHTML =
-    '<div style="background:var(--bg-panel);border:1px solid var(--border-main);border-radius:12px;padding:24px;max-width:360px;box-shadow:var(--shadow-modal);">' +
-      '<div style="font-size:15px;color:var(--text-primary);margin-bottom:16px;line-height:1.5;">' + escHtml(message) + '</div>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px;">' +
-        '<button class="cancel-confirm-btn" style="padding:8px 16px;border:1px solid var(--border-main);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;">Cancel</button>' +
-        '<button class="yes-confirm-btn" style="padding:8px 16px;border:none;border-radius:6px;background:var(--danger);color:#fff;cursor:pointer;">Delete</button>' +
-      '</div>' +
-    '</div>';
-  document.body.appendChild(overlay);
-
-  overlay.querySelector('.cancel-confirm-btn').addEventListener('click', function() { overlay.remove(); _confirmCallback = null; });
-  overlay.querySelector('.yes-confirm-btn').addEventListener('click', function() {
-    overlay.remove();
-    var cb = _confirmCallback;
-    _confirmCallback = null;
-    if (cb) cb();
-  });
-  overlay.addEventListener('click', function(e) { if (e.target === overlay) { overlay.remove(); _confirmCallback = null; } });
 }

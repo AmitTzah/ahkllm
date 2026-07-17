@@ -1,4 +1,4 @@
-// mock-ui.test.js — Unit tests for mock-ui.js: panel resize, font controls, tree zoom, composer resize
+// ui-controls.test.js — Unit tests for ui-controls.js: panel resize, font controls, composer resize
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadModule() {
-    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'mock-ui.js'), 'utf-8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'ui-controls.js'), 'utf-8');
     function makeEl(tag) {
         const el = {
             tagName: tag, className: '', innerHTML: '', id: '', textContent: '', style: {}, value: '',
@@ -39,11 +39,6 @@ function loadModule() {
                 if (id === 'btn-font-dec') return makeEl('button');
                 if (id === 'btn-font-inc') return makeEl('button');
                 if (id === 'chat-input') return makeEl('textarea');
-                if (id === 'sidebar-resize-seam') return makeEl('div');
-                if (id === 'right-panel-resize-seam') return makeEl('div');
-                if (id === 'rail-left-seam') return makeEl('div');
-                if (id === 'treeCanvasWrap') return makeEl('div');
-                if (id === 'treeZoomLayer') return makeEl('div');
                 if (id === 'railLeft') return makeEl('div');
                 if (id === 'railRight') return makeEl('div');
                 return null;
@@ -55,7 +50,7 @@ function loadModule() {
             removeEventListener: function() {}
         },
         window: {
-            MockUI: undefined,
+            UiControls: undefined,
             addEventListener: function() {},
             removeEventListener: function() {},
             innerWidth: 1200,
@@ -77,58 +72,46 @@ function loadModule() {
     return sandbox;
 }
 
-describe('MockUI module', () => {
-    it('exposes window.MockUI as an object', () => {
+describe('UiControls module', () => {
+    it('exposes window.UiControls as an object', () => {
         const ctx = loadModule();
-        assert.ok(ctx.window.MockUI !== undefined);
-        assert.strictEqual(typeof ctx.window.MockUI, 'object');
+        assert.ok(ctx.window.UiControls !== undefined);
+        assert.strictEqual(typeof ctx.window.UiControls, 'object');
     });
 
     it('exports initFontControls', () => {
         const ctx = loadModule();
-        assert.strictEqual(typeof ctx.window.MockUI.initFontControls, 'function');
+        assert.strictEqual(typeof ctx.window.UiControls.initFontControls, 'function');
     });
 
     it('exports initComposerResize', () => {
         const ctx = loadModule();
-        assert.strictEqual(typeof ctx.window.MockUI.initComposerResize, 'function');
-    });
-
-    it('exports initTreeZoom', () => {
-        const ctx = loadModule();
-        assert.strictEqual(typeof ctx.window.MockUI.initTreeZoom, 'function');
+        assert.strictEqual(typeof ctx.window.UiControls.initComposerResize, 'function');
     });
 
     it('exports initAutoCollapse', () => {
         const ctx = loadModule();
-        assert.strictEqual(typeof ctx.window.MockUI.initAutoCollapse, 'function');
+        assert.strictEqual(typeof ctx.window.UiControls.initAutoCollapse, 'function');
     });
 });
 
 describe('initFontControls', () => {
     it('does not throw when font controls exist', () => {
         const ctx = loadModule();
-        assert.doesNotThrow(() => ctx.window.MockUI.initFontControls());
+        assert.doesNotThrow(() => ctx.window.UiControls.initFontControls());
     });
 });
 
 describe('initComposerResize', () => {
     it('does not throw when textarea exists', () => {
         const ctx = loadModule();
-        assert.doesNotThrow(() => ctx.window.MockUI.initComposerResize());
-    });
-});
-
-describe('initTreeZoom', () => {
-    it('does not throw when tree elements exist', () => {
-        const ctx = loadModule();
-        assert.doesNotThrow(() => ctx.window.MockUI.initTreeZoom());
+        assert.doesNotThrow(() => ctx.window.UiControls.initComposerResize());
     });
 });
 
 describe('initAutoCollapse', () => {
     it('does not throw', () => {
         const ctx = loadModule();
-        assert.doesNotThrow(() => ctx.window.MockUI.initAutoCollapse());
+        assert.doesNotThrow(() => ctx.window.UiControls.initAutoCollapse());
     });
 });

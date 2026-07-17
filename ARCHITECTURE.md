@@ -257,7 +257,6 @@ ai-automation/
 │   ├── index.html                   # Main chat UI — 4-column SaaS layout
 │   │                                #   Includes inline Usage Dashboard panel
 │   ├── api-logs.html                # API logs viewer UI (light mode only)
-│   ├── usage-dashboard.html         # Standalone dashboard page (Chart.js, CSS variables)
 │   ├── fonts/                       # Local fonts (Inter + JetBrains Mono, no CDN)
 │   │   ├── fonts.css                # Imports inter.css + jetbrains-mono.css
 │   │   ├── inter.css                # @font-face declarations (400,500,600,700)
@@ -278,8 +277,7 @@ ai-automation/
 │   │   └── vendor/                  # Katex, texmath, highlight themes
 │   └── js/
 │       ├── main.js                  # WebMessage dispatch, dashboard toggle, sidebar toggle
-│       ├── stream.js                # Streaming: SSE content rendering, cancel, persist
-│       ├── mock-ui.js               # Panel resize, font controls, tree zoom, composer resize
+│       ├── ui-controls.js           # Panel resize, font controls, composer resize, auto-collapse
 │       ├── usage-dashboard.js       # Inline dashboard: Chart.js graphs, filtering, CSV export
 │       ├── vendor/                  # Local JS libraries (no CDN)
 │       │   ├── lucide.min.js        # Icon library (replaces emoji)
@@ -288,18 +286,21 @@ ai-automation/
 │       │   ├── texmath.min.js, highlight.min.js
 │       │   ├── pdf.min.js, pdf.worker.min.js, officeparser.iife.js
 │       └── chat/                    # Chat JS modules (all stateful)
-│           ├── chat-core.js         # initChatMode, renderMarkdown, escHtml (shared)
+│           ├── chat-core.js         # State, initChatMode, escHtml, shared _showConfirm/_makeInlineEditor
 │           ├── chat-render.js       # Message bubble HTML generation (extracted helpers)
 │           │                        #   _buildMetaText, _buildReasoningHtml, _buildAttachmentHtml, _buildEditUiHtml
 │           ├── chat-input.js        # Send, loading indicator, retry
 │           ├── chat-branching.js    # Edit, delete, fork, branch nav, tree modal
-│           ├── chat-sidebar.js      # Thread list, folders, trash, thread map, inline rename
-│           │                        #   Extracted: _wireRenameHandler, _wireMoveToFolderHandler, _buildFolderSection
+│           ├── chat-tree-modal.js   # Conversation tree visualization with zoom/pan
+│           ├── chat-sidebar.js      # Thread list, folders, thread switching, topbar title
+│           ├── chat-threadmap.js    # Right-panel thread map nav, scrollToMessage
+│           ├── chat-trash.js        # Trash list sidebar
 │           ├── chat-actions.js      # Message action buttons (Lucide icons)
 │           ├── chat-format.js       # Copy, cost formatting, token usage bar
 │           ├── chat-quote.js        # Quote message
-│           ├── chat-undo.js         # Undo edit/delete operations
 │           ├── chat-token-tooltip.js # Per-message token info popover
+│           ├── chat-search.js       # Real-time message search
+│           ├── stream.js            # SSE streaming: content rendering, cancel, persist
 │           ├── attachments/         # Attachment subsystem
 │           │   ├── chat-attachments.js        # State, render bar, add/remove, SHA-256
 │           │   ├── chat-attachments-extract.js # pdf.js + officeParser text extraction
@@ -309,7 +310,7 @@ ai-automation/
 │               │                            #   Split: _populateAssistantsTab, _populateModelsTab
 │               └── chat-settings-modal.js   # Right panel config: system prompt, temperature, thinking
 │
-├── tests/                           # Unit + integration tests (143 JS)
+├── tests/                           # Unit + integration tests
 │   ├── run_all_tests.bat            # PRIMARY ENTRY POINT
 │   ├── run_ahk_tests.ahk            # AHK test runner
 │   ├── run_js_tests.bat             # JS test runner (node:test)
@@ -546,7 +547,7 @@ Load order in `index.html` (bottom of `<body>`):
 ```
 vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, officeParser)
   └── usage-dashboard.js            # Inline dashboard (Chart.js graphs)
-  └── chat/chat-core.js             # State, escHtml (shared), initChatMode
+  └── chat/chat-core.js             # State, escHtml, _showConfirm, _makeInlineEditor (shared)
        ├── chat/settings/chat-settings.js        # Model/assistant popover
        ├── chat/chat-format.js                   # Token bar, copy
        ├── chat/chat-render.js                   # Message bubbles
@@ -557,14 +558,16 @@ vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, o
        │    └── chat-attachments-setup.js        # Drop/paste/browse
        ├── chat/chat-input.js                    # Send, loading, retry
        ├── chat/chat-branching.js                # Edit, delete, tree modal
-       ├── chat/chat-sidebar.js                  # Folders, threads, trash, scrollToMessage
+       ├── chat/chat-tree-modal.js               # Conversation tree visualization
+       ├── chat/chat-sidebar.js                  # Folders, threads, thread switching
+       ├── chat/chat-threadmap.js                # Right-panel thread map nav
+       ├── chat/chat-trash.js                    # Trash list
        ├── chat/chat-search.js                   # Real-time search dropdown
        ├── chat/chat-quote.js                    # Quote in input
-       ├── chat/chat-undo.js                     # Undo/redo
-       ├── stream.js                             # SSE streaming
+       ├── chat/stream.js                        # SSE streaming
        ├── chat/settings/chat-settings-modal.js  # Right panel config
        ├── main.js                               # WebMessage dispatch, dashboard toggle
-       └── mock-ui.js                            # Panel resize, font, zoom
+       └── ui-controls.js                        # Panel resize, font, auto-collapse
 ```
 
 ## Usage Dashboard
@@ -607,7 +610,7 @@ Rolling log at `%TEMP%\LLM_Debug_Log.txt` (~500KB kept when file exceeds 1MB):
 ### How to Run
 ```
 tests\run_all_tests.bat              # All tests
-tests\run_js_tests.bat               # JS only (230 tests)
+tests\run_js_tests.bat               # JS only (235 tests)
 tests\run_ahk_tests.ahk              # AHK only
 ```
 
@@ -616,7 +619,7 @@ AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side:
 
 | Directory | AHK Files | JS Files | Total Tests |
 |-----------|----------|----------|-------------|
-| `unit/` | 19 | 14 | ~270 |
+| `unit/` | 19 | 14 | ~275 |
 | `integration/` | 3 | 2 | ~50 |
 
-Tests run via `node:test` (JS) and custom runner (AHK). **230 JS tests pass.**
+Tests run via `node:test` (JS) and custom runner (AHK). **235 JS tests pass.**

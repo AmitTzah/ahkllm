@@ -71,37 +71,42 @@ if (typeof document !== 'undefined' && document.addEventListener) {
     if (treeClose) treeClose.addEventListener('click', function() { closeTreeModal(); });
     if (treeOverlay) treeOverlay.addEventListener('click', function(e) { if (e.target === treeOverlay) closeTreeModal(); });
 
-    var canvasWrap = document.getElementById('treeCanvasWrap');
-    var layer = document.getElementById('treeZoomLayer');
-    var pct = document.getElementById('zoomPct');
-    if (!canvasWrap || !layer || !pct) return;
-
-    var zoom = 1, panX = 0, panY = 0, panning = false, panStart = {x:0,y:0}, origPan = {x:0,y:0};
-
-    function applyZoom() {
-      layer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
-      pct.textContent = Math.round(zoom * 100) + '%';
-    }
-
-    document.getElementById('zoomIn').addEventListener('click', function() { zoom = Math.min(2, zoom + 0.15); applyZoom(); });
-    document.getElementById('zoomOut').addEventListener('click', function() { zoom = Math.max(0.4, zoom - 0.15); applyZoom(); });
-    document.getElementById('zoomFit').addEventListener('click', function() { zoom = 1; panX = 0; panY = 0; applyZoom(); });
-
-    canvasWrap.addEventListener('mousedown', function(e) {
-      if (e.target.closest('.tree-node') || e.target.closest('button')) return;
-      panning = true; canvasWrap.classList.add('panning');
-      panStart = {x: e.clientX, y: e.clientY}; origPan = {x: panX, y: panY};
-    });
-    window.addEventListener('mousemove', function(e) {
-      if (!panning) return;
-      panX = origPan.x + (e.clientX - panStart.x); panY = origPan.y + (e.clientY - panStart.y);
-      applyZoom();
-    });
-    window.addEventListener('mouseup', function() { panning = false; if (canvasWrap) canvasWrap.classList.remove('panning'); });
-    canvasWrap.addEventListener('wheel', function(e) {
-      e.preventDefault(); zoom = Math.min(2, Math.max(0.4, zoom + (e.deltaY > 0 ? -0.05 : 0.05))); applyZoom();
-    }, {passive: false});
+    initTreeZoom();
   });
+}
+
+// Initialize zoom/pan for the conversation tree modal.
+function initTreeZoom() {
+  var canvasWrap = document.getElementById('treeCanvasWrap');
+  var layer = document.getElementById('treeZoomLayer');
+  var pct = document.getElementById('zoomPct');
+  if (!canvasWrap || !layer || !pct) return;
+
+  var zoom = 1, panX = 0, panY = 0, panning = false, panStart = {x:0,y:0}, origPan = {x:0,y:0};
+
+  function applyZoom() {
+    layer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+    pct.textContent = Math.round(zoom * 100) + '%';
+  }
+
+  document.getElementById('zoomIn').addEventListener('click', function() { zoom = Math.min(2, zoom + 0.15); applyZoom(); });
+  document.getElementById('zoomOut').addEventListener('click', function() { zoom = Math.max(0.4, zoom - 0.15); applyZoom(); });
+  document.getElementById('zoomFit').addEventListener('click', function() { zoom = 1; panX = 0; panY = 0; applyZoom(); });
+
+  canvasWrap.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.tree-node') || e.target.closest('button')) return;
+    panning = true; canvasWrap.classList.add('panning');
+    panStart = {x: e.clientX, y: e.clientY}; origPan = {x: panX, y: panY};
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!panning) return;
+    panX = origPan.x + (e.clientX - panStart.x); panY = origPan.y + (e.clientY - panStart.y);
+    applyZoom();
+  });
+  window.addEventListener('mouseup', function() { panning = false; if (canvasWrap) canvasWrap.classList.remove('panning'); });
+  canvasWrap.addEventListener('wheel', function(e) {
+    e.preventDefault(); zoom = Math.min(2, Math.max(0.4, zoom + (e.deltaY > 0 ? -0.05 : 0.05))); applyZoom();
+  }, {passive: false});
 }
 
 // Called by AHK with tree data.

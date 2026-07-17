@@ -1,8 +1,7 @@
-// mock-ui.js — Panel resize, font size controls, tree zoom, composer resize
-// Namespaced as window.MockUI to avoid global conflicts.
-// Other mock behaviors (copy, edit, modals, popover, etc.) are handled by app modules.
+// ui-controls.js — Panel resize, font size controls, composer resize
+// Namespaced as window.UiControls to avoid global conflicts.
 
-window.MockUI = (function() {
+window.UiControls = (function() {
   var exports = {};
 
   // Font Size Controls
@@ -144,53 +143,6 @@ window.MockUI = (function() {
   }
 
   exports.setupResize = setupResize;
-
-  // Tree Modal Zoom & Pan
-  exports.initTreeZoom = function() {
-    var canvasWrap = document.getElementById('treeCanvasWrap');
-    var layer = document.getElementById('treeZoomLayer');
-    var pct = document.getElementById('zoomPct');
-    var zoomIn = document.getElementById('zoomIn');
-    var zoomOut = document.getElementById('zoomOut');
-    var zoomFit = document.getElementById('zoomFit');
-
-    if (!canvasWrap || !layer || !pct) return;
-
-    var zoom = 1, panX = 0, panY = 0, panning = false;
-    var panStart = { x: 0, y: 0 }, origPan = { x: 0, y: 0 };
-
-    function applyZoom() {
-      layer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
-      pct.textContent = Math.round(zoom * 100) + '%';
-    }
-
-    if (zoomIn) zoomIn.addEventListener('click', function() { zoom = Math.min(2, zoom + 0.15); applyZoom(); });
-    if (zoomOut) zoomOut.addEventListener('click', function() { zoom = Math.max(0.4, zoom - 0.15); applyZoom(); });
-    if (zoomFit) zoomFit.addEventListener('click', function() { zoom = 1; panX = 0; panY = 0; applyZoom(); });
-
-    canvasWrap.addEventListener('mousedown', function(e) {
-      if (e.target.closest('.tree-node') || e.target.closest('button')) return;
-      panning = true;
-      canvasWrap.classList.add('panning');
-      panStart = { x: e.clientX, y: e.clientY };
-      origPan = { x: panX, y: panY };
-    });
-
-    window.addEventListener('mousemove', function(e) {
-      if (!panning) return;
-      panX = origPan.x + (e.clientX - panStart.x);
-      panY = origPan.y + (e.clientY - panStart.y);
-      applyZoom();
-    });
-
-    window.addEventListener('mouseup', function() { panning = false; canvasWrap.classList.remove('panning'); });
-
-    canvasWrap.addEventListener('wheel', function(e) {
-      e.preventDefault();
-      zoom = Math.min(2, Math.max(0.4, zoom + (e.deltaY > 0 ? -0.05 : 0.05)));
-      applyZoom();
-    }, { passive: false });
-  };
 
   // Auto-collapse side panels when window is small, expand when maximized
   exports.initAutoCollapse = function() {
