@@ -48,6 +48,9 @@
   font-size: 11px; color: var(--text-tertiary);
   margin-bottom: 2px; font-weight: 500;
 }
+.search-result-thread-current {
+  color: var(--accent-primary);
+}
 .search-result-preview {
   font-size: 13px; color: var(--text-primary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

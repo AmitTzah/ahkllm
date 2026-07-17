@@ -310,7 +310,7 @@ describe('chat-search', function() {
             assert.ok(dropdown.innerHTML.indexOf('Other Chat') >= 0, 'should show thread title');
         });
 
-        it('does not show thread title for same-thread results', function() {
+        it('shows thread title even for same-thread results', function() {
             var ctx = loadSearchModule();
             ctx.activeThreadId = 'thread-1';
 
@@ -329,8 +329,7 @@ describe('chat-search', function() {
 
             var dropdown = ctx._searchDropdownEl;
             assert.ok(dropdown, 'dropdown should exist');
-            // Thread title should NOT be shown since threadId === activeThreadId
-            assert.ok(dropdown.innerHTML.indexOf('search-result-thread') < 0, 'should not show thread title for same thread');
+            assert.ok(dropdown.innerHTML.indexOf('Current Chat') >= 0, 'should show Current Chat label for active thread');
         });
 
         it('shows empty state for zero results', function() {

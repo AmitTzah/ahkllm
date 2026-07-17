@@ -139,6 +139,14 @@ function renderSearchDropdown(wrapper, results, query, mode) {
         return;
     }
 
+    // Sort: active thread results first, then by createdAt descending
+    results.sort(function(a, b) {
+        var aActive = a.threadId === activeThreadId ? 0 : 1;
+        var bActive = b.threadId === activeThreadId ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
+
     var html = '';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
@@ -162,8 +170,10 @@ function renderSearchDropdown(wrapper, results, query, mode) {
         if (isTitleOnly) {
             html += '<div class="search-result-preview">' + highlightTerm(r.threadTitle, query) + '</div>';
         } else {
-            if (r.threadTitle && r.threadId !== activeThreadId) {
-                html += '<div class="search-result-thread">' + escHtml(r.threadTitle) + '</div>';
+            if (r.threadTitle) {
+                var label = r.threadId === activeThreadId ? 'Current Chat' : escHtml(r.threadTitle);
+                var labelClass = r.threadId === activeThreadId ? ' search-result-thread-current' : '';
+                html += '<div class="search-result-thread' + labelClass + '">' + label + '</div>';
             }
             if (r.contentPreview) {
                 html += '<div class="search-result-preview">' + highlightTerm(r.contentPreview, query) + '</div>';
