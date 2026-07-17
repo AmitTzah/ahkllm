@@ -42,6 +42,7 @@ class InlineRequestRunner {
     }
 
     ; Build the JSON request and write it + cURL command to temp files.
+    ; Uses static CurlBuilder methods (no more llmClient instance passthroughs).
     ; Returns object with request, JSON, and file paths.
     static _BuildAndWriteRequest(commandName, fullAPIModelName, singleAPIModelName, captured, isFIM, systemMessage, temperature, maxTokens, stop, stream, thinking, thinkingLevel, uniqueID) {
         ; Build the JSON request
@@ -53,6 +54,9 @@ class InlineRequestRunner {
                 temperature, maxTokens, stop, stream, thinking, thinkingLevel)
         }
 
+        ; Resolve provider info for CurlBuilder
+        providerInfo := ProviderResolver.Resolve(fullAPIModelName)
+
         ; Generate sanitized filenames
         sanitizeRe := "[\/\\:*?`"<>|]"
         requestFile := A_Temp "\" RegExReplace("chatHistoryJSONRequest_" commandName "_" singleAPIModelName "_" uniqueID ".json", sanitizeRe, "")
@@ -62,9 +66,9 @@ class InlineRequestRunner {
 
         FileOpen(requestFile, "w", "UTF-8-RAW").Write(chatHistoryJSONRequest)
         if isFIM {
-            cURLCommand := llmClient.buildFIMcURLCommand(requestFile, outputFile)
+            cURLCommand := CurlBuilder.BuildFIM(providerInfo, requestFile, outputFile)
         } else {
-            cURLCommand := llmClient.buildcURLCommand(requestFile, outputFile)
+            cURLCommand := CurlBuilder.Build(providerInfo, requestFile, outputFile)
         }
         FileOpen(curlFile, "w", "UTF-8-RAW").Write(cURLCommand)
 
@@ -73,11 +77,13 @@ class InlineRequestRunner {
             requestFile: requestFile,
             curlFile: curlFile,
             outputFile: outputFile,
-            errorFile: errorFile
+            errorFile: errorFile,
+            endpoint: providerInfo.endpoint
         }
     }
 
     ; Execute cURL synchronously and parse the response.
+    ; Uses ResponseParser directly (no more llmClient passthroughs).
     ; Returns { success: true/false, response: parsedResponse, rawJSON: rawResponseText }
     static _ExecuteCurlAndParse(files, isFIM) {
         requestStartTime := A_TickCount
@@ -92,9 +98,9 @@ class InlineRequestRunner {
             JSONResponseFromLLM := FileOpen(files.outputFile, "r", "UTF-8-RAW").Read()
             try {
                 if isFIM
-                    responseFromLLM := llmClient.extractFIMResponse(jsongo.Parse(JSONResponseFromLLM))
+                    responseFromLLM := ResponseParser.ParseFIMResponse(jsongo.Parse(JSONResponseFromLLM))
                 else
-                    responseFromLLM := llmClient.extractJSONResponse(jsongo.Parse(JSONResponseFromLLM))
+                    responseFromLLM := ResponseParser.ParseChatResponse(jsongo.Parse(JSONResponseFromLLM))
             } catch Error as e {
                 debugLog("Failed to parse LLM response: " e.Message, "InlineRequestRunner")
             }
@@ -138,7 +144,7 @@ class InlineRequestRunner {
             provider: providerName,
             model: singleAPIModelName,
             isFIM: isFIM,
-            endpoint: isFIM ? FIMEndpoint : APIEndpoint,
+            endpoint: files.endpoint,
             pasteMode: pasteMode,
             request: files.requestJSON,
             response: result.rawJSON,

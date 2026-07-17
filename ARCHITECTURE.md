@@ -170,7 +170,8 @@ ai-automation/
 │   ├── ModelParser.ahk              # Model ID parsing ("provider/model" → provider + name)
 │   ├── AttachmentUtils.ahk          # Vision gate, MIME-type classification, file size checks
 │   ├── ImageUtils.ahk               # Base64 encode/decode, GDI+ screenshot capture, file I/O
-│   └── DebugLog.ahk                 # Rolling debug log (~500KB in %TEMP%) + safeDelete helper
+│   ├── DebugLog.ahk                 # Rolling debug log (~500KB in %TEMP%) + safeDelete helper
+│   └── RuntimeResolver.ahk          # API key check, provider resolution, default assistant
 │
 ├── app/                             # Application logic
 │   ├── RequestProcessor.ahk         # Orchestrator: text capture → LLM request dispatch
@@ -179,9 +180,12 @@ ai-automation/
 │   ├── InputWindow.ahk              # GUI popup for custom prompts (light mode only)
 │   ├── LoadingTracker.ahk           # Active request tracking, loading state, IPC handler
 │   ├── LoadingUI.ahk                # Cursor changes, tooltip display, suspend banner toggle
-│   └── menu/                        # Command menu system
-│       ├── CommandMenu.ahk          # Menu building: command menu, tags, submenus
-│       └── CommandState.ahk         # Command state management
+│   ├── menu/                        # Command menu system
+│   │   ├── CommandMenu.ahk          # Menu building: command menu, tags, submenus
+│   │   └── CommandState.ahk         # Command state management
+│   └── viewers/                     # Persistent WebView2 viewer windows
+│       ├── ApiLogsViewer.ahk        # API logs viewer (persistent WebView2)
+│       └── UsageDashboard.ahk       # IPC relay — sends showDashboard to ChatWindow
 │
 ├── chat/                            # Persistent chat window (sub-process)
 │   ├── ChatWindow.ahk               # Window lifecycle, WebView2 creation, show/hide, pre-warm,
@@ -201,14 +205,16 @@ ai-automation/
 │   ├── streaming/
 │   │   ├── StreamHandler.ahk        # Streaming: cURL polling, SSE dispatch, finalization
 │   │   ├── StreamCompletion.ahk     # Successful stream: DB persistence, API logging
-│   │   └── StreamError.ahk          # Error + cancellation: partial save, logging
+│   │   └── StreamError.ahk          # Error + cancellation: partial save, logging,
+│   │                                #   handleCancelStream (moved from ChatRequestBuilder)
 │   └── db/
 │       ├── ChatDB.ahk               # Facade — Open/Close, usage queries, schema
 │       ├── ThreadRepo.ahk           # Thread CRUD, settings, soft-delete, restore
 │       ├── MessageRepo.ahk          # Message CRUD, token attribution, hard-delete
 │       ├── TreeRepo.ahk             # Branch navigation, tree viz, fork, stats, pricing
 │       ├── AttachmentRepo.ahk       # Content-addressable storage, ref-counted delete
-│       └── AssistantRepo.ahk        # Assistant CRUD (includes description field)
+│       ├── AssistantRepo.ahk        # Assistant CRUD (includes description field)
+│       └── UsageRepo.ahk            # Daily usage aggregation + dashboard queries
 │
 ├── api/                             # API client
 │   ├── LLMRequestBuilder.ahk        # JSON request building, FIM, thinking config
@@ -227,8 +233,6 @@ ai-automation/
 │   ├── Config.ahk                   # Include chain
 │   ├── UIA.ahk                      # UI Automation library (Descolada)
 │   ├── SQLite/                      # SQLite3 wrapper (WAL mode)
-│   ├── ApiLogsViewer.ahk            # API logs viewer (persistent WebView2)
-│   ├── UsageDashboard.ahk           # IPC relay — sends showDashboard to ChatWindow
 │   ├── WebViewToo.ahk               # WebView2 Framework
 │   ├── WebView2.ahk                 # WebView2 Core
 │   ├── jsongo.v2.ahk                # JSON parsing/serialization
@@ -236,7 +240,6 @@ ai-automation/
 │   ├── ToolTipEx.ahk                # Enhanced tooltips
 │   ├── Promise.ahk                  # Promise/A+ implementation
 │   ├── ComVar.ahk                   # COM utility
-│   ├── RuntimeResolver.ahk          # Runtime path resolution
 │   ├── 32bit/                       # 32-bit WebView2Loader.dll
 │   └── 64bit/                       # 64-bit WebView2Loader.dll
 │

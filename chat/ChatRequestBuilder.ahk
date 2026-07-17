@@ -6,7 +6,7 @@
 ;   2. BUILD — construct the JSON request from DB messages + overrides
 ;   3. WRITE — persist request + cURL command to temp files
 ;
-; Also: sendRequestToLLM (thin wrapper) and handleCancelStream.
+; Also: sendRequestToLLM (thin wrapper).
 ; ======================================================
 
 buildRequest() {
@@ -192,7 +192,14 @@ _BuildRequestObj(apiMessages, providerInfo) {
         requestObj.stream_options := { include_usage: true }
     }
 
-    ; Gemini-specific: when no reasoning override, request thought summaries
+    ; Apply Gemini-specific defaults
+    _ApplyGeminiDefaults(&requestObj, providerInfo)
+
+    return requestObj
+}
+
+; Apply Gemini-specific defaults: when no reasoning override, request thought summaries.
+_ApplyGeminiDefaults(&requestObj, providerInfo) {
     if providerInfo.providerKey = "google" && (!requestParams.Has("reasoningOverride") || requestParams["reasoningOverride"] = "") {
         requestObj.extra_body := {
             google: {
@@ -202,8 +209,6 @@ _BuildRequestObj(apiMessages, providerInfo) {
             }
         }
     }
-
-    return requestObj
 }
 
 ; Apply system message override from requestParams or prepend one if missing.
@@ -276,19 +281,3 @@ _BuildAndFireRequest() {
     }
 }
 
-handleCancelStream() {
-    try {
-    ; Kill cURL to stop generation server-side (closing TCP connection).
-    ; Usage data is lost (only in final SSE chunk), but we avoid billing
-    ; for un-displayed tokens. Token estimates are computed from what we captured.
-    curlPID := cURLState("get")
-    if curlPID && ProcessExist(curlPID) {
-        cURLState("close")
-    }
-    requestParams["_streamCancelled"] := true
-    postWebMessage("setChatButtonsEnabled", true)
-    } catch Error as e {
-        debugLog("handleCancelStream error: " e.Message "`n" e.Stack, "ErrorHandler")
-        postWebMessage("setChatButtonsEnabled", true)
-    }
-}

@@ -1,8 +1,9 @@
 ; ----------------------------------------------------
 ; ResponseParser.ahk — LLM API response extraction
 ;
-; Parses chat completions, streaming SSE, FIM, and error
-; responses from all providers. Extracted from LLMRequestBuilder.ahk.
+; Parses chat completions and FIM responses from all
+; providers. SSE streaming chunks are parsed by SSEParser.ahk.
+; Extracted from LLMRequestBuilder.ahk.
 ; ----------------------------------------------------
 
 class ResponseParser {
@@ -47,32 +48,6 @@ class ResponseParser {
             model: model,
             usage: usage
         }
-    }
-
-    ; Extracts streaming chunk content from an SSE chunk
-    static ParseStreamChunk(var) {
-        if !var.Has("choices") || var["choices"].Length = 0 {
-            return { type: "done", content: "", model: "", usage: {} }
-        }
-
-        choice := var["choices"][1]
-        delta := choice.Has("delta") ? choice["delta"] : {}
-
-        if choice.Has("finish_reason") && choice["finish_reason"] != "" && choice["finish_reason"] != "null" {
-            result := { type: "finish", content: "", model: "", usage: {} }
-            if var.Has("model")
-                result.model := var["model"]
-            if var.Has("usage")
-                result.usage := var["usage"]
-            return result
-        }
-
-        if delta.Has("reasoning_content") && delta["reasoning_content"] {
-            return { type: "reasoning", content: delta["reasoning_content"], model: "", usage: {} }
-        }
-
-        content := delta.Has("content") ? delta["content"] : ""
-        return { type: "content", content: content, model: "", usage: {} }
     }
 
     ; Extracts FIM response: choices[0].text

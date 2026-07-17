@@ -2,8 +2,8 @@
 ; LLMRequestBuilder.test.ahk — Unit tests for LLMRequestBuilder class
 ;
 ; Tests: createJSONRequest, createFIMRequest,
-;        extractJSONResponse, extractFIMResponse,
-;        parseSSELine, ComputeTokenCosts, buildcURLCommand
+;        CurlBuilder.Build, CurlBuilder.BuildFIM,
+;        ComputeTokenCosts, appendToChatHistory
 ; ======================================================
 
 class LLMRequestBuilderTest {
@@ -101,14 +101,13 @@ class LLMRequestBuilderTest {
     }
 
     ; --------------------
-    ; extractJSONResponse — returns Object (use dot notation)
+    ; ResponseParser.ParseChatResponse — returns Object (use dot notation)
     ; --------------------
 
     ExtractJSONResponse_Standard() {
-        client := this._setup()
         raw := '{"choices":[{"message":{"content":"Hello world"},"finish_reason":"stop"}],"model":"deepseek-v4-flash","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
         parsed := jsongo.Parse(raw)
-        result := client.extractJSONResponse(parsed)
+        result := ResponseParser.ParseChatResponse(parsed)
         if result.response != "Hello world"
             throw Error("Expected response 'Hello world'")
         if result.model != "deepseek-v4-flash"
@@ -118,23 +117,21 @@ class LLMRequestBuilderTest {
     }
 
     ExtractJSONResponse_WithCache() {
-        client := this._setup()
         raw := '{"choices":[{"message":{"content":"Hello"},"finish_reason":"stop"}],"model":"deepseek-v4-flash","usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"prompt_cache_hit_tokens":50}}'
         parsed := jsongo.Parse(raw)
-        result := client.extractJSONResponse(parsed)
+        result := ResponseParser.ParseChatResponse(parsed)
         if result.usage.cachedTokens != 50
             throw Error("Expected 50 cachedTokens, got " result.usage.cachedTokens)
     }
 
     ; --------------------
-    ; extractFIMResponse — returns Object (use dot notation)
+    ; ResponseParser.ParseFIMResponse — returns Object (use dot notation)
     ; --------------------
 
     ExtractFIMResponse_Standard() {
-        client := this._setup()
         raw := '{"choices":[{"text":"completed code","finish_reason":"stop"}],"model":"deepseek-v4-flash"}'
         parsed := jsongo.Parse(raw)
-        result := client.extractFIMResponse(parsed)
+        result := ResponseParser.ParseFIMResponse(parsed)
         if result.response != "completed code"
             throw Error("Expected response 'completed code'")
         if result.model != "deepseek-v4-flash"
@@ -154,7 +151,6 @@ class LLMRequestBuilderTest {
     }
 
     ParseSSELine_Reasoning() {
-        client := this._setup()
         result := SSEParser.ParseLine('data: {"choices":[{"delta":{"reasoning_content":"thinking...", "content":""}}]}')
         if result.type != "reasoning"
             throw Error("Expected type 'reasoning', got '" result.type "'")
@@ -163,14 +159,12 @@ class LLMRequestBuilderTest {
     }
 
     ParseSSELine_Done() {
-        client := this._setup()
         result := SSEParser.ParseLine("data: [DONE]")
         if result.type != "done"
             throw Error("Expected type 'done', got '" result.type "'")
     }
 
     ParseSSELine_Finish() {
-        client := this._setup()
         line := 'data: {"choices":[{"finish_reason":"stop"}],"model":"deepseek","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
         result := SSEParser.ParseLine(line)
         if result.type != "finish"
@@ -182,7 +176,6 @@ class LLMRequestBuilderTest {
     }
 
     ParseSSELine_Ignore() {
-        client := this._setup()
         result := SSEParser.ParseLine("event: ping")
         if result.type != "ignore"
             throw Error("Expected type 'ignore', got '" result.type "'")
@@ -232,12 +225,13 @@ class LLMRequestBuilderTest {
     }
 
     ; --------------------
-    ; buildcURLCommand
+    ; CurlBuilder.Build (static)
     ; --------------------
 
-    BuildcURLCommand_Format() {
-        client := this._setup()
-        cmd := client.buildcURLCommand("req.json", "out.json")
+    CurlBuilderBuild_Format() {
+        ; Build a minimal providerInfo for the test
+        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", apiKey: "sk-test-key" }
+        cmd := CurlBuilder.Build(pi, "req.json", "out.json")
         if !InStr(cmd, "cURL.exe")
             throw Error("Expected cURL.exe in command")
         if !InStr(cmd, "sk-test-key")
@@ -248,9 +242,9 @@ class LLMRequestBuilderTest {
             throw Error("Expected output file in command")
     }
 
-    BuildFIMcURLCommand_Format() {
-        client := this._setup()
-        cmd := client.buildFIMcURLCommand("fim-req.json", "fim-out.json")
+    CurlBuilderBuildFIM_Format() {
+        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "https://api.deepseek.com/beta/completions", apiKey: "sk-test-key" }
+        cmd := CurlBuilder.BuildFIM(pi, "fim-req.json", "fim-out.json")
         if !InStr(cmd, "cURL.exe")
             throw Error("Expected cURL.exe in FIM command")
         if !InStr(cmd, "fim-req.json")

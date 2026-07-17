@@ -3,6 +3,7 @@
 ;
 ; Handles API errors (JSON error extraction) and user
 ; cancellation (partial response save + estimated tokens).
+; Also: handleCancelStream (moved from ChatRequestBuilder.ahk).
 ; ----------------------------------------------------
 
 _extractErrorMsg(rawOutput) {
@@ -113,6 +114,23 @@ _handleStreamCancelled() {
         startLoadingCursor(false)
         postWebMessage("setChatButtonsEnabled", true)
         postWebMessage("showError", { message: "Cancellation error: " e.Message })
+    }
+}
+
+; Called by Dispatch.ahk (cancelStream action) when user clicks stop.
+; Kills the cURL process and sets the cancelled flag — the streaming
+; poll timer will detect the flag on its next tick and finalize.
+handleCancelStream() {
+    try {
+    curlPID := cURLState("get")
+    if curlPID && ProcessExist(curlPID) {
+        cURLState("close")
+    }
+    requestParams["_streamCancelled"] := true
+    postWebMessage("setChatButtonsEnabled", true)
+    } catch Error as e {
+        debugLog("handleCancelStream error: " e.Message "`n" e.Stack, "ErrorHandler")
+        postWebMessage("setChatButtonsEnabled", true)
     }
 }
 

@@ -224,13 +224,13 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 ; ----------------------------------------------------
 ; API Logs Viewer — persistent, pre-created at startup
 ; ----------------------------------------------------
-#Include lib\ApiLogsViewer.ahk
+#Include app\viewers\ApiLogsViewer.ahk
 SetTimer(InitApiLogsViewer, -2000)
 
 ; ----------------------------------------------------
 ; Usage Dashboard — inline in ChatWindow via IPC
 ; ----------------------------------------------------
-#Include lib\UsageDashboard.ahk
+#Include app\viewers\UsageDashboard.ahk
 
 ; ----------------------------------------------------
 ; UIA COM initialization sets SPI_SETSCREENREADER

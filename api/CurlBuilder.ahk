@@ -44,31 +44,4 @@ class CurlBuilder {
             . '-o "' outputFile '"'
     }
 
-    ; ----------------------------------------------------
-    ; Backward Compatible Instance Methods
-    ; ----------------------------------------------------
-    ; These use global APIEndpoint/FIMEndpoint and an API key
-    ; provided at construction time. Used by legacy code and tests.
-
-    __New(APIKey) {
-        this.APIKey := APIKey
-    }
-
-    buildcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
-        return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
-            . APIEndpoint ' '
-            . '-H "Authorization: Bearer ' this.APIKey '" '
-            . '-H "Content-Type: application/json" '
-            . '-d @"' chatHistoryJSONRequestFile '" '
-            . '-o "' cURLOutputFile '"'
-    }
-
-    buildFIMcURLCommand(chatHistoryJSONRequestFile, cURLOutputFile) {
-        return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
-            . FIMEndpoint ' '
-            . '-H "Authorization: Bearer ' this.APIKey '" '
-            . '-H "Content-Type: application/json" '
-            . '-d @"' chatHistoryJSONRequestFile '" '
-            . '-o "' cURLOutputFile '"'
-    }
 }

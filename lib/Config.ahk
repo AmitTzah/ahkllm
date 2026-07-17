@@ -1,6 +1,6 @@
 #Requires AutoHotkey v2.0.18+
 #Include ..\UserConfig.ahk        ; All user-facing configuration
-#Include RuntimeResolver.ahk              ; API key check & provider resolution
+#Include ..\shared\RuntimeResolver.ahk              ; API key check & provider resolution
 #Include WebViewToo.ahk             ; WebView2 Framework for Web-based GUIs
 #Include jsongo.v2.ahk              ; JSON parsing
 #Include AutoXYWH.ahk               ; Auto-resizing of GUI controls

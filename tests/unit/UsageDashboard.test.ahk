@@ -5,7 +5,7 @@
 ; ======================================================
 
 ; Include the module under test
-#Include ..\..\lib\UsageDashboard.ahk
+#Include ..\..\app\viewers\UsageDashboard.ahk
 
 class UsageDashboardTest {
 

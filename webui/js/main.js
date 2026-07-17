@@ -310,10 +310,6 @@ document.addEventListener('DOMContentLoaded', function () {
   // Initialize search inputs
   if (typeof initSearch === 'function') initSearch();
 
-  // Tree view button
-  var treeBtn = document.getElementById('tree-view-btn');
-  if (treeBtn) treeBtn.addEventListener('click', toggleTreeModal);
-
   // Restore chat state from sessionStorage if available (reload persistence)
   var storedIsChatMode = sessionStorage.getItem('isChatMode');
   var storedMessages = sessionStorage.getItem('chatMessages');

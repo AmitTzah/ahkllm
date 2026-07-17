@@ -2,7 +2,7 @@
 ; StreamHandler.test.ahk — Unit tests for StreamHandler logic
 ;
 ; Tests: saveStreamResponse content guard,
-;        readStreamChunk edge cases
+;        _readAndProcessStream edge cases
 ; ======================================================
 
 class StreamHandlerTest {
@@ -36,16 +36,16 @@ class StreamHandlerTest {
     ; empty content guard by verifying no crash when content is empty.
 
     ; --------------------
-    ; readStreamChunk — no file
+    ; _readAndProcessStream — no file
     ; --------------------
 
     ReadStreamChunk_NoFile_Returns() {
         ; Should not throw when file doesn't exist
         state := {outputFile: A_Temp "\nonexistent_" A_TickCount ".tmp", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         try {
-            readStreamChunk(state)
+            _readAndProcessStream(state, false)
         } catch Error as err {
-            throw Error("readStreamChunk should not throw for missing file: " err.Message)
+            throw Error("_readAndProcessStream should not throw for missing file: " err.Message)
         }
     }
 
@@ -55,10 +55,10 @@ class StreamHandlerTest {
         FileAppend("", tmpFile)
         state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         try {
-            readStreamChunk(state)
+            _readAndProcessStream(state, false)
         } catch Error as err {
             FileDelete(tmpFile)
-            throw Error("readStreamChunk should not throw for empty file: " err.Message)
+            throw Error("_readAndProcessStream should not throw for empty file: " err.Message)
         }
         FileDelete(tmpFile)
     }
@@ -67,7 +67,7 @@ class StreamHandlerTest {
         tmpFile := A_Temp "\test_sse_" A_TickCount ".tmp"
         FileAppend('data: {"choices":[{"delta":{"content":"Hello"}}]}', tmpFile)
         state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
-        readStreamChunk(state)
+        _readAndProcessStream(state, false)
         if state.content != "Hello"
             throw Error("Expected content='Hello', got '" state.content "'")
         FileDelete(tmpFile)

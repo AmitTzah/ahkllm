@@ -14,7 +14,6 @@ class LLMRequestBuilder {
 
     __New(APIKey) {
         this.APIKey := APIKey
-        this._curl := CurlBuilder(APIKey)
     }
 
     ; ----------------------------------------------------
@@ -187,22 +186,6 @@ class LLMRequestBuilder {
     ; ----------------------------------------------------
     ; Instance Helpers (needed by llmClient in Main/ChatWindow)
     ; ----------------------------------------------------
-
-    buildcURLCommand(requestFile, outputFile) {
-        return this._curl.buildcURLCommand(requestFile, outputFile)
-    }
-
-    buildFIMcURLCommand(requestFile, outputFile) {
-        return this._curl.buildFIMcURLCommand(requestFile, outputFile)
-    }
-
-    extractJSONResponse(var) {
-        return ResponseParser.ParseChatResponse(var)
-    }
-
-    extractFIMResponse(var) {
-        return ResponseParser.ParseFIMResponse(var)
-    }
 
     appendToChatHistory(role, message, &chatHistoryJSONRequest, chatHistoryJSONRequestFile) {
         obj := jsongo.Parse(chatHistoryJSONRequest)

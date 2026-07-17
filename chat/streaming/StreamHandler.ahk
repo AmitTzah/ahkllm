@@ -227,6 +227,3 @@ _cleanupStreamState() {
     requestParams.Delete("_streamCancelled")
 }
 
-readStreamChunk(streamState) {
-    _readAndProcessStream(streamState, false)
-}
