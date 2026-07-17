@@ -78,10 +78,10 @@ function loadRenderModule() {
                   var m = val.match(/class="([^"]+)"/);
                   if (m) el.firstElementChild = { className: m[1], children: [], style: {}, dataset: {}, querySelector: function(s) {
                     if (val.indexOf(s.replace('.','').replace('#','')) >= 0) {
-                      return { className: s.replace('.',''), innerHTML: '', children: [], appendChild: function(){}, querySelector: function(){ return null; }, querySelectorAll: function(){ return []; }, style: {} };
+                      return { className: s.replace('.',''), innerHTML: '', children: [], appendChild: function(){}, querySelector: function(){ return null; }, querySelectorAll: function(){ return []; }, style: {}, setAttribute: function(){}, removeAttribute: function(){} };
                     }
                     return null;
-                  }, querySelectorAll: function() { return []; }, classList: { add: function(){}, contains: function(){ return false; } }, appendChild: function(c){ this.children.push(c); }, addEventListener: function(){}, remove: function(){}, insertBefore: function(){}, closest: function(){ return null; } };
+                  }, querySelectorAll: function() { return []; }, classList: { add: function(){}, contains: function(){ return false; } }, appendChild: function(c){ this.children.push(c); }, addEventListener: function(){}, remove: function(){}, insertBefore: function(){}, closest: function(){ return null; }, setAttribute: function(){}, removeAttribute: function(){} };
                 }
               });
               return el;
@@ -246,6 +246,7 @@ describe('_buildReasoningHtml', () => {
         const ctx = loadRenderModule();
         const html = ctx._buildReasoningHtml({ reasoning: 'Let me think...' });
         assert.ok(html.indexOf('thinking-block') >= 0);
+        assert.ok(html.indexOf('open') >= 0, 'thinking block should have open attribute by default');
         assert.ok(html.indexOf('Let me think...') >= 0);
     });
 });
@@ -278,5 +279,268 @@ describe('_buildEditUiHtml', () => {
         assert.ok(html.indexOf('msg-edit-ui') >= 0);
         assert.ok(html.indexOf('cancel-edit') >= 0);
         assert.ok(html.indexOf('save-overwrite') >= 0);
+    });
+});
+
+describe('_saveThinkingBlockStates', () => {
+    it('does not throw when no thinking blocks exist', () => {
+        const ctx = loadRenderModule();
+        ctx._saveThinkingBlockStates();  // should not throw
+    });
+
+    it('accumulates open state keyed by message ID into persistent record', () => {
+        const ctx = loadRenderModule();
+        var savedQsAll = ctx.document.querySelectorAll;
+        ctx.document.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') {
+                return [
+                    { open: true, closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'msg-aaa' : null; } } : null; } },
+                    { open: false, closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'msg-bbb' : null; } } : null; } }
+                ];
+            }
+            return savedQsAll(sel);
+        };
+        ctx._saveThinkingBlockStates();
+        assert.strictEqual(ctx._persistedThinkingStates['msg-aaa'], true);
+        assert.strictEqual(ctx._persistedThinkingStates['msg-bbb'], false);
+        ctx.document.querySelectorAll = savedQsAll;
+    });
+
+    it('skips blocks without a parent .msg', () => {
+        const ctx = loadRenderModule();
+        var savedQuerySelectorAll = ctx.document.querySelectorAll;
+        ctx.document.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') {
+                return [{ open: true, closest: function() { return null; } }];
+            }
+            return savedQuerySelectorAll(sel);
+        };
+        // Should not throw — just skips
+        ctx._saveThinkingBlockStates();
+        ctx.document.querySelectorAll = savedQuerySelectorAll;
+    });
+});
+
+describe('_restoreThinkingBlockStates', () => {
+    it('does nothing when persistent record is empty', () => {
+        const ctx = loadRenderModule();
+        ctx._persistedThinkingStates = {};
+        ctx._restoreThinkingBlockStates();  // should not throw
+    });
+
+    it('does nothing when no thinking blocks in DOM', () => {
+        const ctx = loadRenderModule();
+        var container = ctx.document.getElementById('chat-messages');
+        ctx._persistedThinkingStates = { 'msg-1': true };
+        // container.querySelectorAll('.thinking-block') returns [] by default
+        ctx._restoreThinkingBlockStates();  // should not throw
+    });
+
+    it('sets open attribute when persisted state is true', () => {
+        const ctx = loadRenderModule();
+        var track = { setOpenCalled: false, removeOpenCalled: false };
+        var blockEl = {
+            setAttribute: function(name) { if (name === 'open') track.setOpenCalled = true; },
+            removeAttribute: function(name) { if (name === 'open') track.removeOpenCalled = true; },
+            closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'msg-1' : null; } } : null; }
+        };
+        var container = ctx.document.getElementById('chat-messages');
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') return [blockEl];
+            return [];
+        };
+        ctx._persistedThinkingStates = { 'msg-1': true };
+        ctx._restoreThinkingBlockStates();
+        assert.ok(track.setOpenCalled, 'should set open attribute');
+        assert.strictEqual(track.removeOpenCalled, false);
+        container.querySelectorAll = savedQsAll;
+    });
+
+    it('removes open attribute when persisted state is false', () => {
+        const ctx = loadRenderModule();
+        var track = { setOpenCalled: false, removeOpenCalled: false };
+        var blockEl = {
+            setAttribute: function(name) { if (name === 'open') track.setOpenCalled = true; },
+            removeAttribute: function(name) { if (name === 'open') track.removeOpenCalled = true; },
+            closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'msg-2' : null; } } : null; }
+        };
+        var container = ctx.document.getElementById('chat-messages');
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') return [blockEl];
+            return [];
+        };
+        ctx._persistedThinkingStates = { 'msg-2': false };
+        ctx._restoreThinkingBlockStates();
+        assert.ok(track.removeOpenCalled, 'should remove open attribute');
+        assert.strictEqual(track.setOpenCalled, false);
+        container.querySelectorAll = savedQsAll;
+    });
+
+    it('skips blocks whose msg ID is not in persistent record', () => {
+        const ctx = loadRenderModule();
+        var track = { setOpenCalled: false, removeOpenCalled: false };
+        var blockEl = {
+            setAttribute: function(name) { if (name === 'open') track.setOpenCalled = true; },
+            removeAttribute: function(name) { if (name === 'open') track.removeOpenCalled = true; },
+            closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'msg-unknown' : null; } } : null; }
+        };
+        var container = ctx.document.getElementById('chat-messages');
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') return [blockEl];
+            return [];
+        };
+        ctx._persistedThinkingStates = { 'msg-1': false };  // different ID
+        ctx._restoreThinkingBlockStates();
+        assert.strictEqual(track.setOpenCalled, false, 'should NOT modify block with unknown ID');
+        assert.strictEqual(track.removeOpenCalled, false);
+        container.querySelectorAll = savedQsAll;
+    });
+
+    it('skips blocks without a parent .msg', () => {
+        const ctx = loadRenderModule();
+        var blockEl = { closest: function(s) { return null; }, setAttribute: function(){}, removeAttribute: function(){} };
+        var container = ctx.document.getElementById('chat-messages');
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') return [blockEl];
+            return [];
+        };
+        ctx._persistedThinkingStates = { 'msg-1': true };
+        ctx._restoreThinkingBlockStates();  // should not throw
+        container.querySelectorAll = savedQsAll;
+    });
+});
+
+describe('renderChatMessages preserves thinking block state', () => {
+    it('does not throw with messages containing reasoning', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [
+            { role: 'user', content: 'Hi', id: 'u1', createdAt: '2026-01-01T13:01:00' },
+            { role: 'assistant', content: 'Answer', reasoning: 'Let me think...', model: 'gpt-4o', id: 'a1', createdAt: '2026-01-01T13:02:00' }
+        ];
+        ctx.renderChatMessages(ctx.chatMessages);
+        var container = ctx.document.getElementById('chat-messages');
+        assert.ok(container.children.length >= 2, 'should render 2 messages');
+    });
+
+    it('restores persisted collapsed state on re-render', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [
+            { role: 'assistant', content: 'Answer', reasoning: 'Let me think...', model: 'gpt-4o', id: 'a1', createdAt: '2026-01-01T13:02:00' }
+        ];
+
+        // User collapsed a1 previously
+        ctx._persistedThinkingStates['a1'] = false;
+
+        // Override container.querySelectorAll to return a tracking block for the restore phase
+        var container = ctx.document.getElementById('chat-messages');
+        var restoreCalled = false;
+        var track = { setOpenCalled: false, removeOpenCalled: false };
+        var blockEl = {
+            setAttribute: function(name) { if (name === 'open') track.setOpenCalled = true; },
+            removeAttribute: function(name) { if (name === 'open') track.removeOpenCalled = true; },
+            closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'a1' : null; } } : null; }
+        };
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') { restoreCalled = true; return [blockEl]; }
+            return savedQsAll(sel);
+        };
+
+        ctx.renderChatMessages(ctx.chatMessages);
+        assert.ok(restoreCalled, 'restore should scan DOM for thinking blocks');
+        assert.ok(track.removeOpenCalled, 'should restore collapsed state from persistent record');
+        container.querySelectorAll = savedQsAll;
+    });
+
+    it('does not throw when rendering empty messages array', () => {
+        const ctx = loadRenderModule();
+        ctx.renderChatMessages([]);
+        var container = ctx.document.getElementById('chat-messages');
+        assert.strictEqual(container.children.length, 0);
+    });
+});
+
+describe('replaceMessagesAfter preserves thinking block state', () => {
+    it('does not affect sibling branch (different IDs, independent state)', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [
+            { role: 'user', content: 'Q1', id: 'u1', createdAt: '2026-01-01T13:01:00' },
+            { role: 'assistant', content: 'A1', reasoning: 'thinking...', model: 'gpt-4o', id: 'a1', createdAt: '2026-01-01T13:02:00' }
+        ];
+        ctx.renderChatMessages(ctx.chatMessages);
+
+        // User collapsed a1
+        ctx._persistedThinkingStates['a1'] = false;
+
+        // Branch switch: a1 replaced with a1-b (different ID, no persisted state)
+        var container = ctx.document.getElementById('chat-messages');
+        var track = { setOpenCalled: false, removeOpenCalled: false };
+        var blockA1b = {
+            setAttribute: function(name) { if (name === 'open') track.setOpenCalled = true; },
+            removeAttribute: function(name) { if (name === 'open') track.removeOpenCalled = true; },
+            closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'a1-b' : null; } } : null; }
+        };
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') return [blockA1b];
+            if (sel === '.msg') return container.children;
+            return savedQsAll(sel);
+        };
+
+        var newMessages = [
+            { role: 'user', content: 'Q1', id: 'u1', createdAt: '2026-01-01T13:01:00' },
+            { role: 'assistant', content: 'A1-branch-B', reasoning: 'different...', model: 'gpt-4o', id: 'a1-b', createdAt: '2026-01-01T13:03:00' }
+        ];
+        ctx.replaceMessagesAfter(1, newMessages, 1);
+
+        // a1-b is NOT in persistent record — should NOT be modified
+        assert.strictEqual(track.setOpenCalled, false, 'a1-b should NOT be collapsed (no persisted state)');
+        assert.strictEqual(track.removeOpenCalled, false);
+        container.querySelectorAll = savedQsAll;
+    });
+
+    it('restores collapsed state when switching back to original branch', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [
+            { role: 'assistant', content: 'A1', reasoning: 'thinking...', model: 'gpt-4o', id: 'a1', createdAt: '2026-01-01T13:02:00' }
+        ];
+        ctx.renderChatMessages(ctx.chatMessages);
+
+        // User collapsed a1
+        ctx._persistedThinkingStates['a1'] = false;
+
+        var container = ctx.document.getElementById('chat-messages');
+        var track = { setOpenCalled: false, removeOpenCalled: false };
+        var blockA1 = {
+            setAttribute: function(name) { if (name === 'open') track.setOpenCalled = true; },
+            removeAttribute: function(name) { if (name === 'open') track.removeOpenCalled = true; },
+            closest: function(s) { return s === '.msg' ? { getAttribute: function(a) { return a === 'data-msg-id' ? 'a1' : null; } } : null; }
+        };
+        var savedQsAll = container.querySelectorAll;
+        container.querySelectorAll = function(sel) {
+            if (sel === '.thinking-block') return [blockA1];
+            if (sel === '.msg') return container.children;
+            return savedQsAll(sel);
+        };
+
+        ctx.replaceMessagesAfter(0,
+            [{ role: 'assistant', content: 'A1', reasoning: 'thinking...', model: 'gpt-4o', id: 'a1', createdAt: '2026-01-01T13:02:00' }], 0);
+
+        assert.ok(track.removeOpenCalled, 'should restore collapsed state when switching back');
+        assert.strictEqual(track.setOpenCalled, false);
+        container.querySelectorAll = savedQsAll;
+    });
+
+    it('handles empty newMessages correctly', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [
+            { role: 'user', content: 'Q1', id: 'u1', createdAt: '2026-01-01T13:01:00' }
+        ];
+        ctx.renderChatMessages(ctx.chatMessages);
+        ctx.replaceMessagesAfter(0, [], 0);
     });
 });

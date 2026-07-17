@@ -2,13 +2,50 @@
 // chat-render.js — Message bubble creation, DOM rendering, incremental updates
 // ======================================================
 
+// Persisted across renders so each message ID remembers its own state
+// independently, even across branch switches.
+var _persistedThinkingStates = {};
+
+function _saveThinkingBlockStates() {
+  var blocks = document.querySelectorAll('.thinking-block');
+  for (var i = 0; i < blocks.length; i++) {
+    var msgEl = blocks[i].closest('.msg');
+    if (!msgEl) continue;
+    var msgId = msgEl.getAttribute('data-msg-id');
+    if (!msgId) continue;
+    _persistedThinkingStates[msgId] = blocks[i].open;
+  }
+}
+
+function _restoreThinkingBlockStates() {
+  var container = document.getElementById('chat-messages');
+  if (!container) return;
+  // Scan visible thinking blocks (O(visible) instead of O(persisted)):
+  // for a 1000-message tree, only ~10-50 are in the DOM at any time.
+  var blocks = container.querySelectorAll('.thinking-block');
+  for (var i = 0; i < blocks.length; i++) {
+    var msgEl = blocks[i].closest('.msg');
+    if (!msgEl) continue;
+    var msgId = msgEl.getAttribute('data-msg-id');
+    if (!msgId) continue;
+    if (!_persistedThinkingStates.hasOwnProperty(msgId)) continue;
+    if (_persistedThinkingStates[msgId]) {
+      blocks[i].setAttribute('open', '');
+    } else {
+      blocks[i].removeAttribute('open');
+    }
+  }
+}
+
 function renderChatMessages(messages) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
+  _saveThinkingBlockStates();
   container.innerHTML = '';
   for (var i = 0; i < messages.length; i++) {
     container.appendChild(createMessageBubble(messages[i], i));
   }
+  _restoreThinkingBlockStates();
   // Render Lucide icons now that bubbles are in the DOM
   if (typeof lucide !== 'undefined') lucide.createIcons();
   // Scroll the parent .thread element
@@ -19,16 +56,21 @@ function renderChatMessages(messages) {
 function replaceMessagesAfter(startIndex, newMessages, startOffset) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
+  _saveThinkingBlockStates();
   startOffset = startOffset || 0;
   var existingBubbles = container.querySelectorAll('.msg');
   for (var i = startIndex; i < existingBubbles.length; i++) {
     existingBubbles[i].remove();
   }
-  if (!newMessages || newMessages.length === 0) return;
+  if (!newMessages || newMessages.length === 0) {
+    _restoreThinkingBlockStates();
+    return;
+  }
   for (var j = startOffset; j < newMessages.length; j++) {
     var bubble = createMessageBubble(newMessages[j], startIndex + (j - startOffset));
     container.appendChild(bubble);
   }
+  _restoreThinkingBlockStates();
 }
 
 function attachmentsEqual(a, b) {

@@ -23,6 +23,11 @@ function initChatMode(data) {
   var messages = Array.isArray(data) ? data : (data && data.messages ? data.messages : []);
   chatMessages = messages;
 
+  // Reset persisted thinking-block states when loading a new thread
+  if (typeof _persistedThinkingStates !== 'undefined') {
+    _persistedThinkingStates = {};
+  }
+
   // Set activeThreadId if provided (fixes first-message scoped search)
   if (data && data.threadId && !activeThreadId) {
     activeThreadId = data.threadId;
