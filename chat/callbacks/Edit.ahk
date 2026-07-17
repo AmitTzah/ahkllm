@@ -26,10 +26,12 @@ handleEdit(params, *) {
         siblingGroup := ""
         siblingIndex := 0
         role := "assistant"
+        model := ""
         for i, msg in path {
             if msg.id = id {
                 parentId := msg.parent_id
                 role := msg.role
+                model := msg.model
                 if msg.sibling_group {
                     siblingGroup := msg.sibling_group
                 } else {
@@ -40,7 +42,7 @@ handleEdit(params, *) {
                 break
             }
         }
-        newMsgId := ChatDB.Msg_Insert({ thread_id: activeThreadId, role: role, content: content, model: "", parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex })
+        newMsgId := ChatDB.Msg_Insert({ thread_id: activeThreadId, role: role, content: content, model: model, parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex })
         ; Copy attachments from old message to new branch message
         ChatDB.Attachment_CopyForMessage(id, newMsgId)
         ; Save new attachments from edit (skip if already present on message)
