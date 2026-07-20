@@ -19,7 +19,6 @@ function onChatSend() {
   if (typeof attachmentState !== 'undefined') {
     var anyLoading = false;
     for (var a = 0; a < attachmentState.length; a++) {
-      console.log('[ATTACH-JS] send check: idx=' + a + ' loading=' + attachmentState[a].loading + ' type=' + attachmentState[a].type);
       if (attachmentState[a].loading) { anyLoading = true; }
     }
     if (anyLoading) {
@@ -39,7 +38,6 @@ function onChatSend() {
     input.disabled = true;
     var payload = { action: 'chatSend', message: message || 'Describe the attached content.' };
     if (attachments.length > 0) payload.attachments = attachments;
-    console.log('[ATTACH-JS] Sending chatSend: msgLen=' + message.length + ' attCount=' + attachments.length + ' payloadLen=' + JSON.stringify(payload).length);
     window.chrome.webview.postMessage(JSON.stringify(payload));
     if (typeof clearAttachments === 'function') clearAttachments();
     return;
@@ -124,7 +122,6 @@ function retryLastAssistantMessage(messageId) {
       }
     }
     renderChatMessages(chatMessages);
-    sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
   } else {
     removeLastAssistantMessage();
   }

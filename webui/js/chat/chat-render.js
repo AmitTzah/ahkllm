@@ -41,9 +41,15 @@ function renderChatMessages(messages) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
   _saveThinkingBlockStates();
+  // Preserve error banners across re-render (e.g. vision gate error on first send)
+  // so they survive initChatMode when loadThread triggers _LoadThreadAndRefreshUI.
+  var errorBanners = container.querySelectorAll('.error-banner');
   container.innerHTML = '';
   for (var i = 0; i < messages.length; i++) {
     container.appendChild(createMessageBubble(messages[i], i));
+  }
+  for (var i = 0; i < errorBanners.length; i++) {
+    container.appendChild(errorBanners[i]);
   }
   _restoreThinkingBlockStates();
   // Render Lucide icons now that bubbles are in the DOM
@@ -98,7 +104,6 @@ function updateChatMessages(newMessages) {
   var prevScrollHeight = container.scrollHeight;
   replaceMessagesAfter(divIdx, newMessages, divIdx);
   chatMessages = newMessages;
-  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
   setChatButtonsEnabled(true);
   if (typeof renderNavList === 'function') renderNavList();
   if (prevScrollHeight > 0) {
@@ -167,6 +172,9 @@ function createMessageBubble(msg, index) {
     if (actionsDiv) addMessageActions(actionsDiv, msg, index);
   }
 
+  // Render Lucide icons in the new bubble (attachment icons, action buttons)
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
   return bubble;
 }
 
@@ -188,20 +196,81 @@ function _buildReasoningHtml(msg) {
     '            </details>';
 }
 
+function _formatFileSize(bytes) {
+  if (!bytes || bytes === 0) return '0B';
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1048576).toFixed(1) + 'MB';
+}
+
 function _buildAttachmentHtml(msg) {
   if (!msg.attachments || !msg.attachments.length || msg.role !== 'user') return '';
   var html = '';
+  var hasScannedPDF = false;
+
+  // Pre-scan for scanned PDF banner (show once per message)
+  for (var a = 0; a < msg.attachments.length; a++) {
+    if (msg.attachments[a].extracted_text === '__SCANNED_PDF__') {
+      hasScannedPDF = true;
+      break;
+    }
+  }
+  if (hasScannedPDF) {
+    html += '\n            <div class="scan-banner">\n' +
+      '              <span>\u26A0\uFE0F No extractable text (scanned PDF) \u2014 attached as image(s)</span>\n' +
+      '              <button onclick="this.parentElement.remove()">\u00D7</button>\n' +
+      '            </div>';
+  }
+
   for (var a = 0; a < msg.attachments.length; a++) {
     var att = msg.attachments[a];
+    var attId = att.id || '';
+
     if (att.attachment_type === 'image' && att.base64) {
+      var imgSrc = 'data:' + (att.mime_type || 'image/png') + ';base64,' + att.base64;
       html += '\n            <div class="msg-attachment-image">\n' +
-        '              <img src="data:' + (att.mime_type || 'image/png') + ';base64,' + att.base64 + '" alt="' + escHtml(att.original_filename || 'image') + '">\n' +
+        '              <img src="' + imgSrc + '" alt="' + escHtml(att.original_filename || 'image') + '" onclick="(function(){var o=document.createElement(\'div\');o.className=\'image-overlay\';o.style.display=\'flex\';var i=document.createElement(\'img\');i.src=this.src;o.appendChild(i);o.addEventListener(\'click\',function(){this.remove()});document.body.appendChild(o);}).call(this)">\n' +
+        '              <div class="msg-attachment-info">\n' +
+        '                <i data-lucide="image" class="file-icon"></i>\n' +
+        '                <span class="file-name">' + escHtml(att.original_filename || 'image') + '</span>\n' +
+        '                <span class="file-size">' + _formatFileSize(att.file_size) + '</span>\n' +
+        (attId ? '                <button class="msg-attachment-delete" data-attachment-id="' + attId + '" title="Remove attachment">\u00D7</button>\n' : '') +
+        '              </div>\n' +
         '            </div>';
     } else {
+      var iconName = typeof getAttachmentIcon === 'function' ? getAttachmentIcon(att.mime_type || '', att.original_filename || '') : 'file-text';
+      var iconHtml;
+      if (iconName.indexOf('icons/') === 0) {
+        iconHtml = '<img src="' + iconName + '" class="file-icon">';
+      } else {
+        iconHtml = '<i data-lucide="' + iconName + '" class="file-icon"></i>';
+      }
       html += '\n            <div class="msg-attachment-file">\n' +
-        '              <span class="file-icon">' + (att.attachment_type === 'pdf' ? '📕' : '📎') + '</span>\n' +
+        '              ' + iconHtml + '\n' +
         '              <span class="file-name">' + escHtml(att.original_filename || 'file') + '</span>\n' +
+        '              <span class="file-size">' + _formatFileSize(att.file_size) + '</span>\n' +
+        (attId ? '              <button class="msg-attachment-delete" data-attachment-id="' + attId + '" title="Remove attachment">\u00D7</button>\n' : '') +
         '            </div>';
+      // Extraction failure banner (visible warning, not collapsible)
+      if (att.extracted_text && att.extracted_text.indexOf('(extraction failed') === 0) {
+        html += '\n            <div class="scan-banner">\n' +
+          '              <span>\u26A0\uFE0F ' + escHtml(att.extracted_text) + '</span>\n' +
+          '            </div>';
+      // Extracted text preview
+      } else if (att.extracted_text && att.extracted_text !== '__SCANNED_PDF__' && att.extracted_text !== '__LIBRARY_UNAVAILABLE__' && att.extracted_text !== '(no text extracted)') {
+        var extractedEscaped = escHtml(att.extracted_text);
+        html += '\n            <details class="msg-attachment-text-preview">\n' +
+          '              <summary>\uD83D\uDCCB Extracted text' +
+          '                <button class="copy-extract-btn" title="Copy extracted text" onclick="var p=this.parentElement.parentElement.querySelector(\'pre\');if(p){navigator.clipboard.writeText(p.textContent).then(function(){var b=this;b.innerHTML=\'<i data-lucide=check style=width:13px;height:13px></i>\';lucide.createIcons();setTimeout(function(){b.innerHTML=\'<i data-lucide=copy style=width:13px;height:13px></i>\';lucide.createIcons();},2000)}.bind(this))}" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);padding:0 2px;margin-left:6px;vertical-align:-2px;"><i data-lucide="copy" style="width:13px;height:13px;"></i></button>' +
+          '              </summary>\n' +
+          '              <pre>' + extractedEscaped + '</pre>\n' +
+          '            </details>';
+      } else if (att.extracted_text === '__SCANNED_PDF__' && !hasScannedPDF) {
+        html += '\n            <div class="scan-banner">\n' +
+          '              <span>\u26A0\uFE0F No extractable text (scanned PDF) \u2014 attached as image(s)</span>\n' +
+          '              <button onclick="this.parentElement.remove()">\u00D7</button>\n' +
+          '            </div>';
+      }
     }
   }
   return html;
@@ -228,7 +297,6 @@ function appendChatMessage(message) {
   if (typeof lucide !== 'undefined') lucide.createIcons();
   var scrollEl = document.getElementById('chat-scroll');
   if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
-  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
   hideLoadingIndicator();
 }
 
@@ -240,5 +308,4 @@ function removeLastAssistantMessage() {
     }
   }
   renderChatMessages(chatMessages);
-  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
 }

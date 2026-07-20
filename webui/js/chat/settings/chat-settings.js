@@ -53,7 +53,7 @@ function _providerIconFile(model) {
   if (m.indexOf('deepseek') >= 0) return '../icons/deepseek.ico';
   if (m.indexOf('gpt') >= 0 || m.indexOf('o1') >= 0 || m.indexOf('o3') >= 0 || m.indexOf('openai') >= 0) return '../icons/openai.ico';
   if (m.indexOf('claude') >= 0 || m.indexOf('anthropic') >= 0) return '../icons/anthropic.ico';
-  if (m.indexOf('gemini') >= 0 || m.indexOf('google') >= 0) return '../icons/google.ico';
+  if (m.indexOf('gemini') >= 0 || m.indexOf('gemma') >= 0 || m.indexOf('google') >= 0) return '../icons/google.ico';
   if (m.indexOf('perplexity') >= 0) return '../icons/perplexity.ico';
   return '../icons/openrouter.ico';
 }

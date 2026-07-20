@@ -115,7 +115,6 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
   }
   if (!found) {
     chatMessages.push(msg);
-    sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
   }
 }
 

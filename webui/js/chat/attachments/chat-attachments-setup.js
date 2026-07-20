@@ -1,5 +1,5 @@
 // ======================================================
-// chat-attachments-setup.js — Drop zone, paste, browse event handlers
+// chat-attachments-setup.js -- Drop zone, paste, browse event handlers
 // ======================================================
 
 // ---- Drop zone setup ----
@@ -93,20 +93,15 @@ function setupAttachmentRemoveDelegation() {
     var bar = document.getElementById('attachment-bar');
     if (!bar) return;
     bar.addEventListener('click', function(e) {
-        console.log('[ATTACH-JS] bar clicked, target=' + e.target.tagName + '.' + e.target.className);
         var btn = e.target.closest('.attachment-remove');
-        if (!btn) {
-            console.log('[ATTACH-JS] no .attachment-remove found via closest()');
-            return;
-        }
+        if (!btn) return;
         e.stopPropagation();
         var idx = parseInt(btn.getAttribute('data-idx'), 10);
-        console.log('[ATTACH-JS] delegated [\u00D7] click for idx=' + idx);
         removeAttachment(idx);
     });
 }
 
-// ---- Delegated × handler for message bubble attachments (deferred during edit) ----
+// ---- Delegated x handler for message bubble attachments (deferred during edit) ----
 function setupMessageAttachmentDeleteDelegation() {
     var chatMessagesEl = document.getElementById('chat-messages');
     if (!chatMessagesEl) return;
@@ -116,14 +111,12 @@ function setupMessageAttachmentDeleteDelegation() {
         e.stopPropagation();
         var attId = btn.getAttribute('data-attachment-id');
         if (!attId) return;
-        console.log('[ATTACH-JS] message bubble [×] clicked, attId=' + attId);
-        // If editing this message, defer deletion to Save — track locally
+        // If editing this message, defer deletion to Save -- track locally
         if (typeof _editingMessageId !== 'undefined' && _editingMessageId) {
             if (typeof _removedAttachmentIds !== 'undefined') {
                 _removedAttachmentIds.push(attId);
                 var wrapper = btn.closest('.msg-attachment-image, .msg-attachment-file');
                 if (wrapper) wrapper.style.display = 'none';
-                console.log('[ATTACH-JS] edit mode — deferred removal of attId=' + attId);
                 return;
             }
         }

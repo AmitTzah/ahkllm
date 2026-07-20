@@ -76,7 +76,10 @@ class WebViewToo {
 		this.AddCallbackToScript("Restore", this.Restore)
 		this.AddCallbackToScript("Minimize", this.Minimize)
 		this.AddCallbackToScript("Maximize", this.Maximize)
-		A_IsCompiled ? (this.EnableInternalLoading()) : 0
+		if (A_IsCompiled)
+			this.EnableInternalLoading()
+		else
+			this._EnableDevVirtualHost()
 		OnExit(this.OnExit := ObjBindMethod(this, "Destroy"), 1)
 		this.NavigateToString(Format(WebViewToo.Template.Framework, Html, Css, JavaScript))
 		if (this.CustomCaption) {
@@ -364,7 +367,33 @@ class WebViewToo {
 		}
 	}
 	
-	Load(Filename) => this.Navigate(Filename ~= "^https?:\/\/" ? Filename : A_IsCompiled ? "https://ahk.localhost/" Filename : A_WorkingDir "\" Filename)
+	_EnableDevVirtualHost() {
+		; Map https://ahk.localhost/ to the project root so that Worker,
+		; fetch, and XHR all work with a proper https:// origin instead
+		; of file:// (which blocks Worker creation, triggering pdf.js's
+		; "Warning: Setting up fake worker." fallback).
+		; Detect project root: if A_ScriptDir\.. has a webui\ subfolder,
+		; use that as root (covers ChatWindow.ahk living in chat\). Otherwise
+		; use A_ScriptDir directly (covers Main.ahk at the project root).
+		rootDir := A_ScriptDir
+		try if DirExist(A_ScriptDir "\..\webui")
+			rootDir := A_ScriptDir "\.."
+		this.wv.SetVirtualHostNameToFolderMapping("ahk.localhost", rootDir, 1)
+	}
+	
+	Load(Filename) {
+		if (Filename ~= "^https?:\/\/")
+			return this.Navigate(Filename)
+		if (A_IsCompiled)
+			return this.Navigate("https://ahk.localhost/" Filename)
+		; Dev mode: construct virtual host URL from relative file path.
+		; Filename "..\webui\index.html" means go up from chat\ to ai-automation\
+		; then into webui\. Virtual host root = A_ScriptDir\.. = ai-automation\,
+		; so the URL path is /webui/index.html.
+		urlPath := RegExReplace(Filename, "^(\.\.\\)+", "")
+		urlPath := StrReplace(urlPath, "\", "/")
+		return this.Navigate("https://ahk.localhost/" urlPath)
+	}
 
 	SimplePrintToPdf(FileName := "", Orientation := "Portrait", Timeout := 5000) {
 		Loop {

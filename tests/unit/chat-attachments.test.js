@@ -28,7 +28,7 @@ function loadModule(relativePath) {
         attachmentState: [], _attachmentIdCounter: 0,
         MAX_FILE_SIZE: 50 * 1024 * 1024,
         getAttachmentTypeFromMime: undefined, isAllowedFile: undefined, getAttachmentIcon: undefined,
-        ALLOWED_EXTENSIONS: undefined, MAX_BASE64_SIZE: undefined,
+        ALLOWED_EXTENSIONS: undefined,
     };
     sandbox.global = sandbox;
     vm.runInContext(src, vm.createContext(sandbox));
@@ -177,26 +177,32 @@ describe('getAttachmentIcon', () => {
         assert.ok(icon.length > 0);
     });
 
-    it('code files (.py, .js, .ahk) return code icon', () => {
+    it('code files get branded SVG icons', () => {
         const py = ctx.getAttachmentIcon('application/octet-stream', 'script.py');
         const js = ctx.getAttachmentIcon('application/octet-stream', 'script.js');
         const ahk = ctx.getAttachmentIcon('application/octet-stream', 'script.ahk');
-        assert.strictEqual(py, js);
-        assert.strictEqual(js, ahk);
+        assert.ok(py.indexOf('icons/') === 0, 'python should have SVG path, got: ' + py);
+        assert.ok(js.indexOf('icons/') === 0, 'javascript should have SVG path, got: ' + js);
+        assert.ok(ahk.indexOf('icons/') === 0, 'ahk should have SVG path, got: ' + ahk);
+        assert.notStrictEqual(py, js, 'python and js should have different icons');
+        assert.notStrictEqual(py, ahk, 'python and ahk should have different icons');
     });
 
-    it('data files (.json, .xml, .csv) return data icon', () => {
+    it('data files get branded icons or Lucide fallback', () => {
         const json = ctx.getAttachmentIcon('application/octet-stream', 'data.json');
         const xml = ctx.getAttachmentIcon('application/octet-stream', 'data.xml');
         const csv = ctx.getAttachmentIcon('application/octet-stream', 'data.csv');
-        assert.strictEqual(json, xml);
-        assert.strictEqual(xml, csv);
+        assert.ok(json.indexOf('icons/') === 0, 'json should have SVG path, got: ' + json);
+        assert.ok(xml.indexOf('icons/') === 0, 'xml should have SVG path, got: ' + xml);
+        assert.ok(csv.indexOf('icons/') === 0, 'csv should have SVG path, got: ' + csv);
     });
 
-    it('web files (.html, .css) return web icon', () => {
+    it('web files get branded SVG icons', () => {
         const html = ctx.getAttachmentIcon('application/octet-stream', 'page.html');
         const css = ctx.getAttachmentIcon('application/octet-stream', 'style.css');
-        assert.strictEqual(html, css);
+        assert.ok(html.indexOf('icons/') === 0, 'html should have SVG path, got: ' + html);
+        assert.ok(css.indexOf('icons/') === 0, 'css should have SVG path, got: ' + css);
+        assert.notStrictEqual(html, css, 'html and css should have different icons');
     });
 });
 
@@ -243,9 +249,5 @@ describe('ALLOWED_EXTENSIONS completeness', () => {
 describe('constants', () => {
     it('MAX_FILE_SIZE is 50MB', () => {
         assert.strictEqual(ctx.MAX_FILE_SIZE, 50 * 1024 * 1024);
-    });
-
-    it('MAX_BASE64_SIZE is 10MB', () => {
-        assert.strictEqual(ctx.MAX_BASE64_SIZE, 10 * 1024 * 1024);
     });
 });

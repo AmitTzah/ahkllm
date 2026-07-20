@@ -40,38 +40,14 @@ function editMessage(index) {
 
 }
 
-// Module-level variables for edit attachments (kept for commitEdit compatibility)
-var _editAttachments = [];
-var _editExtractPromises = [];
-var _editHashPromises = [];
-
 function commitEdit(index, msgId, newContent, mode) {
-  // Wait for any pending PDF/DOCX extractions AND SHA-256 hash computations to complete
-  var allPromises = _editExtractPromises.concat(_editHashPromises);
-  var doCommit = function() {
-    var payload = { action: 'editMessage', id: msgId, content: newContent, mode: mode };
-    if (_removedAttachmentIds.length > 0) {
-      payload.removedAttachmentIds = _removedAttachmentIds.slice();
-    }
-    if (_editAttachments.length > 0) {
-      // Include contentHash for content-addressable dedup
-      payload.attachments = _editAttachments.map(function(a) {
-        return { type: a.type, filename: a.filename, mimeType: a.mimeType, base64: a.base64, size: a.size, extractedText: a.extractedText || '', contentHash: a.contentHash || '' };
-      });
-      _editAttachments = [];
-    }
-    _editExtractPromises = [];
-    _editHashPromises = [];
-    _editingMessageId = null;
-    _removedAttachmentIds = [];
-    window.chrome.webview.postMessage(JSON.stringify(payload));
-  };
-
-  if (allPromises.length > 0) {
-    Promise.all(allPromises).then(function() { doCommit(); }).catch(function() { doCommit(); });
-  } else {
-    doCommit();
+  var payload = { action: 'editMessage', id: msgId, content: newContent, mode: mode };
+  if (_removedAttachmentIds.length > 0) {
+    payload.removedAttachmentIds = _removedAttachmentIds.slice();
   }
+  _editingMessageId = null;
+  _removedAttachmentIds = [];
+  window.chrome.webview.postMessage(JSON.stringify(payload));
 }
 
 // Fork chat at a specific message — creates a copy thread up to that point

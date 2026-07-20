@@ -57,10 +57,22 @@ OnWebMessageReceived(sender, args) {
             case "showApiLogs":
                 debugLog("[DISPATCH] showApiLogs received, sending IPC to Main")
                 CustomMessages.notifyShowApiLogs(requestParams["mainScriptHiddenhWnd"])
+            case "webViewReady":
+                _OnWebViewReady()
+            case "debugLog":
+                debugLog(parsed.Get("message", ""), "WebUI")
         }
     } catch Error as e {
         _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)
     }
+}
+
+; WebView just loaded/reloaded — send current thread data if one exists.
+; Replaces sessionStorage-based recovery with DB as single source of truth.
+_OnWebViewReady() {
+    global activeThreadId
+    if activeThreadId
+        _LoadThreadAndRefreshUI(activeThreadId)
 }
 
 #Include Message.ahk

@@ -1,5 +1,5 @@
 // ======================================================
-// chat-core.js — Core chat state, initialization, and shared utilities
+// chat-core.js -- Core chat state, initialization, and shared utilities
 // ======================================================
 
 // Chat state
@@ -16,7 +16,7 @@ document.addEventListener('click', function() {
   }
 });
 
-// Initialize chat mode — called by AHK when a thread loads.
+// Initialize chat mode -- called by AHK when a thread loads.
 // Accepts either an array of messages (legacy) or { messages: [], threadId: "..." }
 function initChatMode(data) {
   isChatMode = true;
@@ -53,7 +53,6 @@ function initChatMode(data) {
   }
 
   sessionStorage.setItem('isChatMode', 'true');
-  sessionStorage.setItem('chatMessages', JSON.stringify(chatMessages));
 
   // Re-enable scoped search and handle cross-thread search navigation
   if (typeof updateScopedSearchState === 'function') updateScopedSearchState();
@@ -84,10 +83,10 @@ function renderMarkdown(content) {
 // Shared HTML escape utility (used by multiple chat modules)
 function escHtml(s) {
   if (!s) return '';
-  return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Shared inline editor — creates a text input over an element for renaming.
+// Shared inline editor -- creates a text input over an element for renaming.
 // Calls onSave(newValue) on blur/Enter, restores original on Escape.
 function _makeInlineEditor(el, currentValue, onSave, inputWidth) {
   if (!el || el.querySelector('input')) return;
@@ -107,7 +106,7 @@ function _makeInlineEditor(el, currentValue, onSave, inputWidth) {
   });
 }
 
-// Shared custom confirmation dialog — no browser prompt()
+// Shared custom confirmation dialog -- no browser prompt()
 var _confirmCallback = null;
 function _showConfirm(message, onYes) {
   var existing = document.getElementById('customConfirmOverlay');
@@ -138,7 +137,7 @@ function _showConfirm(message, onYes) {
 }
 
 // Global Escape handler: closes any open overlay (search, confirm, tree).
-// If nothing was open, posts hideWindow to AHK (unless streaming — cancels that first).
+// If nothing was open, posts hideWindow to AHK (unless streaming -- cancels that first).
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape') return;
 
@@ -165,12 +164,19 @@ document.addEventListener('keydown', function(e) {
     return;
   }
 
-  // Streaming — cancel it (don't hide window)
+  // Image overlay (full-size attachment view)
+  var imgOverlay = document.querySelector('.image-overlay');
+  if (imgOverlay && imgOverlay.style.display === 'flex') {
+    imgOverlay.remove();
+    return;
+  }
+
+  // Streaming -- cancel it (don't hide window)
   if (typeof isLoading !== 'undefined' && isLoading) {
     window.chrome.webview.postMessage(JSON.stringify({ action: 'cancelStream' }));
     return;
   }
 
-  // Nothing open — hide window
+  // Nothing open -- hide window
   window.chrome.webview.postMessage(JSON.stringify({ action: 'hideWindow' }));
 });

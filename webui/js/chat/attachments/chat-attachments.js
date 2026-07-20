@@ -1,5 +1,5 @@
 // ======================================================
-// chat-attachments.js — File/image attachment core (state, render, send)
+// chat-attachments.js -- File/image attachment core (state, render, send)
 //
 // Drag-drop, paste-from-clipboard, browse button,
 // pdf.js PDF extraction, officeparser for all office formats.
@@ -14,7 +14,7 @@ var ALLOWED_EXTENSIONS = [
     // Images
     'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp',
     // Documents
-    'pdf', 'docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'rtf',
+    'pdf', 'docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'rtf', 'epub',
     // Text files
     'txt', 'md', 'py', 'js', 'ahk', 'json', 'xml', 'csv',
     'ini', 'cfg', 'yaml', 'yml', 'log', 'html', 'css', 'sql',
@@ -23,7 +23,6 @@ var ALLOWED_EXTENSIONS = [
 ];
 
 var MAX_FILE_SIZE = 50 * 1024 * 1024;     // 50MB file on disk
-var MAX_BASE64_SIZE = 10 * 1024 * 1024;   // 10MB base64 payload limit
 
 // Check if file extension is allowed
 function isAllowedFile(filename) {
@@ -31,20 +30,78 @@ function isAllowedFile(filename) {
     return ALLOWED_EXTENSIONS.indexOf(ext) !== -1;
 }
 
-// Get icon emoji for attachment type
+// Get icon for attachment type. Returns SVG path for language-specific icons,
+// or Lucide icon name for documents/generic types.
 function getAttachmentIcon(mimeType, filename) {
-    if (mimeType.indexOf('image/') === 0) return 'ðŸ–¼ï¸';
-    if (mimeType === 'application/pdf') return 'ðŸ“•';
-    if (mimeType.indexOf('wordprocessing') !== -1) return 'ðŸ“„';
-    if (mimeType.indexOf('presentation') !== -1) return 'ðŸ“Š';
-    if (mimeType.indexOf('spreadsheet') !== -1) return 'ðŸ“ˆ';
     var ext = (filename || '').split('.').pop().toLowerCase();
-    if (['txt', 'md', 'log', 'rtf'].indexOf(ext) !== -1) return 'ðŸ“';
-    if (['py', 'js', 'ahk', 'java', 'c', 'cpp', 'h', 'rs', 'go', 'ts', 'tsx', 'jsx', 'sql', 'bat', 'ps1', 'sh'].indexOf(ext) !== -1) return 'ðŸ’»';
-    if (['json', 'xml', 'csv', 'ini', 'cfg', 'yaml', 'yml', 'toml', 'xlsx', 'ods'].indexOf(ext) !== -1) return 'ðŸ“‹';
-    if (['html', 'css'].indexOf(ext) !== -1) return 'ðŸŒ';
-    if (['odt', 'odp'].indexOf(ext) !== -1 || ['pptx'].indexOf(ext) !== -1) return 'ðŸ“Ž';
-    return 'ðŸ“Ž';
+
+    // File-type branded icons (Simple Icons + VS Code Icons) — checked first
+    var svgMap = {
+        // Languages (Simple Icons)
+        'py': 'icons/filetypes/python.svg',
+        'js': 'icons/filetypes/javascript.svg',
+        'jsx': 'icons/filetypes/javascript.svg',
+        'ts': 'icons/filetypes/typescript.svg',
+        'tsx': 'icons/filetypes/typescript.svg',
+        'go': 'icons/filetypes/go.svg',
+        'rs': 'icons/filetypes/rust.svg',
+        'c': 'icons/filetypes/c.svg',
+        'h': 'icons/filetypes/c.svg',
+        'cpp': 'icons/filetypes/cplusplus.svg',
+        'java': 'icons/filetypes/java.svg',
+        'html': 'icons/filetypes/html5.svg',
+        'htm': 'icons/filetypes/html5.svg',
+        'css': 'icons/filetypes/css3.svg',
+        'ahk': 'icons/filetypes/ahk.svg',
+        // Documents (VS Code Icons)
+        'pdf': 'icons/filetypes/pdf.svg',
+        'docx': 'icons/filetypes/docx.svg',
+        'xlsx': 'icons/filetypes/xlsx.svg',
+        'pptx': 'icons/filetypes/pptx.svg',
+        'epub': 'icons/filetypes/epub.svg',
+        'odt': 'icons/filetypes/odt.svg',
+        'odp': 'icons/filetypes/odp.svg',
+        'ods': 'icons/filetypes/ods.svg',
+        'md': 'icons/filetypes/markdown.svg',
+        'txt': 'icons/filetypes/txt.svg',
+        'log': 'icons/filetypes/txt.svg',
+        // Data/Config
+        'json': 'icons/filetypes/json.svg',
+        'yaml': 'icons/filetypes/yaml.svg',
+        'yml': 'icons/filetypes/yaml.svg',
+        'xml': 'icons/filetypes/xml.svg',
+        'toml': 'icons/filetypes/toml.svg',
+        'csv': 'icons/filetypes/csv.svg',
+        'ini': 'icons/filetypes/ini.svg',
+        'cfg': 'icons/filetypes/cfg.svg',
+        'rtf': 'icons/filetypes/rtf.svg',
+        'sql': 'icons/filetypes/sqlite.svg',
+        // Shell
+        'sh': 'icons/filetypes/gnubash.svg',
+        'bat': 'icons/filetypes/bat.svg',
+        'ps1': 'icons/filetypes/powershell.svg',
+        // Images
+        'png': 'icons/filetypes/image.svg',
+        'jpg': 'icons/filetypes/image.svg',
+        'jpeg': 'icons/filetypes/image.svg',
+        'gif': 'icons/filetypes/image.svg',
+        'webp': 'icons/filetypes/image.svg',
+        'bmp': 'icons/filetypes/image.svg',
+    };
+    if (svgMap.hasOwnProperty(ext)) return svgMap[ext];
+
+    // MIME-based fallbacks (for types detected by MIME, not extension)
+    if (mimeType.indexOf('image/') === 0) return 'image';
+    if (mimeType.indexOf('wordprocessing') !== -1) return 'file-text';
+    if (mimeType.indexOf('presentation') !== -1) return 'presentation';
+    if (mimeType.indexOf('spreadsheet') !== -1) return 'file-spreadsheet';
+
+    return 'paperclip';
+}
+
+// Test if an icon name is an SVG path (starts with 'icons/')
+function _isSvgIcon(iconName) {
+    return iconName && iconName.indexOf('icons/') === 0;
 }
 
 // Add a file to the attachment state
@@ -80,19 +137,23 @@ function addAttachment(file) {
 
     var reader = new FileReader();
     reader.onload = function(e) {
-        // Look up by ID â€” attachment may have been removed while FileReader was reading
+        // Look up by ID -- attachment may have been removed while FileReader was reading
         var att = findAttachmentById(attId);
         if (!att) return;
 
         var arrayBuffer = e.target.result;
 
-        // Get base64 for sending
+        // Get base64 for sending (chunked approach for performance)
         var bytes = new Uint8Array(arrayBuffer);
-        var binary = '';
-        for (var i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
+        var chunks = [];
+        var CHUNK = 8192;
+        for (var i = 0; i < bytes.length; i += CHUNK) {
+            var end = Math.min(i + CHUNK, bytes.length);
+            var chunkStr = '';
+            for (var j = i; j < end; j++) { chunkStr += String.fromCharCode(bytes[j]); }
+            chunks.push(chunkStr);
         }
-        att.base64 = btoa(binary);
+        att.base64 = btoa(chunks.join(''));
 
         // Compute SHA-256 hash for content-addressable storage
         crypto.subtle.digest('SHA-256', arrayBuffer).then(function(hashBuffer) {
@@ -111,7 +172,7 @@ function addAttachment(file) {
         // Extract text for PDF/office/text files
         if (att.type === 'pdf') {
             extractPDFText(arrayBuffer, attId);
-        } else if (att.type === 'docx' || att.type === 'pptx' || att.type === 'xlsx' || att.type === 'odt' || att.type === 'odp' || att.type === 'ods' || att.type === 'rtf') {
+        } else if (att.type === 'docx' || att.type === 'pptx' || att.type === 'xlsx' || att.type === 'odt' || att.type === 'odp' || att.type === 'ods' || att.type === 'rtf' || att.type === 'epub') {
             extractOfficeText(arrayBuffer, attId);
         } else if (att.type === 'text_file') {
             try {
@@ -130,6 +191,7 @@ function addAttachment(file) {
 function getAttachmentTypeFromMime(mimeType, filename) {
     if (mimeType.indexOf('image/') === 0) return 'image';
     if (mimeType === 'application/pdf') return 'pdf';
+    if (mimeType === 'application/epub+zip') return 'epub';
     if (mimeType.indexOf('wordprocessing') !== -1) return 'docx';
     if (mimeType.indexOf('presentation') !== -1) return 'pptx';
     if (mimeType.indexOf('spreadsheet') !== -1) return 'xlsx';
@@ -139,6 +201,7 @@ function getAttachmentTypeFromMime(mimeType, filename) {
     if (ext === 'odp') return 'odp';
     if (ext === 'ods') return 'ods';
     if (ext === 'rtf') return 'rtf';
+    if (ext === 'epub') return 'epub';
     return 'text_file';
 }
 
@@ -152,13 +215,9 @@ function findAttachmentById(id) {
 
 // Remove an attachment from state
 function removeAttachment(index) {
-    console.log('[ATTACH-JS] removeAttachment called: index=' + index + ' stateLen=' + attachmentState.length);
     if (index >= 0 && index < attachmentState.length) {
         attachmentState.splice(index, 1);
-        console.log('[ATTACH-JS] attachment removed, new stateLen=' + attachmentState.length);
         renderAttachmentBar();
-    } else {
-        console.log('[ATTACH-JS] removeAttachment: invalid index ' + index);
     }
 }
 
@@ -171,7 +230,6 @@ function renderAttachmentBar() {
 
     if (attachmentState.length === 0) {
         bar.style.display = 'none';
-        // Re-enable send button when no attachments
         var sendBtn = document.getElementById('chat-send-btn');
         if (sendBtn && !isLoading) sendBtn.disabled = false;
         return;
@@ -182,68 +240,113 @@ function renderAttachmentBar() {
     for (var i = 0; i < attachmentState.length; i++) {
         if (attachmentState[i].loading) { anyLoading = true; break; }
     }
-    // Gray out send button while attachments are processing
     var sendBtn = document.getElementById('chat-send-btn');
     if (sendBtn) sendBtn.disabled = anyLoading;
 
     bar.style.display = 'flex';
-    console.log('[ATTACH-JS] bar shown, innerHTML children=' + bar.children.length);
 
     for (var i = 0; i < attachmentState.length; i++) {
-        var att = attachmentState[i];
-        var item = document.createElement('div');
-        item.className = 'attachment-item';
+        _renderAttachmentItem(attachmentState[i], i, bar);
+    }
 
-        // Icon or thumbnail
-        if (att.type === 'image' && att.base64) {
-            var thumb = document.createElement('img');
-            thumb.className = 'attachment-thumb';
-            thumb.src = 'data:' + att.mimeType + ';base64,' + att.base64;
-            item.appendChild(thumb);
-        } else if (att.loading) {
-            var spinner = document.createElement('div');
-            spinner.className = 'attachment-spinner';
-            item.appendChild(spinner);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Render a single attachment item in the attachment bar
+function _renderAttachmentItem(att, idx, bar) {
+    var item = document.createElement('div');
+    item.className = 'attachment-item';
+
+    // Icon or thumbnail
+    if (att.type === 'image' && att.base64) {
+        var thumb = document.createElement('img');
+        thumb.className = 'attachment-thumb';
+        thumb.src = 'data:' + att.mimeType + ';base64,' + att.base64;
+        item.appendChild(thumb);
+    } else if (att.loading) {
+        var spinner = document.createElement('div');
+        spinner.className = 'attachment-spinner';
+        item.appendChild(spinner);
+    } else {
+        var iconName = getAttachmentIcon(att.mimeType, att.filename);
+        if (_isSvgIcon(iconName)) {
+            var img = document.createElement('img');
+            img.src = iconName;
+            img.className = 'attachment-icon';
+            item.appendChild(img);
         } else {
-            var icon = document.createElement('span');
+            var icon = document.createElement('i');
+            icon.setAttribute('data-lucide', iconName);
             icon.className = 'attachment-icon';
-            icon.textContent = getAttachmentIcon(att.mimeType, att.filename);
             item.appendChild(icon);
         }
-
-        // Filename
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'attachment-name';
-        nameSpan.textContent = att.filename;
-        nameSpan.title = att.filename;
-        item.appendChild(nameSpan);
-
-        // Scanned PDF warning
-        if (att.extractedText === '__SCANNED_PDF__') {
-            var scanWarn = document.createElement('span');
-            scanWarn.style.cssText = 'font-size:0.6rem;color:var(--warning);flex-shrink:0;';
-            scanWarn.textContent = '\u26A0\uFE0F Scanned';
-            item.appendChild(scanWarn);
-        }
-
-        // CDN unavailable warning
-        if (att.extractedText === '__LIBRARY_UNAVAILABLE__') {
-            var warnSpan = document.createElement('span');
-            warnSpan.style.cssText = 'font-size:0.65rem;color:var(--warning);flex-shrink:0;';
-            warnSpan.textContent = 'âš ï¸ Text extraction unavailable';
-            item.appendChild(warnSpan);
-        }
-
-        // Remove button â€” use data attribute for delegation
-        var removeBtn = document.createElement('button');
-        removeBtn.className = 'attachment-remove';
-        removeBtn.textContent = '\u00D7';
-        removeBtn.title = 'Remove ' + att.filename;
-        removeBtn.setAttribute('data-idx', i);
-        item.appendChild(removeBtn);
-
-        bar.appendChild(item);
     }
+
+    // Filename
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'attachment-name';
+    nameSpan.textContent = att.filename;
+    nameSpan.title = att.filename;
+    item.appendChild(nameSpan);
+
+    // Scanned PDF warning
+    if (att.extractedText === '__SCANNED_PDF__') {
+        var scanWarn = document.createElement('span');
+        scanWarn.style.cssText = 'font-size:0.6rem;color:var(--warning);flex-shrink:0;';
+        scanWarn.textContent = '\u26A0\uFE0F Scanned';
+        item.appendChild(scanWarn);
+    }
+
+    // CDN unavailable warning
+    if (att.extractedText === '__LIBRARY_UNAVAILABLE__') {
+        var warnSpan = document.createElement('span');
+        warnSpan.style.cssText = 'font-size:0.65rem;color:var(--warning);flex-shrink:0;';
+        warnSpan.textContent = '\u26A0\uFE0F Text extraction unavailable';
+        item.appendChild(warnSpan);
+    }
+
+    // Copy extracted text button
+    if (att.extractedText && att.extractedText !== '__SCANNED_PDF__' && att.extractedText !== '__LIBRARY_UNAVAILABLE__') {
+        var copyBtn = document.createElement('button');
+        copyBtn.className = 'attachment-copy-text';
+        copyBtn.title = 'Copy extracted text';
+        copyBtn.setAttribute('data-idx', idx);
+        copyBtn.innerHTML = '<i data-lucide="copy"></i>';
+        copyBtn.onclick = function(e) {
+            e.stopPropagation();
+            _onCopyAttachmentText(parseInt(this.getAttribute('data-idx'), 10));
+        };
+        item.appendChild(copyBtn);
+    }
+
+    // Remove button
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'attachment-remove';
+    removeBtn.textContent = '\u00D7';
+    removeBtn.title = 'Remove ' + att.filename;
+    removeBtn.setAttribute('data-idx', idx);
+    item.appendChild(removeBtn);
+
+    bar.appendChild(item);
+}
+
+// Copy an attachment's extracted text to clipboard with checkmark feedback
+function _onCopyAttachmentText(idx) {
+    var text = attachmentState[idx] && attachmentState[idx].extractedText;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function() {
+        var bar = document.getElementById('attachment-bar');
+        if (!bar) return;
+        var btn = bar.querySelectorAll('.attachment-copy-text')[idx];
+        if (!btn) return;
+        var origHTML = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="check"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        setTimeout(function() {
+            btn.innerHTML = origHTML;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }, 2000);
+    });
 }
 
 // Get attachments ready for sending (check base64 size limit)
@@ -252,12 +355,6 @@ function getAttachmentsForSend() {
     for (var i = 0; i < attachmentState.length; i++) {
         var att = attachmentState[i];
         if (!att.base64) continue;
-
-        // Check 10MB base64 limit
-        if (att.base64.length > MAX_BASE64_SIZE) {
-            showErrorBanner('File "' + att.filename + '" is too large to send (max ~7.5MB for images).');
-            continue;
-        }
 
         result.push({
             type: att.type,
@@ -285,8 +382,7 @@ function showErrorBanner(message) {
     var el = document.createElement('div');
     el.className = 'error-banner';
     el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
-    el.innerHTML = '<span>' + message.replace(/</g, '<').replace(/>/g, '>') + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
+    el.innerHTML = '<span>' + escHtml(message) + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
     container.appendChild(el);
     container.scrollTop = container.scrollHeight;
 }
-

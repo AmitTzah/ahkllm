@@ -1,5 +1,5 @@
-// integration/edit-send-flow.test.js — Cross-module integration tests
-// Tests payload construction across attachment → send and edit → commit flows
+// integration/edit-send-flow.test.js -- Cross-module integration tests
+// Tests payload construction across attachment -> send and edit -> commit flows
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -21,11 +21,11 @@ function loadModule(filePath, extraGlobals = {}) {
         setTimeout: setTimeout, Promise: Promise,
         Uint8Array: Uint8Array, ArrayBuffer: ArrayBuffer, Array: Array,
         chatMessages: [], isLoading: false, attachmentState: [], _attachmentIdCounter: 0,
-        _editingMessageId: null, _removedAttachmentIds: [], _editAttachments: [], _editExtractPromises: [], _editHashPromises: [],
+        _editingMessageId: null, _removedAttachmentIds: [],
         streamState: { active: false, contentBuffer: '', thinkingBuffer: '', userScrolledUp: false, bubble: null, contentDiv: null, thinkingDetails: null, modelName: '' },
         sessionStorage: { getItem: () => null, setItem: () => {} },
         md: { render: (c) => c },
-        MAX_FILE_SIZE: 50 * 1024 * 1024, MAX_BASE64_SIZE: 10 * 1024 * 1024, ALLOWED_EXTENSIONS: [],
+        MAX_FILE_SIZE: 50 * 1024 * 1024, ALLOWED_EXTENSIONS: [],
         getAttachmentTypeFromMime: () => 'text_file', findAttachmentById: () => null,
         renderAttachmentBar: () => {}, showErrorBanner: () => {},
         clearAttachments: () => {},
@@ -36,43 +36,32 @@ function loadModule(filePath, extraGlobals = {}) {
     return { ctx: sandbox, postedMessages };
 }
 
-describe('Edit → Commit integration', () => {
-    it('commitEdit payload includes removedAttachmentIds + new attachments with contentHash', () => {
+describe('Edit -> Commit integration', () => {
+    it('commitEdit payload includes removedAttachmentIds', () => {
         const { ctx, postedMessages } = loadModule('chat/chat-branching.js');
         ctx.chatMessages = [{ id: 'msg-1', content: 'hello', role: 'user' }];
         ctx._removedAttachmentIds = ['att-old-1', 'att-old-2'];
-        ctx._editAttachments = [
-            { type: 'image', filename: 'new.png', mimeType: 'image/png', base64: 'abc', size: 100, extractedText: '', contentHash: 'hash123' }
-        ];
-        ctx._editExtractPromises = [];
-        ctx._editHashPromises = [];
         ctx.commitEdit(0, 'msg-1', 'edited', 'overwrite');
 
         const payload = JSON.parse(postedMessages[0]);
         assert.strictEqual(payload.action, 'editMessage');
         assert.strictEqual(payload.mode, 'overwrite');
         assert.deepStrictEqual(payload.removedAttachmentIds, ['att-old-1', 'att-old-2']);
-        assert.strictEqual(payload.attachments.length, 1);
-        assert.strictEqual(payload.attachments[0].contentHash, 'hash123');
     });
 
     it('commitEdit clears all state after sending', () => {
         const { ctx } = loadModule('chat/chat-branching.js');
         ctx.chatMessages = [{ id: 'msg-1', content: 'hello', role: 'user' }];
         ctx._removedAttachmentIds = ['att-x'];
-        ctx._editAttachments = [];
-        ctx._editExtractPromises = [];
-        ctx._editHashPromises = [];
         ctx._editingMessageId = 'msg-1';
         ctx.commitEdit(0, 'msg-1', 'new', 'overwrite');
 
         assert.strictEqual(ctx._editingMessageId, null);
         assert.strictEqual(ctx._removedAttachmentIds.length, 0);
-        assert.strictEqual(ctx._editAttachments.length, 0);
     });
 });
 
-describe('Attachment → Send integration', () => {
+describe('Attachment -> Send integration', () => {
     it('getAttachmentsForSend includes contentHash in output', () => {
         const { ctx } = loadModule('chat/attachments/chat-attachments.js');
         ctx.attachmentState = [{

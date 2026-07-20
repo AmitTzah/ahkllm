@@ -102,7 +102,7 @@ function loadRenderModule() {
         createTokenInfoIcon: () => null,
         hideLoadingIndicator: () => {},
         renderAttachments: () => {},
-        escHtml: (s) => String(s||'').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>'),
+        escHtml: (s) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'),
         Number: Number, String: String, Date: Date,
         isNaN: isNaN,
         navigator: { clipboard: { writeText: async () => {} } }

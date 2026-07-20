@@ -61,7 +61,7 @@ function _providerIconHtml(model) {
     if (m.indexOf('deepseek') >= 0) iconFile = '../icons/deepseek.ico';
     else if (m.indexOf('gpt') >= 0 || m.indexOf('o1') >= 0 || m.indexOf('o3') >= 0 || m.indexOf('openai') >= 0) iconFile = '../icons/openai.ico';
     else if (m.indexOf('claude') >= 0 || m.indexOf('anthropic') >= 0) iconFile = '../icons/anthropic.ico';
-    else if (m.indexOf('gemini') >= 0 || m.indexOf('google') >= 0) iconFile = '../icons/google.ico';
+    else if (m.indexOf('gemini') >= 0 || m.indexOf('gemma') >= 0 || m.indexOf('google') >= 0) iconFile = '../icons/google.ico';
     else if (m.indexOf('perplexity') >= 0) iconFile = '../icons/perplexity.ico';
   }
   return '<img src="' + iconFile + '" style="width:20px;height:20px;flex-shrink:0;mix-blend-mode:multiply;" alt="">';

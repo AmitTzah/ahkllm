@@ -1,0 +1,269 @@
+/* attachments.css -- Attachment bar, message bubble attachments, image overlay, text preview */
+
+/* Attachment bar -- sits above composer-inner, same max-width, centered */
+#attachment-bar {
+  display: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px 12px;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Individual attachment item -- polished pill style */
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  font-size: 0.8rem;
+  max-width: 240px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.attachment-item:hover {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.attachment-item .attachment-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.attachment-item .attachment-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--text-tertiary);
+  object-fit: contain;
+}
+
+.attachment-item .attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.attachment-item .attachment-remove {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1rem;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.attachment-item .attachment-remove:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+
+/* Copy extracted text button — matches remove button style */
+.attachment-copy-text {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.attachment-copy-text i {
+  width: 14px;
+  height: 14px;
+}
+
+.attachment-copy-text:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+/* Loading spinner for text extraction */
+.attachment-item .attachment-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-main);
+  border-top: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  animation: attach-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes attach-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Message bubble -- image attachment */
+.msg-attachment-image {
+  margin: 8px 0;
+}
+
+.msg-attachment-image img {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-main);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.msg-attachment-image img:hover {
+  transform: scale(1.02);
+}
+
+/* Info bar below image attachment */
+.msg-attachment-image .msg-attachment-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+/* Message bubble -- file attachment */
+.msg-attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 4px 0;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  font-size: 0.8rem;
+}
+
+.msg-attachment-file .file-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+}
+
+.msg-attachment-file .file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-attachment-file .file-size {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+/* Per-attachment delete button in message bubbles */
+.msg-attachment-delete {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 4px;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.msg-attachment-delete:hover {
+  opacity: 1;
+  color: var(--danger);
+}
+
+/* Extracted text preview (collapsible) */
+.msg-attachment-text-preview {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  font-size: 0.75rem;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.msg-attachment-text-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+/* Scanned PDF banner */
+.scan-banner {
+  background: var(--warning-light);
+  color: #92400E;
+  padding: 6px 12px;
+  margin: 4px 0;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  border: 1px solid #FDE68A;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.scan-banner button {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #92400E;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* Full-size image overlay */
+.image-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 2000;
+  cursor: pointer;
+  justify-content: center;
+  align-items: center;
+}
+
+.image-overlay img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}

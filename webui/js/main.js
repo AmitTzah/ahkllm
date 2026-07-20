@@ -311,19 +311,11 @@ document.addEventListener('DOMContentLoaded', function () {
   // Initialize search inputs
   if (typeof initSearch === 'function') initSearch();
 
-  // Restore chat state from sessionStorage if available (reload persistence)
-  var storedIsChatMode = sessionStorage.getItem('isChatMode');
-  var storedMessages = sessionStorage.getItem('chatMessages');
-  if (storedIsChatMode === 'true' && storedMessages) {
-    try {
-      var messages = JSON.parse(storedMessages);
-      if (messages.length > 0) {
-        initChatMode(messages);
-      }
-    } catch (e) {
-      console.error('Failed to restore chat state:', e);
-    }
-  }
+  // Notify AHK that the WebView is ready — AHK responds with initChatMode
+  // for the current thread (DB is the single source of truth, not sessionStorage).
+  try {
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'webViewReady' }));
+  } catch(e) {}
 
   // Restore fallback markdown content
   var storedContent = sessionStorage.getItem('preMarkdownText');

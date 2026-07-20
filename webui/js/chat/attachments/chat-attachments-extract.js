@@ -1,15 +1,18 @@
 // ======================================================
-// chat-attachments-extract.js — PDF and office document text extraction
+// chat-attachments-extract.js -- PDF and office document text extraction
 // ======================================================
 
-// Extract text from PDF: officeparser for markdown, pdf.js fallback for scanned PDFs
+// Extract text from PDF: try officeParser first for markdown, fall back to
+// pdf.js canvas rendering for scanned PDFs (image conversion).
+// officeParser's PDF worker now works because the page loads from https://
+// origin (WebView2 virtual host) instead of file://.
 function extractPDFText(arrayBuffer, attId) {
     var att = findAttachmentById(attId);
     if (!att) return;
 
-    // Use pdf.js directly for PDFs â€” simple, reliable, works on file:// protocol.
-    // officeParser's PDF worker (.mjs) can't load locally due to CORS restrictions.
-    if (typeof pdfjsLib !== 'undefined') {
+    if (typeof officeParser !== 'undefined') {
+        _extractPDFWithOfficeParser(arrayBuffer, attId);
+    } else if (typeof pdfjsLib !== 'undefined') {
         _extractPDFScanned(arrayBuffer, attId);
     } else {
         att.loading = false;
@@ -18,7 +21,86 @@ function extractPDFText(arrayBuffer, attId) {
     }
 }
 
-// pdf.js fallback: text extraction + scanned PDF image rendering
+// Try officeParser for PDF markdown extraction. Falls back to pdf.js
+// canvas rendering if the output is negligible (scanned PDF).
+function _extractPDFWithOfficeParser(arrayBuffer, attId) {
+    var att = findAttachmentById(attId);
+    if (!att) return;
+
+    var uint8 = new Uint8Array(arrayBuffer);
+
+    // Re-render to ensure spinner is visible during async extraction
+    renderAttachmentBar();
+
+    officeParser.parseOffice(uint8)
+        .then(function(ast) {
+            // Count page nodes in the AST for per-page ratio check
+            var pageCount = 0;
+            if (ast.content) {
+                for (var _ci = 0; _ci < ast.content.length; _ci++) {
+                    if (ast.content[_ci].type === 'page') pageCount++;
+                }
+            }
+            if (!pageCount) pageCount = 1;
+            var plainText = ast.toText();
+            var charsPerPage = Math.round(plainText.length / pageCount);
+            var isScanned = _isScannedPDF(plainText, pageCount);
+            try {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    action: 'debugLog',
+                    message: '[Extract] officeParser → pages=' + pageCount +
+                        ' textLength=' + plainText.length +
+                        ' charsPerPage=' + charsPerPage +
+                        ' scanned=' + isScanned +
+                        (isScanned ? ' → falling back to pdf.js images' : ' → using markdown')
+                }));
+            } catch(e) { /* ignore if IPC unavailable */ }
+            if (isScanned) return null; // signal fallback to pdf.js
+            return ast.to('md');
+        })
+        .then(function(result) {
+            att = findAttachmentById(attId);
+            if (!att) return;
+
+            if (result === null) {
+                // Scanned PDF — fall back to pdf.js image rendering
+                _extractPDFScanned(arrayBuffer, attId);
+                return;
+            }
+
+            var md = (typeof result === 'string') ? result : (result && result.value ? result.value : '');
+            att.extractedText = md || '(no text extracted)';
+            att.loading = false;
+            renderAttachmentBar();
+        })
+        .catch(function(err) {
+            console.error('officeParser PDF error, falling back to pdf.js:', err);
+            att = findAttachmentById(attId);
+            if (!att) return;
+
+            // If officeParser failed (e.g. PDF worker issue), fall back to pdf.js
+            if (typeof pdfjsLib !== 'undefined') {
+                _extractPDFScanned(arrayBuffer, attId);
+            } else {
+                var errMsg = err && err.message ? err.message : String(err);
+                att.extractedText = '(extraction failed: ' + errMsg + ')';
+                att.loading = false;
+                renderAttachmentBar();
+            }
+        });
+}
+
+// Detect scanned PDF using per-page text ratio.
+// A real text PDF has hundreds of chars per page. A scanned or
+// watermark-only PDF has very little extractable text per page.
+// This is robust: it works regardless of page count or text content.
+function _isScannedPDF(text, pageCount) {
+    if (!text) return true;
+    if (!pageCount || pageCount < 1) pageCount = 1;
+    return (text.length / pageCount) < 50;
+}
+
+// pdf.js: text extraction + scanned PDF image rendering
 function _extractPDFScanned(arrayBuffer, attId) {
     var att = findAttachmentById(attId);
     if (!att) return;
@@ -30,18 +112,19 @@ function _extractPDFScanned(arrayBuffer, attId) {
         return;
     }
 
-    // Set local worker path â€” required when pdf.js loads from file:// protocol
+    // Set local worker path -- required when pdf.js loads from file:// protocol
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
         pdfjsLib.GlobalWorkerOptions.workerSrc = './js/vendor/pdf.worker.min.js';
     }
 
+    // Re-render to ensure spinner is visible during async extraction
+    renderAttachmentBar();
+
     try {
-        console.log('[ATTACH-JS] pdf.js extraction starting for: ' + att.filename);
         var loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
         var pdfRef = null;
         loadingTask.promise.then(function(pdf) {
             pdfRef = pdf;
-            console.log('[ATTACH-JS] pdf.js loaded, pages=' + pdf.numPages);
             var maxPages = pdf.numPages;
             var pagePromises = [];
             for (var i = 1; i <= maxPages; i++) {
@@ -60,14 +143,11 @@ function _extractPDFScanned(arrayBuffer, attId) {
 
             var fullText = pageTexts.join('\n\n').trim();
             att.extractedText = fullText || '';
-            console.log('[ATTACH-JS] pdf.js extraction done: textLen=' + (fullText ? fullText.length : 0));
 
-            // If negligible text (<10 chars), this is likely a scanned PDF â€” render pages as images
-            if ((!fullText || fullText.length < 10) && pdfRef) {
+            if (_isScannedPDF(fullText, pdfRef.numPages) && pdfRef) {
                 var numPages = pdfRef.numPages;
                 var remainingSlots = 10 - attachmentState.length + 1;
                 var maxRenderPages = Math.min(numPages, 10, Math.max(1, remainingSlots));
-                console.log('[ATTACH-JS] Scanned PDF detected â€” rendering ' + maxRenderPages + ' of ' + numPages + ' pages as images (slots=' + remainingSlots + ')');
 
                 var renderPromises = [];
                 for (var p = 1; p <= maxRenderPages; p++) {
@@ -109,12 +189,11 @@ function _extractPDFScanned(arrayBuffer, attId) {
                             loading: false
                         });
                     }
-                    console.log('[ATTACH-JS] PDF rendered as ' + pageImages.length + ' images');
                     renderAttachmentBar();
                 }).catch(function() {
                     att = findAttachmentById(attId);
                     if (!att) return;
-                    att.extractedText = '(no extractable text â€” scanned PDF)';
+                    att.extractedText = '(no extractable text -- scanned PDF)';
                     att.loading = false;
                     renderAttachmentBar();
                 });
@@ -126,20 +205,21 @@ function _extractPDFScanned(arrayBuffer, attId) {
             console.error('PDF extraction error:', err);
             att = findAttachmentById(attId);
             if (!att) return;
-            att.extractedText = null;
+            att.extractedText = '(extraction failed: ' + (err && err.message ? err.message : String(err)) + ')';
             att.loading = false;
             renderAttachmentBar();
         });
     } catch (e) {
+        console.error('PDF sync error:', e);
         att = findAttachmentById(attId);
         if (!att) return;
-        att.extractedText = null;
+        att.extractedText = '(extraction failed: ' + (e && e.message ? e.message : String(e)) + ')';
         att.loading = false;
         renderAttachmentBar();
     }
 }
 
-// Extract text from office documents using officeparser (docx, pptx, xlsx, odt, odp, ods, rtf)
+// Extract text from office documents using officeparser (docx, pptx, xlsx, odt, odp, ods, rtf, epub)
 function extractOfficeText(arrayBuffer, attId) {
     var att = findAttachmentById(attId);
     if (!att) return;
@@ -151,40 +231,36 @@ function extractOfficeText(arrayBuffer, attId) {
         return;
     }
 
+    // Re-render to ensure spinner is visible during async extraction
+    renderAttachmentBar();
+
     try {
-        console.log('[ATTACH-JS] officeParser extraction starting for: ' + att.filename);
         officeParser.parseOffice(new Uint8Array(arrayBuffer))
             .then(function(ast) { return ast.to('md'); })
             .then(function(result) {
                 att = findAttachmentById(attId);
                 if (!att) return;
-                var md = result ? result.value : '';
-                console.log('[ATTACH-JS] officeParser result length=' + md.length);
-                // DEBUG: check for double quotes in officeParser output
-                var dqCount = (md.match(/""/g) || []).length;
-                if (dqCount > 0) {
-                    console.log('[ATTACH-JS] DOUBLE-QUOTE DETECTED in officeParser output: ' + dqCount + ' instances');
-                    var firstDQ = md.indexOf('""');
-                    console.log('[ATTACH-JS] First "" context: ' + md.substring(Math.max(0, firstDQ - 20), firstDQ + 30));
-                }
+                // v7 returns string directly; v6 returns { value: string }. Handle both.
+                var md = (typeof result === 'string') ? result : (result && result.value ? result.value : '');
                 att.extractedText = md || '(no text extracted)';
                 att.loading = false;
                 renderAttachmentBar();
             })
             .catch(function(err) {
-                console.error('[ATTACH-JS] officeParser error:', err);
+                console.error('officeParser error:', err);
                 att = findAttachmentById(attId);
                 if (!att) return;
-                att.extractedText = null;
+                var errMsg = err && err.message ? err.message : String(err);
+                att.extractedText = '(extraction failed: ' + errMsg + ')';
                 att.loading = false;
                 renderAttachmentBar();
             });
     } catch (e) {
+        console.error('officeParser sync error:', e);
         att = findAttachmentById(attId);
         if (!att) return;
-        att.extractedText = null;
+        att.extractedText = '(extraction failed: ' + (e && e.message ? e.message : String(e)) + ')';
         att.loading = false;
         renderAttachmentBar();
     }
 }
-
