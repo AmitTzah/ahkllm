@@ -277,7 +277,8 @@ class SQLite extends SQLite3 {
 
 		if errMsg || res != SQLITE_OK {
 			this.status := res
-			this.error .= ': ' StrGet(errMsg, "utf-8")
+			if errMsg
+				this.error .= ': ' StrGet(errMsg, "utf-8")
 			SQLite3.free(errMsg)
 		}
 
