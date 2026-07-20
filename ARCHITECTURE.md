@@ -26,7 +26,7 @@ All persistent data lives under `%APPDATA%\LLM-AutoHotkey-Assistant\`:
 | Path | What | Format |
 |---|---|---|
 | `chat_history.db` | Chat threads, messages, attachments, assistants, folders, usage, FTS5 search index | SQLite (WAL mode) |
-| `attachments\` | User-uploaded files (images, PDFs, DOCX) | SHA-256 hash filenames |
+| `attachments\` | Uploaded files + rendered scanned PDF pages (images, PDFs, DOCX) | SHA-256 hash filenames |
 | `models_pricing.txt` (project dir) | Model pricing data | Key-value text |
 
 All temporary data lives in `%TEMP%\`:
@@ -255,6 +255,12 @@ ai-automation/
 ├── icons/                           # Provider icons (.ico) + tray icons
 │   ├── anthropic.ico, deepseek.ico, google.ico, openai.ico, openrouter.ico, perplexity.ico
 │   └── IconOn.ico, IconOff.ico, Scribblemate.ico
+├── webui/icons/filetypes/           # 35+ branded SVG file-type icons (no CDN)
+│   ├── Languages: ahk, python, javascript, typescript, go, rust, c, cplusplus,
+│   │              java, html5, css3, gnubash, bat, powershell
+│   ├── Documents: pdf, docx, xlsx, pptx, epub, odt, odp, ods, rtf, markdown, txt
+│   ├── Data: json, yaml, xml, toml, csv, ini, cfg, env, sqlite
+│   └── Media: image, log
 │
 ├── webui/                           # WebView2 frontend (light mode only)
 │   ├── index.html                   # Main chat UI — 4-column SaaS layout
@@ -305,8 +311,11 @@ ai-automation/
 │           ├── chat-search.js       # Real-time message search
 │           ├── stream.js            # SSE streaming: content rendering, cancel, persist
 │           ├── attachments/         # Attachment subsystem
-│           │   ├── chat-attachments.js        # State, render bar, add/remove, SHA-256
-│           │   ├── chat-attachments-extract.js # pdf.js + officeParser text extraction
+│           │   ├── chat-attachments.js        # State, render bar, add/remove, SHA-256,
+│           │   │                              #   _renderAttachmentItem, _onCopyAttachmentText
+│           │   ├── chat-attachments-extract.js # officeParser PDF→markdown (primary),
+│           │   │                              #   pdf.js canvas→image fallback for scanned PDFs,
+│           │   │                              #   _isScannedPDF (per-page ratio), office docs
 │           │   └── chat-attachments-setup.js   # Drop zone, paste, browse, delete
 │           └── settings/            # Settings subsystem
 │               ├── chat-settings.js         # Model/assistant popover, provider icons
@@ -342,7 +351,8 @@ The application is an AutoHotkey v2 script that provides a hotkey-activated comm
 - **User config**: `UserConfig.ahk` — all commands, API keys, hotkeys, and theme in one file.
 - **Persistent single-window model**: A single `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
 - **SQLite persistence**: Chat history stored in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Supports branching, soft-delete, reasoning, file/image attachments, folders, and usage tracking.
-- **Content-addressable attachment storage**: Files stored by SHA-256 hash. O(1) FileExist() dedup. Reference-counted deletion.
+- **Content-addressable attachment storage**: Files stored by SHA-256 hash. O(1) FileExist() dedup. Reference-counted deletion. Scanned PDF pages rendered as images at 1.5x scale via pdf.js canvas API.
+- **Virtual host mapping**: WebView2 loads from `https://ahk.localhost/` (not `file://`) via `SetVirtualHostNameToFolderMapping`. Provides proper origin for `new Worker()`, `fetch()`, `XHR` — eliminates pdf.js "fake worker" warning and enables officeParser's PDF worker.
 - **WebView2 frontend**: Chat UI rendered by Microsoft Edge WebView2. AHK ↔ JS via `PostWebMessageAsJSON` / `chrome.webview.postMessage()`.
 - **cURL for API calls**: JSON request files written to `%TEMP%`, `cURL.exe` used for API communication.
 - **UIA (UI Automation)**: Text captured via Windows accessibility APIs (TextPattern) — zero scroll, no keystrokes.
@@ -530,7 +540,7 @@ Two search inputs in the UI:
 Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`.
 
 ### WebView → AHK (via postMessage)
-Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `showApiLogs`.
+Dispatched by `OnWebMessageReceived` in `callbacks/Dispatch.ahk`. Actions: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `showApiLogs`, `debugLog` (JS→AHK debug log bridge), `webViewReady` (DB reload on WebView crash).
 
 ## IPC (Inter-Process Communication)
 
@@ -606,7 +616,10 @@ Rolling log at `%TEMP%\LLM_Debug_Log.txt` (~500KB kept when file exceeds 1MB):
 | `[DASHBOARD]` | Dashboard | `[DASHBOARD] Query/Sent` |
 | `[DISPATCH]` | WebMessage dispatch | `[DISPATCH] showApiLogs received` |
 | `[APILOGS]` | API logs viewer | `[APILOGS] ShowApiLogs called` |
+| `[DISPATCH]` | WebMessage dispatch | `[DISPATCH] showApiLogs received` |
+| `[APILOGS]` | API logs viewer | `[APILOGS] InitApiLogsViewer: creating WebViewToo` |
 | `[SEARCH]` | Message search | `[SEARCH] Error: ...` |
+| `[WebUI]` | JS→AHK debug bridge | `[WebUI] [Extract] officeParser → pages=6 ... scanned=true` |
 
 ## Testing
 
@@ -622,7 +635,7 @@ AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side:
 
 | Directory | AHK Files | JS Files | Total Tests |
 |-----------|----------|----------|-------------|
-| `unit/` | 19 | 14 | ~275 |
+| `unit/` | 19 | 14 | ~280 |
 | `integration/` | 3 | 2 | ~50 |
 
-Tests run via `node:test` (JS) and custom runner (AHK). **235 JS tests pass.**
+Tests run via `node:test` (JS) and custom runner (AHK). **239 JS tests pass.**
