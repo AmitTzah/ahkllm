@@ -312,9 +312,31 @@
 <!-- Settings Center -->
 <div class="settings-center" id="settingsCenter" style="display:none;">
   <div class="settings-content">
-    <div class="section-card" id="sec-general" style="display:none;"><div class="section-card-header">General — Thread Titles, API Logs, Trash</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-general" style="display:none;"><div class="section-card-header">General — Thread Titles, API Logs, Trash</div><div class="section-card-body">
+      <div style="margin-bottom:24px;border:1px solid var(--border-main);border-radius:var(--radius-md);overflow:hidden;">
+        <div class="toggle-row" style="padding:14px 16px;background:var(--bg-main);margin:0;border-bottom:1px solid var(--border-light);">
+          <div><div class="lbl">Thread Title Generation</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">After the first exchange, generates a short title via a cheap LLM call</div></div>
+          <div class="switch on" id="titleGenToggle"><div class="knob"></div></div>
+        </div>
+        <div id="titleGenFields" style="padding:16px;">
+          <div class="field"><label class="field-label">Model</label><select id="titleGenModel"><option>deepseek/deepseek-v4-flash</option><option>deepseek/deepseek-v4-pro</option><option>openai/gpt-4o-mini</option></select></div>
+          <div class="field"><label class="field-label">System Prompt</label><textarea id="titleGenPrompt">Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary.</textarea></div>
+          <div class="field"><label class="field-label">Max Tokens</label><input type="number" id="titleGenMaxTokens" value="50"></div>
+        </div>
+      </div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Data Management</div>
+      <div class="grid-2">
+        <div class="field"><label class="field-label">API Log Max Entries <span class="hint">0 = disable</span></label><input type="number" id="apiLogMaxEntries" value="20"></div>
+        <div class="field"><label class="field-label">Trash Retention (days) <span class="hint">0 = never purge</span></label><input type="number" id="trashRetentionDays" value="30"></div>
+      </div>
+    </div></div>
     <div class="section-card" id="sec-ui" style="display:none;"><div class="section-card-header">UI & Theme — Appearance</div><div class="section-card-body"></div></div>
-    <div class="section-card" id="sec-icons" style="display:none;"><div class="section-card-header">Icons — Tray Icons</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-icons" style="display:none;"><div class="section-card-header">Icons — Tray Icons</div><div class="section-card-body">
+      <div class="grid-2">
+        <div class="field"><label class="field-label">Active Icon (iconOn)</label><input type="text" id="iconOnPath" value="icons\IconOn.ico"></div>
+        <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><input type="text" id="iconOffPath" value="icons\IconOff.ico"></div>
+      </div>
+    </div></div>
     <div class="section-card" id="sec-hotkeys" style="display:none;"><div class="section-card-header">Hotkeys</div><div class="section-card-body"></div></div>
     <div class="section-card" id="sec-menu" style="display:none;"><div class="section-card-header">Menu Items — Quick Access & Tray Menu</div><div class="section-card-body"></div></div>
     <div class="section-card" id="sec-providers" style="display:none;"><div class="section-card-header">Providers — API Endpoints & Authentication</div><div class="section-card-body"></div></div>
@@ -405,6 +427,8 @@
 <script src="js/chat/settings/chat-settings-modal.js"></script>
 <script src="js/chat/chat-search.js"></script>
 <script src="js/settings/settings-panel.js"></script>
+<script src="js/settings/sections/general.js"></script>
+<script src="js/settings/sections/icons.js"></script>
 <script src="js/main.js"></script>
 <script src="js/ui-controls.js"></script>
 <script>
