@@ -66,6 +66,8 @@ function loadSearchModule() {
         setTimeout: function(fn, delay) { fn(); return 1; },
         clearTimeout: function() {},
         scrollToMessage: function(idx) { sandbox._lastScrolledIndex = idx; },
+        scrollToMessageById: function(id) { sandbox._lastScrolledMsgId = id; },
+        loadThread: function(id) { sandbox._loadedThreadId = id; },
         escHtml: function(s) { return String(s || '').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"'); },
         activeThreadId: '',
         chatMessages: [],
@@ -73,7 +75,9 @@ function loadSearchModule() {
         postedMessages: postedMessages,
         elementCache: elementCache,
         makeEl: makeEl,
-        _lastScrolledIndex: -1
+        _lastScrolledIndex: -1,
+        _lastScrolledMsgId: null,
+        _loadedThreadId: null
     };
 
     const script = new vm.Script(src);
@@ -212,10 +216,9 @@ describe('chat-search', function() {
 
             ctx.handleSearchResults({ queryId: 0, results: [{ messageId: 'x', contentPreview: 'test', threadId: 't1', threadTitle: 'T', role: 'user' }], query: 'hello' });
 
-            // The stale response should NOT trigger dropdown rendering
-            // (queryId 0 doesn't match the active queryId which is now >= 1)
-            // Since handleSearchResults checks queryId first and returns, no dropdown is created
-            assert.ok(true, 'stale response guard exists — no crash');
+            // The stale response (queryId: 0) should NOT trigger dropdown rendering
+            assert.strictEqual(dropdownCreated, false, 'stale response should NOT render dropdown');
+            ctx.document.createElement = origCreateEl;
         });
     });
 
@@ -263,11 +266,9 @@ describe('chat-search', function() {
             ];
             ctx.handleSearchResults({ queryId: ctx._activeQueryId || 1, results: results, query: 'test' });
 
-            // Verify loadThread was posted (get the last message)
-            var lastMsg = ctx.postedMessages[ctx.postedMessages.length - 1];
-            // The selectSearchResult posts loadThread for cross-thread clicks
-            // We can't easily simulate click, but the flow is wired
-            assert.ok(true, 'cross-thread navigation flow is wired');
+            // selectSearchResult posts loadThread for cross-thread clicks
+            assert.doesNotThrow(function() { ctx.selectSearchResult(0); },
+                'selectSearchResult should not throw for cross-thread result');
         });
     });
 
@@ -396,6 +397,64 @@ describe('chat-search', function() {
             // 'revolution' is not in this snippet — should return escaped text without marks
             assert.ok(result.indexOf('<mark>') === -1,
                 'should not add mark tags when term is not in the snippet');
+        });
+    });
+
+    describe('onSearchCrossThreadLoaded', function() {
+        it('no-ops when no pending scroll message', function() {
+            var ctx = loadSearchModule();
+            ctx._pendingSearchScrollMsgId = null;
+            assert.doesNotThrow(function() { ctx.onSearchCrossThreadLoaded(); });
+        });
+
+        it('posts navigateToMessage and clears pending when set', function() {
+            var ctx = loadSearchModule();
+            ctx.postedMessages.length = 0;
+            ctx._pendingSearchScrollMsgId = 'msg-scroll-1';
+            ctx.onSearchCrossThreadLoaded();
+            var navMsg = ctx.postedMessages.find(function(m) {
+                try { return JSON.parse(m).action === 'sidebarAction'; } catch(e) { return false; }
+            });
+            assert.ok(navMsg, 'should post sidebarAction');
+            assert.strictEqual(ctx._pendingSearchScrollMsgId, null, 'should clear pending');
+        });
+    });
+
+    describe('handleSearchKeydown — navigation keys', function() {
+        it('no-ops when dropdown is null', function() {
+            var ctx = loadSearchModule();
+            ctx._searchDropdownEl = null;
+            assert.doesNotThrow(function() {
+                ctx.handleSearchKeydown({ key: 'ArrowDown', target: {}, preventDefault: function() {} });
+            });
+        });
+
+        it('no-ops when dropdown is hidden', function() {
+            var ctx = loadSearchModule();
+            ctx._searchDropdownEl = { style: { display: 'none' }, querySelectorAll: function() { return []; } };
+            assert.doesNotThrow(function() {
+                ctx.handleSearchKeydown({ key: 'ArrowDown', target: {}, preventDefault: function() {} });
+            });
+        });
+    });
+
+    describe('updateKeyboardHighlight', function() {
+        it('adds active class to selected item', function() {
+            var ctx = loadSearchModule();
+            var items = [ctx.makeEl('div'), ctx.makeEl('div')];
+            ctx._selectedIndex = 0;
+            ctx.updateKeyboardHighlight(items);
+            assert.ok(items[0].classList._classes.indexOf('active') >= 0, 'first item should have active class');
+            assert.strictEqual(items[1].classList._classes.indexOf('active'), -1, 'second item should not have active class');
+        });
+
+        it('removes active class when index is -1', function() {
+            var ctx = loadSearchModule();
+            var items = [ctx.makeEl('div')];
+            items[0].classList._classes = ['active'];
+            ctx._selectedIndex = -1;
+            ctx.updateKeyboardHighlight(items);
+            assert.strictEqual(items[0].classList._classes.indexOf('active'), -1, 'active class should be removed');
         });
     });
 });

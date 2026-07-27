@@ -230,4 +230,188 @@ describe('_langToExtension', () => {
     it('handles leading/trailing whitespace', () => {
         assert.strictEqual(ctx._langToExtension('  python  '), 'py');
     });
+
+    it('maps vb.net to vb', () => {
+        assert.strictEqual(ctx._langToExtension('vb.net'), 'vb');
+    });
+
+    it('maps f# to fs', () => {
+        assert.strictEqual(ctx._langToExtension('f#'), 'fs');
+    });
+
+    it('maps haskell to hs', () => {
+        assert.strictEqual(ctx._langToExtension('haskell'), 'hs');
+    });
+
+    it('maps docker/dockerfile to dockerfile', () => {
+        assert.strictEqual(ctx._langToExtension('docker'), 'dockerfile');
+        assert.strictEqual(ctx._langToExtension('dockerfile'), 'dockerfile');
+    });
+
+    it('maps latex/tex to tex', () => {
+        assert.strictEqual(ctx._langToExtension('latex'), 'tex');
+        assert.strictEqual(ctx._langToExtension('tex'), 'tex');
+    });
+
+    it('strips special characters before lookup', () => {
+        assert.strictEqual(ctx._langToExtension('c++'), 'cpp');
+        assert.strictEqual(ctx._langToExtension('f#'), 'fs');
+    });
+
+    it('throws for non-string input (null/undefined)', () => {
+        assert.throws(() => ctx._langToExtension(null));
+        assert.throws(() => ctx._langToExtension(undefined));
+    });
+});
+
+describe('copySingleMessage', () => {
+    it('no-ops when message index is out of bounds', () => {
+        ctx.chatMessages = [];
+        assert.doesNotThrow(() => ctx.copySingleMessage(0));
+    });
+
+    it('calls getMessageText and navigator.clipboard.writeText for valid message', async () => {
+        let copiedText = null;
+        const origWriteText = ctx.navigator.clipboard.writeText;
+        ctx.navigator.clipboard.writeText = async (text) => { copiedText = text; };
+        ctx.chatMessages = [{ role: 'user', content: 'Hello', id: 'm1' }];
+        ctx.copySingleMessage(0);
+        // Allow microtask to flush
+        await new Promise(r => setTimeout(r, 10));
+        assert.ok(copiedText !== null, 'clipboard.writeText should have been called');
+        assert.ok(copiedText.includes('Hello'), 'copied text should contain message content');
+        ctx.navigator.clipboard.writeText = origWriteText;
+    });
+});
+
+describe('copyEntireChat', () => {
+    it('joins all messages with separator and writes to clipboard', async () => {
+        let copiedText = null;
+        const origWriteText = ctx.navigator.clipboard.writeText;
+        ctx.navigator.clipboard.writeText = async (text) => { copiedText = text; };
+        ctx.chatMessages = [
+            { role: 'user', content: 'Q1' },
+            { role: 'assistant', content: 'A1', model: 'gpt-4o' }
+        ];
+        ctx.copyEntireChat();
+        await new Promise(r => setTimeout(r, 10));
+        assert.ok(copiedText !== null, 'clipboard.writeText should have been called');
+        assert.ok(copiedText.includes('---'), 'should have separator between messages');
+        assert.ok(copiedText.includes('Q1'), 'should include first message');
+        assert.ok(copiedText.includes('A1'), 'should include second message');
+        ctx.navigator.clipboard.writeText = origWriteText;
+    });
+
+    it('handles empty chatMessages', async () => {
+        let copiedText = null;
+        const origWriteText = ctx.navigator.clipboard.writeText;
+        ctx.navigator.clipboard.writeText = async (text) => { copiedText = text; };
+        ctx.chatMessages = [];
+        ctx.copyEntireChat();
+        await new Promise(r => setTimeout(r, 10));
+        assert.strictEqual(copiedText, '');
+        ctx.navigator.clipboard.writeText = origWriteText;
+    });
+});
+
+describe('showCopiedFeedback', () => {
+    it('no-ops when chat-messages container is missing', () => {
+        const origGetEl = ctx.document.getElementById;
+        ctx.document.getElementById = () => null;
+        assert.doesNotThrow(() => ctx.showCopiedFeedback(0));
+        ctx.document.getElementById = origGetEl;
+    });
+});
+
+describe('copyCodeBlock', () => {
+    it('no-ops when btn has no .code-block-wrapper ancestor', () => {
+        const btn = { closest: () => null };
+        assert.doesNotThrow(() => ctx.copyCodeBlock(btn));
+    });
+
+    it('no-ops when wrapper has no code element', () => {
+        const btn = { closest: () => ({ querySelector: () => null }) };
+        assert.doesNotThrow(() => ctx.copyCodeBlock(btn));
+    });
+
+    it('copies code textContent to clipboard', async () => {
+        let copiedText = null;
+        const origWriteText = ctx.navigator.clipboard.writeText;
+        ctx.navigator.clipboard.writeText = async (text) => { copiedText = text; };
+        const codeEl = { textContent: 'console.log("hi");' };
+        const btn = {
+            innerHTML: '<i data-lucide="copy"></i>',
+            classList: { add: () => {}, remove: () => {} },
+            closest: (sel) => sel === '.code-block-wrapper' ? { querySelector: (s) => s === 'code' ? codeEl : null } : null
+        };
+        ctx.copyCodeBlock(btn);
+        await new Promise(r => setTimeout(r, 10));
+        assert.strictEqual(copiedText, 'console.log("hi");');
+        ctx.navigator.clipboard.writeText = origWriteText;
+    });
+});
+
+describe('downloadCodeBlock', () => {
+    it('no-ops when btn has no .code-block-wrapper ancestor', () => {
+        const btn = { closest: () => null };
+        assert.doesNotThrow(() => ctx.downloadCodeBlock(btn));
+    });
+
+    it('no-ops when wrapper has no code element', () => {
+        const btn = { closest: () => ({ querySelector: () => null }) };
+        assert.doesNotThrow(() => ctx.downloadCodeBlock(btn));
+    });
+});
+
+describe('updateTokenUsage with data', () => {
+    it('populates tokenBar innerHTML with token stats', () => {
+        let barHTML = '';
+        const bar = {
+            get innerHTML() { return barHTML; },
+            set innerHTML(v) { barHTML = v; }
+        };
+        const origGetEl = ctx.document.getElementById;
+        ctx.document.getElementById = (id) => id === 'tokenBar' ? bar : null;
+        ctx.updateTokenUsage({
+            activePathTokens: 5000,
+            contextWindow: 128000,
+            cumulativeInputTokens: 15000,
+            cumulativeOutputTokens: 3000,
+            cumulativeCachedTokens: 7000,
+            cumulativeCost: 0.05,
+            cumulativeInputCost: 0.02,
+            cumulativeCachedInputCost: 0.005,
+            cumulativeOutputCost: 0.025
+        });
+        assert.ok(barHTML.includes('5k'), 'should show formatted active path tokens');
+        assert.ok(barHTML.includes('128k'), 'should show formatted context window');
+        assert.ok(barHTML.includes('15k'), 'should show formatted input tokens');
+        assert.ok(barHTML.includes('3k'), 'should show formatted output tokens');
+        assert.ok(barHTML.includes('7k'), 'should show formatted cached tokens');
+        ctx.document.getElementById = origGetEl;
+    });
+
+    it('renders without contextWindow when zero', () => {
+        let barHTML = '';
+        const bar = {
+            get innerHTML() { return barHTML; },
+            set innerHTML(v) { barHTML = v; }
+        };
+        const origGetEl = ctx.document.getElementById;
+        ctx.document.getElementById = (id) => id === 'tokenBar' ? bar : null;
+        ctx.updateTokenUsage({
+            activePathTokens: 100,
+            contextWindow: 0,
+            cumulativeInputTokens: 200,
+            cumulativeOutputTokens: 50,
+            cumulativeCachedTokens: 0,
+            cumulativeCost: 0,
+            cumulativeInputCost: 0,
+            cumulativeCachedInputCost: 0,
+            cumulativeOutputCost: 0
+        });
+        // Should NOT include " / " since contextWindow is 0
+        assert.ok(barHTML.indexOf(' / ') === -1, 'should not show divider when contextWindow is 0/absent');
+        ctx.document.getElementById = origGetEl;
+    });
 });

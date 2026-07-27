@@ -557,7 +557,7 @@ titleGenMaxTokens := 50
 ; ============================================================================
 ; §7 THEME
 ; ============================================================================
-; Currently only supports light mode. Dark theme to be implemented in a future release. (E.g. when my fucked up Keratoconus eyes are fixed and I can see white on black without pain.)
+; Currently only supports light mode. Dark theme to be implemented in a future release.
 
 
 
@@ -625,7 +625,7 @@ quickAccessMenuItems := [
     { menuText: "&1 - Edit UserConfig",        command: "Notepad " A_ScriptDir "\UserConfig.ahk" },
     { menuText: "&2 - DeepSeek Usage",         command: "https://platform.deepseek.com/usage" },
     { menuText: "&3 - OpenAI Usage",         command: "https://platform.openai.com/settings/organization/usage" },
-    { menuText: "&4 - Gemini Usage",         command: "https://aistudio.google.com/spend?project=gen-lang-client-0627530864" },
+    { menuText: "&4 - Gemini Usage",         command: "https://aistudio.google.com/spend" },
     { menuText: "&5 - API Logs",               command: "apilogs:" },
     { menuText: "&6 - Model Pricing",          command: "cmd /c powershell -ExecutionPolicy Bypass -File " A_ScriptDir "\Refresh-ModelPricing.ps1 && start " A_ScriptDir "\models_pricing.txt" },
     { menuText: "&7 - Debug Log",              command: A_Temp "\LLM_Debug_Log.txt" },
