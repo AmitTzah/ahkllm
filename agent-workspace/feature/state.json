@@ -1,0 +1,12 @@
+{
+  "feature_name": "Settings Tab — Full UserConfig UI",
+  "branch_name": null,
+  "git_automation_enabled": null,
+  "hands_off_mode": false,
+  "current_phase": 3,
+  "plan_status": "draft",
+  "total_steps": 13,
+  "current_step": 0,
+  "e2e_regression_status": null,
+  "skipped_smoke_tests": []
+}
