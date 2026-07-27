@@ -11,14 +11,24 @@ var md = window.markdownit({
   linkify: true,
   typographer: true,
   highlight: function (str, lang) {
+    var langLabel = escHtml(lang || 'text');
+    var headerHtml = '<div class="code-block-actions-sticky">' +
+      '<button class="code-action-btn" title="Copy code" onclick="copyCodeBlock(this)"><i data-lucide="copy" style="width:22px;height:22px;"></i></button>' +
+      '<button class="code-action-btn" title="Download" onclick="downloadCodeBlock(this)"><i data-lucide="download" style="width:22px;height:22px;"></i></button>' +
+    '</div>' +
+    '<div class="code-block-header">' +
+      '<span class="code-lang">' + langLabel + '</span>' +
+    '</div>';
     if (lang && hljs.getLanguage(lang)) {
       try {
-        return '<pre class="hljs"><code>' +
+        return '<div class="code-block-wrapper">' + headerHtml +
+          '<pre class="hljs"><code>' +
           hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
-          '</code></pre>';
+          '</code></pre></div>';
       } catch (__) { }
     }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+    return '<div class="code-block-wrapper">' + headerHtml +
+      '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre></div>';
   }
 })
   .use(window.texmath, {

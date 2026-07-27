@@ -66,6 +66,81 @@
   40% { transform: scale(1); }
 }
 
+/* Code block wrapper */
+.code-block-wrapper {
+  margin: 12px 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-main);
+}
+
+/* Sticky button rail — zero-height element before the header. The buttons
+   extend downward and align exactly with the header row (header height and
+   button height are both 34px), and pin flush to the top while scrolling. */
+.code-block-actions-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  height: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0 10px 0 0;
+  pointer-events: none;
+}
+
+.code-block-actions-sticky .code-action-btn {
+  pointer-events: auto;
+}
+
+/* Header bar — dark background with language label, scrolls away normally */
+.code-block-header {
+  padding: 8px 16px;
+  background: #282c34;
+  /* Inner corner radius (wrapper radius minus wrapper border) so the header
+     fits snugly inside the wrapper's rounded border without protruding */
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.code-lang {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px; /* header total height = 8 + 18 + 8 = 34px, matching button height */
+  font-weight: 500;
+  color: #abb2bf;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.code-block-wrapper pre.hljs {
+  margin: 0;
+  border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
+  overflow-x: auto;
+}
+
+.code-action-btn {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px;
+  color: #abb2bf;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.code-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.code-action-btn.copied {
+  color: #98c379;
+}
+
 /* Flash animation for tree-node click */
 .msg.flash .msg-body { animation: flash 1.5s ease-out; }
 @keyframes flash { 

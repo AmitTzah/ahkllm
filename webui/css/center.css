@@ -66,9 +66,10 @@
   width: 38px; text-align: center; user-select: none; color: var(--text-primary);
 }
 
-/* Thread */
-.thread { flex: 1; overflow-y: auto; padding: 32px 0; scroll-behavior: smooth; }
-.thread-inner { max-width: 1080px; margin: 0 auto; width: 100%; padding: 0 40px; display: flex; flex-direction: column; gap: 40px; }
+/* Thread — vertical spacing lives on .thread-inner (not the scroller) so
+   sticky elements inside messages pin flush to the visible top edge */
+.thread { flex: 1; overflow-y: auto; padding: 0; scroll-behavior: smooth; }
+.thread-inner { max-width: 1080px; margin: 0 auto; width: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 40px; }
 
 /* Composer */
 .composer { padding: 0 32px 32px; background: linear-gradient(to top, var(--bg-panel) 70%, transparent); flex-shrink: 0; }

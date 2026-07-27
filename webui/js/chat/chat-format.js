@@ -78,6 +78,73 @@ function showCopiedFeedback(index) {
   }
 }
 
+// Copy code block content to clipboard
+function copyCodeBlock(btn) {
+  var wrapper = btn.closest('.code-block-wrapper');
+  if (!wrapper) return;
+  var codeEl = wrapper.querySelector('code');
+  if (!codeEl) return;
+  navigator.clipboard.writeText(codeEl.textContent || '').then(function() {
+    var originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i data-lucide="check" style="width:22px;height:22px;"></i>';
+    btn.classList.add('copied');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    setTimeout(function() {
+      btn.innerHTML = originalHTML;
+      btn.classList.remove('copied');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }, 2000);
+  }).catch(function(err) {
+    console.error('Failed to copy code block: ', err);
+  });
+}
+
+// Download code block content as a file
+function downloadCodeBlock(btn) {
+  var wrapper = btn.closest('.code-block-wrapper');
+  if (!wrapper) return;
+  var codeEl = wrapper.querySelector('code');
+  if (!codeEl) return;
+  var langLabel = wrapper.querySelector('.code-lang');
+  var lang = langLabel ? langLabel.textContent.trim() : 'txt';
+  var extension = _langToExtension(lang);
+  var content = codeEl.textContent || '';
+  var blob = new Blob([content], { type: 'text/plain' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'snippet.' + extension;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Map language label to file extension
+function _langToExtension(lang) {
+  var map = {
+    javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', tsx: 'tsx', jsx: 'jsx',
+    python: 'py', py: 'py', java: 'java', c: 'c', cpp: 'cpp', 'c++': 'cpp',
+    rust: 'rs', rs: 'rs', go: 'go', ruby: 'rb', rb: 'rb', php: 'php',
+    swift: 'swift', kotlin: 'kt', kt: 'kt', scala: 'scala', r: 'r',
+    sql: 'sql', bash: 'sh', sh: 'sh', shell: 'sh', powershell: 'ps1', ps1: 'ps1',
+    bat: 'bat', cmd: 'bat', json: 'json', xml: 'xml', html: 'html',
+    css: 'css', scss: 'scss', less: 'less', yaml: 'yml', yml: 'yml',
+    toml: 'toml', ini: 'ini', markdown: 'md', md: 'md',
+    ahk: 'ahk', autohotkey: 'ahk', dockerfile: 'dockerfile', docker: 'dockerfile',
+    graphql: 'graphql', gql: 'graphql', perl: 'pl', lua: 'lua',
+    dart: 'dart', elixir: 'ex', ex: 'ex', elm: 'elm', erlang: 'erl',
+    haskell: 'hs', hs: 'hs', clojure: 'clj', clj: 'clj', ocaml: 'ml',
+    pascal: 'pas', fortran: 'f90', julia: 'jl', matlab: 'm',
+    makefile: 'makefile', cmake: 'cmake', nix: 'nix', groovy: 'groovy',
+    vbnet: 'vb', 'vb.net': 'vb', fsharp: 'fs', 'f#': 'fs',
+    diff: 'diff', patch: 'patch', properties: 'properties',
+    proto: 'proto', protobuf: 'proto', csv: 'csv', tex: 'tex', latex: 'tex'
+  };
+  var normalized = lang.toLowerCase().replace(/[^a-z0-9+#]/g, '');
+  return map[normalized] || 'txt';
+}
+
 // Format helpers
 function formatNumber(n) {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");

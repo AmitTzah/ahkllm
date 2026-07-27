@@ -168,3 +168,66 @@ describe('formatNumber', () => {
         assert.strictEqual(ctx.formatNumber(999), '999');
     });
 });
+
+describe('_langToExtension', () => {
+    it('maps javascript to js', () => {
+        assert.strictEqual(ctx._langToExtension('javascript'), 'js');
+        assert.strictEqual(ctx._langToExtension('js'), 'js');
+    });
+
+    it('maps python to py', () => {
+        assert.strictEqual(ctx._langToExtension('python'), 'py');
+        assert.strictEqual(ctx._langToExtension('py'), 'py');
+    });
+
+    it('maps typescript to ts', () => {
+        assert.strictEqual(ctx._langToExtension('typescript'), 'ts');
+        assert.strictEqual(ctx._langToExtension('ts'), 'ts');
+    });
+
+    it('maps c++ to cpp', () => {
+        assert.strictEqual(ctx._langToExtension('c++'), 'cpp');
+        assert.strictEqual(ctx._langToExtension('cpp'), 'cpp');
+    });
+
+    it('maps bash/shell to sh', () => {
+        assert.strictEqual(ctx._langToExtension('bash'), 'sh');
+        assert.strictEqual(ctx._langToExtension('shell'), 'sh');
+        assert.strictEqual(ctx._langToExtension('sh'), 'sh');
+    });
+
+    it('maps yaml to yml', () => {
+        assert.strictEqual(ctx._langToExtension('yaml'), 'yml');
+        assert.strictEqual(ctx._langToExtension('yml'), 'yml');
+    });
+
+    it('maps markdown to md', () => {
+        assert.strictEqual(ctx._langToExtension('markdown'), 'md');
+        assert.strictEqual(ctx._langToExtension('md'), 'md');
+    });
+
+    it('maps ahk/autohotkey to ahk', () => {
+        assert.strictEqual(ctx._langToExtension('ahk'), 'ahk');
+        assert.strictEqual(ctx._langToExtension('autohotkey'), 'ahk');
+    });
+
+    it('maps powershell to ps1', () => {
+        assert.strictEqual(ctx._langToExtension('powershell'), 'ps1');
+        assert.strictEqual(ctx._langToExtension('ps1'), 'ps1');
+    });
+
+    it('returns txt for unknown languages', () => {
+        assert.strictEqual(ctx._langToExtension(''), 'txt');
+        assert.strictEqual(ctx._langToExtension('unknownLang'), 'txt');
+    });
+
+    it('is case-insensitive', () => {
+        assert.strictEqual(ctx._langToExtension('JavaScript'), 'js');
+        assert.strictEqual(ctx._langToExtension('PYTHON'), 'py');
+        assert.strictEqual(ctx._langToExtension('JaVa'), 'java');
+    });
+
+    it('handles leading/trailing whitespace', () => {
+        assert.strictEqual(ctx._langToExtension('  python  '), 'py');
+    });
+});
