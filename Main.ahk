@@ -47,7 +47,7 @@ handleHotkey(action) {
             Sleep 100
 
             if (getActiveModels().Count > 0) {
-                MsgBox("Script will automatically reload once all Response Windows are closed.",
+                MsgBox("Script will automatically reload once the chat window is closed.",
                     "LLM AutoHotkey Assistant", 64)
                 handleLoadingState(0, 0, "reloadScript", 0)
             } else {

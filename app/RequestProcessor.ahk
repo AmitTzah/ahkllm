@@ -39,14 +39,13 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
             captured.userMessage := captured.userMessage
     }
 
-    ; Parse models
+    ; Parse models — multiple models are collapsed to the first as a safety net
     APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
-    if isFIM {
-        if APIModelsArr.Length > 1
+    if APIModelsArr.Length > 1 {
+        if isFIM {
             MsgBox "FIM does not support multiple models. Only the first model will be used.", "FIM Warning", "IconX"
+        }
         APIModelsArr := [APIModelsArr[1]]
-    } else if pasteMode = "replace" || pasteMode = "append" {
-        pasteMode := (APIModelsArr.Length > 1) ? "chat" : pasteMode
     }
 
     ; STEP 1.5: Screenshot capture for includeImageContext
@@ -68,10 +67,6 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         singleAPIModelName := providerInfo.modelName
 
         if pasteMode = "chat" {
-            if APIModelsArr.Length > 1 {
-                debugLog("WARNING: Multi-model not supported in chat mode. Using only first model: " APIModelsArr[1], "RequestProcessor")
-            }
-
             threadId := ChatDB.Thread_Create(commandName)
             if systemMessage {
                 ChatDB.Msg_Insert({

@@ -171,11 +171,9 @@ assistants := [
 ;                     defines an accelerator key (e.g. "&1" lets the user
 ;                     press 1 to select that item).
 ;
-;   APIModels:        One or more model identifiers, comma-separated.
-;                     Supports "provider/model" format (e.g. "openai/gpt-4o")
-;                     or direct model names (e.g. "deepseek-v4-pro").
-;                     When multiple models are listed, a Response Window is
-;                     opened for each one (multi-model "Council" mode).
+;   APIModels:        A single model identifier. Supports "provider/model"
+;                     format (e.g. "openai/gpt-4o") or direct model names
+;                     (e.g. "deepseek-v4-pro").
 ;
 ; --- OPTIONAL FIELDS ---
 ;   All fields below are optional.  Fields related to prompt composition
@@ -226,7 +224,7 @@ assistants := [
 ;   selection and input are formatted in the prompt.
 ;
 ;   pasteMode:        (Optional) Where the LLM response goes:
-;                       "chat"     — shows a full chat interface in the Response Window
+;                       "chat"     — shows the full chat interface in the chat window
 ;                       "replace"  — replaces the selected text in the active app
 ;                       "append"   — placed after the cursor/selection
 ;                     Default: "chat".
@@ -302,9 +300,8 @@ assistants := [
         menuText: "&9 - Your Menu Label",        
         systemMessage: "Your system message here. This sets the model's role.",
         ; systemMessageFile: "system-messages/my-command.txt", 
-        APIModels: "deepseek-v4-flash",          
-        ; APIModels: "deepseek-v4-pro, deepseek-v4-flash",  
-        ; APIModels: "openai/gpt-4o",            
+        APIModels: "deepseek-v4-flash",
+        ; APIModels: "openai/gpt-4o",
 
         ; --- Prompt fields (ignored when isFIM: true) ---
         ; userMessage: "{{selection}}",
@@ -331,7 +328,7 @@ assistants := [
 ; SUBMENU ORDER — Controls the order of tagged submenus in the ` menu.
 ; Tags listed here appear first, in order. Tags not listed appear after,
 ; in the order their commands are defined. Omit to use command order for all.
-submenuOrder := ["&Text manipulation", "&Digest", "&DeepSeek", "&OpenAI", "&Google", "&Multi-models"]
+submenuOrder := ["&Text manipulation", "&Digest", "&DeepSeek", "&OpenAI", "&Google"]
 
 commands := [
 
@@ -462,16 +459,6 @@ commands := [
         tags: ["&Digest"]
     }
 
-
-    , {
-        commandName: "Multi-Provider Council",
-        menuText: "&1 - Council (V4 Pro + GPT-5.4 + Gemini 3.5 Flash)",
-        APIModels: "deepseek/deepseek-v4-pro, openai/gpt-5.4, google/gemini-3.5-flash",
-        showInputBox: true,
-        userMessage: "{{input}}",
-        pasteMode: "chat",
-        tags: ["&Multi-models"]
-    }
 
     , {
         commandName: "DeepSeek V4 Pro",

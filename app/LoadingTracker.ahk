@@ -9,7 +9,7 @@ getActiveModels() {
 
 ; ----------------------------------------------------
 ; Custom messages and handlers for detecting
-; Response Window states
+; chat window states
 ; ----------------------------------------------------
 
 handleLoadingState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
