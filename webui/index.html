@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -72,7 +72,7 @@
 
   <!-- CENTER -->
   <div class="center" id="chat-layout">
-    <div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
+    <div id="fim-notice" >Fill In the Middle â€” no chat history</div>
     <div class="topbar">
       <div class="topbar-left">
         <div class="chat-title-topbar">
@@ -87,9 +87,9 @@
           <i data-lucide="hash" class="tu-icon"></i>
           <span class="tu-val">43,441 / 1M</span>
         </div>
-        <div class="tu-item" title="Tokens: ↑ 20.1k ↓ 31k">
+        <div class="tu-item" title="Tokens: â†‘ 20.1k â†“ 31k">
           <i data-lucide="activity" class="tu-icon"></i>
-          <span class="tu-val">↑ 20.1k &nbsp;↓ 31k</span>
+          <span class="tu-val">â†‘ 20.1k &nbsp;â†“ 31k</span>
         </div>
         <div class="tu-item" title="Cache: 0">
           <i data-lucide="database" class="tu-icon"></i>
@@ -118,11 +118,11 @@
         <!-- Messages rendered dynamically -->
       </div>
     </div>
-    <div id="content" style="display:none;"><!-- FIM markdown fallback --></div>
+    <div id="content" ><!-- FIM markdown fallback --></div>
 
     <div class="composer" id="chat-input-area">
-      <div id="attachment-bar" style="display:none;"></div>
-      <input type="file" id="attachment-file-input" accept="image/*,.pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.epub,.txt,.md,.py,.js,.ahk,.json,.xml,.csv,.ini,.cfg,.yaml,.yml,.log,.html,.css,.sql,.bat,.ps1,.sh,.java,.c,.cpp,.h,.rs,.go,.ts,.tsx,.jsx,.toml" multiple style="display:none;">
+      <div id="attachment-bar" ></div>
+      <input type="file" id="attachment-file-input" accept="image/*,.pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.rtf,.epub,.txt,.md,.py,.js,.ahk,.json,.xml,.csv,.ini,.cfg,.yaml,.yml,.log,.html,.css,.sql,.bat,.ps1,.sh,.java,.c,.cpp,.h,.rs,.go,.ts,.tsx,.jsx,.toml" multiple >
       <div class="composer-inner">
         <div class="composer-tools">
           <button class="icon-btn" id="attachment-browse-btn" title="Attach Context"><i data-lucide="paperclip"></i></button>
@@ -176,8 +176,8 @@
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;position:relative;"><div class="value" id="totalCost" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">$0.00</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Total Cost <span class="cost-info" id="costInfoIcon" style="cursor:help;display:inline-block;vertical-align:middle;color:var(--text-tertiary);"><i data-lucide="info" style="width:13px;height:13px;"></i><span class="cost-tooltip" id="costTooltip"></span></span></div></div>
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="totalCalls" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">0</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">API Requests</div></div>
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="totalTokens" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">0</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Total Tokens</div></div>
-      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="speedValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Speed</div></div>
-      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="ttftValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Latency (ttft)</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="speedValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">â€”</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Speed</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="ttftValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">â€”</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Latency (ttft)</div></div>
     </div>
     <div class="chart-card" style="background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px;margin:0 20px 14px;">
       <div class="chart-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -218,7 +218,7 @@
         </div>
 
         <div class="field">
-          <div class="field-label"><span>Temperature</span><span class="val" id="tempVal">Default</span><button class="temp-reset" id="tempReset" title="Reset to model default" style="display:none;"><i data-lucide="x"></i></button></div>
+          <div class="field-label"><span>Temperature</span><span class="val" id="tempVal">Default</span><button class="temp-reset" id="tempReset" title="Reset to model default" ><i data-lucide="x"></i></button></div>
           <input type="range" min="0" max="2" step="0.1" value="1" id="tempSlider" class="temp-default">
         </div>
 
@@ -287,7 +287,7 @@
 </div>
 
 <!-- Settings Nav (replaces railLeft) -->
-<div class="settings-nav" id="settingsNav" style="display:none;">
+<div class="settings-nav" id="settingsNav" >
   <div class="nav-scroll">
     <div class="nav-header">Settings</div>
     <div class="nav-section">Core</div>
@@ -310,9 +310,9 @@
 </div>
 
 <!-- Settings Center -->
-<div class="settings-center" id="settingsCenter" style="display:none;">
+<div class="settings-center" id="settingsCenter" >
   <div class="settings-content">
-    <div class="section-card" id="sec-general" style="display:none;"><div class="section-card-header">General — Thread Titles, API Logs, Trash</div><div class="section-card-body">
+    <div class="section-card" id="sec-general" ><div class="section-card-header">General â€” Thread Titles, API Logs, Trash</div><div class="section-card-body">
       <div style="margin-bottom:24px;border:1px solid var(--border-main);border-radius:var(--radius-md);overflow:hidden;">
         <div class="toggle-row" style="padding:14px 16px;background:var(--bg-main);margin:0;border-bottom:1px solid var(--border-light);">
           <div><div class="lbl">Thread Title Generation</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">After the first exchange, generates a short title via a cheap LLM call</div></div>
@@ -330,9 +330,9 @@
         <div class="field"><label class="field-label">Trash Retention (days) <span class="hint">0 = never purge</span></label><input type="number" id="trashRetentionDays" value="30"></div>
       </div>
     </div></div>
-    <div class="section-card" id="sec-ui" style="display:none;"><div class="section-card-header">UI & Theme — Appearance</div><div class="section-card-body">
+    <div class="section-card" id="sec-ui" ><div class="section-card-header">UI & Theme â€” Appearance</div><div class="section-card-body">
       <div class="toggle-row" style="padding-top:0;margin-bottom:20px;">
-        <div><div class="lbl">Dark Mode</div><div style="font-size:11px;color:var(--text-tertiary);">Not yet implemented — will take effect in a future release</div></div>
+        <div><div class="lbl">Dark Mode</div><div style="font-size:11px;color:var(--text-tertiary);">Not yet implemented â€” will take effect in a future release</div></div>
         <div class="switch" id="darkModeToggle"><div class="knob"></div></div>
       </div>
       <div class="field"><label class="field-label">Default Chat Model</label><select id="chatDefaultModel"><option>deepseek/deepseek-v4-flash</option><option>deepseek/deepseek-v4-pro</option><option>openai/gpt-4o</option></select></div>
@@ -355,14 +355,14 @@
         <div class="field"><label class="field-label">Banner Background</label><div style="display:flex;gap:8px;"><input type="color" id="sbBackground" value="#FFDF00" style="width:36px;height:36px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;padding:2px;"><input type="text" id="sbBackgroundHex" value="0xFFDF00" readonly style="flex:1;font-family:var(--font-mono);font-size:12px;"></div></div>
       </div>
     </div></div>
-    <div class="section-card" id="sec-icons" style="display:none;"><div class="section-card-header">Icons — Tray Icons</div><div class="section-card-body">
+    <div class="section-card" id="sec-icons" ><div class="section-card-header">Icons â€” Tray Icons</div><div class="section-card-body">
       <div class="grid-2">
         <div class="field"><label class="field-label">Active Icon (iconOn)</label><input type="text" id="iconOnPath" value="icons\IconOn.ico"></div>
         <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><input type="text" id="iconOffPath" value="icons\IconOff.ico"></div>
       </div>
     </div></div>
-    <div class="section-card" id="sec-hotkeys" style="display:none;"><div class="section-card-header">Hotkeys</div><div class="section-card-body">
-      <div class="warning-banner" style="margin-bottom:16px;">⚠️ Hotkey changes require a script restart to take effect. <button class="btn-sm" style="margin-left:auto;background:var(--warning);color:#fff;border:none;">Restart Now</button></div>
+    <div class="section-card" id="sec-hotkeys" ><div class="section-card-header">Hotkeys</div><div class="section-card-body">
+      <div class="warning-banner" style="margin-bottom:16px;">âš ï¸ Hotkey changes require a script restart to take effect. <button class="btn-sm" style="margin-left:auto;background:var(--warning);color:#fff;border:none;">Restart Now</button></div>
       <div class="grid-2">
         <div class="field"><label class="field-label">Main Hotkey (opens menu)</label><input value="``" id="hkMain"></div>
         <div class="field"><label class="field-label">Save & Reload</label><input value="~^s" id="hkSaveReload"></div>
@@ -370,7 +370,7 @@
         <div class="field"><label class="field-label">Suspend Toggle</label><input value="CapsLock & ``" id="hkSuspend"></div>
       </div>
     </div></div>
-    <div class="section-card" id="sec-menu" style="display:none;"><div class="section-card-header">Menu Items — Quick Access & Tray Menu</div><div class="section-card-body">
+    <div class="section-card" id="sec-menu" ><div class="section-card-header">Menu Items â€” Quick Access & Tray Menu</div><div class="section-card-body">
       <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Quick Access Menu</div>
       <table class="kv-table"><thead><tr><th>Menu Text</th><th>Command</th><th></th></tr></thead><tbody id="qaTableBody"></tbody></table>
       <div style="margin:8px 0;"><button class="btn-sm" id="addQaRow">+ Add Item</button></div>
@@ -378,19 +378,19 @@
       <table class="kv-table"><thead><tr><th>Menu Text</th><th>Action</th><th></th></tr></thead><tbody id="trayTableBody"></tbody></table>
       <div style="margin-top:8px;"><button class="btn-sm" id="addTrayRow">+ Add Item</button></div>
     </div></div>
-    <div class="section-card" id="sec-providers" style="display:none;"><div class="section-card-header">Providers — API Endpoints & Authentication</div><div class="section-card-body">
+    <div class="section-card" id="sec-providers" ><div class="section-card-header">Providers â€” API Endpoints & Authentication</div><div class="section-card-body">
       <div class="provider-grid" id="providerGrid"></div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addProviderBtn">+ Add Provider</button><span style="font-size:11px;color:var(--text-tertiary);">Requires OpenAI-compatible API endpoint</span></div>
     </div></div>
-    <div class="section-card" id="sec-models" style="display:none;"><div class="section-card-header">Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn">🔄 Refresh from PowerShell</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
+    <div class="section-card" id="sec-models" ><div class="section-card-header">Models â€” Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn">ðŸ”„ Refresh from PowerShell</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
       <table class="kv-table"><thead><tr><th>Model ID</th><th>Provider</th><th>Input</th><th>Cached</th><th>Output</th><th>Context</th><th>Vision</th><th>Reasoning</th><th></th></tr></thead><tbody id="modelsTableBody"></tbody></table>
       <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">Prices in $/1M tokens. Cached input defaults to 10% of input if blank.</div>
     </div></div>
-    <div class="section-card" id="sec-assistants" style="display:none;"><div class="section-card-header">Assistants — Chat Profiles</div><div class="section-card-body">
+    <div class="section-card" id="sec-assistants" ><div class="section-card-header">Assistants â€” Chat Profiles</div><div class="section-card-body">
       <div style="margin-bottom:12px;display:flex;gap:8px;"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button></div>
       <div class="provider-grid" id="assistantGrid"></div>
     </div></div>
-    <div class="section-card wide" id="sec-commands" style="display:none;"><div class="section-card-header">Commands <span class="spacer"></span><button class="btn-sm" id="addCommandBtn">+ New</button></div><div class="section-card-body" style="padding:0;">
+    <div class="section-card wide" id="sec-commands" ><div class="section-card-header">Commands <span class="spacer"></span><button class="btn-sm" id="addCommandBtn">+ New</button></div><div class="section-card-body" style="padding:0;">
       <div class="commands-layout">
         <div class="commands-list"><div class="commands-list-header">All Commands</div><div class="commands-list-body" id="commandsListBody"></div></div>
         <div class="command-detail" id="cmdDetail">
@@ -400,9 +400,9 @@
           <div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For tagged submenu commands. Press backtick then key to fire directly.">?</span></label><select id="cmdDirectShortcut"><option value="">None</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
           <div class="field"><label class="field-label">API Model</label><input id="cmdApiModel" placeholder="deepseek-v4-flash"></div>
           <div class="grid-2"><div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>
-          <div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0–2. Higher = more creative.">?</span></label><input id="cmdTemperature" placeholder="Model default"></div></div>
+          <div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0â€“2. Higher = more creative.">?</span></label><input id="cmdTemperature" placeholder="Model default"></div></div>
           <div class="field"><label class="field-label">User Message Template <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Enter for newlines.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>
-          <div class="toggle-row"><div class="lbl">Show Input Box <span class="tt" data-tip="Opens text box. Input → {{input}}.">?</span></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>
+          <div class="toggle-row"><div class="lbl">Show Input Box <span class="tt" data-tip="Opens text box. Input â†’ {{input}}.">?</span></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>
           <div class="toggle-row"><div class="lbl">Stream Response <span class="tt" data-tip="Token-by-token output. Requires pasteMode: chat.">?</span></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>
           <div class="toggle-row"><div class="lbl">FIM Mode <span class="tt" data-tip="DeepSeek FIM endpoint. Ignores prompt fields.">?</span></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>
           <div class="field"><label class="field-label">Thinking <span class="tt" data-tip="{ type, level }. Enabled works across providers.">?</span></label><div class="field-row"><select id="cmdThinkingType"><option>disabled</option><option>enabled</option></select><select id="cmdThinkingLevel"><option value="">Default</option><option>low</option><option>medium</option><option>high</option></select></div></div>
@@ -417,7 +417,7 @@
 
 <!-- Refresh Pricing Modal -->
 <div class="modal-overlay" id="refreshModal">
-  <div class="modal-box"><div class="modal-head"><div class="modal-title">Refresh Model Pricing</div><button class="icon-btn" onclick="document.getElementById('refreshModal').classList.remove('open')">✕</button></div>
+  <div class="modal-box"><div class="modal-head"><div class="modal-title">Refresh Model Pricing</div><button class="icon-btn" onclick="document.getElementById('refreshModal').classList.remove('open')">âœ•</button></div>
   <div class="modal-body"><div class="modal-panel"><div class="modal-panel-header">New from PowerShell</div><div class="modal-panel-body"><div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:20px;">Click Refresh to pull latest pricing data</div></div></div>
   <div class="modal-panel"><div class="modal-panel-header">Your Models</div><div class="modal-panel-body"><div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:20px;">Current models are shown here for reference</div></div></div></div>
   <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('refreshModal').classList.remove('open')">Done</button></div></div>
@@ -425,12 +425,12 @@
 
 <!-- System Message Edit Modal -->
 <div class="modal-overlay" id="sysMsgEditModal">
-  <div class="modal-box" style="width:640px;"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">✕</button></div>
+  <div class="modal-box" style="width:640px;"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">âœ•</button></div>
   <div class="modal-body" style="flex-direction:column;gap:14px;">
     <div style="display:flex;gap:8px;"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" checked onchange="document.getElementById('smFileSection').style.display='';document.getElementById('smInlineSection').style.display='none'"> Load from file</label>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" onchange="document.getElementById('smFileSection').style.display='none';document.getElementById('smInlineSection').style.display=''"> Write inline</label></div>
     <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select style="width:100%;"><optgroup label="App Defaults"><option>natural-conversationalist.txt</option><option>violet.txt</option><option>summarize.txt</option><option>refine.txt</option><option>translate-to-english.txt</option><option>rephrase-in-context.txt</option><option>brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"><option>my-custom-prompt.txt</option></optgroup></select></div></div>
-    <div id="smInlineSection" style="display:none;"><div class="field"><label class="field-label">Write system message</label><textarea style="width:100%;min-height:180px;font-family:var(--font-mono);font-size:13px;" placeholder="You are a helpful assistant..."></textarea></div></div>
+    <div id="smInlineSection" ><div class="field"><label class="field-label">Write system message</label><textarea style="width:100%;min-height:180px;font-family:var(--font-mono);font-size:13px;" placeholder="You are a helpful assistant..."></textarea></div></div>
   </div>
   <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">Cancel</button><button class="btn-primary" style="font-size:13px;">Save</button></div></div>
 </div>
