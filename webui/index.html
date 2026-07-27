@@ -361,14 +361,78 @@
         <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><input type="text" id="iconOffPath" value="icons\IconOff.ico"></div>
       </div>
     </div></div>
-    <div class="section-card" id="sec-hotkeys" style="display:none;"><div class="section-card-header">Hotkeys</div><div class="section-card-body"></div></div>
-    <div class="section-card" id="sec-menu" style="display:none;"><div class="section-card-header">Menu Items — Quick Access & Tray Menu</div><div class="section-card-body"></div></div>
-    <div class="section-card" id="sec-providers" style="display:none;"><div class="section-card-header">Providers — API Endpoints & Authentication</div><div class="section-card-body"></div></div>
-    <div class="section-card" id="sec-models" style="display:none;"><div class="section-card-header">Models — Pricing & Metadata</div><div class="section-card-body"></div></div>
-    <div class="section-card" id="sec-assistants" style="display:none;"><div class="section-card-header">Assistants — Chat Profiles</div><div class="section-card-body"></div></div>
-    <div class="section-card" id="sec-commands" style="display:none;"><div class="section-card-header">Commands</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-hotkeys" style="display:none;"><div class="section-card-header">Hotkeys</div><div class="section-card-body">
+      <div class="warning-banner" style="margin-bottom:16px;">⚠️ Hotkey changes require a script restart to take effect. <button class="btn-sm" style="margin-left:auto;background:var(--warning);color:#fff;border:none;">Restart Now</button></div>
+      <div class="grid-2">
+        <div class="field"><label class="field-label">Main Hotkey (opens menu)</label><input value="``" id="hkMain"></div>
+        <div class="field"><label class="field-label">Save & Reload</label><input value="~^s" id="hkSaveReload"></div>
+        <div class="field"><label class="field-label">Close Windows</label><input value="~^w" id="hkCloseWindows"></div>
+        <div class="field"><label class="field-label">Suspend Toggle</label><input value="CapsLock & ``" id="hkSuspend"></div>
+      </div>
+    </div></div>
+    <div class="section-card" id="sec-menu" style="display:none;"><div class="section-card-header">Menu Items — Quick Access & Tray Menu</div><div class="section-card-body">
+      <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Quick Access Menu</div>
+      <table class="kv-table"><thead><tr><th>Menu Text</th><th>Command</th><th></th></tr></thead><tbody id="qaTableBody"></tbody></table>
+      <div style="margin:8px 0;"><button class="btn-sm" id="addQaRow">+ Add Item</button></div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin:20px 0 10px;">Tray Menu</div>
+      <table class="kv-table"><thead><tr><th>Menu Text</th><th>Action</th><th></th></tr></thead><tbody id="trayTableBody"></tbody></table>
+      <div style="margin-top:8px;"><button class="btn-sm" id="addTrayRow">+ Add Item</button></div>
+    </div></div>
+    <div class="section-card" id="sec-providers" style="display:none;"><div class="section-card-header">Providers — API Endpoints & Authentication</div><div class="section-card-body">
+      <div class="provider-grid" id="providerGrid"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addProviderBtn">+ Add Provider</button><span style="font-size:11px;color:var(--text-tertiary);">Requires OpenAI-compatible API endpoint</span></div>
+    </div></div>
+    <div class="section-card" id="sec-models" style="display:none;"><div class="section-card-header">Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn">🔄 Refresh from PowerShell</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
+      <table class="kv-table"><thead><tr><th>Model ID</th><th>Provider</th><th>Input</th><th>Cached</th><th>Output</th><th>Context</th><th>Vision</th><th>Reasoning</th><th></th></tr></thead><tbody id="modelsTableBody"></tbody></table>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">Prices in $/1M tokens. Cached input defaults to 10% of input if blank.</div>
+    </div></div>
+    <div class="section-card" id="sec-assistants" style="display:none;"><div class="section-card-header">Assistants — Chat Profiles</div><div class="section-card-body">
+      <div style="margin-bottom:12px;display:flex;gap:8px;"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button></div>
+      <div class="provider-grid" id="assistantGrid"></div>
+    </div></div>
+    <div class="section-card wide" id="sec-commands" style="display:none;"><div class="section-card-header">Commands <span class="spacer"></span><button class="btn-sm" id="addCommandBtn">+ New</button></div><div class="section-card-body" style="padding:0;">
+      <div class="commands-layout">
+        <div class="commands-list"><div class="commands-list-header">All Commands</div><div class="commands-list-body" id="commandsListBody"></div></div>
+        <div class="command-detail" id="cmdDetail">
+          <div style="font-weight:600;font-size:14px;margin-bottom:16px;"><input type="text" id="cmdDetailTitle" value="" style="border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;padding:2px 4px;border-radius:4px;width:auto;" placeholder="Command Title"></div>
+          <div class="grid-2"><div class="field"><label class="field-label">Menu Label</label><input id="cmdMenuLabel" placeholder="Quick Ask DeepSeek V4 Flash"></div>
+          <div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this number. 1 is reserved for Chat.">?</span></label><select id="cmdMenuShortcut"><option value="">None</option><option disabled>1 (Chat Window)</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select></div></div>
+          <div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For tagged submenu commands. Press backtick then key to fire directly.">?</span></label><select id="cmdDirectShortcut"><option value="">None</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+          <div class="field"><label class="field-label">API Model</label><input id="cmdApiModel" placeholder="deepseek-v4-flash"></div>
+          <div class="grid-2"><div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>
+          <div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0–2. Higher = more creative.">?</span></label><input id="cmdTemperature" placeholder="Model default"></div></div>
+          <div class="field"><label class="field-label">User Message Template <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Enter for newlines.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>
+          <div class="toggle-row"><div class="lbl">Show Input Box <span class="tt" data-tip="Opens text box. Input → {{input}}.">?</span></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>
+          <div class="toggle-row"><div class="lbl">Stream Response <span class="tt" data-tip="Token-by-token output. Requires pasteMode: chat.">?</span></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>
+          <div class="toggle-row"><div class="lbl">FIM Mode <span class="tt" data-tip="DeepSeek FIM endpoint. Ignores prompt fields.">?</span></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>
+          <div class="field"><label class="field-label">Thinking <span class="tt" data-tip="{ type, level }. Enabled works across providers.">?</span></label><div class="field-row"><select id="cmdThinkingType"><option>disabled</option><option>enabled</option></select><select id="cmdThinkingLevel"><option value="">Default</option><option>low</option><option>medium</option><option>high</option></select></div></div>
+          <div class="field"><label class="field-label">Tags <span class="tt" data-tip="Creates submenus in backtick menu.">?</span></label><div style="display:flex;gap:4px;flex-wrap:wrap;" id="cmdTags"></div><button class="btn-sm" id="addCmdTagBtn" style="margin-top:4px;">+ Add Tag</button></div>
+          <div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="FIM commands should set explicitly (default 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>
+        </div>
+      </div>
+    </div></div>
     <div style="height:40px;"></div>
   </div>
+</div>
+
+<!-- Refresh Pricing Modal -->
+<div class="modal-overlay" id="refreshModal">
+  <div class="modal-box"><div class="modal-head"><div class="modal-title">Refresh Model Pricing</div><button class="icon-btn" onclick="document.getElementById('refreshModal').classList.remove('open')">✕</button></div>
+  <div class="modal-body"><div class="modal-panel"><div class="modal-panel-header">New from PowerShell</div><div class="modal-panel-body"><div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:20px;">Click Refresh to pull latest pricing data</div></div></div>
+  <div class="modal-panel"><div class="modal-panel-header">Your Models</div><div class="modal-panel-body"><div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:20px;">Current models are shown here for reference</div></div></div></div>
+  <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('refreshModal').classList.remove('open')">Done</button></div></div>
+</div>
+
+<!-- System Message Edit Modal -->
+<div class="modal-overlay" id="sysMsgEditModal">
+  <div class="modal-box" style="width:640px;"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">✕</button></div>
+  <div class="modal-body" style="flex-direction:column;gap:14px;">
+    <div style="display:flex;gap:8px;"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" checked onchange="document.getElementById('smFileSection').style.display='';document.getElementById('smInlineSection').style.display='none'"> Load from file</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" onchange="document.getElementById('smFileSection').style.display='none';document.getElementById('smInlineSection').style.display=''"> Write inline</label></div>
+    <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select style="width:100%;"><optgroup label="App Defaults"><option>natural-conversationalist.txt</option><option>violet.txt</option><option>summarize.txt</option><option>refine.txt</option><option>translate-to-english.txt</option><option>rephrase-in-context.txt</option><option>brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"><option>my-custom-prompt.txt</option></optgroup></select></div></div>
+    <div id="smInlineSection" style="display:none;"><div class="field"><label class="field-label">Write system message</label><textarea style="width:100%;min-height:180px;font-family:var(--font-mono);font-size:13px;" placeholder="You are a helpful assistant..."></textarea></div></div>
+  </div>
+  <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">Cancel</button><button class="btn-primary" style="font-size:13px;">Save</button></div></div>
 </div>
 
 <!-- Tree Modal -->
@@ -454,6 +518,12 @@
 <script src="js/settings/sections/general.js"></script>
 <script src="js/settings/sections/icons.js"></script>
 <script src="js/settings/sections/ui-theme.js"></script>
+<script src="js/settings/sections/hotkeys.js"></script>
+<script src="js/settings/sections/menu-items.js"></script>
+<script src="js/settings/sections/providers.js"></script>
+<script src="js/settings/sections/models.js"></script>
+<script src="js/settings/sections/assistants.js"></script>
+<script src="js/settings/sections/commands.js"></script>
 <script src="js/main.js"></script>
 <script src="js/ui-controls.js"></script>
 <script>
