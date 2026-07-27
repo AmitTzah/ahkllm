@@ -228,6 +228,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (wrapper) wrapper.style.display = 'none';
     var railLeft = document.getElementById('railLeft');
     if (railLeft) railLeft.style.display = '';
+    if (chatLayout) chatLayout.style.display = '';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.remove('active');
   }

@@ -2,7 +2,7 @@
 
 /* Settings Nav (replaces railLeft chat sidebar) */
 .settings-nav {
-  width: 280px; flex-shrink: 0; background: var(--bg-main);
+  width: 340px; flex-shrink: 0; background: var(--bg-main);
   border-right: 1px solid var(--border-main);
   display: flex; flex-direction: column;
 }
