@@ -6,6 +6,14 @@
 ; ----------------------------------------------------
 
 ; ----------------------------------------------------
+; Global variables (set by ResolvePrimaryProvider / ResolveDefaultAssistant)
+; ----------------------------------------------------
+global APIKey := ""
+global APIEndpoint := ""
+global FIMEndpoint := ""
+global defaultAssistant := ""
+
+; ----------------------------------------------------
 ; API KEY CHECK — Ensures at least one provider key is set
 ; Called AFTER SettingsHandler.Load() so direct-entry keys are available.
 ; ----------------------------------------------------
@@ -64,14 +72,17 @@ RuntimeResolver_ResolvePrimaryProvider() {
 
 ; ----------------------------------------------------
 ; DEFAULT ASSISTANT — resolve from assistants array
+; Called AFTER SettingsHandler.Load() so assistants are current.
 ; ----------------------------------------------------
-; Does NOT mutate the assistants array — only reads isDefault.
-defaultAssistant := ""
-for a in assistants {
-    if a.isDefault {
-        defaultAssistant := a.name
-        break
+RuntimeResolver_ResolveDefaultAssistant() {
+    global assistants, defaultAssistant
+    defaultAssistant := ""
+    for a in assistants {
+        if a.HasOwnProp("isDefault") && a.isDefault {
+            defaultAssistant := a.name
+            break
+        }
     }
+    if !defaultAssistant && IsSet(assistants) && assistants is Array && assistants.Length > 0
+        defaultAssistant := assistants[1].name
 }
-if !defaultAssistant && assistants.Length > 0
-    defaultAssistant := assistants[1].name

@@ -21,6 +21,7 @@ merged := SettingsHandler.Merge(settings, defaults)
 SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
+RuntimeResolver_ResolveDefaultAssistant()
 debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from UserConfig defaults"))
 ; Global error handler for main script — surfaces to tooltip + debug log
 OnError((err, mode) => (
