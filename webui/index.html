@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="css/popover.css">
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/attachments.css">
+<link rel="stylesheet" href="css/settings.css">
 <link rel="stylesheet" href="css/vendor/katex.min.css">
 <link rel="stylesheet" href="css/vendor/texmath.min.css">
 <link rel="stylesheet" href="css/vendor/highlight/atom-one-dark.min.css">
@@ -285,6 +286,45 @@
   </div>
 </div>
 
+<!-- Settings Nav (replaces railLeft) -->
+<div class="settings-nav" id="settingsNav" style="display:none;">
+  <div class="nav-scroll">
+    <div class="nav-header">Settings</div>
+    <div class="nav-section">Core</div>
+    <div class="nav-item active" data-section="general"><i data-lucide="settings" style="width:16px;height:16px;"></i> General</div>
+    <div class="nav-item" data-section="ui"><i data-lucide="layout" style="width:16px;height:16px;"></i> UI & Theme</div>
+    <div class="nav-item" data-section="icons"><i data-lucide="image" style="width:16px;height:16px;"></i> Icons</div>
+    <div class="nav-section">Interaction</div>
+    <div class="nav-item" data-section="hotkeys"><i data-lucide="keyboard" style="width:16px;height:16px;"></i> Hotkeys</div>
+    <div class="nav-item" data-section="menu"><i data-lucide="menu" style="width:16px;height:16px;"></i> Menu Items</div>
+    <div class="nav-section">AI Configuration</div>
+    <div class="nav-item" data-section="providers"><i data-lucide="cloud" style="width:16px;height:16px;"></i> Providers</div>
+    <div class="nav-item" data-section="models"><i data-lucide="cpu" style="width:16px;height:16px;"></i> Models</div>
+    <div class="nav-item" data-section="assistants"><i data-lucide="bot" style="width:16px;height:16px;"></i> Assistants</div>
+    <div class="nav-item" data-section="commands"><i data-lucide="terminal" style="width:16px;height:16px;"></i> Commands</div>
+  </div>
+  <div class="nav-footer">
+    <button class="btn-primary" disabled style="width:100%;">Save Changes</button>
+    <button class="btn-ghost" style="width:100%;">Reset to Defaults</button>
+  </div>
+</div>
+
+<!-- Settings Center -->
+<div class="settings-center" id="settingsCenter" style="display:none;">
+  <div class="settings-content">
+    <div class="section-card" id="sec-general" style="display:none;"><div class="section-card-header">General — Thread Titles, API Logs, Trash</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-ui" style="display:none;"><div class="section-card-header">UI & Theme — Appearance</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-icons" style="display:none;"><div class="section-card-header">Icons — Tray Icons</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-hotkeys" style="display:none;"><div class="section-card-header">Hotkeys</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-menu" style="display:none;"><div class="section-card-header">Menu Items — Quick Access & Tray Menu</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-providers" style="display:none;"><div class="section-card-header">Providers — API Endpoints & Authentication</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-models" style="display:none;"><div class="section-card-header">Models — Pricing & Metadata</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-assistants" style="display:none;"><div class="section-card-header">Assistants — Chat Profiles</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-commands" style="display:none;"><div class="section-card-header">Commands</div><div class="section-card-body"></div></div>
+    <div style="height:40px;"></div>
+  </div>
+</div>
+
 <!-- Tree Modal -->
 <div class="modal-overlay" id="treeOverlay">
   <div class="modal-box tree-modal">
@@ -364,6 +404,7 @@
 <script src="js/chat/stream.js"></script>
 <script src="js/chat/settings/chat-settings-modal.js"></script>
 <script src="js/chat/chat-search.js"></script>
+<script src="js/settings/settings-panel.js"></script>
 <script src="js/main.js"></script>
 <script src="js/ui-controls.js"></script>
 <script>

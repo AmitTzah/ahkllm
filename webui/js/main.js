@@ -154,6 +154,18 @@ function handleWebMessage(event) {
         if (typeof handleSearchResults === 'function') handleSearchResults(data);
         break;
 
+      case 'currentSettings':
+        if (window.SettingsPanel && typeof window.SettingsPanel.onSettingsReceived === 'function') {
+          window.SettingsPanel.onSettingsReceived(data);
+        }
+        break;
+
+      case 'settingsSaved':
+        if (window.SettingsPanel && typeof window.SettingsPanel.handleSettingsSaved === 'function') {
+          window.SettingsPanel.handleSettingsSaved(data);
+        }
+        break;
+
       default:
         // Try calling as a function name for backward compatibility
         if (typeof window[target] === 'function') {
@@ -191,8 +203,61 @@ document.addEventListener('DOMContentLoaded', function () {
   window._showDashboard = showDashboard;
   window._showChat = showChat;
 
+  // Settings show/hide
+  function showSettings() {
+    if (chatLayout) chatLayout.style.display = 'none';
+    if (dashPanel) dashPanel.style.display = 'none';
+    var settingsNav = document.getElementById('settingsNav');
+    var settingsCenter = document.getElementById('settingsCenter');
+    var railLeft = document.getElementById('railLeft');
+    if (settingsNav) settingsNav.style.display = '';
+    if (settingsCenter) settingsCenter.style.display = '';
+    if (railLeft) railLeft.style.display = 'none';
+    var si = document.getElementById('settings-icon');
+    if (si) si.classList.add('active');
+    var di = document.getElementById('dashboard-icon');
+    if (di) di.classList.remove('active');
+    var st = document.getElementById('sidebar-toggle');
+    if (st) st.classList.remove('active');
+    // Initialize panel if needed
+    if (window.SettingsPanel && typeof window.SettingsPanel.init === 'function') {
+      window.SettingsPanel.init();
+    }
+    // Request settings from AHK
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'requestAllSettings' }));
+  }
+
+  function hideSettings() {
+    var settingsNav = document.getElementById('settingsNav');
+    var settingsCenter = document.getElementById('settingsCenter');
+    var railLeft = document.getElementById('railLeft');
+    if (settingsNav) settingsNav.style.display = 'none';
+    if (settingsCenter) settingsCenter.style.display = 'none';
+    if (railLeft) railLeft.style.display = '';
+    var si = document.getElementById('settings-icon');
+    if (si) si.classList.remove('active');
+  }
+
+  window._showSettings = showSettings;
+  window._hideSettings = hideSettings;
+
+  // Wire Settings icon
+  var settingsIcon = document.getElementById('settings-icon');
+  if (settingsIcon) settingsIcon.addEventListener('click', function() {
+    if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
+      // Already in settings — no guard needed
+    }
+    showSettings();
+  });
+
   var dashIcon = document.getElementById('dashboard-icon');
-  if (dashIcon) dashIcon.addEventListener('click', showDashboard);
+  if (dashIcon) dashIcon.addEventListener('click', function() {
+    if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
+      if (!confirm('You have unsaved changes. Discard them?')) return;
+    }
+    hideSettings();
+    showDashboard();
+  });
   var sidebarToggle = document.getElementById('sidebar-toggle');
   if (sidebarToggle) sidebarToggle.addEventListener('click', function() {
     showChat();
