@@ -55,6 +55,7 @@ textarea.sysinput {
   background: var(--bg-main); transition: border-color 0.2s;
 }
 textarea.sysinput:focus { outline: none; border-color: var(--accent-primary); background: var(--bg-panel); }
+textarea.sysinput::placeholder { color: var(--text-tertiary); opacity: 1; }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin: 10px 0; }
 input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: var(--border-main); border-radius: 3px; }
