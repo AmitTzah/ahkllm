@@ -76,7 +76,7 @@ _resetToDefaultSettings() {
 ; Send current dropdown label to WebView (assistant name / model name / "Default Model").
 _sendDropdownLabel() {
     if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
-        asst := ChatDB.Assistant_Get(requestParams["activeAssistantId"])
+        asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
         if asst {
             postWebMessage("dropdownLabel", { text: asst.name, isAssistant: true })
             return
@@ -183,7 +183,7 @@ postCurrentSettingsToWebView() {
     assistantBaseModel := ""
     assistantDescription := ""
     if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
-        asst := ChatDB.Assistant_Get(requestParams["activeAssistantId"])
+        asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
         if asst {
             assistantName := asst.name
             assistantBaseModel := asst.baseModel ? asst.baseModel : ""
@@ -203,7 +203,9 @@ postCurrentSettingsToWebView() {
 }
 
 postAssistantsToWebView() {
-    assistants := ChatDB.Assistant_List()
+    global assistants
+    if !IsSet(assistants)
+        return
     postWebMessage("assistantList", assistants)
 
     ; Also send model list grouped by provider for the two-dropdown selector

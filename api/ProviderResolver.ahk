@@ -7,6 +7,8 @@
 
 class ProviderResolver {
     static _getApiKey(p) {
+        if p.HasOwnProp("authMode") && p.authMode = "direct" && p.HasOwnProp("apiKey") && p.apiKey != ""
+            return p.apiKey
         return EnvGet(p.authEnvVar)
     }
 

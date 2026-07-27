@@ -11,6 +11,17 @@ if FileExist(debugLogFile) {
 }
 
 debugLog("[APP] Started")
+
+; ----------------------------------------------------
+; Load settings from settings.json (fall back to UserConfig.ahk defaults)
+; ----------------------------------------------------
+settings := SettingsHandler.Load()
+defaults := SettingsHandler.GetDefaults()
+merged := SettingsHandler.Merge(settings, defaults)
+SettingsHandler.ApplyToGlobals(merged)
+RuntimeResolver_CheckApiKeys()
+RuntimeResolver_ResolvePrimaryProvider()
+debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from UserConfig defaults"))
 ; Global error handler for main script — surfaces to tooltip + debug log
 OnError((err, mode) => (
     debugLog("RUNTIME ERROR (main): " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
@@ -208,6 +219,16 @@ suspendBanner.GetPos(, , &suspendBannerWidth)
 ; ----------------------------------------------------
 
 CustomMessages.registerHandlers("mainScript", handleLoadingState)
+
+; Handle settings updated notification from ChatWindow
+OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
+    debugLog("[SETTINGS] Received settingsUpdated from ChatWindow, reloading..."),
+    settings := SettingsHandler.Load(),
+    defaults := SettingsHandler.GetDefaults(),
+    merged := SettingsHandler.Merge(settings, defaults),
+    SettingsHandler.ApplyToGlobals(merged),
+    debugLog("[SETTINGS] Reloaded settings globals")
+))
 
 ; ----------------------------------------------------
 ; Include application modules

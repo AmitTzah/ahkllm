@@ -7,20 +7,22 @@
 class AssistantRepo {
 
     ; Seed assistants from UserConfig on startup.
+    ; REMOVED: assistants are now read from the global 'assistants' array populated by SettingsHandler.
+    ; Kept as no-op for backward compatibility.
     static Seed() {
-        ChatDB.db.Exec("DELETE FROM assistants;")
+        ; No-op — assistants come from settings.json now
+    }
+
+    ; Get an assistant by ID from the global assistants array (populated by SettingsHandler)
+    static GetFromSettings(assistantId) {
+        global assistants
+        if !IsSet(assistants)
+            return ""
         for a in assistants {
-            id := ChatDB._UUID()
-            safeName := SQLite.Escape(a.name)
-            safeModel := SQLite.Escape(a.baseModel)
-            prompt := AssistantRepo._resolveSystemMessage(a)
-            safePrompt := SQLite.Escape(prompt)
-            safeReasoning := SQLite.Escape(a.reasoning)
-            temp := a.temperature = "" ? "NULL" : a.temperature
-            isDef := a.isDefault ? 1 : 0
-            safeDesc := SQLite.Escape(a.HasProp("description") ? a.description : "")
-            ChatDB.db.Exec("INSERT INTO assistants (id, name, base_model, system_prompt, description, reasoning, temperature, is_default) VALUES('" id "', '" safeName "', '" safeModel "', '" safePrompt "', '" safeDesc "', '" safeReasoning "', " temp ", " isDef ");")
+            if a.HasOwnProp("id") && a.id = assistantId
+                return a
         }
+        return ""
     }
 
     ; List all assistant profiles.
