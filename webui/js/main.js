@@ -205,35 +205,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Settings show/hide
   function showSettings() {
-    if (chatLayout) chatLayout.style.display = 'none';
-    if (dashPanel) dashPanel.style.display = 'none';
-    var settingsNav = document.getElementById('settingsNav');
-    var settingsCenter = document.getElementById('settingsCenter');
-    var railLeft = document.getElementById('railLeft');
-    if (settingsNav) settingsNav.style.display = '';
-    if (settingsCenter) settingsCenter.style.display = '';
-    if (railLeft) railLeft.style.display = 'none';
+    var app = document.getElementById('app');
+    var wrapper = document.getElementById('settingsWrapper');
+    if (app) app.style.display = 'none';
+    if (wrapper) wrapper.style.display = 'flex';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.add('active');
     var di = document.getElementById('dashboard-icon');
     if (di) di.classList.remove('active');
     var st = document.getElementById('sidebar-toggle');
     if (st) st.classList.remove('active');
-    // Initialize panel if needed
     if (window.SettingsPanel && typeof window.SettingsPanel.init === 'function') {
       window.SettingsPanel.init();
     }
-    // Request settings from AHK
     window.chrome.webview.postMessage(JSON.stringify({ action: 'requestAllSettings' }));
   }
 
   function hideSettings() {
-    var settingsNav = document.getElementById('settingsNav');
-    var settingsCenter = document.getElementById('settingsCenter');
-    var railLeft = document.getElementById('railLeft');
-    if (settingsNav) settingsNav.style.display = 'none';
-    if (settingsCenter) settingsCenter.style.display = 'none';
-    if (railLeft) railLeft.style.display = '';
+    var app = document.getElementById('app');
+    var wrapper = document.getElementById('settingsWrapper');
+    if (app) app.style.display = '';
+    if (wrapper) wrapper.style.display = 'none';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.remove('active');
   }
