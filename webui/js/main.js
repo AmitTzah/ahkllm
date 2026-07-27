@@ -205,9 +205,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Settings show/hide
   function showSettings() {
-    var app = document.getElementById('app');
+    if (chatLayout) chatLayout.style.display = 'none';
+    if (dashPanel) dashPanel.style.display = 'none';
+    var railLeft = document.getElementById('railLeft');
+    if (railLeft) railLeft.style.display = 'none';
     var wrapper = document.getElementById('settingsWrapper');
-    if (app) app.style.display = 'none';
     if (wrapper) wrapper.style.display = 'flex';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.add('active');
@@ -222,10 +224,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function hideSettings() {
-    var app = document.getElementById('app');
     var wrapper = document.getElementById('settingsWrapper');
-    if (app) app.style.display = '';
     if (wrapper) wrapper.style.display = 'none';
+    var railLeft = document.getElementById('railLeft');
+    if (railLeft) railLeft.style.display = '';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.remove('active');
   }
