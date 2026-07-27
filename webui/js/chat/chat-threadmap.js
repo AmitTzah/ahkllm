@@ -34,9 +34,9 @@ function scrollToMessage(index) {
   if (!container) return;
   var bubbles = container.querySelectorAll('.msg');
   if (bubbles[index]) {
-    bubbles[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    bubbles[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
     bubbles[index].classList.remove('flash');
-    void bubbles[index].offsetWidth;
+    void bubbles[index].offsetWidth; // Force reflow to re-trigger CSS animation
     bubbles[index].classList.add('flash');
   }
 }
@@ -45,7 +45,10 @@ function scrollToMessage(index) {
 // Used by tree modal, search dropdown, and thread map fallback.
 function scrollToMessageById(messageId) {
   for (var i = 0; i < chatMessages.length; i++) {
-    if (chatMessages[i].id === messageId) { scrollToMessage(i); return true; }
+    if (chatMessages[i].id === messageId) {
+      scrollToMessage(i);
+      return true;
+    }
   }
   return false;
 }
