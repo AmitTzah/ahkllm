@@ -59,6 +59,14 @@ OnWebMessageReceived(sender, args) {
                 CustomMessages.notifyShowApiLogs(requestParams["mainScriptHiddenhWnd"])
             case "webViewReady":
                 _OnWebViewReady()
+            case "requestAllSettings":
+                _HandleRequestAllSettings()
+            case "saveSettings":
+                _HandleSaveSettings(parsed)
+            case "refreshModelPricing":
+                _HandleRefreshModelPricing()
+            case "reloadScript":
+                Reload
             case "debugLog":
                 debugLog(parsed.Get("message", ""), "WebUI")
         }
@@ -73,6 +81,96 @@ _OnWebViewReady() {
     global activeThreadId
     if activeThreadId
         _LoadThreadAndRefreshUI(activeThreadId)
+}
+
+; Send full settings (merged with defaults) to WebView
+_HandleRequestAllSettings() {
+    defaults := SettingsHandler.GetDefaults()
+    loaded := SettingsHandler.Load()
+    merged := SettingsHandler.Merge(loaded, defaults)
+    postWebMessage("currentSettings", merged)
+}
+
+; Save settings from WebView, write to JSON, notify Main process
+_HandleSaveSettings(parsed) {
+    settingsData := parsed.Get("data", "")
+    if !settingsData {
+        postWebMessage("settingsSaved", { success: false, error: "No data received" })
+        return
+    }
+    ; Convert jsongo object to AHK Map
+    settingsMap := SettingsHandler._ToMap(settingsData)
+    ; Merge with existing defaults for any missing keys
+    defaults := SettingsHandler.GetDefaults()
+    merged := SettingsHandler.Merge(settingsMap, defaults)
+    if SettingsHandler.Save(merged) {
+        ; Apply to this process's globals
+        SettingsHandler.ApplyToGlobals(merged)
+        ; Notify Main process to reload
+        try {
+            CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
+        } catch Error as e {
+            debugLog("[SETTINGS] Failed to notify Main process: " e.Message)
+        }
+        postWebMessage("settingsSaved", { success: true })
+    } else {
+        postWebMessage("settingsSaved", { success: false, error: "Failed to write settings.json" })
+    }
+}
+
+; Run PowerShell pricing refresh and return results
+_HandleRefreshModelPricing() {
+    scriptPath := A_ScriptDir "\Refresh-ModelPricing.ps1"
+    if !FileExist(scriptPath) {
+        postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-ModelPricing.ps1 not found" })
+        return
+    }
+    try {
+        cmd := "powershell -ExecutionPolicy Bypass -File `"" scriptPath "`""
+        RunWait(cmd, A_ScriptDir, "Hide")
+        ; Read the output file
+        pricingFile := A_ScriptDir "\models_pricing.txt"
+        if !FileExist(pricingFile) {
+            postWebMessage("modelPricingRefresh", { success: false, error: "models_pricing.txt not generated" })
+            return
+        }
+        content := FileRead(pricingFile, "UTF-8")
+        ; Parse models from the file — extract the models := Map(...) block
+        models := _ParsePricingFile(content)
+        postWebMessage("modelPricingRefresh", { success: true, models: models })
+    } catch Error as e {
+        postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
+    }
+}
+
+; Parse models_pricing.txt to extract model entries for the refresh popup
+_ParsePricingFile(content) {
+    ; Find the models := Map( ... ) block
+    result := []
+    ; Simple line-by-line parser for "provider/model", { ... } entries
+    inBlock := false
+    currentModel := ""
+    for line in StrSplit(content, "`n", "`r") {
+        line := Trim(line)
+        if line = "" || InStr(line, ";") = 1
+            continue
+        if InStr(line, "models := Map(")
+            inBlock := true
+        else if inBlock && line = ")"
+            break
+        else if inBlock {
+            ; Look for "provider/model", { ... } pattern
+            if InStr(line, ", {") || InStr(line, "`, {") {
+                ; Model name is before the comma
+                modelPart := StrSplit(line, [",", "`,"])
+                modelName := Trim(Trim(modelPart[1]), "`" ")
+                if modelName != "" {
+                    result.Push({ id: modelName, raw: line })
+                }
+            }
+        }
+    }
+    return result
 }
 
 #Include Message.ahk
