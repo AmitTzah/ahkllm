@@ -330,7 +330,31 @@
         <div class="field"><label class="field-label">Trash Retention (days) <span class="hint">0 = never purge</span></label><input type="number" id="trashRetentionDays" value="30"></div>
       </div>
     </div></div>
-    <div class="section-card" id="sec-ui" style="display:none;"><div class="section-card-header">UI & Theme — Appearance</div><div class="section-card-body"></div></div>
+    <div class="section-card" id="sec-ui" style="display:none;"><div class="section-card-header">UI & Theme — Appearance</div><div class="section-card-body">
+      <div class="toggle-row" style="padding-top:0;margin-bottom:20px;">
+        <div><div class="lbl">Dark Mode</div><div style="font-size:11px;color:var(--text-tertiary);">Not yet implemented — will take effect in a future release</div></div>
+        <div class="switch" id="darkModeToggle"><div class="knob"></div></div>
+      </div>
+      <div class="field"><label class="field-label">Default Chat Model</label><select id="chatDefaultModel"><option>deepseek/deepseek-v4-flash</option><option>deepseek/deepseek-v4-pro</option><option>openai/gpt-4o</option></select></div>
+      <div class="field"><label class="field-label">Response Font <span class="hint">for markdown output</span></label><select id="responseFont"><option>Arial</option><option>Inter</option><option>Segoe UI</option><option>Georgia</option><option>JetBrains Mono</option></select></div>
+      <div style="border-left:3px solid var(--accent-primary);padding:4px 0 4px 12px;margin:24px 0 16px;"><div style="font-weight:600;font-size:13px;">Command Input Window</div><div style="font-size:11px;color:var(--text-tertiary);">Appearance of the popup shown for command user input</div></div>
+      <div class="grid-2">
+        <div class="field"><label class="field-label">Font Face</label><select id="iwFontFace"><option>Arial</option><option>Inter</option><option>Segoe UI</option><option>Consolas</option><option>JetBrains Mono</option></select></div>
+        <div class="field"><label class="field-label">Font Size</label><select id="iwFontSize"><option>s10</option><option>s12</option><option selected>s14</option><option>s16</option><option>s18</option></select></div>
+        <div class="field"><label class="field-label">Font Color</label><select id="iwFontColor"><option selected>cWhite</option><option>cBlack</option><option>cSilver</option><option>cGray</option></select></div>
+        <div class="field"><label class="field-label">Window Background</label><div style="display:flex;gap:8px;"><input type="color" id="iwBackground" value="#212529" style="width:36px;height:36px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;padding:2px;"><input type="text" id="iwBackgroundHex" value="0x212529" readonly style="flex:1;font-family:var(--font-mono);font-size:12px;"></div></div>
+        <div class="field"><label class="field-label">Width (px)</label><input type="number" id="iwWidth" value="500"></div>
+        <div class="field"><label class="field-label">Height (px)</label><input type="number" id="iwHeight" value="250"></div>
+      </div>
+      <div style="border-left:3px solid var(--warning);padding:4px 0 4px 12px;margin:24px 0 16px;"><div style="font-weight:600;font-size:13px;">Suspend Banner</div><div style="font-size:11px;color:var(--text-tertiary);">Floating banner shown when script is suspended</div></div>
+      <div class="grid-2">
+        <div class="field"><label class="field-label">Text</label><input type="text" id="sbText" value="LLM AutoHotkey Assistant Suspended"></div>
+        <div class="field"><label class="field-label">Font Face</label><select id="sbFontFace"><option selected>Arial</option><option>Inter</option><option>Segoe UI</option><option>Consolas</option><option>JetBrains Mono</option></select></div>
+        <div class="field"><label class="field-label">Font Size</label><select id="sbFontSize"><option selected>s10</option><option>s12</option><option>s14</option><option>s16</option></select></div>
+        <div class="field"><label class="field-label">Text Color</label><select id="sbFontColor"><option selected>cBlack</option><option>cWhite</option><option>cSilver</option><option>cGray</option><option>cRed</option></select></div>
+        <div class="field"><label class="field-label">Banner Background</label><div style="display:flex;gap:8px;"><input type="color" id="sbBackground" value="#FFDF00" style="width:36px;height:36px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;padding:2px;"><input type="text" id="sbBackgroundHex" value="0xFFDF00" readonly style="flex:1;font-family:var(--font-mono);font-size:12px;"></div></div>
+      </div>
+    </div></div>
     <div class="section-card" id="sec-icons" style="display:none;"><div class="section-card-header">Icons — Tray Icons</div><div class="section-card-body">
       <div class="grid-2">
         <div class="field"><label class="field-label">Active Icon (iconOn)</label><input type="text" id="iconOnPath" value="icons\IconOn.ico"></div>
@@ -429,6 +453,7 @@
 <script src="js/settings/settings-panel.js"></script>
 <script src="js/settings/sections/general.js"></script>
 <script src="js/settings/sections/icons.js"></script>
+<script src="js/settings/sections/ui-theme.js"></script>
 <script src="js/main.js"></script>
 <script src="js/ui-controls.js"></script>
 <script>
