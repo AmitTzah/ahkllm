@@ -265,13 +265,31 @@ document.addEventListener('DOMContentLoaded', function () {
     if (si) si.classList.remove('active');
   }
 
-  // Returns false when unsaved changes exist and the user chooses to stay
-  function confirmDiscardSettings() {
+  // Reusable confirmation modal helper
+  window._showConfirm = function(title, msg, btnText, onConfirm) {
+    document.getElementById('confirmModalTitle').textContent = title;
+    document.getElementById('confirmModalMsg').textContent = msg;
+    var btn = document.getElementById('confirmBtn');
+    btn.textContent = btnText;
+    var handler = function() {
+      document.getElementById('confirmModal').classList.remove('open');
+      btn.removeEventListener('click', handler);
+      if (onConfirm) onConfirm();
+    };
+    btn.addEventListener('click', handler);
+    document.getElementById('confirmModal').classList.add('open');
+  };
+
+  // Shows discard modal if dirty, or runs action directly
+  function confirmDiscardSettings(action) {
     if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
-      if (!confirm('You have unsaved changes. Discard them?')) return false;
-      window.SettingsPanel.clearDirty();
+      window._showConfirm('Unsaved Changes', 'You have unsaved changes in Settings. Discard them?', 'Discard', function() {
+        window.SettingsPanel.clearDirty();
+        action();
+      });
+    } else {
+      action();
     }
-    return true;
   }
 
   window._showSettings = showSettings;
@@ -288,22 +306,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var dashIcon = document.getElementById('dashboard-icon');
   if (dashIcon) dashIcon.addEventListener('click', function() {
-    if (!confirmDiscardSettings()) return;
-    hideSettings();
-    showDashboard();
+    confirmDiscardSettings(function() {
+      hideSettings();
+      showDashboard();
+    });
   });
   var sidebarToggle = document.getElementById('sidebar-toggle');
   if (sidebarToggle) sidebarToggle.addEventListener('click', function() {
-    if (!confirmDiscardSettings()) return;
-    hideSettings();
-    showChat();
-    var railLeft = document.getElementById('railLeft');
-    if (railLeft && (railLeft.style.width === '0px' || railLeft.style.width === '' || railLeft.classList.contains('mini'))) {
+    confirmDiscardSettings(function() {
+      hideSettings();
+      showChat();
+      var railLeft = document.getElementById('railLeft');
+      if (railLeft && (railLeft.style.width === '0px' || railLeft.style.width === '' || railLeft.classList.contains('mini'))) {
       railLeft.style.width = '340px';
       railLeft.classList.remove('mini');
     }
     toggleSidebar();
   });
+});
 
   showTokenUsageBar();
 

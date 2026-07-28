@@ -40,15 +40,6 @@ window.SettingsPanel = (function() {
       });
     }
 
-    // Wire confirmation modal Reset button
-    var resetConfirmBtn = document.getElementById('resetConfirmBtn');
-    if (resetConfirmBtn) {
-      resetConfirmBtn.addEventListener('click', function() {
-        document.getElementById('resetConfirmModal').classList.remove('open');
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'requestDefaultSettings' }));
-      });
-    }
-
     // Show general by default
     showSection('general');
   }
@@ -108,7 +99,9 @@ window.SettingsPanel = (function() {
   }
 
   function resetToDefaults() {
-    document.getElementById('resetConfirmModal').classList.add('open');
+    window._showConfirm('Reset to Defaults', 'Reset all settings to their default values? This cannot be undone.', 'Reset', function() {
+      window.chrome.webview.postMessage(JSON.stringify({ action: 'requestDefaultSettings' }));
+    });
   }
 
   function reloadWithDefaults(defaults) {

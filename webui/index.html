@@ -454,16 +454,16 @@
   <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('refreshModal').classList.remove('open')">Done</button></div></div>
 </div>
 
-<!-- Reset to Defaults Confirmation Modal -->
-<div class="modal-overlay" id="resetConfirmModal">
+<!-- Reusable Confirmation Modal -->
+<div class="modal-overlay" id="confirmModal">
   <div class="modal-box" style="width:400px;">
-    <div class="modal-head"><div class="modal-title">Reset to Defaults</div><button class="icon-btn" onclick="document.getElementById('resetConfirmModal').classList.remove('open')">✕</button></div>
+    <div class="modal-head"><div class="modal-title" id="confirmModalTitle">Confirm</div><button class="icon-btn" onclick="document.getElementById('confirmModal').classList.remove('open')">✕</button></div>
     <div class="modal-body" style="flex-direction:column;gap:12px;padding:20px 24px;">
-      <div style="font-size:14px;color:var(--text-secondary);">Reset all settings to their default values? This cannot be undone.</div>
+      <div style="font-size:14px;color:var(--text-secondary);" id="confirmModalMsg">Are you sure?</div>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" onclick="document.getElementById('resetConfirmModal').classList.remove('open')">Cancel</button>
-      <button class="btn-primary" id="resetConfirmBtn" style="font-size:13px;">Reset</button>
+      <button class="btn-ghost" onclick="document.getElementById('confirmModal').classList.remove('open')">Cancel</button>
+      <button class="btn-primary" id="confirmBtn" style="font-size:13px;">Confirm</button>
     </div>
   </div>
 </div>

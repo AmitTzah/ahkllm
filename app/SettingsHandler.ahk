@@ -635,6 +635,7 @@ class SettingsHandler {
         al := settings["apiLogs"]
         if al.Has("maxEntries")
             apiLogMaxEntries := al["maxEntries"]
+            ApiLogger.TrimToLimit()
     }
 
     static _ApplyTrash(settings) {

@@ -46,6 +46,18 @@ class ApiLogger {
     }
 
     ; Clears the log file entirely
+    ; Trim existing log entries to the current max limit (called when settings change)
+    static TrimToLimit() {
+        if (apiLogMaxEntries <= 0)
+            return
+        logs := this._readLogFile()
+        if logs.Length <= apiLogMaxEntries
+            return
+        while logs.Length > apiLogMaxEntries
+            logs.RemoveAt(logs.Length)
+        FileOpen(this.logFilePath, "w", "UTF-8-RAW").Write(jsongo.Stringify(logs))
+    }
+
     static ClearLogs() {
         if FileExist(this.logFilePath) {
             FileDelete(this.logFilePath)
