@@ -114,71 +114,61 @@ function updateChatMessages(newMessages) {
 
 
 // Build message HTML by copying the mock's structure EXACTLY, substituting only dynamic values
+function _prepUserContent(content) {
+  return (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n{3,}/g, '\n\n<br>\n\n');
+}
+
+function _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml) {
+  return '        <div class="msg ' + roleClass + '"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
+    '          <div class="msg-body">\n' +
+    '            <div class="msg-head">\n' +
+    '              <span class="msg-author">' + escHtml(authorName) + '</span>\n' +
+    '              <span class="msg-meta">' + metaText + '</span>\n' +
+    '            </div>\n' +
+    middleHtml +
+    '            <div class="msg-content">' + contentHtml + '</div>\n' +
+    (editUiHtml ? '\n' + editUiHtml + '\n' : '') +
+    '            <div class="msg-actions"></div>\n' +
+    '          </div>\n' +
+    '        </div>';
+}
+
 function createMessageBubble(msg, index) {
-  var roleClass = msg.role === 'user' ? 'you' : (msg.role === 'assistant' ? 'bot' : 'system');
-  var authorName = msg.role === 'user' ? 'You' : (msg.role === 'system' ? 'System Prompt' : (msg.model || 'Assistant'));
   var msgId = msg.id || '';
   var metaText = _buildMetaText(msg);
-  var reasoningHtml = _buildReasoningHtml(msg);
-  var attachmentHtml = _buildAttachmentHtml(msg);
-  var editUiHtml = _buildEditUiHtml(msg);
+  var role = msg.role;
 
-  var html = '';
-  if (msg.role === 'user') {
-    var content = (msg.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    content = content.replace(/\n{3,}/g, '\n\n<br>\n\n');
-    var contentHtml = md.render(content);
-    html = '        <div class="msg you"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
-      '          <div class="msg-body">\n' +
-      '            <div class="msg-head">\n' +
-      '              <span class="msg-author">' + escHtml(authorName) + '</span>\n' +
-      '              <span class="msg-meta">' + metaText + '</span>\n' +
-      '            </div>\n' +
-      attachmentHtml +
-      '            <div class="msg-content">' + contentHtml + '</div>\n' +
-      '\n' + editUiHtml + '\n' +
-      '            <div class="msg-actions"></div>\n' +
-      '          </div>\n' +
-      '        </div>';
-  } else if (msg.role === 'assistant') {
-    var contentHtml = md.render(msg.content || '');
-    html = '        <div class="msg bot"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
-      '          <div class="msg-body">\n' +
-      '            <div class="msg-head">\n' +
-      '              <span class="msg-author">' + escHtml(authorName) + '</span>\n' +
-      '              <span class="msg-meta">' + metaText + '</span>\n' +
-      '            </div>\n' +
-      reasoningHtml + '\n' +
-      '            <div class="msg-content">' + contentHtml + '</div>\n' +
-      '\n' + editUiHtml + '\n' +
-      '            <div class="msg-actions"></div>\n' +
-      '          </div>\n' +
-      '        </div>';
+  var roleClass, authorName, contentHtml, middleHtml, editUiHtml;
+  if (role === 'user') {
+    roleClass = 'you';
+    authorName = 'You';
+    contentHtml = md.render(_prepUserContent(msg.content));
+    middleHtml = _buildAttachmentHtml(msg);
+    editUiHtml = _buildEditUiHtml(msg);
+  } else if (role === 'assistant') {
+    roleClass = 'bot';
+    authorName = msg.model || 'Assistant';
+    contentHtml = md.render(msg.content || '');
+    middleHtml = _buildReasoningHtml(msg);
+    editUiHtml = _buildEditUiHtml(msg);
   } else {
-    var contentHtml = md.render(msg.content || '');
-    html = '        <div class="msg system"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
-      '          <div class="msg-body">\n' +
-      '            <div class="msg-head">\n' +
-      '              <span class="msg-author">' + escHtml(authorName) + '</span>\n' +
-      '              <span class="msg-meta">' + metaText + '</span>\n' +
-      '            </div>\n' +
-      '            <div class="msg-content">' + contentHtml + '</div>\n' +
-      '          </div>\n' +
-      '        </div>';
+    roleClass = 'system';
+    authorName = 'System Prompt';
+    contentHtml = md.render(msg.content || '');
+    middleHtml = '';
+    editUiHtml = '';
   }
 
   var template = document.createElement('div');
-  template.innerHTML = html;
+  template.innerHTML = _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml);
   var bubble = template.firstElementChild;
 
-  if (msg.role !== 'system') {
+  if (role !== 'system') {
     var actionsDiv = bubble.querySelector('.msg-actions');
     if (actionsDiv) addMessageActions(actionsDiv, msg, index);
   }
 
-  // Render Lucide icons in the new bubble (attachment icons, action buttons)
   if (typeof lucide !== 'undefined') lucide.createIcons();
-
   return bubble;
 }
 
