@@ -22,7 +22,7 @@ class LLMRequestBuilderTest {
 
     CreateJSONRequest_Simple() {
         client := this._setup()
-        result := client.createJSONRequest("deepseek-v4-flash", "You are helpful", "Hello", "", "", "", false, "")
+        result := LLMRequestBuilder.createJSONRequest("deepseek-v4-flash", "You are helpful", "Hello", "", "", "", false, "")
         parsed := jsongo.Parse(result)
         if parsed["model"] != "deepseek-v4-flash"
             throw Error("Expected model 'deepseek-v4-flash', got '" parsed["model"] "'")
@@ -37,7 +37,7 @@ class LLMRequestBuilderTest {
 
     CreateJSONRequest_NoSystem() {
         client := this._setup()
-        result := client.createJSONRequest("test-model", "", "just user", "", "", "", false, "")
+        result := LLMRequestBuilder.createJSONRequest("test-model", "", "just user", "", "", "", false, "")
         parsed := jsongo.Parse(result)
         if parsed["messages"].Length != 1
             throw Error("Expected 1 message without system prompt, got " parsed["messages"].Length)
@@ -47,7 +47,7 @@ class LLMRequestBuilderTest {
 
     CreateJSONRequest_WithStream() {
         client := this._setup()
-        result := client.createJSONRequest("test", "s", "u", "", "", "", true, "")
+        result := LLMRequestBuilder.createJSONRequest("test", "s", "u", "", "", "", true, "")
         parsed := jsongo.Parse(result)
         ; jsongo serializes true as 1 — we check for "stream" key existence
         if !parsed.Has("stream")
@@ -56,7 +56,7 @@ class LLMRequestBuilderTest {
 
     CreateJSONRequest_WithTemperature() {
         client := this._setup()
-        result := client.createJSONRequest("test", "s", "u", "0.7", "", "", false, "")
+        result := LLMRequestBuilder.createJSONRequest("test", "s", "u", "0.7", "", "", false, "")
         parsed := jsongo.Parse(result)
         if parsed["temperature"] != 0.7
             throw Error("Expected temperature 0.7, got " parsed["temperature"])
@@ -64,7 +64,7 @@ class LLMRequestBuilderTest {
 
     CreateJSONRequest_WithMaxTokens() {
         client := this._setup()
-        result := client.createJSONRequest("test", "s", "u", "", "500", "", false, "")
+        result := LLMRequestBuilder.createJSONRequest("test", "s", "u", "", "500", "", false, "")
         parsed := jsongo.Parse(result)
         if parsed["max_tokens"] != 500
             throw Error("Expected max_tokens 500, got " parsed["max_tokens"])
@@ -376,7 +376,7 @@ class LLMRequestBuilderTest {
 
     CreateJSONRequest_WithStream_ValueIsTrue() {
         client := this._setup()
-        result := client.createJSONRequest("test", "s", "u", "", "", "", true, "")
+        result := LLMRequestBuilder.createJSONRequest("test", "s", "u", "", "", "", true, "")
         parsed := jsongo.Parse(result)
         if !parsed.Has("stream") || parsed["stream"] != true
             throw Error("Expected stream:true, got: " parsed["stream"])
@@ -417,8 +417,8 @@ class LLMRequestBuilderTest {
     ThinkingOverride_Disabled_OpenAI() {
         requestObj := {}
         LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "disabled")
-        if requestObj.reasoning_effort != "none"
-            throw Error("OpenAI 'disabled' should set reasoning_effort:'none'")
+        if requestObj.HasOwnProp("reasoning_effort")
+            throw Error("OpenAI 'disabled' should NOT set reasoning_effort (standard models don't support it)")
     }
 
     ThinkingOverride_Enabled_WithLevel() {

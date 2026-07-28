@@ -23,7 +23,7 @@ class LLMRequestBuilder {
     ; Builds the standard chat completions JSON request.
     ; Supports: provider/model ID, system prompt, user prompt, images, thinking.
     ; images: optional array of { data (base64), mimeType } objects
-    createJSONRequest(APIModel, systemMessage, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, reasoningEffort := "", reasoningLevel := "", images*) {
+    static createJSONRequest(APIModel, systemMessage, userPrompt, temperature := "", maxTokens := "", stop := "", stream := false, reasoningEffort := "", reasoningLevel := "", images*) {
         providerInfo := ProviderResolver.Resolve(APIModel)
         modelName := providerInfo.modelName
         providerKey := providerInfo.providerKey
@@ -112,9 +112,8 @@ class LLMRequestBuilder {
         if reasoningVal = "disabled" {
             if providerKey = "deepseek" {
                 requestObj.thinking := { type: "disabled" }
-            } else {
-                requestObj.reasoning_effort := "none"
             }
+            ; Non-DeepSeek: omit field — standard models don't support reasoning_effort
             return
         }
 

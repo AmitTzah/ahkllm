@@ -50,7 +50,7 @@ class InlineRequestRunner {
             chatHistoryJSONRequest := llmClient.createFIMRequest(fullAPIModelName, captured.prefix, captured.suffix,
                 temperature, maxTokens, stop)
         } else {
-            chatHistoryJSONRequest := llmClient.createJSONRequest(fullAPIModelName, systemMessage, captured.userMessage,
+            chatHistoryJSONRequest := LLMRequestBuilder.createJSONRequest(fullAPIModelName, systemMessage, captured.userMessage,
                 temperature, maxTokens, stop, stream, thinking, thinkingLevel)
         }
 

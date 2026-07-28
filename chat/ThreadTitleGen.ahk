@@ -3,6 +3,8 @@
 ;
 ; Generates a short thread title from the first
 ; user+assistant exchange using a cheap LLM call.
+; Delegates request building to LLMRequestBuilder
+; and cURL execution to CurlBuilder.
 ; ----------------------------------------------------
 
 generateThreadTitle(threadId) {
@@ -14,19 +16,29 @@ generateThreadTitle(threadId) {
         return
 
     titleGenStart := A_TickCount
-    titleModel := ModelParser.StripProvider(titleGenModel)
+    providerInfo := ProviderResolver.Resolve(titleGenModel)
 
-    payload := _TitleGen_BuildPayload(titleModel, prompt)
-    raw := _TitleGen_ExecuteRequest(payload)
+    payload := LLMRequestBuilder.createJSONRequest(
+        titleGenModel,
+        titleGenSystemPrompt,
+        prompt,
+        "",                    ; temperature
+        titleGenMaxTokens,     ; maxTokens
+        "",                    ; stop
+        false,                 ; stream
+        "disabled"             ; reasoningEffort — explicitly disable thinking
+    )
+
+    raw := _TitleGen_ExecuteRequest(payload, providerInfo)
     result := _TitleGen_ParseResponse(raw)
     title := result.title
     promptTokens := result.promptTokens
     completionTokens := result.completionTokens
     thinkingTokens := result.thinkingTokens
 
-    debugLog("[API] Title gen — prompt=" promptTokens " completion=" completionTokens " model=" titleModel)
+    debugLog("[API] Title gen — prompt=" promptTokens " completion=" completionTokens " model=" titleGenModel)
 
-    _TitleGen_TrackUsage(titleModel, promptTokens, completionTokens, thinkingTokens, titleGenStart)
+    _TitleGen_TrackUsage(titleGenModel, providerInfo.providerKey, promptTokens, completionTokens, thinkingTokens, titleGenStart)
 
     if title {
         ChatDB.Thread_Update(threadId, title)
@@ -34,7 +46,7 @@ generateThreadTitle(threadId) {
         postWebMessage("updateTopbarTitle", { text: title, folder: "Unfiled" })
     }
 
-    _TitleGen_LogRequest(titleModel, payload, raw, title, titleGenStart)
+    _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, providerInfo.endpoint, payload, raw, title, titleGenStart)
 }
 
 ; Build the prompt from the first user+assistant exchange.
@@ -54,23 +66,13 @@ _TitleGen_BuildPrompt(threadId) {
     return "User: " SubStr(firstUser, 1, 200) "`nAssistant: " SubStr(firstAsst, 1, 200)
 }
 
-; Build the JSON payload for the title generation request.
-_TitleGen_BuildPayload(titleModel, prompt) {
-    requestObj := { model: titleModel, messages: [
-        { role: "system", content: titleGenSystemPrompt },
-        { role: "user", content: prompt }
-    ], max_tokens: titleGenMaxTokens, thinking: { type: "disabled" } }
-    payload := jsongo.Stringify(requestObj)
-    return StrReplace(payload, '"stream":1', '"stream":true')
-}
-
-; Execute the title generation cURL request, return raw response text.
-_TitleGen_ExecuteRequest(payload) {
+; Execute the title generation cURL request using CurlBuilder.
+_TitleGen_ExecuteRequest(payload, providerInfo) {
     tmpFile := A_Temp "\ChatWindow_TitleGen_" A_TickCount ".json"
     outFile := A_Temp "\ChatWindow_TitleGen_Out_" A_TickCount ".json"
     FileOpen(tmpFile, "w", "UTF-8-RAW").Write(payload)
 
-    cURLCommand := Format('cURL.exe -s --max-time 15 --connect-timeout 10 -X POST ' APIEndpoint ' -H "Authorization: Bearer ' llmClient.APIKey '" -H "Content-Type: application/json" -d @"' tmpFile '" -o "' outFile '"')
+    cURLCommand := CurlBuilder.Build(providerInfo, tmpFile, outFile)
     Run(cURLCommand, , "Hide", &cURLPID)
     while ProcessExist(cURLPID)
         Sleep 200
@@ -124,7 +126,7 @@ _TitleGen_CleanTitle(rawTitle) {
 }
 
 ; Track title generation usage in the dashboard.
-_TitleGen_TrackUsage(titleModel, promptTokens, completionTokens, thinkingTokens, titleGenStart) {
+_TitleGen_TrackUsage(titleModel, providerKey, promptTokens, completionTokens, thinkingTokens, titleGenStart) {
     if promptTokens <= 0
         return
     usage := { promptTokens: promptTokens, completionTokens: completionTokens, cachedTokens: 0 }
@@ -132,7 +134,7 @@ _TitleGen_TrackUsage(titleModel, promptTokens, completionTokens, thinkingTokens,
     ChatDB.CommandUsage_Upsert({
         date: FormatTime(, "yyyy-MM-dd"),
         model: titleModel,
-        provider: "deepseek",
+        provider: providerKey,
         command_name: "Title Generation",
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
@@ -147,12 +149,12 @@ _TitleGen_TrackUsage(titleModel, promptTokens, completionTokens, thinkingTokens,
 }
 
 ; Log the title generation API request.
-_TitleGen_LogRequest(titleModel, payload, raw, title, titleGenStart) {
+_TitleGen_LogRequest(titleModel, providerKey, endpoint, payload, raw, title, titleGenStart) {
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: "Thread Title Generation",
-        provider: "deepseek", model: titleGenModel, isFIM: false,
-        endpoint: APIEndpoint, pasteMode: "none",
+        provider: providerKey, model: titleModel, isFIM: false,
+        endpoint: endpoint, pasteMode: "none",
         request: payload, response: raw,
         status: title ? "success" : "failed",
         responseTimeMs: A_TickCount - titleGenStart
