@@ -7,8 +7,9 @@ buildCommandMenu() {
     tagsMap := Map()
     tagOrder := []    ; tracks first-seen order for tags not in submenuOrder
 
-    ; Always show "&1 - Open Chat" as the first item
-    commandMenu.Add("&1 - Open Chat", (*) => OpenChatCommandHandler())
+    ; Show "Open Chat" shortcut if configured
+    if IsSet(chatShortcut) && chatShortcut != ""
+        commandMenu.Add("&" chatShortcut " - Open Chat", (*) => OpenChatCommandHandler())
 
     ; First pass: collect all commands by tag, build tagsMap
     for index, command in commands {

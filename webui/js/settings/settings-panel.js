@@ -80,6 +80,20 @@ window.SettingsPanel = (function() {
 
   function saveSettings() {
     if (!_currentSettings) return;
+    // Run section validators first; abort if any fail
+    for (var key in _sectionModules) {
+      var mod = _sectionModules[key];
+      if (mod && typeof mod.validate === 'function') {
+        var result = mod.validate();
+        if (result && !result.valid) {
+          if (result.selectIdx !== undefined && typeof mod.selectCommand === 'function') {
+            mod.selectCommand(result.selectIdx);
+          }
+          window._showConfirm('Validation Error', result.message || 'Please fix the errors before saving.', 'OK');
+          return;
+        }
+      }
+    }
     // Collect data from all registered section modules
     var data = {};
     for (var key in _sectionModules) {

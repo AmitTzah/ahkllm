@@ -112,6 +112,7 @@ class SettingsHandler {
         d["apiLogs"] := SettingsHandler._DefaultsApiLogs()
         d["trash"] := SettingsHandler._DefaultsTrash()
         d["menuItems"] := SettingsHandler._DefaultsMenuItems()
+        d["chatShortcut"] := IsSet(chatShortcut) ? chatShortcut : ""
         return d
     }
 
@@ -387,6 +388,9 @@ class SettingsHandler {
         SettingsHandler._ApplyApiLogs(settings)
         SettingsHandler._ApplyTrash(settings)
         SettingsHandler._ApplyMenuItems(settings)
+        global chatShortcut
+        if settings.Has("chatShortcut")
+            chatShortcut := settings["chatShortcut"]
     }
 
     ; --- Apply helpers (write from settings Map to globals) ---

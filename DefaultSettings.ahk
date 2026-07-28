@@ -553,6 +553,7 @@ titleGenMaxTokens := 50
 ; ============================================================================
 
 ; -- Chat Window (also used for command responses) --
+chatShortcut := "1"
 chatDefaultModel := "deepseek/deepseek-v4-flash"
 responseWindowFontFace := "Inter"
 

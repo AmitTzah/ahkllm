@@ -37,6 +37,11 @@
       var trashDays = document.getElementById('trashRetentionDays');
       if (trashDays && data.trash.retentionDays !== undefined) trashDays.value = data.trash.retentionDays;
     }
+    // Chat Shortcut
+    if (data && data.chatShortcut !== undefined) {
+      var cs = document.getElementById('chatShortcut');
+      if (cs) cs.value = data.chatShortcut || '';
+    }
   }
 
   function num(v, dflt) { var n = parseInt(v, 10); return isNaN(n) ? dflt : n; }
@@ -59,6 +64,8 @@
     data.trash = {
       retentionDays: num((document.getElementById('trashRetentionDays') || {}).value, 30)
     };
+    // Chat Shortcut
+    data.chatShortcut = (document.getElementById('chatShortcut') || {}).value || '';
     return data;
   }
 

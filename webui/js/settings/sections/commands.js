@@ -145,7 +145,7 @@
       '<div class="grid-2"><div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>' +
       '<div class="field"><label class="toggle-row" style="margin-top:8px;"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label></div></div>' +
       '</div></div>' +
-      '<div style="display:flex; gap:8px; margin-top:16px;"><button class="btn-primary" id="cmdSaveBtn" style="font-size:13px;">Save Command</button><button class="btn-ghost" id="cmdDeleteBtn" style="font-size:13px;">Delete Command</button></div>';
+      '<div style="display:flex; gap:8px; margin-top:16px;"><button class="btn-ghost" id="cmdDeleteBtn" style="font-size:13px;">Delete Command</button></div>';
   }
 
   function wireDetail() {
@@ -162,12 +162,6 @@
     var addTagBtn = document.getElementById('addCmdTagBtn');
     if (addTagBtn) addTagBtn.addEventListener('click', addTag);
     // Wire Save button
-    var saveBtn = document.getElementById('cmdSaveBtn');
-    if (saveBtn) saveBtn.addEventListener('click', function() {
-      syncDetail();
-      renderList(_selectedIdx);
-      if (window.SettingsPanel) window.SettingsPanel.saveSettings();
-    });
     // Wire Delete button
     var deleteBtn = document.getElementById('cmdDeleteBtn');
     if (deleteBtn) deleteBtn.addEventListener('click', function() {
@@ -189,6 +183,20 @@
     var labelVal = label ? label.value : '';
     var shortcutVal = shortcut ? shortcut.value : '';
     preview.textContent = shortcutVal ? '&' + shortcutVal + ' - ' + labelVal : labelVal;
+  }
+
+  function _validateShortcut() {
+    var chatShortcut = (document.getElementById('chatShortcut') || {}).value || '';
+    if (!chatShortcut) return true;
+    var menuSc = (document.getElementById('cmdMenuShortcut') || {}).value || '';
+    var directSc = (document.getElementById('cmdDirectShortcut') || {}).value || '';
+    if ((menuSc && menuSc === chatShortcut) || (directSc && directSc === chatShortcut)) {
+      window._showConfirm('Shortcut Conflict',
+        'Chat Shortcut is already set to "' + chatShortcut + '". Please change the Chat Shortcut in General settings or use a different shortcut.',
+        'OK');
+      return false;
+    }
+    return true;
   }
 
   function syncDetail() {
@@ -251,6 +259,40 @@
 
   function mark() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }
 
+  function validate() {
+    syncDetail();
+    var chatShortcut = (document.getElementById('chatShortcut') || {}).value || '';
+    if (chatShortcut) chatShortcut = chatShortcut.toLowerCase();
+    for (var i = 0; i < _commands.length; i++) {
+      var ci = _commands[i];
+      var msI = (ci.menuText || '').match(/&(.)/);
+      var hasTagsI = ci.tags && ci.tags.length > 0;
+      var msKey = msI ? msI[1].toLowerCase() : '';
+      var directKey = ci.directAccelerator ? ci.directAccelerator.replace('&', '').toLowerCase() : '';
+
+      // Chat shortcut conflict
+      if (chatShortcut && ((!hasTagsI && msKey === chatShortcut) || (directKey === chatShortcut))) {
+        return { valid: false, message: 'Chat Shortcut is already set to "' + chatShortcut.toUpperCase() + '". Command "' + (ci.commandName || 'Unnamed') + '" has a conflicting shortcut.', selectIdx: i };
+      }
+      // Cross-command conflicts
+      for (var j = i + 1; j < _commands.length; j++) {
+        var cj = _commands[j];
+        var msJ = (cj.menuText || '').match(/&(.)/);
+        var hasTagsJ = cj.tags && cj.tags.length > 0;
+        var msKeyJ = msJ ? msJ[1].toLowerCase() : '';
+        var directKeyJ = cj.directAccelerator ? cj.directAccelerator.replace('&', '').toLowerCase() : '';
+        // Direct vs direct, menu vs menu (both untagged), direct vs menu
+        if ((directKey && directKey === directKeyJ) ||
+            (!hasTagsI && !hasTagsJ && msKey && msKey === msKeyJ) ||
+            (directKey && !hasTagsJ && msKeyJ && directKey === msKeyJ) ||
+            (!hasTagsI && msKey && directKeyJ && msKey === directKeyJ)) {
+          return { valid: false, message: 'Shortcut "' + (directKey || msKey || '?').toUpperCase() + '" is used by multiple commands: "' + (ci.commandName || 'Unnamed') + '" and "' + (cj.commandName || 'Unnamed') + '".', selectIdx: i };
+        }
+      }
+    }
+    return { valid: true };
+  }
+
   function save() {
     syncDetail();
     return {
@@ -272,5 +314,5 @@
       if (addBtn) addBtn.addEventListener('click', addCommand);
     });
   }
-  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
+  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save, validate:validate}); else setTimeout(reg, 50); })();
 })();
