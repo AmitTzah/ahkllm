@@ -84,7 +84,7 @@
     document.getElementById('cmdDetailTitle').value = cmd.commandName || '';
     document.getElementById('cmdMenuLabel').value = cmd.menuText ? cmd.menuText.replace(/^&\d+\s*-\s*/, '') : '';
     // Extract shortcut number from menuText
-    var shortcutMatch = (cmd.menuText || '').match(/&(\d)/);
+    var shortcutMatch = (cmd.menuText || '').match(/&(.)/);
     var shortcutSel = document.getElementById('cmdMenuShortcut');
     if (shortcutSel) shortcutSel.value = shortcutMatch ? shortcutMatch[1] : '';
     document.getElementById('cmdDirectShortcut').value = cmd.directAccelerator ? cmd.directAccelerator.replace('&', '') : '';
@@ -125,8 +125,8 @@
   function buildDetailHTML() {
     return '<div style="font-weight:600;font-size:14px;margin-bottom:16px;"><input type="text" id="cmdDetailTitle" value="" style="border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;padding:2px 4px;border-radius:4px;width:auto;" placeholder="Command Title"></div>' +
       '<div class="grid-2"><div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask DeepSeek V4 Flash"></div>' +
-      '<div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this number to activate. Key 1 is reserved for chat window.">?</span></label><select id="cmdMenuShortcut"><option value="">None</option><option disabled>1 (reserved \u2014 Chat Window)</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select><div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Shows as: <code id="cmdMenuTextPreview" style="background:var(--bg-hover);padding:1px 3px;border-radius:2px;"></code></div></div></div>' +
-      '<div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><select id="cmdDirectShortcut"><option value="">None</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>' +
+      '<div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input type="text" id="cmdMenuShortcut" placeholder="e.g. 2 or a" maxlength="1" style="width:80px;"><div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Shows as: <code id="cmdMenuTextPreview" style="background:var(--bg-hover);padding:1px 3px;border-radius:2px;"></code></div></div></div>' +
+      '<div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input type="text" id="cmdDirectShortcut" placeholder="e.g. 1 or a" maxlength="1" style="width:80px;"></div>' +
       '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Supports provider/model format (e.g. openai/gpt-4o) or direct name.">?</span></label><input type="text" id="cmdApiModel" placeholder="deepseek-v4-flash"></div>' +
       '<div class="grid-2"><div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>' +
       '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0\u20132. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div></div>' +
@@ -157,7 +157,7 @@
     var menuLabel = document.getElementById('cmdMenuLabel');
     var menuShortcut = document.getElementById('cmdMenuShortcut');
     if (menuLabel) menuLabel.addEventListener('input', updateMenuPreview);
-    if (menuShortcut) menuShortcut.addEventListener('change', updateMenuPreview);
+    if (menuShortcut) menuShortcut.addEventListener('input', updateMenuPreview);
     // Wire Add Tag button
     var addTagBtn = document.getElementById('addCmdTagBtn');
     if (addTagBtn) addTagBtn.addEventListener('click', addTag);
