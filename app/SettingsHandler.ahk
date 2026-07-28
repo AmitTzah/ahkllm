@@ -473,7 +473,8 @@ class SettingsHandler {
             SettingsHandler._SetIfTruthy(cmd, c, "stream")
             SettingsHandler._SetIfTruthy(cmd, c, "isFIM")
             SettingsHandler._SetIfTruthy(cmd, c, "showInputBox")
-            SettingsHandler._SetIfNonEmpty(cmd, c, "userMessage")
+            if c.Has("userMessage") && c["userMessage"] != ""
+                cmd.userMessage := StrReplace(c["userMessage"], "``n", "`n")
             SettingsHandler._SetIfNonEmpty(cmd, c, "systemMessage")
             SettingsHandler._SetIfNonEmpty(cmd, c, "systemMessageFile")
             SettingsHandler._SetIfNonEmpty(cmd, c, "inputBoxDefault")

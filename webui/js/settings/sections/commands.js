@@ -90,7 +90,7 @@
     document.getElementById('cmdApiModel').value = cmd.APIModels || '';
     document.getElementById('cmdPasteMode').value = cmd.pasteMode || 'chat';
     document.getElementById('cmdTemperature').value = cmd.temperature || '';
-    document.getElementById('cmdUserMessage').value = (cmd.userMessage || '').replace(/``n/g, '\n');
+    document.getElementById('cmdUserMessage').value = cmd.userMessage || '';
     document.getElementById('cmdShowInputBox').classList.toggle('on', !!cmd.showInputBox);
     document.getElementById('cmdStream').classList.toggle('on', !!cmd.stream);
     document.getElementById('cmdFim').classList.toggle('on', !!cmd.isFIM);
@@ -203,7 +203,7 @@
     cmd.pasteMode = document.getElementById('cmdPasteMode').value;
     var temp = document.getElementById('cmdTemperature').value;
     cmd.temperature = temp === '' ? '' : (isNaN(parseFloat(temp)) ? '' : parseFloat(temp));
-    cmd.userMessage = document.getElementById('cmdUserMessage').value.replace(/\n/g, '``n');
+    cmd.userMessage = document.getElementById('cmdUserMessage').value;
     cmd.showInputBox = document.getElementById('cmdShowInputBox').classList.contains('on');
     cmd.stream = document.getElementById('cmdStream').classList.contains('on');
     cmd.isFIM = document.getElementById('cmdFim').classList.contains('on');
