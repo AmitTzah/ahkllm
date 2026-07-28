@@ -119,13 +119,15 @@ function createMessageBubble(msg, index) {
   var authorName = msg.role === 'user' ? 'You' : (msg.role === 'system' ? 'System Prompt' : (msg.model || 'Assistant'));
   var msgId = msg.id || '';
   var metaText = _buildMetaText(msg);
-  var contentHtml = md.render(msg.content || '');
   var reasoningHtml = _buildReasoningHtml(msg);
   var attachmentHtml = _buildAttachmentHtml(msg);
   var editUiHtml = _buildEditUiHtml(msg);
 
   var html = '';
   if (msg.role === 'user') {
+    var content = (msg.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    content = content.replace(/\n{3,}/g, '\n\n<br>\n\n');
+    var contentHtml = md.render(content);
     html = '        <div class="msg you"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
       '          <div class="msg-body">\n' +
       '            <div class="msg-head">\n' +
@@ -139,6 +141,7 @@ function createMessageBubble(msg, index) {
       '          </div>\n' +
       '        </div>';
   } else if (msg.role === 'assistant') {
+    var contentHtml = md.render(msg.content || '');
     html = '        <div class="msg bot"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
       '          <div class="msg-body">\n' +
       '            <div class="msg-head">\n' +
@@ -152,6 +155,7 @@ function createMessageBubble(msg, index) {
       '          </div>\n' +
       '        </div>';
   } else {
+    var contentHtml = md.render(msg.content || '');
     html = '        <div class="msg system"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
       '          <div class="msg-body">\n' +
       '            <div class="msg-head">\n' +
