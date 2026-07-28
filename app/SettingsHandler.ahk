@@ -237,7 +237,7 @@ class SettingsHandler {
 
         return Map(
             "chatDefaultModel", IsSet(chatDefaultModel) ? chatDefaultModel : "deepseek/deepseek-v4-flash",
-            "responseFont", IsSet(responseWindowFontFace) ? responseWindowFontFace : "Arial, Segoe UI, Helvetica, Verdana, Tahoma, sans-serif",
+            "responseFont", IsSet(responseWindowFontFace) ? responseWindowFontFace : "Inter",
             "inputWindow", Map(
                 "background", IsSet(inputWindowBackground) ? inputWindowBackground : "0x212529",
                 "fontSize", IsSet(inputWindowFontSize) ? inputWindowFontSize : "s14",

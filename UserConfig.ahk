@@ -554,7 +554,7 @@ titleGenMaxTokens := 50
 
 ; -- Chat Window (also used for command responses) --
 chatDefaultModel := "deepseek/deepseek-v4-flash"
-responseWindowFontFace := "Arial, Segoe UI, Helvetica, Verdana, Tahoma, sans-serif"
+responseWindowFontFace := "Inter"
 
 ; -- Command Input Window --
 inputWindowBackground    := "0x212529"
