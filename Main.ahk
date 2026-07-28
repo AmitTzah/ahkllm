@@ -13,7 +13,7 @@ if FileExist(debugLogFile) {
 debugLog("[APP] Started")
 
 ; ----------------------------------------------------
-; Load settings from settings.json (fall back to UserConfig.ahk defaults)
+; Load settings from settings.json (fall back to DefaultSettings.ahk)
 ; ----------------------------------------------------
 settings := SettingsHandler.Load()
 SettingsHandler.CacheInitialDefaults()
@@ -23,7 +23,7 @@ SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
 RuntimeResolver_ResolveDefaultAssistant()
-debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from UserConfig defaults"))
+debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
 ; Global error handler for main script — surfaces to tooltip + debug log
 OnError((err, mode) => (
     debugLog("RUNTIME ERROR (main): " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
@@ -32,7 +32,7 @@ OnError((err, mode) => (
 ), -1)
 
 ; ----------------------------------------------------
-; Hotkeys (registered dynamically from UserConfig.ahk)
+; Hotkeys (registered dynamically from DefaultSettings.ahk)
 ; ----------------------------------------------------
 
 Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"))
@@ -169,7 +169,7 @@ closeChatWindow(ExitReason, ExitCode) {
 }
 
 ; ----------------------------------------------------
-; Generate tray menu dynamically from UserConfig.ahk
+; Generate tray menu dynamically from DefaultSettings.ahk
 ; ----------------------------------------------------
 
 TraySetIcon(iconOn)

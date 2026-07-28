@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0.18+
-#Include ..\UserConfig.ahk        ; All user-facing configuration (defaults)
+#Include ..\DefaultSettings.ahk        ; App defaults (fallback for settings.json)
 #Include ..\app\SettingsHandler.ahk ; Settings JSON persistence
 #Include ..\shared\RuntimeResolver.ahk              ; API key check & provider resolution
 #Include WebViewToo.ahk             ; WebView2 Framework for Web-based GUIs

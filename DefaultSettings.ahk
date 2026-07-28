@@ -1,5 +1,5 @@
 ; ============================================================================
-; UserConfig.ahk — Centralized user-facing configuration
+; DefaultSettings.ahk — App defaults (fallback when settings.json is missing)
 ; ============================================================================
 ; Edit this file to customize the LLM AutoHotkey Assistant.
 ; Changes take effect after saving (Ctrl+S auto-reloads).
@@ -609,7 +609,7 @@ trashRetentionDays := 30    ; days before auto-purge; 0 = never auto-purge
 ; ============================================================================
 ; -- Quick Access (appear under ` → Quick Access in the command menu) --
 quickAccessMenuItems := [
-    { menuText: "&1 - Edit UserConfig",        command: "Notepad " A_ScriptDir "\UserConfig.ahk" },
+    { menuText: "&1 - Edit Default Settings",   command: "Notepad " A_ScriptDir "\DefaultSettings.ahk" },
     { menuText: "&2 - DeepSeek Usage",         command: "https://platform.deepseek.com/usage" },
     { menuText: "&3 - OpenAI Usage",         command: "https://platform.openai.com/settings/organization/usage" },
     { menuText: "&4 - Gemini Usage",         command: "https://aistudio.google.com/spend" },

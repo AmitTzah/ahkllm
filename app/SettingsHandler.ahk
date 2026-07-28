@@ -2,7 +2,7 @@
 ; SettingsHandler.ahk — JSON settings persistence
 ;
 ; Load/Save settings.json from AppData.
-; Provides fallback to UserConfig.ahk defaults.
+; Provides fallback to DefaultSettings.ahk defaults.
 ; Merges loaded settings with defaults for missing keys.
 ; ======================================================
 
@@ -94,7 +94,7 @@ class SettingsHandler {
         }
     }
 
-    ; Build complete defaults Map from current UserConfig.ahk globals.
+    ; Build complete defaults Map from current DefaultSettings.ahk globals.
     ; Delegates to section-specific helpers for readability.
     static GetDefaults() {
         d := Map()
@@ -115,7 +115,7 @@ class SettingsHandler {
         return d
     }
 
-    ; --- Defaults helpers (read from UserConfig globals) ---
+    ; --- Defaults helpers (read from DefaultSettings globals) ---
 
     static _DefaultsProviders() {
         global providers, providerMap
