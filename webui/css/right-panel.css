@@ -81,7 +81,7 @@ select.dropdown:focus { outline: none; border-color: var(--accent-primary); }
 
 .advanced-body { display: none; padding: 12px 20px; border-top: 1px solid var(--border-main); }
 .advanced-wrap.open .advanced-body { display: block; }
-.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; }
+.toggle-row { display: flex; align-items: center; gap: 24px; padding: 14px 0; }
 input[type="range"].temp-default { opacity: 0.35; }
 .temp-reset { background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 0 2px; display: inline-flex; align-items: center; vertical-align: middle; border-radius: 3px; }
 .temp-reset:hover { color: var(--text-secondary); background: var(--bg-hover); }

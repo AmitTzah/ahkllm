@@ -102,7 +102,7 @@
 
 /* Toggle Row */
 .toggle-row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 24px;
   padding: 14px 0;
 }
 .toggle-row .lbl { font-size: 15px; color: var(--text-secondary); }
