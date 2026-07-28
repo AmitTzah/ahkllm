@@ -54,6 +54,7 @@ ChatDB.Open()
 ; Load settings from settings.json (fall back to UserConfig.ahk defaults)
 ; ----------------------------------------------------
 settings := SettingsHandler.Load()
+SettingsHandler.CacheInitialDefaults()
 merged := SettingsHandler.Merge(settings, SettingsHandler.GetDefaults())
 SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()

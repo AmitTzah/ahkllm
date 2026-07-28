@@ -16,6 +16,7 @@ debugLog("[APP] Started")
 ; Load settings from settings.json (fall back to UserConfig.ahk defaults)
 ; ----------------------------------------------------
 settings := SettingsHandler.Load()
+SettingsHandler.CacheInitialDefaults()
 defaults := SettingsHandler.GetDefaults()
 merged := SettingsHandler.Merge(settings, defaults)
 SettingsHandler.ApplyToGlobals(merged)

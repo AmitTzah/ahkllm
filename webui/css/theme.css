@@ -61,6 +61,6 @@ body {
 button, input, textarea, select { font-family: inherit; font-size: inherit; }
 
 button { transition: all 0.15s ease; cursor: pointer; }
-.icon-btn:active, .chat-action-btn:active, .msg-action-btn:active, .btn-primary:active, .ghost-btn:active, .send-btn:active, .tree-launch:active { 
+.icon-btn:active, .chat-action-btn:active, .msg-action-btn:active, .btn-primary:active, .btn-ghost:active, .ghost-btn:active, .send-btn:active, .tree-launch:active {
   transform: scale(0.92); 
 }

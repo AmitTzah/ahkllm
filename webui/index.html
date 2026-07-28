@@ -454,6 +454,20 @@
   <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('refreshModal').classList.remove('open')">Done</button></div></div>
 </div>
 
+<!-- Reset to Defaults Confirmation Modal -->
+<div class="modal-overlay" id="resetConfirmModal">
+  <div class="modal-box" style="width:400px;">
+    <div class="modal-head"><div class="modal-title">Reset to Defaults</div><button class="icon-btn" onclick="document.getElementById('resetConfirmModal').classList.remove('open')">✕</button></div>
+    <div class="modal-body" style="flex-direction:column;gap:12px;padding:20px 24px;">
+      <div style="font-size:14px;color:var(--text-secondary);">Reset all settings to their default values? This cannot be undone.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="document.getElementById('resetConfirmModal').classList.remove('open')">Cancel</button>
+      <button class="btn-primary" id="resetConfirmBtn" style="font-size:13px;">Reset</button>
+    </div>
+  </div>
+</div>
+
 <!-- System Message Edit Modal -->
 <div class="modal-overlay" id="sysMsgEditModal">
   <div class="modal-box" style="width:640px;"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">✕</button></div>

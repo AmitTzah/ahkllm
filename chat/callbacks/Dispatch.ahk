@@ -61,6 +61,8 @@ OnWebMessageReceived(sender, args) {
                 _OnWebViewReady()
             case "requestAllSettings":
                 _HandleRequestAllSettings()
+            case "requestDefaultSettings":
+                _HandleRequestDefaultSettings()
             case "saveSettings":
                 _HandleSaveSettings(parsed)
             case "refreshModelPricing":
@@ -91,6 +93,12 @@ _HandleRequestAllSettings() {
     loaded := SettingsHandler.Load()
     merged := SettingsHandler.Merge(loaded, defaults)
     postWebMessage("currentSettings", merged)
+}
+
+; Send raw defaults (not merged with loaded) to WebView for Reset button
+_HandleRequestDefaultSettings() {
+    defaults := SettingsHandler.HasOwnProp("_initialDefaults") ? SettingsHandler._initialDefaults : SettingsHandler.GetDefaults()
+    postWebMessage("defaultSettings", defaults)
 }
 
 ; Save settings from WebView, write to JSON, notify Main process

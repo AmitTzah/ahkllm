@@ -8,6 +8,12 @@
 
 class SettingsHandler {
     static settingsPath := ""
+    static _initialDefaults := unset
+
+    ; Call once at startup before ApplyToGlobals to cache the true defaults.
+    static CacheInitialDefaults() {
+        SettingsHandler._initialDefaults := SettingsHandler.GetDefaults()
+    }
 
     ; Returns the full path to settings.json
     static _Path() {

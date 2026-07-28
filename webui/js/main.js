@@ -157,6 +157,12 @@ function handleWebMessage(event) {
         if (typeof handleSearchResults === 'function') handleSearchResults(data);
         break;
 
+      case 'defaultSettings':
+        if (window.SettingsPanel && typeof window.SettingsPanel.reloadWithDefaults === 'function') {
+          window.SettingsPanel.reloadWithDefaults(data);
+        }
+        break;
+
       case 'settingsSaved':
         if (window.SettingsPanel && typeof window.SettingsPanel.handleSettingsSaved === 'function') {
           window.SettingsPanel.handleSettingsSaved(data);

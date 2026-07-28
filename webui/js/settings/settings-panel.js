@@ -32,11 +32,20 @@ window.SettingsPanel = (function() {
       });
     }
 
-    // Wire Reset button
+    // Wire Reset button — opens confirmation modal
     var resetBtn = document.querySelector('.nav-footer .btn-ghost');
     if (resetBtn) {
       resetBtn.addEventListener('click', function() {
         resetToDefaults();
+      });
+    }
+
+    // Wire confirmation modal Reset button
+    var resetConfirmBtn = document.getElementById('resetConfirmBtn');
+    if (resetConfirmBtn) {
+      resetConfirmBtn.addEventListener('click', function() {
+        document.getElementById('resetConfirmModal').classList.remove('open');
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'requestDefaultSettings' }));
       });
     }
 
@@ -99,14 +108,18 @@ window.SettingsPanel = (function() {
   }
 
   function resetToDefaults() {
-    if (_defaultSettings) {
-      for (var key in _sectionModules) {
-        if (_sectionModules[key] && typeof _sectionModules[key].load === 'function') {
-          _sectionModules[key].load(_defaultSettings);
-        }
+    document.getElementById('resetConfirmModal').classList.add('open');
+  }
+
+  function reloadWithDefaults(defaults) {
+    if (!defaults) return;
+    _defaultSettings = JSON.parse(JSON.stringify(defaults));
+    for (var key in _sectionModules) {
+      if (_sectionModules[key] && typeof _sectionModules[key].load === 'function') {
+        _sectionModules[key].load(defaults);
       }
-      markDirty();
     }
+    markDirty();
   }
 
   function handleSettingsSaved(response) {
@@ -142,6 +155,7 @@ window.SettingsPanel = (function() {
     resetToDefaults: resetToDefaults,
     handleSettingsSaved: handleSettingsSaved,
     registerSection: registerSection,
-    onSettingsReceived: onSettingsReceived
+    onSettingsReceived: onSettingsReceived,
+    reloadWithDefaults: reloadWithDefaults
   };
 })();
