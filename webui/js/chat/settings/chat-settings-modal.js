@@ -175,8 +175,8 @@ document.addEventListener('DOMContentLoaded', function() {
     advWrap.classList.toggle('open');
   });
 
-  // Toggle switches
-  document.querySelectorAll('.toggle-row .switch').forEach(function(sw) {
+  // Toggle switches (right rail only — avoid double-handling settings panel switches)
+  document.querySelectorAll('#railRight .toggle-row .switch').forEach(function(sw) {
     sw.addEventListener('click', function() {
       sw.classList.toggle('on');
       _sendAllSettings();
