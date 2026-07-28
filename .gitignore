@@ -29,6 +29,9 @@ desktop.ini
 *.log
 debug*.txt
 
+# Auto-generated pricing helper
+models_pricing.txt
+
 # Test artifacts
 %TEMP%/test_results.txt
 

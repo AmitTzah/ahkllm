@@ -4,8 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File "Refresh-ModelPricing.ps1"
 #
 # Output: models_pricing.txt
-#   Copy models := Map(...) into UserConfig.ahk's models map (around line 170).
-#   Open UserConfig.ahk, search for "models := Map", and replace the entire
+#   Copy models := Map(...) into DefaultSettings.ahk's models map.
+#   Open DefaultSettings.ahk, search for "models := Map", and replace the entire
 #   block from "models := Map(" to the closing ")" with the new output.
 
 $ErrorActionPreference = "Stop"
