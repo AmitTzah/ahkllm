@@ -100,23 +100,28 @@ _HandleSaveSettings(parsed) {
         postWebMessage("settingsSaved", { success: false, error: "No data received" })
         return
     }
-    ; Convert jsongo object to AHK Map
-    settingsMap := SettingsHandler._ToMap(settingsData)
-    ; Merge into (saved file + defaults) so keys the UI didn't send keep saved values
-    base := SettingsHandler.Merge(SettingsHandler.Load(), SettingsHandler.GetDefaults())
-    merged := SettingsHandler.Merge(settingsMap, base)
-    if SettingsHandler.Save(merged) {
-        ; Apply to this process's globals
-        SettingsHandler.ApplyToGlobals(merged)
-        ; Notify Main process to reload
-        try {
-            CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
-        } catch Error as e {
-            debugLog("[SETTINGS] Failed to notify Main process: " e.Message)
+    try {
+        ; Convert jsongo object to AHK Map
+        settingsMap := SettingsHandler._ToMap(settingsData)
+        ; Merge into (saved file + defaults) so keys the UI didn't send keep saved values
+        base := SettingsHandler.Merge(SettingsHandler.Load(), SettingsHandler.GetDefaults())
+        merged := SettingsHandler.Merge(settingsMap, base)
+        if SettingsHandler.Save(merged) {
+            ; Apply to this process's globals
+            SettingsHandler.ApplyToGlobals(merged)
+            ; Notify Main process to reload
+            try {
+                CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
+            } catch Error as e2 {
+                debugLog("[SETTINGS] Failed to notify Main process: " e2.Message)
+            }
+            postWebMessage("settingsSaved", { success: true })
+        } else {
+            postWebMessage("settingsSaved", { success: false, error: "Failed to write settings.json" })
         }
-        postWebMessage("settingsSaved", { success: true })
-    } else {
-        postWebMessage("settingsSaved", { success: false, error: "Failed to write settings.json" })
+    } catch Error as e {
+        debugLog("[SETTINGS] Save error: " e.Message " at line " e.Line)
+        postWebMessage("settingsSaved", { success: false, error: e.Message })
     }
 }
 

@@ -12,7 +12,7 @@
   function buildProviderSelect(keys, current) {
     var html = '<select data-field="provider" style="border:1px solid transparent;font-size:11px;">';
     var all = keys.slice();
-    if (current && all.indexOf(current) < 0) all.unshift(current);
+    if (current != null && current !== '' && all.indexOf(current) < 0) all.unshift(current);
     all.forEach(function(k) { html += '<option' + (k === current ? ' selected' : '') + '>' + k + '</option>'; });
     html += '</select>';
     return html;
@@ -91,35 +91,82 @@
     });
   }
 
+  function parsePricingRaw(raw) {
+    var fields = {};
+    var m = raw.match(/input:\s*([\d.]+)/);
+    if (m) fields.input = parseFloat(m[1]);
+    m = raw.match(/cachedInput:\s*([\d.]+)/);
+    if (m) fields.cachedInput = parseFloat(m[1]);
+    m = raw.match(/output:\s*([\d.]+)/);
+    if (m) fields.output = parseFloat(m[1]);
+    m = raw.match(/context:\s*(\d+)/);
+    if (m) fields.context = parseInt(m[1], 10);
+    m = raw.match(/reasoning:\s*(true|false)/i);
+    fields.reasoning = m ? m[1].toLowerCase() === 'true' : false;
+    m = raw.match(/vision:\s*(true|false)/i);
+    fields.vision = m ? m[1].toLowerCase() === 'true' : false;
+    return fields;
+  }
+
+  function formatContext(n) {
+    if (!n) return '';
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+    return n.toString();
+  }
+
+  function fmtPrice(v) {
+    if (v === undefined || v === null) return '';
+    return (v < 0.01 ? '$' + v.toFixed(4) : v < 1 ? '$' + v.toFixed(3) : '$' + v.toFixed(2));
+  }
+
   window.SettingsModels = {
     handleRefreshResult: function(data) {
-      var leftPanel = document.querySelector('#refreshModal .modal-panel');
-      if (!leftPanel) return;
+      var leftTbody = document.getElementById('refreshLeftTbody');
       if (data.success && data.models) {
-        var html = '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">Models from PowerShell (' + data.models.length + ')</div>';
-        data.models.forEach(function(m) {
-          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border-light);"><span style="font-family:var(--font-mono);font-size:11px;">' + escHtml(m.id) + '</span><button class="btn-sm" style="font-size:10px;">Add</button></div>';
-        });
-        leftPanel.innerHTML = html;
-        leftPanel.querySelectorAll('button').forEach(function(btn, i) {
-          btn.addEventListener('click', function() {
-            window.SettingsModels.addFromRefresh(data.models[i].id);
+        if (leftTbody) {
+          var leftHtml = '';
+          data.models.forEach(function(m) {
+            var p = m.raw ? parsePricingRaw(m.raw) : {};
+            leftHtml += '<tr><td>' + escHtml(m.id) + '</td>' +
+              '<td>' + fmtPrice(p.input) + '</td>' +
+              '<td>' + fmtPrice(p.cachedInput) + '</td>' +
+              '<td>' + fmtPrice(p.output) + '</td>' +
+              '<td>' + formatContext(p.context) + '</td>' +
+              '<td>' + (p.vision ? '\u2713' : '') + '</td>' +
+              '<td>' + (p.reasoning ? '\u2713' : '') + '</td>' +
+              '<td><button class="btn-sm add-refresh-model" style="color:var(--accent-primary);border-color:var(--accent-primary);">+ Add</button></td></tr>';
           });
-        });
-        var rightPanel = document.querySelectorAll('#refreshModal .modal-panel')[1];
-        if (rightPanel) {
-          var models = {};
+          leftTbody.innerHTML = leftHtml;
+          leftTbody.querySelectorAll('.add-refresh-model').forEach(function(btn, i) {
+            btn.addEventListener('click', function() {
+              window.SettingsModels.addFromRefresh(data.models[i].id);
+            });
+          });
+        }
+        // Right panel: current models with pricing
+        var rightTbody = document.getElementById('refreshRightTbody');
+        if (rightTbody) {
+          var rightHtml = '';
           document.querySelectorAll('#modelsTableBody tr').forEach(function(tr) {
             var idEl = tr.querySelector('[data-field="id"]');
-            if (idEl && idEl.value) models[idEl.value] = true;
+            if (!idEl || !idEl.value) return;
+            var id = idEl.value;
+            var inputEl = tr.querySelector('[data-field="input"]');
+            var cacheEl = tr.querySelector('[data-field="cachedInput"]');
+            var outputEl = tr.querySelector('[data-field="output"]');
+            var ctxEl = tr.querySelector('[data-field="context"]');
+            rightHtml += '<tr><td>' + escHtml(id) + '</td>' +
+              '<td>' + (inputEl ? fmtPrice(parseFloat(inputEl.value)) : '') + '</td>' +
+              '<td>' + (cacheEl ? fmtPrice(parseFloat(cacheEl.value)) : '') + '</td>' +
+              '<td>' + (outputEl ? fmtPrice(parseFloat(outputEl.value)) : '') + '</td>' +
+              '<td>' + (ctxEl ? formatContext(parseInt(ctxEl.value)) : '') + '</td></tr>';
           });
-          var currentIds = Object.keys(models).sort();
-          var rightHtml = '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">Current Models (' + currentIds.length + ')</div>';
-          currentIds.forEach(function(id) { rightHtml += '<div style="font-family:var(--font-mono);font-size:11px;padding:2px 0;">' + escHtml(id) + '</div>'; });
-          rightPanel.innerHTML = rightHtml;
+          if (!rightHtml) rightHtml = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);">No models defined</td></tr>';
+          rightTbody.innerHTML = rightHtml;
         }
       } else {
-        leftPanel.innerHTML = '<div style="color:var(--danger);">Error: ' + escHtml(data.error || 'Unknown error') + '</div>';
+        if (leftTbody) leftTbody.innerHTML = '<tr><td colspan="8" style="color:var(--danger);">Error: ' + escHtml(data.error || 'Unknown error') + '</td></tr>';
       }
     },
     addFromRefresh: function(modelId) {

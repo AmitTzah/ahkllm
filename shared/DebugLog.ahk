@@ -12,7 +12,7 @@ debugLog(message, prefix := "") {
 
     timestamp := FormatTime(, "HH:mm:ss")
     prefixStr := prefix ? " [" prefix "] " : " "
-    FileAppend(timestamp prefixStr message "`n", logPath)
+    try FileAppend(timestamp prefixStr message "`n", logPath)
 
     ; Rolling log: truncate every 100 writes when file exceeds 1MB
     callCount++

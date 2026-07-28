@@ -86,23 +86,19 @@
   }
 
   // Wire color pickers to update hex display
+  function wireColorPair(colorId, hexId) {
+    var colorEl = document.getElementById(colorId);
+    var hexEl = document.getElementById(hexId);
+    if (!colorEl || !hexEl) return;
+    colorEl.addEventListener('input', function() {
+      hexEl.value = '0x' + this.value.replace('#', '');
+      if (window.SettingsPanel) window.SettingsPanel.markDirty();
+    });
+  }
+
   function wireColors() {
-    var iwColor = document.getElementById('iwBackground');
-    var iwHex = document.getElementById('iwBackgroundHex');
-    if (iwColor && iwHex) {
-      iwColor.addEventListener('input', function() {
-        iwHex.value = '0x' + this.value.replace('#', '');
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
-      });
-    }
-    var sbColor = document.getElementById('sbBackground');
-    var sbHex = document.getElementById('sbBackgroundHex');
-    if (sbColor && sbHex) {
-      sbColor.addEventListener('input', function() {
-        sbHex.value = '0x' + this.value.replace('#', '');
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
-      });
-    }
+    wireColorPair('iwBackground', 'iwBackgroundHex');
+    wireColorPair('sbBackground', 'sbBackgroundHex');
   }
 
   // Wire dirty tracking
@@ -143,9 +139,9 @@
   function fillModelSelect(sel, keys, current) {
     if (!sel) return;
     sel.innerHTML = '';
-    if (current && keys.indexOf(current) < 0) keys.unshift(current);
+    if (current != null && keys.indexOf(current) < 0) keys.unshift(current);
     keys.forEach(function(k) { var o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
-    if (current) sel.value = current;
+    if (current != null) sel.value = current;
   }
 
   if (typeof window !== 'undefined' && window.SettingsPanel) {

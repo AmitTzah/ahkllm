@@ -294,7 +294,7 @@
 .btn-primary {
   background: var(--accent-primary); color: #fff; border: none;
   padding: 8px 20px; border-radius: var(--radius-sm); font-weight: 500;
-  font-size: 13px;
+  font-size: 13px; display: flex; justify-content: center; align-items: center;
 }
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }

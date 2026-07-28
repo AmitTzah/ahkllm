@@ -95,9 +95,9 @@
   function fillSelect(sel, keys, current) {
     if (!sel) return;
     sel.innerHTML = '';
-    if (current && keys.indexOf(current) < 0) keys.unshift(current);
+    if (current != null && keys.indexOf(current) < 0) keys.unshift(current);
     keys.forEach(function(k) { var o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
-    if (current) sel.value = current;
+    if (current != null) sel.value = current;
   }
 
   // Initialize

@@ -133,11 +133,6 @@ class ChatDB {
     static Msg_SwitchBranch(threadId, msgId, direction := 1) => TreeRepo.SwitchBranch(threadId, msgId, direction)
     static Msg_GetThreadStats(threadId) => TreeRepo.GetThreadStats(threadId)
 
-    ; Assistant operations — delegate to AssistantRepo
-    static Assistant_Seed() => AssistantRepo.Seed()
-    static Assistant_List() => AssistantRepo.List()
-    static Assistant_Get(assistantId) => AssistantRepo.Get(assistantId)
-
     ; Attachment operations — delegate to AttachmentRepo
     static Attachment_Insert(msgId, attObj) => AttachmentRepo.Insert(msgId, attObj)
     static Attachment_Save(msgId, att) => AttachmentRepo.SaveAttachment(msgId, att)

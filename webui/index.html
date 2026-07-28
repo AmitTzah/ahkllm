@@ -449,8 +449,8 @@
 <!-- Refresh Pricing Modal -->
 <div class="modal-overlay" id="refreshModal">
   <div class="modal-box"><div class="modal-head"><div class="modal-title">Refresh Model Pricing</div><button class="icon-btn" onclick="document.getElementById('refreshModal').classList.remove('open')">✕</button></div>
-  <div class="modal-body"><div class="modal-panel"><div class="modal-panel-header">New from PowerShell</div><div class="modal-panel-body"><div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:20px;">Click Refresh to pull latest pricing data</div></div></div>
-  <div class="modal-panel"><div class="modal-panel-header">Your Models</div><div class="modal-panel-body"><div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:20px;">Current models are shown here for reference</div></div></div></div>
+  <div class="modal-body"><div class="modal-panel"><div class="modal-panel-header">New from PowerShell</div><div class="modal-panel-body"><table class="kv-table" style="font-size:11px;"><thead><tr><th>Model</th><th>In</th><th>Cache</th><th>Out</th><th>Ctx</th><th>V</th><th>R</th><th></th></tr></thead><tbody id="refreshLeftTbody"><tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:20px;">Click Refresh to pull latest pricing data</td></tr></tbody></table></div></div>
+  <div class="modal-panel"><div class="modal-panel-header">Your Current Models</div><div class="modal-panel-body"><table class="kv-table" style="font-size:11px;"><thead><tr><th>Model</th><th>In</th><th>Cache</th><th>Out</th><th>Ctx</th></tr></thead><tbody id="refreshRightTbody"><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px;">Current models are shown here for reference</td></tr></tbody></table></div></div></div>
   <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('refreshModal').classList.remove('open')">Done</button></div></div>
 </div>
 
