@@ -107,18 +107,19 @@
 }
 .toggle-row .lbl { font-size: 15px; color: var(--text-secondary); }
 
-/* Switch (matches right-panel.css) */
+/* Switch (matches components.css) */
 .switch {
-  width: 44px; height: 26px; border-radius: 26px; background: var(--border-main);
-  position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0;
+  width: 38px; height: 22px; border-radius: 22px; background: var(--border-main);
+  position: relative; cursor: pointer; transition: background 0.25s ease; flex-shrink: 0;
 }
 .switch.on { background: var(--accent-primary); }
 .switch .knob {
-  position: absolute; top: 2px; left: 2px; width: 22px; height: 22px;
-  border-radius: 50%; background: white; transition: left 0.2s;
-  box-shadow: var(--shadow-sm);
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: white;
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
-.switch.on .knob { left: 20px; }
+.switch.on .knob { left: 18px; box-shadow: 0 1px 3px rgba(79,70,229,0.25); }
 
 /* Disabled section (when toggle is off) */
 .fields-disabled {
