@@ -24,7 +24,9 @@
       var modelSel = document.getElementById('chatDefaultModel');
       if (modelSel && _modelKeys) fillModelSelect(modelSel, _modelKeys, u.chatDefaultModel);
       // responseFont: stored as CSS stack, UI shows single name
-      setVal('responseFont', (u.responseFont || '').split(',')[0].trim());
+      var fontName = (u.responseFont || '').split(',')[0].trim();
+      setVal('responseFont', fontName);
+      if (fontName) document.documentElement.style.setProperty('--chat-font-family', fontName + ', sans-serif');
       if (u.inputWindow) {
         var iw = u.inputWindow;
         setVal('iwBackground', iw.background ? iw.background.replace('0x', '#') : '#212529');

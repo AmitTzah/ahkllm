@@ -11,7 +11,7 @@
 
 .msg-meta { font-family: var(--font-mono); font-size: 14px; color: var(--text-tertiary); }
 
-.msg-content { font-size: var(--chat-font-size); line-height: 1.6; color: var(--text-primary); word-wrap: break-word; transition: font-size 0.2s ease-out; }
+.msg-content { font-size: var(--chat-font-size); font-family: var(--chat-font-family); line-height: 1.6; color: var(--text-primary); word-wrap: break-word; transition: font-size 0.2s ease-out; }
 
 .msg.you .msg-content { 
   background: var(--user-msg-bg); padding: 14px 24px; border-radius: var(--radius-lg); 

@@ -42,6 +42,7 @@
   --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   
   --chat-font-size: 17px;
+  --chat-font-family: 'Inter', system-ui, sans-serif;
 }
 
 
