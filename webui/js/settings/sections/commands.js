@@ -8,6 +8,7 @@
   function load(data) {
     _commands = (data && data.commands) ? data.commands : [];
     _submenuOrder = (data && data.submenuOrder) ? data.submenuOrder : [];
+    _selectedIdx = -1; // prevent syncDetail from overwriting fresh data with stale DOM values
     renderList(0);
     renderSubmenuOrder();
     if (_commands.length > 0) selectCommand(0);
