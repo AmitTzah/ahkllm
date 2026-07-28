@@ -18,6 +18,30 @@
     var c = document.getElementById('sec-hotkeys'); if (!c) return;
     c.querySelectorAll('input').forEach(function(el) { el.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }); });
   }
-  if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', wireDirty);
+  function wireKeyCaptures() {
+    document.querySelectorAll('.key-capture').forEach(function(kc) {
+      kc.addEventListener('click', function() {
+        var inp = this.querySelector('input');
+        if (inp) { inp.focus(); inp.select(); }
+      });
+      var inp = kc.querySelector('input');
+      if (inp) {
+        inp.addEventListener('focus', function() { kc.classList.add('listening'); });
+        inp.addEventListener('blur', function() { kc.classList.remove('listening'); });
+      }
+    });
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+      wireDirty();
+      wireKeyCaptures();
+      var restartBtn = document.getElementById('restartNowBtn');
+      if (restartBtn) {
+        restartBtn.addEventListener('click', function() {
+          window.chrome.webview.postMessage(JSON.stringify({action:'reloadScript'}));
+        });
+      }
+    });
+  }
   (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
 })();

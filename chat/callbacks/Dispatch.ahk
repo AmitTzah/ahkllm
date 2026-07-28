@@ -66,7 +66,9 @@ OnWebMessageReceived(sender, args) {
             case "refreshModelPricing":
                 _HandleRefreshModelPricing()
             case "reloadScript":
-                Reload
+                CustomMessages.notifyReloadMain(requestParams["mainScriptHiddenhWnd"])
+            case "browseIcon":
+                _HandleBrowseIcon(parsed)
             case "debugLog":
                 debugLog(parsed.Get("message", ""), "WebUI")
         }
@@ -100,9 +102,9 @@ _HandleSaveSettings(parsed) {
     }
     ; Convert jsongo object to AHK Map
     settingsMap := SettingsHandler._ToMap(settingsData)
-    ; Merge with existing defaults for any missing keys
-    defaults := SettingsHandler.GetDefaults()
-    merged := SettingsHandler.Merge(settingsMap, defaults)
+    ; Merge into (saved file + defaults) so keys the UI didn't send keep saved values
+    base := SettingsHandler.Merge(SettingsHandler.Load(), SettingsHandler.GetDefaults())
+    merged := SettingsHandler.Merge(settingsMap, base)
     if SettingsHandler.Save(merged) {
         ; Apply to this process's globals
         SettingsHandler.ApplyToGlobals(merged)
@@ -120,7 +122,7 @@ _HandleSaveSettings(parsed) {
 
 ; Run PowerShell pricing refresh and return results
 _HandleRefreshModelPricing() {
-    scriptPath := A_ScriptDir "\Refresh-ModelPricing.ps1"
+    scriptPath := A_ScriptDir "\..\Refresh-ModelPricing.ps1"
     if !FileExist(scriptPath) {
         postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-ModelPricing.ps1 not found" })
         return
@@ -129,7 +131,7 @@ _HandleRefreshModelPricing() {
         cmd := "powershell -ExecutionPolicy Bypass -File `"" scriptPath "`""
         RunWait(cmd, A_ScriptDir, "Hide")
         ; Read the output file
-        pricingFile := A_ScriptDir "\models_pricing.txt"
+        pricingFile := A_ScriptDir "\..\models_pricing.txt"
         if !FileExist(pricingFile) {
             postWebMessage("modelPricingRefresh", { success: false, error: "models_pricing.txt not generated" })
             return
@@ -171,6 +173,20 @@ _ParsePricingFile(content) {
         }
     }
     return result
+}
+
+_HandleBrowseIcon(parsed) {
+    field := parsed.Get("field", "")
+    if field != "iconOn" && field != "iconOff"
+        return
+    selected := FileSelect(3, A_ScriptDir "\..\icons", "Select icon file", "Icon Files (*.ico)")
+    if !selected
+        return
+    ; Store path relative to repo root when possible (settings.json uses e.g. "icons\IconOn.ico")
+    repoRoot := A_ScriptDir "\.."
+    if InStr(selected, repoRoot) = 1
+        selected := SubStr(selected, StrLen(repoRoot) + 2)
+    postWebMessage("iconFileSelected", { field: field, path: selected })
 }
 
 #Include Message.ahk

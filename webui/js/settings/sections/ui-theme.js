@@ -5,6 +5,8 @@
 (function() {
   var sectionName = 'ui';
 
+  var _modelKeys = null;
+
   function load(data) {
     // Dark mode
     if (data && data.theme) {
@@ -13,12 +15,16 @@
         if (data.theme.darkMode) darkToggle.classList.add('on');
         else darkToggle.classList.remove('on');
       }
+      // Cache model keys for chatDefaultModel dropdown
+      if (data.models) _modelKeys = Object.keys(data.models).sort();
     }
     // UI
     if (data && data.ui) {
       var u = data.ui;
-      setVal('chatDefaultModel', u.chatDefaultModel);
-      setVal('responseFont', u.responseFont);
+      var modelSel = document.getElementById('chatDefaultModel');
+      if (modelSel && _modelKeys) fillModelSelect(modelSel, _modelKeys, u.chatDefaultModel);
+      // responseFont: stored as CSS stack, UI shows single name
+      setVal('responseFont', (u.responseFont || '').split(',')[0].trim());
       if (u.inputWindow) {
         var iw = u.inputWindow;
         setVal('iwBackground', iw.background ? iw.background.replace('0x', '#') : '#212529');
@@ -123,7 +129,23 @@
     document.addEventListener('DOMContentLoaded', function() {
       wireColors();
       wireDirty();
+      // Wire dark-mode toggle
+      var darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', function() {
+          this.classList.toggle('on');
+          if (window.SettingsPanel) window.SettingsPanel.markDirty();
+        });
+      }
     });
+  }
+
+  function fillModelSelect(sel, keys, current) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (current && keys.indexOf(current) < 0) keys.unshift(current);
+    keys.forEach(function(k) { var o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
+    if (current) sel.value = current;
   }
 
   if (typeof window !== 'undefined' && window.SettingsPanel) {

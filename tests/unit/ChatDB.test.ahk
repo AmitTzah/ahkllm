@@ -454,84 +454,36 @@ class ChatDBTest {
     ; Assistant CRUD tests
     ; ----------------------------------------------------
 
-    Assistant_Seed_PopulatesTable() {
-        this._openDb()
-        ChatDB.Assistant_Seed()
+    ; AssistantRepo.GetFromSettings tests — assistants now come from global array, not DB
+    GetFromSettings_ReturnsCorrectAssistant() {
+        global assistants
+        assistants := [{id: "a1", name: "Test Asst", baseModel: "deepseek/test", isDefault: true}]
 
-        table := ChatDB.db.Exec("SELECT COUNT(*) as cnt FROM assistants;")
-        if Integer(table[1, "cnt"]) < 1
-            throw Error("Expected at least 1 assistant after seed, got " table[1, "cnt"])
-
-        this._closeDb()
-    }
-
-    Assistant_Seed_OverwritesExisting() {
-        this._openDb()
-
-        ; Insert a manual row first
-        ChatDB.db.Exec("INSERT INTO assistants (id, name, base_model) VALUES('test-id', 'Old', 'deepseek/old');")
-
-        ; Seed should DELETE all existing and repopulate
-        ChatDB.Assistant_Seed()
-
-        table := ChatDB.db.Exec("SELECT COUNT(*) as cnt FROM assistants;")
-        cnt := Integer(table[1, "cnt"])
-        if cnt < 1
-            throw Error("Expected at least 1 assistant after reseed, got " cnt)
-
-        ; Old record should be gone
-        oldRow := ChatDB.db.Exec("SELECT id FROM assistants WHERE name='Old';")
-        if oldRow.count > 0
-            throw Error("Expected Old assistant to be replaced by seed")
-
-        this._closeDb()
-    }
-
-    Assistant_List_ReturnsArray() {
-        this._openDb()
-        ChatDB.Assistant_Seed()
-
-        list := ChatDB.Assistant_List()
-        if !IsObject(list) || list.Length < 1
-            throw Error("Expected non-empty array from Assistant_List")
-
-        ; Each item should have required fields
-        for item in list {
-            if !item.HasOwnProp("id") || !item.HasOwnProp("name") || !item.HasOwnProp("baseModel")
-                throw Error("Assistant item missing required fields: id/name/baseModel")
-        }
-
-        this._closeDb()
-    }
-
-    Assistant_Get_ReturnsCorrectRecord() {
-        this._openDb()
-        ChatDB.Assistant_Seed()
-
-        list := ChatDB.Assistant_List()
-        targetId := list[1].id
-        targetName := list[1].name
-
-        asst := ChatDB.Assistant_Get(targetId)
+        asst := AssistantRepo.GetFromSettings("a1")
         if !asst
-            throw Error("Assistant_Get returned empty for valid ID")
-        if asst.name != targetName
-            throw Error("Assistant_Get returned wrong name: " asst.name " vs " targetName)
-        if asst.id != targetId
-            throw Error("Assistant_Get returned wrong ID")
-
-        this._closeDb()
+            throw Error("GetFromSettings returned empty for valid ID")
+        if asst.name != "Test Asst"
+            throw Error("GetFromSettings returned wrong name: " asst.name)
+        if asst.id != "a1"
+            throw Error("GetFromSettings returned wrong ID")
     }
 
-    Assistant_Get_UnknownId_ReturnsEmpty() {
-        this._openDb()
-        ChatDB.Assistant_Seed()
+    GetFromSettings_UnknownId_ReturnsEmpty() {
+        global assistants
+        assistants := [{id: "a1", name: "Test", baseModel: "m", isDefault: true}]
 
-        result := ChatDB.Assistant_Get("nonexistent-id-12345")
+        result := AssistantRepo.GetFromSettings("nonexistent-id")
         if result != ""
-            throw Error("Expected empty string for unknown assistant ID, got: " (IsObject(result) ? result.name : result))
+            throw Error("Expected empty string for unknown ID, got: " (IsObject(result) ? result.name : String(result)))
+    }
 
-        this._closeDb()
+    GetFromSettings_UnsetGlobal_ReturnsEmpty() {
+        global assistants
+        assistants := unset
+
+        result := AssistantRepo.GetFromSettings("any-id")
+        if result != ""
+            throw Error("Expected empty string when assistants global is unset")
     }
 
     ; ----------------------------------------------------
@@ -564,15 +516,15 @@ class ChatDBTest {
     }
 
     Thread_UpdateSettings_SavesAssistantId() {
+        global assistants
+        assistants := [{id: "asst-test-1", name: "Test", baseModel: "deepseek/test", isDefault: true}]
         this._openDb()
-        ChatDB.Assistant_Seed()
-        asstList := ChatDB.Assistant_List()
         threadId := ChatDB.Thread_Create("Test")
 
-        ChatDB.Thread_UpdateSettings(threadId, { assistantId: asstList[1].id })
+        ChatDB.Thread_UpdateSettings(threadId, { assistantId: "asst-test-1" })
         settings := ChatDB.Thread_GetSettings(threadId)
 
-        if !settings || settings.assistantId != asstList[1].id
+        if !settings || settings.assistantId != "asst-test-1"
             throw Error("Expected assistantId to match, got: " (settings ? settings.assistantId : "NULL"))
         this._closeDb()
     }

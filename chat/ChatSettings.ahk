@@ -42,10 +42,10 @@ _restoreThreadSettings(threadId) {
         requestParams["temperatureOverride"] := settings.temperatureOverride
     if settings.assistantId {
         requestParams["activeAssistantId"] := settings.assistantId
-        asst := ChatDB.Assistant_Get(settings.assistantId)
+        asst := AssistantRepo.GetFromSettings(settings.assistantId)
         if asst {
             requestParams["singleAPIModelName"] := asst.baseModel
-            requestParams["systemOverride"] := asst.systemMessage
+            requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
             requestParams["reasoningOverride"] := asst.reasoning
             requestParams["temperatureOverride"] := asst.temperature
         }
@@ -105,12 +105,12 @@ handleSwitchAssistant(parsed) {
         return
     }
 
-    asst := ChatDB.Assistant_Get(assistantId)
+    asst := AssistantRepo.GetFromSettings(assistantId)
     if !asst
         return
 
     requestParams["singleAPIModelName"] := asst.baseModel
-    requestParams["systemOverride"] := asst.systemMessage
+    requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
     requestParams["reasoningOverride"] := asst.reasoning
     requestParams["temperatureOverride"] := asst.temperature
     requestParams["activeAssistantId"] := assistantId
@@ -203,7 +203,7 @@ postCurrentSettingsToWebView() {
 }
 
 postAssistantsToWebView() {
-    global assistants
+    global assistants, models
     if !IsSet(assistants)
         return
     postWebMessage("assistantList", assistants)

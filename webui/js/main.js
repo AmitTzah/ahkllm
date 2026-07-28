@@ -139,6 +139,9 @@ function handleWebMessage(event) {
 
       case 'currentSettings':
         if (typeof populateCurrentSettings === 'function') populateCurrentSettings(data);
+        if (window.SettingsPanel && typeof window.SettingsPanel.onSettingsReceived === 'function') {
+          window.SettingsPanel.onSettingsReceived(data);
+        }
         break;
 
       case 'showDashboard':
@@ -154,15 +157,21 @@ function handleWebMessage(event) {
         if (typeof handleSearchResults === 'function') handleSearchResults(data);
         break;
 
-      case 'currentSettings':
-        if (window.SettingsPanel && typeof window.SettingsPanel.onSettingsReceived === 'function') {
-          window.SettingsPanel.onSettingsReceived(data);
-        }
-        break;
-
       case 'settingsSaved':
         if (window.SettingsPanel && typeof window.SettingsPanel.handleSettingsSaved === 'function') {
           window.SettingsPanel.handleSettingsSaved(data);
+        }
+        break;
+
+      case 'modelPricingRefresh':
+        if (window.SettingsModels && typeof window.SettingsModels.handleRefreshResult === 'function') {
+          window.SettingsModels.handleRefreshResult(data);
+        }
+        break;
+
+      case 'iconFileSelected':
+        if (window.SettingsIcons && typeof window.SettingsIcons.onFileSelected === 'function') {
+          window.SettingsIcons.onFileSelected(data.field, data.path);
         }
         break;
 
@@ -203,14 +212,26 @@ document.addEventListener('DOMContentLoaded', function () {
   window._showDashboard = showDashboard;
   window._showChat = showChat;
 
-  // Settings show/hide
+  // Settings show/hide — settingsNav replaces railLeft, settingsCenter replaces
+  // the chat/dashboard center; railRight and seams stay untouched.
   function showSettings() {
+    var settingsNav = document.getElementById('settingsNav');
+    var alreadyOpen = settingsNav && settingsNav.style.display !== 'none';
+
     if (chatLayout) chatLayout.style.display = 'none';
     if (dashPanel) dashPanel.style.display = 'none';
     var railLeft = document.getElementById('railLeft');
     if (railLeft) railLeft.style.display = 'none';
-    var wrapper = document.getElementById('settingsWrapper');
-    if (wrapper) wrapper.style.display = 'flex';
+    if (settingsNav) {
+      settingsNav.style.display = '';
+      // Restore width if the nav was collapsed (notch or auto-collapse)
+      if (settingsNav.offsetWidth < 40) {
+        settingsNav.style.width = '340px';
+        settingsNav.classList.remove('mini');
+      }
+    }
+    var settingsCenter = document.getElementById('settingsCenter');
+    if (settingsCenter) settingsCenter.style.display = '';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.add('active');
     var di = document.getElementById('dashboard-icon');
@@ -220,17 +241,31 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.SettingsPanel && typeof window.SettingsPanel.init === 'function') {
       window.SettingsPanel.init();
     }
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'requestAllSettings' }));
+    // Don't re-request when already open — that would wipe unsaved edits
+    if (!alreadyOpen) {
+      window.chrome.webview.postMessage(JSON.stringify({ action: 'requestAllSettings' }));
+    }
   }
 
   function hideSettings() {
-    var wrapper = document.getElementById('settingsWrapper');
-    if (wrapper) wrapper.style.display = 'none';
+    var settingsNav = document.getElementById('settingsNav');
+    if (settingsNav) settingsNav.style.display = 'none';
+    var settingsCenter = document.getElementById('settingsCenter');
+    if (settingsCenter) settingsCenter.style.display = 'none';
     var railLeft = document.getElementById('railLeft');
     if (railLeft) railLeft.style.display = '';
     if (chatLayout) chatLayout.style.display = '';
     var si = document.getElementById('settings-icon');
     if (si) si.classList.remove('active');
+  }
+
+  // Returns false when unsaved changes exist and the user chooses to stay
+  function confirmDiscardSettings() {
+    if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
+      if (!confirm('You have unsaved changes. Discard them?')) return false;
+      window.SettingsPanel.clearDirty();
+    }
+    return true;
   }
 
   window._showSettings = showSettings;
@@ -247,14 +282,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var dashIcon = document.getElementById('dashboard-icon');
   if (dashIcon) dashIcon.addEventListener('click', function() {
-    if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
-      if (!confirm('You have unsaved changes. Discard them?')) return;
-    }
+    if (!confirmDiscardSettings()) return;
     hideSettings();
     showDashboard();
   });
   var sidebarToggle = document.getElementById('sidebar-toggle');
   if (sidebarToggle) sidebarToggle.addEventListener('click', function() {
+    if (!confirmDiscardSettings()) return;
+    hideSettings();
     showChat();
     var railLeft = document.getElementById('railLeft');
     if (railLeft && (railLeft.style.width === '0px' || railLeft.style.width === '' || railLeft.classList.contains('mini'))) {

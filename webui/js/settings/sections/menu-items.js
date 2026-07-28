@@ -14,9 +14,23 @@
       var tr = document.createElement('tr');
       fields.forEach(function(f) {
         var td = document.createElement('td');
-        var inp = document.createElement('input');
-        inp.value = item[f] || ''; inp.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
-        td.appendChild(inp); tr.appendChild(td);
+        if (f === 'action') {
+          // Tray action: render a <select>
+          var sel = document.createElement('select');
+          sel.style.cssText = 'width:100%;border:1px solid transparent;border-radius:4px;padding:4px 8px;font-size:13px;background:transparent;';
+          ['reload', 'exit'].forEach(function(v) {
+            var opt = document.createElement('option');
+            opt.value = v; opt.textContent = v;
+            if (item[f] === v) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+          td.appendChild(sel); tr.appendChild(td);
+        } else {
+          var inp = document.createElement('input');
+          inp.value = item[f] || ''; inp.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+          td.appendChild(inp); tr.appendChild(td);
+        }
       });
       var tdAct = document.createElement('td'); tdAct.className = 'actions';
       var delBtn = document.createElement('button'); delBtn.className = 'btn-sm danger'; delBtn.textContent = '✕';
@@ -28,7 +42,8 @@
     var tbody = document.getElementById(tbodyId); if (!tbody) return [];
     var result = [];
     tbody.querySelectorAll('tr').forEach(function(tr) {
-      var item = {}; var inputs = tr.querySelectorAll('input');
+      var item = {};
+      var inputs = tr.querySelectorAll('input, select');
       inputs.forEach(function(inp, i) { if (i < fields.length) item[fields[i]] = inp.value; });
       result.push(item);
     });
@@ -37,10 +52,19 @@
   function addRow(tbodyId, fields) {
     var tbody = document.getElementById(tbodyId); if (!tbody) return;
     var tr = document.createElement('tr');
-    fields.forEach(function() {
-      var td = document.createElement('td'); var inp = document.createElement('input');
-      inp.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
-      td.appendChild(inp); tr.appendChild(td);
+    fields.forEach(function(f) {
+      var td = document.createElement('td');
+      if (f === 'action') {
+        var sel = document.createElement('select');
+        sel.style.cssText = 'width:100%;border:1px solid transparent;border-radius:4px;padding:4px 8px;font-size:13px;background:transparent;';
+        ['reload', 'exit'].forEach(function(v) { var opt = document.createElement('option'); opt.value = v; opt.textContent = v; sel.appendChild(opt); });
+        sel.addEventListener('change', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+        td.appendChild(sel); tr.appendChild(td);
+      } else {
+        var inp = document.createElement('input');
+        inp.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+        td.appendChild(inp); tr.appendChild(td);
+      }
     });
     var tdAct = document.createElement('td'); tdAct.className = 'actions';
     var delBtn = document.createElement('button'); delBtn.className = 'btn-sm danger'; delBtn.textContent = '✕';

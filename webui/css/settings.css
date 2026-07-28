@@ -306,3 +306,49 @@
 .btn-sm:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
 .btn-sm.danger { color: var(--danger); }
 .btn-sm.danger:hover { border-color: var(--danger); background: var(--danger-light); }
+
+/* Field hint (below inputs) */
+.field-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; line-height: 1.4; }
+
+/* Warning banner button */
+.warning-banner .btn-sm {
+  margin-left: auto; background: var(--warning); color: #fff; border: none; flex-shrink: 0;
+}
+
+/* Provider card icon badge */
+.provider-card-header .provider-icon {
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+
+/* Command detail placeholder */
+.command-detail .placeholder {
+  color: var(--text-tertiary); text-align: center; padding: 60px 20px;
+}
+
+/* Key capture (hotkeys) */
+.key-capture {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border-main); border-radius: var(--radius-sm);
+  padding: 6px 12px; background: var(--bg-main); font-family: var(--font-mono);
+  font-size: 13px; cursor: pointer; transition: border-color 0.2s;
+}
+.key-capture:hover { border-color: var(--accent-primary); }
+.key-capture.listening { border-color: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-light); }
+.key-capture .status { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-ui); }
+.key-capture input {
+  border: none; background: transparent; outline: none; flex: 1;
+  font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); padding: 0;
+}
+
+/* Horizontal rule / divider */
+.divider {
+  border: none; border-top: 1px solid var(--border-main);
+  margin: 20px 0;
+}
+
+/* Submenu order strip */
+.submenu-order-strip {
+  border-top: 1px solid var(--border-main); padding-top: 16px; margin-top: 16px;
+}

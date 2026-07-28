@@ -50,6 +50,17 @@ ChatHotkeys(action) {
 
 ChatDB.Open()
 
+; ----------------------------------------------------
+; Load settings from settings.json (fall back to UserConfig.ahk defaults)
+; ----------------------------------------------------
+settings := SettingsHandler.Load()
+merged := SettingsHandler.Merge(settings, SettingsHandler.GetDefaults())
+SettingsHandler.ApplyToGlobals(merged)
+RuntimeResolver_CheckApiKeys()
+RuntimeResolver_ResolvePrimaryProvider()
+RuntimeResolver_ResolveDefaultAssistant()
+debugLog("[CHAT] Settings loaded" (settings.Count ? " from settings.json" : " from UserConfig defaults"))
+
 ; Clean up DB and cURL on exit (ProcessClose from Main.ahk is force-kill;
 ; this runs when ChatWindow exits gracefully via WinClose or user action)
 _ChatWindowOnExit(*) {

@@ -82,50 +82,60 @@ window.UiControls = (function() {
   exports.setupVerticalResize = setupVerticalResize;
 
   // Horizontal Panel Resize
-  function setupResize(seamId, notchId, railEl, side, min, max, start) {
+  // railRef: an element, or a function returning the currently-visible panel element
+  // (allows one seam to resize whichever panel occupies the slot, e.g. chat sidebar vs settings nav)
+  function setupResize(seamId, notchId, railRef, side, min, max, start) {
     var seam = document.getElementById(seamId);
     var notch = document.getElementById(notchId);
-    if (!seam || !notch || !railEl) return;
+    var getRail = typeof railRef === 'function' ? railRef : function() { return railRef; };
+    if (!seam || !notch || !getRail()) return;
 
-    var width = start, dragging = false, startX = 0, startW = 0, collapsed = false;
+    var dragging = false, startX = 0, startW = 0, dragWidth = 0;
 
-    function apply() {
-      railEl.style.width = width + 'px';
-      if (side === 'left') railEl.classList.toggle('mini', width <= 90 && width > 0);
+    function isCollapsed(el) { return el.offsetWidth < 40; }
+
+    function apply(el, width) {
+      el.style.width = width + 'px';
+      if (side === 'left') el.classList.toggle('mini', width <= 90 && width > 0);
 
       var isLeft = side === 'left';
-      var icon = collapsed ? (isLeft ? 'chevron-right' : 'chevron-left') : (isLeft ? 'chevron-left' : 'chevron-right');
+      var icon = isCollapsed(el) ? (isLeft ? 'chevron-right' : 'chevron-left') : (isLeft ? 'chevron-left' : 'chevron-right');
       notch.innerHTML = '<i data-lucide="' + icon + '" style="width:12px;height:12px;"></i>';
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     seam.addEventListener('mousedown', function(e) {
       if (e.target.closest('.seam-notch')) return;
+      var el = getRail();
+      if (!el) return;
       dragging = true;
       startX = e.clientX;
-      startW = width;
+      startW = el.offsetWidth;
+      dragWidth = startW;
       document.body.style.userSelect = 'none';
       document.body.style.cursor = 'col-resize';
       // Disable CSS transition during drag for instant response
-      railEl.style.transition = 'none';
+      el.style.transition = 'none';
     });
 
     window.addEventListener('mousemove', function(e) {
       if (!dragging) return;
+      var el = getRail();
+      if (!el) return;
       var delta = side === 'left' ? (e.clientX - startX) : (startX - e.clientX);
-      width = Math.max(0, Math.min(max, startW + delta));
-      collapsed = width < 40;
-      if (width < 40) width = 0;
-      apply();
+      dragWidth = Math.max(0, Math.min(max, startW + delta));
+      if (dragWidth < 40) dragWidth = 0;
+      apply(el, dragWidth);
     });
 
     function cancelDrag() {
-      if (dragging && width > 0 && width < min) { width = min; apply(); }
+      var el = getRail();
+      if (dragging && el && dragWidth > 0 && dragWidth < min) { dragWidth = min; apply(el, dragWidth); }
       dragging = false;
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       // Re-enable CSS transition after drag
-      railEl.style.transition = '';
+      if (el) el.style.transition = '';
     }
 
     window.addEventListener('mouseup', cancelDrag);
@@ -136,9 +146,15 @@ window.UiControls = (function() {
 
     notch.addEventListener('click', function(e) {
       e.stopPropagation();
-      if (collapsed) { width = startW > min ? startW : start; collapsed = false; }
-      else { startW = width; width = 0; collapsed = true; }
-      apply();
+      var el = getRail();
+      if (!el) return;
+      if (isCollapsed(el)) {
+        var prev = parseInt(el.dataset.prevWidth, 10);
+        apply(el, prev > min ? prev : start);
+      } else {
+        el.dataset.prevWidth = el.offsetWidth;
+        apply(el, 0);
+      }
     });
   }
 
@@ -148,6 +164,7 @@ window.UiControls = (function() {
   exports.initAutoCollapse = function() {
     var railLeft = document.getElementById('railLeft');
     var railRight = document.getElementById('railRight');
+    var settingsNav = document.getElementById('settingsNav');
     if (!railLeft || !railRight) return;
 
     function isMaximized() {
@@ -167,6 +184,11 @@ window.UiControls = (function() {
         railLeft.style.width = '340px';
         railLeft.style.transition = '';
         railLeft.classList.remove('mini');
+        if (settingsNav) {
+          settingsNav.style.width = '340px';
+          settingsNav.style.transition = '';
+          settingsNav.classList.remove('mini');
+        }
         railRight.style.width = '400px';
         railRight.style.transition = '';
         // Update notch icons
@@ -177,6 +199,10 @@ window.UiControls = (function() {
         // Collapse: narrow panels
         railLeft.style.width = '0px';
         railLeft.style.transition = 'none';
+        if (settingsNav) {
+          settingsNav.style.width = '0px';
+          settingsNav.style.transition = 'none';
+        }
         railRight.style.width = '0px';
         railRight.style.transition = 'none';
         document.getElementById('notchLeft').innerHTML = '<i data-lucide="chevron-right" style="width:12px;height:12px;"></i>';

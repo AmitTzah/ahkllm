@@ -67,16 +67,25 @@ class AssistantRepo {
     static _resolveSystemMessage(a) {
         if a.HasProp("systemMessageFile") && a.systemMessageFile {
             filePath := a.systemMessageFile
-            if !InStr(filePath, ":") && !InStr(filePath, "\\")
-                filePath := A_ScriptDir "\\" filePath
+            if !InStr(filePath, ":") {
+                ; Relative path — search script dir, repo root, then user AppData folder
+                candidates := [A_ScriptDir "\" filePath, A_ScriptDir "\..\" filePath]
+                SplitPath(filePath, &name)
+                candidates.Push(A_AppData "\LLM-AutoHotkey-Assistant\system-messages\" name)
+                for _, cand in candidates {
+                    if FileExist(cand) {
+                        filePath := cand
+                        break
+                    }
+                }
+            }
             try {
                 content := FileRead(filePath, "UTF-8")
-                ; Normalize all line endings to LF: `r`n pairs first, then any stray `r
+                ; Normalize line endings to LF
                 content := StrReplace(content, "`r`n", "`n")
                 return StrReplace(content, "`r", "`n")
             } catch Error as e {
-                MsgBox("Failed to read assistant system message:`n" filePath "`n`n" e.Message,
-                    "System Message Error", "IconX")
+                debugLog("[SETTINGS] Failed to read assistant system message: " filePath " — " e.Message)
                 return a.HasProp("systemMessage") ? a.systemMessage : ""
             }
         }

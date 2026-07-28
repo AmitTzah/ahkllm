@@ -16,6 +16,7 @@ class CustomMessages {
     static WM_SHOW_DASHBOARD := 0x500 + 6
     static WM_SHOW_API_LOGS := 0x500 + 7
     static WM_SETTINGS_UPDATED := 0x500 + 8
+    static WM_RELOAD_MAIN := 0x500 + 9
 
     static registerHandlers(origin, handle) {
         switch origin {
@@ -23,8 +24,7 @@ class CustomMessages {
                 for msg in [this.WM_LOADING_START,
                     this.WM_LOADING_FINISH,
                     this.WM_CHAT_WINDOW_OPENED,
-                    this.WM_SHOW_API_LOGS,
-                    this.WM_SETTINGS_UPDATED]
+                    this.WM_SHOW_API_LOGS]
                     OnMessage(msg, handle)
 
             case "subScript":
@@ -74,5 +74,10 @@ class CustomMessages {
     ; ChatWindow → Main: notify that settings were saved, reload settings
     static notifySettingsUpdated(mainScriptHiddenhWnd) {
         try PostMessage(this.WM_SETTINGS_UPDATED, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
+    }
+
+    ; ChatWindow → Main: request full script reload (e.g. after hotkey changes)
+    static notifyReloadMain(mainScriptHiddenhWnd) {
+        try PostMessage(this.WM_RELOAD_MAIN, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
     }
 }

@@ -105,6 +105,7 @@ RegisterTestClass(className) {
 #Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
 #Include unit\CostCalculator.test.ahk
+#Include unit\SettingsHandler.test.ahk
 #Include unit\UsageTracking.test.ahk
 #Include unit\UsageDashboard.test.ahk
 #Include integration\ChatFlow.test.ahk

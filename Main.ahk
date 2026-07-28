@@ -88,7 +88,6 @@ handleHotkey(action) {
 ; ----------------------------------------------------
 
 ChatDB.Open()
-ChatDB.Assistant_Seed()
 
 ; ----------------------------------------------------
 ; Pre-warm ChatWindow: spawn hidden at startup so WebView2
@@ -228,8 +227,14 @@ OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     defaults := SettingsHandler.GetDefaults(),
     merged := SettingsHandler.Merge(settings, defaults),
     SettingsHandler.ApplyToGlobals(merged),
+    RuntimeResolver_ResolvePrimaryProvider(),
+    RuntimeResolver_ResolveDefaultAssistant(),
     debugLog("[SETTINGS] Reloaded settings globals")
 ))
+
+; Reload request from ChatWindow (e.g. "Restart Now" after hotkey changes).
+; Main's normal exit path force-kills the ChatWindow process.
+OnMessage(CustomMessages.WM_RELOAD_MAIN, (*) => Reload())
 
 ; ----------------------------------------------------
 ; Include application modules

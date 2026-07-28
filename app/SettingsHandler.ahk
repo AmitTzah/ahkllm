@@ -85,6 +85,19 @@ class SettingsHandler {
     ; Build complete defaults Map from current UserConfig.ahk globals.
     ; Called when settings.json is missing or malformed.
     static GetDefaults() {
+        ; NOTE: UserConfig.ahk assigns plain globals (not super-globals), so every
+        ; global referenced here MUST be declared or it is an unset local (crash
+        ; on enumeration, silent "false" for IsSet checks).
+        global providers, models, providerMap, assistants, commands, submenuOrder
+        global autoTitleGenerationEnabled, titleGenModel, titleGenSystemPrompt, titleGenMaxTokens
+        global chatDefaultModel, responseWindowFontFace
+        global inputWindowBackground, inputWindowFontSize, inputWindowFontColor, inputWindowFontFace, inputWindowWidth, inputWindowHeight
+        global suspendBannerText, suspendBannerFontSize, suspendBannerFontFace, suspendBannerTextColor, suspendBannerBackground
+        global iconOn, iconOff
+        global mainHotkey, saveReloadHotkey, closeWindowsHotkey, suspendHotkey
+        global apiLogMaxEntries, trashRetentionDays
+        global quickAccessMenuItems, trayMenuItems
+
         d := Map()
         d["version"] := 1
 
@@ -314,7 +327,7 @@ class SettingsHandler {
     ; Apply settings Map to global variables.
     ; Called on startup and when settings are updated via IPC.
     static ApplyToGlobals(settings) {
-        global providers, models, assistants, commands, submenuOrder
+        global providers, models, providerMap, assistants, commands, submenuOrder
         global autoTitleGenerationEnabled, titleGenModel, titleGenSystemPrompt, titleGenMaxTokens
         global chatDefaultModel, responseWindowFontFace
         global inputWindowBackground, inputWindowFontSize, inputWindowFontColor, inputWindowFontFace, inputWindowWidth, inputWindowHeight
@@ -324,11 +337,12 @@ class SettingsHandler {
         global apiLogMaxEntries, trashRetentionDays
         global quickAccessMenuItems, trayMenuItems
 
-        ; Providers
+        ; Providers (also rebuild providerMap: model-prefix → provider key)
         if settings.Has("providers") {
             newProviders := Map()
+            newProviderMap := Map()
             for k, p in settings["providers"] {
-                provObj := { 
+                provObj := {
                     displayName: p.Has("displayName") ? p["displayName"] : k,
                     endpoint: p.Has("endpoint") ? p["endpoint"] : "",
                     fimEndpoint: p.Has("fimEndpoint") ? p["fimEndpoint"] : "",
@@ -339,8 +353,16 @@ class SettingsHandler {
                     collapseThinking: p.Has("collapseThinking") ? p["collapseThinking"] : false
                 }
                 newProviders[k] := provObj
+                if p.Has("prefixes") && IsObject(p["prefixes"]) {
+                    for _, prefix in p["prefixes"]
+                        newProviderMap[prefix] := k
+                }
             }
             providers := newProviders
+            ; Only overwrite providerMap when prefixes were actually defined,
+            ; otherwise keep the UserConfig mapping (e.g. older settings.json without prefixes)
+            if newProviderMap.Count > 0
+                providerMap := newProviderMap
         }
 
         ; Models

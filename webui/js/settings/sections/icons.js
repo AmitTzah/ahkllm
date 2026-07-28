@@ -40,6 +40,16 @@
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', function() {
       wireDirty();
+      // Wire Browse buttons
+      var container = document.getElementById('sec-icons');
+      if (container) {
+        container.querySelectorAll('button[data-icon-field]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var field = this.getAttribute('data-icon-field');
+            window.chrome.webview.postMessage(JSON.stringify({action:'browseIcon', field: field}));
+          });
+        });
+      }
     });
   }
 
@@ -53,4 +63,16 @@
       }
     });
   }
+
+  // Expose handler for icon file selection from AHK
+  window.SettingsIcons = {
+    onFileSelected: function(field, path) {
+      var targetId = field === 'iconOn' ? 'iconOnPath' : 'iconOffPath';
+      var el = document.getElementById(targetId);
+      if (el) {
+        el.value = path;
+        if (window.SettingsPanel) window.SettingsPanel.markDirty();
+      }
+    }
+  };
 })();

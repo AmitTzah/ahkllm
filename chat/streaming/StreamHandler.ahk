@@ -38,7 +38,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 
     ; Use assistant name as display title when active
     if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
-        asst := ChatDB.Assistant_Get(requestParams["activeAssistantId"])
+        asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
         displayName := asst && asst.name ? asst.name : sanitizedModel
     } else {
         displayName := sanitizedModel

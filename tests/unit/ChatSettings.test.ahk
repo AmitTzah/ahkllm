@@ -32,13 +32,10 @@ class ChatSettingsTest {
         global requestParams, activeThreadId, assistants
 
         this._openDb()
-        ChatDB.Assistant_Seed()
 
-        ; Get the seeded assistant ID
-        asstList := ChatDB.Assistant_List()
-        if !asstList.Length
-            throw Error("No assistants seeded")
-        asst := asstList[1]
+        ; Stub assistants global (no DB seeding needed)
+        assistants := [{id: "asst-1", name: "Test Asst", baseModel: "deepseek/test", systemMessage: "Hello", reasoning: "", temperature: "", isDefault: true}]
+        asst := assistants[1]
 
         ; Set up requestParams with an active assistant
         requestParams["activeAssistantId"] := asst.id
@@ -73,12 +70,9 @@ class ChatSettingsTest {
         global requestParams, activeThreadId, assistants
 
         this._openDb()
-        ChatDB.Assistant_Seed()
 
-        asstList := ChatDB.Assistant_List()
-        if !asstList.Length
-            throw Error("No assistants seeded")
-        asst := asstList[1]
+        assistants := [{id: "asst-1", name: "Test Asst", baseModel: "deepseek/test", systemMessage: "Hello", reasoning: "", temperature: "", isDefault: true}]
+        asst := assistants[1]
 
         ; Set up requestParams with an active assistant
         requestParams["activeAssistantId"] := asst.id

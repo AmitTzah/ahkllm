@@ -4,6 +4,7 @@
 
 window.SettingsPanel = (function() {
   var _dirty = false;
+  var _initialized = false;
   var _defaultSettings = null;
   var _currentSettings = null;
   var _sectionModules = {};
@@ -11,6 +12,8 @@ window.SettingsPanel = (function() {
   var _allSections = [];
 
   function init() {
+    if (_initialized) return; // listeners are wired once — re-entry would duplicate them
+    _initialized = true;
     _navItems = document.querySelectorAll('.settings-nav .nav-item[data-section]');
     _allSections = document.querySelectorAll('.section-card[id^="sec-"]');
 

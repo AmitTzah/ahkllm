@@ -21,7 +21,7 @@
         }
       }
       var modelSel = document.getElementById('titleGenModel');
-      if (modelSel) modelSel.value = tt.model || 'deepseek/deepseek-v4-flash';
+      if (modelSel && data.models) fillSelect(modelSel, Object.keys(data.models).sort(), tt.model);
       var promptTa = document.getElementById('titleGenPrompt');
       if (promptTa) promptTa.value = tt.prompt || '';
       var maxTok = document.getElementById('titleGenMaxTokens');
@@ -30,14 +30,16 @@
     // API Logs
     if (data && data.apiLogs) {
       var logEntries = document.getElementById('apiLogMaxEntries');
-      if (logEntries) logEntries.value = data.apiLogs.maxEntries || 20;
+      if (logEntries && data.apiLogs.maxEntries !== undefined) logEntries.value = data.apiLogs.maxEntries;
     }
     // Trash
     if (data && data.trash) {
       var trashDays = document.getElementById('trashRetentionDays');
-      if (trashDays) trashDays.value = data.trash.retentionDays || 30;
+      if (trashDays && data.trash.retentionDays !== undefined) trashDays.value = data.trash.retentionDays;
     }
   }
+
+  function num(v, dflt) { var n = parseInt(v, 10); return isNaN(n) ? dflt : n; }
 
   function save() {
     var data = {};
@@ -47,15 +49,15 @@
       enabled: toggle ? toggle.classList.contains('on') : true,
       model: (document.getElementById('titleGenModel') || {}).value || 'deepseek/deepseek-v4-flash',
       prompt: (document.getElementById('titleGenPrompt') || {}).value || '',
-      maxTokens: parseInt((document.getElementById('titleGenMaxTokens') || {}).value) || 50
+      maxTokens: num((document.getElementById('titleGenMaxTokens') || {}).value, 50)
     };
     // API Logs
     data.apiLogs = {
-      maxEntries: parseInt((document.getElementById('apiLogMaxEntries') || {}).value) || 20
+      maxEntries: num((document.getElementById('apiLogMaxEntries') || {}).value, 20)
     };
     // Trash
     data.trash = {
-      retentionDays: parseInt((document.getElementById('trashRetentionDays') || {}).value) || 30
+      retentionDays: num((document.getElementById('trashRetentionDays') || {}).value, 30)
     };
     return data;
   }
@@ -88,6 +90,14 @@
         if (window.SettingsPanel) window.SettingsPanel.markDirty();
       });
     });
+  }
+
+  function fillSelect(sel, keys, current) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (current && keys.indexOf(current) < 0) keys.unshift(current);
+    keys.forEach(function(k) { var o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
+    if (current) sel.value = current;
   }
 
   // Initialize
