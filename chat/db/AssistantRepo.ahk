@@ -22,9 +22,13 @@ class AssistantRepo {
         if a.HasProp("systemMessageFile") && a.systemMessageFile {
             filePath := a.systemMessageFile
             if !InStr(filePath, ":") {
-                ; Relative path — search script dir, repo root, then user AppData folder
-                candidates := [A_ScriptDir "\" filePath, A_ScriptDir "\..\" filePath]
+                ; Relative path — search script dir, repo root, system-messages/ dirs, then user AppData folder.
+                ; Also try bare filenames (e.g. "violet.txt") by prepending "system-messages/".
                 SplitPath(filePath, &name)
+                candidates := [A_ScriptDir "\" filePath
+                             , A_ScriptDir "\..\" filePath
+                             , A_ScriptDir "\system-messages\" filePath
+                             , A_ScriptDir "\..\system-messages\" filePath]
                 candidates.Push(A_AppData "\LLM-AutoHotkey-Assistant\system-messages\" name)
                 for _, cand in candidates {
                     if FileExist(cand) {
