@@ -85,18 +85,53 @@
     return { commands: _commands, submenuOrder: _submenuOrder };
   }
 
+  // Collect submenu tag accelerators. Returns { tagAccels: {...} }.
+  function _collectTagAccels() {
+    var tagAccels = {};  // accelerator char → { tag, firstCmdName }
+    for (var i = 0; i < _commands.length; i++) {
+      var tags = _commands[i].tags || [];
+      for (var t = 0; t < tags.length; t++) {
+        var tag = tags[t].trim();
+        var tagM = tag.match(/^&(.)/);
+        if (!tagM) continue;
+        var tagKey = tagM[1].toLowerCase();
+        if (!tagAccels[tagKey]) {
+          tagAccels[tagKey] = { tag: tag, firstCmdName: _commands[i].commandName || 'Unnamed' };
+        }
+      }
+    }
+    return tagAccels;
+  }
+
   function validate() {
     window.Cmds.syncDetail();
     var cs = (document.getElementById('chatShortcut') || {}).value || '';
     if (cs) cs = cs.toLowerCase();
+
+    var tagAccels = _collectTagAccels();
+
+    // Check chatShortcut against submenu tag accelerators
+    if (cs && tagAccels[cs]) {
+      return { valid: false, message: 'Chat Shortcut "' + cs.toUpperCase() + '" conflicts with submenu "' + tagAccels[cs].tag + '" (used by "' + tagAccels[cs].firstCmdName + '").' };
+    }
+
     for (var i = 0; i < _commands.length; i++) {
       var ci = _commands[i];
       var msI = (ci.menuText || '').match(/&(.)/);
       var hasTagsI = ci.tags && ci.tags.length > 0;
       var msKey = msI ? msI[1].toLowerCase() : '';
       var directKey = ci.directAccelerator ? ci.directAccelerator.replace('&', '').toLowerCase() : '';
+
+      // Check chatShortcut against command accelerators (existing logic)
       if (cs && ((!hasTagsI && msKey === cs) || (directKey === cs)))
         return { valid: false, message: 'Chat Shortcut "' + cs.toUpperCase() + '" conflicts with "' + (ci.commandName||'Unnamed') + '".', selectIdx: i };
+
+      // Check directAccelerator / untagged menuText against submenu tag accelerators
+      if (directKey && tagAccels[directKey])
+        return { valid: false, message: 'Direct accelerator "&' + directKey.toUpperCase() + '" in "' + (ci.commandName||'Unnamed') + '" conflicts with submenu "' + tagAccels[directKey].tag + '".', selectIdx: i };
+      if (!hasTagsI && msKey && tagAccels[msKey])
+        return { valid: false, message: 'Accelerator "&' + msKey.toUpperCase() + '" in "' + (ci.commandName||'Unnamed') + '" conflicts with submenu "' + tagAccels[msKey].tag + '".', selectIdx: i };
+
       for (var j = i + 1; j < _commands.length; j++) {
         var cj = _commands[j];
         var msJ = (cj.menuText || '').match(/&(.)/);
