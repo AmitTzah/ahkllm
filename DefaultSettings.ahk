@@ -556,6 +556,7 @@ titleGenMaxTokens := 50
 chatShortcut := "1"
 chatDefaultModel := "deepseek/deepseek-v4-flash"
 responseWindowFontFace := "Inter"
+responseWindowFontSize := "17"
 
 ; -- Command Input Window --
 inputWindowBackground    := "0x212529"

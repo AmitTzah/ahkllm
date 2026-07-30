@@ -139,6 +139,8 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     postThreadStats(activeThreadId)
     if includeDropdownLabel
         _sendDropdownLabel()
+    ; Push per-thread settings (model, assistant, font size, etc.) to WebView
+    postCurrentSettingsToWebView()
 }
 
 ; Refresh thread list and trash list in the sidebar WebView.

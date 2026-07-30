@@ -17,10 +17,18 @@ function populateCurrentSettings(settings) {
     systemMessage: settings.systemMessage || '',
     reasoning: settings.reasoning || '',
     temperature: settings.temperature || '',
+    fontSize: settings.fontSize || '17',
     assistantName: settings.assistantName || '',
     assistantBaseModel: settings.assistantBaseModel || '',
     assistantDescription: settings.assistantDescription || ''
   };
+
+  // Apply per-chat font size
+  if (settings.fontSize) {
+    document.documentElement.style.setProperty('--chat-font-size', settings.fontSize + 'px');
+    var fontDisp = document.getElementById('font-size-display');
+    if (fontDisp) fontDisp.textContent = settings.fontSize + 'px';
+  }
 
   // Update model card
   _updateModelCard();

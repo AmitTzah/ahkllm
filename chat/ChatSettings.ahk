@@ -20,6 +20,8 @@ _ClearRequestOverrides() {
     requestParams["temperatureOverride"] := ""
     if requestParams.Has("activeAssistantId")
         requestParams.Delete("activeAssistantId")
+    if requestParams.Has("fontSize")
+        requestParams.Delete("fontSize")
     requestParams["singleAPIModelName"] := chatDefaultModel
 }
 
@@ -40,6 +42,8 @@ _restoreThreadSettings(threadId) {
         requestParams["reasoningOverride"] := settings.reasoningOverride
     if settings.temperatureOverride
         requestParams["temperatureOverride"] := settings.temperatureOverride
+    if settings.fontSize
+        requestParams["fontSize"] := settings.fontSize
     if settings.assistantId {
         requestParams["activeAssistantId"] := settings.assistantId
         asst := AssistantRepo.GetFromSettings(settings.assistantId)
@@ -54,12 +58,15 @@ _restoreThreadSettings(threadId) {
 
 ; Build the settings object from current requestParams state.
 _CurrentSettingsObject() {
+    global responseWindowFontSize
+    defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
     return {
         assistantId: requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : "",
         modelOverride: requestParams["singleAPIModelName"] != chatDefaultModel ? requestParams["singleAPIModelName"] : "",
         systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
         reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
-        temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
+        temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
+        fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
     }
 }
 
@@ -173,10 +180,13 @@ handleModelSettingsUpdate(parsed) {
 }
 
 postCurrentSettingsToWebView() {
+    global responseWindowFontSize
     model := requestParams["singleAPIModelName"]
     systemMessage := requestParams.Has("systemOverride") ? requestParams["systemOverride"] : ""
     reasoning := requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : ""
     temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
+    defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
+    fontSize := requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
 
     ; Include assistant metadata when active
     assistantName := ""
@@ -196,6 +206,7 @@ postCurrentSettingsToWebView() {
         systemMessage: systemMessage,
         reasoning: reasoning,
         temperature: temperature,
+        fontSize: fontSize,
         assistantName: assistantName,
         assistantBaseModel: assistantBaseModel,
         assistantDescription: assistantDescription
@@ -234,4 +245,14 @@ postAssistantsToWebView() {
 SetTimer SendAssistantsDelayed, -500
 SendAssistantsDelayed() {
     postAssistantsToWebView()
+}
+
+; Handle per-chat font size update from the header +/- buttons.
+handleUpdateFontSize(parsed) {
+    global activeThreadId
+    fontSize := parsed.Get("fontSize", 17)
+    if activeThreadId {
+        requestParams["fontSize"] := fontSize
+        ChatDB.Thread_UpdateSettings(activeThreadId, { fontSize: fontSize })
+    }
 }

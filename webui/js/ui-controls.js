@@ -7,25 +7,39 @@ window.UiControls = (function() {
   // Font Size Controls
   exports.initFontControls = function() {
     var currentFontSize = 17;
+    if (typeof getComputedStyle !== 'undefined') {
+      var cssVal = getComputedStyle(document.documentElement).getPropertyValue('--chat-font-size').trim();
+      if (cssVal) currentFontSize = parseInt(cssVal) || 17;
+    }
     var fontDisp = document.getElementById('font-size-display');
     var btnDec = document.getElementById('btn-font-dec');
     var btnInc = document.getElementById('btn-font-inc');
 
     if (!btnDec || !btnInc || !fontDisp) return;
 
+    function applyFontSize(size) {
+      document.documentElement.style.setProperty('--chat-font-size', size + 'px');
+      fontDisp.textContent = size + 'px';
+      // Persist per-chat font size to AHK/DB
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(JSON.stringify({
+          action: 'updateFontSize',
+          fontSize: size
+        }));
+      }
+    }
+
     btnDec.addEventListener('click', function() {
       if (currentFontSize > 12) {
         currentFontSize -= 1;
-        document.documentElement.style.setProperty('--chat-font-size', currentFontSize + 'px');
-        fontDisp.textContent = currentFontSize + 'px';
+        applyFontSize(currentFontSize);
       }
     });
 
     btnInc.addEventListener('click', function() {
       if (currentFontSize < 28) {
         currentFontSize += 1;
-        document.documentElement.style.setProperty('--chat-font-size', currentFontSize + 'px');
-        fontDisp.textContent = currentFontSize + 'px';
+        applyFontSize(currentFontSize);
       }
     });
   };

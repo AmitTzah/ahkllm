@@ -39,6 +39,10 @@ _HandleThreadAction(action, params) {
         case "newChat":
             activeThreadId := ChatDB.Thread_Create()
             _resetToDefaultSettings()
+            ; Apply default font size from settings to the new thread
+            global responseWindowFontSize
+            if IsSet(responseWindowFontSize) && responseWindowFontSize
+                ChatDB.Thread_UpdateSettings(activeThreadId, { fontSize: responseWindowFontSize })
             postWebMessage("loadThread", activeThreadId)
             _postThreadListRefresh()
 

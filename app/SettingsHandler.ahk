@@ -232,13 +232,14 @@ class SettingsHandler {
     }
 
     static _DefaultsUI() {
-        global chatDefaultModel, responseWindowFontFace
+        global chatDefaultModel, responseWindowFontFace, responseWindowFontSize
         global inputWindowBackground, inputWindowFontSize, inputWindowFontColor, inputWindowFontFace, inputWindowWidth, inputWindowHeight
         global suspendBannerText, suspendBannerFontSize, suspendBannerFontFace, suspendBannerTextColor, suspendBannerBackground
 
         return Map(
             "chatDefaultModel", IsSet(chatDefaultModel) ? chatDefaultModel : "deepseek/deepseek-v4-flash",
             "responseFont", IsSet(responseWindowFontFace) ? responseWindowFontFace : "Inter",
+            "responseFontSize", IsSet(responseWindowFontSize) ? responseWindowFontSize : "17",
             "inputWindow", Map(
                 "background", IsSet(inputWindowBackground) ? inputWindowBackground : "0x212529",
                 "fontSize", IsSet(inputWindowFontSize) ? inputWindowFontSize : "s14",
@@ -550,7 +551,7 @@ class SettingsHandler {
     }
 
     static _ApplyUI(settings) {
-        global chatDefaultModel, responseWindowFontFace
+        global chatDefaultModel, responseWindowFontFace, responseWindowFontSize
         global inputWindowBackground, inputWindowFontSize, inputWindowFontColor, inputWindowFontFace, inputWindowWidth, inputWindowHeight
         global suspendBannerText, suspendBannerFontSize, suspendBannerFontFace, suspendBannerTextColor, suspendBannerBackground
 
@@ -561,6 +562,8 @@ class SettingsHandler {
             chatDefaultModel := u["chatDefaultModel"]
         if u.Has("responseFont") && u["responseFont"] != ""
             responseWindowFontFace := u["responseFont"]
+        if u.Has("responseFontSize") && u["responseFontSize"] != ""
+            responseWindowFontSize := u["responseFontSize"]
         SettingsHandler._ApplyInputWindow(u)
         SettingsHandler._ApplySuspendBanner(u)
     }

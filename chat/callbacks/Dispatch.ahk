@@ -73,6 +73,8 @@ OnWebMessageReceived(sender, args) {
                 _HandleBrowseIcon(parsed)
             case "debugLog":
                 debugLog(parsed.Get("message", ""), "WebUI")
+            case "updateFontSize":
+                handleUpdateFontSize(parsed)
         }
     } catch Error as e {
         _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)

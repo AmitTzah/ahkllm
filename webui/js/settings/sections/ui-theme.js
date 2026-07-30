@@ -27,6 +27,10 @@
       var fontName = (u.responseFont || '').split(',')[0].trim();
       setVal('responseFont', fontName);
       if (fontName) document.documentElement.style.setProperty('--chat-font-family', fontName + ', sans-serif');
+      // responseFontSize: only sets the select value, does NOT apply CSS var.
+      // Per-chat font size is applied by populateCurrentSettings from DB.
+      var fontSize = u.responseFontSize || '17';
+      setVal('responseFontSize', fontSize);
       if (u.inputWindow) {
         var iw = u.inputWindow;
         setVal('iwBackground', iw.background ? iw.background.replace('0x', '#') : '#212529');
@@ -68,6 +72,7 @@
       ui: {
         chatDefaultModel: getVal('chatDefaultModel'),
         responseFont: getVal('responseFont'),
+        responseFontSize: getVal('responseFontSize'),
         inputWindow: {
           background: '0x' + getVal('iwBackground').replace('#', ''),
           fontSize: getVal('iwFontSize'),
@@ -123,10 +128,21 @@
     });
   }
 
+  // Wire responseFontSize: only marks dirty on change.
+  // Does NOT apply CSS var — per-chat font size is controlled by the header +/- buttons.
+  function wireResponseFontSize() {
+    var sel = document.getElementById('responseFontSize');
+    if (!sel) return;
+    sel.addEventListener('change', function() {
+      if (window.SettingsPanel) window.SettingsPanel.markDirty();
+    });
+  }
+
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', function() {
       wireColors();
       wireDirty();
+      wireResponseFontSize();
       // Wire dark-mode toggle
       var darkToggle = document.getElementById('darkModeToggle');
       if (darkToggle) {

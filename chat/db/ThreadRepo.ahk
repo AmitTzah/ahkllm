@@ -15,7 +15,7 @@ class ThreadRepo {
         return id
     }
 
-    ; Save per-thread settings (model, assistant, system, reasoning, temperature).
+    ; Save per-thread settings (model, assistant, system, reasoning, temperature, fontSize).
     static UpdateSettings(threadId, settings) {
         safeId := SQLite.Escape(threadId)
         parts := []
@@ -29,6 +29,8 @@ class ThreadRepo {
             parts.Push("reasoning_override = " (settings.reasoningOverride ? "'" SQLite.Escape(settings.reasoningOverride) "'" : "NULL"))
         if settings.HasOwnProp("temperatureOverride")
             parts.Push("temperature_override = " (settings.temperatureOverride != "" ? settings.temperatureOverride : "NULL"))
+        if settings.HasOwnProp("fontSize")
+            parts.Push("font_size = " (settings.fontSize ? settings.fontSize : "17"))
         if parts.Length {
             setClause := ""
             for i, p in parts
@@ -40,7 +42,7 @@ class ThreadRepo {
     ; Get per-thread settings.
     static GetSettings(threadId) {
         safeId := SQLite.Escape(threadId)
-        table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override FROM chat_threads WHERE id='" safeId "';")
+        table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size FROM chat_threads WHERE id='" safeId "';")
         if table.count {
             row := table[1]
             return {
@@ -48,7 +50,8 @@ class ThreadRepo {
                 modelOverride: row.model_override,
                 systemOverride: row.system_override,
                 reasoningOverride: row.reasoning_override,
-                temperatureOverride: row.temperature_override
+                temperatureOverride: row.temperature_override,
+                fontSize: row.font_size ? row.font_size : 17
             }
         }
         return ""
