@@ -12,6 +12,9 @@
 .msg-meta { font-family: var(--font-mono); font-size: 14px; color: var(--text-tertiary); }
 
 .msg-content { font-size: var(--chat-font-size); font-family: var(--chat-font-family); line-height: 1.6; color: var(--text-primary); word-wrap: break-word; transition: font-size 0.2s ease-out; }
+.msg-content p { margin: 0.8em 0; }
+.msg-content p:first-child { margin-top: 0; }
+.msg-content p:last-child { margin-bottom: 0; }
 
 .msg.you .msg-content { 
   background: var(--user-msg-bg); padding: 14px 24px; border-radius: var(--radius-lg); 
