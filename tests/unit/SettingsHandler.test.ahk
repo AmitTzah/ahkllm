@@ -87,19 +87,19 @@ class SettingsHandlerTest {
     }
 
     ApplyToGlobals_UpdatesHotkeyGlobals() {
-        global mainHotkey, saveReloadHotkey, closeWindowsHotkey, suspendHotkey
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
 
         settings := Map()
         hk := Map(
             "main", "t",
-            "saveReload", "~^s",
+            "reload", "~^!r",
             "closeWindows", "^F4",
             "suspend", "!s"
         )
         settings["hotkeys"] := hk
 
         oldMain := mainHotkey
-        oldSave := saveReloadHotkey
+        oldReload := reloadHotkey
         oldClose := closeWindowsHotkey
         oldSuspend := suspendHotkey
 
@@ -107,8 +107,8 @@ class SettingsHandlerTest {
 
         if mainHotkey != "t"
             throw Error("Expected mainHotkey='t', got: " mainHotkey)
-        if saveReloadHotkey != "~^s"
-            throw Error("Expected saveReloadHotkey='~^s', got: " saveReloadHotkey)
+        if reloadHotkey != "~^!r"
+            throw Error("Expected reloadHotkey='~^!r', got: " reloadHotkey)
         if closeWindowsHotkey != "^F4"
             throw Error("Expected closeWindowsHotkey='^F4', got: " closeWindowsHotkey)
         if suspendHotkey != "!s"
@@ -116,7 +116,7 @@ class SettingsHandlerTest {
 
         ; Restore originals so other tests aren't affected
         mainHotkey := oldMain
-        saveReloadHotkey := oldSave
+        reloadHotkey := oldReload
         closeWindowsHotkey := oldClose
         suspendHotkey := oldSuspend
     }

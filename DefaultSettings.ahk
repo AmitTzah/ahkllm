@@ -587,7 +587,7 @@ iconOff := "icons\IconOff.ico" ; Tray icon when the script is suspended
 ; ============================================================================
 
 mainHotkey         := "``"               ; Backtick — opens the command menu
-saveReloadHotkey   := "~^s"              ; Ctrl+S — save UserConfig & reload
+reloadHotkey       := "~^!r"             ; Ctrl+Alt+R — reload script
 closeWindowsHotkey := "~^w"              ; Ctrl+W — close input pop-up
 suspendHotkey      := "CapsLock & ``"    ; CapsLock+Backtick — toggle suspend
 
@@ -611,14 +611,13 @@ trashRetentionDays := 30    ; days before auto-purge; 0 = never auto-purge
 ; ============================================================================
 ; -- Quick Access (appear under ` → Quick Access in the command menu) --
 quickAccessMenuItems := [
-    { menuText: "&1 - Edit Default Settings",   command: "Notepad " A_ScriptDir "\DefaultSettings.ahk" },
-    { menuText: "&2 - DeepSeek Usage",         command: "https://platform.deepseek.com/usage" },
-    { menuText: "&3 - OpenAI Usage",         command: "https://platform.openai.com/settings/organization/usage" },
-    { menuText: "&4 - Gemini Usage",         command: "https://aistudio.google.com/spend" },
-    { menuText: "&5 - API Logs",               command: "apilogs:" },
-    { menuText: "&6 - Model Pricing",          command: "cmd /c powershell -ExecutionPolicy Bypass -File " A_ScriptDir "\Refresh-ModelPricing.ps1 && start " A_ScriptDir "\models_pricing.txt" },
-    { menuText: "&7 - Debug Log",              command: A_Temp "\LLM_Debug_Log.txt" },
-    { menuText: "&8 - Usage Dashboard",        command: "usage:" },
+    { menuText: "&1 - DeepSeek Usage",         command: "https://platform.deepseek.com/usage" },
+    { menuText: "&2 - OpenAI Usage",         command: "https://platform.openai.com/settings/organization/usage" },
+    { menuText: "&3 - Gemini Usage",         command: "https://aistudio.google.com/spend" },
+    { menuText: "&4 - API Logs",               command: "apilogs:" },
+    { menuText: "&5 - Model Pricing",          command: "cmd /c powershell -ExecutionPolicy Bypass -File " A_ScriptDir "\Refresh-ModelPricing.ps1 && start " A_ScriptDir "\models_pricing.txt" },
+    { menuText: "&6 - Debug Log",              command: A_Temp "\LLM_Debug_Log.txt" },
+    { menuText: "&7 - Usage Dashboard",        command: "usage:" },
 
 ]
 

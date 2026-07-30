@@ -10,16 +10,16 @@
 ; to the appropriate handler.
 ; ======================================================
 
-global _activeHotkeys := { main: "", saveReload: "", closeWindows: "", suspend: "" }
+global _activeHotkeys := { main: "", reload: "", closeWindows: "", suspend: "" }
 
 _registerAllHotkeys() {
-    global mainHotkey, saveReloadHotkey, closeWindowsHotkey, suspendHotkey, _activeHotkeys
+    global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey, _activeHotkeys
 
     ; Turn off any previously registered hotkeys
     if _activeHotkeys.main
         Hotkey(_activeHotkeys.main, "Off")
-    if _activeHotkeys.saveReload
-        Hotkey(_activeHotkeys.saveReload, "Off")
+    if _activeHotkeys.reload
+        Hotkey(_activeHotkeys.reload, "Off")
     if _activeHotkeys.closeWindows
         Hotkey(_activeHotkeys.closeWindows, "Off")
     if _activeHotkeys.suspend
@@ -27,13 +27,13 @@ _registerAllHotkeys() {
 
     ; Register current hotkeys
     Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"), "On")
-    Hotkey(saveReloadHotkey, (*) => handleHotkey("saveAndReloadScript"), "On")
+    Hotkey(reloadHotkey, (*) => handleHotkey("reloadScript"), "On")
     Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"), "On")
     Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S On")
 
     ; Remember active bindings for next update
     _activeHotkeys.main := mainHotkey
-    _activeHotkeys.saveReload := saveReloadHotkey
+    _activeHotkeys.reload := reloadHotkey
     _activeHotkeys.closeWindows := closeWindowsHotkey
     _activeHotkeys.suspend := suspendHotkey
 }
@@ -52,21 +52,8 @@ handleHotkey(action) {
             SetCapsLockState "Off"
             toggleSuspend(A_IsSuspended)
 
-        case "saveAndReloadScript":
-            if !WinActive("UserConfig.ahk") {
-                return
-            }
-
-            ; Small delay to ensure file operations are complete
-            Sleep 100
-
-            if (getActiveModels().Count > 0) {
-                MsgBox("Script will automatically reload once the chat window is closed.",
-                    "LLM AutoHotkey Assistant", 64)
-                handleLoadingState(0, 0, "reloadScript", 0)
-            } else {
-                Reload()
-            }
+        case "reloadScript":
+            Reload()
 
         case "closeWindows":
             switch WinActive("A") {

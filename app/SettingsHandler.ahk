@@ -268,11 +268,11 @@ class SettingsHandler {
     }
 
     static _DefaultsHotkeys() {
-        global mainHotkey, saveReloadHotkey, closeWindowsHotkey, suspendHotkey
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
 
         return Map(
             "main", IsSet(mainHotkey) ? mainHotkey : "``",
-            "saveReload", IsSet(saveReloadHotkey) ? saveReloadHotkey : "~^s",
+            "reload", IsSet(reloadHotkey) ? reloadHotkey : "~^!r",
             "closeWindows", IsSet(closeWindowsHotkey) ? closeWindowsHotkey : "~^w",
             "suspend", IsSet(suspendHotkey) ? suspendHotkey : "CapsLock & ``"
         )
@@ -619,15 +619,15 @@ class SettingsHandler {
     }
 
     static _ApplyHotkeys(settings) {
-        global mainHotkey, saveReloadHotkey, closeWindowsHotkey, suspendHotkey
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
 
         if !settings.Has("hotkeys")
             return
         hk := settings["hotkeys"]
         if hk.Has("main") && hk["main"] != ""
             mainHotkey := hk["main"]
-        if hk.Has("saveReload") && hk["saveReload"] != ""
-            saveReloadHotkey := hk["saveReload"]
+        if hk.Has("reload") && hk["reload"] != ""
+            reloadHotkey := hk["reload"]
         if hk.Has("closeWindows") && hk["closeWindows"] != ""
             closeWindowsHotkey := hk["closeWindows"]
         if hk.Has("suspend") && hk["suspend"] != ""

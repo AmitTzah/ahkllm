@@ -4,7 +4,7 @@
   function load(data) {
     if (data && data.hotkeys) {
       setVal('hkMain', data.hotkeys.main);
-      setVal('hkSaveReload', data.hotkeys.saveReload);
+      setVal('hkReload', data.hotkeys.reload);
       setVal('hkCloseWindows', data.hotkeys.closeWindows);
       setVal('hkSuspend', data.hotkeys.suspend);
     }
@@ -12,7 +12,7 @@
   function setVal(id, v) { var el = document.getElementById(id); if (el && v !== undefined) el.value = v; }
   function getVal(id) { var el = document.getElementById(id); return el ? el.value : ''; }
   function save() {
-    return { hotkeys: { main: getVal('hkMain'), saveReload: getVal('hkSaveReload'), closeWindows: getVal('hkCloseWindows'), suspend: getVal('hkSuspend') } };
+    return { hotkeys: { main: getVal('hkMain'), reload: getVal('hkReload'), closeWindows: getVal('hkCloseWindows'), suspend: getVal('hkSuspend') } };
   }
   function wireDirty() {
     var c = document.getElementById('sec-hotkeys'); if (!c) return;
