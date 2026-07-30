@@ -375,3 +375,49 @@
 .submenu-order-strip {
   border-top: 1px solid var(--border-main); padding-top: 16px; margin-top: 16px;
 }
+
+/* ── Command Detail: card-based layout ── */
+.cmd-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 12px;
+}
+.cmd-card-header {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+}
+
+/* Behavior toggle descriptions */
+.cmd-behavior-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Advanced collapsible toggle */
+.cmd-advanced-wrap {
+  cursor: pointer;
+}
+.cmd-advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cmd-chevron {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.cmd-chevron.open {
+  transform: rotate(-135deg);
+}

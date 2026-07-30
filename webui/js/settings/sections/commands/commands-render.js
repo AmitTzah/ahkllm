@@ -107,27 +107,83 @@
   };
 
   function _buildDetailHTML() {
-    return '<div style="font-weight:600;font-size:14px;margin-bottom:16px;"><input type="text" id="cmdDetailTitle" placeholder="Command Title" style="border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;padding:2px 4px;border-radius:4px;width:auto;"></div>'+
-      '<div class="grid-2"><div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask"></div>'+
-      '<div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input type="text" id="cmdMenuShortcut" placeholder="e.g. 2 or a" maxlength="1" style="width:80px;"><div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Shows as: <code id="cmdMenuTextPreview"></code></div></div></div>'+
-      '<div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="Press backtick then this key to fire directly without navigating submenus. Only useful with tags.">?</span></label><input type="text" id="cmdDirectShortcut" placeholder="e.g. 1 or a" maxlength="1" style="width:80px;"></div>'+
-      '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Supports provider/model format (e.g. openai/gpt-4o) or direct name.">?</span></label><input type="text" id="cmdApiModel" placeholder="deepseek-v4-flash"></div>'+
-      '<div class="grid-2"><div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>'+
-      '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0-2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div></div>'+
-      '<div class="field"><label class="field-label">User Message <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Use Enter for newlines.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>'+
-      '<div class="field"><label class="field-label">System Message <span class="tt" data-tip="Instructions for the LLM. Supports {{selection}}, {{fullText}}, {{input}}. Edit to pick a file or write inline text.">?</span></label><div style="display:flex;align-items:center;gap:8px;"><span id="cmdSysMsgLabel" style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);">\uD83D\uDCC4 (none)</span><button class="btn-sm" id="cmdEditSysMsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>'+
-      '<div class="toggle-row"><div><div class="lbl">Show Input Box <span class="tt" data-tip="Opens a text box before sending. User input becomes {{input}}. Ignored in FIM mode.">?</span></div></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>'+
-      '<div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>'+
-      '<div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, prompt fields above are ignored.">?</span></div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>'+
-      '<div class="field" style="margin-top:12px;"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers.">?</span></label><div class="field-row"><select id="cmdThinkingType" style="flex:1;"><option>disabled</option><option>enabled</option></select><select id="cmdThinkingLevel" style="flex:1;"><option value="">Default</option><option>low</option><option>medium</option><option>high</option></select></div></div>'+
-      '<div class="field"><label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label><div style="display:flex;gap:4px;flex-wrap:wrap;" id="cmdTags"></div><button class="btn-sm" id="addCmdTagBtn" style="margin-top:4px;">+ Add Tag</button></div>'+
-      '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default.">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>'+
-      '<div class="advanced-wrap" style="margin-top:16px;border:1px solid var(--border-main);border-radius:var(--radius-md);"><div class="advanced-toggle" onclick="this.parentElement.classList.toggle(\'open\')"><span>Advanced</span><span>&#8250;</span></div><div class="advanced-body">'+
-      '<div class="grid-2"><div class="field"><label class="field-label">Input Box Default <span class="tt" data-tip="Text pre-filled in the input box. Only used when Show Input Box is on.">?</span></label><input type="text" id="cmdInputBoxDefault"></div>'+
-      '<div class="field"><label class="field-label">Stop Sequences <span class="tt" data-tip="Array of strings that stop generation. e.g. \\n\\n. Leave empty for none.">?</span></label><input type="text" id="cmdStop" placeholder=\'e.g. ["\n\n\"]\'></div></div>'+
-      '<div class="grid-2"><div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>'+
-      '<div class="field"><label class="toggle-row"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break).">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label></div></div>'+
-      '</div></div>'+
+    // Card-based layout matching the settings panel redesign
+    return ''+
+      // ── Title header ──
+      '<div style="margin-bottom:16px;"><input type="text" id="cmdDetailTitle" placeholder="Command Title" style="border:1px solid transparent;background:transparent;font-weight:600;font-size:18px;padding:2px 4px;border-radius:4px;width:auto;"></div>'+
+
+      // ── Identity ──
+      '<div class="cmd-card">'+
+        '<div class="cmd-card-header">Identity</div>'+
+        '<div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask" style="max-width:400px;"></div>'+
+        '<div style="display:flex;gap:24px;">'+
+          '<div class="field" style="margin-bottom:0;"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input type="text" id="cmdMenuShortcut" placeholder="e.g. 2" maxlength="1" style="width:70px;"></div>'+
+          '<div class="field" style="margin-bottom:0;"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input type="text" id="cmdDirectShortcut" placeholder="e.g. 1" maxlength="1" style="width:70px;"></div>'+
+        '</div>'+
+        '<div class="field" style="margin-bottom:0;margin-top:8px;">'+
+          '<label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label>'+
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;" id="cmdTags"></div>'+
+          '<button class="btn-sm" id="addCmdTagBtn" style="margin-top:4px;">+ Add Tag</button>'+
+        '</div>'+
+      '</div>'+
+
+      // ── Model Configuration ──
+      '<div class="cmd-card">'+
+        '<div class="cmd-card-header">Model Configuration</div>'+
+        '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Supports provider/model format (e.g. openai/gpt-4o) or direct name.">?</span></label><input type="text" id="cmdApiModel" placeholder="deepseek-v4-flash" style="max-width:400px;"></div>'+
+        '<div class="grid-2">'+
+          '<div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>'+
+          '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0-2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div>'+
+        '</div>'+
+        '<div class="grid-2">'+
+          '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>'+
+          '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers. Level defaults to medium.">?</span></label><div class="field-row"><select id="cmdThinkingType" style="flex:1;"><option>disabled</option><option>enabled</option></select><select id="cmdThinkingLevel" style="flex:1;"><option value="">Default level</option><option>low</option><option>medium</option><option>high</option></select></div></div>'+
+        '</div>'+
+      '</div>'+
+
+      // ── Message Content ──
+      '<div class="cmd-card">'+
+        '<div class="cmd-card-header">Message Content</div>'+
+        '<div class="field"><label class="field-label">User Message <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Use Enter for newlines &mdash; they are automatically converted.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>'+
+        '<div class="field" style="margin-bottom:0;">'+
+          '<label class="field-label">System Message <span class="tt" data-tip="Instructions for the LLM. Supports {{selection}}, {{fullText}}, {{input}}. Edit to pick a file or write inline text.">?</span></label>'+
+          '<div style="display:flex;align-items:center;gap:8px;">'+
+            '<span id="cmdSysMsgLabel" style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);">\uD83D\uDCC4 (none)</span>'+
+            '<button class="btn-sm" id="cmdEditSysMsg">Edit</button>'+
+          '</div>'+
+          '<div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div>'+
+        '</div>'+
+      '</div>'+
+
+      // ── Behavior ──
+      '<div class="cmd-card">'+
+        '<div class="cmd-card-header">Behavior</div>'+
+        '<div class="toggle-row"><div><div class="lbl">Show Input Box <span class="tt" data-tip="Opens a text box before sending. User input becomes {{input}}. Ignored in FIM mode.">?</span></div><div class="cmd-behavior-desc">Display a text field for typing a prompt before sending.</div></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>'+
+        '<div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div><div class="cmd-behavior-desc">Show output token-by-token as it\'s generated.</div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>'+
+        '<div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, prompt fields above are ignored.">?</span></div><div class="cmd-behavior-desc">Fill-in-the-middle. When on, prompt fields above are ignored.</div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>'+
+      '</div>'+
+
+      // ── Advanced (collapsible) ──
+      '<div class="cmd-card cmd-advanced-wrap" onclick="var b=this.querySelector(\'.cmd-advanced-body\');var c=this.querySelector(\'.cmd-chevron\');if(!b)return;b.style.display=b.style.display===\'none\'?\'block\':\'none\';if(c)c.classList.toggle(\'open\');">'+
+        '<div class="cmd-advanced-toggle">'+
+          '<span class="cmd-card-header" style="margin-bottom:0;">Advanced</span>'+
+          '<span class="cmd-chevron"></span>'+
+        '</div>'+
+        '<div class="cmd-advanced-body" style="display:none;padding-top:12px;">'+
+          '<div class="grid-2">'+
+            '<div class="field"><label class="field-label">Input Box Default <span class="tt" data-tip="Text pre-filled in the input box. Only used when Show Input Box is on.">?</span></label><input type="text" id="cmdInputBoxDefault"></div>'+
+            '<div class="field"><label class="field-label">Stop Sequences <span class="tt" data-tip="Array of strings that stop generation. e.g. \\n\\n. Leave empty for none.">?</span></label><input type="text" id="cmdStop" placeholder=\'e.g. ["\n\n\"]\'></div>'+
+          '</div>'+
+          '<div class="grid-2" style="margin-bottom:0;">'+
+            '<div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>'+
+            '<div class="field" style="margin-bottom:0;">'+
+              '<label class="toggle-row" style="padding-top:8px;"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+
+      // ── Delete ──
       '<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn-ghost" id="cmdDeleteBtn">Delete Command</button></div>';
   }
 
