@@ -218,7 +218,7 @@
   <!-- Settings Center -->
   <div class="settings-center" id="settingsCenter" style="display:none;">
     <div class="settings-content">
-      <div class="section-card" id="sec-general" ><div class="section-card-header"><i data-lucide="settings" style="width:14px;height:14px;"></i> General � Thread Titles, API Logs, Trash</div><div class="section-card-body">
+      <div class="section-card" id="sec-general" ><div class="section-card-header"><i data-lucide="settings" style="width:14px;height:14px;"></i> General — Thread Titles, API Logs, Trash</div><div class="section-card-body">
         <div style="margin-bottom:24px;border:1px solid var(--border-main);border-radius:var(--radius-md);overflow:hidden;">
           <div class="toggle-row" style="padding:14px 16px;background:var(--bg-main);margin:0;border-bottom:1px solid var(--border-light);">
             <div><div class="lbl">Thread Title Generation</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">After the first exchange, generates a short title via a cheap LLM call</div></div>
@@ -240,7 +240,7 @@
           <div class="field"><label class="field-label">Trash Retention (days) <span class="hint">0 = never purge</span></label><input type="number" id="trashRetentionDays" value="30"></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-ui" ><div class="section-card-header"><i data-lucide="palette" style="width:14px;height:14px;"></i> UI & Theme � Appearance</div><div class="section-card-body">
+      <div class="section-card" id="sec-ui" ><div class="section-card-header"><i data-lucide="palette" style="width:14px;height:14px;"></i> UI & Theme — Appearance</div><div class="section-card-body">
         <div class="toggle-row" style="padding-top:0;margin-bottom:20px;">
           <div><div class="lbl">Dark Mode</div><div style="font-size:11px;color:var(--text-tertiary);">Not yet implemented � will take effect in a future release</div></div>
           <div class="switch" id="darkModeToggle"><div class="knob"></div></div>
@@ -265,14 +265,14 @@
           <div class="field"><label class="field-label">Banner Background</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="sbBackground" value="#FFDF00" style="width:36px;height:36px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;padding:2px;"><input type="text" id="sbBackgroundHex" value="0xFFDF00" readonly style="flex:1;font-family:var(--font-mono);font-size:12px;"></div></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-icons" ><div class="section-card-header"><i data-lucide="image" style="width:14px;height:14px;"></i> Icons � Tray Icons</div><div class="section-card-body">
+      <div class="section-card" id="sec-icons" ><div class="section-card-header"><i data-lucide="image" style="width:14px;height:14px;"></i> Icons — Tray Icons</div><div class="section-card-body">
         <div class="grid-2">
           <div class="field"><label class="field-label">Active Icon (iconOn)</label><div style="display:flex;gap:8px;"><input type="text" id="iconOnPath" value="icons\IconOn.ico" style="flex:1;"><button class="btn-sm" data-icon-field="iconOn">Browse</button></div></div>
           <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><div style="display:flex;gap:8px;"><input type="text" id="iconOffPath" value="icons\IconOff.ico" style="flex:1;"><button class="btn-sm" data-icon-field="iconOff">Browse</button></div></div>
         </div>
       </div></div>
       <div class="section-card" id="sec-hotkeys" ><div class="section-card-header"><i data-lucide="keyboard" style="width:14px;height:14px;"></i> Hotkeys</div><div class="section-card-body">
-        <div class="warning-banner" style="margin-bottom:16px;">?? Hotkey changes require a script restart to take effect. <button class="btn-sm" id="restartNowBtn">Restart Now</button></div>
+        <div class="warning-banner" style="margin-bottom:16px;">&#x26A0; Hotkey changes require a script restart to take effect. <button class="btn-sm" id="restartNowBtn">Restart Now</button></div>
         <div class="grid-2">
           <div class="field"><label class="field-label">Main Hotkey <span class="hint">opens command menu</span></label><div class="key-capture"><input id="hkMain" value="``"><span class="status">click to edit</span></div></div>
           <div class="field"><label class="field-label">Reload Script</label><div class="key-capture"><input id="hkReload" value="~^!r"><span class="status">click to edit</span></div></div>
@@ -280,7 +280,7 @@
           <div class="field"><label class="field-label">Suspend Toggle</label><div class="key-capture"><input id="hkSuspend" value="CapsLock & ``"><span class="status">click to edit</span></div></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-menu" ><div class="section-card-header"><i data-lucide="list" style="width:14px;height:14px;"></i> Menu Items � Quick Access & Tray Menu</div><div class="section-card-body">
+      <div class="section-card" id="sec-menu" ><div class="section-card-header"><i data-lucide="list" style="width:14px;height:14px;"></i> Menu Items — Quick Access & Tray Menu</div><div class="section-card-body">
         <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Quick Access Menu</div>
         <table class="kv-table"><thead><tr><th>Menu Text</th><th>Command</th><th></th></tr></thead><tbody id="qaTableBody"></tbody></table>
         <div style="margin:8px 0;"><button class="btn-sm" id="addQaRow">+ Add Item</button></div>
@@ -289,16 +289,16 @@
         <table class="kv-table"><thead><tr><th>Menu Text</th><th>Action</th><th></th></tr></thead><tbody id="trayTableBody"></tbody></table>
         <div style="margin-top:8px;"><button class="btn-sm" id="addTrayRow">+ Add Item</button></div>
       </div></div>
-      <div class="section-card" id="sec-providers" ><div class="section-card-header"><i data-lucide="cloud" style="width:14px;height:14px;"></i> Providers � API Endpoints & Authentication</div><div class="section-card-body">
+      <div class="section-card" id="sec-providers" ><div class="section-card-header"><i data-lucide="cloud" style="width:14px;height:14px;"></i> Providers — API Endpoints & Authentication</div><div class="section-card-body">
         <div class="provider-grid" id="providerGrid"></div>
         <div style="margin-top:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addProviderBtn">+ Add Provider</button><span style="font-size:11px;color:var(--text-tertiary);">Requires OpenAI-compatible API endpoint</span></div>
       </div></div>
-      <div class="section-card" id="sec-models" ><div class="section-card-header"><i data-lucide="cpu" style="width:14px;height:14px;"></i> Models � Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Fetch Latest Models</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
+      <div class="section-card" id="sec-models" ><div class="section-card-header"><i data-lucide="cpu" style="width:14px;height:14px;"></i> Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Fetch Latest Models</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
         <table class="kv-table"><thead><tr><th>Model ID</th><th>Provider</th><th>Input</th><th>Cached</th><th>Output</th><th>Context</th><th>Vision</th><th>Reasoning</th><th></th></tr></thead><tbody id="modelsTableBody"></tbody></table>
         <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">Prices in $/1M tokens. Cached input defaults to 10% of input if blank. Checkboxes: enable vision / reasoning support.</div>
       </div></div>
-      <div class="section-card" id="sec-assistants" ><div class="section-card-header"><i data-lucide="bot" style="width:14px;height:14px;"></i> Assistants � Chat Profiles</div><div class="section-card-body">
-        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button><span id="assistantCount" style="font-size:12px;color:var(--text-tertiary);">0 assistants defined � click + to add inline</span></div>
+      <div class="section-card" id="sec-assistants" ><div class="section-card-header"><i data-lucide="bot" style="width:14px;height:14px;"></i> Assistants — Chat Profiles</div><div class="section-card-body">
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button><span id="assistantCount" style="font-size:12px;color:var(--text-tertiary);">0 assistants defined — click + to add inline</span></div>
         <div class="provider-grid" id="assistantGrid"></div>
       </div></div>
       <div class="section-card wide" id="sec-commands" ><div class="section-card-header"><i data-lucide="terminal" style="width:14px;height:14px;"></i> Commands <span class="spacer"></span><button class="btn-sm" style="font-weight:500;" onclick="document.getElementById('cmdHelpModal').classList.add('open')"><i data-lucide="help-circle" style="width:14px;height:14px;"></i> Command Guide</button></div><div class="section-card-body" style="padding:0;">

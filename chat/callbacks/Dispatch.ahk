@@ -119,6 +119,9 @@ _HandleSaveSettings(parsed) {
         if SettingsHandler.Save(merged) {
             ; Apply to this process's globals
             SettingsHandler.ApplyToGlobals(merged)
+            ; Push updated assistant list (and model list) to the chat sidebar
+            ; so the right rail dropdown reflects changes without a full reload.
+            postAssistantsToWebView()
             ; Notify Main process to reload
             try {
                 CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
