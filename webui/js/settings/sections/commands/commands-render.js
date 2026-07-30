@@ -134,30 +134,10 @@
   function _openSysMsgModal() {
     var idx = C.selectedIdx();
     if (idx < 0) return;
-    var modal = document.getElementById('sysMsgEditModal');
-    if (!modal) return;
     var cmd = C.commands()[idx];
-    var inlineRadio = modal.querySelector('input[name="sysMsgMode"][value="inline"]');
-    var fileRadio = modal.querySelector('input[name="sysMsgMode"][value="file"]');
-    var inlineSec = document.getElementById('smInlineSection');
-    var fileSec = document.getElementById('smFileSection');
-    if (cmd.systemMessageFile) {
-      if (fileRadio) fileRadio.checked = true;
-      if (inlineRadio) inlineRadio.checked = false;
-      if (inlineSec) inlineSec.style.display = 'none';
-      if (fileSec) fileSec.style.display = '';
-      var fs = document.getElementById('smFileSelect');
-      if (fs) fs.value = cmd.systemMessageFile;
-    } else {
-      if (inlineRadio) inlineRadio.checked = true;
-      if (fileRadio) fileRadio.checked = false;
-      if (inlineSec) inlineSec.style.display = '';
-      if (fileSec) fileSec.style.display = 'none';
-      var it = document.getElementById('smInlineText');
-      if (it) it.value = cmd.systemMessage || '';
-    }
+    if (!window.populateSysMsgModal) return;
     window._sysMsgTarget = { type: 'command', idx: idx };
-    modal.classList.add('open');
+    window.populateSysMsgModal({ systemMessageFile: cmd.systemMessageFile, systemMessage: cmd.systemMessage });
   }
 
   function _updateMenuPreview() {

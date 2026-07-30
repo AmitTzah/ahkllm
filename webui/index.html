@@ -470,9 +470,9 @@
 <div class="modal-overlay" id="sysMsgEditModal">
   <div class="modal-box" style="width:640px;"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">?</button></div>
   <div class="modal-body" style="flex-direction:column;gap:14px;">
-    <div style="display:flex;gap:8px;"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" checked onchange="document.getElementById('smFileSection').style.display='';document.getElementById('smInlineSection').style.display='none'"> Load from file</label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" onchange="document.getElementById('smFileSection').style.display='none';document.getElementById('smInlineSection').style.display=''"> Write inline</label></div>
-    <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select id="smFileSelect" style="width:100%;"><optgroup label="App Defaults"><option>natural-conversationalist.txt</option><option>violet.txt</option><option>summarize.txt</option><option>refine.txt</option><option>translate-to-english.txt</option><option>rephrase-in-context.txt</option><option>brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"><option>my-custom-prompt.txt</option></optgroup></select></div></div>
+    <div style="display:flex;gap:8px;"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" value="file" checked onchange="var e=document.getElementById('smFileSection');if(e)e.style.display='';e=document.getElementById('smInlineSection');if(e)e.style.display='none'"> Load from file</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" value="inline" onchange="var e=document.getElementById('smInlineSection');if(e)e.style.display='';e=document.getElementById('smFileSection');if(e)e.style.display='none'"> Write inline</label></div>
+    <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select id="smFileSelect" style="width:100%;"><option value="">(none)</option><optgroup label="App Defaults"><option value="natural-conversationalist.txt">natural-conversationalist.txt</option><option value="violet.txt">violet.txt</option><option value="summarize.txt">summarize.txt</option><option value="refine.txt">refine.txt</option><option value="translate-to-english.txt">translate-to-english.txt</option><option value="rephrase-in-context.txt">rephrase-in-context.txt</option><option value="brutal-critic.txt">brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"><option value="my-custom-prompt.txt">my-custom-prompt.txt</option></optgroup></select></div></div>
     <div id="smInlineSection" ><div class="field"><label class="field-label">Write system message</label><textarea id="smInlineText" style="width:100%;min-height:180px;font-family:var(--font-mono);font-size:13px;" placeholder="You are a helpful assistant..."></textarea></div></div>
   </div>
   <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">Cancel</button><button class="btn-primary" id="sysMsgEditSave" style="font-size:13px;">Save</button></div></div>
@@ -645,6 +645,7 @@
 <script src="js/settings/sections/menu-items.js"></script>
 <script src="js/settings/sections/providers.js"></script>
 <script src="js/settings/sections/models.js"></script>
+<script src="js/settings/sections/sysmsg-modal.js"></script>
 <script src="js/settings/sections/assistants.js"></script>
 <script src="js/settings/sections/commands/commands-core.js"></script>
 <script src="js/settings/sections/commands/commands-drag.js"></script>

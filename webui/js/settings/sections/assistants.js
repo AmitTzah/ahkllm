@@ -59,28 +59,7 @@
 
   function openSysMsgModal(card) {
     window._sysMsgTarget = { type: 'assistant', card: card };
-    var modal = document.getElementById('sysMsgEditModal');
-    if (!modal) return;
-    var inlineText = document.getElementById('smInlineText');
-    var fileSelect = document.getElementById('smFileSelect');
-    var inlineRadio = modal.querySelector('input[name="sysMsgMode"][value="inline"]');
-    var fileRadio = modal.querySelector('input[name="sysMsgMode"][value="file"]');
-    var inlineSection = document.getElementById('smInlineSection');
-    var fileSection = document.getElementById('smFileSection');
-    if (card.dataset.systemMessageFile) {
-      if (fileRadio) fileRadio.checked = true;
-      if (inlineRadio) inlineRadio.checked = false;
-      if (inlineSection) inlineSection.style.display = 'none';
-      if (fileSection) fileSection.style.display = '';
-      if (fileSelect) fileSelect.value = card.dataset.systemMessageFile;
-    } else {
-      if (inlineRadio) inlineRadio.checked = true;
-      if (fileRadio) fileRadio.checked = false;
-      if (inlineSection) inlineSection.style.display = '';
-      if (fileSection) fileSection.style.display = 'none';
-      if (inlineText) inlineText.value = card.dataset.systemMessage || '';
-    }
-    modal.classList.add('open');
+    window.populateSysMsgModal({ systemMessageFile: card.dataset.systemMessageFile, systemMessage: card.dataset.systemMessage });
   }
 
   // --- Main render ---
@@ -148,42 +127,10 @@
   function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random()*16|0, v = c=='x'?r:(r&0x3|0x8); return v.toString(16); }); }
   function escHtml(s) { return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;').replace(/"/g,'\x26quot;'); }
 
-  // Shared sysMsg modal save handler (used by both assistants and commands)
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
       var addBtn = document.getElementById('addAssistantBtn');
       if (addBtn) addBtn.addEventListener('click', addAssistant);
-      var saveBtn = document.getElementById('sysMsgEditSave');
-      if (saveBtn) {
-        saveBtn.addEventListener('click', function() {
-          var t = window._sysMsgTarget;
-          if (!t) return;
-          var inlineRadio = document.querySelector('input[name="sysMsgMode"][value="inline"]');
-          var isInline = inlineRadio && inlineRadio.checked;
-          var sysMsg = '', sysMsgFile = '';
-          if (isInline) {
-            var inlineText = document.getElementById('smInlineText');
-            sysMsg = inlineText ? inlineText.value : '';
-          } else {
-            var fileSelect = document.getElementById('smFileSelect');
-            sysMsgFile = fileSelect ? fileSelect.value : '';
-          }
-          if (t.type === 'assistant') {
-            t.card.dataset.systemMessage = sysMsg;
-            t.card.dataset.systemMessageFile = sysMsgFile;
-            var label = t.card.querySelector('.sysmsg-label');
-            if (label) label.textContent = '\uD83D\uDCC4 ' + (sysMsgFile || (sysMsg ? '(inline)' : '(none)'));
-          } else if (t.type === 'command') {
-            var C = window.Cmds;
-            var cmd = C.commands()[t.idx];
-            if (cmd) { cmd.systemMessage = sysMsg; cmd.systemMessageFile = sysMsgFile; }
-            C.selectCommand(t.idx); // refresh detail
-          }
-          var modal = document.getElementById('sysMsgEditModal');
-          if (modal) modal.classList.remove('open');
-          mark();
-        });
-      }
     });
   }
   (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
