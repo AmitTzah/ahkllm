@@ -4,6 +4,10 @@
 ; Provides _registerAllHotkeys() to turn off old hotkey
 ; bindings and re-register with current global values.
 ; Called at startup and on settings update via IPC.
+;
+; Also provides handleHotkey() — the dispatch function
+; that all registered hotkeys call, routing each action
+; to the appropriate handler.
 ; ======================================================
 
 global _activeHotkeys := { main: "", saveReload: "", closeWindows: "", suspend: "" }
@@ -32,4 +36,46 @@ _registerAllHotkeys() {
     _activeHotkeys.saveReload := saveReloadHotkey
     _activeHotkeys.closeWindows := closeWindowsHotkey
     _activeHotkeys.suspend := suspendHotkey
+}
+
+; handleHotkey references global functions and objects (buildCommandMenu, toggleSuspend,
+; commandInputWindow, etc.) — these are reads from the global scope, so no global declaration
+; is needed (AHK v2 resolves undeclared reads to globals automatically).
+handleHotkey(action) {
+    try {
+    switch action {
+        case "showCommandMenu":
+            buildCommandMenu()
+
+        case "suspendHotkey":
+            KeyWait "CapsLock", "L"
+            SetCapsLockState "Off"
+            toggleSuspend(A_IsSuspended)
+
+        case "saveAndReloadScript":
+            if !WinActive("UserConfig.ahk") {
+                return
+            }
+
+            ; Small delay to ensure file operations are complete
+            Sleep 100
+
+            if (getActiveModels().Count > 0) {
+                MsgBox("Script will automatically reload once the chat window is closed.",
+                    "LLM AutoHotkey Assistant", 64)
+                handleLoadingState(0, 0, "reloadScript", 0)
+            } else {
+                Reload()
+            }
+
+        case "closeWindows":
+            switch WinActive("A") {
+                case commandInputWindow.guiObj.hWnd: commandInputWindow.closeButtonAction()
+            }
+    }
+    } catch Error as e {
+        debugLog("ERROR in handleHotkey(" action "): " e.Message "`n" e.Stack, "ErrorHandler")
+        ToolTip("Error: " e.Message, , , 19)
+        SetTimer(() => ToolTip(, , , 19), -5000)
+    }
 }

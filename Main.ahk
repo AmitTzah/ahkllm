@@ -40,45 +40,6 @@ OnError((err, mode) => (
 ; Register initial hotkeys after globals are populated
 _registerAllHotkeys()
 
-handleHotkey(action) {
-    try {
-    switch action {
-        case "showCommandMenu":
-            buildCommandMenu()
-
-        case "suspendHotkey":
-            KeyWait "CapsLock", "L"
-            SetCapsLockState "Off"
-            toggleSuspend(A_IsSuspended)
-
-        case "saveAndReloadScript":
-            if !WinActive("UserConfig.ahk") {
-                return
-            }
-
-            ; Small delay to ensure file operations are complete
-            Sleep 100
-
-            if (getActiveModels().Count > 0) {
-                MsgBox("Script will automatically reload once the chat window is closed.",
-                    "LLM AutoHotkey Assistant", 64)
-                handleLoadingState(0, 0, "reloadScript", 0)
-            } else {
-                Reload()
-            }
-
-        case "closeWindows":
-            switch WinActive("A") {
-                case commandInputWindow.guiObj.hWnd: commandInputWindow.closeButtonAction()
-            }
-    }
-    } catch Error as e {
-        debugLog("ERROR in handleHotkey(" action "): " e.Message "`n" e.Stack, "ErrorHandler")
-        ToolTip("Error: " e.Message, , , 19)
-        SetTimer(() => ToolTip(, , , 19), -5000)
-    }
-}
-
 ; ----------------------------------------------------
 ; Initialize Chat DB (persistent chat history)
 ;
