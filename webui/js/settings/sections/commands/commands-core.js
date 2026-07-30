@@ -70,7 +70,8 @@
       }
     });
     _commands = newCmds;
-    // Remap _groupOrders indices using old→new mapping
+    // Remap _selectedIdx and remap _groupOrders indices using old→new mapping
+    _selectedIdx = oldToNew[_selectedIdx] !== undefined ? oldToNew[_selectedIdx] : -1;
     var mappedOrders = {};
     Object.keys(_groupOrders).forEach(function(tag) {
       mappedOrders[tag] = [];
