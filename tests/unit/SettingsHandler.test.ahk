@@ -85,4 +85,39 @@ class SettingsHandlerTest {
         if !providerMap.Has("ds") || providerMap["ds"] != "deepseek"
             throw Error("ApplyToGlobals should rebuild providerMap prefix 'ds' -> 'deepseek'")
     }
+
+    ApplyToGlobals_UpdatesHotkeyGlobals() {
+        global mainHotkey, saveReloadHotkey, closeWindowsHotkey, suspendHotkey
+
+        settings := Map()
+        hk := Map(
+            "main", "t",
+            "saveReload", "~^s",
+            "closeWindows", "^F4",
+            "suspend", "!s"
+        )
+        settings["hotkeys"] := hk
+
+        oldMain := mainHotkey
+        oldSave := saveReloadHotkey
+        oldClose := closeWindowsHotkey
+        oldSuspend := suspendHotkey
+
+        SettingsHandler.ApplyToGlobals(settings)
+
+        if mainHotkey != "t"
+            throw Error("Expected mainHotkey='t', got: " mainHotkey)
+        if saveReloadHotkey != "~^s"
+            throw Error("Expected saveReloadHotkey='~^s', got: " saveReloadHotkey)
+        if closeWindowsHotkey != "^F4"
+            throw Error("Expected closeWindowsHotkey='^F4', got: " closeWindowsHotkey)
+        if suspendHotkey != "!s"
+            throw Error("Expected suspendHotkey='!s', got: " suspendHotkey)
+
+        ; Restore originals so other tests aren't affected
+        mainHotkey := oldMain
+        saveReloadHotkey := oldSave
+        closeWindowsHotkey := oldClose
+        suspendHotkey := oldSuspend
+    }
 }

@@ -32,13 +32,13 @@ OnError((err, mode) => (
 ), -1)
 
 ; ----------------------------------------------------
-; Hotkeys (registered dynamically from DefaultSettings.ahk)
+; Hotkeys (registered dynamically via HotkeyRegistrar)
 ; ----------------------------------------------------
 
-Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"))
-Hotkey(saveReloadHotkey, (*) => handleHotkey("saveAndReloadScript"))
-Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"))
-Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S")
+#Include app\HotkeyRegistrar.ahk
+
+; Register initial hotkeys after globals are populated
+_registerAllHotkeys()
 
 handleHotkey(action) {
     try {
@@ -228,9 +228,10 @@ OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     defaults := SettingsHandler.GetDefaults(),
     merged := SettingsHandler.Merge(settings, defaults),
     SettingsHandler.ApplyToGlobals(merged),
+    _registerAllHotkeys(),
     RuntimeResolver_ResolvePrimaryProvider(),
     RuntimeResolver_ResolveDefaultAssistant(),
-    debugLog("[SETTINGS] Reloaded settings globals")
+    debugLog("[SETTINGS] Reloaded settings globals and re-registered hotkeys")
 ))
 
 ; Reload request from ChatWindow (e.g. "Restart Now" after hotkey changes).
