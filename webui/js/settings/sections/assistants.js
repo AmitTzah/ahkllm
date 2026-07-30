@@ -20,7 +20,7 @@
       '<button class="btn-sm danger" style="margin-left:auto;">Remove</button></div>' +
       '<div class="grid-2"><div class="field"><label class="field-label">Base Model</label><select data-field="baseModel">' + modelOpts + '</select></div>' +
       '<div class="field"><label class="field-label">Reasoning</label><select data-field="reasoning"><option value="">Model Default</option><option value="none">None</option><option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div></div>' +
-      '<div class="field"><label class="field-label">System Message</label><div style="display:flex;align-items:center;gap:8px;"><span class="sysmsg-label" style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);flex:1;">' + escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
+      '<div class="field"><label class="field-label">System Message</label><div style="display:flex;align-items:center;gap:8px;"><span class="sysmsg-label" style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);">' + escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
       '<div class="field"><label class="field-label">Description</label><input type="text" value="' + escHtml(a.description || '') + '" data-field="description"></div>' +
       '<div class="toggle-row"><span class="lbl">Set as Default Assistant</span><div class="switch' + (a.isDefault ? ' on' : '') + '" data-field="isDefault" data-type="radio"><div class="knob"></div></div></div>';
   }
@@ -58,7 +58,7 @@
   }
 
   function openSysMsgModal(card) {
-    _editingCard = card;
+    window._sysMsgTarget = { type: 'assistant', card: card };
     var modal = document.getElementById('sysMsgEditModal');
     if (!modal) return;
     var inlineText = document.getElementById('smInlineText');
@@ -148,7 +148,7 @@
   function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random()*16|0, v = c=='x'?r:(r&0x3|0x8); return v.toString(16); }); }
   function escHtml(s) { return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;').replace(/"/g,'\x26quot;'); }
 
-  // Wire sysMsgEditModal Save button
+  // Shared sysMsg modal save handler (used by both assistants and commands)
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
       var addBtn = document.getElementById('addAssistantBtn');
@@ -156,21 +156,28 @@
       var saveBtn = document.getElementById('sysMsgEditSave');
       if (saveBtn) {
         saveBtn.addEventListener('click', function() {
-          if (!_editingCard) return;
+          var t = window._sysMsgTarget;
+          if (!t) return;
           var inlineRadio = document.querySelector('input[name="sysMsgMode"][value="inline"]');
           var isInline = inlineRadio && inlineRadio.checked;
+          var sysMsg = '', sysMsgFile = '';
           if (isInline) {
             var inlineText = document.getElementById('smInlineText');
-            _editingCard.dataset.systemMessage = inlineText ? inlineText.value : '';
-            _editingCard.dataset.systemMessageFile = '';
+            sysMsg = inlineText ? inlineText.value : '';
           } else {
             var fileSelect = document.getElementById('smFileSelect');
-            _editingCard.dataset.systemMessageFile = fileSelect ? fileSelect.value : '';
-            _editingCard.dataset.systemMessage = '';
+            sysMsgFile = fileSelect ? fileSelect.value : '';
           }
-          var label = _editingCard.querySelector('.sysmsg-label');
-          if (label) {
-            label.textContent = '\uD83D\uDCC4 ' + (_editingCard.dataset.systemMessageFile || (_editingCard.dataset.systemMessage ? '(inline)' : '(none)'));
+          if (t.type === 'assistant') {
+            t.card.dataset.systemMessage = sysMsg;
+            t.card.dataset.systemMessageFile = sysMsgFile;
+            var label = t.card.querySelector('.sysmsg-label');
+            if (label) label.textContent = '\uD83D\uDCC4 ' + (sysMsgFile || (sysMsg ? '(inline)' : '(none)'));
+          } else if (t.type === 'command') {
+            var C = window.Cmds;
+            var cmd = C.commands()[t.idx];
+            if (cmd) { cmd.systemMessage = sysMsg; cmd.systemMessageFile = sysMsgFile; }
+            C.selectCommand(t.idx); // refresh detail
           }
           var modal = document.getElementById('sysMsgEditModal');
           if (modal) modal.classList.remove('open');
