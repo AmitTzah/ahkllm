@@ -14,11 +14,16 @@
       var dk = cmd.directAccelerator.replace('&','');
       badges = '<span class="cmd-badges"><span class="cmd-badge direct-badge" title="Direct: &' + C.escHtml(dk) + '">DIR &' + C.escHtml(dk) + '</span></span>';
     }
+    // When a direct shortcut is set AND we're in the Main Menu group (where
+    // the direct badge is shown), suppress the menu shortcut to avoid showing
+    // two shortcut indicators. In submenu groups, the menu shortcut still
+    // appears since the direct badge is only rendered in Main Menu.
+    var displayShortcut = (isDirect && isMainMenu) ? '' : (shortKey ? '&' + C.escHtml(shortKey) + ' ' : '');
     var el = document.createElement('div');
     el.className = 'cmd-item' + (idx === C.selectedIdx() ? ' active' : '');
     el.dataset.index = idx;
     el.draggable = true;
-    el.innerHTML = '<span class="drag-handle">&#9776;</span><span class="cmd-item-label"><span class="cmd-item-shortcut">' + (shortKey ? '&' + C.escHtml(shortKey) + ' ' : '') + '</span>' + C.escHtml(label.replace(/^&\S\s*-\s*/, '')) + '</span>' + badges;
+    el.innerHTML = '<span class="drag-handle">&#9776;</span><span class="cmd-item-label"><span class="cmd-item-shortcut">' + displayShortcut + '</span>' + C.escHtml(label.replace(/^&\S\s*(-\s*)?/, '')) + '</span>' + badges;
     return el;
   }
 
