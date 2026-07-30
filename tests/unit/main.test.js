@@ -23,6 +23,8 @@ function loadMainModule() {
             texmath: {},
             katex: {},
             hljs: { getLanguage: () => null, highlight: () => ({ value: '' }) },
+            _showChat: function() { receivedCalls._showChat = true; },
+            _hideSettings: function() { receivedCalls._hideSettings = true; },
         },
         console: console,
         md: { render: (c) => '<p>' + c + '</p>' },
@@ -75,6 +77,9 @@ describe('handleWebMessage routing', () => {
         assert.ok(ctx._receivedCalls.initChatMode !== undefined);
         assert.strictEqual(ctx._receivedCalls.initChatMode[0].id, '1');
         assert.strictEqual(ctx._receivedCalls.renderNavList, true);
+        // Verify view switches from settings/dashboard to chat
+        assert.strictEqual(ctx._receivedCalls._hideSettings, true);
+        assert.strictEqual(ctx._receivedCalls._showChat, true);
     });
 
     it('routes appendChatMessage', () => {

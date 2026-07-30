@@ -58,6 +58,9 @@ function handleWebMessage(event) {
       case 'initChatMode':
         initChatMode(data);
         renderNavList();
+        // Switch to chat view if currently on settings/dashboard
+        if (typeof window._hideSettings === 'function') window._hideSettings();
+        if (typeof window._showChat === 'function') window._showChat();
         break;
 
       case 'appendChatMessage':
