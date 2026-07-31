@@ -205,6 +205,10 @@ function _makeModelClickHandler(el, fullId) {
         window._currentSettings.assistantName = '';
         window._currentSettings.assistantBaseModel = '';
         window._currentSettings.assistantDescription = '';
+        // Clear assistant overrides to restore model defaults
+        window._currentSettings.systemMessage = '';
+        window._currentSettings.reasoning = '';
+        window._currentSettings.temperature = '';
         _sendAllSettings();
         _updateModelCard();
         var pop = document.getElementById('modelPopover'); if (pop) pop.classList.remove('open');

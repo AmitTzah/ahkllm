@@ -84,3 +84,79 @@ describe('_sendAllSettings', () => {
         assert.doesNotThrow(() => ctx._sendAllSettings());
     });
 });
+
+describe('_makeModelClickHandler — clears assistant overrides', () => {
+    it('should clear systemMessage, reasoning, and temperature when switching from assistant to model', () => {
+        const ctx = loadSettingsModule();
+        // Simulate an assistant being active with overrides set
+        ctx.window._currentSettings = {
+            model: 'deepseek/deepseek-v4-pro',
+            systemMessage: 'You are a helpful assistant.',
+            reasoning: 'high',
+            temperature: '0.7',
+            assistantName: 'Violet',
+            assistantBaseModel: 'openai/gpt-4o',
+            assistantDescription: 'A creative writing assistant'
+        };
+
+        // Capture postMessage calls to verify what gets sent
+        var postMessageCalls = [];
+        ctx.window.chrome.webview.postMessage = function(msg) { postMessageCalls.push(msg); };
+
+        // Create a mock element with parent (needed for classList.remove on siblings)
+        var mockParent = {
+            querySelectorAll: function() { return []; }
+        };
+        var mockEl = {
+            parentElement: mockParent,
+            classList: { add: function() {} }
+        };
+
+        // Invoke the click handler
+        var handler = ctx._makeModelClickHandler(mockEl, 'google/gemini-2.5-flash');
+        handler();
+
+        // Verify _currentSettings was properly cleared
+        assert.strictEqual(ctx.window._currentSettings.model, 'google/gemini-2.5-flash');
+        assert.strictEqual(ctx.window._currentSettings.assistantName, '');
+        assert.strictEqual(ctx.window._currentSettings.assistantBaseModel, '');
+        assert.strictEqual(ctx.window._currentSettings.assistantDescription, '');
+        assert.strictEqual(ctx.window._currentSettings.systemMessage, '');
+        assert.strictEqual(ctx.window._currentSettings.reasoning, '');
+        assert.strictEqual(ctx.window._currentSettings.temperature, '');
+    });
+
+    it('should clear systemMessage even when switching model-to-model (no assistant was active)', () => {
+        const ctx = loadSettingsModule();
+        // Simulate model-to-model switch with a custom system message
+        ctx.window._currentSettings = {
+            model: 'deepseek/deepseek-v4-pro',
+            systemMessage: 'Custom system message',
+            reasoning: 'medium',
+            temperature: '1.2',
+            assistantName: '',
+            assistantBaseModel: '',
+            assistantDescription: ''
+        };
+
+        var postMessageCalls = [];
+        ctx.window.chrome.webview.postMessage = function(msg) { postMessageCalls.push(msg); };
+
+        var mockParent = {
+            querySelectorAll: function() { return []; }
+        };
+        var mockEl = {
+            parentElement: mockParent,
+            classList: { add: function() {} }
+        };
+
+        var handler = ctx._makeModelClickHandler(mockEl, 'anthropic/claude-3');
+        handler();
+
+        // Previous overrides should also be cleared on model-to-model switch
+        assert.strictEqual(ctx.window._currentSettings.model, 'anthropic/claude-3');
+        assert.strictEqual(ctx.window._currentSettings.systemMessage, '');
+        assert.strictEqual(ctx.window._currentSettings.reasoning, '');
+        assert.strictEqual(ctx.window._currentSettings.temperature, '');
+    });
+});
