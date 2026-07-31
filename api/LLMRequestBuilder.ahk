@@ -62,7 +62,10 @@ class LLMRequestBuilder {
             requestObj.stream := true
         }
 
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, providerKey, modelName, reasoningEffort, reasoningLevel)
+        ; Apply thinking parameters via metadata-driven handler
+        global models
+        if models.Has(APIModel)
+            OpenAIChatCompletions.ApplyThinking(&requestObj, models[APIModel], reasoningEffort, APIModel)
         return LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
     }
 
@@ -82,64 +85,6 @@ class LLMRequestBuilder {
         return jsongo.Stringify(requestObj)
     }
 
-    ; ----------------------------------------------------
-    ; Thinking Configuration
-    ; ----------------------------------------------------
-    ; Applies per-provider thinking parameters to a request object.
-    ; Called by createJSONRequest and BuildAndWriteRequestFiles (chat flow).
-    ;
-    ; Provider behavior:
-    ;   DeepSeek: thinking toggle + reasoning_effort
-    ;   OpenAI:   reasoning_effort
-    ;   Google 2.5: reasoning_effort; Google 3.x: extra_body with thinking_level
-    static ApplyThinkingOverride(&requestObj, providerKey, modelName, reasoningVal, reasoningLevel := "") {
-        if reasoningVal = ""
-            return
-
-        ; "enabled" / "disabled" are universal user-facing values.
-        ; The code translates them into provider-specific API format.
-        if reasoningVal = "enabled" {
-            level := reasoningLevel != "" ? reasoningLevel : "medium"
-            if providerKey = "deepseek" {
-                requestObj.thinking := { type: "enabled" }
-            } else if providerKey = "google" {
-                LLMRequestBuilder._applyGoogleThinking(&requestObj, modelName, level)
-            } else {
-                requestObj.reasoning_effort := level
-            }
-            return
-        }
-        if reasoningVal = "disabled" {
-            if providerKey = "deepseek" {
-                requestObj.thinking := { type: "disabled" }
-            }
-            ; Non-DeepSeek: omit field — standard models don't support reasoning_effort
-            return
-        }
-
-        if reasoningVal = "none" {
-            if providerKey = "deepseek" {
-                requestObj.thinking := { type: "disabled" }
-            } else {
-                ; OpenAI + Google: reasoning_effort: "none" disables thinking.
-                ; Google docs: "For Gemini 2.5 models, thinking can be disabled
-                ; by setting reasoning_effort to 'none'."
-                ; For models that can't disable, the API error surfaces in chat UI.
-                requestObj.reasoning_effort := "none"
-            }
-            return
-        }
-
-        if providerKey = "google" {
-            LLMRequestBuilder._applyGoogleThinking(&requestObj, modelName, reasoningVal)
-        } else {
-            requestObj.reasoning_effort := reasoningVal
-            if providerKey = "deepseek" {
-                requestObj.thinking := { type: "enabled" }
-            }
-        }
-    }
-
     ; Translates user-friendly "\n" to actual newlines in stop sequences.
     static _normalizeStop(stop) {
         result := []
@@ -147,28 +92,6 @@ class LLMRequestBuilder {
             result.Push(StrReplace(item, "\n", "`n"))
         }
         return result
-    }
-
-    ; Applies Google-specific thinking config to the request object.
-    ; Gemini 3.x → thinking_level (string), 2.5 → thinking_budget (numeric),
-    ; other Google models (Gemma, etc.) → reasoning_effort.
-    static _applyGoogleThinking(&requestObj, modelName, level) {
-        isGemini3x := InStr(modelName, "3.") > 0 || InStr(modelName, "gemini-3") > 0
-        isGemini25 := InStr(modelName, "2.5") > 0 || InStr(modelName, "gemini-2") > 0
-
-        if isGemini3x || isGemini25 {
-            tc := { include_thoughts: true }
-            if isGemini3x {
-                tc.thinking_level := level
-            } else {
-                budgetMap := Map("minimal", 1024, "low", 4096, "medium", 8192, "high", 16384, "xhigh", 24576)
-                if budgetMap.Has(level)
-                    tc.thinking_budget := budgetMap[level]
-            }
-            requestObj.extra_body := { google: { thinking_config: tc } }
-        } else {
-            requestObj.reasoning_effort := level
-        }
     }
 
     ; ----------------------------------------------------

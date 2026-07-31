@@ -67,21 +67,19 @@ class SSEParser {
 
     ; Parse delta content — detect reasoning vs visible content.
     ; Returns {type?, content?} — may be empty if no recognized content.
+    ; Tries all known reasoning field names (pi pattern: first non-empty wins).
     static _parseDeltaContent(delta) {
         result := {}
 
-        ; reasoning_content (DeepSeek, some OpenAI models)
-        if delta.Has("reasoning_content") && delta["reasoning_content"] != "" {
-            result.type := "reasoning"
-            result.content := delta["reasoning_content"]
-            return result
-        }
-
-        ; reasoning field (alternative naming)
-        if delta.Has("reasoning") && delta["reasoning"] != "" {
-            result.type := "reasoning"
-            result.content := delta["reasoning"]
-            return result
+        ; reasoning fields — tried in order, first non-empty wins
+        ; (matches pi's openai-completions.ts: ["reasoning_content", "reasoning", "reasoning_text"])
+        reasoningFields := ["reasoning_content", "reasoning", "reasoning_text"]
+        for field in reasoningFields {
+            if delta.Has(field) && delta[field] != "" {
+                result.type := "reasoning"
+                result.content := delta[field]
+                return result
+            }
         }
 
         ; content — may include Gemini <thought> tags

@@ -1,0 +1,11 @@
+{
+  "_description": "Model corrections that override models.dev data. All fields optional.",
+  "_overridable": "reasoning_options.effort (values array), pricing (input/output/cache_read), context, reasoning, vision",
+  "models": {
+    "deepseek-v4-flash": {
+      "reasoning_options": [
+        {"type": "effort", "values": ["low", "high", "max"]}
+      ]
+    }
+  }
+}

@@ -383,56 +383,156 @@ class LLMRequestBuilderTest {
     }
 
     ; ----------------------------------------------------
-    ; ApplyThinkingOverride — universal "enabled"/"disabled"
+    ; OpenAIChatCompletions.ApplyThinking — metadata-driven
     ; ----------------------------------------------------
 
-    ThinkingOverride_Enabled_DeepSeek() {
+    ; Helper: build a model metadata object
+    static _mkModel(compat, thinkingLevelMap := "", thinkingOff := "") {
+        m := { compat: compat }
+        if IsObject(thinkingLevelMap)
+            m.thinkingLevelMap := thinkingLevelMap
+        if thinkingOff != ""
+            m.thinkingOff := thinkingOff
+        return m
+    }
+
+    Thinking_DeepSeek_Enabled() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true),
+            Map("high", "high", "max", "max"),
+            "disabled"
+        )
         requestObj := {}
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "deepseek", "deepseek-v4-pro", "enabled")
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "high")
         if !requestObj.HasOwnProp("thinking") || requestObj.thinking.type != "enabled"
-            throw Error("DeepSeek 'enabled' should set thinking:{type:'enabled'}")
-    }
-
-    ThinkingOverride_Enabled_OpenAI() {
-        requestObj := {}
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "enabled")
-        if requestObj.reasoning_effort != "medium"
-            throw Error("OpenAI 'enabled' should set reasoning_effort:'medium', got: " requestObj.reasoning_effort)
-    }
-
-    ThinkingOverride_Enabled_Google() {
-        requestObj := {}
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "google", "gemini-3.5-flash", "enabled")
-        if !requestObj.HasOwnProp("extra_body")
-            throw Error("Google 'enabled' should set extra_body thinking_config")
-    }
-
-    ThinkingOverride_Disabled_DeepSeek() {
-        requestObj := {}
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "deepseek", "deepseek-v4-pro", "disabled")
-        if !requestObj.HasOwnProp("thinking") || requestObj.thinking.type != "disabled"
-            throw Error("DeepSeek 'disabled' should set thinking:{type:'disabled'}")
-    }
-
-    ThinkingOverride_Disabled_OpenAI() {
-        requestObj := {}
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "disabled")
-        if requestObj.HasOwnProp("reasoning_effort")
-            throw Error("OpenAI 'disabled' should NOT set reasoning_effort (standard models don't support it)")
-    }
-
-    ThinkingOverride_Enabled_WithLevel() {
-        requestObj := {}
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "enabled", "high")
+            throw Error("DeepSeek 'high' should set thinking:{type:'enabled'}")
         if requestObj.reasoning_effort != "high"
-            throw Error("OpenAI 'enabled' with level:'high' should set reasoning_effort:'high', got: " requestObj.reasoning_effort)
+            throw Error("DeepSeek 'high' should set reasoning_effort:'high', got: " requestObj.reasoning_effort)
     }
 
-    ThinkingOverride_EmptyString_NoOp() {
+    Thinking_DeepSeek_Disabled() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "deepseek"),
+            ,
+            "disabled"
+        )
         requestObj := {}
-        saved := requestObj.Clone()
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, "openai", "gpt-5.4", "")
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "")
+        if !requestObj.HasOwnProp("thinking") || requestObj.thinking.type != "disabled"
+            throw Error("DeepSeek off should set thinking:{type:'disabled'}")
+    }
+
+    Thinking_OpenAI_Enabled() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "openai", "supportsReasoningEffort", true),
+            Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh"),
+            "none"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "high")
+        if requestObj.reasoning_effort != "high"
+            throw Error("OpenAI 'high' should set reasoning_effort:'high', got: " requestObj.reasoning_effort)
+    }
+
+    Thinking_OpenAI_Off() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "openai", "supportsReasoningEffort", true),
+            Map("none", "none"),
+            "none"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "")
+        if requestObj.reasoning_effort != "none"
+            throw Error("OpenAI off should set reasoning_effort='none', got: " requestObj.reasoning_effort)
+    }
+
+    Thinking_Google_Level_Enabled() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "google"),
+            Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+            "MINIMAL"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "high", "google/gemini-3.5-flash")
+        if !requestObj.HasOwnProp("extra_body")
+            throw Error("Google 'high' should set extra_body thinking_config")
+        tc := requestObj.extra_body.google.thinking_config
+        if tc.thinking_level != "HIGH"
+            throw Error("Google level 'high' should set thinking_level='HIGH', got: " tc.thinking_level)
+    }
+
+    Thinking_Google_Level_Off() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "google"),
+            Map("minimal", "MINIMAL", "low", "LOW"),
+            "MINIMAL"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "", "google/gemini-3.5-flash")
+        if !requestObj.HasOwnProp("extra_body")
+            throw Error("Google off should set extra_body for MINIMAL thinking")
+        tc := requestObj.extra_body.google.thinking_config
+        if tc.thinking_level != "MINIMAL"
+            throw Error("Google off should set thinking_level='MINIMAL', got: " tc.thinking_level)
+    }
+
+    Thinking_Google_Budget_Enabled() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "google"),
+            Map("minimal", "1024", "low", "4096", "medium", "8192", "high", "16384"),
+            "0"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "medium", "google/gemini-2.5-flash")
+        if !requestObj.HasOwnProp("extra_body")
+            throw Error("Google budget 'medium' should set extra_body")
+        tc := requestObj.extra_body.google.thinking_config
+        if tc.thinking_budget != 8192
+            throw Error("Google budget 'medium' should set thinking_budget=8192, got: " tc.thinking_budget)
+    }
+
+    Thinking_Google_Budget_Off() {
+        model := LLMRequestBuilderTest._mkModel(
+            Map("thinkingFormat", "google"),
+            Map("minimal", "1024"),
+            "0"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "", "google/gemini-2.5-flash")
+        if !requestObj.HasOwnProp("extra_body")
+            throw Error("Google budget off should set extra_body")
+        tc := requestObj.extra_body.google.thinking_config
+        if tc.thinking_budget != 0
+            throw Error("Google budget off should set thinking_budget=0, got: " tc.thinking_budget)
+    }
+
+    Thinking_EmptyString_NoOp() {
+        model := LLMRequestBuilderTest._mkModel(Map("thinkingFormat", "openai"))
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "")
         if requestObj.HasOwnProp("reasoning_effort")
-            throw Error("Empty thinking should be a no-op")
+            throw Error("Empty reasoning with no thinkingOff should be a no-op")
+    }
+
+    Thinking_NonReasoningModel_NoOp() {
+        ; Model with no thinkingLevelMap — handler should not set fields
+        model := LLMRequestBuilderTest._mkModel(Map("thinkingFormat", "openai"))
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "low")
+        if requestObj.HasOwnProp("reasoning_effort")
+            throw Error("Model with no thinkingLevelMap should not set reasoning_effort")
+    }
+
+    Thinking_DefaultFormat_FallsBackToOpenAI() {
+        ; Missing thinkingFormat → defaults to "openai"
+        model := LLMRequestBuilderTest._mkModel(
+            Map(),
+            Map("low", "low"),
+            "none"
+        )
+        requestObj := {}
+        OpenAIChatCompletions.ApplyThinking(&requestObj, model, "low")
+        if requestObj.reasoning_effort != "low"
+            throw Error("Default format should set reasoning_effort='low', got: " requestObj.reasoning_effort)
     }
 }

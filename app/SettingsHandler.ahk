@@ -167,7 +167,7 @@ class SettingsHandler {
 
         modelMap := Map()
         for modelId, m in models {
-            modelMap[modelId] := Map(
+            entry := Map(
                 "provider", m.HasOwnProp("provider") ? m.provider : "",
                 "input", m.HasOwnProp("input") ? m.input : 0,
                 "cachedInput", m.HasOwnProp("cachedInput") ? m.cachedInput : "",
@@ -176,8 +176,26 @@ class SettingsHandler {
                 "reasoning", m.HasOwnProp("reasoning") ? m.reasoning : false,
                 "vision", m.HasOwnProp("vision") ? m.vision : false
             )
+            ; Preserve new metadata fields (api, compat, thinkingLevelMap, thinkingOff)
+            if m.HasOwnProp("api")
+                entry["api"] := m.api
+            if m.HasOwnProp("compat") && IsObject(m.compat)
+                entry["compat"] := SettingsHandler._CloneMap(m.compat)
+            if m.HasOwnProp("thinkingLevelMap") && IsObject(m.thinkingLevelMap)
+                entry["thinkingLevelMap"] := SettingsHandler._CloneMap(m.thinkingLevelMap)
+            if m.HasOwnProp("thinkingOff")
+                entry["thinkingOff"] := m.thinkingOff
+            modelMap[modelId] := entry
         }
         return modelMap
+    }
+
+    ; Deep-clone a Map (for compat, thinkingLevelMap)
+    static _CloneMap(src) {
+        result := Map()
+        for k, v in src
+            result[k] := v
+        return result
     }
 
     static _DefaultsAssistants() {
@@ -434,7 +452,7 @@ class SettingsHandler {
             return
         newModels := Map()
         for k, m in settings["models"] {
-            newModels[k] := {
+            entry := {
                 provider: m.Has("provider") ? m["provider"] : "",
                 input: m.Has("input") ? m["input"] : 0,
                 cachedInput: m.Has("cachedInput") ? m["cachedInput"] : "",
@@ -443,6 +461,16 @@ class SettingsHandler {
                 reasoning: m.Has("reasoning") ? m["reasoning"] : false,
                 vision: m.Has("vision") ? m["vision"] : false
             }
+            ; Preserve new metadata fields (api, compat, thinkingLevelMap, thinkingOff)
+            if m.Has("api")
+                entry.api := m["api"]
+            if m.Has("compat") && IsObject(m["compat"])
+                entry.compat := SettingsHandler._ToMap(m["compat"])
+            if m.Has("thinkingLevelMap") && IsObject(m["thinkingLevelMap"])
+                entry.thinkingLevelMap := SettingsHandler._ToMap(m["thinkingLevelMap"])
+            if m.Has("thinkingOff")
+                entry.thinkingOff := m["thinkingOff"]
+            newModels[k] := entry
         }
         models := newModels
     }

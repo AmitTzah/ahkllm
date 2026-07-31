@@ -1,6 +1,13 @@
 ; ----------------------------------------------------
 ; CurlBuilder.ahk — cURL command construction
 ;
+; Builds cURL commands for OpenAI-compatible chat completions APIs.
+; All providers (DeepSeek, OpenAI, Google) use the standard
+; /v1/chat/completions endpoint with JSON request bodies.
+;
+; NOT suitable for providers with non-OpenAI-compatible APIs
+; (e.g. native Anthropic Messages, Gemini GenAI SDK).
+;
 ; Extracted from LLMRequestBuilder.ahk to separate HTTP transport
 ; from business logic (request building, response parsing).
 ; ----------------------------------------------------

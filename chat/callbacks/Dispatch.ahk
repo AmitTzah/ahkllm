@@ -97,9 +97,21 @@ _HandleRequestAllSettings() {
     postWebMessage("currentSettings", merged)
 }
 
-; Send raw defaults (not merged with loaded) to WebView for Reset button
+; Send raw defaults (not merged with loaded) to WebView for Reset button.
+; Also saves the defaults immediately so the chat process reloads fresh model data.
 _HandleRequestDefaultSettings() {
-    defaults := SettingsHandler.HasOwnProp("_initialDefaults") ? SettingsHandler._initialDefaults : SettingsHandler.GetDefaults()
+    defaults := SettingsHandler.GetDefaults()
+    ; Save and apply defaults immediately — bypass merge with stale loaded data
+    if SettingsHandler.Save(defaults) {
+        SettingsHandler.ApplyToGlobals(defaults)
+        postAssistantsToWebView()
+        postCurrentSettingsToWebView()  ; refresh thinking levels for current model
+        try {
+            CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
+        } catch Error as e2 {
+            debugLog("[SETTINGS] Failed to notify Main process: " e2.Message)
+        }
+    }
     postWebMessage("defaultSettings", defaults)
 }
 
@@ -120,8 +132,9 @@ _HandleSaveSettings(parsed) {
             ; Apply to this process's globals
             SettingsHandler.ApplyToGlobals(merged)
             ; Push updated assistant list (and model list) to the chat sidebar
-            ; so the right rail dropdown reflects changes without a full reload.
             postAssistantsToWebView()
+            ; Refresh thinking levels for current model
+            postCurrentSettingsToWebView()
             ; Notify Main process to reload
             try {
                 CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
@@ -140,9 +153,9 @@ _HandleSaveSettings(parsed) {
 
 ; Run PowerShell pricing refresh and return results
 _HandleRefreshModelPricing() {
-    scriptPath := A_ScriptDir "\..\Refresh-ModelPricing.ps1"
+    scriptPath := A_ScriptDir "\..\scripts\Refresh-Models.ps1"
     if !FileExist(scriptPath) {
-        postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-ModelPricing.ps1 not found" })
+        postWebMessage("modelPricingRefresh", { success: false, error: "scripts\Refresh-Models.ps1 not found" })
         return
     }
     try {

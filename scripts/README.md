@@ -1,0 +1,109 @@
+# Model Metadata Pipeline
+
+## Philosophy
+
+We need model metadata (pricing, thinking levels, compat flags) to generate `DefaultSettings.ahk`. One source — `models.dev` — does the heavy lifting but occasionally has errors (e.g., missing reasoning effort values). We use a three-script pipeline to get the best of both worlds: automated data + human oversight.
+
+**Basically:** `models.dev` is useful but imperfect. We treat it as a starting point, not a source of truth. Corrections flow through a single, tiny, version-controlled JSON file that overrides whatever models.dev says.
+
+## Pipeline
+
+```
+models.dev (API)
+     │
+     ▼
+Fetch-Models.ps1 ──► models-dev-raw.json  (dumb: just fetches, saves raw)
+     │
+     ▼
+┌─────────────────────────────────────────────────┐
+│  Refresh-Models.ps1  (the one users run)          │
+│                                                    │
+│  1. Reads models-corrections.json                  │
+│  2. Fetches models.dev (or reads raw JSON)          │
+│  3. Applies corrections (our JSON wins)             │
+│  4. Applies family fallback (same prefix/provider)  │
+│  5. Generates DefaultSettings.ahk models block      │
+└─────────────────────────────────────────────────┘
+     │
+     ▼
+DefaultSettings.ahk  (final output)
+```
+
+**Optional dev tool:**
+```
+Sync-Pi-Corrections.ps1
+  → Clones pi repo (cached in .pi-cache/)
+  → Runs pi's model generator
+  → Extracts corrected thinkingLevelMap
+  → Updates models-corrections.json
+  → Manual edits always take priority
+```
+
+## Files
+
+| File | Purpose | Who runs it |
+|---|---|---|
+| `Fetch-Models.ps1` | Dumb fetcher, saves raw JSON | Devs (optional) |
+| `Refresh-Models.ps1` | Main script: corrections + generate | Users (Quick Access) |
+| `Sync-Pi-Corrections.ps1` | Sync corrections from pi repo | Devs (occasionally) |
+| `models-corrections.json` | Single source of truth for overrides | Maintained manually |
+| `models-dev-raw.json` | Cached raw models.dev data (gitignored) | Auto-generated |
+| `models_metadata.txt` | Generated AHK models block (gitignored) | Auto-generated |
+
+## Correction Priority
+
+When generating model metadata, values are resolved in this order:
+
+1. **`models-corrections.json`** — manual overrides (highest priority)
+2. **`reasoning_options` from models.dev** — the API data
+3. **Family fallback** — sibling models with same prefix (e.g., gemma-4 → gemma-4)
+4. **Provider fallback** — any model from same provider
+
+Example: `deepseek-v4-flash` has `["high", "max"]` in models.dev but supports `["low", "high", "max"]` per official docs. Our `models-corrections.json` provides the correct values.
+
+## Quick Start
+
+### For users
+```
+Right-click Refresh-Models.bat → Run
+```
+Or from the app: Quick Access → Refresh Models
+
+### For devs adding a correction
+1. Edit `scripts/models-corrections.json`
+2. Add the model and its correct `reasoning_options`
+3. Run `Refresh-Models.ps1` to verify
+
+### For devs adding a correction
+
+Edit `scripts/models-corrections.json`. Copy-paste the template below, replace `model-id-here` with the actual model ID, and remove fields you don't need to override:
+
+```json
+{
+  "models": {
+    "model-id-here": {
+      "reasoning_options": [
+        {"type": "effort", "values": ["low", "high", "max"]}
+      ],
+      "pricing": {
+        "input": 0.14,
+        "output": 0.28,
+        "cache_read": 0.0028
+      },
+      "context": 1000000,
+      "reasoning": true,
+      "vision": false
+    }
+  }
+}
+```
+
+**All fields are optional** — only include what needs overriding. The Refresh script applies corrections in this order: `models-corrections.json` > `models.dev` > family fallback.
+
+**Reasoning values**: the `values` array can contain any values — standard level names, budget numbers, or custom strings. The handler translates them per provider: DeepSeek maps to `reasoning_effort`, Google maps to `thinking_level` or `thinking_budget` (with hardcoded budget tables for 2.x models), OpenAI maps to `reasoning_effort`. The UI shows these as selectable options.
+
+### For devs syncing from pi
+```
+powershell -File scripts/Sync-Pi-Corrections.ps1
+```
+Requires: Node.js, git. First run ~60s, subsequent ~15s.

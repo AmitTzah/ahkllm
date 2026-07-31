@@ -14,7 +14,11 @@ function loadModule() {
                 if (id === 'tempVal') return { textContent: '1.0' };
                 if (id === 'tempToggle') return { classList: { add: () => {}, remove: () => {}, contains: () => false }, addEventListener: () => {} };
                 if (id === 'tempReset') return { style: { display: '' }, addEventListener: () => {} };
-                if (id === 'reasoningDropdown') return { value: '', addEventListener: () => {} };
+                if (id === 'reasoningDropdown') return {
+                    value: '', options: [], innerHTML: '',
+                    appendChild: (opt) => { },
+                    addEventListener: () => {}
+                };
                 if (id === 'sysMsgMini') return { value: '' };
                 if (id === 'sysMsgFull') return { value: '' };
                 if (id === 'sysMsgOverlay') return { classList: { add: (c) => {}, remove: (c) => {} } };

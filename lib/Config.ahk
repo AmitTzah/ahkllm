@@ -22,6 +22,8 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 #Include ..\api\ProviderResolver.ahk
 #Include ..\api\ResponseParser.ahk
 #Include ..\api\LLMRequestBuilder.ahk
+#Include ..\api\handlers\OpenAIChatCompletions.ahk
+#Include ..\api\handlers\GoogleChatCompletions.ahk
 #Include ..\api\SSEParser.ahk
 #Include ..\api\ApiLogger.ahk
 #Include ..\api\CostCalculator.ahk

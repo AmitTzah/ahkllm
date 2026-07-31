@@ -29,11 +29,16 @@ desktop.ini
 *.log
 debug*.txt
 
-# Auto-generated pricing helper
+# Auto-generated model metadata
 models_pricing.txt
+models_metadata.txt
+scripts/models_metadata.txt
 
 # Test artifacts
 %TEMP%/test_results.txt
+
+# Model generation cache (pi repo clone)
+scripts/.pi-cache/
 
 # Agent workspace (dev planning)
 agent-workspace/

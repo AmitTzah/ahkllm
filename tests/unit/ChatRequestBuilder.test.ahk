@@ -153,25 +153,52 @@ class ChatRequestBuilderTest {
     }
 
     ; --------------------------------------------------------
-    ; Gemini + reasoning=none: reasoning_effort:"none" should
-    ; be present (Google docs: use "none" to disable thinking).
-    ; extra_body should NOT be present (mutually exclusive).
+    ; Gemini 2.5 + reasoning=none: thinking_budget:0 via extra_body.
+    ; Gemini 2.5 uses budget mechanism; "none" → budget 0 (disabled).
     ; --------------------------------------------------------
-    Gemini_WithReasoningNone_UsesReasoningEffortNone() {
+    Gemini25_WithReasoningNone_UsesExtraBodyBudgetZero() {
         result := this._buildRequest("google/gemini-2.5-flash", "none")
 
         if result = ""
-            throw Error("buildRequest returned empty for Gemini with reasoning=none")
+            throw Error("buildRequest returned empty for Gemini 2.5 with reasoning=none")
 
         parsed := jsongo.Parse(result)
 
-        if !parsed.Has("reasoning_effort")
-            throw Error("Expected reasoning_effort for Gemini with reasoning=none")
-        if parsed["reasoning_effort"] != "none"
-            throw Error("Expected reasoning_effort='none', got '" parsed["reasoning_effort"] "'")
+        ; reasoning_effort should NOT be present (Google uses extra_body)
+        if parsed.Has("reasoning_effort")
+            throw Error("Expected NO reasoning_effort for Gemini 2.5 with reasoning=none")
 
-        if parsed.Has("extra_body")
-            throw Error("Expected NO extra_body with reasoning_effort (mutually exclusive)")
+        ; extra_body.google.thinking_config with thinking_budget:0
+        if !parsed.Has("extra_body")
+            throw Error("Expected extra_body for Gemini 2.5 with reasoning=none")
+        eb := parsed["extra_body"]
+        if !eb.Has("google") || !eb["google"].Has("thinking_config")
+            throw Error("Expected extra_body.google.thinking_config")
+        tc := eb["google"]["thinking_config"]
+        if !tc.Has("thinking_budget") || tc["thinking_budget"] != 0
+            throw Error("Expected thinking_budget=0 for none, got '" (tc.Has("thinking_budget") ? tc["thinking_budget"] : "absent") "'")
+    }
+
+    ; --------------------------------------------------------
+    ; Gemini 3.x + reasoning=none: thinking_level:MINIMAL via extra_body.
+    ; Gemini 3.x can't fully disable; MINIMAL is best effort.
+    ; --------------------------------------------------------
+    Gemini3x_WithReasoningNone_UsesExtraBodyLevelMinimal() {
+        result := this._buildRequest("google/gemini-3.5-flash", "none")
+
+        if result = ""
+            throw Error("buildRequest returned empty for Gemini 3.x with reasoning=none")
+
+        parsed := jsongo.Parse(result)
+
+        if parsed.Has("reasoning_effort")
+            throw Error("Expected NO reasoning_effort for Gemini 3.x with reasoning=none")
+
+        if !parsed.Has("extra_body")
+            throw Error("Expected extra_body for Gemini 3.x with reasoning=none")
+        tc := parsed["extra_body"]["google"]["thinking_config"]
+        if !tc.Has("thinking_level") || tc["thinking_level"] != "MINIMAL"
+            throw Error("Expected thinking_level='MINIMAL', got '" (tc.Has("thinking_level") ? tc["thinking_level"] : "absent") "'")
     }
 
     ; --------------------------------------------------------

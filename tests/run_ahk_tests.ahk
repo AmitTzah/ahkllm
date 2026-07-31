@@ -106,6 +106,7 @@ RegisterTestClass(className) {
 #Include unit\UserConfig.test.ahk
 #Include unit\CostCalculator.test.ahk
 #Include unit\SettingsHandler.test.ahk
+#Include unit\DefaultSettingsIntegrity.test.ahk
 #Include unit\UsageTracking.test.ahk
 #Include unit\UsageDashboard.test.ahk
 #Include integration\ChatFlow.test.ahk

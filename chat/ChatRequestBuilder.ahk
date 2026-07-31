@@ -164,7 +164,7 @@ _BuildFileContexts(attachments) {
     return fileContexts
 }
 
-; Build the request object and apply all overrides (system, reasoning, temperature, stream, Gemini).
+; Build the request object and apply all overrides (system, reasoning, temperature, stream, provider defaults).
 _BuildRequestObj(apiMessages, providerInfo) {
     ; Apply system message override
     _ApplySystemOverride(apiMessages)
@@ -173,9 +173,19 @@ _BuildRequestObj(apiMessages, providerInfo) {
     apiModelName := ModelParser.StripProvider(requestParams["singleAPIModelName"])
     requestObj := { model: apiModelName, messages: apiMessages }
 
-    ; Apply reasoning override
+    ; Look up model metadata for thinking/compat
+    global models
+    modelMeta := models.Has(requestParams["singleAPIModelName"])
+        ? models[requestParams["singleAPIModelName"]] : ""
+
+    ; Apply reasoning override via metadata-driven handler
     if requestParams.Has("reasoningOverride") && requestParams["reasoningOverride"] != "" {
-        LLMRequestBuilder.ApplyThinkingOverride(&requestObj, providerInfo.providerKey, providerInfo.modelName, requestParams["reasoningOverride"])
+        if IsObject(modelMeta)
+            OpenAIChatCompletions.ApplyThinking(&requestObj, modelMeta, requestParams["reasoningOverride"], requestParams["singleAPIModelName"])
+    } else {
+        ; No reasoning override — apply provider-level defaults (e.g. Google include_thoughts)
+        if IsObject(modelMeta)
+            OpenAIChatCompletions.ApplyDefaults(&requestObj, modelMeta)
     }
 
     ; Apply temperature override (use != "" not truthiness — "0" is falsy in AHK)
@@ -192,23 +202,7 @@ _BuildRequestObj(apiMessages, providerInfo) {
         requestObj.stream_options := { include_usage: true }
     }
 
-    ; Apply Gemini-specific defaults
-    _ApplyGeminiDefaults(&requestObj, providerInfo)
-
     return requestObj
-}
-
-; Apply Gemini-specific defaults: when no reasoning override, request thought summaries.
-_ApplyGeminiDefaults(&requestObj, providerInfo) {
-    if providerInfo.providerKey = "google" && (!requestParams.Has("reasoningOverride") || requestParams["reasoningOverride"] = "") {
-        requestObj.extra_body := {
-            google: {
-                thinking_config: {
-                    include_thoughts: true
-                }
-            }
-        }
-    }
 }
 
 ; Apply system message override from requestParams or prepend one if missing.

@@ -56,10 +56,37 @@ function populateCurrentSettings(settings) {
     }
   }
 
-  // Thinking dropdown
+  // Thinking dropdown — options sent from backend (value+label pairs)
   var thinkingDropdown = document.getElementById('reasoningDropdown');
-  if (thinkingDropdown && settings.reasoning !== undefined) {
-    thinkingDropdown.value = settings.reasoning;
+  if (thinkingDropdown) {
+    var levels = settings.thinkingLevels || [];
+    var currentValue = settings.reasoning || '';
+
+    thinkingDropdown.innerHTML = '';
+
+    // Model Default always available
+    var opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Model Default';
+    thinkingDropdown.appendChild(opt);
+
+    // Append model-specific levels from backend
+    levels.forEach(function(lv) {
+      var opt = document.createElement('option');
+      opt.value = lv.value || lv;  // support both {value,label} and plain string
+      opt.textContent = lv.label || lv.value || lv;
+      thinkingDropdown.appendChild(opt);
+    });
+
+    // Restore current value if still valid
+    var valueExists = false;
+    for (var i = 0; i < thinkingDropdown.options.length; i++) {
+      if (thinkingDropdown.options[i].value === currentValue) {
+        valueExists = true;
+        break;
+      }
+    }
+    thinkingDropdown.value = valueExists ? currentValue : '';
   }
 }
 
