@@ -383,6 +383,35 @@ class LLMRequestBuilderTest {
     }
 
     ; ----------------------------------------------------
+    ; Model Default (empty reasoningEffort) — no thinking config.
+    ; Regression: empty reasoning must NOT emit disabled/off config;
+    ; "Model Default" means "do not send ANY thinking config".
+    ; ----------------------------------------------------
+
+    CreateJSONRequest_ModelDefault_DeepSeek_OmitsThinking() {
+        result := LLMRequestBuilder.createJSONRequest("deepseek/deepseek-v4-flash", "s", "u", "", "", "", false, "")
+        parsed := jsongo.Parse(result)
+        if parsed.Has("thinking")
+            throw Error("Model Default DeepSeek should omit 'thinking', got: " jsongo.Stringify(parsed["thinking"]))
+        if parsed.Has("reasoning_effort")
+            throw Error("Model Default DeepSeek should omit 'reasoning_effort', got: " jsongo.Stringify(parsed["reasoning_effort"]))
+    }
+
+    CreateJSONRequest_ModelDefault_OpenAI_OmitsThinking() {
+        result := LLMRequestBuilder.createJSONRequest("openai/gpt-5-mini", "s", "u", "", "", "", false, "")
+        parsed := jsongo.Parse(result)
+        if parsed.Has("reasoning_effort")
+            throw Error("Model Default OpenAI should omit 'reasoning_effort', got: " jsongo.Stringify(parsed["reasoning_effort"]))
+    }
+
+    CreateJSONRequest_ModelDefault_Google_OmitsThinking() {
+        result := LLMRequestBuilder.createJSONRequest("google/gemini-3.5-flash", "s", "u", "", "", "", false, "")
+        parsed := jsongo.Parse(result)
+        if parsed.Has("extra_body")
+            throw Error("Model Default Google should omit 'extra_body', got: " jsongo.Stringify(parsed["extra_body"]))
+    }
+
+    ; ----------------------------------------------------
     ; OpenAIChatCompletions.ApplyThinking — metadata-driven
     ; ----------------------------------------------------
 

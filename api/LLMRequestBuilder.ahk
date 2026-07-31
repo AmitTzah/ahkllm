@@ -62,9 +62,10 @@ class LLMRequestBuilder {
             requestObj.stream := true
         }
 
-        ; Apply thinking parameters via metadata-driven handler
+        ; Apply thinking parameters via metadata-driven handler.
+        ; Empty reasoningEffort = "Model Default" — send NO thinking config.
         global models
-        if models.Has(APIModel)
+        if (reasoningEffort != "" && models.Has(APIModel))
             OpenAIChatCompletions.ApplyThinking(&requestObj, models[APIModel], reasoningEffort, APIModel)
         return LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
     }

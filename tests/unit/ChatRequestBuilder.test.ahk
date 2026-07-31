@@ -153,10 +153,11 @@ class ChatRequestBuilderTest {
     }
 
     ; --------------------------------------------------------
-    ; Gemini 2.5 + reasoning=none: thinking_budget:0 via extra_body.
-    ; Gemini 2.5 uses budget mechanism; "none" → budget 0 (disabled).
+    ; "none" is NOT an option in these models' sidebars (their level
+    ; maps have no "none"), so it displays as "Model Default" → NO
+    ; thinking config is sent.
     ; --------------------------------------------------------
-    Gemini25_WithReasoningNone_UsesExtraBodyBudgetZero() {
+    Gemini25_WithReasoningNone_OmitsThinkingConfig() {
         result := this._buildRequest("google/gemini-2.5-flash", "none")
 
         if result = ""
@@ -164,26 +165,13 @@ class ChatRequestBuilderTest {
 
         parsed := jsongo.Parse(result)
 
-        ; reasoning_effort should NOT be present (Google uses extra_body)
         if parsed.Has("reasoning_effort")
             throw Error("Expected NO reasoning_effort for Gemini 2.5 with reasoning=none")
-
-        ; extra_body.google.thinking_config with thinking_budget:0
-        if !parsed.Has("extra_body")
-            throw Error("Expected extra_body for Gemini 2.5 with reasoning=none")
-        eb := parsed["extra_body"]
-        if !eb.Has("google") || !eb["google"].Has("thinking_config")
-            throw Error("Expected extra_body.google.thinking_config")
-        tc := eb["google"]["thinking_config"]
-        if !tc.Has("thinking_budget") || tc["thinking_budget"] != 0
-            throw Error("Expected thinking_budget=0 for none, got '" (tc.Has("thinking_budget") ? tc["thinking_budget"] : "absent") "'")
+        if parsed.Has("extra_body")
+            throw Error("Expected NO extra_body for Gemini 2.5 with reasoning=none (Model Default), got: " jsongo.Stringify(parsed["extra_body"]))
     }
 
-    ; --------------------------------------------------------
-    ; Gemini 3.x + reasoning=none: thinking_level:MINIMAL via extra_body.
-    ; Gemini 3.x can't fully disable; MINIMAL is best effort.
-    ; --------------------------------------------------------
-    Gemini3x_WithReasoningNone_UsesExtraBodyLevelMinimal() {
+    Gemini3x_WithReasoningNone_OmitsThinkingConfig() {
         result := this._buildRequest("google/gemini-3.5-flash", "none")
 
         if result = ""
@@ -193,19 +181,35 @@ class ChatRequestBuilderTest {
 
         if parsed.Has("reasoning_effort")
             throw Error("Expected NO reasoning_effort for Gemini 3.x with reasoning=none")
-
-        if !parsed.Has("extra_body")
-            throw Error("Expected extra_body for Gemini 3.x with reasoning=none")
-        tc := parsed["extra_body"]["google"]["thinking_config"]
-        if !tc.Has("thinking_level") || tc["thinking_level"] != "MINIMAL"
-            throw Error("Expected thinking_level='MINIMAL', got '" (tc.Has("thinking_level") ? tc["thinking_level"] : "absent") "'")
+        if parsed.Has("extra_body")
+            throw Error("Expected NO extra_body for Gemini 3.x with reasoning=none (Model Default), got: " jsongo.Stringify(parsed["extra_body"]))
     }
 
     ; --------------------------------------------------------
-    ; Gemini WITHOUT reasoning override: extra_body.google.
-    ; thinking_config should be present, reasoning_effort NOT.
+    ; Violet/Gemma scenario (regression): gemma-4-31b-it's level map
+    ; has no "none", but Violet's assistant config defaults to "none".
+    ; The sidebar shows "Model Default" → NO thinking config sent.
+    ; This is the exact case that produced thinking_level:"MINIMAL".
     ; --------------------------------------------------------
-    Gemini_WithoutReasoningOverride_UsesThinkingConfig() {
+    Gemma_WithNoneReasoning_OmitsThinkingConfig() {
+        result := this._buildRequest("google/gemma-4-31b-it", "none")
+
+        if result = ""
+            throw Error("buildRequest returned empty for Gemma with reasoning=none")
+
+        parsed := jsongo.Parse(result)
+
+        if parsed.Has("extra_body")
+            throw Error("Expected NO extra_body for Gemma with reasoning=none (Model Default), got: " jsongo.Stringify(parsed["extra_body"]))
+        if parsed.Has("reasoning_effort")
+            throw Error("Expected NO reasoning_effort for Gemma with reasoning=none")
+    }
+
+    ; --------------------------------------------------------
+    ; No reasoning override (Model Default): NO thinking config for
+    ; any provider.
+    ; --------------------------------------------------------
+    Gemini_WithoutReasoningOverride_OmitsThinkingConfig() {
         result := this._buildRequest("google/gemini-2.5-flash", "")
 
         if result = ""
@@ -213,28 +217,44 @@ class ChatRequestBuilderTest {
 
         parsed := jsongo.Parse(result)
 
-        ; reasoning_effort should NOT be present
         if parsed.Has("reasoning_effort")
             throw Error("Expected NO reasoning_effort for Gemini without reasoning override")
+        if parsed.Has("extra_body")
+            throw Error("Expected NO extra_body for Gemini without reasoning override (Model Default), got: " jsongo.Stringify(parsed["extra_body"]))
+    }
 
-        ; extra_body.google.thinking_config should be present
-        if !parsed.Has("extra_body")
-            throw Error("Expected extra_body to be present for Gemini without reasoning override")
-        eb := parsed["extra_body"]
-        if !eb.Has("google")
-            throw Error("Expected extra_body.google to be present")
-        if !eb["google"].Has("thinking_config")
-            throw Error("Expected extra_body.google.thinking_config to be present")
-        tc := eb["google"]["thinking_config"]
-        if !tc.Has("include_thoughts") || tc["include_thoughts"] != true
-            throw Error("Expected extra_body.google.thinking_config.include_thoughts=true")
+    DeepSeek_WithoutReasoningOverride_OmitsThinkingConfig() {
+        result := this._buildRequest("deepseek/deepseek-v4-flash", "")
+
+        if result = ""
+            throw Error("buildRequest returned empty for DeepSeek without reasoning override")
+
+        parsed := jsongo.Parse(result)
+
+        if parsed.Has("thinking")
+            throw Error("Expected NO thinking for DeepSeek without reasoning override, got: " jsongo.Stringify(parsed["thinking"]))
+        if parsed.Has("reasoning_effort")
+            throw Error("Expected NO reasoning_effort for DeepSeek without reasoning override")
+    }
+
+    OpenAI_WithoutReasoningOverride_OmitsThinkingConfig() {
+        result := this._buildRequest("openai/gpt-5-mini", "")
+
+        if result = ""
+            throw Error("buildRequest returned empty for OpenAI without reasoning override")
+
+        parsed := jsongo.Parse(result)
+
+        if parsed.Has("reasoning_effort")
+            throw Error("Expected NO reasoning_effort for OpenAI without reasoning override, got: " jsongo.Stringify(parsed["reasoning_effort"]))
     }
 
     ; --------------------------------------------------------
-    ; DeepSeek with reasoning=none: should use thinking:{type:"disabled"}
-    ; NOT reasoning_effort.
+    ; DeepSeek with reasoning=none: "none" is NOT an option in the
+    ; DeepSeek sidebar (level map has no "none") → Model Default →
+    ; NO thinking config sent.
     ; --------------------------------------------------------
-    DeepSeek_WithReasoningNone_UsesThinkingDisabled() {
+    DeepSeek_WithReasoningNone_OmitsThinkingConfig() {
         result := this._buildRequest("deepseek/deepseek-v4-flash", "none")
 
         if result = ""
@@ -242,15 +262,10 @@ class ChatRequestBuilderTest {
 
         parsed := jsongo.Parse(result)
 
-        ; reasoning_effort should NOT be present (DeepSeek rejects "none")
         if parsed.Has("reasoning_effort")
-            throw Error("Expected NO reasoning_effort for DeepSeek with reasoning=none (DeepSeek rejects it)")
-
-        ; thinking:{type:"disabled"} should be present
-        if !parsed.Has("thinking")
-            throw Error("Expected thinking to be present for DeepSeek with reasoning=none")
-        if !parsed["thinking"].Has("type") || parsed["thinking"]["type"] != "disabled"
-            throw Error("Expected thinking.type='disabled' for DeepSeek reasoning=none")
+            throw Error("Expected NO reasoning_effort for DeepSeek with reasoning=none")
+        if parsed.Has("thinking")
+            throw Error("Expected NO thinking for DeepSeek with reasoning=none (Model Default), got: " jsongo.Stringify(parsed["thinking"]))
     }
 
     ; --------------------------------------------------------

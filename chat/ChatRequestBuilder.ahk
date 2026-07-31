@@ -178,15 +178,15 @@ _BuildRequestObj(apiMessages, providerInfo) {
     modelMeta := models.Has(requestParams["singleAPIModelName"])
         ? models[requestParams["singleAPIModelName"]] : ""
 
-    ; Apply reasoning override via metadata-driven handler
-    if requestParams.Has("reasoningOverride") && requestParams["reasoningOverride"] != "" {
-        if IsObject(modelMeta)
-            OpenAIChatCompletions.ApplyThinking(&requestObj, modelMeta, requestParams["reasoningOverride"], requestParams["singleAPIModelName"])
-    } else {
-        ; No reasoning override — apply provider-level defaults (e.g. Google include_thoughts)
-        if IsObject(modelMeta)
-            OpenAIChatCompletions.ApplyDefaults(&requestObj, modelMeta)
-    }
+    ; Apply reasoning override via metadata-driven handler.
+    ; Only send thinking config for a thinking level this model actually offers.
+    ; "Model Default" (empty) — or any value the sidebar dropdown can't display
+    ; (e.g. an assistant's "none" default on a model whose level list has no
+    ; "none") — sends NO thinking config at all.
+    reasoning := requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : ""
+    hasLevelMap := IsObject(modelMeta) && modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap)
+    if (reasoning != "" && hasLevelMap && modelMeta.thinkingLevelMap.Has(reasoning))
+        OpenAIChatCompletions.ApplyThinking(&requestObj, modelMeta, reasoning, requestParams["singleAPIModelName"])
 
     ; Apply temperature override (use != "" not truthiness — "0" is falsy in AHK)
     if requestParams.Has("temperatureOverride") && requestParams["temperatureOverride"] != "" {
