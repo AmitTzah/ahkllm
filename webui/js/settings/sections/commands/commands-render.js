@@ -27,6 +27,24 @@
     return rl.buildOptionsHtml(C.models(), _resolveModelKey(modelKey));
   }
 
+  // <option> HTML for the API Model dropdown: every available model ID (sorted)
+  // plus an empty "Default" entry. If the command's current value isn't among
+  // the known models (e.g. a custom or comma-separated value), it is prepended
+  // so it stays visible and isn't silently dropped on save.
+  function _modelOptionsHtml(current) {
+    var models = C.models();
+    var keys = models ? Object.keys(models).sort() : [];
+    // "Default" is selected whenever the command has no explicit model.
+    var html = '<option value=""' + (current ? '' : ' selected') + '>Default</option>';
+    var all = keys.slice();
+    if (current && all.indexOf(current) < 0) all.unshift(current);
+    for (var i = 0; i < all.length; i++) {
+      var k = all[i];
+      html += '<option value="' + C.escHtml(k) + '"' + (k === current ? ' selected' : '') + '>' + C.escHtml(k) + '</option>';
+    }
+    return html;
+  }
+
   function _buildListItem(cmd, idx, groupTag) {
     var label = cmd.menuText || cmd.commandName || 'Unnamed';
     var shortcut = label.match(/&(.)/);
@@ -103,7 +121,7 @@
     var cmd = C.commands()[idx], detail = document.getElementById('cmdDetail');
     if (!detail) return;
     detail.style.display = '';
-    detail.innerHTML = _buildDetailHTML();
+    detail.innerHTML = _buildDetailHTML(cmd);
     var d = document;
     d.getElementById('cmdDetailTitle').value = cmd.commandName || '';
     d.getElementById('cmdMenuLabel').value = cmd.menuText ? cmd.menuText.replace(/^&\S+\s*-\s*/, '') : '';
@@ -142,7 +160,7 @@
     _wireDetail();
   };
 
-  function _buildDetailHTML() {
+  function _buildDetailHTML(cmd) {
     // Card-based layout matching the settings panel redesign
     return ''+
       // ── Title header ──
@@ -166,7 +184,7 @@
       // ── Model Configuration ──
       '<div class="cmd-card">'+
         '<div class="cmd-card-header">Model Configuration</div>'+
-        '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Supports provider/model format (e.g. openai/gpt-4o) or direct name.">?</span></label><input type="text" id="cmdApiModel" placeholder="deepseek-v4-flash" style="max-width:400px;"></div>'+
+        '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Select the model for this command from the available models, or Default for the chat default model.">?</span></label><select id="cmdApiModel" style="max-width:400px;">' + _modelOptionsHtml((cmd && cmd.APIModels) || '') + '</select></div>'+
         '<div class="grid-2">'+
           '<div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>'+
           '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0-2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div>'+

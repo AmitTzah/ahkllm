@@ -124,7 +124,8 @@ class DefaultSettingsIntegrityTest {
     ; --------------------------------------------------------
     Commands_ThinkingLevelsMatchModelSupport() {
         global commands, models
-        if !IsSet(commands) || !IsArray(commands)
+        ; Note: AHK v2 has no IsArray() builtin — use Type() or the `is` operator.
+        if !IsSet(commands) || !(Type(commands) = "Array")
             throw Error("commands global is not set or not an array")
 
         for i, c in commands {
