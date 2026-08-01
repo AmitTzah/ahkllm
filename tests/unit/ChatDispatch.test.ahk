@@ -371,6 +371,77 @@ class ChatDispatchTest {
             throw Error("newChat should load the new thread")
     }
 
+    Dispatch_DeleteActiveThread_ResetsRequestParams() {
+        global activeThreadId, requestParams, chatDefaultModel
+        this._setupDb()
+        old := activeThreadId
+        oldParams := requestParams
+        threadId := ChatDB.Thread_Create("To Delete")
+        activeThreadId := threadId
+        requestParams := Map(
+            "singleAPIModelName", "deepseek/deepseek-chat",
+            "systemOverride", "You are a pirate.",
+            "reasoningOverride", "high",
+            "temperatureOverride", "0.3",
+            "fontSize", 21,
+            "activeAssistantId", "asst-1")
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"sidebarAction","subAction":"deleteThread","threadId":"' threadId '"}'))
+            ; Deleting the ACTIVE thread must clear it and reset requestParams,
+            ; otherwise the next handleChatSend persists stale settings into the
+            ; new thread (bug #1: per-thread settings leak).
+            if activeThreadId != ""
+                throw Error("Deleting the active thread should clear activeThreadId")
+            if requestParams.Has("activeAssistantId")
+                throw Error("Deleting the active thread should clear the assistant")
+            if requestParams.Has("fontSize")
+                throw Error("Deleting the active thread should clear font size")
+            if requestParams["systemOverride"] != "" || requestParams["reasoningOverride"] != "" || requestParams["temperatureOverride"] != ""
+                throw Error("Deleting the active thread should clear system/reasoning/temperature overrides")
+            if requestParams["singleAPIModelName"] != chatDefaultModel
+                throw Error("Deleting the active thread should reset the model to the default")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            requestParams := oldParams
+            this._teardownDb()
+        }
+    }
+
+    Dispatch_DeleteInactiveThread_KeepsRequestParams() {
+        global activeThreadId, requestParams
+        this._setupDb()
+        old := activeThreadId
+        oldParams := requestParams
+        activeId := ChatDB.Thread_Create("Active")
+        otherId := ChatDB.Thread_Create("Other")
+        activeThreadId := activeId
+        requestParams := Map(
+            "singleAPIModelName", "deepseek/deepseek-chat",
+            "systemOverride", "You are a pirate.",
+            "reasoningOverride", "high",
+            "temperatureOverride", "0.3",
+            "fontSize", 21,
+            "activeAssistantId", "asst-1")
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"sidebarAction","subAction":"deleteThread","threadId":"' otherId '"}'))
+            ; Deleting a NON-active thread must not touch the active thread's settings.
+            if activeThreadId != activeId
+                throw Error("Deleting another thread should keep activeThreadId")
+            if !requestParams.Has("activeAssistantId") || requestParams["activeAssistantId"] != "asst-1"
+                throw Error("Deleting another thread should keep the active assistant")
+            if requestParams["systemOverride"] != "You are a pirate."
+                throw Error("Deleting another thread should keep the active system override")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            requestParams := oldParams
+            this._teardownDb()
+        }
+    }
+
     Dispatch_HideWindow() {
         global _mockHideWindowCalls
         _mockHideWindowCalls := 0

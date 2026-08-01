@@ -180,7 +180,7 @@ const scenarios = [];
 
 scenarios.push({
   id: 1,
-  name: 'Stale per-thread settings leak into next chat after deleting active chat',
+  name: 'New chat after deleting active chat starts clean (no leaked per-thread settings)',
   mode: null, // refused endpoint: request fails fast, thread + settings still created
   settings: {
     assistants: [{
@@ -212,7 +212,7 @@ scenarios.push({
       return 'clicked';
     })()`);
     // NOTE: post deleteThread directly (instead of driving the delete-confirm
-    // dialog) so this scenario stays focused on bug #3's settings leak and is
+    // dialog) so this scenario stays focused on the per-thread settings leak and is
     // independent of the delete-confirm flow covered by scenario 23.
     await cdp.eval(`window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThread', threadId: 't-leak-1' })); true`);
     await cdp.waitFor('window.activeThreadId === "" && chatMessages.length === 0', 10000, 250, 'chat emptied');
@@ -225,8 +225,8 @@ scenarios.push({
     const s = rows[0] || {};
     const leaked = s.assistant_id === 'asst-1' && s.system_override === 'You are a pirate.' &&
       s.reasoning_override === 'high' && Number(s.temperature_override) === 0.3 && Number(s.font_size) === 21;
-    if (!leaked) throw new Error('new thread clean: ' + JSON.stringify(s));
-    return 'new thread ' + newId + ' inherited assistant/system/reasoning/temp/font from deleted chat';
+    if (leaked) throw new Error('new thread leaked deleted chat settings: ' + JSON.stringify(s));
+    return 'new thread ' + newId + ' starts clean (no assistant/system/reasoning/temp/font from deleted chat)';
   }
 });
 
@@ -678,6 +678,7 @@ scenarios.push({
 scenarios.push({
   id: 22,
   name: 'Command thinking setting survives settings round-trip (Map/object forms)',
+  regression: true, // FIXED bug kept as a regression check (thinking must keep surviving round-trips)
   mode: null,
   settings: {},
   noApp: true,

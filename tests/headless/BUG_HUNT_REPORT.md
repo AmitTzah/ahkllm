@@ -134,9 +134,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **19 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
+- **18 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
   one scenario is the refuted-bug regression check).
-- **Where we left off:** bug #1 (command `thinking`) fix applied — scenario 22 (flipped) PASS, full JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
+- **Where we left off:** bug #1 (per-thread settings leak) fix applied — scenario 1 (flipped) PASS, full JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
 
 ---
 
@@ -189,27 +189,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Command `thinking` settings are dropped after any settings round-trip
-
-**Scenario:** 22 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** Save any setting (so `settings.json` exists), then run a command with a thinking level (e.g. "Refine" with `thinking: {type:"enabled", level:"none"}`).
-
-**Expected:** the configured thinking config is sent (e.g. `thinking:{type:"disabled"}`).
-
-**Actual:** no thinking config is sent — after a round-trip `cmd.thinking` is an AHK `Map`, and `_extractCommandParams` gates on `Map.HasOwnProp("type")`, which is false for Map keys.
-
-**Evidence:** AHK probe + unit tests (`../unit/CommandThinkingMap.test.ahk`): `Map(...).HasOwnProp("type")` → 0; object-literal form works.
-
-**Verification:** headless scenario 22 + 2 AHK unit tests.
-
-### 2. Deleting the active chat leaks its per-thread settings into the next chat
+### 1. Deleting the active chat leaks its per-thread settings into the next chat
 
 **Scenario:** 1 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** Open a chat using an assistant (or custom model/system prompt/reasoning/temperature/font size), delete it (note: bug #1 blocks the UI path today — post the delete action directly or fix #1 first), then send a new message in the empty chat.
 
@@ -219,7 +203,7 @@ one at a time, in rank order.
 
 **Verification:** headless — new thread had `assistant_id=asst-1`, the pirate system prompt, `reasoning=high`, `temp=0.3`, `font_size=21`.
 
-### 3. "Set as Default Assistant" does nothing
+### 2. "Set as Default Assistant" does nothing
 
 **Scenario:** 2 (scenario code in verify-bugs.js)
 
@@ -233,7 +217,7 @@ one at a time, in rank order.
 
 **Verification:** headless — new chat still has `assistantName=""`.
 
-### 4. Removing models/providers in Settings doesn't persist
+### 3. Removing models/providers in Settings doesn't persist
 
 **Scenario:** 3 (scenario code in verify-bugs.js)
 
@@ -247,7 +231,7 @@ one at a time, in rank order.
 
 **Verification:** headless — removed `deepseek/deepseek-chat` + provider `deepseek`, both back in `settings.json` after Save.
 
-### 5. Clearing a hotkey field does nothing — hotkeys can't be disabled
+### 4. Clearing a hotkey field does nothing — hotkeys can't be disabled
 
 **Scenario:** 4 (scenario code in verify-bugs.js)
 
@@ -261,7 +245,7 @@ one at a time, in rank order.
 
 **Verification:** headless — `settings.json` saved `""`, backtick still opened the menu.
 
-### 6. New models added in Settings lose reasoning/thinking metadata
+### 5. New models added in Settings lose reasoning/thinking metadata
 
 **Scenario:** 5 (scenario code in verify-bugs.js)
 
@@ -275,7 +259,7 @@ one at a time, in rank order.
 
 **Verification:** headless — dropdown had exactly 1 option; plus JS probe.
 
-### 7. Chat request failure with no output file shows no error and leaves the UI stuck
+### 6. Chat request failure with no output file shows no error and leaves the UI stuck
 
 **Scenario:** 6 (scenario code in verify-bugs.js)
 
@@ -289,7 +273,7 @@ one at a time, in rank order.
 
 **Verification:** headless — refused endpoint; no error banner, stuck until Stop.
 
-### 8. Trash retention never auto-purges
+### 7. Trash retention never auto-purges
 
 **Scenario:** 7 (scenario code in verify-bugs.js)
 
@@ -303,7 +287,7 @@ one at a time, in rank order.
 
 **Verification:** headless — static caller check + expired trashed thread survived.
 
-### 9. "Close Windows" hotkey setting is ignored by the chat window
+### 8. "Close Windows" hotkey setting is ignored by the chat window
 
 **Scenario:** 8 (scenario code in verify-bugs.js)
 
@@ -317,7 +301,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 8 (static trace) + user manual confirmation.
 
-### 10. Suspend banner edits don't take effect until restart
+### 9. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
@@ -331,7 +315,7 @@ one at a time, in rank order.
 
 **Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
 
-### 11. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+### 10. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -345,7 +329,7 @@ one at a time, in rank order.
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 12. Title generation resets the topbar folder label to "Unfiled"
+### 11. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -359,7 +343,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 13. Chat topbar "Export" button does nothing
+### 12. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -373,7 +357,7 @@ one at a time, in rank order.
 
 **Verification:** headless — click produced no message and no state change.
 
-### 14. API Logs viewer latency column always shows "–"
+### 13. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -387,7 +371,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 16.
 
-### 15. System-prompt modal "0 chars" counter never updates
+### 14. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -401,7 +385,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 17.
 
-### 16. Custom icon picked outside the repo never applies to the chat window
+### 15. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -415,7 +399,7 @@ one at a time, in rank order.
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 17. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 16. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -429,7 +413,7 @@ one at a time, in rank order.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 18. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 17. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -443,7 +427,7 @@ one at a time, in rank order.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 19. Reasoning-only responses get no action buttons until reload
+### 18. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -469,3 +453,4 @@ closure; never rewrite past entries.
   so the IPC still reaches the process). Scenario 9 kept as a regression check
   (`regression: true`).
 - 2026-08-01 — "Chat delete confirmations are broken — the confirm button is a no-op" — FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.
+- 2026-08-01 — "Command `thinking` settings are dropped after any settings round-trip" — FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.

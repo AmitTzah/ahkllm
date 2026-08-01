@@ -52,8 +52,14 @@ _HandleThreadAction(action, params) {
                 ChatDB.Thread_SoftDelete(threadId)
                 if activeThreadId = threadId {
                     activeThreadId := ""
+                    ; The deleted thread's settings must not leak into the next
+                    ; chat: handleChatSend persists requestParams when it creates
+                    ; a new thread, so reset to defaults and refresh the UI.
+                    _resetToDefaultSettings()
                     postWebMessage("loadThread", "")
                     postWebMessage("initChatMode", [])
+                    postCurrentSettingsToWebView()
+                    _sendDropdownLabel()
                 }
                 _postThreadListRefresh()
             }
@@ -70,8 +76,11 @@ _HandleThreadAction(action, params) {
                 ChatDB.Thread_Delete(threadId)
                 if activeThreadId = threadId {
                     activeThreadId := ""
+                    _resetToDefaultSettings()
                     postWebMessage("loadThread", "")
                     postWebMessage("initChatMode", [])
+                    postCurrentSettingsToWebView()
+                    _sendDropdownLabel()
                 }
                 _postThreadListRefresh()
             }
@@ -87,7 +96,10 @@ _HandleThreadAction(action, params) {
                         stillExists := true
                 if !stillExists {
                     activeThreadId := ""
+                    _resetToDefaultSettings()
                     postWebMessage("initChatMode", [])
+                    postCurrentSettingsToWebView()
+                    _sendDropdownLabel()
                 }
             }
             _postThreadListRefresh()
