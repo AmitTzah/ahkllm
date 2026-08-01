@@ -55,7 +55,7 @@ confirm the fix, never to re-verify the bug):
    specific bug ("fix bug #14") — that overrides rank order. Set `Status: fix in progress`
    **before** editing any code. **[file: this file]**
 2. Fix the bug in production source. **[files: `app/`, `chat/`, `webui/`, `api/`, `shared/`]**
-3. Add/extend regression tests. **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
+3. Add/extend regression tests that assert the **fixed** behavior (unit/AHK as appropriate— the flipped scenario is the end-to-end check, but the fix also needs a code-level regression test when feasible; never delete or loosen an existing assertion to make it pass). **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
    if you added an AHK test]**
 4. Flip the scenario assertion in `verify-bugs.js` to expect the **fixed** behavior
    (otherwise it fails forever). **[file: `verify-bugs.js`]**
@@ -84,6 +84,10 @@ confirm the fix, never to re-verify the bug):
 - **A FAIL with `setup ->` in the message is a harness/infrastructure failure, not a
   refutation** — investigate or re-run; never delete an entry because of it.
 - **Only one fix may be uncommitted at a time**: wait for the user's commit before
+- **Every fix ships with a regression test**: the flipped scenario is the end-to-end
+  check, but the fix also needs a unit/AHK test in `tests/unit/*` asserting the fixed
+  behavior (unless the bug is visual/environment-limited— then say so in the entry).
+  Never delete or loosen an existing assertion to make it pass.
   starting the next bug (the worktree must be clean of the previous fix).
 - Only one agent edits this document at a time.
 - Never delete an entry until the user has actually committed.
@@ -134,9 +138,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **18 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
+- **17 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
   one scenario is the refuted-bug regression check).
-- **Where we left off:** bug #1 (per-thread settings leak) fix applied — scenario 1 (flipped) PASS, full JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
+- **Where we left off:** bug #1 (new-chat default) fix applied — redesign: General-tab "New Chats Start With" dropdown (assistants then models) replaces "Default Chat Model" and the "Set as Default Assistant" toggle; `newChatStartsWith` applied in newChat/handleChatSend; old `chatDefaultModel` renamed `appDefaultModel` (runtime baseline only) and migration code removed; scenario 2 flipped PASS, JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
 
 ---
 
@@ -189,35 +193,16 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Deleting the active chat leaks its per-thread settings into the next chat
-
-**Scenario:** 1 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** Open a chat using an assistant (or custom model/system prompt/reasoning/temperature/font size), delete it (note: bug #1 blocks the UI path today — post the delete action directly or fix #1 first), then send a new message in the empty chat.
-
-**Expected:** the new chat starts with app defaults.
-
-**Actual:** the new thread inherits the deleted chat's assistant, system prompt, reasoning, temperature, and font size (`handleChatSend` creates the thread without resetting `requestParams`).
-
-**Verification:** headless — new thread had `assistant_id=asst-1`, the pirate system prompt, `reasoning=high`, `temp=0.3`, `font_size=21`.
-
-### 2. "Set as Default Assistant" does nothing
-
+### 1. New chats ignore the configured "New Chats Start With" default
 **Scenario:** 2 (scenario code in verify-bugs.js)
+**Status:** fix applied
+**Repro:** Settings → General → "New Chats Start With" → pick an assistant → Save → New Chat.
+**Expected:** the new chat starts with that assistant (its model/system/reasoning/temperature). Picking a model starts with that model; "App Default" uses the default model (deepseek/deepseek-v4-flash).
+**Actual:** the old "Set as Default Assistant" toggle was written but never read by any new-chat flow, so new chats always started from app defaults. Redesign: the toggle is removed and replaced by a single "New Chats Start With" dropdown (assistants on top, models below); `newChatStartsWith` is applied in `newChat` and `handleChatSend` via `_applyNewChatDefault()`.
+**Evidence:** `DefaultSettings.ahk` declares `newChatStartsWith` ("" = app default model, "asst:<id>" = assistant, else a model id) and `appDefaultModel` (the runtime baseline); `SettingsApply.ApplyToGlobals` loads the key; `chat/ChatSettings.ahk` applies it via `_applyNewChatDefault()`.
+**Verification:** headless — new chat started with assistant "Default Assistant" and its model; scenario 2 flipped.
 
-**Status:** verified — open
-
-**Repro:** Settings → Assistants → toggle "Set as Default Assistant" → Save → New Chat.
-
-**Expected:** the new chat starts with that assistant.
-
-**Actual:** zero effect — `defaultAssistant` is written but never read by any new-chat flow.
-
-**Verification:** headless — new chat still has `assistantName=""`.
-
-### 3. Removing models/providers in Settings doesn't persist
+### 2. Removing models/providers in Settings doesn't persist
 
 **Scenario:** 3 (scenario code in verify-bugs.js)
 
@@ -231,7 +216,7 @@ one at a time, in rank order.
 
 **Verification:** headless — removed `deepseek/deepseek-chat` + provider `deepseek`, both back in `settings.json` after Save.
 
-### 4. Clearing a hotkey field does nothing — hotkeys can't be disabled
+### 3. Clearing a hotkey field does nothing — hotkeys can't be disabled
 
 **Scenario:** 4 (scenario code in verify-bugs.js)
 
@@ -245,7 +230,7 @@ one at a time, in rank order.
 
 **Verification:** headless — `settings.json` saved `""`, backtick still opened the menu.
 
-### 5. New models added in Settings lose reasoning/thinking metadata
+### 4. New models added in Settings lose reasoning/thinking metadata
 
 **Scenario:** 5 (scenario code in verify-bugs.js)
 
@@ -259,7 +244,7 @@ one at a time, in rank order.
 
 **Verification:** headless — dropdown had exactly 1 option; plus JS probe.
 
-### 6. Chat request failure with no output file shows no error and leaves the UI stuck
+### 5. Chat request failure with no output file shows no error and leaves the UI stuck
 
 **Scenario:** 6 (scenario code in verify-bugs.js)
 
@@ -273,7 +258,7 @@ one at a time, in rank order.
 
 **Verification:** headless — refused endpoint; no error banner, stuck until Stop.
 
-### 7. Trash retention never auto-purges
+### 6. Trash retention never auto-purges
 
 **Scenario:** 7 (scenario code in verify-bugs.js)
 
@@ -287,7 +272,7 @@ one at a time, in rank order.
 
 **Verification:** headless — static caller check + expired trashed thread survived.
 
-### 8. "Close Windows" hotkey setting is ignored by the chat window
+### 7. "Close Windows" hotkey setting is ignored by the chat window
 
 **Scenario:** 8 (scenario code in verify-bugs.js)
 
@@ -301,7 +286,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 8 (static trace) + user manual confirmation.
 
-### 9. Suspend banner edits don't take effect until restart
+### 8. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
@@ -315,7 +300,7 @@ one at a time, in rank order.
 
 **Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
 
-### 10. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+### 9. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -329,7 +314,7 @@ one at a time, in rank order.
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 11. Title generation resets the topbar folder label to "Unfiled"
+### 10. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -343,7 +328,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 12. Chat topbar "Export" button does nothing
+### 11. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -357,7 +342,7 @@ one at a time, in rank order.
 
 **Verification:** headless — click produced no message and no state change.
 
-### 13. API Logs viewer latency column always shows "–"
+### 12. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -371,7 +356,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 16.
 
-### 14. System-prompt modal "0 chars" counter never updates
+### 13. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -385,7 +370,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 17.
 
-### 15. Custom icon picked outside the repo never applies to the chat window
+### 14. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -399,7 +384,7 @@ one at a time, in rank order.
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 16. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 15. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -413,7 +398,7 @@ one at a time, in rank order.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 17. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 16. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -427,7 +412,7 @@ one at a time, in rank order.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 18. Reasoning-only responses get no action buttons until reload
+### 17. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -454,3 +439,4 @@ closure; never rewrite past entries.
   (`regression: true`).
 - 2026-08-01 — "Chat delete confirmations are broken — the confirm button is a no-op" — FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.
 - 2026-08-01 — "Command `thinking` settings are dropped after any settings round-trip" — FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.
+- 2026-08-01 — "Deleting the active chat leaks its per-thread settings into the next chat" — FIXED in 76be0ba: deleteThread/deleteThreadForever/emptyTrash now reset requestParams and refresh the UI when the active thread is removed; scenario 1 flipped + dispatch regression tests for active vs inactive deletion.

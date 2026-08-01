@@ -1,4 +1,4 @@
-PASS | #01 | New chat after deleting active chat starts clean (no leaked per-thread settings) | new thread 012a621b-12b6-cf00-1b46-00009afdb5d6 starts clean (no assistant/system/reasoning/temp/font from deleted chat) | 2.9s
+PASS | #02 | New chat honors the "New Chats Start With" default (assistant) | new chat starts with assistant "Default Assistant" (deepseek/deepseek-v4-flash) | 2.9s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

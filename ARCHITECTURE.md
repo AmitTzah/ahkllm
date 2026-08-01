@@ -288,7 +288,7 @@ Settings are the combination of **defaults** (`DefaultSettings.ahk` globals) and
 
 ### The Defaults Snapshot Problem (important)
 
-`DefaultSettings.ahk` is a script that runs once at startup, assigning **mutable global variables** (`chatShortcut := "1"`, `chatDefaultModel := "..."`, `mainHotkey := "``"`, ...). When settings are applied, `SettingsHandler.ApplyToGlobals()` **overwrites those same globals** with the saved values:
+`DefaultSettings.ahk` is a script that runs once at startup, assigning **mutable global variables** (`chatShortcut := "1"`, `appDefaultModel := "..."`, `mainHotkey := "``"`, ...). When settings are applied, `SettingsHandler.ApplyToGlobals()` **overwrites those same globals** with the saved values:
 
 ```ahk
 global chatShortcut

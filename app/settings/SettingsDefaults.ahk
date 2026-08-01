@@ -20,7 +20,7 @@ class SettingsDefaults {
     ; Delegates to section-specific helpers for readability.
     ;
     ; IMPORTANT: after ApplyToGlobals() has run, the section globals (chatShortcut,
-    ; chatDefaultModel, hotkeys, ...) hold APPLIED values, not defaults. Reading them
+    ; appDefaultModel, hotkeys, ...) hold APPLIED values, not defaults. Reading them
     ; here would return the applied values, which broke "Reset to Defaults" (e.g.
     ; chatShortcut stayed "b" instead of reverting to "1"). So once CacheInitialDefaults()
     ; has captured the pristine snapshot at startup, return that instead.
@@ -46,6 +46,7 @@ class SettingsDefaults {
         d["trash"] := SettingsDefaults._DefaultsTrash()
         d["menuItems"] := SettingsDefaults._DefaultsMenuItems()
         d["chatShortcut"] := IsSet(chatShortcut) ? chatShortcut : ""
+        d["newChatStartsWith"] := IsSet(newChatStartsWith) ? newChatStartsWith : ""
         return d
     }
 
@@ -144,8 +145,7 @@ class SettingsDefaults {
                 "systemMessageFile", a.HasOwnProp("systemMessageFile") ? a.systemMessageFile : "",
                 "description", a.HasOwnProp("description") ? a.description : "",
                 "reasoning", a.HasOwnProp("reasoning") ? a.reasoning : "",
-                "temperature", a.HasOwnProp("temperature") ? a.temperature : "",
-                "isDefault", a.HasOwnProp("isDefault") ? a.isDefault : false
+                "temperature", a.HasOwnProp("temperature") ? a.temperature : ""
             ))
         }
         return asstList
@@ -183,12 +183,11 @@ class SettingsDefaults {
     }
 
     static _DefaultsUI() {
-        global chatDefaultModel, responseWindowFontFace, responseWindowFontSize
+        global responseWindowFontFace, responseWindowFontSize
         global inputWindowBackground, inputWindowFontSize, inputWindowFontColor, inputWindowFontFace, inputWindowWidth, inputWindowHeight
         global suspendBannerText, suspendBannerFontSize, suspendBannerFontFace, suspendBannerTextColor, suspendBannerBackground
 
         return Map(
-            "chatDefaultModel", IsSet(chatDefaultModel) ? chatDefaultModel : "deepseek/deepseek-v4-flash",
             "responseFont", IsSet(responseWindowFontFace) ? responseWindowFontFace : "Inter",
             "responseFontSize", IsSet(responseWindowFontSize) ? responseWindowFontSize : "17",
             "inputWindow", Map(

@@ -1,8 +1,8 @@
 ; ----------------------------------------------------
-; RuntimeResolver.ahk — API key check, provider resolution, default assistant
+; RuntimeResolver.ahk — API key check and provider resolution
 ;
 ; Checks that at least one configured provider has an API key, then resolves
-; APIKey, APIEndpoint, FIMEndpoint, and defaultAssistant for runtime use.
+; APIKey, APIEndpoint, and FIMEndpoint for runtime use.
 ; ----------------------------------------------------
 
 ; ----------------------------------------------------
@@ -11,7 +11,6 @@
 global APIKey := ""
 global APIEndpoint := ""
 global FIMEndpoint := ""
-global defaultAssistant := ""
 
 ; ----------------------------------------------------
 ; API KEY CHECK — Ensures at least one provider key is set
@@ -71,19 +70,3 @@ RuntimeResolver_ResolvePrimaryProvider() {
     }
 }
 
-; ----------------------------------------------------
-; DEFAULT ASSISTANT — resolve from assistants array
-; Called AFTER SettingsHandler.Load() so assistants are current.
-; ----------------------------------------------------
-RuntimeResolver_ResolveDefaultAssistant() {
-    global assistants, defaultAssistant
-    defaultAssistant := ""
-    for a in assistants {
-        if a.HasOwnProp("isDefault") && a.isDefault {
-            defaultAssistant := a.name
-            break
-        }
-    }
-    if !defaultAssistant && IsSet(assistants) && assistants is Array && assistants.Length > 0
-        defaultAssistant := assistants[1].name
-}

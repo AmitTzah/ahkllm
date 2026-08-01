@@ -79,28 +79,6 @@ function loadSection(opts) {
 }
 
 describe('UI & theme settings section', () => {
-    it('load caches model keys for the chat default model dropdown', () => {
-        const modelSel = makeEl();
-        const optionEls = [];
-        const ctx = loadSection({ els: { chatDefaultModel: modelSel } });
-        ctx.sandbox.document.createElement = () => {
-            const opt = makeEl();
-            opt.value = '';
-            opt.textContent = '';
-            optionEls.push(opt);
-            return opt;
-        };
-
-        ctx.module.load({ theme: { darkMode: true }, models: { 'b-model': {}, 'a-model': {} }, ui: { chatDefaultModel: 'a-model' } });
-        assert.ok(modelSel.value === 'a-model');
-        assert.ok(optionEls.length === 2);
-
-        ctx.module.load({ theme: { darkMode: false }, models: { 'a-model': {} }, ui: { chatDefaultModel: 'zzz' } });
-        assert.ok(optionEls.length === 4, 'unknown current model unshifted');
-        assert.ok(optionEls[2].value === 'zzz');
-        assert.ok(modelSel.value === 'zzz');
-    });
-
     it('load applies response font, font size and CSS variable', () => {
         const ctx = loadSection({
             els: {
@@ -175,7 +153,6 @@ describe('UI & theme settings section', () => {
     it('save collects ui values', () => {
         const ctx = loadSection({
             els: {
-                chatDefaultModel: makeEl({ value: 'm1' }),
                 responseFont: makeEl({ value: 'Calibri' }),
                 responseFontSize: makeEl({ value: '16' }),
                 iwBackground: makeEl({ value: '#334455' }),
@@ -194,7 +171,6 @@ describe('UI & theme settings section', () => {
         const data = JSON.parse(JSON.stringify(ctx.module.save()));
         assert.strictEqual(JSON.stringify(data), JSON.stringify({
             ui: {
-                chatDefaultModel: 'm1',
                 responseFont: 'Calibri',
                 responseFontSize: '16',
                 inputWindow: {
@@ -217,7 +193,6 @@ describe('UI & theme settings section', () => {
             },
         });
         const data = JSON.parse(JSON.stringify(ctx.module.save()));
-        assert.ok(data.ui.chatDefaultModel === '');
         assert.ok(data.ui.inputWindow.width === 500);
         assert.ok(data.ui.inputWindow.height === 250);
         assert.ok(data.ui.inputWindow.background === '0x');

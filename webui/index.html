@@ -218,7 +218,7 @@
   <!-- Settings Center -->
   <div class="settings-center" id="settingsCenter" style="display:none;">
     <div class="settings-content">
-      <div class="section-card" id="sec-general" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="settings"></i> General — Thread Titles, API Logs, Trash</div><div class="section-card-body">
+      <div class="section-card" id="sec-general" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="settings"></i> General — Thread Titles, API Logs, Trash</div><div class="section-card-body"><div class="field"><label class="field-label">New Chats Start With</label><select id="newChatStartsWith"><option value="">App Default (deepseek/deepseek-v4-flash)</option><optgroup label="Assistants"></optgroup><optgroup label="Models"></optgroup></select></div>
         <div class="settings-card-group">
           <div class="toggle-row settings-card-header-row">
             <div><div class="lbl">Thread Title Generation</div><div class="settings-hint-12-top">After the first exchange, generates a short title via a cheap LLM call</div></div>
@@ -241,7 +241,7 @@
         </div>
       </div></div>
       <div class="section-card" id="sec-ui" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="palette"></i> UI & Theme — Appearance</div><div class="section-card-body">
-        <div class="field"><label class="field-label">Default Chat Model</label><select id="chatDefaultModel"><option>deepseek/deepseek-v4-flash</option><option>deepseek/deepseek-v4-pro</option><option>openai/gpt-4o</option></select></div>
+        
         <div class="field"><label class="field-label">Response Font <span class="hint">for markdown output window</span></label><div class="field-row"><select class="settings-flex-3" id="responseFont"><option value="Arial">Arial (sans-serif)</option><option value="Inter">Inter (sans-serif)</option><option value="Segoe UI">Segoe UI (sans-serif)</option><option value="Georgia">Georgia (serif)</option><option value="JetBrains Mono">JetBrains Mono (monospace)</option></select><select class="settings-flex-1" id="responseFontSize"><option value="13">13px</option><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17" selected>17px</option><option value="18">18px</option><option value="19">19px</option><option value="20">20px</option><option value="22">22px</option><option value="24">24px</option></select></div></div>
         <div class="settings-accent-block"><div class="settings-section-label">Command Input Window</div><div class="settings-text-xs-muted">Appearance of the popup shown when a command requests user input</div></div>
         <div class="grid-2">

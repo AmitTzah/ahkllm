@@ -97,7 +97,7 @@ class ChatSettingsTest {
     }
 
     test_revertsToDefaultModel_whenNoAssistantAndNoModel() {
-        global requestParams, activeThreadId, chatDefaultModel
+        global requestParams, activeThreadId, appDefaultModel
 
         this._openDb()
 
@@ -113,13 +113,94 @@ class ChatSettingsTest {
         handleModelSettingsUpdate(parsed)
 
         ; Assert: reverts to default model
-        if requestParams["singleAPIModelName"] != chatDefaultModel
-            throw Error("Did not revert to default model. Got: " requestParams["singleAPIModelName"] " expected: " chatDefaultModel)
+        if requestParams["singleAPIModelName"] != appDefaultModel
+            throw Error("Did not revert to default model. Got: " requestParams["singleAPIModelName"] " expected: " appDefaultModel)
 
         ; Assert: reasoning was updated
         if requestParams["reasoningOverride"] != "low"
             throw Error("reasoningOverride was not updated. Got: " requestParams["reasoningOverride"])
 
         this._closeDb()
+    }
+
+    test_applyNewChatDefault_appDefault_keepsChatDefaultModel() {
+        global newChatStartsWith, requestParams, assistants, appDefaultModel
+
+        oldDefault := newChatStartsWith
+        oldAsst := assistants
+        oldModel := requestParams["singleAPIModelName"]
+        assistants := []
+        newChatStartsWith := ""
+        try {
+            applied := _applyNewChatDefault()
+            if applied
+                throw Error("App default should not apply an assistant/model")
+            if requestParams["singleAPIModelName"] != oldModel
+                throw Error("App default must leave the current default model intact")
+        } finally {
+            newChatStartsWith := oldDefault
+            assistants := oldAsst
+            requestParams["singleAPIModelName"] := oldModel
+        }
+    }
+
+    test_applyNewChatDefault_assistant_applies() {
+        global newChatStartsWith, requestParams, assistants
+
+        oldDefault := newChatStartsWith
+        oldAsst := assistants
+        oldModel := requestParams["singleAPIModelName"]
+        oldAsstId := requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : ""
+        assistants := [{ id: "asst-9", name: "Nine", baseModel: "openai/gpt-5-mini", systemMessage: "sys", reasoning: "low", temperature: "0.7" }]
+        newChatStartsWith := "asst:asst-9"
+        try {
+            applied := _applyNewChatDefault()
+            if !applied
+                throw Error("Assistant default should apply")
+            if requestParams["activeAssistantId"] != "asst-9"
+                throw Error("Assistant default should mark the assistant active")
+            if requestParams["singleAPIModelName"] != "openai/gpt-5-mini"
+                throw Error("Assistant default should apply its base model")
+            if requestParams["systemOverride"] != "sys"
+                throw Error("Assistant default should apply its system message")
+            if requestParams["temperatureOverride"] != "0.7"
+                throw Error("Assistant default should apply its temperature")
+        } finally {
+            newChatStartsWith := oldDefault
+            assistants := oldAsst
+            requestParams["singleAPIModelName"] := oldModel
+            if oldAsstId = ""
+                requestParams.Delete("activeAssistantId")
+            else
+                requestParams["activeAssistantId"] := oldAsstId
+            requestParams["systemOverride"] := ""
+            requestParams["temperatureOverride"] := ""
+        }
+    }
+
+    test_applyNewChatDefault_model_applies_andClearsAssistant() {
+        global newChatStartsWith, requestParams, assistants
+
+        oldDefault := newChatStartsWith
+        oldAsst := assistants
+        oldModel := requestParams["singleAPIModelName"]
+        requestParams["activeAssistantId"] := "asst-stale"
+        assistants := [{ id: "asst-1", name: "One", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "", reasoning: "", temperature: "" }]
+        newChatStartsWith := "openai/gpt-5-mini"
+        try {
+            applied := _applyNewChatDefault()
+            if !applied
+                throw Error("Model default should apply")
+            if requestParams["singleAPIModelName"] != "openai/gpt-5-mini"
+                throw Error("Model default should set the model, got '" requestParams["singleAPIModelName"] "'")
+            if requestParams.Has("activeAssistantId")
+                throw Error("Model default should clear any active assistant")
+        } finally {
+            newChatStartsWith := oldDefault
+            assistants := oldAsst
+            requestParams["singleAPIModelName"] := oldModel
+            if requestParams.Has("activeAssistantId")
+                requestParams.Delete("activeAssistantId")
+        }
     }
 }

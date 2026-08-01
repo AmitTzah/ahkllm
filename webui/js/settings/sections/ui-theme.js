@@ -5,16 +5,11 @@
 (function() {
   var sectionName = 'ui';
   var S = window.SettingsShared;
-  var _modelKeys = null;
 
   function load(data) {
-    // Cache model keys for the chatDefaultModel dropdown
-    if (data && data.models) _modelKeys = Object.keys(data.models).sort();
     // UI
     if (data && data.ui) {
       var u = data.ui;
-      var modelSel = document.getElementById('chatDefaultModel');
-      if (modelSel && _modelKeys) S.fillSelect(modelSel, _modelKeys, u.chatDefaultModel);
       // responseFont: stored as CSS stack, UI shows single name
       var fontName = (u.responseFont || '').split(',')[0].trim();
       S.setVal('responseFont', fontName);
@@ -48,7 +43,6 @@
   function save() {
     return {
       ui: {
-        chatDefaultModel: S.getVal('chatDefaultModel'),
         responseFont: S.getVal('responseFont'),
         responseFontSize: S.getVal('responseFontSize'),
         inputWindow: {

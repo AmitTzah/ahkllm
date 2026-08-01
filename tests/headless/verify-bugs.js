@@ -181,6 +181,7 @@ const scenarios = [];
 scenarios.push({
   id: 1,
   name: 'New chat after deleting active chat starts clean (no leaked per-thread settings)',
+  regression: true, // FIXED bug kept as a regression check (new chats must stay clean after deletions)
   mode: null, // refused endpoint: request fails fast, thread + settings still created
   settings: {
     assistants: [{
@@ -232,13 +233,14 @@ scenarios.push({
 
 scenarios.push({
   id: 2,
-  name: 'Set as Default Assistant does nothing (new chat ignores isDefault)',
+  name: 'New chat honors the "New Chats Start With" default (assistant)',
   mode: 'json',
   settings: {
     assistants: [
-      { id: 'asst-d', name: 'Default Assistant', baseModel: 'deepseek/deepseek-v4-flash', systemMessage: 'default sys', systemMessageFile: '', description: '', reasoning: 'high', temperature: '0.5', isDefault: true },
-      { id: 'asst-x', name: 'Other Assistant', baseModel: 'openai/gpt-5-mini', systemMessage: '', systemMessageFile: '', description: '', reasoning: '', temperature: '', isDefault: false }
-    ]
+      { id: 'asst-d', name: 'Default Assistant', baseModel: 'deepseek/deepseek-v4-flash', systemMessage: 'default sys', systemMessageFile: '', description: '', reasoning: 'high', temperature: '0.5' },
+      { id: 'asst-x', name: 'Other Assistant', baseModel: 'openai/gpt-5-mini', systemMessage: '', systemMessageFile: '', description: '', reasoning: '', temperature: '' }
+    ],
+    newChatStartsWith: 'asst:asst-d'
   },
   async body({ cdp, mockLog }) {
     await showChat();
@@ -248,9 +250,9 @@ scenarios.push({
     await sleep(600);
     const assistantName = await cdp.eval('window._currentSettings.assistantName || ""');
     const model = await cdp.eval('window._currentSettings.model || ""');
-    if (assistantName !== '') throw new Error('new chat started with assistant: ' + assistantName);
+    if (assistantName !== 'Default Assistant') throw new Error('new chat did not start with the default assistant: ' + assistantName);
     if (model !== 'deepseek/deepseek-v4-flash') throw new Error('unexpected model: ' + model);
-    return 'new chat assistantName="' + assistantName + '" despite isDefault assistant existing';
+    return 'new chat starts with assistant "' + assistantName + '" (' + model + ')';
   }
 });
 

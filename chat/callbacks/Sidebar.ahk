@@ -39,6 +39,9 @@ _HandleThreadAction(action, params) {
         case "newChat":
             activeThreadId := ChatDB.Thread_Create()
             _resetToDefaultSettings()
+            ; Start new chats with the configured default assistant/model.
+            if _applyNewChatDefault()
+                ChatDB.Thread_UpdateSettings(activeThreadId, _CurrentSettingsObject())
             ; Apply default font size from settings to the new thread
             global responseWindowFontSize
             if IsSet(responseWindowFontSize) && responseWindowFontSize

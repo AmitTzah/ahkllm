@@ -106,7 +106,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
                 })
             }
 
-            if fullAPIModelName != chatDefaultModel {
+            if fullAPIModelName != appDefaultModel {
                 ChatDB.Thread_UpdateSettings(threadId, {
                     modelOverride: fullAPIModelName,
                     assistantId: "",

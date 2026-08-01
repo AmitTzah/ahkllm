@@ -59,7 +59,6 @@ merged := SettingsHandler.Merge(settings, SettingsHandler.GetDefaults())
 SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
-RuntimeResolver_ResolveDefaultAssistant()
 debugLog("[CHAT] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
 
 ; Clean up DB and cURL on exit (ProcessClose from Main.ahk is force-kill;
@@ -81,7 +80,7 @@ requestParams["pasteMode"] := "chat"
 requestParams["uniqueID"] := A_TickCount A_NowUTC
 requestParams["mainScriptHiddenHwnd"] := A_Args.Length > 0 ? Integer(A_Args[1]) : 0
 requestParams["providerName"] := "deepseek"
-requestParams["singleAPIModelName"] := chatDefaultModel
+requestParams["singleAPIModelName"] := appDefaultModel
 requestParams["windowTitle"] := "Chat"
 requestParams["stream"] := true
 requestParams["isFIM"] := false

@@ -21,6 +21,9 @@ class SettingsApply {
         global chatShortcut
         if settings.Has("chatShortcut")
             chatShortcut := settings["chatShortcut"]
+        global newChatStartsWith
+        if settings.Has("newChatStartsWith")
+            newChatStartsWith := settings["newChatStartsWith"]
     }
 
     ; --- Apply helpers (write from settings Map to globals) ---
@@ -101,8 +104,7 @@ class SettingsApply {
                 systemMessageFile: a.Has("systemMessageFile") ? a["systemMessageFile"] : "",
                 description: a.Has("description") ? a["description"] : "",
                 reasoning: a.Has("reasoning") ? a["reasoning"] : "",
-                temperature: a.Has("temperature") ? a["temperature"] : "",
-                isDefault: a.Has("isDefault") ? a["isDefault"] : false
+                temperature: a.Has("temperature") ? a["temperature"] : ""
             })
         }
         assistants := newAssistants
@@ -190,13 +192,11 @@ class SettingsApply {
     }
 
     static _ApplyUI(settings) {
-        global chatDefaultModel, responseWindowFontFace, responseWindowFontSize
+        global responseWindowFontFace, responseWindowFontSize
 
         if !settings.Has("ui")
             return
         u := settings["ui"]
-        if u.Has("chatDefaultModel") && u["chatDefaultModel"] != ""
-            chatDefaultModel := u["chatDefaultModel"]
         if u.Has("responseFont") && u["responseFont"] != ""
             responseWindowFontFace := u["responseFont"]
         if u.Has("responseFontSize") && u["responseFontSize"] != ""

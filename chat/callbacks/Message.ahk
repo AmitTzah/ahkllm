@@ -16,6 +16,8 @@ handleChatSend(params, *) {
         activeThreadId := ChatDB.Thread_Create("New Chat")
         postWebMessage("loadThread", activeThreadId)
         debugLog("[THREAD] Created — id=" activeThreadId " title=New Chat")
+        ; Start new chats with the configured default assistant/model.
+        _applyNewChatDefault()
         _saveCurrentSettingsToThread(activeThreadId)
         _postThreadListRefresh()
     }

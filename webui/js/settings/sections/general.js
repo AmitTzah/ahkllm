@@ -6,7 +6,56 @@
   var sectionName = 'general';
   var S = window.SettingsShared;
 
+  // Populate the "New Chats Start With" dropdown: App Default first, then the
+  // configured assistants ("asst:<id>"), then every available model. A saved
+  // value that no longer exists (e.g. a removed model) is appended so the user
+  // can see and change it.
+  function fillNewChatDefault(sel, modelKeys, assistants, current) {
+    sel.innerHTML = '';
+    var values = [];
+    function addOption(o) { values.push(o.value); sel.appendChild(o); }
+    var opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'App Default (deepseek/deepseek-v4-flash)';
+    addOption(opt);
+    if (assistants && assistants.length) {
+      var og = document.createElement('optgroup');
+      og.label = 'Assistants';
+      assistants.forEach(function(a) {
+        var o = document.createElement('option');
+        o.value = 'asst:' + (a.id || '');
+        o.textContent = a.name || '(unnamed assistant)';
+        og.appendChild(o);
+        values.push(o.value);
+      });
+      sel.appendChild(og);
+    }
+    var mg = document.createElement('optgroup');
+    mg.label = 'Models';
+    (modelKeys || []).forEach(function(m) {
+      var o = document.createElement('option');
+      o.value = m;
+      o.textContent = m;
+      addOption(o);
+    });
+    sel.appendChild(mg);
+    if (current && values.indexOf(current) < 0) {
+      var extra = document.createElement('option');
+      extra.value = current;
+      extra.textContent = current + ' (removed)';
+      addOption(extra);
+    }
+    if (current) sel.value = current;
+  }
+
   function load(data) {
+    // New Chats Start With
+    if (data && data.models) {
+      var ncs = document.getElementById('newChatStartsWith');
+      if (ncs) {
+        fillNewChatDefault(ncs, Object.keys(data.models).sort(), (data && data.assistants) || [], data.newChatStartsWith || '');
+      }
+    }
     // Thread Titles
     if (data && data.threadTitles) {
       var tt = data.threadTitles;
@@ -65,6 +114,8 @@
     };
     // Chat Shortcut
     data.chatShortcut = (document.getElementById('chatShortcut') || {}).value || '';
+    // New Chats Start With
+    data.newChatStartsWith = (document.getElementById('newChatStartsWith') || {}).value || '';
     return data;
   }
 

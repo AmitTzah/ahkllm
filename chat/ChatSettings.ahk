@@ -22,7 +22,7 @@ _ClearRequestOverrides() {
         requestParams.Delete("activeAssistantId")
     if requestParams.Has("fontSize")
         requestParams.Delete("fontSize")
-    requestParams["singleAPIModelName"] := chatDefaultModel
+    requestParams["singleAPIModelName"] := appDefaultModel
 }
 
 ; Apply saved per-thread settings from DB to requestParams.
@@ -62,7 +62,7 @@ _CurrentSettingsObject() {
     defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
     return {
         assistantId: requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : "",
-        modelOverride: requestParams["singleAPIModelName"] != chatDefaultModel ? requestParams["singleAPIModelName"] : "",
+        modelOverride: requestParams["singleAPIModelName"] != appDefaultModel ? requestParams["singleAPIModelName"] : "",
         systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
         reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
         temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
@@ -78,6 +78,40 @@ _saveCurrentSettingsToThread(threadId) {
 ; Reset settings to defaults (no assistant, default model, no overrides).
 _resetToDefaultSettings() {
     _ClearRequestOverrides()
+}
+
+; Apply an assistant's settings to requestParams and mark it active.
+; Shared by handleSwitchAssistant and the new-chat default resolution.
+_applyAssistantToRequestParams(asst) {
+    requestParams["singleAPIModelName"] := asst.baseModel
+    requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
+    requestParams["reasoningOverride"] := asst.reasoning
+    requestParams["temperatureOverride"] := asst.temperature
+    requestParams["activeAssistantId"] := asst.id
+    _updateProviderFromModel(asst.baseModel)
+}
+
+; Apply the configured "new chats start with" default to requestParams.
+; "" = app default model (appDefaultModel); "asst:<id>" = an assistant;
+; anything else is treated as a model id. Returns true when a default applied.
+_applyNewChatDefault() {
+    global newChatStartsWith
+    value := IsSet(newChatStartsWith) ? newChatStartsWith : ""
+    if value = ""
+        return false
+    if SubStr(value, 1, 5) = "asst:" {
+        asst := AssistantRepo.GetFromSettings(SubStr(value, 6))
+        if !asst
+            return false
+        _applyAssistantToRequestParams(asst)
+        return true
+    }
+    ; Model default: drop any active assistant and use the model directly.
+    if requestParams.Has("activeAssistantId")
+        requestParams.Delete("activeAssistantId")
+    requestParams["singleAPIModelName"] := value
+    _updateProviderFromModel(value)
+    return true
 }
 
 ; Send current dropdown label to WebView (assistant name / model name / "Default Model").
@@ -96,7 +130,7 @@ _sendDropdownLabel() {
         postWebMessage("dropdownLabel", { text: displayModel, isAssistant: false })
         return
     }
-    postWebMessage("dropdownLabel", { text: ModelParser.StripProvider(chatDefaultModel), isAssistant: false })
+    postWebMessage("dropdownLabel", { text: ModelParser.StripProvider(appDefaultModel), isAssistant: false })
 }
 
 handleSwitchAssistant(parsed) {
@@ -117,14 +151,7 @@ handleSwitchAssistant(parsed) {
     if !asst
         return
 
-    requestParams["singleAPIModelName"] := asst.baseModel
-    requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
-    requestParams["reasoningOverride"] := asst.reasoning
-    requestParams["temperatureOverride"] := asst.temperature
-    requestParams["activeAssistantId"] := assistantId
-
-    ; Update provider tracking for API logs
-    _updateProviderFromModel(asst.baseModel)
+    _applyAssistantToRequestParams(asst)
 
     ; Persist to DB
     if activeThreadId {
@@ -161,7 +188,7 @@ handleModelSettingsUpdate(parsed) {
         _updateProviderFromModel(model)
     } else if !requestParams.Has("activeAssistantId") {
         ; No explicit model and no active assistant — fall back to the default.
-        requestParams["singleAPIModelName"] := chatDefaultModel
+        requestParams["singleAPIModelName"] := appDefaultModel
     }
     requestParams["systemOverride"] := systemMessage
     requestParams["reasoningOverride"] := reasoning
@@ -176,7 +203,7 @@ handleModelSettingsUpdate(parsed) {
 
     _sendDropdownLabel()
     postCurrentSettingsToWebView()
-    debugLog("[SETTINGS] Saved — thread=" activeThreadId " model=" (model ? model : chatDefaultModel) " systemMsg=" StrLen(systemMessage) "chars")
+    debugLog("[SETTINGS] Saved — thread=" activeThreadId " model=" (model ? model : appDefaultModel) " systemMsg=" StrLen(systemMessage) "chars")
 }
 
 postCurrentSettingsToWebView() {

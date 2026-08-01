@@ -141,6 +141,35 @@ describe('General settings section', () => {
         assert.ok(fields.classList.contains('fields-disabled'));
     });
 
+    it('load fills the new-chat default dropdown (app default, assistants, models)', () => {
+        const ncs = makeEl();
+        const created = [];
+        const ctx = loadSection({ els: { newChatStartsWith: ncs } });
+        ctx.sandbox.document.createElement = (tag) => {
+            const el = makeEl();
+            el.tagName = tag;
+            created.push(el);
+            return el;
+        };
+
+        ctx.module.load({
+            models: { 'b-model': {}, 'a-model': {} },
+            assistants: [{ id: 'asst-1', name: 'My Assistant', baseModel: 'a-model' }],
+            newChatStartsWith: 'asst:asst-1',
+        });
+        assert.strictEqual(ncs.value, 'asst:asst-1');
+        const opts = created.filter((el) => el.tagName === 'option');
+        assert.strictEqual(opts.length, 4, 'expected app default + 1 assistant + 2 model options, got ' + opts.length);
+        assert.strictEqual(opts[0].value, '');
+        assert.ok(opts[0].textContent.indexOf('App Default') >= 0);
+        assert.ok(opts.some((o) => o.value === 'asst:asst-1' && o.textContent === 'My Assistant'));
+        assert.ok(opts.some((o) => o.value === 'a-model'));
+        const groups = created.filter((el) => el.tagName === 'optgroup');
+        assert.strictEqual(groups.length, 2);
+        assert.ok(groups.some((g) => g.label === 'Assistants'));
+        assert.ok(groups.some((g) => g.label === 'Models'));
+    });
+
     it('load tolerates missing data and missing elements', () => {
         const ctx = loadSection({});
         ctx.module.load(null);
@@ -160,6 +189,7 @@ describe('General settings section', () => {
                 apiLogMaxEntries: makeEl({ value: '12' }),
                 trashRetentionDays: makeEl({ value: '3' }),
                 chatShortcut: makeEl({ value: 'Alt+Z' }),
+                newChatStartsWith: makeEl({ value: 'asst:asst-1' }),
             },
         });
         const data = ctx.module.save();
@@ -168,6 +198,7 @@ describe('General settings section', () => {
             apiLogs: { maxEntries: 12 },
             trash: { retentionDays: 3 },
             chatShortcut: 'Alt+Z',
+            newChatStartsWith: 'asst:asst-1',
         }));
     });
 
@@ -187,6 +218,7 @@ describe('General settings section', () => {
         assert.ok(data.apiLogs.maxEntries === 20);
         assert.ok(data.trash.retentionDays === 30);
         assert.ok(data.chatShortcut === '');
+        assert.ok(data.newChatStartsWith === '');
     });
 
     it('wireToggle toggles fields and marks dirty on click', () => {

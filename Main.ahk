@@ -22,7 +22,6 @@ merged := SettingsHandler.Merge(settings, defaults)
 SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
-RuntimeResolver_ResolveDefaultAssistant()
 debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
 ; Global error handler for main script — surfaces to tooltip + debug log
 OnError((err, mode) => (
@@ -191,7 +190,6 @@ OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     SettingsHandler.ApplyToGlobals(merged),
     _registerAllHotkeys(),
     RuntimeResolver_ResolvePrimaryProvider(),
-    RuntimeResolver_ResolveDefaultAssistant(),
     debugLog("[SETTINGS] Reloaded settings globals and re-registered hotkeys")
 ))
 

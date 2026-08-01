@@ -22,13 +22,11 @@
       : '<option value="">Model Default</option><option value="none">None (Disabled)</option><option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>';
     var sysMsgLabel = '\uD83D\uDCC4 ' + (a.systemMessageFile || (a.systemMessage ? '(inline)' : '(none)'));
     return '<div class="provider-card-header"><input class="settings-card-title-input" value="' + S.escHtml(a.name || '') + '" data-field="name">' +
-      (a.isDefault ? '<span class="badge settings-ml-8">default</span>' : '') +
       '<button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
       '<div class="grid-2"><div class="field"><label class="field-label">Base Model</label><select data-field="baseModel">' + modelOpts + '</select></div>' +
       '<div class="field"><label class="field-label">Reasoning</label><select data-field="reasoning">' + reasoningOpts + '</select></div></div>' +
       '<div class="field"><label class="field-label">System Message</label><div class="settings-flex-row-center"><span class="sysmsg-label settings-sysmsg-label">' + S.escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
-      '<div class="field"><label class="field-label">Description</label><input type="text" value="' + S.escHtml(a.description || '') + '" data-field="description"></div>' +
-      '<div class="toggle-row"><span class="lbl">Set as Default Assistant</span><div class="switch' + (a.isDefault ? ' on' : '') + '" data-field="isDefault" data-type="radio"><div class="knob"></div></div></div>';
+      '<div class="field"><label class="field-label">Description</label><input type="text" value="' + S.escHtml(a.description || '') + '" data-field="description"></div>';
   }
 
   // --- Card wiring (event listeners) ---
@@ -133,7 +131,7 @@
 
   function addAssistant() {
     var grid = document.getElementById('assistantGrid'); if (!grid) return;
-    var a = { id: generateUUID(), name: 'New Assistant', baseModel: '', reasoning: '', systemMessage: '', systemMessageFile: '', description: '', isDefault: false };
+    var a = { id: generateUUID(), name: 'New Assistant', baseModel: '', reasoning: '', systemMessage: '', systemMessageFile: '', description: '' };
     var card = createCard(a, _models, _modelKeys, grid);
     grid.appendChild(card);
     mark();

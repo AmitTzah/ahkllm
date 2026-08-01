@@ -13,7 +13,7 @@ global APIEndpoint := "https://api.test/chat/completions"
 global FIMEndpoint := "https://api.test/beta/completions"
 global responseWindowFontFace := "Arial"
 global responseWindowFontSize := "17"
-global chatDefaultModel := "deepseek/deepseek-v4-flash"
+global appDefaultModel := "deepseek/deepseek-v4-flash"
 global mainHotkey := "``"
 global reloadHotkey := "~^!r"
 global closeWindowsHotkey := "~^w"
@@ -67,10 +67,10 @@ global providers := Map(
 )
 
 global assistants := [
-    { name: "Test Assistant", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "", reasoning: "", temperature: "", isDefault: true }
+    { name: "Test Assistant", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "", reasoning: "", temperature: "" }
 ]
 
-global defaultAssistant := "Test Assistant"
+global newChatStartsWith := ""
 
 global providerMap := Map(
     "deepseek", "deepseek",

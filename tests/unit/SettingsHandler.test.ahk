@@ -60,16 +60,16 @@ class SettingsHandlerTest {
 
     Merge_FillsMissingKeys() {
         existing := Map()
-        existing["ui"] := Map("chatDefaultModel", "my-model")
+        existing["newChatStartsWith"] := "my-model"
         defaults := Map()
-        defaults["ui"] := Map("chatDefaultModel", "default-model")
+        defaults["newChatStartsWith"] := "default-model"
         defaults["version"] := 1
 
         merged := SettingsHandler.Merge(existing, defaults)
         if !merged.Has("version") || merged["version"] != 1
             throw Error("Merge should fill missing key 'version'")
-        if !merged.Has("ui") || !merged["ui"].Has("chatDefaultModel") || merged["ui"]["chatDefaultModel"] != "my-model"
-            throw Error("Merge should keep existing value for 'ui.chatDefaultModel'")
+        if !merged.Has("newChatStartsWith") || merged["newChatStartsWith"] != "my-model"
+            throw Error("Merge should keep existing value for 'newChatStartsWith'")
     }
 
     Merge_KeepsExistingValues() {

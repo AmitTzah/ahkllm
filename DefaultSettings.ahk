@@ -513,7 +513,8 @@ titleGenMaxTokens := 50
 
 ; -- Chat Window (also used for command responses) --
 chatShortcut := "1"
-chatDefaultModel := "deepseek/deepseek-v4-flash"
+appDefaultModel := "deepseek/deepseek-v4-flash"
+newChatStartsWith := "" ; "" = app default model; "asst:<id>" = assistant; otherwise a model id
 responseWindowFontFace := "Inter"
 responseWindowFontSize := "17"
 

@@ -371,8 +371,99 @@ class ChatDispatchTest {
             throw Error("newChat should load the new thread")
     }
 
+    Dispatch_NewChat_AppliesDefaultAssistant() {
+        global activeThreadId, requestParams, assistants, newChatStartsWith
+        this._setupDb()
+        old := activeThreadId
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        assistants := [{ id: "asst-1", name: "Default Asst", baseModel: "deepseek/deepseek-v4-pro", systemMessage: "default sys", reasoning: "high", temperature: "0.3" }]
+        newChatStartsWith := "asst:asst-1"
+        activeThreadId := ""
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"sidebarAction","subAction":"newChat"}'))
+            threads := ChatDB.Thread_List()
+            if threads.Length = 0
+                throw Error("newChat should create a thread")
+            s := ChatDB.Thread_GetSettings(threads[1].id)
+            if s.assistantId != "asst-1"
+                throw Error("New chat should start with the default assistant, got '" s.assistantId "'")
+            if s.systemOverride != "default sys"
+                throw Error("New chat should carry the default assistant's system message")
+            if s.modelOverride != "deepseek/deepseek-v4-pro"
+                throw Error("New chat should carry the default assistant's model, got '" s.modelOverride "'")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            this._teardownDb()
+        }
+    }
+
+    Dispatch_NewChat_AppliesDefaultModel() {
+        global activeThreadId, requestParams, assistants, newChatStartsWith
+        this._setupDb()
+        old := activeThreadId
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        assistants := [{ id: "asst-1", name: "Some Asst", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "", reasoning: "", temperature: "" }]
+        newChatStartsWith := "openai/gpt-5-mini"
+        activeThreadId := ""
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"sidebarAction","subAction":"newChat"}'))
+            threads := ChatDB.Thread_List()
+            if threads.Length = 0
+                throw Error("newChat should create a thread")
+            s := ChatDB.Thread_GetSettings(threads[1].id)
+            if s.modelOverride != "openai/gpt-5-mini"
+                throw Error("New chat should start with the default model, got '" s.modelOverride "'")
+            if s.assistantId != ""
+                throw Error("A model default must not attach an assistant, got '" s.assistantId "'")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            this._teardownDb()
+        }
+    }
+
+    Dispatch_NewChat_AppDefault_UsesChatDefaultModel() {
+        global activeThreadId, requestParams, assistants, newChatStartsWith, appDefaultModel
+        this._setupDb()
+        old := activeThreadId
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        assistants := [{ id: "asst-1", name: "Some Asst", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "", reasoning: "", temperature: "" }]
+        newChatStartsWith := ""
+        activeThreadId := ""
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"sidebarAction","subAction":"newChat"}'))
+            if requestParams["singleAPIModelName"] != appDefaultModel
+                throw Error("App default should keep the chat default model, got '" requestParams["singleAPIModelName"] "'")
+            if requestParams.Has("activeAssistantId")
+                throw Error("App default must not attach an assistant")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            this._teardownDb()
+        }
+    }
+
     Dispatch_DeleteActiveThread_ResetsRequestParams() {
-        global activeThreadId, requestParams, chatDefaultModel
+        global activeThreadId, requestParams, appDefaultModel
         this._setupDb()
         old := activeThreadId
         oldParams := requestParams
@@ -399,7 +490,7 @@ class ChatDispatchTest {
                 throw Error("Deleting the active thread should clear font size")
             if requestParams["systemOverride"] != "" || requestParams["reasoningOverride"] != "" || requestParams["temperatureOverride"] != ""
                 throw Error("Deleting the active thread should clear system/reasoning/temperature overrides")
-            if requestParams["singleAPIModelName"] != chatDefaultModel
+            if requestParams["singleAPIModelName"] != appDefaultModel
                 throw Error("Deleting the active thread should reset the model to the default")
         } finally {
             web.restore()

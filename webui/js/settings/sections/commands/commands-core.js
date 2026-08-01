@@ -35,7 +35,12 @@
     _commands = (data && data.commands) ? data.commands : [];
     _submenuOrder = (data && data.submenuOrder) ? data.submenuOrder : [];
     _models = (data && data.models) ? data.models : null;
-    _defaultModel = (data && data.ui && data.ui.chatDefaultModel) ? data.ui.chatDefaultModel : '';
+    // Commands need a plain model default: use "New Chats Start With" when it
+    // is a model id, else the app default model (an assistant default has no
+    // model for commands).
+    _defaultModel = (data && data.newChatStartsWith && data.newChatStartsWith.indexOf('asst:') !== 0)
+        ? data.newChatStartsWith
+        : 'deepseek/deepseek-v4-flash';
     _selectedIdx = -1;
     _groupOrders = {};
     _ensureGroupOrders();
