@@ -617,4 +617,34 @@ AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side under `tests/unit/
 - **Unit**: request builders (chat + command, Model Default = no config, per-provider thinking), settings (defaults merge, pristine snapshot, apply-to-globals), DB repositories, parsing, cost, model metadata integrity, WebUI modules (chat render, search, attachments, settings sections, reasoning-levels helper, main.js message routing).
 - **Integration**: branch flow, chat flow, usage flow (AHK); chat folders, edit-send flow (JS).
 
-Current counts: **AHK ~343, JS 331** (all green).
+Run `tests\run_all_tests.bat` for the current pass/fail counts (do not hard-code them here —
+they drift as tests are added).
+
+## Bug-Hunt Workflow (Headless Harness)
+
+`tests/headless/` contains a headless verification harness for GUI bugs plus a **living bug
+report** — this is the workflow to point an agent at when auditing or fixing the app:
+
+- `tests/headless/BUG_HUNT_REPORT.md` — the authoritative list of **open, headlessly
+  verified** bugs. Every entry has a Status
+  (`reported → verified → fix in progress → fix applied → awaiting user commit → removed`),
+  the scenario id that reproduces it, and Repro / Expected / Actual / Evidence. It also
+  defines the full lifecycle (intake + fix cycle) with the exact file to touch at each step.
+- `tests/headless/README.md` — harness manual: how to run scenarios, add one, write AHK
+  probes, and the environment quirks to avoid.
+- `tests/headless/verify-bugs.js` — the scenario runner. `--check-sync` enforces that the
+  report and the scenario list stay in sync (no stale/dangling ids), and `--all` re-verifies
+  every scenario against the real app.
+
+**Lifecycle in one paragraph:** a suspected bug is written into the report as `reported`;
+an agent adds a reproducing scenario to `verify-bugs.js` and runs it — PASS makes the entry
+`verified` and ranked. Fixes happen one verified bug at a time: mark `fix in progress`
+(before editing), fix the source, add regression tests, **flip the scenario assertion to
+expect the fixed behavior**, run the scenario + the full suites, mark `fix applied`, ask the
+user to verify, mark `awaiting user commit`, suggest a commit — and after the user commits,
+delete the entry and move it to History. Interruption guard: every status change is written
+before the work it describes, so a task closed midway resumes from "Where we left off".
+
+**How a developer points an agent at it:** "fix bug #5", "add more bugs to the bug hunt",
+"verify this repro: …", "continue", or "re-verify everything" — all are handled by the
+report's lifecycle rules (see `tests/headless/README.md → How a developer uses this`).

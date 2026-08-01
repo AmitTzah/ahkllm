@@ -124,6 +124,7 @@ RegisterTestClass(className) {
 #Include unit\HotkeyRegistrar.test.ahk
 #Include unit\ThreadTitleGen.test.ahk
 #Include unit\ChatDispatch.test.ahk
+#Include unit\CommandThinkingMap.test.ahk
 
 ; -----------------------------------------------------------
 ; Test runner
