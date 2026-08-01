@@ -150,6 +150,47 @@ class ChatDispatchTest {
             throw Error("requestAllSettings should post currentSettings")
     }
 
+    ; Regression: reopening Settings (requestAllSettings) re-merges the saved
+    ; file with defaults. A default model/provider removed from the file must
+    ; not come back, while retained models still get metadata from defaults.
+    Dispatch_RequestAllSettings_RemovedDefaultsStayRemoved() {
+        sp := this._withTempSettingsPath()
+        web := this._captureWebView()
+        initial := '{"version":1,'
+            . '"models":{"openai/gpt-5-mini":{"provider":"openai","input":0}},'
+            . '"providers":{"openai":{"displayName":"OpenAI","endpoint":""}}}'
+        try {
+            FileAppend(initial, sp.tempPath, "UTF-8")
+            try {
+                OnWebMessageReceived("", this._args('{"action":"requestAllSettings"}'))
+            } finally {
+                web.restore()
+            }
+            payload := ""
+            for _, json in web.captured {
+                if InStr(json, '"target":"currentSettings"')
+                    payload := json
+            }
+            if payload = ""
+                throw Error("requestAllSettings should post currentSettings")
+            parsed := SettingsHandler._ToMap(jsongo.Parse(payload))
+            models := parsed["data"]["models"]
+            providers := parsed["data"]["providers"]
+            if models.Has("deepseek/deepseek-chat")
+                throw Error("requestAllSettings resurrected removed default model deepseek/deepseek-chat")
+            if providers.Has("deepseek")
+                throw Error("requestAllSettings resurrected removed default provider deepseek")
+            if !models.Has("openai/gpt-5-mini")
+                throw Error("requestAllSettings should keep models present in the saved file")
+            retained := models["openai/gpt-5-mini"]
+            if !retained.Has("thinkingLevelMap")
+                throw Error("requestAllSettings should fill metadata from defaults for retained models")
+        } finally {
+            sp.restore()
+            try FileDelete(sp.tempPath)
+        }
+    }
+
     Dispatch_RequestDefaultSettings_PostsAndSaves() {
         sp := this._withTempSettingsPath()
         web := this._captureWebView()
@@ -204,6 +245,45 @@ class ChatDispatchTest {
         }
         if !found
             throw Error("saveSettings without data should post the no-data error")
+    }
+
+    ; Regression: removed models/providers must stay removed after a save
+    ; round-trip. The panel sends complete section maps, so the merge on save
+    ; must not resurrect entries absent from the payload. Unsent top-level keys
+    ; (e.g. trash) must keep their saved values.
+    Dispatch_SaveSettings_RemovedEntriesStayRemoved() {
+        sp := this._withTempSettingsPath()
+        web := this._captureWebView()
+        initial := '{"version":1,'
+            . '"models":{"deepseek/deepseek-chat":{"provider":"deepseek","input":0},'
+            . '"openai/gpt-5-mini":{"provider":"openai","input":0}},'
+            . '"providers":{"deepseek":{"displayName":"DeepSeek","endpoint":""}},'
+            . '"trash":{"retentionDays":30}}'
+        try {
+            FileAppend(initial, sp.tempPath, "UTF-8")
+            try {
+                ; UI payload: models/providers without the removed entries, plus a
+                ; changed hotkey — trash/version are not sent and must survive.
+                OnWebMessageReceived("", this._args('{"action":"saveSettings","data":{'
+                    . '"models":{"openai/gpt-5-mini":{"provider":"openai","input":0}},'
+                    . '"providers":{"openai":{"displayName":"OpenAI","endpoint":""}},'
+                    . '"hotkeys":{"main":"t"}}}'))
+            } finally {
+                web.restore()
+            }
+            if !FileExist(sp.tempPath)
+                throw Error("saveSettings should write the settings file")
+            saved := FileRead(sp.tempPath, "UTF-8")
+            if InStr(saved, '"deepseek/deepseek-chat"')
+                throw Error("removed model deepseek/deepseek-chat was resurrected: " saved)
+            if InStr(saved, '"deepseek"')
+                throw Error("removed provider deepseek was resurrected: " saved)
+            if !InStr(saved, '"retentionDays"') || !InStr(saved, '"main"')
+                throw Error("unsent or changed top-level keys were lost: " saved)
+        } finally {
+            sp.restore()
+            try FileDelete(sp.tempPath)
+        }
     }
 
     Dispatch_RefreshModelPricing_Success() {

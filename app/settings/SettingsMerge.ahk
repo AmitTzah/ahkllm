@@ -2,8 +2,10 @@
 ; SettingsMerge.ahk — deep-merge loaded settings with defaults
 ;
 ; For each top-level key in defaults, use the loaded value when present,
-; otherwise the default. Nested Maps merge recursively; unknown keys in the
-; loaded settings are preserved.
+; otherwise the default. Nested Maps merge recursively, except models/providers
+; where the saved file defines WHICH entries exist (so removals persist) and
+; defaults only fill fields of retained entries; unknown keys in the loaded
+; settings are preserved.
 ; ======================================================
 
 class SettingsMerge {
@@ -13,7 +15,15 @@ class SettingsMerge {
             if existing.Has(k) {
                 existingVal := existing[k]
                 if IsObject(existingVal) && existingVal is Map && IsObject(defaultVal) && defaultVal is Map {
-                    result[k] := SettingsMerge.Merge(existingVal, defaultVal)
+                    ; The Settings panel manages models/providers as complete
+                    ; lists, so the saved file defines WHICH entries exist —
+                    ; otherwise a removed default model/provider is resurrected
+                    ; by the deep merge on every load. Entries still present get
+                    ; their missing fields filled from defaults below.
+                    if k = "models" || k = "providers"
+                        result[k] := SettingsMerge.MergeAuthoritativeList(existingVal, defaultVal)
+                    else
+                        result[k] := SettingsMerge.Merge(existingVal, defaultVal)
                 } else {
                     result[k] := existingVal
                 }
@@ -26,6 +36,37 @@ class SettingsMerge {
             if !result.Has(k)
                 result[k] := existingVal
         }
+        return result
+    }
+
+    ; Merge a saved enumeration (models/providers) with its defaults so that
+    ; membership comes from the saved file (removals persist across reloads),
+    ; while each entry that still exists fills missing fields from the matching
+    ; default entry (e.g. api/compat/thinkingLevelMap metadata added after the
+    ; entry was first saved).
+    static MergeAuthoritativeList(existingList, defaultList) {
+        result := Map()
+        for k, existingEntry in existingList {
+            if IsObject(existingEntry) && existingEntry is Map && defaultList.Has(k) && IsObject(defaultList[k]) && defaultList[k] is Map
+                result[k] := SettingsMerge.Merge(existingEntry, defaultList[k])
+            else
+                result[k] := existingEntry
+        }
+        return result
+    }
+
+    ; Apply a settings-panel save payload over a base settings Map.
+    ; Every top-level key the UI sends replaces the base value wholesale —
+    ; each settings section returns its complete data (models, providers,
+    ; hotkeys, ...), so a deep merge would resurrect entries the user removed
+    ; from a section. Top-level keys the UI did not send keep their base
+    ; (saved/default) values.
+    static Override(incoming, base) {
+        result := Map()
+        for k, v in base
+            result[k] := v
+        for k, v in incoming
+            result[k] := v
         return result
     }
 }

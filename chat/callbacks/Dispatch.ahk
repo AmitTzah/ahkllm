@@ -125,9 +125,11 @@ _HandleSaveSettings(parsed) {
     try {
         ; Convert jsongo object to AHK Map
         settingsMap := SettingsHandler._ToMap(settingsData)
-        ; Merge into (saved file + defaults) so keys the UI didn't send keep saved values
+        ; Keep saved values for keys the UI didn't send, but treat each
+        ; section's payload as authoritative for its own top-level key —
+        ; a deep merge would resurrect removed models/providers/commands.
         base := SettingsHandler.Merge(SettingsHandler.Load(), SettingsHandler.GetDefaults())
-        merged := SettingsHandler.Merge(settingsMap, base)
+        merged := SettingsHandler.Override(settingsMap, base)
         if SettingsHandler.Save(merged) {
             ; Apply to this process's globals
             SettingsHandler.ApplyToGlobals(merged)

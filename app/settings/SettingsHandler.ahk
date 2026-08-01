@@ -24,6 +24,7 @@ class SettingsHandler {
     static GetDefaults() => SettingsDefaults.GetDefaults()
 
     static Merge(existing, defaults) => SettingsMerge.Merge(existing, defaults)
+    static Override(incoming, base) => SettingsMerge.Override(incoming, base)
 
     static ApplyToGlobals(settings) => SettingsApply.ApplyToGlobals(settings)
 }

@@ -234,6 +234,7 @@ scenarios.push({
 scenarios.push({
   id: 2,
   name: 'New chat honors the "New Chats Start With" default (assistant)',
+  regression: true, // FIXED bug kept as a regression check (new-chat default must keep applying)
   mode: 'json',
   settings: {
     assistants: [
@@ -258,7 +259,8 @@ scenarios.push({
 
 scenarios.push({
   id: 3,
-  name: 'Removing models/providers in Settings does not persist',
+  name: 'Removing models/providers in Settings persists (removed entries stay removed)',
+  regression: true, // FIXED bug kept as a regression check (removals must not be resurrected by merge)
   mode: null,
   settings: {},
   async body({ cdp, dataDir }) {
@@ -277,9 +279,29 @@ scenarios.push({
     // so assert on the full key.
     const modelBack = saved.models && saved.models['deepseek/deepseek-chat'];
     const providerBack = saved.providers && saved.providers.deepseek;
-    if (!modelBack) throw new Error('removed model deepseek/deepseek-chat stayed removed (unexpected)');
-    if (!providerBack) throw new Error('removed provider deepseek stayed removed (unexpected)');
-    return 'after removing deepseek/deepseek-chat and provider deepseek, both are back in settings.json (removal resurrected by merge)';
+    if (modelBack) throw new Error('removed model deepseek/deepseek-chat is still present in settings.json after save');
+    if (providerBack) throw new Error('removed provider deepseek is still present in settings.json after save');
+    // Reload half: hide and reopen Settings so AHK re-merges the saved file
+    // with defaults (the same Merge used at startup and after WM_SETTINGS_UPDATED).
+    // Removed entries must not come back from the defaults.
+    await cdp.waitFor('window.SettingsPanel && !window.SettingsPanel.isDirty()', 10000, 250, 'save acknowledged');
+    await cdp.click('#sidebar-toggle');
+    await sleep(500);
+    await openSettings(cdp);
+    await openSection(cdp, 'models');
+    await cdp.waitFor('document.querySelectorAll("#modelsTableBody tr").length > 0', 10000, 250, 'models table re-rendered');
+    await sleep(400);
+    const modelRows = await cdp.eval(`[...document.querySelectorAll('#modelsTableBody tr')].map(tr => ({
+      id: (tr.querySelector('[data-field="id"]') || {}).value || '',
+      provider: (tr.querySelector('[data-field="provider"]') || {}).value || ''
+    }))`);
+    if (modelRows.some((r) => r.id === 'deepseek-chat' && r.provider === 'deepseek'))
+      throw new Error('removed model deepseek/deepseek-chat came back from defaults after reopening settings: ' + JSON.stringify(modelRows));
+    await openSection(cdp, 'providers');
+    const providerKeys = await cdp.eval(`[...document.querySelectorAll('#providerGrid .provider-card')].map(c => c.dataset.providerKey || '')`);
+    if (providerKeys.includes('deepseek'))
+      throw new Error('removed provider deepseek came back from defaults after reopening settings: ' + JSON.stringify(providerKeys));
+    return 'after removing deepseek/deepseek-chat and provider deepseek, both stay removed in settings.json and after reopening settings';
   }
 });
 
