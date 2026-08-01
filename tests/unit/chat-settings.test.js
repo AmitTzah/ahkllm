@@ -85,8 +85,8 @@ describe('_sendAllSettings', () => {
     });
 });
 
-describe('_makeModelClickHandler — clears assistant overrides', () => {
-    it('should clear systemMessage, reasoning, and temperature when switching from assistant to model', () => {
+describe('_makeModelClickHandler — keeps reasoning, clears assistant overrides', () => {
+    it('keeps reasoning but clears systemMessage/temperature when switching from assistant to model', () => {
         const ctx = loadSettingsModule();
         // Simulate an assistant being active with overrides set
         ctx.window._currentSettings = {
@@ -122,11 +122,11 @@ describe('_makeModelClickHandler — clears assistant overrides', () => {
         assert.strictEqual(ctx.window._currentSettings.assistantBaseModel, '');
         assert.strictEqual(ctx.window._currentSettings.assistantDescription, '');
         assert.strictEqual(ctx.window._currentSettings.systemMessage, '');
-        assert.strictEqual(ctx.window._currentSettings.reasoning, '');
+        assert.strictEqual(ctx.window._currentSettings.reasoning, 'high', 'the selected reasoning level must survive a model change');
         assert.strictEqual(ctx.window._currentSettings.temperature, '');
     });
 
-    it('should clear systemMessage even when switching model-to-model (no assistant was active)', () => {
+    it('keeps reasoning when switching model-to-model (no assistant was active)', () => {
         const ctx = loadSettingsModule();
         // Simulate model-to-model switch with a custom system message
         ctx.window._currentSettings = {
@@ -153,10 +153,11 @@ describe('_makeModelClickHandler — clears assistant overrides', () => {
         var handler = ctx._makeModelClickHandler(mockEl, 'anthropic/claude-3');
         handler();
 
-        // Previous overrides should also be cleared on model-to-model switch
+        // Assistant-owned overrides are still cleared, but the user's
+        // reasoning selection is preserved on model-to-model switch.
         assert.strictEqual(ctx.window._currentSettings.model, 'anthropic/claude-3');
         assert.strictEqual(ctx.window._currentSettings.systemMessage, '');
-        assert.strictEqual(ctx.window._currentSettings.reasoning, '');
+        assert.strictEqual(ctx.window._currentSettings.reasoning, 'medium', 'the selected reasoning level must survive a model-to-model switch');
         assert.strictEqual(ctx.window._currentSettings.temperature, '');
     });
 });

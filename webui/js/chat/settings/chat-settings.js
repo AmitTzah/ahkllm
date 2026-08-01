@@ -205,9 +205,10 @@ function _makeModelClickHandler(el, fullId) {
         window._currentSettings.assistantName = '';
         window._currentSettings.assistantBaseModel = '';
         window._currentSettings.assistantDescription = '';
-        // Clear assistant overrides to restore model defaults
+        // Keep the selected reasoning level across model changes (it only
+        // falls back to Model Default when the new model doesn't support
+        // it). Still clear assistant-owned system prompt / temperature.
         window._currentSettings.systemMessage = '';
-        window._currentSettings.reasoning = '';
         window._currentSettings.temperature = '';
         _sendAllSettings();
         _updateModelCard();

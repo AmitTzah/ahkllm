@@ -133,8 +133,12 @@
     apiModelInput.addEventListener('change', function() {
       var thinkingSel = d.getElementById('cmdThinking');
       if (thinkingSel) {
+        // Keep the user's chosen level across a model change. If the new
+        // model doesn't support it, the select naturally falls back to the
+        // empty "Model Default" option.
+        var prevLevel = thinkingSel.value;
         thinkingSel.innerHTML = _thinkingOptionsHtml(this.value);
-        thinkingSel.value = '';
+        thinkingSel.value = prevLevel;
       }
     });
     d.getElementById('cmdPasteMode').value = cmd.pasteMode || 'chat';

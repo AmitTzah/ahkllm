@@ -43,7 +43,16 @@ function loadModules() {
         if (id === 'cmdThinking') {
           return {
             get value() { return formValues['cmdThinking'] !== undefined ? formValues['cmdThinking'] : ''; },
-            set value(v) { formValues['cmdThinking'] = v; },
+            set value(v) {
+              // Emulate <select>: assigning a value with no matching option
+              // leaves the dropdown unselected, which reads back as the
+              // empty "Model Default" value.
+              var values = [];
+              var re = /<option value="([^"]*)"/g;
+              var m;
+              while ((m = re.exec(thinkingOptionsHtml)) !== null) values.push(m[1]);
+              formValues['cmdThinking'] = values.indexOf(v) >= 0 ? v : '';
+            },
             set innerHTML(html) { thinkingOptionsHtml = html; },
             get innerHTML() { return thinkingOptionsHtml; }
           };
@@ -226,5 +235,43 @@ describe('commands API Model dropdown', () => {
     assert.ok(updated.indexOf('value="minimal"') >= 0, 'gemini must offer its minimal thinking level after change');
     assert.ok(updated.indexOf('value="medium"') < 0, 'gemini does not support medium — it must not be offered after change');
     assert.ok(updated.indexOf('Model Default') >= 0, 'thinking dropdown must include Model Default');
+  });
+
+  it('keeps the selected Thinking level when the new model still supports it', () => {
+    const ctx = loadModules();
+    const C = ctx.Cmds;
+    const models = {
+      'openai/gpt-4o': { thinkingLevelMap: { low: 'LOW', medium: 'MEDIUM', high: 'HIGH' } },
+      'google/gemini-2.5-flash': { thinkingLevelMap: { minimal: 'MINIMAL', low: 'LOW', high: 'HIGH' } }
+    };
+    C.load({ commands: [{ commandName: 'A', menuText: 'A', APIModels: 'openai/gpt-4o' }], models: models, ui: {} });
+
+    // User selected a thinking level, then switches to a model that still
+    // supports that level: the selection must be preserved, not reset.
+    ctx.formValues['cmdThinking'] = 'high';
+    ctx.formValues['cmdApiModel'] = 'google/gemini-2.5-flash';
+    ctx.fireApiModelChange();
+    assert.strictEqual(ctx.formValues['cmdThinking'], 'high', 'a still-supported level must not reset to Model Default');
+
+    // Saving keeps the preserved level for the new model.
+    C.syncDetail(0);
+    assert.strictEqual(C.commands()[0].thinking.type, 'enabled');
+    assert.strictEqual(C.commands()[0].thinking.level, 'high');
+  });
+
+  it('falls back to Model Default when the new model does not support the selected level', () => {
+    const ctx = loadModules();
+    const C = ctx.Cmds;
+    const models = {
+      'openai/gpt-4o': { thinkingLevelMap: { low: 'LOW', medium: 'MEDIUM', high: 'HIGH' } },
+      'google/gemini-2.5-flash': { thinkingLevelMap: { minimal: 'MINIMAL', low: 'LOW', high: 'HIGH' } }
+    };
+    C.load({ commands: [{ commandName: 'A', menuText: 'A', APIModels: 'openai/gpt-4o' }], models: models, ui: {} });
+
+    // 'medium' is supported by gpt-4o but not by gemini.
+    ctx.formValues['cmdThinking'] = 'medium';
+    ctx.formValues['cmdApiModel'] = 'google/gemini-2.5-flash';
+    ctx.fireApiModelChange();
+    assert.strictEqual(ctx.formValues['cmdThinking'], '', 'an unsupported level must fall back to Model Default');
   });
 });

@@ -43,16 +43,19 @@
       }
     });
     // Changing the base model rebuilds the Reasoning dropdown to that
-    // model's supported levels, resetting to "Model Default".
+    // model's supported levels. Keep the user's chosen level across the
+    // change; if the new model doesn't support it, the select falls back
+    // to the empty "Model Default" option.
     var baseSel = card.querySelector('select[data-field="baseModel"]');
     if (baseSel) {
       baseSel.addEventListener('change', function() {
         var reasoningSel = card.querySelector('select[data-field="reasoning"]');
         if (reasoningSel) {
+          var prevLevel = reasoningSel.value;
           reasoningSel.innerHTML = _reasoningLevels
             ? _reasoningLevels.buildOptionsHtml(models, baseSel.value)
             : reasoningSel.innerHTML;
-          reasoningSel.value = '';
+          reasoningSel.value = prevLevel;
         }
       });
     }
