@@ -412,6 +412,53 @@ class LLMRequestBuilderTest {
     }
 
     ; ----------------------------------------------------
+    ; Commands: type "enabled" + level → level is used as the
+    ; reasoning value (it was previously dropped). type "disabled"
+    ; → explicit off preserved. empty type → no config.
+    ; ----------------------------------------------------
+
+    CreateJSONRequest_CommandEnabledWithLevel_UsesLevel() {
+        result := LLMRequestBuilder.createJSONRequest("deepseek/deepseek-v4-flash", "s", "u", "", "", "", false, "enabled", "high")
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("reasoning_effort") || parsed["reasoning_effort"] != "high"
+            throw Error("Command enabled+high should set reasoning_effort='high', got: " jsongo.Stringify(parsed.Has("reasoning_effort") ? parsed["reasoning_effort"] : "(absent)"))
+        if !parsed.Has("thinking") || !parsed["thinking"].Has("type") || parsed["thinking"]["type"] != "enabled"
+            throw Error("Command enabled+high should set thinking:{type:'enabled'}, got: " jsongo.Stringify(parsed.Has("thinking") ? parsed["thinking"] : "(absent)"))
+    }
+
+    CreateJSONRequest_CommandEnabledNoLevel_KeepsEnabled() {
+        result := LLMRequestBuilder.createJSONRequest("deepseek/deepseek-v4-flash", "s", "u", "", "", "", false, "enabled", "")
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("thinking") || !parsed["thinking"].Has("type") || parsed["thinking"]["type"] != "enabled"
+            throw Error("Command enabled (no level) should still set thinking:{type:'enabled'}")
+    }
+
+    CreateJSONRequest_CommandDisabled_SendsDisabled() {
+        result := LLMRequestBuilder.createJSONRequest("deepseek/deepseek-v4-flash", "s", "u", "", "", "", false, "disabled")
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("thinking") || !parsed["thinking"].Has("type") || parsed["thinking"]["type"] != "disabled"
+            throw Error("Command disabled should set thinking:{type:'disabled'}, got: " jsongo.Stringify(parsed.Has("thinking") ? parsed["thinking"] : "(absent)"))
+    }
+
+    ; "disabled" must turn thinking OFF for ANY model, not just DeepSeek.
+    CreateJSONRequest_CommandDisabled_OpenAI_SendsOff() {
+        result := LLMRequestBuilder.createJSONRequest("openai/gpt-5-mini", "s", "u", "", "", "", false, "disabled")
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("reasoning_effort") || parsed["reasoning_effort"] != "none"
+            throw Error("OpenAI disabled should set reasoning_effort='none', got: " jsongo.Stringify(parsed.Has("reasoning_effort") ? parsed["reasoning_effort"] : "(absent)"))
+    }
+
+    CreateJSONRequest_CommandDisabled_Google_SendsOff() {
+        result := LLMRequestBuilder.createJSONRequest("google/gemini-2.5-flash", "s", "u", "", "", "", false, "disabled")
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("extra_body")
+            throw Error("Google disabled should set extra_body")
+        tc := parsed["extra_body"]["google"]["thinking_config"]
+        if !tc.Has("thinking_budget") || tc["thinking_budget"] != 0
+            throw Error("Google disabled should set thinking_budget=0 (off), got: " jsongo.Stringify(tc))
+    }
+
+    ; ----------------------------------------------------
     ; OpenAIChatCompletions.ApplyThinking — metadata-driven
     ; ----------------------------------------------------
 

@@ -26,7 +26,7 @@ global models := Map(
     "deepseek/deepseek-v4-flash", {
         provider: "deepseek", api: "openai-completions",
         compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("high", "high", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "high", "high", "max", "max"),
         thinkingOff: "disabled",
         input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false
     },

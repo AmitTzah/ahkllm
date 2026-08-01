@@ -63,10 +63,19 @@ class LLMRequestBuilder {
         }
 
         ; Apply thinking parameters via metadata-driven handler.
-        ; Empty reasoningEffort = "Model Default" — send NO thinking config.
+        ; Command type "enabled" + explicit level → use the level as the
+        ; reasoning value (the level was previously dropped). Command type
+        ; "disabled" → "none" so ApplyThinking takes its disabled branch
+        ; (a raw "disabled" string would wrongly hit the enabled branch).
+        ; Empty type = "Model Default" — send NO thinking config.
+        effectiveReasoning := reasoningEffort
+        if (reasoningEffort = "enabled" && reasoningLevel != "")
+            effectiveReasoning := reasoningLevel
+        else if (reasoningEffort = "disabled")
+            effectiveReasoning := "none"
         global models
-        if (reasoningEffort != "" && models.Has(APIModel))
-            OpenAIChatCompletions.ApplyThinking(&requestObj, models[APIModel], reasoningEffort, APIModel)
+        if (effectiveReasoning != "" && models.Has(APIModel))
+            OpenAIChatCompletions.ApplyThinking(&requestObj, models[APIModel], effectiveReasoning, APIModel)
         return LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
     }
 

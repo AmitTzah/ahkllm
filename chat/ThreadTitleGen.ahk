@@ -26,7 +26,7 @@ generateThreadTitle(threadId) {
         titleGenMaxTokens,     ; maxTokens
         "",                    ; stop
         false,                 ; stream
-        "disabled"             ; reasoningEffort — explicitly disable thinking
+        "disabled"             ; reasoningEffort — title generation never thinks
     )
 
     raw := _TitleGen_ExecuteRequest(payload, providerInfo)

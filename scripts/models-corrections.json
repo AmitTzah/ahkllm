@@ -4,7 +4,12 @@
   "models": {
     "deepseek-v4-flash": {
       "reasoning_options": [
-        {"type": "effort", "values": ["low", "high", "max"]}
+        {"type": "effort", "values": ["none", "low", "high", "max"]}
+      ]
+    },
+    "deepseek-v4-pro": {
+      "reasoning_options": [
+        {"type": "effort", "values": ["none", "high", "max"]}
       ]
     }
   }

@@ -25,6 +25,7 @@ function loadMainModule() {
             hljs: { getLanguage: () => null, highlight: () => ({ value: '' }) },
             _showChat: function() { receivedCalls._showChat = true; },
             _hideSettings: function() { receivedCalls._hideSettings = true; },
+            SettingsPanel: { onSettingsReceived: function(data) { receivedCalls.onSettingsReceived = data; } },
         },
         console: console,
         md: { render: (c) => '<p>' + c + '</p>' },
@@ -115,6 +116,26 @@ describe('handleWebMessage routing', () => {
         ctx.handleWebMessage({ data: JSON.stringify({ target: 'threadList', data: threads }) });
         assert.ok(ctx._receivedCalls.loadThreadList !== undefined);
         assert.strictEqual(ctx._receivedCalls.loadThreadList[0].id, 't1');
+    });
+
+    it('routes currentSettings with FULL settings to the settings panel', () => {
+        const ctx = loadMainModule();
+        const full = { commands: [{ commandName: 'C' }], assistants: [], models: {} };
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'currentSettings', data: full }) });
+        assert.ok(ctx._receivedCalls.populateCurrentSettings !== undefined, 'populateCurrentSettings should be called');
+        assert.ok(ctx._receivedCalls.onSettingsReceived !== undefined, 'onSettingsReceived should be called for full settings (has commands)');
+    });
+
+    it('does NOT wipe the settings panel on chat-sidebar currentSettings (no commands)', () => {
+        // Regression: the chat sidebar posts "currentSettings" with a partial
+        // payload (model/reasoning/thinkingLevels, NO commands). Routing it into
+        // SettingsPanel.onSettingsReceived reloaded every section with empty data
+        // and blanked the Commands tab after saving settings.
+        const ctx = loadMainModule();
+        const chatPayload = { model: 'deepseek/deepseek-v4-flash', reasoning: '', temperature: '0.7', thinkingLevels: ['none', 'low'] };
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'currentSettings', data: chatPayload }) });
+        assert.ok(ctx._receivedCalls.populateCurrentSettings !== undefined, 'populateCurrentSettings should still be called for the chat payload');
+        assert.strictEqual(ctx._receivedCalls.onSettingsReceived, undefined, 'onSettingsReceived must NOT be called for the chat-sidebar payload');
     });
 
     it('routes loadThread', () => {

@@ -114,4 +114,45 @@ class DefaultSettingsIntegrityTest {
                 throw Error("Google reasoning model '" modelId "' should have thinkingOff set")
         }
     }
+
+    ; --------------------------------------------------------
+    ; Every default command's thinking config must use the new
+    ; model-scoped format: {type:"enabled", level:"<level>"} where
+    ; <level> is a key in the command's model thinkingLevelMap.
+    ; This prevents a default command from showing "Model Default"
+    ; in the single dropdown (e.g. the old {type:"disabled"} format).
+    ; --------------------------------------------------------
+    Commands_ThinkingLevelsMatchModelSupport() {
+        global commands, models
+        if !IsSet(commands) || !IsArray(commands)
+            throw Error("commands global is not set or not an array")
+
+        for i, c in commands {
+            if !c.HasOwnProp("thinking") || !c.thinking
+                continue
+            thinking := c.thinking
+            name := c.HasOwnProp("commandName") ? c.commandName : "index " i
+            if !(Type(thinking) = "Object") || !thinking.HasOwnProp("type") || thinking.type != "enabled"
+                throw Error("Command '" name "' thinking must be {type:'enabled', level:'<model-supported>'}; got: " jsongo.Stringify(thinking))
+            if !thinking.HasOwnProp("level") || thinking.level = ""
+                throw Error("Command '" name "' thinking must include a level")
+
+            modelId := c.HasOwnProp("APIModels") ? c.APIModels : ""
+            resolved := ""
+            if modelId != "" && models.Has(modelId)
+                resolved := modelId
+            else if modelId != "" {
+                for mid, m in models {
+                    if SubStr(mid, InStr(mid, "/") + 1) = modelId {
+                        resolved := mid
+                        break
+                    }
+                }
+            }
+            if resolved = "" || !models.Has(resolved)
+                continue  ; unknown model — cannot verify level support
+            if !models[resolved].thinkingLevelMap.Has(thinking.level)
+                throw Error("Command '" name "' thinking level '" thinking.level "' not supported by model '" resolved "' (level map: " jsongo.Stringify(models[resolved].thinkingLevelMap) ")")
+        }
+    }
 }

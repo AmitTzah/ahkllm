@@ -102,6 +102,8 @@ Edit `scripts/models-corrections.json`. Copy-paste the template below, replace `
 
 **Reasoning values**: the `values` array can contain any values — standard level names, budget numbers, or custom strings. The handler translates them per provider: DeepSeek maps to `reasoning_effort`, Google maps to `thinking_level` or `thinking_budget` (with hardcoded budget tables for 2.x models), OpenAI maps to `reasoning_effort`. The UI shows these as selectable options.
 
+**Why `"none"` appears for DeepSeek even though it's not in DeepSeek's docs**: DeepSeek's documentation lists the *effort* levels (`low`, `high`, `max`) — that's what the `reasoning_effort` parameter accepts. But DeepSeek also supports *disabling thinking entirely* via a separate toggle, `{"thinking": {"type": "disabled"}}` (equivalently `"none"` in Anthropic format). In this codebase `"none"` in the `values` array is the reserved "off" level: the handler maps it to DeepSeek's `thinking:{type:"disabled"}`, OpenAI's `reasoning_effort:"none"`, and Google's off config (`thinking_budget:0` / `MINIMAL`). So `"none"` is intentionally present even though it is not one of DeepSeek's documented effort values — it is the thinking-off option, not an effort level. It should be included for any provider whose API can disable thinking.
+
 ### For devs syncing from pi
 ```
 powershell -File scripts/Sync-Pi-Corrections.ps1

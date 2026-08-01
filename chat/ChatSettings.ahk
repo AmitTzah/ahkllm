@@ -204,34 +204,15 @@ postCurrentSettingsToWebView() {
     }
 
     ; Build thinking level options from the current model's metadata.
-    ; Each option: { value, label } — UI uses these directly, no hardcoded labels.
-    ; Sorted lowest to highest.
-    levelOrder := Map(
-        "none", 0, "minimal", 1, "low", 2, "medium", 3,
-        "high", 4, "xhigh", 5, "max", 6
-    )
-    levelLabels := Map(
-        "none", "None (Disabled)", "minimal", "Minimal", "low", "Low",
-        "medium", "Medium", "high", "High", "xhigh", "Extra High", "max", "Max"
-    )
+    ; Raw level values only — the frontend labels and sorts them via the shared
+    ; ReasoningLevels helper (single source of truth for labels/order).
     thinkingLevels := []
     global models
     if models.Has(model) {
         modelMeta := models[model]
         if modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap) {
-            ; Collect levels with sort order
-            temp := []
-            for level in modelMeta.thinkingLevelMap {
-                order := levelOrder.Has(level) ? levelOrder[level] : 999
-                temp.Push({ value: level, order: order })
-            }
-            ; Sort by order, then alphabetically for same order
-            _BubbleSortLevels(&temp)
-            ; Build clean output Objects
-            for t in temp {
-                label := levelLabels.Has(t.value) ? levelLabels[t.value] : t.value
-                thinkingLevels.Push({ value: t.value, label: label })
-            }
+            for level in modelMeta.thinkingLevelMap
+                thinkingLevels.Push(level)
         }
     }
 
@@ -246,29 +227,6 @@ postCurrentSettingsToWebView() {
         assistantDescription: assistantDescription,
         thinkingLevels: thinkingLevels
     })
-}
-
-; Sort levels by order field ascending. Same order sorts alphabetically.
-_BubbleSortLevels(&arr) {
-    if arr.Length <= 1
-        return
-    ; Bubble sort by order field
-    loop arr.Length - 1 {
-        swapped := false
-        loop arr.Length - A_Index {
-            i := A_Index
-            a := arr[i].order
-            b := arr[i + 1].order
-            if (a > b || (a = b && StrCompare(arr[i].value, arr[i + 1].value) > 0)) {
-                tmp := arr[i]
-                arr[i] := arr[i + 1]
-                arr[i + 1] := tmp
-                swapped := true
-            }
-        }
-        if !swapped
-            break
-    }
 }
 
 postAssistantsToWebView() {

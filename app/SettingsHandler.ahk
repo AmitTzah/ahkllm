@@ -9,10 +9,12 @@
 class SettingsHandler {
     static settingsPath := ""
     static _initialDefaults := unset
+    static _initialDefaultsCaptured := false
 
     ; Call once at startup before ApplyToGlobals to cache the true defaults.
     static CacheInitialDefaults() {
         SettingsHandler._initialDefaults := SettingsHandler.GetDefaults()
+        SettingsHandler._initialDefaultsCaptured := true
     }
 
     ; Returns the full path to settings.json
@@ -96,7 +98,19 @@ class SettingsHandler {
 
     ; Build complete defaults Map from current DefaultSettings.ahk globals.
     ; Delegates to section-specific helpers for readability.
+    ;
+    ; IMPORTANT: after ApplyToGlobals() has run, the section globals (chatShortcut,
+    ; chatDefaultModel, hotkeys, ...) hold APPLIED values, not defaults. Reading them
+    ; here would return the applied values, which broke "Reset to Defaults" (e.g.
+    ; chatShortcut stayed "b" instead of reverting to "1"). So once CacheInitialDefaults()
+    ; has captured the pristine snapshot at startup, return that instead.
     static GetDefaults() {
+        if SettingsHandler._initialDefaultsCaptured {
+            snapshot := Map()
+            for k, v in SettingsHandler._initialDefaults
+                snapshot[k] := v
+            return snapshot
+        }
         d := Map()
         d["version"] := 1
         d["providers"] := SettingsHandler._DefaultsProviders()

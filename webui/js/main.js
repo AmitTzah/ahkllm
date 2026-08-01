@@ -142,7 +142,11 @@ function handleWebMessage(event) {
 
       case 'currentSettings':
         if (typeof populateCurrentSettings === 'function') populateCurrentSettings(data);
-        if (window.SettingsPanel && typeof window.SettingsPanel.onSettingsReceived === 'function') {
+        // The chat sidebar also posts "currentSettings" with a partial payload
+        // (no "commands"/"assistants"/...). Only feed the FULL settings into the
+        // settings panel — routing the partial payload here would reload every
+        // settings section with empty data and blank the Commands tab.
+        if (window.SettingsPanel && data && Array.isArray(data.commands) && typeof window.SettingsPanel.onSettingsReceived === 'function') {
           window.SettingsPanel.onSettingsReceived(data);
         }
         break;

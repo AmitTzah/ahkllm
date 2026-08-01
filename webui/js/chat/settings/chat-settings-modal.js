@@ -56,27 +56,19 @@ function populateCurrentSettings(settings) {
     }
   }
 
-  // Thinking dropdown — options sent from backend (value+label pairs)
+  // Thinking dropdown — the backend sends raw level values; the shared
+  // ReasoningLevels helper labels and sorts them (Model Default + levels).
   var thinkingDropdown = document.getElementById('reasoningDropdown');
   if (thinkingDropdown) {
     var levels = settings.thinkingLevels || [];
     var currentValue = settings.reasoning || '';
+    var rl = (typeof window !== 'undefined') ? window.ReasoningLevels : null;
 
-    thinkingDropdown.innerHTML = '';
-
-    // Model Default always available
-    var opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'Model Default';
-    thinkingDropdown.appendChild(opt);
-
-    // Append model-specific levels from backend
-    levels.forEach(function(lv) {
-      var opt = document.createElement('option');
-      opt.value = lv.value || lv;  // support both {value,label} and plain string
-      opt.textContent = lv.label || lv.value || lv;
-      thinkingDropdown.appendChild(opt);
-    });
+    thinkingDropdown.innerHTML = rl
+      ? rl.buildOptionsHtmlForValues(levels)
+      : '<option value="">Model Default</option>' + levels.map(function(lv) {
+          return '<option value="' + lv + '">' + lv + '</option>';
+        }).join('');
 
     // Restore current value if still valid
     var valueExists = false;

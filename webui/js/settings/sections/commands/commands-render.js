@@ -2,6 +2,31 @@
 (function() {
   var C = window.Cmds;
 
+  // Resolve a command's effective model to a models-map key (full or bare name,
+  // else the chat default model) so the Thinking dropdown can offer only the
+  // levels that model actually supports.
+  function _resolveModelKey(m) {
+    var models = C.models();
+    if (!m) m = C.defaultModel() || '';
+    if (models && m) {
+      if (models[m]) return m;
+      var bare = m.indexOf('/') >= 0 ? m.split('/')[1] : m;
+      var keys = Object.keys(models);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].split('/')[1] === bare) return keys[i];
+      }
+    }
+    return m;
+  }
+
+  // <option> HTML for the Thinking dropdown: "Model Default" + the model's
+  // supported levels, sorted least → most thinking.
+  function _thinkingOptionsHtml(modelKey) {
+    var rl = window.ReasoningLevels;
+    if (!rl) return '<option value="">Model Default</option>';
+    return rl.buildOptionsHtml(C.models(), _resolveModelKey(modelKey));
+  }
+
   function _buildListItem(cmd, idx, groupTag) {
     var label = cmd.menuText || cmd.commandName || 'Unnamed';
     var shortcut = label.match(/&(.)/);
@@ -85,15 +110,26 @@
     var sm = (cmd.menuText||'').match(/&(.)/);
     d.getElementById('cmdMenuShortcut').value = sm ? sm[1] : '';
     d.getElementById('cmdDirectShortcut').value = cmd.directAccelerator ? cmd.directAccelerator.replace('&','') : '';
-    d.getElementById('cmdApiModel').value = cmd.APIModels || '';
+    var apiModelInput = d.getElementById('cmdApiModel');
+    apiModelInput.value = cmd.APIModels || '';
+    apiModelInput.addEventListener('change', function() {
+      var thinkingSel = d.getElementById('cmdThinking');
+      if (thinkingSel) {
+        thinkingSel.innerHTML = _thinkingOptionsHtml(this.value);
+        thinkingSel.value = '';
+      }
+    });
     d.getElementById('cmdPasteMode').value = cmd.pasteMode || 'chat';
     d.getElementById('cmdTemperature').value = cmd.temperature || '';
     d.getElementById('cmdUserMessage').value = cmd.userMessage || '';
     d.getElementById('cmdShowInputBox').classList.toggle('on', !!cmd.showInputBox);
     d.getElementById('cmdStream').classList.toggle('on', !!cmd.stream);
     d.getElementById('cmdFim').classList.toggle('on', !!cmd.isFIM);
-    d.getElementById('cmdThinkingType').value = (cmd.thinking&&cmd.thinking.type)||'disabled';
-    d.getElementById('cmdThinkingLevel').value = (cmd.thinking&&cmd.thinking.level)||'';
+    var thinkingSel = d.getElementById('cmdThinking');
+    if (thinkingSel) {
+      thinkingSel.innerHTML = _thinkingOptionsHtml(cmd.APIModels || '');
+      thinkingSel.value = (cmd.thinking && cmd.thinking.type === 'enabled' && cmd.thinking.level) ? cmd.thinking.level : '';
+    }
     d.getElementById('cmdMaxTokens').value = cmd.maxTokens || '';
     var td = d.getElementById('cmdTags'); if (td) { td.innerHTML = ''; (cmd.tags||[]).forEach(function(t){td.appendChild(_createTagBadge(t));}); }
     var lbl = d.getElementById('cmdSysMsgLabel');
@@ -137,7 +173,7 @@
         '</div>'+
         '<div class="grid-2">'+
           '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>'+
-          '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers. Level defaults to medium.">?</span></label><div class="field-row"><select id="cmdThinkingType" style="flex:1;"><option>disabled</option><option>enabled</option></select><select id="cmdThinkingLevel" style="flex:1;"><option value="">Default level</option><option>low</option><option>medium</option><option>high</option></select></div></div>'+
+          '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="Model Default sends no thinking config. Pick a level to enable thinking at that level.">?</span></label><select id="cmdThinking" style="flex:1;"></select></div>'+
         '</div>'+
       '</div>'+
 
@@ -259,7 +295,8 @@
     cmd.showInputBox = d.getElementById('cmdShowInputBox').classList.contains('on');
     cmd.stream = d.getElementById('cmdStream').classList.contains('on');
     cmd.isFIM = d.getElementById('cmdFim').classList.contains('on');
-    cmd.thinking = {type:d.getElementById('cmdThinkingType').value, level:d.getElementById('cmdThinkingLevel').value};
+    var thinkingLevel = d.getElementById('cmdThinking') ? d.getElementById('cmdThinking').value : '';
+    cmd.thinking = thinkingLevel ? {type:'enabled', level:thinkingLevel} : '';
     var mt=d.getElementById('cmdMaxTokens').value; cmd.maxTokens = mt===''?'':(isNaN(parseInt(mt,10))?'':parseInt(mt,10));
     var tags=[]; d.querySelectorAll('#cmdTags .badge').forEach(function(b){tags.push(b.textContent.replace('\u00D7','').trim());});
     cmd.tags = tags;

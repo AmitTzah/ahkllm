@@ -39,7 +39,6 @@ class OpenAIChatCompletions {
 
         ; Google: delegate to GoogleChatCompletions
         if (thinkingFormat = "google") {
-            debugLog("[DEBUG] OpenAIChatCompletions — delegating to Google handler")
             GoogleChatCompletions.ApplyThinking(&requestObj, model, reasoning, modelId)
             return
         }

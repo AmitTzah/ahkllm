@@ -250,11 +250,12 @@ class ChatRequestBuilderTest {
     }
 
     ; --------------------------------------------------------
-    ; DeepSeek with reasoning=none: "none" is NOT an option in the
-    ; DeepSeek sidebar (level map has no "none") → Model Default →
-    ; NO thinking config sent.
+    ; DeepSeek with reasoning=none: "none" is a supported level (added
+    ; via models-corrections.json — DeepSeek disables thinking through
+    ; the {"thinking":{"type":"disabled"}} toggle). Selecting it sends
+    ; thinking:{type:"disabled"} (explicit off), no reasoning_effort.
     ; --------------------------------------------------------
-    DeepSeek_WithReasoningNone_OmitsThinkingConfig() {
+    DeepSeek_WithReasoningNone_SendsDisabledConfig() {
         result := this._buildRequest("deepseek/deepseek-v4-flash", "none")
 
         if result = ""
@@ -264,8 +265,10 @@ class ChatRequestBuilderTest {
 
         if parsed.Has("reasoning_effort")
             throw Error("Expected NO reasoning_effort for DeepSeek with reasoning=none")
-        if parsed.Has("thinking")
-            throw Error("Expected NO thinking for DeepSeek with reasoning=none (Model Default), got: " jsongo.Stringify(parsed["thinking"]))
+        if !parsed.Has("thinking")
+            throw Error("Expected thinking config for DeepSeek with reasoning=none")
+        if !parsed["thinking"].Has("type") || parsed["thinking"]["type"] != "disabled"
+            throw Error("Expected thinking:{type:'disabled'} for DeepSeek with reasoning=none, got: " jsongo.Stringify(parsed["thinking"]))
     }
 
     ; --------------------------------------------------------

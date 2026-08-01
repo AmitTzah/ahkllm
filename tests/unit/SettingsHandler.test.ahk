@@ -38,6 +38,26 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
+    ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
+    ; must return the pristine snapshot captured by CacheInitialDefaults().
+    GetDefaults_ReturnsPristineAfterApplyToGlobals() {
+        global chatShortcut
+        chatShortcut := "1"
+        SettingsHandler.CacheInitialDefaults()
+
+        settings := Map()
+        settings["chatShortcut"] := "b"
+        SettingsHandler.ApplyToGlobals(settings)
+        if chatShortcut != "b"
+            throw Error("test setup: ApplyToGlobals should set global chatShortcut to 'b'")
+
+        defaults := SettingsHandler.GetDefaults()
+        if !defaults.Has("chatShortcut") || defaults["chatShortcut"] != "1"
+            throw Error("GetDefaults() should return pristine chatShortcut='1' after ApplyToGlobals set it to 'b', got: "
+                (defaults.Has("chatShortcut") ? defaults["chatShortcut"] : "missing"))
+    }
+
     Merge_FillsMissingKeys() {
         existing := Map()
         existing["theme"] := Map("darkMode", true)

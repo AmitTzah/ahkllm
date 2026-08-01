@@ -83,14 +83,14 @@ models := Map(
     "deepseek/deepseek-v4-flash", {
         provider: "deepseek", api: "openai-completions",
         compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("low", "low", "high", "high", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "high", "high", "max", "max"),
         thinkingOff: "disabled",
         input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false
     },
     "deepseek/deepseek-v4-pro", {
         provider: "deepseek", api: "openai-completions",
         compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("high", "high", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "high", "high", "max", "max"),
         thinkingOff: "disabled",
         input: 0.435, cachedInput: 0.003625, output: 0.87, context: 1000000, reasoning: true, vision: false
     },
@@ -670,8 +670,9 @@ assistants := [
 ;                     streams token-by-token in real time instead of appearing
 ;                     all at once. Requires pasteMode: "chat". Default: false.
 ;
-;   thinking:         (Optional) { type: "enabled"|"disabled", level?: "low"|"medium"|"high"|"xhigh" }
-;                     Enables or disables reasoning/thinking for the model.
+;   thinking:         (Optional) { type: "enabled", level: "none"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max" }
+;                     level must be one the command's model supports (see its thinkingLevelMap).
+;                     "none" = thinking disabled. Omit the field entirely for Model Default (no config).
 ;                     "enabled" works across all providers (translated per API).
 ;                     Optional "level" controls the thinking depth (defaults to "medium").
 ;                     Default: omitted (model default).
@@ -747,7 +748,7 @@ assistants := [
 
         pasteMode: "replace",
         stream: false,
-        thinking: { type: "enabled", level: "medium" },
+        thinking: { type: "enabled", level: "none" },  ; "none" = disabled; or pick a model-supported level
 
         ; --- Set to true to ignore all prompt fields above ---
         isFIM: false,
@@ -772,12 +773,12 @@ commands := [
         {
         commandName: "Quick ask (V4 Flash)",
         menuText: "&2 - Quick Ask DeepSeek V4 Flash",
-        APIModels: "deepseek-v4-flash",          
+        APIModels: "deepseek-v4-flash",
         showInputBox: true,
         userMessage: "{{input}}`n`n{{selection}}",
-        pasteMode: "chat",                    
-        stream: true,                           
-        thinking: { type: "disabled" },           
+        pasteMode: "chat",
+        stream: true,
+        thinking: { type: "enabled", level: "none" },  ; disabled — fast quick ask
         isFIM: false,                            
     },
 
@@ -817,7 +818,7 @@ commands := [
         systemMessageFile: "system-messages/rephrase-in-context.txt",
         userMessage: "### Full document context:`n`n{{fullText}}`n`n### Text to rephrase:`n`n{{selection}}",
         APIModels: "deepseek/deepseek-v4-flash",
-        thinking: { type: "disabled" },
+        thinking: { type: "enabled", level: "none" },  ; disabled — fast rephrase
         pasteMode: "replace",
         tags: ["&Text manipulation"],
         directAccelerator: "&5"
@@ -831,7 +832,7 @@ commands := [
         APIModels: "deepseek/deepseek-v4-flash",
         userMessage: "{{selection}}",
         pasteMode: "replace",
-        thinking: { type: "disabled" },
+        thinking: { type: "enabled", level: "none" },  ; disabled — fast refine
         tags: ["&Text manipulation"],
         directAccelerator: "&6"
 
@@ -856,7 +857,7 @@ commands := [
         systemMessageFile: "system-messages/summarize.txt",
         APIModels: "deepseek/deepseek-v4-pro",
         userMessage: "{{selection}}",
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "high" },
         pasteMode: "chat",
         tags: ["&Digest"]
 
@@ -867,7 +868,7 @@ commands := [
         systemMessageFile: "system-messages/translate-to-english.txt",
         APIModels: "deepseek/deepseek-v4-pro",
         userMessage: "{{selection}}",
-        thinking: { type: "disabled" },
+        thinking: { type: "enabled", level: "none" },  ; disabled — fast translate
         pasteMode: "chat",
         tags: ["&Digest"]
 
@@ -877,7 +878,7 @@ commands := [
         menuText: "&3 - Explain",
         APIModels: "deepseek/deepseek-v4-pro",
         userMessage: "What does the following text mean?`n`n{{selection}}",
-        thinking: { type: "disabled" },
+        thinking: { type: "enabled", level: "none" },  ; disabled — fast explanation
         pasteMode: "chat",
         tags: ["&Digest"]
 
@@ -892,7 +893,7 @@ commands := [
         pasteMode: "chat",
         stream: true,
         includeImageContext:true,
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "medium" },
         tags: ["&Digest"]
     }
 
@@ -905,7 +906,7 @@ commands := [
         userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "high" },
         tags: ["&DeepSeek"]
     }
     , {
@@ -916,7 +917,7 @@ commands := [
         userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "high" },
         tags: ["&DeepSeek"],
     }
     , {
@@ -927,7 +928,7 @@ commands := [
         userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "medium" },
         tags: ["&OpenAI"]
     }
     , {
@@ -938,7 +939,7 @@ commands := [
         userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "medium" },
         tags: ["&OpenAI"]
     }
     , {
@@ -949,7 +950,7 @@ commands := [
         userMessage: "{{input}}`n`n{{selection}}",
         pasteMode: "chat",
         stream: true,
-        thinking: { type: "enabled" },
+        thinking: { type: "enabled", level: "medium" },
         tags: ["&Google"]
     }
     , {

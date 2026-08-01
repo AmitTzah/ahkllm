@@ -5,6 +5,8 @@
   var _submenuOrder = [];
   // Per-group independent ordering: { '__main__': [idx,...], 'TagName': [idx,...] }
   var _groupOrders = {};
+  var _models = null;
+  var _defaultModel = '';
 
   function _ensureGroupOrders() {
     _groupOrders['__main__'] = _groupOrders['__main__'] || [];
@@ -39,6 +41,8 @@
   function load(data) {
     _commands = (data && data.commands) ? data.commands : [];
     _submenuOrder = (data && data.submenuOrder) ? data.submenuOrder : [];
+    _models = (data && data.models) ? data.models : null;
+    _defaultModel = (data && data.ui && data.ui.chatDefaultModel) ? data.ui.chatDefaultModel : '';
     _selectedIdx = -1;
     _groupOrders = {};
     _ensureGroupOrders();
@@ -163,6 +167,8 @@
   window.Cmds = {
     commands: function() { return _commands; },
     setCommands: function(c) { _commands = c; },
+    models: function() { return _models; },
+    defaultModel: function() { return _defaultModel; },
     selectedIdx: function() { return _selectedIdx; },
     setSelectedIdx: function(i) { _selectedIdx = i; },
     submenuOrder: function() { return _submenuOrder; },

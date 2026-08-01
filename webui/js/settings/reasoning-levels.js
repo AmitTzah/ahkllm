@@ -29,12 +29,24 @@ window.ReasoningLevels = (function() {
   // Build <option> HTML for a reasoning dropdown: "Model Default" + the
   // model's supported levels, sorted least → most thinking.
   function buildOptionsHtml(models, baseModel) {
+    return buildOptionsHtmlForValues(levelsForModel(models, baseModel));
+  }
+
+  // Build <option> HTML from an explicit list of level values (already
+  // model-scoped by the caller), labeled and sorted least → most thinking.
+  function buildOptionsHtmlForValues(values) {
     var html = '<option value="">Model Default</option>';
-    sortLevels(levelsForModel(models, baseModel)).forEach(function(level) {
+    sortLevels(values || []).forEach(function(level) {
       html += '<option value="' + level + '">' + label(level) + '</option>';
     });
     return html;
   }
 
-  return { label: label, sortLevels: sortLevels, levelsForModel: levelsForModel, buildOptionsHtml: buildOptionsHtml };
+  return {
+    label: label,
+    sortLevels: sortLevels,
+    levelsForModel: levelsForModel,
+    buildOptionsHtml: buildOptionsHtml,
+    buildOptionsHtmlForValues: buildOptionsHtmlForValues
+  };
 })();
