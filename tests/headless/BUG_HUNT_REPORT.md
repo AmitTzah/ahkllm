@@ -61,7 +61,8 @@ confirm the fix, never to re-verify the bug):
    (otherwise it fails forever). **[file: `verify-bugs.js`]**
 5. Run `--scenarios=<id>` (must PASS = fix works) and the full AHK + JS suites. If it
    FAILs, the fix is incomplete — go back to step 2. **[no file edits]**
-6. Set `Status: fix applied`, then ask the user to verify manually using the repro steps.
+6. **Gate:** only after step 5 passes (scenario PASS + suites green) set
+   `Status: fix applied`, then ask the user to verify manually using the repro steps.
    **[file: this file]**
 7. Set `Status: awaiting user commit`, suggest a commit message from
    `git status`/`git diff` (cover ALL uncommitted changes). **Do not commit yourself.**
@@ -77,6 +78,9 @@ confirm the fix, never to re-verify the bug):
 - Write each status change **before** the work it describes (interruption guard).
 - **Never trust a Status without re-running the scenario first** — re-verify before
   assuming a bug is still open or already fixed.
+- **Never ask the user to verify or commit until the fix has PASSED its scenario
+  (flipped assertion) and the full AHK + JS suites** — the headless check always comes
+  first, the user's manual check is the final confirmation.
 - **A FAIL with `setup ->` in the message is a harness/infrastructure failure, not a
   refutation** — investigate or re-run; never delete an entry because of it.
 - **Only one fix may be uncommitted at a time**: wait for the user's commit before
