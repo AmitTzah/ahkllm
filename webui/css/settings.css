@@ -327,6 +327,8 @@
   color: var(--text-secondary); font-weight: 500;
 }
 .btn-sm:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+.btn-sm:disabled { opacity: 0.5; cursor: default; }
+.btn-sm:disabled:hover { border-color: var(--border-main); color: var(--text-secondary); }
 .btn-sm.danger { color: var(--danger); }
 .btn-sm.danger:hover { border-color: var(--danger); background: var(--danger-light); }
 
@@ -421,3 +423,21 @@
 .cmd-chevron.open {
   transform: rotate(-135deg);
 }
+
+/* Fetch models modal */
+.refresh-model-search {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg-main); border: 1px solid var(--border-main);
+  border-radius: var(--radius-sm); padding: 6px 8px;
+  font-family: var(--font-ui); font-size: 11px; color: var(--text-primary);
+  transition: all 0.2s;
+}
+.refresh-model-search::placeholder { color: var(--text-tertiary); }
+.refresh-model-search:focus { outline: none; border-color: var(--accent-primary); background: var(--bg-panel); }
+.refresh-model-count { font-size: 10px; color: var(--text-tertiary); padding: 4px 12px 6px; }
+
+@keyframes refreshRowFlash {
+  0% { background-color: color-mix(in srgb, var(--accent-primary) 28%, transparent); }
+  100% { background-color: transparent; }
+}
+.refresh-row-added { animation: refreshRowFlash 1.2s ease-out; }

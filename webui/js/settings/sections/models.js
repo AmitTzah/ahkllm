@@ -137,15 +137,84 @@
 
   function openRefreshModal() {
     var m = document.getElementById('refreshModal'); if (m) m.classList.add('open');
+    var searchInput = document.getElementById('refreshModelSearch');
+    if (searchInput) searchInput.value = '';
+    _refreshQuery = '';
     _populateRightPanel();
+    if (_refreshAvailable.length) _renderAvailableModels();
     window.chrome.webview.postMessage(JSON.stringify({action:'refreshModelPricing'}));
   }
 
-  function escHtml(s) { return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"'); }
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   // --- Refresh Modal ---
 
   var _refreshData = {}; // cached parsed refresh data: { modelId: {input, cachedInput, output, context, vision, reasoning} }
+  var _refreshAvailable = []; // fetched models from the last refresh: [{ id, raw }]
+  var _refreshQuery = '';     // current search filter text
+
+  function filterAvailableModels(list, query) {
+    var q = String(query || '').trim().toLowerCase();
+    if (!q) return list.slice();
+    return list.filter(function(m) {
+      return m.id.toLowerCase().indexOf(q) >= 0 || stripProvider(m.id).toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  function buildAddButtonHtml(modelId, isAdded) {
+    var dataId = 'data-id="' + escHtml(modelId) + '"';
+    if (isAdded)
+      return '<button class="btn-sm add-refresh-model" ' + dataId + ' disabled style="white-space:nowrap;">Added</button>';
+    return '<button class="btn-sm add-refresh-model" ' + dataId + ' style="white-space:nowrap;">+ Add</button>';
+  }
+
+  function _rightPanelIds() {
+    var ids = [];
+    var tbody = document.getElementById('refreshRightTbody');
+    if (!tbody) return ids;
+    tbody.querySelectorAll('tr').forEach(function(tr) {
+      var idEl = tr.querySelector('[data-field="id"]');
+      if (!idEl) return;
+      var id = idEl.getAttribute('data-full-id') || idEl.value;
+      if (!id) return;
+      // Rows copied from the settings table only hold the display id; fall
+      // back to the provider column so they match fetched full ids like
+      // "google/gemini-3-flash-preview".
+      if (id.indexOf('/') < 0) {
+        var provEl = tr.querySelector('[data-field="provider"]');
+        var provider = provEl ? provEl.value || '' : '';
+        if (provider) id = provider + '/' + id;
+      }
+      ids.push(id);
+    });
+    return ids;
+  }
+
+  function _renderAvailableModels() {
+    var tbody = document.getElementById('refreshLeftTbody');
+    if (!tbody) return;
+    var added = _rightPanelIds();
+    var list = filterAvailableModels(_refreshAvailable, _refreshQuery);
+    var html = '';
+    list.forEach(function(m) {
+      var p = _refreshData[m.id] || {};
+      var isAdded = added.indexOf(m.id) >= 0;
+      html += '<tr><td style="font-size:10px;">' + escHtml(stripProvider(m.id)) + '</td>' +
+        '<td>' + fmtPrice(p.input) + '</td>' +
+        '<td>' + fmtPrice(p.output) + '</td>' +
+        '<td>' + formatContext(p.context) + '</td>' +
+        '<td>' + buildAddButtonHtml(m.id, isAdded) + '</td></tr>';
+    });
+    tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px;">' +
+      (_refreshAvailable.length ? 'No matching models' : 'Click Refresh to pull latest pricing data') + '</td></tr>';
+    tbody.querySelectorAll('.add-refresh-model').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        window.SettingsModels.addFromRefresh(this.getAttribute('data-id'));
+      });
+    });
+    var countEl = document.getElementById('refreshModelCount');
+    if (countEl) countEl.textContent = _refreshAvailable.length ? list.length + ' of ' + _refreshAvailable.length + ' models' : '';
+  }
 
   function parsePricingRaw(raw) {
     var fields = {};
@@ -211,7 +280,7 @@
       tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
       var ctxInp = tr.querySelector('[data-field="context"]');
       if (ctxInp) _wireContextInput(ctxInp);
-      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); });
+      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); _renderAvailableModels(); });
     });
     if (!tbody.children.length)
       tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-tertiary);padding:20px;">No models defined</td></tr>';
@@ -222,10 +291,11 @@
     document.querySelectorAll('#modelsTableBody tr').forEach(function(tr) {
       var idEl = tr.querySelector('[data-field="id"]');
       if (!idEl || !idEl.value) return;
+      var provider = (tr.querySelector('[data-field="provider"]') || {}).value || '';
       models.push({
-        id: idEl.value, // full ID for internal use
+        id: ensureFullId(idEl.value, provider), // full ID for internal use
         displayId: stripProvider(idEl.value), // display without provider prefix
-        provider: (tr.querySelector('[data-field="provider"]') || {}).value || '',
+        provider: provider,
         input: _parsePrice(tr.querySelector('[data-field="input"]') || {}),
         cachedInput: _parsePrice(tr.querySelector('[data-field="cachedInput"]') || {}),
         output: _parsePrice(tr.querySelector('[data-field="output"]') || {}),
@@ -239,46 +309,38 @@
 
   window.SettingsModels = {
     parsePricingRaw: parsePricingRaw,
+    filterAvailableModels: filterAvailableModels,
+    buildAddButton: buildAddButtonHtml,
+    collectCurrentModels: function() { return _collectCurrentModels(); },
+    rightPanelIds: function() { return _rightPanelIds(); },
 
     handleRefreshResult: function(data) {
       var leftTbody = document.getElementById('refreshLeftTbody');
       if (!leftTbody) return;
       if (data.success && data.models) {
         _refreshData = {};
-        var leftHtml = '';
+        _refreshAvailable = data.models;
         data.models.forEach(function(m) {
-          var p = m.raw ? parsePricingRaw(m.raw) : {};
-          _refreshData[m.id] = p;
-          leftHtml += '<tr><td style="font-size:10px;">' + escHtml(stripProvider(m.id)) + '</td>' +
-            '<td>' + fmtPrice(p.input) + '</td>' +
-            '<td>' + fmtPrice(p.output) + '</td>' +
-            '<td>' + formatContext(p.context) + '</td>' +
-            '<td><button class="btn-sm add-refresh-model" data-id="' + escHtml(m.id) + '" style="white-space:nowrap;">+ Add</button></td></tr>';
+          _refreshData[m.id] = m.raw ? parsePricingRaw(m.raw) : {};
         });
-        leftTbody.innerHTML = leftHtml;
-        leftTbody.querySelectorAll('.add-refresh-model').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            window.SettingsModels.addFromRefresh(this.getAttribute('data-id'));
-          });
-        });
+        _renderAvailableModels();
       } else {
+        _refreshAvailable = [];
+        _refreshQuery = '';
         leftTbody.innerHTML = '<tr><td colspan="5" style="color:var(--danger);">Error: ' + escHtml(data.error || 'Unknown error') + '</td></tr>';
+        var countEl = document.getElementById('refreshModelCount');
+        if (countEl) countEl.textContent = '';
       }
     },
 
     addFromRefresh: function(modelId) {
+      if (_rightPanelIds().indexOf(modelId) >= 0) return; // already added
       var p = _refreshData[modelId] || {};
       var tbody = document.getElementById('refreshRightTbody');
       if (!tbody) return;
       // Remove placeholder row if present
       var placeholder = tbody.querySelector('td[colspan]');
       if (placeholder) tbody.innerHTML = '';
-      // Check duplicate
-      var exists = false;
-      tbody.querySelectorAll('[data-field="id"]').forEach(function(el) {
-        if ((el.getAttribute('data-full-id') || el.value) === modelId) exists = true;
-      });
-      if (exists) return;
       var m = {
         provider: p.provider || '',
         input: p.input !== undefined ? p.input : 0,
@@ -294,7 +356,9 @@
       tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
       var ctxInp = tr.querySelector('[data-field="context"]');
       if (ctxInp) _wireContextInput(ctxInp);
-      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); });
+      tr.classList.add('refresh-row-added');
+      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); _renderAvailableModels(); });
+      _renderAvailableModels();
     },
 
     cancelRefresh: function() {
@@ -344,6 +408,11 @@
       var modalRefreshBtn = document.getElementById('refreshPricingRefreshBtn');
       if (modalRefreshBtn) modalRefreshBtn.addEventListener('click', function() {
         window.chrome.webview.postMessage(JSON.stringify({action:'refreshModelPricing'}));
+      });
+      var refreshSearch = document.getElementById('refreshModelSearch');
+      if (refreshSearch) refreshSearch.addEventListener('input', function() {
+        _refreshQuery = refreshSearch.value;
+        _renderAvailableModels();
       });
     });
   }

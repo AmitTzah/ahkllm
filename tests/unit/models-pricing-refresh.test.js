@@ -10,18 +10,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadModule() {
+function loadModule(overrides) {
     const src = fs.readFileSync(
         path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'),
         'utf-8'
     );
+    const els = (overrides && overrides.els) || {};
+    const modelsRows = (overrides && overrides.modelsRows) || [];
     const sandbox = {
         document: {
-            getElementById: () => null,
-            querySelectorAll: () => [],
+            getElementById: (id) => els[id] || null,
+            querySelectorAll: (sel) => (sel === '#modelsTableBody tr' ? modelsRows : []),
             createElement: () => ({
-                style: {},
+                style: {}, innerHTML: '',
+                classList: { add: () => {}, remove: () => {}, toggle: () => {} },
                 querySelectorAll: () => [],
+                querySelector: () => ({ addEventListener: () => {} }),
                 addEventListener: () => {},
                 appendChild: () => {}
             }),
@@ -39,6 +43,41 @@ function loadModule() {
     sandbox.global = sandbox;
     vm.runInContext(src, vm.createContext(sandbox));
     return sandbox.window.SettingsModels;
+}
+
+function makeMainRow(displayId, provider) {
+    const input = (value) => ({ value, checked: false, getAttribute: () => null });
+    return {
+        querySelector: (sel) => {
+            switch (sel) {
+                case '[data-field="id"]': return input(displayId);
+                case '[data-field="provider"]': return input(provider);
+                default: return input('');
+            }
+        }
+    };
+}
+
+function makeRightTbody(rows) {
+    const trs = rows.map((r) => ({
+        querySelector: (sel) => {
+            if (sel === '[data-field="id"]') {
+                return {
+                    value: r.displayId,
+                    getAttribute: (name) => (name === 'data-full-id' ? r.fullId : null)
+                };
+            }
+            if (sel === '[data-field="provider"]') return { value: r.provider, getAttribute: () => null };
+            return null;
+        }
+    }));
+    return {
+        children: trs,
+        innerHTML: '',
+        appendChild: (tr) => trs.push(tr),
+        querySelector: () => null,
+        querySelectorAll: (sel) => (sel === 'tr' ? trs : [])
+    };
 }
 
 describe('SettingsModels.parsePricingRaw', () => {
@@ -68,6 +107,88 @@ describe('SettingsModels.parsePricingRaw', () => {
         assert.strictEqual(p.input, undefined);
         assert.strictEqual(p.context, undefined);
         assert.strictEqual(p.reasoning, false);
-        assert.strictEqual(p.vision, false);
-    });
+    assert.strictEqual(p.vision, false);
+  });
+});
+
+describe('SettingsModels.filterAvailableModels', () => {
+  it('returns all models for an empty or whitespace query', () => {
+    const SM = loadModule();
+    const list = [{ id: 'openai/gpt-5' }, { id: 'deepseek/deepseek-chat' }];
+    assert.strictEqual(SM.filterAvailableModels(list, '').length, 2);
+    assert.strictEqual(SM.filterAvailableModels(list, '   ').length, 2);
+  });
+
+  it('matches provider prefix, model id, and is case-insensitive', () => {
+    const SM = loadModule();
+    const list = [
+      { id: 'openai/gpt-5' },
+      { id: 'deepseek/deepseek-chat' },
+      { id: 'openai/gpt-4o' }
+    ];
+    assert.deepStrictEqual(SM.filterAvailableModels(list, 'deepseek').map((m) => m.id), ['deepseek/deepseek-chat']);
+    assert.deepStrictEqual(SM.filterAvailableModels(list, 'gpt-5').map((m) => m.id), ['openai/gpt-5']);
+    assert.deepStrictEqual(SM.filterAvailableModels(list, 'GPT-4').map((m) => m.id), ['openai/gpt-4o']);
+  });
+
+  it('does not mutate the input list', () => {
+    const SM = loadModule();
+    const list = [{ id: 'openai/gpt-5' }, { id: 'deepseek/deepseek-chat' }];
+    const copy = list.slice();
+    SM.filterAvailableModels(list, 'gpt');
+    assert.deepStrictEqual(list, copy);
+  });
+});
+
+describe('SettingsModels.buildAddButton', () => {
+  it('renders an enabled + Add button for models not yet added', () => {
+    const SM = loadModule();
+    const html = SM.buildAddButton('openai/gpt-5', false);
+    assert.ok(html.indexOf('+ Add') >= 0);
+    assert.ok(html.indexOf('disabled') < 0);
+    assert.ok(html.indexOf('data-id="openai/gpt-5"') >= 0);
+  });
+
+  it('renders a disabled Added button for models already in the list', () => {
+    const SM = loadModule();
+    const html = SM.buildAddButton('openai/gpt-5', true);
+    assert.ok(html.indexOf('Added') >= 0);
+    assert.ok(html.indexOf('disabled') >= 0);
+  });
+
+  it('escapes the model id in the data attribute', () => {
+    const SM = loadModule();
+    const html = SM.buildAddButton('openai/"weird"', false);
+    assert.ok(html.indexOf('&quot;') >= 0);
+  });
+});
+
+describe('added-state id normalization', () => {
+  it('collects existing settings models as full provider/model ids', () => {
+    const SM = loadModule({ modelsRows: [makeMainRow('gemini-3-flash-preview', 'google')] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models.length, 1);
+    assert.strictEqual(models[0].id, 'google/gemini-3-flash-preview');
+    assert.strictEqual(models[0].displayId, 'gemini-3-flash-preview');
+  });
+
+  it('rightPanelIds falls back to the provider column when the stored id has no prefix', () => {
+    const tbody = makeRightTbody([
+      { displayId: 'gemini-3-flash-preview', fullId: 'gemini-3-flash-preview', provider: 'google' },
+      { displayId: 'gpt-5', fullId: 'openai/gpt-5', provider: 'openai' }
+    ]);
+    const SM = loadModule({ els: { refreshRightTbody: tbody } });
+    assert.deepStrictEqual([...SM.rightPanelIds()], ['google/gemini-3-flash-preview', 'openai/gpt-5']);
+  });
+
+  it('addFromRefresh refuses a model already present with a full id', () => {
+    const tbody = makeRightTbody([
+      { displayId: 'gemini-3-flash-preview', fullId: 'google/gemini-3-flash-preview', provider: 'google' }
+    ]);
+    let appended = 0;
+    tbody.appendChild = () => { appended++; };
+    const SM = loadModule({ els: { refreshRightTbody: tbody } });
+    SM.addFromRefresh('google/gemini-3-flash-preview');
+    assert.strictEqual(appended, 0);
+  });
 });
