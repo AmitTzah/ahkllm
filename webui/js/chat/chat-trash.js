@@ -28,7 +28,7 @@ function loadTrashList(threads) {
         window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'restoreThread', threadId: t.id }));
       });
       item.querySelector('button.danger').addEventListener('click', function() {
-        _showConfirm('Permanently delete?', function() {
+        _showChatConfirm('Permanently delete?', function() {
           window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThreadForever', threadId: t.id }));
         });
       });

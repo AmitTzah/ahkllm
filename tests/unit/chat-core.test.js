@@ -23,8 +23,9 @@ function loadModule() {
             addEventListener: function(evt, fn) { (this._listeners = this._listeners || {})[evt] = fn; },
             removeEventListener: function() {},
             querySelector: function(sel) {
-                if (el._queryMap && el._queryMap[sel]) return el._queryMap[sel];
-                return makeEl('div');
+                if (!el._queryMap) el._queryMap = {};
+                if (!el._queryMap[sel]) el._queryMap[sel] = makeEl('div');
+                return el._queryMap[sel];
             },
             querySelectorAll: function(sel) {
                 if (el._queryAll && el._queryAll[sel]) return el._queryAll[sel];
@@ -37,7 +38,7 @@ function loadModule() {
             blur: function() {},
             focus: function() { this._focused = true; },
             select: function() {},
-            click: function() { if (this._onclick) this._onclick(); }
+            click: function() { if (this._onclick) this._onclick(); if (this._listeners && this._listeners.click) this._listeners.click(); }
         };
         return el;
     }
@@ -61,7 +62,7 @@ function loadModule() {
             chrome: { webview: { postMessage: function(msg) { postedMessages.push(msg); } } },
             addEventListener: function() {},
             removeEventListener: function() {},
-            _confirmCallback: null
+            _chatConfirmCallback: null
         },
         console: console,
         setTimeout: function(fn) { try { fn(); } catch(e) {}; return 1; },
@@ -82,12 +83,12 @@ function loadModule() {
         onSearchCrossThreadLoaded: function() {},
         closeSearchDropdown: function() {},
         _searchDropdownEl: null,
-        _confirmCallback: null,
+        _chatConfirmCallback: null,
         escHtml: undefined,
         initChatMode: undefined,
         renderMarkdown: undefined,
         _makeInlineEditor: undefined,
-        _showConfirm: undefined
+        _showChatConfirm: undefined
     };
     sandbox.global = sandbox;
     sandbox._postedMessages = postedMessages;
@@ -304,5 +305,33 @@ describe('_makeInlineEditor', () => {
     it('does nothing when element is null', () => {
         const ctx = loadModule();
         assert.doesNotThrow(() => ctx._makeInlineEditor(null, 'test', function() {}));
+    });
+});
+
+describe('_showChatConfirm', () => {
+    it('opens its own overlay with the message and runs the callback on confirm', () => {
+        const ctx = loadModule();
+        let confirmed = false;
+        ctx._showChatConfirm('Delete this chat?', () => { confirmed = true; });
+        const overlay = ctx.document.body.children[0];
+        assert.ok(overlay, 'overlay should be appended to the body');
+        assert.strictEqual(overlay.id, 'customConfirmOverlay');
+        assert.ok(overlay.innerHTML.indexOf('Delete this chat?') >= 0, 'message should be shown in the overlay');
+        overlay.querySelector('.yes-confirm-btn').click();
+        assert.strictEqual(confirmed, true, 'confirm callback should fire');
+    });
+
+    it('does not run the callback when cancelled', () => {
+        const ctx = loadModule();
+        let confirmed = false;
+        ctx._showChatConfirm('Delete this chat?', () => { confirmed = true; });
+        ctx.document.body.children[0].querySelector('.cancel-confirm-btn').click();
+        assert.strictEqual(confirmed, false);
+    });
+
+    it('does not define the colliding _showConfirm name', () => {
+        const ctx = loadModule();
+        assert.strictEqual(typeof ctx._showConfirm, 'undefined');
+        assert.strictEqual(typeof ctx._showChatConfirm, 'function');
     });
 });

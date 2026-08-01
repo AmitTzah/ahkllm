@@ -62,7 +62,7 @@ function deleteMessage(index) {
   var msg = chatMessages[index];
   if (!msg || isLoading) return;
 
-  _showConfirm('Delete this message? This removes it from the current view but data is preserved.', function() {
+  _showChatConfirm('Delete this message? This removes it from the current view but data is preserved.', function() {
     window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteMessage', id: msg.id }));
   });
 }

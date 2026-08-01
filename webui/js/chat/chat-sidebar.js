@@ -150,7 +150,7 @@ function createChatItem(t) {
   // Delete
   item.querySelector('.chat-action-btn.danger').addEventListener('click', function(e) {
     e.stopPropagation();
-    _showConfirm('Delete this chat?', function() {
+    _showChatConfirm('Delete this chat?', function() {
       window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThread', threadId: t.id }));
     });
   });
@@ -235,7 +235,7 @@ function _buildFolderSection(folder, threads) {
   });
   head.querySelector('.folder-delete-btn').addEventListener('click', function(e) {
     e.stopPropagation();
-    _showConfirm('Delete folder "' + escHtml(folder.name) + '"? Chats will become unfiled.', function() {
+    _showChatConfirm('Delete folder "' + escHtml(folder.name) + '"? Chats will become unfiled.', function() {
       window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteFolder', folderId: folder.id }));
     });
   });

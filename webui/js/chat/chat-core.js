@@ -106,13 +106,15 @@ function _makeInlineEditor(el, currentValue, onSave, inputWidth) {
   });
 }
 
-// Shared custom confirmation dialog -- no browser prompt()
-var _confirmCallback = null;
-function _showConfirm(message, onYes) {
+// Shared chat-side custom confirmation dialog -- no browser prompt().
+// Named _showChatConfirm (not _showConfirm) so it doesn't collide with the
+// Settings-panel window._showConfirm(title, msg, btnText, onConfirm) helper.
+var _chatConfirmCallback = null;
+function _showChatConfirm(message, onYes) {
   var existing = document.getElementById('customConfirmOverlay');
   if (existing) existing.remove();
 
-  _confirmCallback = onYes;
+  _chatConfirmCallback = onYes;
   var overlay = document.createElement('div');
   overlay.id = 'customConfirmOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(17,24,39,0.4);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:200;';
@@ -126,14 +128,14 @@ function _showConfirm(message, onYes) {
     '</div>';
   document.body.appendChild(overlay);
 
-  overlay.querySelector('.cancel-confirm-btn').addEventListener('click', function() { overlay.remove(); _confirmCallback = null; });
+  overlay.querySelector('.cancel-confirm-btn').addEventListener('click', function() { overlay.remove(); _chatConfirmCallback = null; });
   overlay.querySelector('.yes-confirm-btn').addEventListener('click', function() {
     overlay.remove();
-    var cb = _confirmCallback;
-    _confirmCallback = null;
+    var cb = _chatConfirmCallback;
+    _chatConfirmCallback = null;
     if (cb) cb();
   });
-  overlay.addEventListener('click', function(e) { if (e.target === overlay) { overlay.remove(); _confirmCallback = null; } });
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) { overlay.remove(); _chatConfirmCallback = null; } });
 }
 
 // Global Escape handler: closes any open overlay (search, confirm, tree).
@@ -153,7 +155,7 @@ document.addEventListener('keydown', function(e) {
   var confirmOverlay = document.getElementById('customConfirmOverlay');
   if (confirmOverlay) {
     confirmOverlay.remove();
-    if (typeof _confirmCallback !== 'undefined') window._confirmCallback = null;
+    _chatConfirmCallback = null;
     return;
   }
 

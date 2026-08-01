@@ -211,10 +211,9 @@ scenarios.push({
       btn.click();
       return 'clicked';
     })()`);
-    // NOTE: the sidebar delete confirmation is itself broken (bug #23 — it opens
-    // the wrong modal and the confirm button is a no-op), so the user's intended
-    // action can never complete through the UI. Bypass the broken confirm by
-    // posting the deleteThread action directly to verify bug #1's leak.
+    // NOTE: post deleteThread directly (instead of driving the delete-confirm
+    // dialog) so this scenario stays focused on bug #3's settings leak and is
+    // independent of the delete-confirm flow covered by scenario 23.
     await cdp.eval(`window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThread', threadId: 't-leak-1' })); true`);
     await cdp.waitFor('window.activeThreadId === "" && chatMessages.length === 0', 10000, 250, 'chat emptied');
     await sendChatMessage(cdp, 'fresh message');
@@ -692,7 +691,7 @@ scenarios.push({
 
 scenarios.push({
   id: 23,
-  name: 'Chat delete confirmations are broken (wrong modal opens; confirm button is a no-op)',
+  name: 'Chat delete confirmation works (chat overlay opens; Delete posts and deletes)',
   mode: null,
   settings: {},
   fixtures: {
@@ -714,19 +713,19 @@ scenarios.push({
       return 'clicked';
     })()`);
     await sleep(400);
-    const wrongModalOpen = await cdp.eval('(document.getElementById("confirmModal") || {}).classList ? document.getElementById("confirmModal").classList.contains("open") : false');
-    const rightOverlay = await cdp.eval('!!document.getElementById("customConfirmOverlay")');
-    const wrongMsg = await cdp.text('#confirmModalMsg') || '';
-    if (!wrongModalOpen) throw new Error('confirmModal did not open');
-    if (rightOverlay) throw new Error('customConfirmOverlay opened (bug not reproduced)');
-    if (!wrongMsg.includes('function')) throw new Error('unexpected modal message: ' + JSON.stringify(wrongMsg));
-    await cdp.click('#confirmBtn');
+    const settingsModalOpen = await cdp.eval('(document.getElementById("confirmModal") || {}).classList ? document.getElementById("confirmModal").classList.contains("open") : false');
+    const chatOverlay = await cdp.eval('!!document.getElementById("customConfirmOverlay")');
+    const overlayMsg = await cdp.text('#customConfirmOverlay') || '';
+    if (settingsModalOpen) throw new Error('settings confirmModal opened instead of the chat overlay');
+    if (!chatOverlay) throw new Error('customConfirmOverlay did not open');
+    if (!overlayMsg.includes('Delete this chat?')) throw new Error('unexpected overlay message: ' + JSON.stringify(overlayMsg));
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
     await sleep(600);
     const posted = await cdp.postedMessages();
-    if (posted.some((m) => m.includes('deleteThread'))) throw new Error('deleteThread was posted (delete actually works)');
+    if (!posted.some((m) => m.includes('deleteThread'))) throw new Error('deleteThread was not posted');
     const alive = seed.query(dbPath, "SELECT id FROM chat_threads WHERE id='t-del-1' AND is_deleted=0").length === 1;
-    if (!alive) throw new Error('thread was deleted despite broken confirm');
-    return 'delete confirm opens #confirmModal (settings modal, msg shows the callback source); clicking #confirmBtn posts nothing and the chat survives';
+    if (alive) throw new Error('thread survived the delete confirm');
+    return 'delete confirm opens the chat overlay with the right message; clicking Delete posts deleteThread and deletes the chat';
   }
 });
 

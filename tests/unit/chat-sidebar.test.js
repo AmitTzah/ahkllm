@@ -194,10 +194,16 @@ describe('scrollToMessage', () => {
     });
 });
 
-describe('_showConfirm', () => {
-    it('creates overlay without throwing', () => {
+describe('_showChatConfirm', () => {
+    it('creates its own overlay without throwing', () => {
         const ctx = loadModules();
-        assert.doesNotThrow(() => ctx._showConfirm('Are you sure?', () => {}));
+        assert.doesNotThrow(() => ctx._showChatConfirm('Are you sure?', () => {}));
+    });
+
+    it('does not define the colliding _showConfirm name', () => {
+        const ctx = loadModules();
+        assert.strictEqual(typeof ctx._showConfirm, 'undefined', 'chat code must not shadow the settings confirm helper');
+        assert.strictEqual(typeof ctx._showChatConfirm, 'function');
     });
 });
 

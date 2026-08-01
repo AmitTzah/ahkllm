@@ -98,8 +98,7 @@ confirm the fix, never to re-verify the bug):
 
 - **20 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
   one scenario is the refuted-bug regression check).
-- **Where we left off:** no fixes yet — start with bug #1 (Phase 2, step 1: set
-  `fix in progress` in its entry).
+- **Where we left off:** bug #1 fix applied — scenario 23 (flipped assertion) PASS, full JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
 
 ---
 
@@ -109,7 +108,7 @@ confirm the fix, never to re-verify the bug):
 
 **Scenario:** 23 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** Open a chat, click the trash icon on a chat in the sidebar (or Delete on a message). A dialog appears — click its confirm button.
 

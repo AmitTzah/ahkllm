@@ -569,7 +569,7 @@ Load order in `index.html` (bottom of `<body>`):
 
 ```
 vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, officeParser)
-  └── chat/chat-core.js             # State, escHtml, _showConfirm, _makeInlineEditor
+  └── chat/chat-core.js             # State, escHtml, _showChatConfirm, _makeInlineEditor
        ├── chat/model-picker/model-picker.js    # Model/assistant popover
        ├── chat/chat-format.js                  # Token bar, copy
        ├── chat/chat-render.js                  # Message bubbles
