@@ -94,37 +94,106 @@ confirm the fix, never to re-verify the bug):
 - Only two files must stay in sync: this file and `verify-bugs.js` — `--check-sync`
   enforces it after every edit.
 
+## Harness safety: avoid the hanging-command trap
+
+**Never launch `AutoHotkey64.exe` directly from a shell (`& AutoHotkey64.exe x.ahk`)
+to run ad-hoc scripts.** In this headless environment an AHK process can hang
+forever, and a bare launch has no timeout, so the whole command blocks for minutes
+and aborted runs leave orphaned `AutoHotkey64.exe` processes behind.
+
+Why it hangs (verified 2026-08-01):
+
+- AHK v2 shows a **modal error dialog** (window class `#32770`, titled with the
+  script name) for any unhandled runtime error. Headless, nothing can dismiss it
+  — the process hangs indefinitely. Example: plain `Object` has no `Has` method (only
+  `Map` does), so `o.Has("type")` on `o := {type:"enabled"}` throws; bracket-indexing
+  a plain object (`o[k]`) throws too. Marker-file evidence: the script writes a
+  marker before the throwing line and never after; the hung process shows the
+  `#32770` dialog.
+- Such errors are silent in a hung process: no stderr, no output file, no exit
+  code. `#ErrorStdOut` alone did NOT prevent the hang in this environment.
+- This environment can also hang AHK at load for unrelated reasons (see probe.ahk),
+  which is why every repo probe carries a watchdog.
+
+How to run AHK safely:
+
+1. **Prefer the harness.** Add a scenario to `verify-bugs.js` (it wraps every AHK
+   call in `spawnSync` with `/ErrorStdOut` and a 25s timeout) or reuse a probe
+   command (`probe.ahk <command> <outFile>`, `probe-thinking.ahk`). Re-verify bugs
+   by running the scenario, never by hand.
+2. **Any scratch probe must copy the harness skeleton exactly:** `#Requires` (with
+   version), `#ErrorStdOut`, `#SingleInstance Off`, `#NoTrayIcon`, an `OnError`
+   handler that writes diagnostics and `ExitApp(1)` (this converts a hang into a
+   fast, logged failure), a watchdog `SetTimer(Exit, -15000)` for load-time hangs,
+   and `try FileAppend` for results.
+3. **Always launch with a hard bound** — e.g. .NET `Process.Start` + `WaitForExit(ms)` +
+   `Kill()`, or `spawnSync` with `timeout` — never bare `&`.
+4. **After any aborted run, kill stray `AutoHotkey64.exe` processes** before
+   retrying (`Stop-Process -Name AutoHotkey64 -Force`).
+5. Give the shell command itself a `timeout_ms`.
+
 ## Current state
 
-- **20 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
+- **19 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
   one scenario is the refuted-bug regression check).
-- **Where we left off:** bug #1 fix applied — scenario 23 (flipped assertion) PASS, full JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
+- **Where we left off:** bug #1 (command `thinking`) fix applied — scenario 22 (flipped) PASS, full JS + AHK suites green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
 
 ---
 
+## Bug entry template
+
+Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
+a bug is fixed and committed, its entry moves to History (one line) — this template
+stays so future entries always have the same fields. `--check-sync` enforces that
+every entry's scenario id exists in `verify-bugs.js` (and that every
+non-regression scenario has an entry).
+
+    ### N. <short bug title>
+
+    **Scenario:** <id> (scenario code in verify-bugs.js)
+
+    **Status:** reported | verified | fix in progress | fix applied | awaiting user commit
+
+    **Repro:** <exact steps a human can follow in the running app>
+
+    **Expected:** <behavior when fixed>
+
+    **Actual:** <behavior today, plus the root cause if known>
+
+    **Evidence:** <file/line references or a one-line explanation of the cause>
+
+    **Verification:** <how the headless scenario proves it — what was clicked/driven
+    and what was observed; for non-automatable bugs, the unit/static/manual check
+    and exactly how it was done>
+
+Example (shape only, not a real bug):
+
+    ### 1. Example: hotkey does nothing
+
+    **Scenario:** 99 (scenario code in verify-bugs.js)
+
+    **Status:** verified — open
+
+    **Repro:** Settings → Hotkeys → set X → Save → press X.
+
+    **Expected:** the action runs.
+
+    **Actual:** nothing happens — `_ApplyHotkeys` never reads the setting.
+
+    **Evidence:** `Main.ahk:12` wires the hotkey from a hardcoded value.
+
+    **Verification:** headless — pressed X via probe, observed no postMessage.
+
+Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fixed,
+one at a time, in rank order.
+
 ## Open bugs (ranked)
 
-### 1. Chat delete confirmations are broken — the confirm button is a no-op
-
-**Scenario:** 23 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** Open a chat, click the trash icon on a chat in the sidebar (or Delete on a message). A dialog appears — click its confirm button.
-
-**Expected:** the chat/message is deleted.
-
-**Actual:** the dialog is the wrong one (the Settings panel's `#confirmModal`), its message shows the raw callback source, and clicking the button only closes the dialog — nothing is deleted.
-
-**Evidence:** `chat-core.js` defines `_showConfirm(message, onYes)`, but `main.js` runs last and overwrites `window._showConfirm` with the Settings version `(title, msg, btnText, onConfirm)`. All chat callers pass `(message, callback)`, so `onConfirm` is undefined.
-
-**Verification:** headless — clicked delete, observed `#confirmModal` with the callback source as its message, clicked `#confirmBtn`, confirmed no `deleteThread` message and the thread survived.
-
-### 2. Command `thinking` settings are dropped after any settings round-trip
+### 1. Command `thinking` settings are dropped after any settings round-trip
 
 **Scenario:** 22 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** Save any setting (so `settings.json` exists), then run a command with a thinking level (e.g. "Refine" with `thinking: {type:"enabled", level:"none"}`).
 
@@ -136,7 +205,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless scenario 22 + 2 AHK unit tests.
 
-### 3. Deleting the active chat leaks its per-thread settings into the next chat
+### 2. Deleting the active chat leaks its per-thread settings into the next chat
 
 **Scenario:** 1 (scenario code in verify-bugs.js)
 
@@ -150,7 +219,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — new thread had `assistant_id=asst-1`, the pirate system prompt, `reasoning=high`, `temp=0.3`, `font_size=21`.
 
-### 4. "Set as Default Assistant" does nothing
+### 3. "Set as Default Assistant" does nothing
 
 **Scenario:** 2 (scenario code in verify-bugs.js)
 
@@ -164,7 +233,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — new chat still has `assistantName=""`.
 
-### 5. Removing models/providers in Settings doesn't persist
+### 4. Removing models/providers in Settings doesn't persist
 
 **Scenario:** 3 (scenario code in verify-bugs.js)
 
@@ -178,7 +247,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — removed `deepseek/deepseek-chat` + provider `deepseek`, both back in `settings.json` after Save.
 
-### 6. Clearing a hotkey field does nothing — hotkeys can't be disabled
+### 5. Clearing a hotkey field does nothing — hotkeys can't be disabled
 
 **Scenario:** 4 (scenario code in verify-bugs.js)
 
@@ -192,7 +261,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — `settings.json` saved `""`, backtick still opened the menu.
 
-### 7. New models added in Settings lose reasoning/thinking metadata
+### 6. New models added in Settings lose reasoning/thinking metadata
 
 **Scenario:** 5 (scenario code in verify-bugs.js)
 
@@ -206,7 +275,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — dropdown had exactly 1 option; plus JS probe.
 
-### 8. Chat request failure with no output file shows no error and leaves the UI stuck
+### 7. Chat request failure with no output file shows no error and leaves the UI stuck
 
 **Scenario:** 6 (scenario code in verify-bugs.js)
 
@@ -220,7 +289,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — refused endpoint; no error banner, stuck until Stop.
 
-### 9. Trash retention never auto-purges
+### 8. Trash retention never auto-purges
 
 **Scenario:** 7 (scenario code in verify-bugs.js)
 
@@ -234,7 +303,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — static caller check + expired trashed thread survived.
 
-### 10. "Close Windows" hotkey setting is ignored by the chat window
+### 9. "Close Windows" hotkey setting is ignored by the chat window
 
 **Scenario:** 8 (scenario code in verify-bugs.js)
 
@@ -248,7 +317,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless scenario 8 (static trace) + user manual confirmation.
 
-### 11. Suspend banner edits don't take effect until restart
+### 10. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
@@ -262,7 +331,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
 
-### 12. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+### 11. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -276,7 +345,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 13. Title generation resets the topbar folder label to "Unfiled"
+### 12. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -290,7 +359,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 14. Chat topbar "Export" button does nothing
+### 13. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -304,7 +373,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — click produced no message and no state change.
 
-### 15. API Logs viewer latency column always shows "–"
+### 14. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -318,7 +387,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless scenario 16.
 
-### 16. System-prompt modal "0 chars" counter never updates
+### 15. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -332,7 +401,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless scenario 17.
 
-### 17. Custom icon picked outside the repo never applies to the chat window
+### 16. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -346,7 +415,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 18. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 17. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -360,7 +429,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 19. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 18. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -374,7 +443,7 @@ confirm the fix, never to re-verify the bug):
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 20. Reasoning-only responses get no action buttons until reload
+### 19. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -399,3 +468,4 @@ closure; never rewrite past entries.
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check
   (`regression: true`).
+- 2026-08-01 — "Chat delete confirmations are broken — the confirm button is a no-op" — FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.

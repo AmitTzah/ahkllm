@@ -1,25 +1,5 @@
-PASS | #01 | Stale per-thread settings leak into next chat after deleting active chat | new thread 00c2c5f0-5b47-13ba-28c9-0000b31da6e9 inherited assistant/system/reasoning/temp/font from deleted chat | 2.4s
-PASS | #02 | Set as Default Assistant does nothing (new chat ignores isDefault) | new chat assistantName="" despite isDefault assistant existing | 2.8s
-PASS | #03 | Removing models/providers in Settings does not persist | after removing deepseek/deepseek-chat and provider deepseek, both are back in settings.json (removal resurrected by merge) | 3.3s
-PASS | #04 | Clearing a hotkey field does nothing — old binding stays active | field saved as "" but backtick still opens the command menu (old binding stays live) | 4.9s
-PASS | #05 | New models added in Settings lose thinking metadata (reasoning dropdown empty) | new model gpt-brand-new offers only "Model Default" (no thinking levels) | 4.7s
-PASS | #06 | Stream failure with no output file shows no error and leaves UI stuck (Stop re-enables) | no error banner, UI stuck in Stop state until Stop pressed (input disabled=false before re-enable) | 6.1s
-PASS | #07 | Trash retention never auto-purges (no caller of PurgeExpired) | PurgeExpired has no callers; expired trashed thread still present after app run | 3.7s
-PASS | #08 | Close-Windows hotkey setting ignored by chat window (Ctrl+W hardcoded) | ChatWindow.ahk hardcodes ~^w:: (never reads closeWindowsHotkey); Main's configured-hotkey handler only closes the input window (live Ctrl+W verified manually by user) | 1.6s
-PASS | #09 | Quick Access > Usage Dashboard does nothing on prewarmed window | REFUTED: Quick Access > usage: OPENED the dashboard despite prewarmed title "LLM AutoHotkey Assistant" | 4.1s
-PASS | #12 | Suspend banner edits do not take effect until restart | after saving NEW BANNER TEXT, suspended banner still shows "OLD BANNER TEXT" | 3.5s
-PASS | #13 | Command Input Window settings dead — width change requires restart | after saving width 800, input window still opened at width 554 (constructed at startup) | 4.7s
-PASS | #14 | Title generation resets topbar folder label to "Unfiled" | ThreadTitleGen.ahk posts folder:"Unfiled" hardcoded; chat-sidebar.js stores it into _threadMeta (overwriting the real folder until the next thread-list refresh) | 1.5s
-PASS | #15 | Chat topbar Export button does nothing | clicking Export produced no postMessage and no state change | 2.2s
-PASS | #16 | API Logs viewer latency column always shows "-" | log row latency cell = "-" (viewer reads latencyMs; loggers write responseTimeMs) | 2.5s
-PASS | #17 | System-prompt modal "0 chars" counter never updates | after typing, #charCount still shows "0 chars" | 2.6s
-PASS | #18 | Custom icon picked outside the repo never applies to the chat window | absolute icon path: direct LoadPicture ok (h=15270479), mangled path h=0, window icon unchanged (customApplied=0) | 1.5s
-PASS | #19 | Dashboard "All Time" chart caps at 365 days while summary sums all rows | All Time: summary shows $6.00 (includes 400-day-old row) but chart has 365 labels (capped at 365) | 2.6s
-PASS | #20 | Right-rail Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing | toggle visual state changed (on=true) but only updateModelSettings (unchanged payload) was posted | 2.6s
-PASS | #21 | Reasoning-only responses (thinking, no visible text) get no action buttons | thinking block shown but message not added to chatMessages; assistant bubble has 0 action buttons | 2.5s
-PASS | #22 | Command thinking setting dropped after settings round-trip (Map HasOwnProp bug) | ﻿Map-form thinking  -> type='' level='' | Object-form thinking -> type='enabled' level='none' | RESULT: BUG22 CONFIRMED (Map-form thinking is dropped; object-form works) | 0.0s
-PASS | #23 | Chat delete confirmation works (chat overlay opens; Delete posts and deletes) | delete confirm opens the chat overlay with the right message; clicking Delete posts deleteThread and deletes the chat | 2.9s
+PASS | #22 | Command thinking setting survives settings round-trip (Map/object forms) | ﻿Map-form thinking  -> type='enabled' level='none' | Object-form thinking -> type='enabled' level='none' | RESULT: BUG22 FIXED (Map-form and object-form thinking both survive) | 0.0s
 
-Summary: 21/21 scenarios PASS
+Summary: 1/1 scenarios PASS
 Real profile restored: yes
 Report sync: OK

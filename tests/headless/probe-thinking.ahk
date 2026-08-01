@@ -1,6 +1,6 @@
-; probe-thinking.ahk — Bug #22: command `thinking` metadata lost after the
-; settings.json round-trip (cmd.thinking becomes an AHK Map; _extractCommandParams
-; gates on HasOwnProp which is false for Map keys).
+; probe-thinking.ahk — Bug #22 regression check: command `thinking` metadata must
+; survive a settings.json round-trip (cmd.thinking is an AHK Map; the helper reads
+; Map entries with Has()/[] instead of HasOwnProp).
 ; Lightweight: includes ONLY CommandMenu.ahk (no Config/test harness).
 ; Usage: AutoHotkey64.exe probe-thinking.ahk <outFile>
 #Requires AutoHotkey v2.0.18+
@@ -69,8 +69,8 @@ objType := params2[8]
 objLevel := params2[9]
 Log("Object-form thinking -> type='" objType "' level='" objLevel "'")
 
-if (mapType = "" && mapLevel = "" && objType = "enabled" && objLevel = "none")
-    Log("RESULT: BUG22 CONFIRMED (Map-form thinking is dropped; object-form works)")
+if (mapType = "enabled" && mapLevel = "none" && objType = "enabled" && objLevel = "none")
+    Log("RESULT: BUG22 FIXED (Map-form and object-form thinking both survive)")
 else
     Log("RESULT: unexpected (" mapType "/" mapLevel " vs " objType "/" objLevel ")")
 

@@ -104,6 +104,16 @@ _resolveSystemMessage(cmd) {
 
 ; Extract optional command properties shared by onCommandSelected and onCommandInputSend.
 ; Returns a flat array for splatting into processInitialRequest after the first 4 required params.
+; cmd.thinking may be a plain object or an AHK Map after a settings.json round-trip.
+; Map entries are not own properties: HasOwnProp("type") is false for a Map (only
+; Has() works), while Has("type") is false for a plain object — check the shape.
+_thinkingHas(cmd, key) {
+    if !cmd.HasProp("thinking") || !cmd.thinking
+        return false
+    if Type(cmd.thinking) = "Map"
+        return cmd.thinking.Has(key)
+    return cmd.thinking.HasOwnProp(key)
+}
 _extractCommandParams(cmd, inputText := "") {
     return [
         cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat",
@@ -113,8 +123,8 @@ _extractCommandParams(cmd, inputText := "") {
         cmd.HasProp("maxTokens") ? cmd.maxTokens : "",
         cmd.HasProp("stop") ? cmd.stop : "",
         cmd.HasProp("stream") && cmd.stream,
-        cmd.HasProp("thinking") && cmd.thinking && cmd.thinking.HasOwnProp("type") ? (Type(cmd.thinking) = "Map" ? cmd.thinking["type"] : cmd.thinking.type) : "",
-        cmd.HasProp("thinking") && cmd.thinking && cmd.thinking.HasOwnProp("level") ? (Type(cmd.thinking) = "Map" ? cmd.thinking["level"] : cmd.thinking.level) : "",
+        _thinkingHas(cmd, "type") ? (Type(cmd.thinking) = "Map" ? cmd.thinking["type"] : cmd.thinking.type) : "",
+        _thinkingHas(cmd, "level") ? (Type(cmd.thinking) = "Map" ? cmd.thinking["level"] : cmd.thinking.level) : "",
         cmd.HasProp("userMessage") ? cmd.userMessage : "",
         cmd.HasProp("expandNewlines") && cmd.expandNewlines,
         cmd.HasProp("maxContextWords") ? cmd.maxContextWords : 0,

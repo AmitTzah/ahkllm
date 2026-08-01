@@ -677,14 +677,14 @@ scenarios.push({
 
 scenarios.push({
   id: 22,
-  name: 'Command thinking setting dropped after settings round-trip (Map HasOwnProp bug)',
+  name: 'Command thinking setting survives settings round-trip (Map/object forms)',
   mode: null,
   settings: {},
   noApp: true,
   async body() {
     const lines = runThinkingProbe();
     const text = lines.join('\n');
-    if (!text.includes('BUG22 CONFIRMED')) throw new Error('probe output: ' + text);
+    if (!text.includes('BUG22 FIXED')) throw new Error('probe output: ' + text);
     return text.split('\n').filter((l) => l.includes('thinking')).join(' | ');
   }
 });
@@ -692,6 +692,7 @@ scenarios.push({
 scenarios.push({
   id: 23,
   name: 'Chat delete confirmation works (chat overlay opens; Delete posts and deletes)',
+  regression: true, // FIXED bug kept as a regression check (delete confirm must keep working)
   mode: null,
   settings: {},
   fixtures: {
