@@ -101,6 +101,7 @@ RegisterTestClass(className) {
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
 #Include unit\ModelParser.test.ahk
+#Include unit\ModelPricingParser.test.ahk
 #Include unit\ChatSettings.test.ahk
 #Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
@@ -136,9 +137,13 @@ RunAllTests(*) {
         for detail in failedDetails
             Log("  " detail "`n")
     }
-    ; Write result marker for batch file (ExitApp doesn't propagate to process exit code)
+    ; Write result marker for the batch file, then terminate for real.
+    ; The ExitApp override above swallows ExitApp calls so production code
+    ; can't kill the runner mid-run, but that also leaves an orphan
+    ; AutoHotkey64.exe per test run. ExitProcess avoids that (and makes the
+    ; exit code propagate for direct invocations; the batch uses the marker).
     Log("`nRESULT: " (totalFailed > 0 ? "FAIL" : "PASS") "`n")
-    ExitApp(totalFailed > 0 ? 1 : 0)
+    DllCall("ExitProcess", "UInt", totalFailed > 0 ? 1 : 0)
 }
 
 RunTestClass(className) {

@@ -159,51 +159,30 @@ _HandleRefreshModelPricing() {
         return
     }
     try {
-        cmd := "powershell -ExecutionPolicy Bypass -File `"" scriptPath "`""
-        RunWait(cmd, A_ScriptDir, "Hide")
-        ; Read the output file
-        pricingFile := A_ScriptDir "\..\models_pricing.txt"
+        ; -NoPause: without it the script blocks on "Press any key" and hangs the hidden window
+        cmd := "powershell -NoProfile -ExecutionPolicy Bypass -File `"" scriptPath "`" -NoPause"
+        exitCode := RunWait(cmd, A_ScriptDir, "Hide")
+        if exitCode != 0 {
+            postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-Models.ps1 exited with code " exitCode })
+            return
+        }
+        ; Read the output file the pipeline actually generates
+        pricingFile := A_ScriptDir "\..\scripts\models_metadata.txt"
         if !FileExist(pricingFile) {
-            postWebMessage("modelPricingRefresh", { success: false, error: "models_pricing.txt not generated" })
+            postWebMessage("modelPricingRefresh", { success: false, error: "models_metadata.txt not generated" })
             return
         }
         content := FileRead(pricingFile, "UTF-8")
         ; Parse models from the file — extract the models := Map(...) block
-        models := _ParsePricingFile(content)
+        models := ModelPricingParser.Parse(content)
+        if models.Length = 0 {
+            postWebMessage("modelPricingRefresh", { success: false, error: "No models parsed from models_metadata.txt" })
+            return
+        }
         postWebMessage("modelPricingRefresh", { success: true, models: models })
     } catch Error as e {
         postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
     }
-}
-
-; Parse models_pricing.txt to extract model entries for the refresh popup
-_ParsePricingFile(content) {
-    ; Find the models := Map( ... ) block
-    result := []
-    ; Simple line-by-line parser for "provider/model", { ... } entries
-    inBlock := false
-    currentModel := ""
-    for line in StrSplit(content, "`n", "`r") {
-        line := Trim(line)
-        if line = "" || InStr(line, ";") = 1
-            continue
-        if InStr(line, "models := Map(")
-            inBlock := true
-        else if inBlock && line = ")"
-            break
-        else if inBlock {
-            ; Look for "provider/model", { ... } pattern
-            if InStr(line, ", {") || InStr(line, "`, {") {
-                ; Model name is before the comma
-                modelPart := StrSplit(line, [",", "`,"])
-                modelName := Trim(Trim(modelPart[1]), "`" ")
-                if modelName != "" {
-                    result.Push({ id: modelName, raw: line })
-                }
-            }
-        }
-    }
-    return result
 }
 
 _HandleBrowseIcon(parsed) {

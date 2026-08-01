@@ -60,9 +60,11 @@ providers := Map(
 ; Format: Map("provider/model-name", {provider, input, cachedInput, output, context, reasoning, vision})
 ; Prices in USD per 1M tokens. cachedInput defaults to 10% of input if omitted.
 ;
-; To refresh pricing: run Refresh-ModelPricing.ps1 (Quick Access -> Refresh Model Pricing).
-; The script opens models_pricing.txt with the latest data -- copy the models := Map(...)
-; block from that file and paste it here, replacing everything from "models := Map(" below.
+; To refresh pricing: use Models settings -> Fetch Latest Models, or run
+; scripts\Refresh-Models.ps1 (Quick Access -> Refresh Models). The script fetches
+; models.dev, applies scripts\models-corrections.json, and rewrites the
+; models := Map(...) block below in place. A generated copy is saved to
+; scripts\models_metadata.txt.
 
 models := Map(
     ; -- DeepSeek --

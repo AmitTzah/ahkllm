@@ -238,6 +238,8 @@
   }
 
   window.SettingsModels = {
+    parsePricingRaw: parsePricingRaw,
+
     handleRefreshResult: function(data) {
       var leftTbody = document.getElementById('refreshLeftTbody');
       if (!leftTbody) return;

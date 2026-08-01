@@ -13,6 +13,7 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 
 ; Shared utilities
 #Include ..\shared\ModelParser.ahk
+#Include ..\shared\ModelPricingParser.ahk
 #Include ..\shared\DebugLog.ahk
 #Include ..\shared\ImageUtils.ahk
 #Include ..\shared\AttachmentUtils.ahk

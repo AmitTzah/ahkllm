@@ -253,6 +253,7 @@ try {
 catch {
     Write-Host ""
     Write-Color "ERROR: $_" "Red"
+    exit 1
 }
 finally {
     if (-not $NoPause) {
