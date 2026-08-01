@@ -82,11 +82,36 @@ global quickAccessMenuItems := []
 global submenuOrder := []
 global commands := []
 
+; ----------------------------------------------------
+; Mock-record globals for the settings-branch AHK tests
+; (HotkeyRegistrar / ThreadTitleGen / ChatDispatch test files).
+; Declared here — early in the include order — because ChatSettings.ahk
+; calls SetTimer at top level during auto-execute, before the test files'
+; own top-level initializers would run.
+; ----------------------------------------------------
+global _mockHotkeyCalls := []
+global _mockKeyWaitCalls := []
+global _mockCapsLockCalls := []
+global _mockReloadCalls := 0
+global _mockToolTipCalls := []
+global _mockSetTimerCalls := []
+global _mockWinActiveResult := ""
+global _mockToggleSuspendCalls := []
+global _mockCloseWindowCalls := 0
+global _mockRunCalls := []
+global _mockTitleGenOutput := ""
+global _mockRunWaitExitCode := 0
+global _mockRunWaitCalls := []
+global _mockFileSelectResult := ""
+global _mockHideWindowCalls := 0
+
 ; ChatRequestBuilder/StreamHandler test setup globals
 global requestParams := Map(
     "pasteMode", "chat",
     "windowTitle", "test",
     "providerName", "",
+    "mainScriptHiddenhWnd", "0x0",
+    "uniqueID", "test-unique-id",
     "singleAPIModelName", "deepseek-v4-flash",
     "stream", true,
     "isFIM", false,

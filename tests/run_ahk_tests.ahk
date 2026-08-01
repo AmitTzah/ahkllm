@@ -76,6 +76,11 @@ global responseWindow := {PostWebMessageAsJSON: (*) => ""}
 #Include ..\chat\streaming\StreamHandler.ahk
 #Include ..\chat\callbacks\Message.ahk
 #Include ..\chat\ChatRequestBuilder.ahk
+; Settings-related modules that live in Main.ahk / ChatWindow.ahk and are
+; otherwise never loaded by the test harness.
+#Include ..\chat\ThreadTitleGen.ahk
+#Include ..\app\HotkeyRegistrar.ahk
+#Include ..\chat\callbacks\Dispatch.ahk
 
 ; -----------------------------------------------------------
 ; Test registration
@@ -113,6 +118,12 @@ RegisterTestClass(className) {
 #Include integration\ChatFlow.test.ahk
 #Include integration\BranchFlow.test.ahk
 #Include integration\UsageFlow.test.ahk
+; Settings-branch modules that are only included by Main.ahk / ChatWindow.ahk.
+; Registered last so their global mocks and settings application cannot
+; affect the rest of the suite.
+#Include unit\HotkeyRegistrar.test.ahk
+#Include unit\ThreadTitleGen.test.ahk
+#Include unit\ChatDispatch.test.ahk
 
 ; -----------------------------------------------------------
 ; Test runner
@@ -160,6 +171,8 @@ RunTestClass(className) {
                 totalPassed++
             } catch Error as err {
                 Log("[FAIL] " className "." methodName " — " err.Message "`n")
+                if err.HasProp("Stack") && err.Stack
+                    Log("    stack: " err.Stack "`n")
                 totalFailed++
                 failedDetails.Push(className "." methodName ": " err.Message)
             }

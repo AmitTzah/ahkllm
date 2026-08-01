@@ -1,0 +1,261 @@
+// sysmsg-modal.test.js — Unit tests for webui/js/settings/sections/sysmsg-modal.js
+const { describe, it } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+function makeClassList(initial) {
+    const classes = initial ? initial.slice() : [];
+    return {
+        add(c) { if (!classes.includes(c)) classes.push(c); },
+        remove(c) { const i = classes.indexOf(c); if (i >= 0) classes.splice(i, 1); },
+        contains(c) { return classes.includes(c); },
+        toggle(c) { if (this.contains(c)) this.remove(c); else this.add(c); },
+    };
+}
+
+function makeEl(overrides) {
+    return Object.assign({
+        value: '',
+        checked: false,
+        selectedIndex: -1,
+        style: {},
+        classList: makeClassList(),
+        dataset: {},
+        _listeners: {},
+        addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); },
+        fire(type) { (this._listeners[type] || []).forEach((fn) => fn.call(this)); },
+        querySelector(sel) {
+            if (sel === 'input[name="sysMsgMode"][value="file"]') return this._fileRadio || null;
+            if (sel === 'input[name="sysMsgMode"][value="inline"]') return this._inlineRadio || null;
+            if (sel === '.sysmsg-label') return this._label || null;
+            return null;
+        },
+    }, overrides);
+}
+
+function loadSection(opts) {
+    const { els, target, cmds, withSettingsPanel, fileRadio, inlineRadio, modal } = opts || {};
+    const elementMap = els || {};
+    const domContentLoaded = [];
+    const dirtyCalls = [];
+    const modalEl = modal !== undefined ? modal : makeEl();
+    if (modalEl) {
+        modalEl._fileRadio = fileRadio !== undefined ? fileRadio : makeEl();
+        modalEl._inlineRadio = inlineRadio !== undefined ? inlineRadio : makeEl();
+    }
+    if (!elementMap.sysMsgEditModal) elementMap.sysMsgEditModal = modalEl;
+    const panelStub = {
+        registerSection: () => {},
+        markDirty: () => { dirtyCalls.push(true); },
+    };
+    const settingsPanel = opts && 'withSettingsPanel' in opts ? withSettingsPanel : panelStub;
+
+    const sandbox = {
+        document: {
+            getElementById: (id) => elementMap[id] || null,
+            addEventListener: (type, fn) => { if (type === 'DOMContentLoaded') domContentLoaded.push(fn); },
+        },
+        window: {
+            _sysMsgTarget: target || null,
+            Cmds: cmds || null,
+            SettingsPanel: settingsPanel,
+            addEventListener: () => {},
+        },
+        console,
+    };
+    sandbox.global = sandbox;
+
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'sysmsg-modal.js'), 'utf-8');
+    vm.runInContext(src, vm.createContext(sandbox));
+
+    return {
+        sandbox,
+        dirtyCalls,
+        populate: sandbox.window.populateSysMsgModal,
+        fireDomReady: () => domContentLoaded.forEach((fn) => fn()),
+        get modal() { return elementMap.sysMsgEditModal; },
+    };
+}
+
+describe('System message modal', () => {
+    it('populate opens file mode and strips directory prefix when needed', () => {
+        const fileRadio = makeEl();
+        const inlineRadio = makeEl({ checked: true });
+        const fileSelect = makeEl();
+        const fileSection = makeEl();
+        const inlineSection = makeEl();
+        const ctx = loadSection({
+            els: {
+                smFileSection: fileSection,
+                smInlineSection: inlineSection,
+                smFileSelect: fileSelect,
+                smInlineText: makeEl(),
+            },
+            fileRadio,
+            inlineRadio,
+        });
+        fileSelect.selectedIndex = -1;
+        ctx.populate({ systemMessageFile: 'system-messages/refine.txt' });
+        assert.ok(fileRadio.checked === true);
+        assert.ok(inlineRadio.checked === false);
+        assert.ok(fileSection.style.display === '');
+        assert.ok(inlineSection.style.display === 'none');
+        assert.ok(fileSelect.value === 'refine.txt', 'prefix stripped');
+        assert.ok(ctx.modal.classList.contains('open'));
+    });
+
+    it('populate keeps full filename when select already matches', () => {
+        const fileSelect = makeEl();
+        fileSelect.selectedIndex = 0;
+        const ctx = loadSection({ els: { smFileSelect: fileSelect } });
+        ctx.populate({ systemMessageFile: 'refine.txt' });
+        assert.ok(fileSelect.value === 'refine.txt');
+    });
+
+    it('populate does not strip names without a slash', () => {
+        const fileSelect = makeEl();
+        fileSelect.selectedIndex = -1;
+        const ctx = loadSection({ els: { smFileSelect: fileSelect } });
+        ctx.populate({ systemMessageFile: 'plain.txt' });
+        assert.ok(fileSelect.value === 'plain.txt');
+    });
+
+    it('populate opens inline mode and sets the inline text', () => {
+        const fileRadio = makeEl({ checked: true });
+        const inlineRadio = makeEl();
+        const inlineText = makeEl();
+        const fileSection = makeEl();
+        const inlineSection = makeEl();
+        const ctx = loadSection({
+            els: { smInlineText: inlineText, smFileSection: fileSection, smInlineSection: inlineSection },
+            fileRadio,
+            inlineRadio,
+        });
+        ctx.populate({ systemMessage: 'You are helpful.' });
+        assert.ok(inlineRadio.checked === true);
+        assert.ok(fileRadio.checked === false);
+        assert.ok(inlineSection.style.display === '');
+        assert.ok(fileSection.style.display === 'none');
+        assert.ok(inlineText.value === 'You are helpful.');
+    });
+
+    it('populate tolerates missing modal, radios, sections and text', () => {
+        const ctx = loadSection({ modal: null });
+        ctx.populate({ systemMessageFile: 'a.txt' });
+        ctx.populate({ systemMessage: 'x' });
+        assert.ok(true);
+    });
+
+    it('save does nothing without a target', () => {
+        const saveBtn = makeEl();
+        const ctx = loadSection({ els: { sysMsgEditSave: saveBtn }, target: null });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(ctx.dirtyCalls.length === 0);
+    });
+
+    it('save updates assistant card data and label', () => {
+        const saveBtn = makeEl();
+        const label = makeEl();
+        const card = makeEl();
+        card._label = label;
+        const inlineText = makeEl({ value: 'Inline msg' });
+        const inlineRadio = makeEl({ checked: true });
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn, smInlineText: inlineText },
+            inlineRadio,
+            target: { type: 'assistant', card },
+        });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(card.dataset.systemMessage === 'Inline msg');
+        assert.ok(card.dataset.systemMessageFile === '');
+        assert.ok(label.textContent.indexOf('(inline)') >= 0);
+        assert.ok(!ctx.modal.classList.contains('open'));
+        assert.ok(ctx.dirtyCalls.length >= 1);
+    });
+
+    it('save updates assistant card when label is missing', () => {
+        const saveBtn = makeEl();
+        const card = makeEl();
+        card._label = null;
+        const fileSelect = makeEl({ value: 'sys.txt' });
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn, smFileSelect: fileSelect },
+            fileRadio: makeEl(),
+            inlineRadio: makeEl(),
+            target: { type: 'assistant', card },
+        });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(card.dataset.systemMessageFile === 'sys.txt');
+        assert.ok(card.dataset.systemMessage === '');
+    });
+
+    it('save updates command via window.Cmds', () => {
+        const saveBtn = makeEl();
+        const commands = [{ commandName: 'A' }];
+        let selectedIdx = -1;
+        const cmds = {
+            commands: () => commands,
+            selectCommand: (i) => { selectedIdx = i; },
+        };
+        const inlineRadio = makeEl({ checked: true });
+        const inlineText = makeEl({ value: 'Cmd msg' });
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn, smInlineText: inlineText },
+            inlineRadio,
+            cmds,
+            target: { type: 'command', idx: 0 },
+        });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(commands[0].systemMessage === 'Cmd msg');
+        assert.ok(selectedIdx === 0);
+        assert.ok(ctx.dirtyCalls.length >= 1);
+    });
+
+    it('save handles command without a matching command and without Cmds', () => {
+        const saveBtn = makeEl();
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn },
+            inlineRadio: makeEl({ checked: true }),
+            target: { type: 'command', idx: 5 },
+        });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(ctx.dirtyCalls.length >= 1);
+
+        const saveBtn2 = makeEl();
+        const ctx2 = loadSection({
+            els: { sysMsgEditSave: saveBtn2 },
+            cmds: null,
+            target: { type: 'command', idx: 0 },
+        });
+        ctx2.fireDomReady();
+        saveBtn2.fire('click');
+        assert.ok(ctx2.dirtyCalls.length >= 1);
+    });
+
+    it('save handles missing modal by reading file select directly', () => {
+        const saveBtn = makeEl();
+        const fileSelect = makeEl({ value: 'file.txt' });
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn, smFileSelect: fileSelect },
+            modal: null,
+            target: { type: 'command', idx: 0 },
+            cmds: { commands: () => [{}], selectCommand: () => {} },
+        });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(ctx.dirtyCalls.length >= 1);
+    });
+
+    it('save button handler is not wired when button is missing', () => {
+        const ctx = loadSection({ els: { sysMsgEditSave: null } });
+        ctx.fireDomReady();
+        assert.ok(true);
+    });
+});
