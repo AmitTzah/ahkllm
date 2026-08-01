@@ -133,7 +133,8 @@ This is the same reason Chrome runs each tab in its own process, and Electron sp
 ```
 autohotkey-llm-client/
 ├── Main.ahk                     # Main process entry point (hotkeys, tray, inline requests)
-├── DefaultSettings.ahk          # Default settings as top-level globals (models, commands, hotkeys, ...)
+├── DefaultSettings.ahk          # Default settings as top-level globals (commands, hotkeys, ...)
+├── DefaultModels.ahk            # Auto-generated model metadata (pricing, thinking, compat)
 ├── README.md, ARCHITECTURE.md, LICENSE
 │
 ├── api/                         # API client layer
@@ -149,7 +150,12 @@ autohotkey-llm-client/
 │       └── GoogleChatCompletions.ahk   # Google thinking_config (budget / level / disabled)
 │
 ├── app/                         # Main-process application logic
-│   ├── SettingsHandler.ahk      # JSON settings: GetDefaults/Load/Save/Merge/ApplyToGlobals/CacheInitialDefaults
+│   ├── settings/                # Settings subsystem (see Settings System)
+│   │   ├── SettingsPersistence.ahk # settings.json read/write + Map conversion
+│   │   ├── SettingsDefaults.ahk    # pristine defaults snapshot
+│   │   ├── SettingsMerge.ahk       # deep-merge loaded settings with defaults
+│   │   ├── SettingsApply.ahk       # apply a settings Map to the globals
+│   │   └── SettingsHandler.ahk     # facade over the above (stable public API)
 │   ├── HotkeyRegistrar.ahk      # Dynamic hotkey registration (turn off + re-register on settings update)
 │   ├── RequestProcessor.ahk     # Orchestrator: text capture → LLM request dispatch
 │   ├── TextCapture.ahk          # UIA TextPattern (primary) + clipboard (fallback)
@@ -210,14 +216,14 @@ autohotkey-llm-client/
 │   ├── WebViewToo.ahk           # WebView2 Framework
 │   ├── WebView2.ahk             # WebView2 Core
 │   ├── jsongo.v2.ahk            # JSON parse/serialize
-│   ├── AutoXYWH.ahk, ToolTipEx.ahk, Promise.ahk, ComVar.ahk
+│   ├── AutoXYWH.ahk, ToolTipEx.ahk, Promise.ahk
 │
 ├── scripts/                     # Model metadata pipeline
-│   ├── Refresh-Models.ps1 / .bat# Main: models.dev + corrections → DefaultSettings.ahk models block
+│   ├── Refresh-Models.ps1 / .bat# Main: models.dev + corrections → DefaultModels.ahk
 │   ├── Fetch-Models.ps1         # Dumb fetcher: raw models.dev JSON
 │   ├── Sync-Pi-Corrections.ps1  # Dev tool: sync corrections from the pi repo
 │   ├── models-corrections.json  # Manual overrides (source of truth for corrections)
-│   ├── models_metadata.txt      # Generated AHK models block (gitignored)
+│   ├── models_metadata.txt      # Timestamped backup of DefaultModels.ahk (gitignored)
 │   └── README.md                # Pipeline documentation
 │
 ├── system-messages/             # Default system message text files
@@ -233,22 +239,24 @@ autohotkey-llm-client/
 │       ├── main.js              # WebMessage dispatch (routes to chat modules + SettingsPanel)
 │       ├── settings/
 │       │   ├── settings-panel.js       # Settings panel: section registry, save/load, dirty, reset
-│       │   ├── reasoning-levels.js     # Shared reasoning-level labels/ordering/options builder
 │       │   └── sections/               # One module per settings tab
 │       │       ├── general.js          # Thread titles, API logs, trash, chat shortcut
 │       │       ├── icons.js, ui-theme.js, hotkeys.js, menu-items.js
 │       │       ├── providers.js, models.js, sysmsg-modal.js
 │       │       ├── assistants.js       # Chat profiles (single model-scoped reasoning dropdown)
 │       │       └── commands/           # Command editor (commands-core, -render, -drag)
+│       ├── shared/
+│       │   ├── settings-shared.js      # Shared section helpers (escaping, select fill, registration)
+│       │   └── reasoning-levels.js     # Shared reasoning-level labels/ordering/options builder
 │       ├── chat/                       # Chat JS modules
 │       │   ├── chat-core.js, chat-render.js, chat-input.js, chat-branching.js
 │       │   ├── chat-sidebar.js, chat-search.js, chat-threadmap.js, chat-trash.js
 │       │   ├── chat-actions.js, chat-format.js, chat-quote.js, chat-token-tooltip.js
 │       │   ├── chat-tree-modal.js, stream.js
 │       │   ├── attachments/            # Attachment subsystem (state, extraction, setup)
-│       │   └── settings/               # Chat sidebar settings
-│       │       ├── chat-settings.js    # Model/assistant popover
-│       │       └── chat-settings-modal.js  # Right panel config (uses ReasoningLevels)
+│       │   └── model-picker/           # Chat sidebar settings
+│       │       ├── model-picker.js    # Model/assistant popover
+│       │       └── model-picker-config.js  # Right panel config (uses ReasoningLevels)
 │       └── vendor/                     # Local JS libs (lucide, chart.js, pdf.js, markdown-it, ...)
 │
 ├── tests/
@@ -263,8 +271,8 @@ autohotkey-llm-client/
 ## Key Design Decisions
 
 - **Entry point**: `Main.ahk` — double-click to run. It includes `lib/Config.ahk` (the include chain) which loads `DefaultSettings.ahk`, `shared/`, `api/`, `app/`, `chat/`, `ipc/`.
-- **Settings are JSON**: `app/SettingsHandler.ahk` loads/saves `%APPDATA%\LLM-AutoHotkey-Assistant\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
-- **DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`models`, `providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; the models block is **regenerated** by `scripts/Refresh-Models.ps1`.
+- **Settings are JSON**: `app/settings/SettingsHandler.ahk` loads/saves `%APPDATA%\LLM-AutoHotkey-Assistant\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
+- **DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; model metadata is generated into `DefaultModels.ahk` by `scripts/Refresh-Models.ps1`.
 - **Persistent single-window model**: one `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
 - **SQLite persistence**: chat history in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Branching, soft-delete, reasoning, attachments, folders, usage tracking.
 - **Content-addressable attachments**: files stored by SHA-256 hash; O(1) dedup; reference-counted deletion. Scanned PDF pages rendered as images via pdf.js canvas.
@@ -290,9 +298,9 @@ if settings.Has("chatShortcut")
 
 So after loading a customized `settings.json`, the globals no longer hold the defaults. If `GetDefaults()` simply re-read the globals it would return **applied** values, which broke "Reset to Defaults" (e.g. `chatShortcut` stayed `"b"` instead of reverting to `"1"`).
 
-The solution is [`CacheInitialDefaults()`](app/SettingsHandler.ahk:14): called **before** `ApplyToGlobals` at startup (in `Main.ahk` and `ChatWindow.ahk`), it snapshots the pristine defaults into a static `_initialDefaults` Map that nothing ever reassigns. `GetDefaults()` returns that snapshot (shallow-cloned) so the true defaults are always available.
+The solution is [`CacheInitialDefaults()`](app/settings/SettingsDefaults.ahk:15): called **before** `ApplyToGlobals` at startup (in `Main.ahk` and `ChatWindow.ahk`), it snapshots the pristine defaults into a static `_initialDefaults` Map that nothing ever reassigns. `GetDefaults()` returns that snapshot (shallow-cloned) so the true defaults are always available.
 
-### Key Functions (`app/SettingsHandler.ahk`)
+### Key Functions (`app/settings/`)
 
 | Function | Purpose |
 |----------|---------|
@@ -328,17 +336,17 @@ models.dev (API)
 Fetch-Models.ps1 ──► models-dev-raw.json   (dumb fetcher, gitignored)
      │
      ▼
-Refresh-Models.ps1 ──► DefaultSettings.ahk models block
+Refresh-Models.ps1 ──► DefaultModels.ahk
      │  1. Reads scripts/models-corrections.json (manual overrides win)
      │  2. Fetches models.dev
      │  3. Applies family/provider fallbacks
-     │  4. Generates models := Map(...) into DefaultSettings.ahk
+     │  4. Generates models := Map(...) into DefaultModels.ahk
      ▼
 Sync-Pi-Corrections.ps1   (dev tool: extracts corrections from the pi repo)
 ```
 
 - `scripts/models-corrections.json` is the single, version-controlled override file (e.g. fixing deepseek-v4-flash's effort values to `["none","low","high","max"]`).
-- `scripts/Refresh-Models.ps1` writes `scripts/models_metadata.txt` (the generated AHK block) and replaces the `models := Map(...)` block in `DefaultSettings.ahk` in place.
+- `scripts/Refresh-Models.ps1` writes `DefaultModels.ahk` (the committed generated model metadata) and keeps a timestamped backup at `scripts/models_metadata.txt`.
 - Each model entry carries: `provider`, `api`, `compat` (`thinkingFormat`, `supportsReasoningEffort`, `supportsUsageInStreaming`, `maxTokensField`), `thinkingLevelMap`, `thinkingOff`, pricing (`input`/`cachedInput`/`output`), `context`, `reasoning`, `vision`.
 - See `scripts/README.md` for the full pipeline explanation.
 
@@ -562,7 +570,7 @@ Load order in `index.html` (bottom of `<body>`):
 ```
 vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, officeParser)
   └── chat/chat-core.js             # State, escHtml, _showConfirm, _makeInlineEditor
-       ├── chat/settings/chat-settings.js       # Model/assistant popover
+       ├── chat/model-picker/model-picker.js    # Model/assistant popover
        ├── chat/chat-format.js                  # Token bar, copy
        ├── chat/chat-render.js                  # Message bubbles
        ├── chat/chat-token-tooltip.js, chat-actions.js
@@ -570,9 +578,9 @@ vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, o
        ├── chat/chat-input.js, chat-branching.js, chat-tree-modal.js
        ├── chat/chat-sidebar.js, chat-threadmap.js, chat-trash.js
        ├── chat/chat-search.js, chat-quote.js, stream.js
-       ├── chat/settings/chat-settings-modal.js # Right panel config
+       ├── chat/model-picker/model-picker-config.js # Right panel config
        ├── settings/settings-panel.js           # Settings panel orchestrator
-       │    ├── settings/reasoning-levels.js    # Shared level labels/ordering
+       │    ├── shared/reasoning-levels.js      # Shared level labels/ordering
        │    └── settings/sections/*             # One module per tab (incl. commands/*)
        ├── main.js               # WebMessage dispatch
        └── (ui controls / usage dashboard are loaded alongside)

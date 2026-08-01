@@ -59,8 +59,11 @@ function loadSection(opts) {
     };
     sandbox.global = sandbox;
 
+    const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'hotkeys.js'), 'utf-8');
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
 
     return {
         sandbox,
@@ -118,7 +121,7 @@ describe('Hotkeys settings section', () => {
     it('wireDirty marks dirty on input and handles missing container', () => {
         const input = makeEl();
         const container = makeEl();
-        container.querySelectorAll = (sel) => (sel === 'input' ? [input] : []);
+        container.querySelectorAll = (sel) => (sel === 'input, select, textarea' ? [input] : []);
         const ctx = loadSection({ els: { 'sec-hotkeys': container } });
         ctx.fireDomReady();
         input.fire('input');

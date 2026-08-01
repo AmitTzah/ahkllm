@@ -67,8 +67,11 @@ function loadSection(opts) {
     };
     sandbox.global = sandbox;
 
+    const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'sysmsg-modal.js'), 'utf-8');
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
 
     return {
         sandbox,
@@ -80,6 +83,28 @@ function loadSection(opts) {
 }
 
 describe('System message modal', () => {
+    it('radio change swaps the visible section', () => {
+        const fileRadio = makeEl();
+        const inlineRadio = makeEl();
+        const fileSection = makeEl();
+        const inlineSection = makeEl();
+        const ctx = loadSection({
+            els: { smFileSection: fileSection, smInlineSection: inlineSection },
+            fileRadio,
+            inlineRadio,
+        });
+        ctx.fireDomReady();
+        inlineRadio.checked = true;
+        inlineRadio.fire('change');
+        assert.ok(fileSection.style.display === 'none');
+        assert.ok(inlineSection.style.display === '');
+        inlineRadio.checked = false;
+        fileRadio.checked = true;
+        fileRadio.fire('change');
+        assert.ok(fileSection.style.display === '');
+        assert.ok(inlineSection.style.display === 'none');
+    });
+
     it('populate opens file mode and strips directory prefix when needed', () => {
         const fileRadio = makeEl();
         const inlineRadio = makeEl({ checked: true });

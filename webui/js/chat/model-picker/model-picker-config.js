@@ -1,5 +1,5 @@
 // ======================================================
-// chat-settings-modal.js — Right panel config + system prompt modal
+// model-picker-config.js — Right panel config + system prompt modal
 // ======================================================
 
 function openModelSettings() {
@@ -107,10 +107,6 @@ function updateDropdownLabel(data) {
     }
     _updateModelCard();
   }
-}
-
-function closeModelSettings() {
-  // No-op in new UI
 }
 
 // Wire right panel controls

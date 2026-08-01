@@ -15,7 +15,7 @@ function editMessage(index) {
   var bubble = document.querySelectorAll('.msg')[index];
   if (!bubble) return;
 
-  // Use mock's pre-rendered .msg-edit-ui — just add .editing class
+  // Use the pre-rendered .msg-edit-ui — just add the .editing class
   bubble.classList.add('editing');
   var textarea = bubble.querySelector('.msg-edit-textarea');
   if (textarea) { textarea.value = msg.content || ''; textarea.focus(); }

@@ -1,5 +1,4 @@
 /* actions.css — Message action buttons, branch nav, stat popover */
-/* Extracted from chat-ui-mock.html lines 368-409 */
 
 .msg-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-left: 6px; opacity: 1; }
 

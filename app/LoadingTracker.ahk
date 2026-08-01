@@ -12,7 +12,7 @@ getActiveModels() {
 ; chat window states
 ; ----------------------------------------------------
 
-handleLoadingState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
+handleLoadingState(uniqueID, responseWindowhWnd, state, mainScriptHiddenHwnd) {
     static loadingCount := 0
     static pendingReload := false
 
@@ -44,7 +44,7 @@ handleLoadingState(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd) {
         case "reloadScript": pendingReload := true
 
         case CustomMessages.WM_CHAT_WINDOW_OPENED:
-            onChatWindowOpened(uniqueID, responseWindowhWnd, state, mainScriptHiddenhWnd)
+            onChatWindowOpened(uniqueID, responseWindowhWnd, state, mainScriptHiddenHwnd)
 
         case CustomMessages.WM_SHOW_API_LOGS:
             ShowApiLogs()

@@ -58,8 +58,8 @@ class ChatDispatchTest {
             requestParams := Map()
         if !requestParams.Has("uniqueID")
             requestParams["uniqueID"] := "test-unique-id"
-        if !requestParams.Has("mainScriptHiddenhWnd")
-            requestParams["mainScriptHiddenhWnd"] := "0x0"
+        if !requestParams.Has("mainScriptHiddenHwnd")
+            requestParams["mainScriptHiddenHwnd"] := "0x0"
         if !requestParams.Has("singleAPIModelName")
             requestParams["singleAPIModelName"] := "deepseek-v4-flash"
     }
@@ -170,7 +170,7 @@ class ChatDispatchTest {
         sp := this._withTempSettingsPath()
         web := this._captureWebView()
         try {
-            OnWebMessageReceived("", this._args('{"action":"saveSettings","data":{"theme":{"darkMode":true}}}'))
+            OnWebMessageReceived("", this._args('{"action":"saveSettings","data":{"hotkeys":{"main":"`"}}}'))
         } finally {
             web.restore()
         }

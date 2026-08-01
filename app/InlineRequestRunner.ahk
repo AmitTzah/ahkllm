@@ -88,14 +88,10 @@ class InlineRequestRunner {
     static _ExecuteCurlAndParse(files, isFIM) {
         requestStartTime := A_TickCount
         cURLCommand := FileOpen(files.curlFile, "r", "UTF-8-RAW").Read()
-        Run(cURLCommand, , "Hide", &cURLPID)
-        while ProcessExist(cURLPID)
-            Sleep 250
+        JSONResponseFromLLM := CurlExecutor.Run(cURLCommand, files.outputFile)
 
         responseFromLLM := ""
-        JSONResponseFromLLM := ""
-        if FileExist(files.outputFile) {
-            JSONResponseFromLLM := FileOpen(files.outputFile, "r", "UTF-8-RAW").Read()
+        if JSONResponseFromLLM != "" {
             try {
                 if isFIM
                     responseFromLLM := ResponseParser.ParseFIMResponse(jsongo.Parse(JSONResponseFromLLM))

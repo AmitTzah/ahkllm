@@ -216,39 +216,24 @@ try {
 "@
     ($header + "models := Map(" + ($lines -join "`r`n") + "`r`n)") | Out-File $backupFile -Encoding utf8
 
-    # Update DefaultSettings.ahk
-    if (-not (Test-Path $defaultSettingsPath)) {
-        Write-Color "ERROR: DefaultSettings.ahk not found" "Red"
-    }
-    else {
-        $fl = Get-Content $defaultSettingsPath
-        $ms = -1; $me = -1
-        for ($i = 0; $i -lt $fl.Count; $i++) {
-            if ($ms -lt 0 -and $fl[$i] -match '^\s*models\s*:=\s*Map\(') { $ms = $i }
-            if ($ms -ge 0 -and $fl[$i] -match '^\s*\)\s*$' -and $i -gt $ms) { $me = $i; break }
-        }
+    # Write the generated model metadata file (single source of truth).
+    $defaultModelsPath = Join-Path $scriptDir "..\DefaultModels.ahk"
+    $modelsHeader = @"
+; ============================================================================
+; DefaultModels.ahk -- AUTO-GENERATED model metadata
+;
+; Generated from models.dev by scripts\Refresh-Models.ps1 (with corrections
+; applied from scripts\models-corrections.json). Do not edit by hand -- use
+; Models settings -> Fetch Latest Models or run scripts\Refresh-Models.ps1.
+; ============================================================================
 
-        if ($ms -ge 0 -and $me -gt $ms) {
-            $blockLines = @("models := Map(") + $lines + @(")")
-            $newContent = ($fl[0..($ms - 1)] + $blockLines + $fl[($me + 1)..($fl.Count - 1)]) -join "`r`n"
-            Set-Content $defaultSettingsPath $newContent -Encoding UTF8 -NoNewline
+"@
+    $modelsContent = $modelsHeader + "models := Map(" + ($lines -join "`r`n") + "`r`n)"
+    Set-Content $defaultModelsPath $modelsContent -Encoding UTF8 -NoNewline
 
-            # Clean up common UTF-8 corruption
-            $finalContent = Get-Content $defaultSettingsPath -Raw -Encoding UTF8
-            $finalContent = $finalContent.Replace([char]0x00E2 + [char]0x201A + [char]0x00AC, '--')
-            $finalContent = $finalContent.Replace([char]0x00C2 + [char]0x00A7, 'S')
-            $finalContent = $finalContent.Replace([char]0x00E2 + [char]0x2020 + [char]0x2122, '->')
-            Set-Content $defaultSettingsPath $finalContent -Encoding UTF8 -NoNewline
-
-            Write-Host ""
-            Write-Color "SUCCESS: DefaultSettings.ahk updated with $totalModels models!" "Green"
-            Write-Color "  AHK will auto-reload to pick up the changes." "Green"
-        } else {
-            Write-Host ""
-            Write-Color "WARNING: Could not find models := Map(...) block" "Yellow"
-            Write-Color "  Copy from: $backupFile" "Yellow"
-        }
-    }
+    Write-Host ""
+    Write-Color "SUCCESS: DefaultModels.ahk updated with $totalModels models!" "Green"
+    Write-Color "  AHK will auto-reload to pick up the changes." "Green"
 }
 catch {
     Write-Host ""

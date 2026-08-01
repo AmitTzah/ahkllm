@@ -1,7 +1,10 @@
-// models.js — Models settings section
+// models.js — Models settings section (pricing/metadata table + refresh modal)
 (function() {
   var sectionName = 'models';
+  var S = window.SettingsShared;
   var _providerKeys = ['deepseek', 'openai', 'google', 'anthropic'];
+
+  // --- Model id helpers ---
 
   function stripProvider(id) {
     var i = id.indexOf('/');
@@ -13,50 +16,33 @@
     return provider ? provider + '/' + id : id;
   }
 
-  function load(data) {
-    if (!data || !data.models) return;
-    if (data.providers) _providerKeys = Object.keys(data.providers).sort();
-    renderTable(data.models);
+  // --- Pricing / context formatting and parsing ---
+
+  function fmtPrice(v) {
+    if (v === undefined || v === null || v === '') return '';
+    v = parseFloat(v);
+    if (isNaN(v)) return '';
+    return (v < 0.01 ? '$' + v.toFixed(4) : v < 1 ? '$' + v.toFixed(3) : '$' + v.toFixed(2));
   }
 
-  function buildProviderSelect(keys, current) {
-    var html = '<select data-field="provider" style="border:1px solid transparent;font-size:11px;">';
-    var all = keys.slice();
-    if (current != null && current !== '' && all.indexOf(current) < 0) all.unshift(current);
-    all.forEach(function(k) { html += '<option' + (k === current ? ' selected' : '') + '>' + k + '</option>'; });
-    html += '</select>';
-    return html;
+  function formatContext(n) {
+    if (n === undefined || n === null || n === '' || n === 0) return '';
+    n = parseInt(n);
+    if (isNaN(n)) return '';
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+    return n.toString();
   }
 
-  function renderTable(models) {
-    var tbody = document.getElementById('modelsTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    var keys = Object.keys(models).sort();
-    keys.forEach(function(key) {
-      var m = models[key];
-      var tr = document.createElement('tr');
-      tr.innerHTML = '<td><input value="' + escHtml(stripProvider(key)) + '" style="width:200px;" data-field="id"></td>' +
-        '<td>' + buildProviderSelect(_providerKeys, m.provider) + '</td>' +
-        '<td><input value="' + fmtPrice(m.input) + '" style="width:80px;" data-field="input" data-price-raw="' + (m.input || 0) + '"></td>' +
-        '<td><input value="' + fmtPrice(m.cachedInput) + '" style="width:80px;" data-field="cachedInput" data-price-raw="' + (m.cachedInput || '') + '"></td>' +
-        '<td><input value="' + fmtPrice(m.output) + '" style="width:80px;" data-field="output" data-price-raw="' + (m.output || 0) + '"></td>' +
-        '<td><input value="' + formatContext(m.context || 0) + '" style="width:60px;" data-field="context" data-context-raw="' + (m.context || 0) + '"></td>' +
-        '<td style="text-align:center;"><input type="checkbox" ' + (m.vision ? 'checked' : '') + ' data-field="vision"></td>' +
-        '<td style="text-align:center;"><input type="checkbox" ' + (m.reasoning ? 'checked' : '') + ' data-field="reasoning"></td>' +
-        '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
-      tbody.appendChild(tr);
-      tr.querySelectorAll('input, select').forEach(function(el) { el.addEventListener('change', mark); el.addEventListener('input', mark); });
-      tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
-      var ctxInp = tr.querySelector('[data-field="context"]');
-      if (ctxInp) _wireContextInput(ctxInp);
-      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); mark(); });
-    });
+  function _parsePrice(el) {
+    if (!el) return 0;
+    var raw = el.getAttribute('data-price-raw');
+    if (raw !== null && raw !== '') return parseFloat(raw) || 0;
+    return parseFloat((el.value || '').replace(/^\$/, '')) || 0;
   }
-
-  function mark() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }
 
   function _parseContext(el) {
+    if (!el) return 0;
     var raw = el.getAttribute('data-context-raw');
     if (raw !== null && raw !== '') return parseInt(raw) || 0;
     var v = el.value || '';
@@ -67,10 +53,83 @@
     return parseInt(v) || 0;
   }
 
-  function _parsePrice(el) {
-    var raw = el.getAttribute('data-price-raw');
-    if (raw !== null && raw !== '') return parseFloat(raw) || 0;
-    return parseFloat((el.value || '').replace(/^\$/, '')) || 0;
+  function parsePricingRaw(raw) {
+    var fields = {};
+    var m = raw.match(/input:\s*([\d.]+)/);
+    if (m) fields.input = parseFloat(m[1]);
+    m = raw.match(/cachedInput:\s*([\d.]+)/);
+    if (m) fields.cachedInput = parseFloat(m[1]);
+    m = raw.match(/output:\s*([\d.]+)/);
+    if (m) fields.output = parseFloat(m[1]);
+    m = raw.match(/context:\s*(\d+)/);
+    if (m) fields.context = parseInt(m[1], 10);
+    m = raw.match(/reasoning:\s*(true|false)/i);
+    fields.reasoning = m ? m[1].toLowerCase() === 'true' : false;
+    m = raw.match(/vision:\s*(true|false)/i);
+    fields.vision = m ? m[1].toLowerCase() === 'true' : false;
+    return fields;
+  }
+
+  function buildProviderSelect(keys, current) {
+    var html = '<select class="settings-provider-select" data-field="provider">';
+    var all = keys.slice();
+    if (current != null && current !== '' && all.indexOf(current) < 0) all.unshift(current);
+    all.forEach(function(k) { html += '<option' + (k === current ? ' selected' : '') + '>' + S.escHtml(k) + '</option>'; });
+    html += '</select>';
+    return html;
+  }
+
+  // Emit a data-*-raw attribute only when a value actually exists, so empty
+  // rows keep their blank display until the user edits them.
+  function _rawAttr(name, value) {
+    if (value === undefined || value === null || value === '') return '';
+    return ' data-' + name + '-raw="' + value + '"';
+  }
+
+  // --- Row builders (single source for the main table and refresh modal) ---
+
+  function _mainRowHtml(id, provider, values, placeholder) {
+    var m = values || {};
+    var ph = placeholder ? ' placeholder="' + placeholder + '"' : '';
+    return '<td><input class="settings-w-200" value="' + S.escHtml(stripProvider(id)) + '"' + ph + ' data-field="id"></td>' +
+      '<td>' + buildProviderSelect(_providerKeys, provider) + '</td>' +
+      '<td><input class="settings-w-80" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + '></td>' +
+      '<td><input class="settings-w-80" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + '></td>' +
+      '<td><input class="settings-w-80" value="' + fmtPrice(m.output) + '" data-field="output"' + _rawAttr('price', m.output) + '></td>' +
+      '<td><input class="settings-w-60" value="' + formatContext(m.context || 0) + '" data-field="context"' + _rawAttr('context', m.context) + '></td>' +
+      '<td class="settings-text-center"><input type="checkbox" ' + (m.vision ? 'checked' : '') + ' data-field="vision"></td>' +
+      '<td class="settings-text-center"><input type="checkbox" ' + (m.reasoning ? 'checked' : '') + ' data-field="reasoning"></td>' +
+      '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
+  }
+
+  function _rightRowHtml(id, m) {
+    var prov = m.provider || '';
+    var parts = id.split('/');
+    if (!prov && parts.length > 1) prov = parts[0];
+    return '<td><input class="settings-w-180" value="' + S.escHtml(stripProvider(id)) + '" data-field="id" data-full-id="' + S.escHtml(id) + '"></td>' +
+      '<td>' + buildProviderSelect(_providerKeys, prov) + '</td>' +
+      '<td><input class="settings-w-70" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + ' type="number" step="any"></td>' +
+      '<td><input class="settings-w-70" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + ' type="number" step="any"></td>' +
+      '<td><input class="settings-w-70" value="' + fmtPrice(m.output) + '" data-field="output"' + _rawAttr('price', m.output) + ' type="number" step="any"></td>' +
+      '<td><input class="settings-w-50" value="' + formatContext(m.context || 0) + '" data-field="context"' + _rawAttr('context', m.context) + '></td>' +
+      '<td class="settings-text-center"><input type="checkbox" ' + (m.vision ? 'checked' : '') + ' data-field="vision"></td>' +
+      '<td class="settings-text-center"><input type="checkbox" ' + (m.reasoning ? 'checked' : '') + ' data-field="reasoning"></td>' +
+      '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
+  }
+
+  // --- Row wiring ---
+
+  function _wireFields(tr) {
+    tr.querySelectorAll('input, select').forEach(function(el) {
+      el.addEventListener('change', mark);
+      el.addEventListener('input', mark);
+    });
+  }
+
+  function _wirePriceContext(tr) {
+    tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
+    var ctxInp = tr.querySelector('[data-field="context"]');
+    if (ctxInp) _wireContextInput(ctxInp);
   }
 
   function _wirePriceInput(input) {
@@ -97,43 +156,108 @@
     });
   }
 
-  function save() {
-    var models = {};
-    document.querySelectorAll('#modelsTableBody tr').forEach(function(tr) {
-      var id = (tr.querySelector('[data-field="id"]') || {}).value || '';
-      if (!id) return;
-      var ctxEl = tr.querySelector('[data-field="context"]');
-      var provider = (tr.querySelector('[data-field="provider"]') || {}).value || '';
-      var fullId = ensureFullId(id, provider);
-      models[fullId] = {
-        provider: provider,
-        input: _parsePrice(tr.querySelector('[data-field="input"]') || {}),
-        cachedInput: _parsePrice(tr.querySelector('[data-field="cachedInput"]') || {}),
-        output: _parsePrice(tr.querySelector('[data-field="output"]') || {}),
-        context: ctxEl ? _parseContext(ctxEl) : 0,
-        vision: (tr.querySelector('[data-field="vision"]') || {}).checked || false,
-        reasoning: (tr.querySelector('[data-field="reasoning"]') || {}).checked || false
-      };
+  function _wireMainRow(tr) {
+    _wireFields(tr);
+    _wirePriceContext(tr);
+    tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); mark(); });
+  }
+
+  function _wireRightRow(tr, onRemove) {
+    _wirePriceContext(tr);
+    tr.querySelector('.btn-sm.danger').addEventListener('click', onRemove);
+  }
+
+  // Read a row's current values from its DOM elements.
+  function _readRowValues(tr) {
+    return {
+      provider: (tr.querySelector('[data-field="provider"]') || {}).value || '',
+      input: _parsePrice(tr.querySelector('[data-field="input"]')),
+      cachedInput: _parsePrice(tr.querySelector('[data-field="cachedInput"]')),
+      output: _parsePrice(tr.querySelector('[data-field="output"]')),
+      context: _parseContext(tr.querySelector('[data-field="context"]')),
+      vision: (tr.querySelector('[data-field="vision"]') || {}).checked || false,
+      reasoning: (tr.querySelector('[data-field="reasoning"]') || {}).checked || false
+    };
+  }
+
+  function mark() { S.markDirty(); }
+
+  // --- Main table ---
+
+  function load(data) {
+    if (!data || !data.models) return;
+    if (data.providers) _providerKeys = Object.keys(data.providers).sort();
+    renderTable(data.models);
+  }
+
+  function renderTable(models) {
+    var tbody = document.getElementById('modelsTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    Object.keys(models).sort().forEach(function(key) {
+      var m = models[key];
+      var tr = document.createElement('tr');
+      tr.innerHTML = _mainRowHtml(key, m.provider, m);
+      tbody.appendChild(tr);
+      _wireMainRow(tr);
     });
-    return { models: models };
   }
 
   function addRow() {
     var tbody = document.getElementById('modelsTableBody'); if (!tbody) return;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input value="" placeholder="provider/model" style="width:200px;\width:170px;" data-field="id"></td>' +
-      '<td>' + buildProviderSelect(_providerKeys, '') + '</td>' +
-      '<td><input value="" style="width:68px;" data-field="input"></td><td><input value="" style="width:68px;" data-field="cachedInput"></td><td><input value="" style="width:68px;" data-field="output"></td>' +
-      '<td><input value="" style="width:60px;" data-field="context"></td><td style="text-align:center;"><input type="checkbox" data-field="vision"></td><td style="text-align:center;"><input type="checkbox" data-field="reasoning"></td>' +
-      '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
+    tr.innerHTML = _mainRowHtml('', '', {}, 'provider/model');
     tbody.appendChild(tr);
-    tr.querySelectorAll('input, select').forEach(function(el) { el.addEventListener('change', mark); el.addEventListener('input', mark); });
-    tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
-    var ctxInp = tr.querySelector('[data-field="context"]');
-    if (ctxInp) _wireContextInput(ctxInp);
-    tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); mark(); });
+    _wireMainRow(tr);
     mark();
   }
+
+  function save() {
+    var models = {};
+    document.querySelectorAll('#modelsTableBody tr').forEach(function(tr) {
+      var id = (tr.querySelector('[data-field="id"]') || {}).value || '';
+      if (!id) return;
+      var values = _readRowValues(tr);
+      var fullId = ensureFullId(id, values.provider);
+      models[fullId] = {
+        provider: values.provider,
+        input: values.input,
+        cachedInput: values.cachedInput,
+        output: values.output,
+        context: values.context,
+        vision: values.vision,
+        reasoning: values.reasoning
+      };
+    });
+    return { models: models };
+  }
+
+  function _collectCurrentModels() {
+    var models = [];
+    document.querySelectorAll('#modelsTableBody tr').forEach(function(tr) {
+      var idEl = tr.querySelector('[data-field="id"]');
+      if (!idEl || !idEl.value) return;
+      var values = _readRowValues(tr);
+      models.push({
+        id: ensureFullId(idEl.value, values.provider), // full ID for internal use
+        displayId: stripProvider(idEl.value), // display without provider prefix
+        provider: values.provider,
+        input: values.input,
+        cachedInput: values.cachedInput,
+        output: values.output,
+        context: values.context,
+        vision: values.vision,
+        reasoning: values.reasoning
+      });
+    });
+    return models;
+  }
+
+  // --- Refresh modal ---
+
+  var _refreshData = {}; // cached parsed refresh data: { modelId: {input, cachedInput, output, context, vision, reasoning} }
+  var _refreshAvailable = []; // fetched models from the last refresh: [{ id, raw }]
+  var _refreshQuery = '';     // current search filter text
 
   function openRefreshModal() {
     var m = document.getElementById('refreshModal'); if (m) m.classList.add('open');
@@ -145,14 +269,6 @@
     window.chrome.webview.postMessage(JSON.stringify({action:'refreshModelPricing'}));
   }
 
-  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-  // --- Refresh Modal ---
-
-  var _refreshData = {}; // cached parsed refresh data: { modelId: {input, cachedInput, output, context, vision, reasoning} }
-  var _refreshAvailable = []; // fetched models from the last refresh: [{ id, raw }]
-  var _refreshQuery = '';     // current search filter text
-
   function filterAvailableModels(list, query) {
     var q = String(query || '').trim().toLowerCase();
     if (!q) return list.slice();
@@ -162,10 +278,10 @@
   }
 
   function buildAddButtonHtml(modelId, isAdded) {
-    var dataId = 'data-id="' + escHtml(modelId) + '"';
+    var dataId = 'data-id="' + S.escHtml(modelId) + '"';
     if (isAdded)
-      return '<button class="btn-sm add-refresh-model" ' + dataId + ' disabled style="white-space:nowrap;">Added</button>';
-    return '<button class="btn-sm add-refresh-model" ' + dataId + ' style="white-space:nowrap;">+ Add</button>';
+      return '<button class="btn-sm add-refresh-model settings-nowrap" ' + dataId + ' disabled>Added</button>';
+    return '<button class="btn-sm add-refresh-model settings-nowrap" ' + dataId + '>+ Add</button>';
   }
 
   function _rightPanelIds() {
@@ -199,13 +315,13 @@
     list.forEach(function(m) {
       var p = _refreshData[m.id] || {};
       var isAdded = added.indexOf(m.id) >= 0;
-      html += '<tr><td style="font-size:10px;">' + escHtml(stripProvider(m.id)) + '</td>' +
+      html += '<tr><td class="settings-text-10">' + S.escHtml(stripProvider(m.id)) + '</td>' +
         '<td>' + fmtPrice(p.input) + '</td>' +
         '<td>' + fmtPrice(p.output) + '</td>' +
         '<td>' + formatContext(p.context) + '</td>' +
         '<td>' + buildAddButtonHtml(m.id, isAdded) + '</td></tr>';
     });
-    tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px;">' +
+    tbody.innerHTML = html || '<tr><td class="settings-empty-state" colspan="5">' +
       (_refreshAvailable.length ? 'No matching models' : 'Click Refresh to pull latest pricing data') + '</td></tr>';
     tbody.querySelectorAll('.add-refresh-model').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -216,59 +332,6 @@
     if (countEl) countEl.textContent = _refreshAvailable.length ? list.length + ' of ' + _refreshAvailable.length + ' models' : '';
   }
 
-  function parsePricingRaw(raw) {
-    var fields = {};
-    var m = raw.match(/input:\s*([\d.]+)/);
-    if (m) fields.input = parseFloat(m[1]);
-    m = raw.match(/cachedInput:\s*([\d.]+)/);
-    if (m) fields.cachedInput = parseFloat(m[1]);
-    m = raw.match(/output:\s*([\d.]+)/);
-    if (m) fields.output = parseFloat(m[1]);
-    m = raw.match(/context:\s*(\d+)/);
-    if (m) fields.context = parseInt(m[1], 10);
-    m = raw.match(/reasoning:\s*(true|false)/i);
-    fields.reasoning = m ? m[1].toLowerCase() === 'true' : false;
-    m = raw.match(/vision:\s*(true|false)/i);
-    fields.vision = m ? m[1].toLowerCase() === 'true' : false;
-    return fields;
-  }
-
-  function formatContext(n) {
-    if (n === undefined || n === null || n === '' || n === 0) return '';
-    n = parseInt(n);
-    if (isNaN(n)) return '';
-    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
-    return n.toString();
-  }
-
-  function fmtPrice(v) {
-    if (v === undefined || v === null || v === '') return '';
-    v = parseFloat(v);
-    if (isNaN(v)) return '';
-    return (v < 0.01 ? '$' + v.toFixed(4) : v < 1 ? '$' + v.toFixed(3) : '$' + v.toFixed(2));
-  }
-
-  function _editableRow(trHtml) {
-    return '<tr>' + trHtml + '</tr>';
-  }
-
-  function _rightRowHtml(id, m) {
-    var prov = m.provider || '';
-    var parts = id.split('/');
-    if (!prov && parts.length > 1) prov = parts[0];
-    var displayId = stripProvider(id);
-    return '<td><input value="' + escHtml(displayId) + '" style="width:180px;" data-field="id" data-full-id="' + escHtml(id) + '"></td>' +
-      '<td>' + buildProviderSelect(_providerKeys, prov) + '</td>' +
-      '<td><input value="' + fmtPrice(m.input) + '" style="width:70px;" data-field="input" data-price-raw="' + (m.input || 0) + '" type="number" step="any"></td>' +
-      '<td><input value="' + fmtPrice(m.cachedInput) + '" style="width:70px;" data-field="cachedInput" data-price-raw="' + (m.cachedInput !== undefined ? m.cachedInput : '') + '" type="number" step="any"></td>' +
-      '<td><input value="' + fmtPrice(m.output) + '" style="width:70px;" data-field="output" data-price-raw="' + (m.output || 0) + '" type="number" step="any"></td>' +
-      '<td><input value="' + formatContext(m.context || 0) + '" style="width:50px;" data-field="context" data-context-raw="' + (m.context || 0) + '"></td>' +
-      '<td style="text-align:center;"><input type="checkbox" ' + (m.vision ? 'checked' : '') + ' data-field="vision"></td>' +
-      '<td style="text-align:center;"><input type="checkbox" ' + (m.reasoning ? 'checked' : '') + ' data-field="reasoning"></td>' +
-      '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
-  }
-
   function _populateRightPanel() {
     var tbody = document.getElementById('refreshRightTbody');
     if (!tbody) return;
@@ -277,34 +340,10 @@
       var tr = document.createElement('tr');
       tr.innerHTML = _rightRowHtml(m.id, m);
       tbody.appendChild(tr);
-      tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
-      var ctxInp = tr.querySelector('[data-field="context"]');
-      if (ctxInp) _wireContextInput(ctxInp);
-      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); _renderAvailableModels(); });
+      _wireRightRow(tr, function() { tr.remove(); _renderAvailableModels(); });
     });
     if (!tbody.children.length)
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-tertiary);padding:20px;">No models defined</td></tr>';
-  }
-
-  function _collectCurrentModels() {
-    var models = [];
-    document.querySelectorAll('#modelsTableBody tr').forEach(function(tr) {
-      var idEl = tr.querySelector('[data-field="id"]');
-      if (!idEl || !idEl.value) return;
-      var provider = (tr.querySelector('[data-field="provider"]') || {}).value || '';
-      models.push({
-        id: ensureFullId(idEl.value, provider), // full ID for internal use
-        displayId: stripProvider(idEl.value), // display without provider prefix
-        provider: provider,
-        input: _parsePrice(tr.querySelector('[data-field="input"]') || {}),
-        cachedInput: _parsePrice(tr.querySelector('[data-field="cachedInput"]') || {}),
-        output: _parsePrice(tr.querySelector('[data-field="output"]') || {}),
-        context: _parseContext(tr.querySelector('[data-field="context"]') || {}),
-        vision: (tr.querySelector('[data-field="vision"]') || {}).checked || false,
-        reasoning: (tr.querySelector('[data-field="reasoning"]') || {}).checked || false
-      });
-    });
-    return models;
+      tbody.innerHTML = '<tr><td class="settings-empty-state" colspan="9">No models defined</td></tr>';
   }
 
   window.SettingsModels = {
@@ -327,7 +366,7 @@
       } else {
         _refreshAvailable = [];
         _refreshQuery = '';
-        leftTbody.innerHTML = '<tr><td colspan="5" style="color:var(--danger);">Error: ' + escHtml(data.error || 'Unknown error') + '</td></tr>';
+        leftTbody.innerHTML = '<tr><td class="settings-danger" colspan="5">Error: ' + S.escHtml(data.error || 'Unknown error') + '</td></tr>';
         var countEl = document.getElementById('refreshModelCount');
         if (countEl) countEl.textContent = '';
       }
@@ -353,11 +392,8 @@
       var tr = document.createElement('tr');
       tr.innerHTML = _rightRowHtml(modelId, m);
       tbody.appendChild(tr);
-      tr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
-      var ctxInp = tr.querySelector('[data-field="context"]');
-      if (ctxInp) _wireContextInput(ctxInp);
       tr.classList.add('refresh-row-added');
-      tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); _renderAvailableModels(); });
+      _wireRightRow(tr, function() { tr.remove(); _renderAvailableModels(); });
       _renderAvailableModels();
     },
 
@@ -371,25 +407,15 @@
       if (!mainTbody || !refreshTbody) return;
       mainTbody.innerHTML = '';
       refreshTbody.querySelectorAll('tr').forEach(function(tr) {
-        var idEl = tr.querySelector('[data-field="id"]') || {};
-        var id = (idEl.getAttribute('data-full-id')) || idEl.value || '';
+        var idEl = tr.querySelector('[data-field="id"]');
+        if (!idEl) return;
+        var id = idEl.getAttribute('data-full-id') || idEl.value || '';
         if (!id) return;
+        var values = _readRowValues(tr);
         var newTr = document.createElement('tr');
-        newTr.innerHTML = '<td><input value="' + escHtml(stripProvider(id)) + '" style="width:200px;" data-field="id"></td>' +
-          '<td>' + buildProviderSelect(_providerKeys, (tr.querySelector('[data-field="provider"]') || {}).value || '') + '</td>' +
-          '<td><input value="' + fmtPrice(_parsePrice(tr.querySelector('[data-field="input"]') || {})) + '" style="width:80px;" data-field="input" data-price-raw="' + _parsePrice(tr.querySelector('[data-field="input"]') || {}) + '"></td>' +
-          '<td><input value="' + fmtPrice(_parsePrice(tr.querySelector('[data-field="cachedInput"]') || {})) + '" style="width:80px;" data-field="cachedInput" data-price-raw="' + _parsePrice(tr.querySelector('[data-field="cachedInput"]') || {}) + '"></td>' +
-          '<td><input value="' + fmtPrice(_parsePrice(tr.querySelector('[data-field="output"]') || {})) + '" style="width:80px;" data-field="output" data-price-raw="' + _parsePrice(tr.querySelector('[data-field="output"]') || {}) + '"></td>' +
-          '<td><input value="' + formatContext(_parseContext(tr.querySelector('[data-field="context"]') || {})) + '" style="width:60px;" data-field="context" data-context-raw="' + _parseContext(tr.querySelector('[data-field="context"]') || {}) + '"></td>' +
-          '<td style="text-align:center;"><input type="checkbox" ' + ((tr.querySelector('[data-field="vision"]') || {}).checked ? 'checked' : '') + ' data-field="vision"></td>' +
-          '<td style="text-align:center;"><input type="checkbox" ' + ((tr.querySelector('[data-field="reasoning"]') || {}).checked ? 'checked' : '') + ' data-field="reasoning"></td>' +
-          '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
+        newTr.innerHTML = _mainRowHtml(id, values.provider, values);
         mainTbody.appendChild(newTr);
-        newTr.querySelectorAll('input, select').forEach(function(el) { el.addEventListener('change', mark); el.addEventListener('input', mark); });
-        newTr.querySelectorAll('[data-price-raw]').forEach(function(el) { _wirePriceInput(el); });
-        var ctxInp = newTr.querySelector('[data-field="context"]');
-        if (ctxInp) _wireContextInput(ctxInp);
-        newTr.querySelector('.btn-sm.danger').addEventListener('click', function() { newTr.remove(); mark(); });
+        _wireMainRow(newTr);
       });
       mark();
       document.getElementById('refreshModal').classList.remove('open');
@@ -417,5 +443,5 @@
     });
   }
 
-  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
+  S.registerSection(sectionName, {load: load, save: save});
 })();

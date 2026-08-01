@@ -1,5 +1,5 @@
 // ======================================================
-// chat-quote.js — D5: Quote from chat (text selection → insert quoted block)
+// chat-quote.js — Quote from chat (insert a quoted block)
 // ======================================================
 
 var quotePopup = null;

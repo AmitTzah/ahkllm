@@ -3,44 +3,65 @@
   var C = window.Cmds;
   var _floatingGhost = null, _dragOffsetX = 0, _dragOffsetY = 0;
 
-  function _onItemDragStart(e) {
-    var item = e.currentTarget;
-    e.dataTransfer.setData('text/item', item.dataset.index);
+  // Transparent drag image so the browser's default ghost is hidden.
+  var _BLANK_IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+  // Shared drag-start: clone the source into a fixed-position floating ghost
+  // and hide the original once the drag loop starts.
+  function _startDrag(e, source, dataType, dataValue, classesToRemove) {
+    e.dataTransfer.setData(dataType, dataValue);
     e.dataTransfer.effectAllowed = 'move';
     var img = new Image();
-    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    img.src = _BLANK_IMAGE;
     e.dataTransfer.setDragImage(img, 0, 0);
-    _floatingGhost = item.cloneNode(true);
+    _floatingGhost = source.cloneNode(true);
     _floatingGhost.style.position = 'fixed';
     _floatingGhost.style.pointerEvents = 'none';
     _floatingGhost.style.zIndex = '9999';
     _floatingGhost.style.opacity = '1';
-    _floatingGhost.style.width = item.offsetWidth + 'px';
+    _floatingGhost.style.width = source.offsetWidth + 'px';
     _floatingGhost.style.boxShadow = '0 5px 15px rgba(0,0,0,0.2)';
-    _floatingGhost.style.backgroundColor = getComputedStyle(item).backgroundColor || 'var(--bg-panel)';
-    _floatingGhost.classList.remove('active','is-dragging','drag-over','drop-above');
-    var rect = item.getBoundingClientRect();
+    _floatingGhost.style.backgroundColor = getComputedStyle(source).backgroundColor || 'var(--bg-panel)';
+    classesToRemove.forEach(function(c) { _floatingGhost.classList.remove(c); });
+    var rect = source.getBoundingClientRect();
     _dragOffsetX = e.clientX - rect.left;
     _dragOffsetY = e.clientY - rect.top;
     _floatingGhost.style.left = (e.clientX - _dragOffsetX) + 'px';
     _floatingGhost.style.top = (e.clientY - _dragOffsetY) + 'px';
     document.body.appendChild(_floatingGhost);
-    setTimeout(function() { item.style.visibility = 'hidden'; item.classList.add('is-dragging'); }, 0);
+    setTimeout(function() { source.style.visibility = 'hidden'; source.classList.add('is-dragging'); }, 0);
   }
 
-  function _onItemDrag(e) {
+  function _moveGhost(e) {
     if (_floatingGhost && e.clientX !== 0 && e.clientY !== 0) {
       _floatingGhost.style.left = (e.clientX - _dragOffsetX) + 'px';
       _floatingGhost.style.top = (e.clientY - _dragOffsetY) + 'px';
     }
   }
 
-  function _onItemDragEnd(e) {
+  function _finishDrag(source) {
     if (_floatingGhost) { _floatingGhost.remove(); _floatingGhost = null; }
+    if (source) {
+      source.style.visibility = '';
+      source.classList.remove('is-dragging');
+    }
+    document.querySelectorAll('.cmd-item.is-dragging').forEach(function(el) {
+      el.style.visibility = '';
+      el.classList.remove('is-dragging');
+    });
+  }
+
+  function _onItemDragStart(e) {
     var item = e.currentTarget;
-    item.style.visibility = '';
-    item.classList.remove('is-dragging');
-    document.querySelectorAll('.cmd-item.is-dragging').forEach(function(el) { el.style.visibility = ''; el.classList.remove('is-dragging'); });
+    _startDrag(e, item, 'text/item', item.dataset.index, ['active', 'is-dragging', 'drag-over', 'drop-above']);
+  }
+
+  function _onItemDrag(e) {
+    _moveGhost(e);
+  }
+
+  function _onItemDragEnd(e) {
+    _finishDrag(e.currentTarget);
     _syncGroupOrderFromDOM();
     C.mark();
   }
@@ -91,40 +112,15 @@
   function _onGroupDragStart(e) {
     var group = e.currentTarget.closest('.cmd-group');
     if (!group || group.dataset.tag === '' || !group.dataset.tag) { e.preventDefault(); return; }
-    e.dataTransfer.setData('text/group', group.dataset.tag);
-    e.dataTransfer.effectAllowed = 'move';
-    var img = new Image();
-    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    e.dataTransfer.setDragImage(img, 0, 0);
-    _floatingGhost = group.cloneNode(true);
-    _floatingGhost.style.position = 'fixed';
-    _floatingGhost.style.pointerEvents = 'none';
-    _floatingGhost.style.zIndex = '9999';
-    _floatingGhost.style.opacity = '1';
-    _floatingGhost.style.width = group.offsetWidth + 'px';
-    _floatingGhost.style.boxShadow = '0 5px 15px rgba(0,0,0,0.2)';
-    _floatingGhost.style.backgroundColor = getComputedStyle(group).backgroundColor || 'var(--bg-panel)';
-    _floatingGhost.classList.remove('is-dragging','drag-over');
-    var rect = group.getBoundingClientRect();
-    _dragOffsetX = e.clientX - rect.left;
-    _dragOffsetY = e.clientY - rect.top;
-    _floatingGhost.style.left = (e.clientX - _dragOffsetX) + 'px';
-    _floatingGhost.style.top = (e.clientY - _dragOffsetY) + 'px';
-    document.body.appendChild(_floatingGhost);
-    setTimeout(function() { group.style.visibility = 'hidden'; group.classList.add('is-dragging'); }, 0);
+    _startDrag(e, group, 'text/group', group.dataset.tag, ['is-dragging', 'drag-over']);
   }
 
   function _onGroupDrag(e) {
-    if (_floatingGhost && e.clientX !== 0 && e.clientY !== 0) {
-      _floatingGhost.style.left = (e.clientX - _dragOffsetX) + 'px';
-      _floatingGhost.style.top = (e.clientY - _dragOffsetY) + 'px';
-    }
+    _moveGhost(e);
   }
 
   function _onGroupDragEnd(e) {
-    if (_floatingGhost) { _floatingGhost.remove(); _floatingGhost = null; }
-    var group = e.currentTarget.closest('.cmd-group');
-    if (group) { group.style.visibility = ''; group.classList.remove('is-dragging'); }
+    _finishDrag(e.currentTarget.closest('.cmd-group'));
     _collectSubmenuOrderFromDOM();
     C.mark();
   }

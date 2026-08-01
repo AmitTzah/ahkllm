@@ -1,5 +1,6 @@
 // sysmsg-modal.js — shared system message edit modal (open + save)
 (function() {
+  var S = window.SettingsShared;
 
   // Populate the modal when opening — called by both commands and assistants.
   window.populateSysMsgModal = function(opts) {
@@ -38,6 +39,20 @@
   // Save button handler — wired once on DOMContentLoaded.
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
+      // File/inline radio: swap which section is visible.
+      var modal = document.getElementById('sysMsgEditModal');
+      var fileRadio = modal ? modal.querySelector('input[name="sysMsgMode"][value="file"]') : null;
+      var inlineRadio = modal ? modal.querySelector('input[name="sysMsgMode"][value="inline"]') : null;
+      function syncSysMsgSections() {
+        var isInline = !!(inlineRadio && inlineRadio.checked);
+        var fileSection = document.getElementById('smFileSection');
+        var inlineSection = document.getElementById('smInlineSection');
+        if (fileSection) fileSection.style.display = isInline ? 'none' : '';
+        if (inlineSection) inlineSection.style.display = isInline ? '' : 'none';
+      }
+      if (fileRadio) fileRadio.addEventListener('change', syncSysMsgSections);
+      if (inlineRadio) inlineRadio.addEventListener('change', syncSysMsgSections);
+
       var saveBtn = document.getElementById('sysMsgEditSave');
       if (!saveBtn) return;
       saveBtn.addEventListener('click', function() {
@@ -68,7 +83,7 @@
           }
         }
         if (modal) modal.classList.remove('open');
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
+        S.markDirty();
       });
     });
   }

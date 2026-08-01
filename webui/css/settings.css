@@ -433,6 +433,109 @@
   transition: all 0.2s;
 }
 .refresh-model-search::placeholder { color: var(--text-tertiary); }
+
+/* ==========================================================================
+   Settings layout utilities — replaces ad-hoc inline styles in the settings
+   markup (index.html settings center + section renderers).
+   ========================================================================== */
+.settings-text-secondary { color: var(--text-secondary); }
+.settings-text-tertiary { color: var(--text-tertiary); }
+.settings-text-sm { font-size: 13px; }
+.settings-text-11 { font-size: 11px; }
+.settings-text-14-muted { font-size: 14px; color: var(--text-secondary); }
+.settings-text-xs-muted { font-size: 11px; color: var(--text-tertiary); }
+.settings-hint-12 { font-size: 12px; color: var(--text-tertiary); }
+.settings-hint-12-top { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.settings-field-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.settings-field-hint-top { font-size: 11px; color: var(--text-tertiary); margin-top: 8px; }
+.settings-fw-400 { font-weight: 400; }
+.settings-fw-500 { font-weight: 500; }
+.settings-section-label { font-weight: 600; font-size: 13px; }
+.settings-label-strong { font-weight: 600; margin-bottom: 6px; }
+.settings-subtitle { font-weight: 600; font-size: 14px; margin-bottom: 8px; color: var(--accent-primary); }
+.settings-title-label { font-weight: 600; font-size: 14px; margin-bottom: 16px; }
+.settings-title-input { border: 1px solid transparent; background: transparent; font-weight: 600; font-size: 14px; padding: 2px 4px; border-radius: 4px; width: auto; }
+.settings-field-group-title { font-weight: 600; font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }
+.settings-group-title { font-weight: 600; font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+.settings-code-ref { background: var(--bg-hover); padding: 1px 4px; border-radius: 3px; }
+.settings-code-inline { background: var(--bg-hover); padding: 1px 3px; border-radius: 2px; }
+.settings-code-block { background: var(--bg-main); padding: 14px; border-radius: var(--radius-sm); margin-bottom: 4px; }
+.settings-doc-row { margin-bottom: 4px; }
+.settings-flex-row { display: flex; gap: 8px; }
+.settings-flex-row-16 { display: flex; gap: 16px; }
+.settings-flex-row-center { display: flex; gap: 8px; align-items: center; }
+.settings-field-row-mb { margin-bottom: 12px; display: flex; gap: 8px; align-items: center; }
+.settings-field-row-mt { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+.settings-tag-list { display: flex; gap: 4px; flex-wrap: wrap; }
+.settings-radio-label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.settings-delete-row { display: flex; gap: 8px; margin-top: 16px; }
+.settings-column { flex-direction: column; gap: 14px; }
+.settings-modal-body { flex-direction: column; gap: 12px; padding: 20px 24px; }
+.settings-help-docs { flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; }
+.settings-flex-1 { flex: 1; }
+.settings-flex-1-hidden { flex: 1; overflow: hidden; }
+.settings-flex-3 { flex: 3; }
+.settings-flex-fixed-380 { flex: 0 0 380px; overflow: hidden; }
+.settings-mono-flex { flex: 1; font-family: var(--font-mono); font-size: 12px; }
+.settings-mono-muted { font-family: var(--font-mono); font-size: 14px; color: var(--text-tertiary); }
+.settings-sysmsg-textarea { width: 100%; min-height: 180px; font-family: var(--font-mono); font-size: 13px; }
+.settings-icon-xs { width: 12px; height: 12px; }
+.settings-icon-sm { width: 14px; height: 14px; }
+.settings-icon-md { width: 24px; height: 24px; }
+.settings-w-60 { width: 60px; }
+.settings-w-80 { width: 80px; }
+.settings-w-100 { width: 100%; }
+.settings-w-400 { width: 400px; }
+.settings-w-640 { width: 640px; }
+.settings-w-720 { width: 720px; max-height: 85vh; }
+.settings-w-1300 { width: 1300px; }
+.settings-h-40 { height: 40px; }
+.settings-mt-4 { margin-top: 4px; }
+.settings-mt-8 { margin-top: 8px; }
+.settings-mt-12 { margin-top: 12px; }
+.settings-mt-16 { margin-top: 16px; }
+.settings-mb-16 { margin-bottom: 16px; }
+.settings-mb-20 { margin-bottom: 20px; }
+.settings-my-8 { margin: 8px 0; }
+.settings-p-0 { padding: 0; }
+.settings-p-16 { padding: 16px; }
+.settings-p-top { padding: 8px 10px 0; }
+.settings-accent-block { border-left: 3px solid var(--accent-primary); padding: 4px 0 4px 12px; margin: 24px 0 16px; }
+.settings-warning-block { border-left: 3px solid var(--warning); padding: 4px 0 4px 12px; margin: 24px 0 16px; }
+.settings-card-group { margin-bottom: 24px; border: 1px solid var(--border-main); border-radius: var(--radius-md); overflow: hidden; }
+.settings-card-outline { margin-top: 16px; border: 1px solid var(--border-main); border-radius: var(--radius-md); }
+.settings-card-header-row { padding: 14px 16px; background: var(--bg-main); margin: 0; border-bottom: 1px solid var(--border-light); }
+.settings-modal-foot { padding: 14px; border-top: 1px solid var(--border-main); }
+.settings-advanced-toggle { padding: 10px 14px; display: flex; justify-content: space-between; background: var(--bg-main); cursor: pointer; font-weight: 500; font-size: 13px; }
+.settings-empty-state { text-align: center; color: var(--text-tertiary); padding: 20px; }
+.settings-scroll-panel { overflow: auto; padding: 4px; }
+.settings-scroll-y { overflow-y: auto; padding: 0; }
+.settings-absolute-fill { position: absolute; top: 0; left: 0; pointer-events: none; }
+.settings-ml-auto-text-11 { margin-left: auto; font-size: 11px; }
+.settings-color-input { width: 36px; height: 36px; border: 1px solid var(--border-main); border-radius: 4px; cursor: pointer; padding: 2px; }
+.settings-fw-600 { font-weight: 600; }
+.settings-text-10 { font-size: 10px; }
+.settings-text-center { text-align: center; }
+.settings-nowrap { white-space: nowrap; }
+.settings-danger { color: var(--danger); }
+.settings-warning { color: var(--warning); }
+.settings-mb-0 { margin-bottom: 0; }
+.settings-ml-8 { margin-left: 8px; }
+.settings-ml-auto { margin-left: auto; }
+.settings-pt-8 { padding-top: 8px; }
+.settings-w-50 { width: 50px; }
+.settings-w-70 { width: 70px; }
+.settings-w-180 { width: 180px; }
+.settings-w-200 { width: 200px; }
+.settings-max-w-400 { max-width: 400px; }
+.settings-flex-row-6 { display: flex; gap: 6px; }
+.settings-flex-row-24 { display: flex; gap: 24px; }
+.settings-provider-select { border: 1px solid transparent; font-size: 11px; }
+.settings-mono-input { font-family: var(--font-mono); font-size: 12px; }
+.settings-sysmsg-label { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); }
+.settings-title-input-lg { border: 1px solid transparent; background: transparent; font-weight: 600; font-size: 18px; padding: 2px 4px; border-radius: 4px; width: auto; }
+.settings-card-title-input { border: none; font-weight: 600; font-size: 14px; background: transparent; width: auto; }
+.settings-advanced-body { padding-top: 12px; }
 .refresh-model-search:focus { outline: none; border-color: var(--accent-primary); background: var(--bg-panel); }
 .refresh-model-count { font-size: 10px; color: var(--text-tertiary); padding: 4px 12px 6px; }
 

@@ -8,6 +8,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadCommandsCoreWithMocks() {
+    const sharedSrc = fs.readFileSync(
+        path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'),
+        'utf-8'
+    );
     const coreSrc = fs.readFileSync(
         path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'commands', 'commands-core.js'),
         'utf-8'
@@ -56,7 +60,8 @@ function loadCommandsCoreWithMocks() {
 
     const ctx = vm.createContext(sandbox);
 
-    // Load core module — creates window.Cmds with save, load, etc.
+    // Load shared helpers, then core module — creates window.Cmds with save, load, etc.
+    vm.runInContext(sharedSrc, ctx);
     vm.runInContext(coreSrc, ctx);
 
     const C = sandbox.window.Cmds;

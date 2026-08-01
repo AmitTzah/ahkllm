@@ -52,9 +52,9 @@ startLoadingCursor(status) {
     if !IsSet(requestParams)
         return
     status ? CustomMessages.notifyLoadingState(CustomMessages.WM_LOADING_START,
-        requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
+        requestParams["uniqueID"], , requestParams["mainScriptHiddenHwnd"])
             : CustomMessages.notifyLoadingState(CustomMessages.WM_LOADING_FINISH,
-                requestParams["uniqueID"], , requestParams["mainScriptHiddenhWnd"])
+                requestParams["uniqueID"], , requestParams["mainScriptHiddenHwnd"])
 }
 
 ; ----------------------------------------------------

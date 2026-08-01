@@ -33,7 +33,7 @@ function loadSection(opts) {
     const { els, withSettingsPanel, documentElement } = opts || {};
     const elementMap = els || {};
     const domContentLoaded = [];
-    const loadHandlers = [];
+    const timers = [];
     const registered = [];
     const dirtyCalls = [];
     const cssProps = {};
@@ -55,20 +55,23 @@ function loadSection(opts) {
         },
         window: {
             SettingsPanel: settingsPanel,
-            addEventListener: (type, fn) => { if (type === 'load') loadHandlers.push(fn); },
         },
+        setTimeout: (fn) => { timers.push(fn); },
         console,
     };
     sandbox.global = sandbox;
 
+    const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'ui-theme.js'), 'utf-8');
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
 
     return {
         sandbox,
         registered,
         dirtyCalls,
-        loadHandlers,
+        timers,
         cssProps,
         module: registered[0] ? registered[0].mod : null,
         fireDomReady: () => domContentLoaded.forEach((fn) => fn()),
@@ -76,11 +79,10 @@ function loadSection(opts) {
 }
 
 describe('UI & theme settings section', () => {
-    it('load applies dark mode toggle and caches model keys', () => {
-        const toggle = makeEl({ classList: makeClassList() });
+    it('load caches model keys for the chat default model dropdown', () => {
         const modelSel = makeEl();
         const optionEls = [];
-        const ctx = loadSection({ els: { darkModeToggle: toggle, chatDefaultModel: modelSel } });
+        const ctx = loadSection({ els: { chatDefaultModel: modelSel } });
         ctx.sandbox.document.createElement = () => {
             const opt = makeEl();
             opt.value = '';
@@ -90,12 +92,10 @@ describe('UI & theme settings section', () => {
         };
 
         ctx.module.load({ theme: { darkMode: true }, models: { 'b-model': {}, 'a-model': {} }, ui: { chatDefaultModel: 'a-model' } });
-        assert.ok(toggle.classList.contains('on'));
         assert.ok(modelSel.value === 'a-model');
         assert.ok(optionEls.length === 2);
 
         ctx.module.load({ theme: { darkMode: false }, models: { 'a-model': {} }, ui: { chatDefaultModel: 'zzz' } });
-        assert.ok(!toggle.classList.contains('on'));
         assert.ok(optionEls.length === 4, 'unknown current model unshifted');
         assert.ok(optionEls[2].value === 'zzz');
         assert.ok(modelSel.value === 'zzz');
@@ -172,11 +172,9 @@ describe('UI & theme settings section', () => {
         assert.ok(true);
     });
 
-    it('save collects theme and ui values', () => {
-        const toggle = makeEl({ classList: makeClassList(['on']) });
+    it('save collects ui values', () => {
         const ctx = loadSection({
             els: {
-                darkModeToggle: toggle,
                 chatDefaultModel: makeEl({ value: 'm1' }),
                 responseFont: makeEl({ value: 'Calibri' }),
                 responseFontSize: makeEl({ value: '16' }),
@@ -195,7 +193,6 @@ describe('UI & theme settings section', () => {
         });
         const data = JSON.parse(JSON.stringify(ctx.module.save()));
         assert.strictEqual(JSON.stringify(data), JSON.stringify({
-            theme: { darkMode: true },
             ui: {
                 chatDefaultModel: 'm1',
                 responseFont: 'Calibri',
@@ -220,7 +217,6 @@ describe('UI & theme settings section', () => {
             },
         });
         const data = JSON.parse(JSON.stringify(ctx.module.save()));
-        assert.ok(data.theme.darkMode === false, 'no toggle -> darkMode false');
         assert.ok(data.ui.chatDefaultModel === '');
         assert.ok(data.ui.inputWindow.width === 500);
         assert.ok(data.ui.inputWindow.height === 250);
@@ -260,17 +256,6 @@ describe('UI & theme settings section', () => {
         assert.ok(true);
     });
 
-    it('dark mode toggle switches and marks dirty', () => {
-        const darkToggle = makeEl({ classList: makeClassList() });
-        const ctx = loadSection({ els: { darkModeToggle: darkToggle } });
-        ctx.fireDomReady();
-        darkToggle.fire('click');
-        assert.ok(darkToggle.classList.contains('on'));
-        assert.ok(ctx.dirtyCalls.length >= 1);
-        darkToggle.fire('click');
-        assert.ok(!darkToggle.classList.contains('on'));
-    });
-
     it('registers with the settings panel when available', () => {
         const ctx = loadSection({});
         assert.ok(ctx.registered.length === 1);
@@ -279,15 +264,15 @@ describe('UI & theme settings section', () => {
         assert.ok(typeof ctx.registered[0].mod.save === 'function');
     });
 
-    it('defers registration until load when SettingsPanel is missing', () => {
+    it('defers registration until SettingsPanel appears', () => {
         const ctx = loadSection({ withSettingsPanel: undefined });
         assert.ok(ctx.registered.length === 0);
-        assert.ok(ctx.loadHandlers.length === 1);
+        assert.ok(ctx.timers.length >= 1, 'registration retry scheduled');
         ctx.sandbox.window.SettingsPanel = {
             registerSection: (name, mod) => ctx.registered.push({ name, mod }),
             markDirty: () => {},
         };
-        ctx.loadHandlers.forEach((fn) => fn());
+        ctx.timers.forEach((fn) => fn());
         assert.ok(ctx.registered.length === 1);
         assert.ok(ctx.registered[0].name === 'ui');
     });

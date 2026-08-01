@@ -1,5 +1,6 @@
 // commands-core.js — state, load, save, validate, helpers, registration
 (function() {
+  var S = window.SettingsShared;
   var _commands = [];
   var _selectedIdx = -1;
   var _submenuOrder = [];
@@ -17,17 +18,9 @@
       if (tags.length === 0 || hasDirect) {
         if (_groupOrders['__main__'].indexOf(i) < 0) _groupOrders['__main__'].push(i);
       }
-      // Tag groups: only tagged commands without direct go in tag groups
-      if (!hasDirect) {
-        tags.forEach(function(t) {
-          var tag = t.trim();
-          if (!tag) return;
-          _groupOrders[tag] = _groupOrders[tag] || [];
-          if (_groupOrders[tag].indexOf(i) < 0) _groupOrders[tag].push(i);
-        });
-      }
-      // Also add to tag group for reference (dual display for direct commands with tags)
-      if (hasDirect && tags.length > 0) {
+      // Tag groups: tagged commands appear there regardless of direct
+      // accelerator (direct commands show in both Main Menu and the tag).
+      if (!hasDirect || tags.length > 0) {
         tags.forEach(function(t) {
           var tag = t.trim();
           if (!tag) return;
@@ -54,7 +47,27 @@
   function save() {
     window.Cmds.syncDetail();
     _ensureGroupOrders();
-    // Rebuild _commands from group orders: main first, then tagged groups
+    var rebuilt = _rebuildFromGroupOrders();
+    _commands = rebuilt.commands;
+    // Remap _selectedIdx and _groupOrders indices using the old→new mapping
+    _selectedIdx = rebuilt.oldToNew[_selectedIdx] !== undefined ? rebuilt.oldToNew[_selectedIdx] : -1;
+    var mappedOrders = {};
+    Object.keys(_groupOrders).forEach(function(tag) {
+      mappedOrders[tag] = [];
+      _groupOrders[tag].forEach(function(oldIdx) {
+        var newIdx = rebuilt.oldToNew[oldIdx];
+        if (newIdx !== undefined) mappedOrders[tag].push(newIdx);
+      });
+    });
+    _groupOrders = mappedOrders;
+    // Re-render to update DOM data-index attributes with new indices
+    window.Cmds.renderList(_selectedIdx >= 0 ? _selectedIdx : 0);
+    return { commands: _commands, submenuOrder: _submenuOrder };
+  }
+
+  // Rebuild _commands from group orders (main first, then tagged groups) and
+  // return the old-position → new-position mapping (matched by object reference).
+  function _rebuildFromGroupOrders() {
     var newCmds = [];
     var seen = {};
     var main = _groupOrders['__main__'] || [];
@@ -64,30 +77,13 @@
     so.forEach(function(tag) {
       (_groupOrders[tag] || []).forEach(function(i) { if (!seen[i]) { newCmds.push(_commands[i]); seen[i] = true; } });
     });
-    // Build old-position → new-position mapping
     var oldToNew = [];
     newCmds.forEach(function(cmd, newPos) {
-      // cmd._oldIdx was set to the old _commands index during rebuild
-      // but we didn't track it. Instead, find by object reference:
       for (var oldPos = 0; oldPos < _commands.length; oldPos++) {
         if (_commands[oldPos] === cmd) { oldToNew[oldPos] = newPos; break; }
       }
     });
-    _commands = newCmds;
-    // Remap _selectedIdx and remap _groupOrders indices using old→new mapping
-    _selectedIdx = oldToNew[_selectedIdx] !== undefined ? oldToNew[_selectedIdx] : -1;
-    var mappedOrders = {};
-    Object.keys(_groupOrders).forEach(function(tag) {
-      mappedOrders[tag] = [];
-      _groupOrders[tag].forEach(function(oldIdx) {
-        var newIdx = oldToNew[oldIdx];
-        if (newIdx !== undefined) mappedOrders[tag].push(newIdx);
-      });
-    });
-    _groupOrders = mappedOrders;
-    // Re-render to update DOM data-index attributes with new indices
-    window.Cmds.renderList(_selectedIdx >= 0 ? _selectedIdx : 0);
-    return { commands: _commands, submenuOrder: _submenuOrder };
+    return { commands: newCmds, oldToNew: oldToNew };
   }
 
   // Collect submenu tag accelerators. Returns { tagAccels: {...} }.
@@ -108,6 +104,28 @@
     return tagAccels;
   }
 
+  // Lowercased accelerator key from "&X - Label" style text, or ''.
+  function _acceleratorKey(text) {
+    var m = (text || '').match(/&(.)/);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  // Shared shortcut key when two commands conflict, or '' if they don't.
+  function _shortcutConflict(ci, cj) {
+    var msKeyI = _acceleratorKey(ci.menuText);
+    var msKeyJ = _acceleratorKey(cj.menuText);
+    var directKeyI = ci.directAccelerator ? ci.directAccelerator.replace('&', '').toLowerCase() : '';
+    var directKeyJ = cj.directAccelerator ? cj.directAccelerator.replace('&', '').toLowerCase() : '';
+    var hasTagsI = ci.tags && ci.tags.length > 0;
+    var hasTagsJ = cj.tags && cj.tags.length > 0;
+    if ((directKeyI && directKeyI === directKeyJ) ||
+        (!hasTagsI && !hasTagsJ && msKeyI && msKeyI === msKeyJ) ||
+        (directKeyI && !hasTagsJ && msKeyJ && directKeyI === msKeyJ) ||
+        (!hasTagsI && msKeyI && directKeyJ && msKeyI === directKeyJ))
+      return (directKeyI || msKeyI || '?').toUpperCase();
+    return '';
+  }
+
   function validate() {
     window.Cmds.syncDetail();
     var cs = (document.getElementById('chatShortcut') || {}).value || '';
@@ -122,9 +140,8 @@
 
     for (var i = 0; i < _commands.length; i++) {
       var ci = _commands[i];
-      var msI = (ci.menuText || '').match(/&(.)/);
       var hasTagsI = ci.tags && ci.tags.length > 0;
-      var msKey = msI ? msI[1].toLowerCase() : '';
+      var msKey = _acceleratorKey(ci.menuText);
       var directKey = ci.directAccelerator ? ci.directAccelerator.replace('&', '').toLowerCase() : '';
 
       // Check chatShortcut against command accelerators (existing logic)
@@ -139,22 +156,15 @@
 
       for (var j = i + 1; j < _commands.length; j++) {
         var cj = _commands[j];
-        var msJ = (cj.menuText || '').match(/&(.)/);
-        var hasTagsJ = cj.tags && cj.tags.length > 0;
-        var msKeyJ = msJ ? msJ[1].toLowerCase() : '';
-        var directKeyJ = cj.directAccelerator ? cj.directAccelerator.replace('&', '').toLowerCase() : '';
-        if ((directKey && directKey === directKeyJ) ||
-            (!hasTagsI && !hasTagsJ && msKey && msKey === msKeyJ) ||
-            (directKey && !hasTagsJ && msKeyJ && directKey === msKeyJ) ||
-            (!hasTagsI && msKey && directKeyJ && msKey === directKeyJ))
-          return { valid: false, message: 'Shortcut "' + (directKey||msKey||'?').toUpperCase() + '" used by "' + (ci.commandName||'Unnamed') + '" and "' + (cj.commandName||'Unnamed') + '".', selectIdx: i };
+        var conflictKey = _shortcutConflict(ci, cj);
+        if (conflictKey)
+          return { valid: false, message: 'Shortcut "' + conflictKey + '" used by "' + (ci.commandName||'Unnamed') + '" and "' + (cj.commandName||'Unnamed') + '".', selectIdx: i };
       }
     }
     return { valid: true };
   }
 
-  function mark() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }
-  function escHtml(s) { return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"'); }
+  function mark() { S.markDirty(); }
 
   function addCommand() {
     _commands.push({ commandName:'New Command', menuText:'New Command', APIModels:'', pasteMode:'chat', stream:false, isFIM:false, showInputBox:false, userMessage:'', tags:[] });
@@ -176,7 +186,7 @@
     groupOrders: function() { return _groupOrders; },
     setGroupOrders: function(g) { _groupOrders = g; },
     load: load, save: save, validate: validate,
-    mark: mark, escHtml: escHtml, addCommand: addCommand,
+    mark: mark, escHtml: S.escHtml, addCommand: addCommand,
     ensureGroupOrders: _ensureGroupOrders
   };
 
@@ -187,8 +197,8 @@
     });
   }
 
-  (function reg() {
-    if (window.SettingsPanel) window.SettingsPanel.registerSection('commands', {load:load, save:save, validate:validate, selectCommand:function(i){window.Cmds.selectCommand(i);}});
-    else setTimeout(reg, 50);
-  })();
+  S.registerSection('commands', {
+    load: load, save: save, validate: validate,
+    selectCommand: function(i) { window.Cmds.selectCommand(i); }
+  });
 })();

@@ -1,5 +1,4 @@
 /* layout.css — App layout, icon rail, panels, seams, resizers */
-/* Extracted from chat-ui-mock.html lines 75-145 */
 
 .app { display: flex; height: 100vh; overflow: hidden; position: relative; }
 

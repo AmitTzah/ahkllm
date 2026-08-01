@@ -1,5 +1,4 @@
 /* center.css — Center panel: topbar, thread, composer */
-/* Extracted from chat-ui-mock.html lines 263-455 */
 
 .center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-panel); }
 

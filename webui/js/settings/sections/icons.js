@@ -4,6 +4,7 @@
 
 (function() {
   var sectionName = 'icons';
+  var S = window.SettingsShared;
 
   function load(data) {
     if (data && data.icons) {
@@ -23,23 +24,9 @@
     };
   }
 
-  // Wire dirty tracking
-  function wireDirty() {
-    var container = document.getElementById('sec-icons');
-    if (!container) return;
-    container.querySelectorAll('input').forEach(function(el) {
-      el.addEventListener('change', function() {
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
-      });
-      el.addEventListener('input', function() {
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
-      });
-    });
-  }
-
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', function() {
-      wireDirty();
+      S.wireDirty('sec-icons', S.markDirty);
       // Wire Browse buttons
       var container = document.getElementById('sec-icons');
       if (container) {
@@ -53,16 +40,7 @@
     });
   }
 
-  // Register with settings panel
-  if (typeof window !== 'undefined' && window.SettingsPanel) {
-    window.SettingsPanel.registerSection(sectionName, { load: load, save: save });
-  } else {
-    window.addEventListener('load', function() {
-      if (window.SettingsPanel) {
-        window.SettingsPanel.registerSection(sectionName, { load: load, save: save });
-      }
-    });
-  }
+  S.registerSection(sectionName, { load: load, save: save });
 
   // Expose handler for icon file selection from AHK
   window.SettingsIcons = {
@@ -71,7 +49,7 @@
       var el = document.getElementById(targetId);
       if (el) {
         el.value = path;
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
+        S.markDirty();
       }
     }
   };

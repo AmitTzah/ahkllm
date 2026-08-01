@@ -60,8 +60,8 @@ global chatWindowhWnd := 0
 
 ; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
 ; The "prewarm" arg tells ChatWindow to stay hidden after init
-mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")
-Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd), , "Hide", &chatWindowPID)
+mainScriptHiddenHwnd := WinExist("ahk_class AutoHotkey")
+Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , "Hide", &chatWindowPID)
 
 ; ----------------------------------------------------
 ; Chat window state (single persistent window)
@@ -69,11 +69,11 @@ Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ah
 
 _spawnChatWindow(threadId := "") {
     global chatWindowPID
-    mainScriptHiddenhWnd := WinExist("ahk_class AutoHotkey")
+    mainScriptHiddenHwnd := WinExist("ahk_class AutoHotkey")
     if threadId
-        Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd, threadId), , , &chatWindowPID)
+        Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, threadId), , , &chatWindowPID)
     else
-        Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenhWnd), , , &chatWindowPID)
+        Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , , &chatWindowPID)
 }
 
 openChatWindow(threadId := "") {

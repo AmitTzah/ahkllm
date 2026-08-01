@@ -1,5 +1,4 @@
 /* modals.css — Modal overlays, tree modal, system message modal */
-/* Extracted from chat-ui-mock.html lines 557-596 */
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); backdrop-filter: blur(2px); display: none; align-items: center; justify-content: center; z-index: 50; }
 .modal-overlay.open { display: flex; }

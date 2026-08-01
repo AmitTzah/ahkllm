@@ -12,7 +12,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadModule() {
-  const helperSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'reasoning-levels.js'), 'utf-8');
+  const helperSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'reasoning-levels.js'), 'utf-8');
+  const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
   const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'assistants.js'), 'utf-8');
   const cards = [];
   const grid = { innerHTML: '', appendChild: (c) => { cards.push(c); } };
@@ -106,6 +107,7 @@ function loadModule() {
   sandbox.global = sandbox;
   const context = vm.createContext(sandbox);
   vm.runInContext(helperSrc, context); // ReasoningLevels must load before assistants.js
+  vm.runInContext(sharedSrc, context);
   vm.runInContext(src, context);
   return { registered, cards };
 }

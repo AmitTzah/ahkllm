@@ -37,7 +37,7 @@ A Windows-native AI assistant that lives in your taskbar. Press `` ` `` (backtic
 
 ## Configuration
 
-Edit [`UserConfig.ahk`](UserConfig.ahk) to customize:
+Edit [`DefaultSettings.ahk`](DefaultSettings.ahk) to customize:
 - API providers and models
 - Commands (the `` ` `` menu)
 - Assistants (chat profiles with custom system prompts)

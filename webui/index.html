@@ -95,7 +95,7 @@
 
   <!-- CENTER -->
   <div class="center" id="chat-layout">
-    <div id="fim-notice" style="display:none;">Fill In the Middle � no chat history</div>
+    <div id="fim-notice" style="display:none;">Fill In the Middle — no chat history</div>
     <div class="topbar">
       <div class="topbar-left">
         <div class="chat-title-topbar">
@@ -199,8 +199,8 @@
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;position:relative;"><div class="value" id="totalCost" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">$0.00</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Total Cost <span class="cost-info" id="costInfoIcon" style="cursor:help;display:inline-block;vertical-align:middle;color:var(--text-tertiary);"><i data-lucide="info" style="width:13px;height:13px;"></i><span class="cost-tooltip" id="costTooltip"></span></span></div></div>
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="totalCalls" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">0</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">API Requests</div></div>
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="totalTokens" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">0</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Total Tokens</div></div>
-      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="speedValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">�</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Speed</div></div>
-      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="ttftValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">�</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Latency (ttft)</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="speedValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Speed</div></div>
+      <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="ttftValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Latency (ttft)</div></div>
     </div>
     <div class="chart-card" style="background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px;margin:0 20px 14px;">
       <div class="chart-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -218,61 +218,57 @@
   <!-- Settings Center -->
   <div class="settings-center" id="settingsCenter" style="display:none;">
     <div class="settings-content">
-      <div class="section-card" id="sec-general" ><div class="section-card-header"><i data-lucide="settings" style="width:14px;height:14px;"></i> General — Thread Titles, API Logs, Trash</div><div class="section-card-body">
-        <div style="margin-bottom:24px;border:1px solid var(--border-main);border-radius:var(--radius-md);overflow:hidden;">
-          <div class="toggle-row" style="padding:14px 16px;background:var(--bg-main);margin:0;border-bottom:1px solid var(--border-light);">
-            <div><div class="lbl">Thread Title Generation</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">After the first exchange, generates a short title via a cheap LLM call</div></div>
+      <div class="section-card" id="sec-general" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="settings"></i> General — Thread Titles, API Logs, Trash</div><div class="section-card-body">
+        <div class="settings-card-group">
+          <div class="toggle-row settings-card-header-row">
+            <div><div class="lbl">Thread Title Generation</div><div class="settings-hint-12-top">After the first exchange, generates a short title via a cheap LLM call</div></div>
             <div class="switch on" id="titleGenToggle"><div class="knob"></div></div>
           </div>
-          <div id="titleGenFields" style="padding:16px;">
+          <div class="settings-p-16" id="titleGenFields">
             <div class="grid-2"><div class="field"><label class="field-label">Model</label><select id="titleGenModel"><option>deepseek/deepseek-v4-flash</option><option>deepseek/deepseek-v4-pro</option><option>openai/gpt-4o-mini</option></select></div>
             <div class="field"><label class="field-label">Max Tokens</label><input type="number" id="titleGenMaxTokens" value="50"></div></div>
             <div class="field"><label class="field-label">System Prompt</label><textarea id="titleGenPrompt">Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary.</textarea></div>
           </div>
         </div>
-        <div class="field" style="margin-bottom:20px;">
+        <div class="field settings-mb-20">
           <label class="field-label">Chat Shortcut Key <span class="hint">press backtick then this key to open chat. Leave empty to disable</span></label>
-          <input type="text" id="chatShortcut" maxlength="1" placeholder="1" style="width:60px;">
+          <input class="settings-w-60" type="text" id="chatShortcut" maxlength="1" placeholder="1">
         </div>
-        <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Data Management</div>
+        <div class="settings-group-title">Data Management</div>
         <div class="grid-2">
           <div class="field"><label class="field-label">API Log Max Entries <span class="hint">0 = disable</span></label><input type="number" id="apiLogMaxEntries" value="20"></div>
           <div class="field"><label class="field-label">Trash Retention (days) <span class="hint">0 = never purge</span></label><input type="number" id="trashRetentionDays" value="30"></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-ui" ><div class="section-card-header"><i data-lucide="palette" style="width:14px;height:14px;"></i> UI & Theme — Appearance</div><div class="section-card-body">
-        <div class="toggle-row" style="padding-top:0;margin-bottom:20px;">
-          <div><div class="lbl">Dark Mode</div><div style="font-size:11px;color:var(--text-tertiary);">Not yet implemented � will take effect in a future release</div></div>
-          <div class="switch" id="darkModeToggle"><div class="knob"></div></div>
-        </div>
+      <div class="section-card" id="sec-ui" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="palette"></i> UI & Theme — Appearance</div><div class="section-card-body">
         <div class="field"><label class="field-label">Default Chat Model</label><select id="chatDefaultModel"><option>deepseek/deepseek-v4-flash</option><option>deepseek/deepseek-v4-pro</option><option>openai/gpt-4o</option></select></div>
-        <div class="field"><label class="field-label">Response Font <span class="hint">for markdown output window</span></label><div class="field-row"><select id="responseFont" style="flex:3;"><option value="Arial">Arial (sans-serif)</option><option value="Inter">Inter (sans-serif)</option><option value="Segoe UI">Segoe UI (sans-serif)</option><option value="Georgia">Georgia (serif)</option><option value="JetBrains Mono">JetBrains Mono (monospace)</option></select><select id="responseFontSize" style="flex:1;"><option value="13">13px</option><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17" selected>17px</option><option value="18">18px</option><option value="19">19px</option><option value="20">20px</option><option value="22">22px</option><option value="24">24px</option></select></div></div>
-        <div style="border-left:3px solid var(--accent-primary);padding:4px 0 4px 12px;margin:24px 0 16px;"><div style="font-weight:600;font-size:13px;">Command Input Window</div><div style="font-size:11px;color:var(--text-tertiary);">Appearance of the popup shown when a command requests user input</div></div>
+        <div class="field"><label class="field-label">Response Font <span class="hint">for markdown output window</span></label><div class="field-row"><select class="settings-flex-3" id="responseFont"><option value="Arial">Arial (sans-serif)</option><option value="Inter">Inter (sans-serif)</option><option value="Segoe UI">Segoe UI (sans-serif)</option><option value="Georgia">Georgia (serif)</option><option value="JetBrains Mono">JetBrains Mono (monospace)</option></select><select class="settings-flex-1" id="responseFontSize"><option value="13">13px</option><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17" selected>17px</option><option value="18">18px</option><option value="19">19px</option><option value="20">20px</option><option value="22">22px</option><option value="24">24px</option></select></div></div>
+        <div class="settings-accent-block"><div class="settings-section-label">Command Input Window</div><div class="settings-text-xs-muted">Appearance of the popup shown when a command requests user input</div></div>
         <div class="grid-2">
           <div class="field"><label class="field-label">Font Face</label><select id="iwFontFace"><option>Arial</option><option>Inter</option><option>Segoe UI</option><option>Consolas</option><option>JetBrains Mono</option></select></div>
           <div class="field"><label class="field-label">Font Size</label><select id="iwFontSize"><option>s10</option><option>s12</option><option selected>s14</option><option>s16</option><option>s18</option></select></div>
           <div class="field"><label class="field-label">Font Color</label><select id="iwFontColor"><option selected>cWhite</option><option>cBlack</option><option>cSilver</option><option>cGray</option></select></div>
-          <div class="field"><label class="field-label">Window Background</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="iwBackground" value="#212529" style="width:36px;height:36px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;padding:2px;"><input type="text" id="iwBackgroundHex" value="0x212529" readonly style="flex:1;font-family:var(--font-mono);font-size:12px;"></div></div>
+          <div class="field"><label class="field-label">Window Background</label><div class="settings-flex-row-center"><input class="settings-color-input" type="color" id="iwBackground" value="#212529"><input class="settings-mono-flex" type="text" id="iwBackgroundHex" value="0x212529" readonly></div></div>
           <div class="field"><label class="field-label">Width (px)</label><input type="number" id="iwWidth" value="500"></div>
           <div class="field"><label class="field-label">Height (px)</label><input type="number" id="iwHeight" value="250"></div>
         </div>
-        <div style="border-left:3px solid var(--warning);padding:4px 0 4px 12px;margin:24px 0 16px;"><div style="font-weight:600;font-size:13px;">Suspend Banner</div><div style="font-size:11px;color:var(--text-tertiary);">Floating banner shown when the script is suspended</div></div>
+        <div class="settings-warning-block"><div class="settings-section-label">Suspend Banner</div><div class="settings-text-xs-muted">Floating banner shown when the script is suspended</div></div>
         <div class="grid-2">
           <div class="field"><label class="field-label">Text</label><input type="text" id="sbText" value="LLM AutoHotkey Assistant Suspended"></div>
           <div class="field"><label class="field-label">Font Face</label><select id="sbFontFace"><option selected>Arial</option><option>Inter</option><option>Segoe UI</option><option>Consolas</option><option>JetBrains Mono</option></select></div>
           <div class="field"><label class="field-label">Font Size</label><select id="sbFontSize"><option selected>s10</option><option>s12</option><option>s14</option><option>s16</option><option>s18</option></select></div>
           <div class="field"><label class="field-label">Text Color</label><select id="sbFontColor"><option selected>cBlack</option><option>cWhite</option><option>cSilver</option><option>cGray</option><option>cRed</option></select></div>
-          <div class="field"><label class="field-label">Banner Background</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="sbBackground" value="#FFDF00" style="width:36px;height:36px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;padding:2px;"><input type="text" id="sbBackgroundHex" value="0xFFDF00" readonly style="flex:1;font-family:var(--font-mono);font-size:12px;"></div></div>
+          <div class="field"><label class="field-label">Banner Background</label><div class="settings-flex-row-center"><input class="settings-color-input" type="color" id="sbBackground" value="#FFDF00"><input class="settings-mono-flex" type="text" id="sbBackgroundHex" value="0xFFDF00" readonly></div></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-icons" ><div class="section-card-header"><i data-lucide="image" style="width:14px;height:14px;"></i> Icons — Tray Icons</div><div class="section-card-body">
+      <div class="section-card" id="sec-icons" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="image"></i> Icons — Tray Icons</div><div class="section-card-body">
         <div class="grid-2">
-          <div class="field"><label class="field-label">Active Icon (iconOn)</label><div style="display:flex;gap:8px;"><input type="text" id="iconOnPath" value="icons\IconOn.ico" style="flex:1;"><button class="btn-sm" data-icon-field="iconOn">Browse</button></div></div>
-          <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><div style="display:flex;gap:8px;"><input type="text" id="iconOffPath" value="icons\IconOff.ico" style="flex:1;"><button class="btn-sm" data-icon-field="iconOff">Browse</button></div></div>
+          <div class="field"><label class="field-label">Active Icon (iconOn)</label><div class="settings-flex-row"><input class="settings-flex-1" type="text" id="iconOnPath" value="icons\IconOn.ico"><button class="btn-sm" data-icon-field="iconOn">Browse</button></div></div>
+          <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><div class="settings-flex-row"><input class="settings-flex-1" type="text" id="iconOffPath" value="icons\IconOff.ico"><button class="btn-sm" data-icon-field="iconOff">Browse</button></div></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-hotkeys" ><div class="section-card-header"><i data-lucide="keyboard" style="width:14px;height:14px;"></i> Hotkeys</div><div class="section-card-body">
-        <div class="warning-banner" style="margin-bottom:16px;">&#x26A0; Hotkey changes require a script restart to take effect. <button class="btn-sm" id="restartNowBtn">Restart Now</button></div>
+      <div class="section-card" id="sec-hotkeys" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="keyboard"></i> Hotkeys</div><div class="section-card-body">
+        <div class="warning-banner settings-mb-16">&#x26A0; Hotkey changes require a script restart to take effect. <button class="btn-sm" id="restartNowBtn">Restart Now</button></div>
         <div class="grid-2">
           <div class="field"><label class="field-label">Main Hotkey <span class="hint">opens command menu</span></label><div class="key-capture"><input id="hkMain" value="``"><span class="status">click to edit</span></div></div>
           <div class="field"><label class="field-label">Reload Script</label><div class="key-capture"><input id="hkReload" value="~^!r"><span class="status">click to edit</span></div></div>
@@ -280,48 +276,48 @@
           <div class="field"><label class="field-label">Suspend Toggle</label><div class="key-capture"><input id="hkSuspend" value="CapsLock & ``"><span class="status">click to edit</span></div></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-menu" ><div class="section-card-header"><i data-lucide="list" style="width:14px;height:14px;"></i> Menu Items — Quick Access & Tray Menu</div><div class="section-card-body">
-        <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Quick Access Menu</div>
+      <div class="section-card" id="sec-menu" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="list"></i> Menu Items — Quick Access & Tray Menu</div><div class="section-card-body">
+        <div class="settings-field-group-title">Quick Access Menu</div>
         <table class="kv-table"><thead><tr><th>Menu Text</th><th>Command</th><th></th></tr></thead><tbody id="qaTableBody"></tbody></table>
-        <div style="margin:8px 0;"><button class="btn-sm" id="addQaRow">+ Add Item</button></div>
+        <div class="settings-my-8"><button class="btn-sm" id="addQaRow">+ Add Item</button></div>
         <hr class="divider">
-        <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Tray Menu</div>
+        <div class="settings-field-group-title">Tray Menu</div>
         <table class="kv-table"><thead><tr><th>Menu Text</th><th>Action</th><th></th></tr></thead><tbody id="trayTableBody"></tbody></table>
-        <div style="margin-top:8px;"><button class="btn-sm" id="addTrayRow">+ Add Item</button></div>
+        <div class="settings-mt-8"><button class="btn-sm" id="addTrayRow">+ Add Item</button></div>
       </div></div>
-      <div class="section-card" id="sec-providers" ><div class="section-card-header"><i data-lucide="cloud" style="width:14px;height:14px;"></i> Providers — API Endpoints & Authentication</div><div class="section-card-body">
+      <div class="section-card" id="sec-providers" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="cloud"></i> Providers — API Endpoints & Authentication</div><div class="section-card-body">
         <div class="provider-grid" id="providerGrid"></div>
-        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addProviderBtn">+ Add Provider</button><span style="font-size:11px;color:var(--text-tertiary);">Requires OpenAI-compatible API endpoint</span></div>
+        <div class="settings-field-row-mt"><button class="btn-sm" id="addProviderBtn">+ Add Provider</button><span class="settings-text-xs-muted">Requires OpenAI-compatible API endpoint</span></div>
       </div></div>
-      <div class="section-card" id="sec-models" ><div class="section-card-header"><i data-lucide="cpu" style="width:14px;height:14px;"></i> Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Fetch Latest Models</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
+      <div class="section-card" id="sec-models" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="cpu"></i> Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn"><i class="settings-icon-xs" data-lucide="refresh-cw"></i> Fetch Latest Models</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
         <table class="kv-table"><thead><tr><th>Model ID</th><th>Provider</th><th>Input</th><th>Cached</th><th>Output</th><th>Context</th><th>Vision</th><th>Reasoning</th><th></th></tr></thead><tbody id="modelsTableBody"></tbody></table>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">Prices in $/1M tokens. Cached input defaults to 10% of input if blank. Checkboxes: enable vision / reasoning support.</div>
+        <div class="settings-field-hint-top">Prices in $/1M tokens. Cached input defaults to 10% of input if blank. Checkboxes: enable vision / reasoning support.</div>
       </div></div>
-      <div class="section-card" id="sec-assistants" ><div class="section-card-header"><i data-lucide="bot" style="width:14px;height:14px;"></i> Assistants — Chat Profiles</div><div class="section-card-body">
-        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button><span id="assistantCount" style="font-size:12px;color:var(--text-tertiary);">0 assistants defined — click + to add inline</span></div>
+      <div class="section-card" id="sec-assistants" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="bot"></i> Assistants — Chat Profiles</div><div class="section-card-body">
+        <div class="settings-field-row-mb"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button><span class="settings-hint-12" id="assistantCount">0 assistants defined — click + to add inline</span></div>
         <div class="provider-grid" id="assistantGrid"></div>
       </div></div>
-      <div class="section-card wide" id="sec-commands" ><div class="section-card-header"><i data-lucide="terminal" style="width:14px;height:14px;"></i> Commands <span class="spacer"></span><button class="btn-sm" style="font-weight:500;" onclick="document.getElementById('cmdHelpModal').classList.add('open')"><i data-lucide="help-circle" style="width:14px;height:14px;"></i> Command Guide</button></div><div class="section-card-body" style="padding:0;">
+      <div class="section-card wide" id="sec-commands" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="terminal"></i> Commands <span class="spacer"></span><button class="btn-sm settings-fw-500" id="cmdHelpBtn"><i class="settings-icon-sm" data-lucide="help-circle"></i> Command Guide</button></div><div class="section-card-body settings-p-0">
         <div class="commands-layout">
-          <div class="commands-list"><div class="commands-list-header">All Commands <span class="tt" data-tip="Drag items or use ?? arrows to reorder. Order affects how commands appear in the menu." style="font-weight:400;">?</span><button class="btn-sm" id="addCommandBtn">+ New</button></div><div class="commands-list-body" id="commandsListBody"></div></div>
+          <div class="commands-list"><div class="commands-list-header">All Commands <span class="tt settings-fw-400" data-tip="Drag items or use ?? arrows to reorder. Order affects how commands appear in the menu.">?</span><button class="btn-sm" id="addCommandBtn">+ New</button></div><div class="commands-list-body" id="commandsListBody"></div></div>
           <div class="command-detail" id="cmdDetail">
-            <div style="font-weight:600;font-size:14px;margin-bottom:16px;"><input type="text" id="cmdDetailTitle" value="" style="border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;padding:2px 4px;border-radius:4px;width:auto;" placeholder="Command Title"></div>
+            <div class="settings-title-label"><input class="settings-title-input" type="text" id="cmdDetailTitle" value="" placeholder="Command Title"></div>
             <div class="grid-2"><div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask DeepSeek V4 Flash"></div>
-            <div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input type="text" id="cmdMenuShortcut" placeholder="e.g. 2 or a" maxlength="1" style="width:80px;"><div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Shows as: <code id="cmdMenuTextPreview" style="background:var(--bg-hover);padding:1px 3px;border-radius:2px;"></code></div></div></div>
-            <div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input type="text" id="cmdDirectShortcut" placeholder="e.g. 1 or a" maxlength="1" style="width:80px;"></div>
+            <div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input class="settings-w-80" type="text" id="cmdMenuShortcut" placeholder="e.g. 2 or a" maxlength="1"><div class="settings-field-hint">Shows as: <code class="settings-code-inline" id="cmdMenuTextPreview"></code></div></div></div>
+            <div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input class="settings-w-80" type="text" id="cmdDirectShortcut" placeholder="e.g. 1 or a" maxlength="1"></div>
             <div class="field"><label class="field-label">API Model <span class="tt" data-tip="Select the model for this command from the available models, or Default for the chat default model.">?</span></label><select id="cmdApiModel"><option value="">Default</option></select></div>
             <div class="grid-2"><div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>
-            <div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0�2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div></div>
-            <div class="field"><label class="field-label">User Message <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Use Enter for newlines � they are automatically converted.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>
+            <div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0–2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div></div>
+            <div class="field"><label class="field-label">User Message <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Use Enter for newlines — they are automatically converted.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>
             <div class="toggle-row"><div><div class="lbl">Show Input Box <span class="tt" data-tip="Opens a text box before sending. User input becomes {{input}} variable. Ignored in FIM mode.">?</span></div></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>
             <div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>
             <div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, all prompt fields above are ignored. FIM Fill (replace) fills gap. FIM Continue (append) continues from cursor.">?</span></div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>
-            <div class="field" style="margin-top:12px;"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers. Level defaults to medium.">?</span></label><div class="field-row"><select id="cmdThinkingType" style="flex:1;"><option>disabled</option><option>enabled</option></select><select id="cmdThinkingLevel" style="flex:1;"><option value="">Default level</option><option>low</option><option>medium</option><option>high</option></select></div></div>
-            <div class="field"><label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label><div style="display:flex;gap:4px;flex-wrap:wrap;" id="cmdTags"></div><button class="btn-sm" id="addCmdTagBtn" style="margin-top:4px;">+ Add Tag</button></div>
+            <div class="field settings-mt-12"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers. Level defaults to medium.">?</span></label><div class="field-row"><select class="settings-flex-1" id="cmdThinkingType"><option>disabled</option><option>enabled</option></select><select class="settings-flex-1" id="cmdThinkingLevel"><option value="">Default level</option><option>low</option><option>medium</option><option>high</option></select></div></div>
+            <div class="field"><label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label><div class="settings-tag-list" id="cmdTags"></div><button class="btn-sm settings-mt-4" id="addCmdTagBtn">+ Add Tag</button></div>
             <div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>
-            <div class="advanced-wrap" style="margin-top:16px;border:1px solid var(--border-main);border-radius:var(--radius-md);">
-              <div class="advanced-toggle" style="padding:10px 14px;display:flex;justify-content:space-between;background:var(--bg-main);cursor:pointer;font-weight:500;font-size:13px;" onclick="this.parentElement.classList.toggle('open')"><span>Advanced</span><span style="color:var(--text-tertiary);">�</span></div>
-              <div class="advanced-body" style="padding:14px;border-top:1px solid var(--border-main);">
+            <div class="advanced-wrap settings-card-outline">
+              <div class="advanced-toggle settings-advanced-toggle"><span>Advanced</span><span class="settings-text-tertiary">▾</span></div>
+              <div class="advanced-body settings-modal-foot">
                 <div class="grid-2">
                   <div class="field"><label class="field-label">System Message <span class="tt" data-tip="Instructions for the LLM. Supports {{selection}}, {{fullText}}, {{input}}.">?</span></label><input type="text" id="cmdSystemMessage" placeholder="Optional system prompt"></div>
                   <div class="field"><label class="field-label">System Message File <span class="tt" data-tip="Path to .txt file with system prompt. Takes precedence over inline text above.">?</span></label><input type="text" id="cmdSystemMessageFile" placeholder="system-messages/my-prompt.txt"></div>
@@ -332,22 +328,22 @@
                 </div>
                 <div class="grid-2">
                   <div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>
-                  <div class="field"><label class="toggle-row" style="margin-top:8px;"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label></div>
+                  <div class="field"><label class="toggle-row settings-mt-8"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label></div>
                 </div>
               </div>
             </div>
-            <div style="display:flex; gap:8px; margin-top:16px;">
-              <button class="btn-primary" id="cmdSaveBtn" style="font-size:13px;">Save Command</button>
-              <button class="btn-ghost" id="cmdDeleteBtn" style="font-size:13px;">Delete Command</button>
+            <div class="settings-delete-row">
+              <button class="btn-primary settings-text-sm" id="cmdSaveBtn">Save Command</button>
+              <button class="btn-ghost settings-text-sm" id="cmdDeleteBtn">Delete Command</button>
             </div>
           </div>
         </div>
       </div></div>
-      <div style="height:40px;"></div>
+      <div class="settings-h-40"></div>
     </div>
   </div>
 
-  <div class="seam" id="seamRight"><div class="seam-notch" id="notchRight"><i data-lucide="chevron-right" style="width:12px;height:12px;"></i></div></div>
+  <div class="seam" id="seamRight"><div class="seam-notch" id="notchRight"><i class="settings-icon-xs" data-lucide="chevron-right"></i></div></div>
 
   <!-- RIGHT: Config & Nav -->
   <div class="rail-right" id="railRight">
@@ -446,36 +442,36 @@
 
 <!-- Refresh Pricing Modal -->
 <div class="modal-overlay" id="refreshModal">
-  <div class="modal-box" style="width:1300px;"><div class="modal-head"><div class="modal-title">Edit Models</div><button class="icon-btn" onclick="document.getElementById('refreshModal').classList.remove('open')">?</button></div>
-  <div class="modal-body"><div class="modal-panel" style="flex:0 0 380px;overflow:hidden;"><div class="modal-panel-header">Available Models <button class="btn-sm" id="refreshPricingRefreshBtn" style="margin-left:auto;font-size:11px;">Refresh</button></div><div style="padding:8px 10px 0;"><input id="refreshModelSearch" type="text" class="refresh-model-search" placeholder="Search models..."></div><div class="refresh-model-count" id="refreshModelCount"></div><div class="modal-panel-body" style="overflow-y:auto;padding:0;"><table class="kv-table" style="font-size:11px;"><thead><tr><th>Model</th><th>In</th><th>Out</th><th>Ctx</th><th></th></tr></thead><tbody id="refreshLeftTbody"><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px;">Click Refresh to pull latest pricing data</td></tr></tbody></table></div></div>
-  <div class="modal-panel" style="flex:1;overflow:hidden;"><div class="modal-panel-header">Your Models</div><div class="modal-panel-body" style="overflow:auto;padding:4px;"><table class="kv-table" style="font-size:11px;"><thead><tr><th>Model</th><th>Prov</th><th>In $</th><th>Cache $</th><th>Out $</th><th>Ctx</th><th>V</th><th>R</th><th></th></tr></thead><tbody id="refreshRightTbody"><tr><td colspan="9" style="text-align:center;color:var(--text-tertiary);padding:20px;">Loading...</td></tr></tbody></table></div></div></div>
-  <div class="modal-foot"><button class="btn-ghost" onclick="window.SettingsModels.cancelRefresh()">Cancel</button><button class="btn-primary" id="refreshSaveBtn" style="font-size:13px;">Save</button></div></div>
+  <div class="modal-box settings-w-1300"><div class="modal-head"><div class="modal-title">Edit Models</div><button class="icon-btn">?</button></div>
+  <div class="modal-body"><div class="modal-panel settings-flex-fixed-380"><div class="modal-panel-header">Available Models <button class="btn-sm settings-ml-auto-text-11" id="refreshPricingRefreshBtn">Refresh</button></div><div class="settings-p-top"><input id="refreshModelSearch" type="text" class="refresh-model-search" placeholder="Search models..."></div><div class="refresh-model-count" id="refreshModelCount"></div><div class="modal-panel-body settings-scroll-y"><table class="kv-table settings-text-11"><thead><tr><th>Model</th><th>In</th><th>Out</th><th>Ctx</th><th></th></tr></thead><tbody id="refreshLeftTbody"><tr><td class="settings-empty-state" colspan="5">Click Refresh to pull latest pricing data</td></tr></tbody></table></div></div>
+  <div class="modal-panel settings-flex-1-hidden"><div class="modal-panel-header">Your Models</div><div class="modal-panel-body settings-scroll-panel"><table class="kv-table settings-text-11"><thead><tr><th>Model</th><th>Prov</th><th>In $</th><th>Cache $</th><th>Out $</th><th>Ctx</th><th>V</th><th>R</th><th></th></tr></thead><tbody id="refreshRightTbody"><tr><td class="settings-empty-state" colspan="9">Loading...</td></tr></tbody></table></div></div></div>
+  <div class="modal-foot"><button class="btn-ghost">Cancel</button><button class="btn-primary settings-text-sm" id="refreshSaveBtn">Save</button></div></div>
 </div>
 
 <!-- Reusable Confirmation Modal -->
 <div class="modal-overlay" id="confirmModal">
-  <div class="modal-box" style="width:400px;">
-    <div class="modal-head"><div class="modal-title" id="confirmModalTitle">Confirm</div><button class="icon-btn" onclick="document.getElementById('confirmModal').classList.remove('open')">?</button></div>
-    <div class="modal-body" style="flex-direction:column;gap:12px;padding:20px 24px;">
-      <div style="font-size:14px;color:var(--text-secondary);" id="confirmModalMsg">Are you sure?</div>
+  <div class="modal-box settings-w-400">
+    <div class="modal-head"><div class="modal-title" id="confirmModalTitle">Confirm</div><button class="icon-btn">?</button></div>
+    <div class="modal-body settings-modal-body">
+      <div class="settings-text-14-muted" id="confirmModalMsg">Are you sure?</div>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" onclick="document.getElementById('confirmModal').classList.remove('open')">Cancel</button>
-      <button class="btn-primary" id="confirmBtn" style="font-size:13px;">Confirm</button>
+      <button class="btn-ghost">Cancel</button>
+      <button class="btn-primary settings-text-sm" id="confirmBtn">Confirm</button>
     </div>
   </div>
 </div>
 
 <!-- System Message Edit Modal -->
 <div class="modal-overlay" id="sysMsgEditModal">
-  <div class="modal-box" style="width:640px;"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">?</button></div>
-  <div class="modal-body" style="flex-direction:column;gap:14px;">
-    <div style="display:flex;gap:8px;"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" value="file" checked onchange="var e=document.getElementById('smFileSection');if(e)e.style.display='';e=document.getElementById('smInlineSection');if(e)e.style.display='none'"> Load from file</label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="sysMsgMode" value="inline" onchange="var e=document.getElementById('smInlineSection');if(e)e.style.display='';e=document.getElementById('smFileSection');if(e)e.style.display='none'"> Write inline</label></div>
-    <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select id="smFileSelect" style="width:100%;"><option value="">(none)</option><optgroup label="App Defaults"><option value="natural-conversationalist.txt">natural-conversationalist.txt</option><option value="violet.txt">violet.txt</option><option value="summarize.txt">summarize.txt</option><option value="refine.txt">refine.txt</option><option value="translate-to-english.txt">translate-to-english.txt</option><option value="rephrase-in-context.txt">rephrase-in-context.txt</option><option value="brutal-critic.txt">brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"><option value="my-custom-prompt.txt">my-custom-prompt.txt</option></optgroup></select></div></div>
-    <div id="smInlineSection" ><div class="field"><label class="field-label">Write system message</label><textarea id="smInlineText" style="width:100%;min-height:180px;font-family:var(--font-mono);font-size:13px;" placeholder="You are a helpful assistant..."></textarea></div></div>
+  <div class="modal-box settings-w-640"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn">?</button></div>
+  <div class="modal-body settings-column">
+    <div class="settings-flex-row"><label class="settings-radio-label"><input type="radio" name="sysMsgMode" value="file" checked> Load from file</label>
+    <label class="settings-radio-label"><input type="radio" name="sysMsgMode" value="inline"> Write inline</label></div>
+    <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select class="settings-w-100" id="smFileSelect"><option value="">(none)</option><optgroup label="App Defaults"><option value="natural-conversationalist.txt">natural-conversationalist.txt</option><option value="violet.txt">violet.txt</option><option value="summarize.txt">summarize.txt</option><option value="refine.txt">refine.txt</option><option value="translate-to-english.txt">translate-to-english.txt</option><option value="rephrase-in-context.txt">rephrase-in-context.txt</option><option value="brutal-critic.txt">brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"></optgroup></select></div></div>
+    <div id="smInlineSection" ><div class="field"><label class="field-label">Write system message</label><textarea class="settings-sysmsg-textarea" id="smInlineText" placeholder="You are a helpful assistant..."></textarea></div></div>
   </div>
-  <div class="modal-foot"><button class="btn-ghost" onclick="document.getElementById('sysMsgEditModal').classList.remove('open')">Cancel</button><button class="btn-primary" id="sysMsgEditSave" style="font-size:13px;">Save</button></div></div>
+  <div class="modal-foot"><button class="btn-ghost">Cancel</button><button class="btn-primary settings-text-sm" id="sysMsgEditSave">Save</button></div></div>
 </div>
 
 <!-- Tree Modal -->
@@ -493,14 +489,14 @@
           <button id="zoomIn"><i data-lucide="plus"></i></button>
           <button id="zoomFit" title="Fit to screen"><i data-lucide="maximize"></i></button>
         </div>
-        <button class="icon-btn" id="treeFullscreenBtn" title="Fullscreen" onclick="toggleTreeFullscreen()"><i data-lucide="maximize2" style="width:24px;height:24px;"></i></button>
-        <button class="icon-btn modal-close" id="treeClose"><i data-lucide="x" style="width:24px;height:24px;"></i></button>
+        <button class="icon-btn" id="treeFullscreenBtn" title="Fullscreen" onclick="toggleTreeFullscreen()"><i class="settings-icon-md" data-lucide="maximize2"></i></button>
+        <button class="icon-btn modal-close" id="treeClose"><i class="settings-icon-md" data-lucide="x"></i></button>
       </div>
     </div>
     <div class="tree-canvas-wrap" id="treeCanvasWrap">
       <div class="tree-zoom-layer" id="treeZoomLayer">
         <div class="tree-canvas">
-          <svg id="treeSvg" width="1000" height="600" style="position:absolute;top:0;left:0;pointer-events:none;">
+          <svg class="settings-absolute-fill" id="treeSvg" width="1000" height="600">
             <!-- Connector paths rendered dynamically -->
           </svg>
           <!-- Tree nodes rendered dynamically -->
@@ -515,14 +511,14 @@
   <div class="modal-box sysmsg-modal">
     <div class="modal-head">
       <div class="modal-title">Edit System Prompt</div>
-      <button class="icon-btn modal-close" id="sysMsgClose"><i data-lucide="x" style="width:24px;height:24px;"></i></button>
+      <button class="icon-btn modal-close" id="sysMsgClose"><i class="settings-icon-md" data-lucide="x"></i></button>
     </div>
     <div class="sysmsg-body">
       <textarea id="sysMsgFull"></textarea>
     </div>
     <div class="sysmsg-foot">
-      <span style="font-family:var(--font-mono); font-size:14px; color:var(--text-tertiary);" id="charCount">0 chars</span>
-      <div style="display:flex; gap:16px;">
+      <span class="settings-mono-muted" id="charCount">0 chars</span>
+      <div class="settings-flex-row-16">
         <button class="ghost-btn" id="sysMsgCancel">Cancel</button>
         <button class="btn-primary" id="sysMsgSave">Save Changes</button>
       </div>
@@ -532,80 +528,80 @@
 
 <!-- Command Guide Help Modal -->
 <div class="modal-overlay" id="cmdHelpModal">
-  <div class="modal-box" style="width:720px;max-height:85vh;">
+  <div class="modal-box settings-w-720">
     <div class="modal-head">
       <div class="modal-title">Command Reference</div>
-      <button class="icon-btn" onclick="document.getElementById('cmdHelpModal').classList.remove('open')">?</button>
+      <button class="icon-btn">?</button>
     </div>
-    <div class="modal-body" style="flex-direction:column;gap:16px;font-size:13px;line-height:1.6;">
+    <div class="modal-body settings-help-docs">
       
-      <div style="background:var(--bg-main);padding:14px;border-radius:var(--radius-sm);margin-bottom:4px;">
-        <div style="font-weight:600;margin-bottom:6px;">What are commands?</div>
-        <div style="color:var(--text-secondary);">
-          Commands appear in the <strong>backtick menu</strong> � press the backtick key (<code>`</code>) to open it.
+      <div class="settings-code-block">
+        <div class="settings-label-strong">What are commands?</div>
+        <div class="settings-text-secondary">
+          Commands appear in the <strong>backtick menu</strong> — press the backtick key (<code>`</code>) to open it.
           Each command sends selected text (or your input) to an LLM model and returns the response.
           You can group commands into submenus with tags, assign keyboard shortcuts, and customize every aspect of how they work.
-          The app ships with several built-in commands � you can edit, delete, or create your own.
+          The app ships with several built-in commands — you can edit, delete, or create your own.
         </div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">Required Fields</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">commandName</code> � Internal identifier, not shown to the user.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">menuText</code> � Label in the backtick menu. <code>&</code> sets an accelerator key (e.g. <code>&1 - My Command</code> lets user press 1).</div>
-        <div><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">APIModels</code> � Model to use. Supports <code>provider/model</code> (e.g. <code>openai/gpt-4o</code>) or short name (e.g. <code>deepseek-v4-flash</code>).</div>
+        <div class="settings-subtitle">Required Fields</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">commandName</code> — Internal identifier, not shown to the user.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">menuText</code> — Label in the backtick menu. <code>&</code> sets an accelerator key (e.g. <code>&1 - My Command</code> lets user press 1).</div>
+        <div><code class="settings-code-ref">APIModels</code> — Model to use. Supports <code>provider/model</code> (e.g. <code>openai/gpt-4o</code>) or short name (e.g. <code>deepseek-v4-flash</code>).</div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">Prompt Composition</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">systemMessage</code> � System prompt text. Supports <code>{{selection}}</code>, <code>{{fullText}}</code>, <code>{{input}}</code>.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">systemMessageFile</code> � Path to .txt file with system prompt. Takes precedence over systemMessage.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">userMessage</code> � Template for user message sent to the LLM. Same template variables. Use backtick-n (<code>``n</code>) for newlines, not <code>\n</code>.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">showInputBox</code> � Opens a text box before sending. User's input ? <code>{{input}}</code> variable.</div>
-        <div><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">inputBoxDefault</code> � Text pre-filled in the input box. Only meaningful with showInputBox.</div>
+        <div class="settings-subtitle">Prompt Composition</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">systemMessage</code> — System prompt text. Supports <code>{{selection}}</code>, <code>{{fullText}}</code>, <code>{{input}}</code>.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">systemMessageFile</code> — Path to .txt file with system prompt. Takes precedence over systemMessage.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">userMessage</code> — Template for user message sent to the LLM. Same template variables. Use backtick-n (<code>``n</code>) for newlines, not <code>\n</code>.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">showInputBox</code> — Opens a text box before sending. User's input ? <code>{{input}}</code> variable.</div>
+        <div><code class="settings-code-ref">inputBoxDefault</code> — Text pre-filled in the input box. Only meaningful with showInputBox.</div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">Template Variables</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">{{selection}}</code> � Text the user highlighted before triggering the command.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">{{fullText}}</code> � The entire document text (read via Windows accessibility API).</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">{{input}}</code> � What the user typed in the input box (only if showInputBox is on).</div>
-        <div style="font-size:11px;color:var(--text-tertiary);">Work in systemMessage, systemMessageFile, and userMessage. Ignored in FIM mode. If no templates or userMessage are set, selected text is sent as-is (legacy behavior).</div>
+        <div class="settings-subtitle">Template Variables</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">{{selection}}</code> — Text the user highlighted before triggering the command.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">{{fullText}}</code> — The entire document text (read via Windows accessibility API).</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">{{input}}</code> — What the user typed in the input box (only if showInputBox is on).</div>
+        <div class="settings-text-xs-muted">Work in systemMessage, systemMessageFile, and userMessage. Ignored in FIM mode. If no templates or userMessage are set, selected text is sent as-is (legacy behavior).</div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">Response Handling</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">pasteMode</code> � <code>chat</code> (chat window), <code>replace</code> (overwrites selection), <code>append</code> (after cursor). Default: chat.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">stream</code> � Real-time token-by-token output. Requires pasteMode: chat.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">temperature</code> � Sampling temperature 0�2. Higher = more creative. Empty = model default.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">maxTokens</code> � Max tokens in response. FIM commands should set this (default: 4000).</div>
-        <div><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">stop</code> � Array of stop sequences (e.g. <code>["\n\n"]</code>). Generation stops on match.</div>
+        <div class="settings-subtitle">Response Handling</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">pasteMode</code> — <code>chat</code> (chat window), <code>replace</code> (overwrites selection), <code>append</code> (after cursor). Default: chat.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">stream</code> — Real-time token-by-token output. Requires pasteMode: chat.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">temperature</code> — Sampling temperature 0–2. Higher = more creative. Empty = model default.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">maxTokens</code> — Max tokens in response. FIM commands should set this (default: 4000).</div>
+        <div><code class="settings-code-ref">stop</code> — Array of stop sequences (e.g. <code>["\n\n"]</code>). Generation stops on match.</div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">Thinking (Reasoning)</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">thinking</code> � <code>{ type: "enabled"|"disabled", level?: "low"|"medium"|"high"|"xhigh" }</code></div>
-        <div style="font-size:11px;color:var(--text-tertiary);">"enabled" works across all providers (translated per API). Level defaults to "medium". Leave empty for model default.</div>
+        <div class="settings-subtitle">Thinking (Reasoning)</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">thinking</code> — <code>{ type: "enabled"|"disabled", level?: "low"|"medium"|"high"|"xhigh" }</code></div>
+        <div class="settings-text-xs-muted">"enabled" works across all providers (translated per API). Level defaults to "medium". Leave empty for model default.</div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">FIM (Fill In the Middle)</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">isFIM</code> � Uses DeepSeek FIM beta endpoint instead of chat completions. When true, all prompt fields above are ignored.</div>
-        <div style="margin-bottom:4px;">FIM Fill (pasteMode: replace) � fills gap between prefix and suffix. Works with or without selection.</div>
-        <div style="margin-bottom:4px;">FIM Continue (pasteMode: append) � continues from cursor/selection.</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">expandNewlines</code> � Expands single <code>\n</code> to <code>\n\n</code> (standard LLM paragraph break). Useful for FIM/prose.</div>
-        <div><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">maxContextWords</code> � Max words of surrounding context. FIM Fill: splits above/below cursor. FIM Continue: controls before-cursor capture. 0 = no limit.</div>
+        <div class="settings-subtitle">FIM (Fill In the Middle)</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">isFIM</code> — Uses DeepSeek FIM beta endpoint instead of chat completions. When true, all prompt fields above are ignored.</div>
+        <div class="settings-doc-row">FIM Fill (pasteMode: replace) — fills gap between prefix and suffix. Works with or without selection.</div>
+        <div class="settings-doc-row">FIM Continue (pasteMode: append) — continues from cursor/selection.</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">expandNewlines</code> — Expands single <code>\n</code> to <code>\n\n</code> (standard LLM paragraph break). Useful for FIM/prose.</div>
+        <div><code class="settings-code-ref">maxContextWords</code> — Max words of surrounding context. FIM Fill: splits above/below cursor. FIM Continue: controls before-cursor capture. 0 = no limit.</div>
       </div>
 
       <div>
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--accent-primary);">Menu Organization</div>
-        <div style="margin-bottom:4px;"><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">tags</code> � Array of submenu names. Each tag creates a submenu containing all commands with that tag.</div>
-        <div><code style="background:var(--bg-hover);padding:1px 4px;border-radius:3px;">directAccelerator</code> � Keyboard shortcut for commands inside tagged submenus. Press backtick then the key (e.g. <code>&r</code>) to fire directly. Only useful with tags.</div>
+        <div class="settings-subtitle">Menu Organization</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">tags</code> — Array of submenu names. Each tag creates a submenu containing all commands with that tag.</div>
+        <div><code class="settings-code-ref">directAccelerator</code> — Keyboard shortcut for commands inside tagged submenus. Press backtick then the key (e.g. <code>&r</code>) to fire directly. Only useful with tags.</div>
       </div>
 
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" onclick="document.getElementById('cmdHelpModal').classList.remove('open')">Close</button>
+      <button class="btn-ghost">Close</button>
     </div>
   </div>
 </div>
@@ -619,7 +615,7 @@
 <script src="js/chat/chat-core.js"></script>
 <script src="js/vendor/chart.umd.min.js"></script>
 <script src="js/usage-dashboard.js"></script>
-<script src="js/chat/settings/chat-settings.js"></script>
+<script src="js/chat/model-picker/model-picker.js"></script>
 <script src="js/chat/chat-format.js"></script>
 <script src="js/chat/chat-render.js"></script>
 <script src="js/chat/chat-token-tooltip.js"></script>
@@ -635,10 +631,11 @@
 <script src="js/chat/chat-trash.js"></script>
 <script src="js/chat/chat-quote.js"></script>
 <script src="js/chat/stream.js"></script>
-<script src="js/chat/settings/chat-settings-modal.js"></script>
+<script src="js/chat/model-picker/model-picker-config.js"></script>
 <script src="js/chat/chat-search.js"></script>
 <script src="js/settings/settings-panel.js"></script>
-<script src="js/settings/reasoning-levels.js"></script>
+<script src="js/shared/settings-shared.js"></script>
+<script src="js/shared/reasoning-levels.js"></script>
 <script src="js/settings/sections/general.js"></script>
 <script src="js/settings/sections/icons.js"></script>
 <script src="js/settings/sections/ui-theme.js"></script>
@@ -649,6 +646,7 @@
 <script src="js/settings/sections/sysmsg-modal.js"></script>
 <script src="js/settings/sections/assistants.js"></script>
 <script src="js/settings/sections/commands/commands-core.js"></script>
+<script src="js/settings/sections/commands/commands-actions.js"></script>
 <script src="js/settings/sections/commands/commands-drag.js"></script>
 <script src="js/settings/sections/commands/commands-render.js"></script>
 <script src="js/main.js"></script>

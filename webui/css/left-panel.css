@@ -1,5 +1,4 @@
 /* left-panel.css — Left rail: chat list, folders, search, trash */
-/* Extracted from chat-ui-mock.html lines 147-261 */
 
 .rail-left-head { display: flex; align-items: center; justify-content: space-between; padding: 24px 20px 16px; flex-shrink: 0; }
 .rail-title { font-weight: 600; font-size: 18px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }

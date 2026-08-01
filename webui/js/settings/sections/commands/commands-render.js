@@ -113,6 +113,18 @@
     if (detail) detail.style.display = 'none';
   };
 
+  // --- Detail field helpers ---
+
+  function _setField(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.value = value;
+  }
+
+  function _setToggle(id, on) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('on', !!on);
+  }
+
   C.selectCommand = function(idx) {
     if (idx < 0 || idx >= C.commands().length) return;
     C.syncDetail();
@@ -123,13 +135,13 @@
     detail.style.display = '';
     detail.innerHTML = _buildDetailHTML(cmd);
     var d = document;
-    d.getElementById('cmdDetailTitle').value = cmd.commandName || '';
-    d.getElementById('cmdMenuLabel').value = cmd.menuText ? cmd.menuText.replace(/^&\S+\s*-\s*/, '') : '';
+    _setField('cmdDetailTitle', cmd.commandName || '');
+    _setField('cmdMenuLabel', cmd.menuText ? cmd.menuText.replace(/^&\S+\s*-\s*/, '') : '');
     var sm = (cmd.menuText||'').match(/&(.)/);
-    d.getElementById('cmdMenuShortcut').value = sm ? sm[1] : '';
-    d.getElementById('cmdDirectShortcut').value = cmd.directAccelerator ? cmd.directAccelerator.replace('&','') : '';
+    _setField('cmdMenuShortcut', sm ? sm[1] : '');
+    _setField('cmdDirectShortcut', cmd.directAccelerator ? cmd.directAccelerator.replace('&','') : '');
+    _setField('cmdApiModel', cmd.APIModels || '');
     var apiModelInput = d.getElementById('cmdApiModel');
-    apiModelInput.value = cmd.APIModels || '';
     apiModelInput.addEventListener('change', function() {
       var thinkingSel = d.getElementById('cmdThinking');
       if (thinkingSel) {
@@ -141,108 +153,123 @@
         thinkingSel.value = prevLevel;
       }
     });
-    d.getElementById('cmdPasteMode').value = cmd.pasteMode || 'chat';
-    d.getElementById('cmdTemperature').value = cmd.temperature || '';
-    d.getElementById('cmdUserMessage').value = cmd.userMessage || '';
-    d.getElementById('cmdShowInputBox').classList.toggle('on', !!cmd.showInputBox);
-    d.getElementById('cmdStream').classList.toggle('on', !!cmd.stream);
-    d.getElementById('cmdFim').classList.toggle('on', !!cmd.isFIM);
+    _setField('cmdPasteMode', cmd.pasteMode || 'chat');
+    _setField('cmdTemperature', cmd.temperature || '');
+    _setField('cmdUserMessage', cmd.userMessage || '');
+    _setToggle('cmdShowInputBox', !!cmd.showInputBox);
+    _setToggle('cmdStream', !!cmd.stream);
+    _setToggle('cmdFim', !!cmd.isFIM);
     var thinkingSel = d.getElementById('cmdThinking');
     if (thinkingSel) {
       thinkingSel.innerHTML = _thinkingOptionsHtml(cmd.APIModels || '');
       thinkingSel.value = (cmd.thinking && cmd.thinking.type === 'enabled' && cmd.thinking.level) ? cmd.thinking.level : '';
     }
-    d.getElementById('cmdMaxTokens').value = cmd.maxTokens || '';
-    var td = d.getElementById('cmdTags'); if (td) { td.innerHTML = ''; (cmd.tags||[]).forEach(function(t){td.appendChild(_createTagBadge(t));}); }
+    _setField('cmdMaxTokens', cmd.maxTokens || '');
+    var td = d.getElementById('cmdTags'); if (td) { td.innerHTML = ''; (cmd.tags||[]).forEach(function(t){td.appendChild(C.createTagBadge(t));}); }
     var lbl = d.getElementById('cmdSysMsgLabel');
     if (lbl) lbl.textContent = '\uD83D\uDCC4 ' + (cmd.systemMessageFile || (cmd.systemMessage ? '(inline)' : '(none)'));
-    d.getElementById('cmdInputBoxDefault').value = cmd.inputBoxDefault || '';
-    d.getElementById('cmdStop').value = Array.isArray(cmd.stop) ? cmd.stop.join(', ') : (typeof cmd.stop==='string'?cmd.stop:'');
-    var mcw=cmd.maxContextWords; d.getElementById('cmdMaxContextWords').value = (mcw===undefined||mcw===null)?'':mcw;
-    d.getElementById('cmdExpandNewlines').classList.toggle('on', !!cmd.expandNewlines);
+    _setField('cmdInputBoxDefault', cmd.inputBoxDefault || '');
+    _setField('cmdStop', Array.isArray(cmd.stop) ? cmd.stop.join(', ') : (typeof cmd.stop==='string'?cmd.stop:''));
+    var mcw = cmd.maxContextWords; _setField('cmdMaxContextWords', (mcw === undefined || mcw === null) ? '' : mcw);
+    _setToggle('cmdExpandNewlines', !!cmd.expandNewlines);
     _updateMenuPreview();
     _wireDetail();
   };
 
+  // --- Detail panel HTML (one builder per card) ---
+
+  function _titleHeaderHTML() {
+    return '<div class="settings-mb-16"><input class="settings-title-input-lg" type="text" id="cmdDetailTitle" placeholder="Command Title"></div>';
+  }
+
+  function _identityCardHTML() {
+    return '<div class="cmd-card">' +
+      '<div class="cmd-card-header">Identity</div>' +
+      '<div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input class="settings-max-w-400" type="text" id="cmdMenuLabel" placeholder="Quick Ask"></div>' +
+      '<div class="settings-flex-row-24">' +
+        '<div class="field settings-mb-0"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input class="settings-w-70" type="text" id="cmdMenuShortcut" placeholder="e.g. 2" maxlength="1"></div>' +
+        '<div class="field settings-mb-0"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input class="settings-w-70" type="text" id="cmdDirectShortcut" placeholder="e.g. 1" maxlength="1"></div>' +
+      '</div>' +
+      '<div class="field settings-mb-0 settings-mt-8">' +
+        '<label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label>' +
+        '<div class="settings-tag-list" id="cmdTags"></div>' +
+        '<button class="btn-sm settings-mt-4" id="addCmdTagBtn">+ Add Tag</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _modelCardHTML(cmd) {
+    return '<div class="cmd-card">' +
+      '<div class="cmd-card-header">Model Configuration</div>' +
+      '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Select the model for this command from the available models, or Default for the chat default model.">?</span></label><select class="settings-max-w-400" id="cmdApiModel">' + _modelOptionsHtml((cmd && cmd.APIModels) || '') + '</select></div>' +
+      '<div class="grid-2">' +
+        '<div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>' +
+        '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0-2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div>' +
+      '</div>' +
+      '<div class="grid-2">' +
+        '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>' +
+        '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="Model Default sends no thinking config. Pick a level to enable thinking at that level.">?</span></label><select class="settings-flex-1" id="cmdThinking"></select></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _messageCardHTML() {
+    return '<div class="cmd-card">' +
+      '<div class="cmd-card-header">Message Content</div>' +
+      '<div class="field"><label class="field-label">User Message <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Use Enter for newlines &mdash; they are automatically converted.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>' +
+      '<div class="field settings-mb-0">' +
+        '<label class="field-label">System Message <span class="tt" data-tip="Instructions for the LLM. Supports {{selection}}, {{fullText}}, {{input}}. Edit to pick a file or write inline text.">?</span></label>' +
+        '<div class="settings-flex-row-center">' +
+          '<span class="settings-sysmsg-label" id="cmdSysMsgLabel">\uD83D\uDCC4 (none)</span>' +
+          '<button class="btn-sm" id="cmdEditSysMsg">Edit</button>' +
+        '</div>' +
+        '<div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _behaviorCardHTML() {
+    return '<div class="cmd-card">' +
+      '<div class="cmd-card-header">Behavior</div>' +
+      '<div class="toggle-row"><div><div class="lbl">Show Input Box <span class="tt" data-tip="Opens a text box before sending. User input becomes {{input}}. Ignored in FIM mode.">?</span></div><div class="cmd-behavior-desc">Display a text field for typing a prompt before sending.</div></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>' +
+      '<div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div><div class="cmd-behavior-desc">Show output token-by-token as it\'s generated.</div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>' +
+      '<div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, prompt fields above are ignored.">?</span></div><div class="cmd-behavior-desc">Fill-in-the-middle. When on, prompt fields above are ignored.</div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>' +
+    '</div>';
+  }
+
+  function _advancedCardHTML() {
+    return '<div class="cmd-card cmd-advanced-wrap">' +
+      '<div class="cmd-advanced-toggle">' +
+        '<span class="cmd-card-header settings-mb-0">Advanced</span>' +
+        '<span class="cmd-chevron"></span>' +
+      '</div>' +
+      '<div style="display:none;" class="cmd-advanced-body settings-advanced-body">' +
+        '<div class="grid-2">' +
+          '<div class="field"><label class="field-label">Input Box Default <span class="tt" data-tip="Text pre-filled in the input box. Only used when Show Input Box is on.">?</span></label><input type="text" id="cmdInputBoxDefault"></div>' +
+          '<div class="field"><label class="field-label">Stop Sequences <span class="tt" data-tip="Array of strings that stop generation. e.g. \\n\\n. Leave empty for none.">?</span></label><input type="text" id="cmdStop" placeholder=\'e.g. ["\n\n\"]\'></div>' +
+        '</div>' +
+        '<div class="grid-2 settings-mb-0">' +
+          '<div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>' +
+          '<div class="field settings-mb-0">' +
+            '<label class="toggle-row settings-pt-8"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _deleteButtonHTML() {
+    return '<div class="settings-delete-row"><button class="btn-ghost" id="cmdDeleteBtn">Delete Command</button></div>';
+  }
+
   function _buildDetailHTML(cmd) {
-    // Card-based layout matching the settings panel redesign
-    return ''+
-      // ── Title header ──
-      '<div style="margin-bottom:16px;"><input type="text" id="cmdDetailTitle" placeholder="Command Title" style="border:1px solid transparent;background:transparent;font-weight:600;font-size:18px;padding:2px 4px;border-radius:4px;width:auto;"></div>'+
-
-      // ── Identity ──
-      '<div class="cmd-card">'+
-        '<div class="cmd-card-header">Identity</div>'+
-        '<div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask" style="max-width:400px;"></div>'+
-        '<div style="display:flex;gap:24px;">'+
-          '<div class="field" style="margin-bottom:0;"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input type="text" id="cmdMenuShortcut" placeholder="e.g. 2" maxlength="1" style="width:70px;"></div>'+
-          '<div class="field" style="margin-bottom:0;"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input type="text" id="cmdDirectShortcut" placeholder="e.g. 1" maxlength="1" style="width:70px;"></div>'+
-        '</div>'+
-        '<div class="field" style="margin-bottom:0;margin-top:8px;">'+
-          '<label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label>'+
-          '<div style="display:flex;gap:4px;flex-wrap:wrap;" id="cmdTags"></div>'+
-          '<button class="btn-sm" id="addCmdTagBtn" style="margin-top:4px;">+ Add Tag</button>'+
-        '</div>'+
-      '</div>'+
-
-      // ── Model Configuration ──
-      '<div class="cmd-card">'+
-        '<div class="cmd-card-header">Model Configuration</div>'+
-        '<div class="field"><label class="field-label">API Model <span class="tt" data-tip="Select the model for this command from the available models, or Default for the chat default model.">?</span></label><select id="cmdApiModel" style="max-width:400px;">' + _modelOptionsHtml((cmd && cmd.APIModels) || '') + '</select></div>'+
-        '<div class="grid-2">'+
-          '<div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>'+
-          '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0-2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div>'+
-        '</div>'+
-        '<div class="grid-2">'+
-          '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>'+
-          '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="Model Default sends no thinking config. Pick a level to enable thinking at that level.">?</span></label><select id="cmdThinking" style="flex:1;"></select></div>'+
-        '</div>'+
-      '</div>'+
-
-      // ── Message Content ──
-      '<div class="cmd-card">'+
-        '<div class="cmd-card-header">Message Content</div>'+
-        '<div class="field"><label class="field-label">User Message <span class="tt" data-tip="Supports {{selection}}, {{fullText}}, {{input}}. Use Enter for newlines &mdash; they are automatically converted.">?</span></label><textarea id="cmdUserMessage" placeholder="{{input}}&#10;&#10;{{selection}}"></textarea></div>'+
-        '<div class="field" style="margin-bottom:0;">'+
-          '<label class="field-label">System Message <span class="tt" data-tip="Instructions for the LLM. Supports {{selection}}, {{fullText}}, {{input}}. Edit to pick a file or write inline text.">?</span></label>'+
-          '<div style="display:flex;align-items:center;gap:8px;">'+
-            '<span id="cmdSysMsgLabel" style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);">\uD83D\uDCC4 (none)</span>'+
-            '<button class="btn-sm" id="cmdEditSysMsg">Edit</button>'+
-          '</div>'+
-          '<div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div>'+
-        '</div>'+
-      '</div>'+
-
-      // ── Behavior ──
-      '<div class="cmd-card">'+
-        '<div class="cmd-card-header">Behavior</div>'+
-        '<div class="toggle-row"><div><div class="lbl">Show Input Box <span class="tt" data-tip="Opens a text box before sending. User input becomes {{input}}. Ignored in FIM mode.">?</span></div><div class="cmd-behavior-desc">Display a text field for typing a prompt before sending.</div></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>'+
-        '<div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div><div class="cmd-behavior-desc">Show output token-by-token as it\'s generated.</div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>'+
-        '<div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, prompt fields above are ignored.">?</span></div><div class="cmd-behavior-desc">Fill-in-the-middle. When on, prompt fields above are ignored.</div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>'+
-      '</div>'+
-
-      // ── Advanced (collapsible) ──
-      '<div class="cmd-card cmd-advanced-wrap" onclick="var b=this.querySelector(\'.cmd-advanced-body\');var c=this.querySelector(\'.cmd-chevron\');if(!b)return;b.style.display=b.style.display===\'none\'?\'block\':\'none\';if(c)c.classList.toggle(\'open\');">'+
-        '<div class="cmd-advanced-toggle">'+
-          '<span class="cmd-card-header" style="margin-bottom:0;">Advanced</span>'+
-          '<span class="cmd-chevron"></span>'+
-        '</div>'+
-        '<div class="cmd-advanced-body" style="display:none;padding-top:12px;">'+
-          '<div class="grid-2">'+
-            '<div class="field"><label class="field-label">Input Box Default <span class="tt" data-tip="Text pre-filled in the input box. Only used when Show Input Box is on.">?</span></label><input type="text" id="cmdInputBoxDefault"></div>'+
-            '<div class="field"><label class="field-label">Stop Sequences <span class="tt" data-tip="Array of strings that stop generation. e.g. \\n\\n. Leave empty for none.">?</span></label><input type="text" id="cmdStop" placeholder=\'e.g. ["\n\n\"]\'></div>'+
-          '</div>'+
-          '<div class="grid-2" style="margin-bottom:0;">'+
-            '<div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>'+
-            '<div class="field" style="margin-bottom:0;">'+
-              '<label class="toggle-row" style="padding-top:8px;"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label>'+
-            '</div>'+
-          '</div>'+
-        '</div>'+
-      '</div>'+
-
-      // ── Delete ──
-      '<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn-ghost" id="cmdDeleteBtn">Delete Command</button></div>';
+    return _titleHeaderHTML() +
+      _identityCardHTML() +
+      _modelCardHTML(cmd) +
+      _messageCardHTML() +
+      _behaviorCardHTML() +
+      _advancedCardHTML() +
+      _deleteButtonHTML();
   }
 
   function _openSysMsgModal() {
@@ -260,6 +287,15 @@
     p.textContent = s && s.value ? '&' + s.value + ' - ' + (l?l.value:'') : (l?l.value:'');
   }
 
+  function _toggleAdvanced(advancedWrap) {
+    var body = advancedWrap.querySelector('.cmd-advanced-body');
+    if (!body) return;
+    var isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    var chevron = advancedWrap.querySelector('.cmd-chevron');
+    if (chevron) chevron.classList.toggle('open', !isOpen);
+  }
+
   function _wireDetail() {
     var d = document.getElementById('cmdDetail'); if (!d) return;
     d.querySelectorAll('input,select,textarea').forEach(function(el){el.addEventListener('change',C.mark);el.addEventListener('input',C.mark);});
@@ -268,39 +304,10 @@
     if(ml)ml.addEventListener('input',_updateMenuPreview);
     if(ms)ms.addEventListener('input',_updateMenuPreview);
     var esm=document.getElementById('cmdEditSysMsg'); if(esm)esm.addEventListener('click',_openSysMsgModal);
-    var atb=document.getElementById('addCmdTagBtn'); if(atb)atb.addEventListener('click',_addTag);
-    var db=document.getElementById('cmdDeleteBtn'); if(db)db.addEventListener('click',function(){
-      if(C.selectedIdx()<0||C.selectedIdx()>=C.commands().length)return;
-      var idx = C.selectedIdx();
-      C.commands().splice(idx,1);
-      C.setSelectedIdx(-1);
-      // Remove from all group orders
-      var orders = C.groupOrders();
-      Object.keys(orders).forEach(function(tag) {
-        var arr = orders[tag];
-        var pos = arr.indexOf(idx);
-        if (pos >= 0) arr.splice(pos, 1);
-        // Adjust indices > idx
-        for (var k = 0; k < arr.length; k++) { if (arr[k] > idx) arr[k]--; }
-      });
-      C.ensureGroupOrders();
-      C.renderList(0);
-      if(C.commands().length>0)C.selectCommand(0);else C.showPlaceholder();
-      C.mark();
-    });
-  }
-
-  function _addTag() {
-    var td=document.getElementById('cmdTags'); if(!td)return;
-    var tn=prompt('Tag name (submenu name):'); if(!tn||!tn.trim())return;
-    td.appendChild(_createTagBadge(tn.trim())); C.mark();
-  }
-
-  function _createTagBadge(tag) {
-    var b=document.createElement('span'); b.className='badge'; b.textContent=tag;
-    var x=document.createElement('span'); x.textContent='\u00D7'; x.style.cssText='cursor:pointer;margin-left:4px;';
-    x.addEventListener('click',function(e){e.stopPropagation();b.remove();C.mark();});
-    b.appendChild(x); return b;
+    var atb=document.getElementById('addCmdTagBtn'); if(atb)atb.addEventListener('click',C.addTagToSelected);
+    var db=document.getElementById('cmdDeleteBtn'); if(db)db.addEventListener('click',C.deleteSelected);
+    var aw=document.querySelector('.cmd-advanced-wrap');
+    if(aw)aw.addEventListener('click',function() { _toggleAdvanced(aw); });
   }
 
   C.syncDetail = function() {

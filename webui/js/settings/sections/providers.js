@@ -2,6 +2,7 @@
 (function() {
   var sectionName = 'providers';
   var containerId = 'sec-providers';
+  var S = window.SettingsShared;
 
   function load(data) {
     if (!data || !data.providers) return;
@@ -24,14 +25,14 @@
 
   function providerCardHTML(p, key, palIdx) {
     var colors = PALETTE[palIdx % PALETTE.length];
-    return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + escHtml(getInitials(p.displayName || key)) + '</div><span style="font-weight:600;">' + escHtml(p.displayName || key) + '</span><button class="btn-sm danger" style="margin-left:auto;">Remove</button></div>' +
-      '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + escHtml(p.displayName || '') + '" data-field="displayName"></div>' +
-      '<div class="field"><label class="field-label">Chat Endpoint</label><input type="text" value="' + escHtml(p.endpoint || '') + '" data-field="endpoint"></div>' +
-      '<div class="field"><label class="field-label">FIM Endpoint</label><input type="text" value="' + escHtml(p.fimEndpoint || '') + '" data-field="fimEndpoint"></div>' +
-      '<div class="field"><label class="field-label">API Key <span class="hint">env variable (preferred)</span></label><input type="text" value="' + escHtml(p.authEnvVar || '') + '" data-field="authEnvVar" style="font-family:var(--font-mono);font-size:12px;"><div class="field-hint">Set via: setx ' + escHtml(p.authEnvVar || 'KEY') + ' your-key</div></div>' +
-      '<div class="field"><label class="field-label">API Key <span class="hint">or enter directly</span></label><div style="display:flex;gap:6px;"><input type="password" value="' + escHtml(p.apiKey || '') + '" data-field="apiKey" placeholder="sk-..." style="font-family:var(--font-mono);font-size:12px;flex:1;"><button class="btn-sm toggle-api-key" title="Show/hide">' + String.fromCharCode(0x1F441) + '</button></div><div class="field-hint" style="color:var(--warning);">\u26A0 Direct entry stores key in settings.json</div></div>' +
+    return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(p.displayName || key)) + '</div><span class="settings-fw-600">' + S.escHtml(p.displayName || key) + '</span><button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
+      '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || '') + '" data-field="displayName"></div>' +
+      '<div class="field"><label class="field-label">Chat Endpoint</label><input type="text" value="' + S.escHtml(p.endpoint || '') + '" data-field="endpoint"></div>' +
+      '<div class="field"><label class="field-label">FIM Endpoint</label><input type="text" value="' + S.escHtml(p.fimEndpoint || '') + '" data-field="fimEndpoint"></div>' +
+      '<div class="field"><label class="field-label">API Key <span class="hint">env variable (preferred)</span></label><input class="settings-mono-input" type="text" value="' + S.escHtml(p.authEnvVar || '') + '" data-field="authEnvVar"><div class="field-hint">Set via: setx ' + S.escHtml(p.authEnvVar || 'KEY') + ' your-key</div></div>' +
+      '<div class="field"><label class="field-label">API Key <span class="hint">or enter directly</span></label><div class="settings-flex-row-6"><input class="settings-mono-flex" type="password" value="' + S.escHtml(p.apiKey || '') + '" data-field="apiKey" placeholder="sk-..."><button class="btn-sm toggle-api-key" title="Show/hide">' + String.fromCharCode(0x1F441) + '</button></div><div class="field-hint settings-warning">\u26A0 Direct entry stores key in settings.json</div></div>' +
       '<div class="field"><label class="field-label">Model Name Prefixes <span class="hint">routes matching model names to this provider</span></label><div class="prefix-tags" data-field="prefixes">' + renderPrefixes(p.prefixes || []) + '</div></div>' +
-      '<div class="toggle-row"><div><div class="lbl">Collapse thinking blocks by default</div><div style="font-size:11px;color:var(--text-tertiary);">When streaming, reasoning/thinking content is hidden until expanded</div></div><div class="switch' + (p.collapseThinking ? ' on' : '') + '" data-field="collapseThinking"><div class="knob"></div></div></div>';
+      '<div class="toggle-row"><div><div class="lbl">Collapse thinking blocks by default</div><div class="settings-text-xs-muted">When streaming, reasoning/thinking content is hidden until expanded</div></div><div class="switch' + (p.collapseThinking ? ' on' : '') + '" data-field="collapseThinking"><div class="knob"></div></div></div>';
   }
 
   // --- Shared card wiring ---
@@ -71,7 +72,7 @@
       addLink.addEventListener('click', function() {
         var tag = document.createElement('span'); tag.className = 'badge';
         var inp = document.createElement('input'); inp.style.cssText = 'width:60px;border:none;background:transparent;font-size:10px;outline:none;';
-        inp.addEventListener('blur', function() { tag.innerHTML = escHtml(inp.value || '?') + ' <span class=remove>\u00D7</span>'; tag.querySelector('.remove').addEventListener('click', function() { tag.remove(); mark(); }); mark(); });
+        inp.addEventListener('blur', function() { tag.innerHTML = S.escHtml(inp.value || '?') + ' <span class=remove>\u00D7</span>'; tag.querySelector('.remove').addEventListener('click', function() { tag.remove(); mark(); }); mark(); });
         tag.appendChild(inp); prefixDiv.insertBefore(tag, addLink); inp.focus();
       });
       prefixDiv.appendChild(addLink);
@@ -98,11 +99,11 @@
 
   function renderPrefixes(prefixes) {
     var html = '';
-    (prefixes || []).forEach(function(p) { html += '<span class="badge">' + escHtml(p) + ' <span class="remove">\u00D7</span></span>'; });
+    (prefixes || []).forEach(function(p) { html += '<span class="badge">' + S.escHtml(p) + ' <span class="remove">\u00D7</span></span>'; });
     return html;
   }
 
-  function mark() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }
+  function mark() { S.markDirty(); }
 
   function save() {
     var providers = {};
@@ -136,13 +137,11 @@
     mark();
   }
 
-  function escHtml(s) { return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;').replace(/"/g,'\x26quot;'); }
-
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
       var addBtn = document.getElementById('addProviderBtn');
       if (addBtn) addBtn.addEventListener('click', addProvider);
     });
   }
-  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
+  S.registerSection(sectionName, {load: load, save: save});
 })();

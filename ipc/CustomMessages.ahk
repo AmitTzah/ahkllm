@@ -33,13 +33,13 @@ class CustomMessages {
         }
     }
 
-    static notifyLoadingState(state, uniqueID, responseWindowhWnd := unset, mainScriptHiddenhWnd := unset) {
+    static notifyLoadingState(state, uniqueID, responseWindowhWnd := unset, mainScriptHiddenHwnd := unset) {
         try {
             switch state {
                 case this.WM_CHAT_WINDOW_OPENED:
-                    PostMessage(state, uniqueID, responseWindowhWnd, , "ahk_id " mainScriptHiddenhWnd)
+                    PostMessage(state, uniqueID, responseWindowhWnd, , "ahk_id " mainScriptHiddenHwnd)
                 case this.WM_LOADING_START, this.WM_LOADING_FINISH:
-                    PostMessage(state, uniqueID, 0, , "ahk_id " mainScriptHiddenhWnd)
+                    PostMessage(state, uniqueID, 0, , "ahk_id " mainScriptHiddenHwnd)
             }
         }
     }
@@ -67,17 +67,17 @@ class CustomMessages {
     }
 
     ; ChatWindow → Main: open API logs viewer
-    static notifyShowApiLogs(mainScriptHiddenhWnd) {
-        try PostMessage(this.WM_SHOW_API_LOGS, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
+    static notifyShowApiLogs(mainScriptHiddenHwnd) {
+        try PostMessage(this.WM_SHOW_API_LOGS, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
     }
 
     ; ChatWindow → Main: notify that settings were saved, reload settings
-    static notifySettingsUpdated(mainScriptHiddenhWnd) {
-        try PostMessage(this.WM_SETTINGS_UPDATED, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
+    static notifySettingsUpdated(mainScriptHiddenHwnd) {
+        try PostMessage(this.WM_SETTINGS_UPDATED, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
     }
 
     ; ChatWindow → Main: request full script reload (e.g. after hotkey changes)
-    static notifyReloadMain(mainScriptHiddenhWnd) {
-        try PostMessage(this.WM_RELOAD_MAIN, 0, 0, , "ahk_id " mainScriptHiddenhWnd)
+    static notifyReloadMain(mainScriptHiddenHwnd) {
+        try PostMessage(this.WM_RELOAD_MAIN, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
     }
 }

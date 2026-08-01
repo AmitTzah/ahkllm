@@ -79,7 +79,7 @@ OnExit(_ChatWindowOnExit)
 requestParams := Map()
 requestParams["pasteMode"] := "chat"
 requestParams["uniqueID"] := A_TickCount A_NowUTC
-requestParams["mainScriptHiddenhWnd"] := A_Args.Length > 0 ? Integer(A_Args[1]) : 0
+requestParams["mainScriptHiddenHwnd"] := A_Args.Length > 0 ? Integer(A_Args[1]) : 0
 requestParams["providerName"] := "deepseek"
 requestParams["singleAPIModelName"] := chatDefaultModel
 requestParams["windowTitle"] := "Chat"
@@ -160,9 +160,9 @@ showChatWindow(initialRequest := true) {
     if !WinActive("ahk_id " chatWindow.hWnd)
         chatWindow.Flash()
     Sleep 500
-    if initialRequest && requestParams["mainScriptHiddenhWnd"] {
+    if initialRequest && requestParams["mainScriptHiddenHwnd"] {
         CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
-            requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
+            requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenHwnd"])
     }
 }
 
@@ -177,7 +177,7 @@ if prewarming {
     postWebMessage("setChatButtonsEnabled", true)
     ; Notify main script so it knows we exist (for WinShow later).
     CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
-        requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenhWnd"])
+        requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenHwnd"])
     debugLog("[APP] ChatWindow prewarmed — hWnd=" chatWindow.hWnd)
 } else {
     showChatWindow(true)

@@ -1,17 +1,17 @@
 ; ======================================================
 ; ChatSettings.ahk — Thread settings + assistant/model management
-
-_updateProviderFromModel(model) {
-    parts := ModelParser.Split(model)
-    if parts.provider
-        requestParams["providerName"] := parts.provider
-}
-
 ;
 ; Manages requestParams for the current thread: restore,
 ; save, reset, dropdown label, assistant switching,
 ; model settings persistence.
 ; ======================================================
+
+; Update provider tracking for API logs from a model id.
+_updateProviderFromModel(model) {
+    parts := ModelParser.Split(model)
+    if parts.provider
+        requestParams["providerName"] := parts.provider
+}
 
 ; Clear all request-level overrides to default state.
 _ClearRequestOverrides() {
@@ -159,10 +159,8 @@ handleModelSettingsUpdate(parsed) {
             requestParams.Delete("activeAssistantId")
         requestParams["singleAPIModelName"] := model
         _updateProviderFromModel(model)
-    } else if requestParams.Has("activeAssistantId") {
-        ; Assistant is active — keep current model (assistant's base model)
-        ; Only update reasoning/temperature/systemMessage below
-    } else {
+    } else if !requestParams.Has("activeAssistantId") {
+        ; No explicit model and no active assistant — fall back to the default.
         requestParams["singleAPIModelName"] := chatDefaultModel
     }
     requestParams["systemOverride"] := systemMessage

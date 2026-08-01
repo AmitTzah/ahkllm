@@ -56,7 +56,7 @@ OnWebMessageReceived(sender, args) {
                 postCurrentSettingsToWebView()
             case "showApiLogs":
                 debugLog("[DISPATCH] showApiLogs received, sending IPC to Main")
-                CustomMessages.notifyShowApiLogs(requestParams["mainScriptHiddenhWnd"])
+                CustomMessages.notifyShowApiLogs(requestParams["mainScriptHiddenHwnd"])
             case "webViewReady":
                 _OnWebViewReady()
             case "requestAllSettings":
@@ -68,7 +68,7 @@ OnWebMessageReceived(sender, args) {
             case "refreshModelPricing":
                 _HandleRefreshModelPricing()
             case "reloadScript":
-                CustomMessages.notifyReloadMain(requestParams["mainScriptHiddenhWnd"])
+                CustomMessages.notifyReloadMain(requestParams["mainScriptHiddenHwnd"])
             case "browseIcon":
                 _HandleBrowseIcon(parsed)
             case "debugLog":
@@ -107,7 +107,7 @@ _HandleRequestDefaultSettings() {
         postAssistantsToWebView()
         postCurrentSettingsToWebView()  ; refresh thinking levels for current model
         try {
-            CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
+            CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenHwnd"])
         } catch Error as e2 {
             debugLog("[SETTINGS] Failed to notify Main process: " e2.Message)
         }
@@ -137,7 +137,7 @@ _HandleSaveSettings(parsed) {
             postCurrentSettingsToWebView()
             ; Notify Main process to reload
             try {
-                CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenhWnd"])
+                CustomMessages.notifySettingsUpdated(requestParams["mainScriptHiddenHwnd"])
             } catch Error as e2 {
                 debugLog("[SETTINGS] Failed to notify Main process: " e2.Message)
             }
@@ -166,17 +166,17 @@ _HandleRefreshModelPricing() {
             postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-Models.ps1 exited with code " exitCode })
             return
         }
-        ; Read the output file the pipeline actually generates
-        pricingFile := A_ScriptDir "\..\scripts\models_metadata.txt"
+        ; Read the generated model metadata file the pipeline writes
+        pricingFile := A_ScriptDir "\..\DefaultModels.ahk"
         if !FileExist(pricingFile) {
-            postWebMessage("modelPricingRefresh", { success: false, error: "models_metadata.txt not generated" })
+            postWebMessage("modelPricingRefresh", { success: false, error: "DefaultModels.ahk not generated" })
             return
         }
         content := FileRead(pricingFile, "UTF-8")
         ; Parse models from the file — extract the models := Map(...) block
         models := ModelPricingParser.Parse(content)
         if models.Length = 0 {
-            postWebMessage("modelPricingRefresh", { success: false, error: "No models parsed from models_metadata.txt" })
+            postWebMessage("modelPricingRefresh", { success: false, error: "No models parsed from DefaultModels.ahk" })
             return
         }
         postWebMessage("modelPricingRefresh", { success: true, models: models })

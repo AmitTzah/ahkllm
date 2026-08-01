@@ -110,7 +110,7 @@ global requestParams := Map(
     "pasteMode", "chat",
     "windowTitle", "test",
     "providerName", "",
-    "mainScriptHiddenhWnd", "0x0",
+    "mainScriptHiddenHwnd", "0x0",
     "uniqueID", "test-unique-id",
     "singleAPIModelName", "deepseek-v4-flash",
     "stream", true,

@@ -9,8 +9,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadModules() {
-  const helperSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'reasoning-levels.js'), 'utf-8');
+  const helperSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'reasoning-levels.js'), 'utf-8');
+  const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
   const coreSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'commands', 'commands-core.js'), 'utf-8');
+  const actionsSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'commands', 'commands-actions.js'), 'utf-8');
   const renderSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'commands', 'commands-render.js'), 'utf-8');
 
   let formValues = {};
@@ -109,7 +111,9 @@ function loadModules() {
   sandbox.global = sandbox;
   const ctx = vm.createContext(sandbox);
   vm.runInContext(helperSrc, ctx);
+  vm.runInContext(sharedSrc, ctx);
   vm.runInContext(coreSrc, ctx);
+  vm.runInContext(actionsSrc, ctx);
   vm.runInContext(renderSrc, ctx);
   const C = sandbox.window.Cmds;
   // Stub DOM-touching functions so tests can drive the real logic.
@@ -128,7 +132,7 @@ function loadModules() {
 
 // Extract the API Model <select> block from the rendered detail HTML.
 function apiModelSelectHtml(detailHtml) {
-  var m = detailHtml.match(/<select id="cmdApiModel"[^>]*>([\s\S]*?)<\/select>/);
+  var m = detailHtml.match(/<select\b[^>]*\bid="cmdApiModel"[^>]*>([\s\S]*?)<\/select>/);
   return m ? m[0] : '';
 }
 

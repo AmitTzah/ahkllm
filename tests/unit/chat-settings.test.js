@@ -1,4 +1,4 @@
-// chat-settings.test.js — Unit tests for chat-settings.js: populateAssistantDropdown, model card, popover
+// chat-settings.test.js — Unit tests for model-picker.js: populateAssistantDropdown, model card, popover
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadSettingsModule() {
-    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'settings', 'chat-settings.js'), 'utf-8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker.js'), 'utf-8');
     const sandbox = {
         document: {
             getElementById: () => null,

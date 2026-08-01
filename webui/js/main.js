@@ -287,6 +287,19 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('confirmModal').classList.add('open');
   };
 
+  // Settings modals: Command Guide opener and close buttons.
+  var cmdHelpBtn = document.getElementById('cmdHelpBtn');
+  if (cmdHelpBtn) cmdHelpBtn.addEventListener('click', function() {
+    document.getElementById('cmdHelpModal').classList.add('open');
+  });
+  ['refreshModal', 'confirmModal', 'sysMsgEditModal', 'cmdHelpModal'].forEach(function(modalId) {
+    var modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.querySelectorAll('.modal-head .icon-btn, .modal-foot .btn-ghost').forEach(function(btn) {
+      btn.addEventListener('click', function() { modal.classList.remove('open'); });
+    });
+  });
+
   // Shows discard modal if dirty, or runs action directly
   function confirmDiscardSettings(action) {
     if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
@@ -305,9 +318,6 @@ document.addEventListener('DOMContentLoaded', function () {
   // Wire Settings icon
   var settingsIcon = document.getElementById('settings-icon');
   if (settingsIcon) settingsIcon.addEventListener('click', function() {
-    if (window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty()) {
-      // Already in settings — no guard needed
-    }
     showSettings();
   });
 
@@ -403,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (copyAllBtn) copyAllBtn.addEventListener('click', copyEntireChat);
 
 
-  // Tools dropdown toggle (matching mock)
+  // Tools dropdown toggle
   document.querySelectorAll('.tools-toggle').forEach(function(t) {
     t.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -471,7 +481,7 @@ function showError(data) {
   var el = document.createElement('div');
   el.className = 'error-banner';
   el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
-  el.innerHTML = '<span>' + msg.replace(/</g, '<').replace(/>/g, '>') + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
+  el.innerHTML = '<span>' + String(msg).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
   chatMessages.appendChild(el);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }

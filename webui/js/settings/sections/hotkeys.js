@@ -1,22 +1,17 @@
 // hotkeys.js — Hotkeys settings section
 (function() {
   var sectionName = 'hotkeys';
+  var S = window.SettingsShared;
   function load(data) {
     if (data && data.hotkeys) {
-      setVal('hkMain', data.hotkeys.main);
-      setVal('hkReload', data.hotkeys.reload);
-      setVal('hkCloseWindows', data.hotkeys.closeWindows);
-      setVal('hkSuspend', data.hotkeys.suspend);
+      S.setVal('hkMain', data.hotkeys.main);
+      S.setVal('hkReload', data.hotkeys.reload);
+      S.setVal('hkCloseWindows', data.hotkeys.closeWindows);
+      S.setVal('hkSuspend', data.hotkeys.suspend);
     }
   }
-  function setVal(id, v) { var el = document.getElementById(id); if (el && v !== undefined) el.value = v; }
-  function getVal(id) { var el = document.getElementById(id); return el ? el.value : ''; }
   function save() {
-    return { hotkeys: { main: getVal('hkMain'), reload: getVal('hkReload'), closeWindows: getVal('hkCloseWindows'), suspend: getVal('hkSuspend') } };
-  }
-  function wireDirty() {
-    var c = document.getElementById('sec-hotkeys'); if (!c) return;
-    c.querySelectorAll('input').forEach(function(el) { el.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }); });
+    return { hotkeys: { main: S.getVal('hkMain'), reload: S.getVal('hkReload'), closeWindows: S.getVal('hkCloseWindows'), suspend: S.getVal('hkSuspend') } };
   }
   function wireKeyCaptures() {
     document.querySelectorAll('.key-capture').forEach(function(kc) {
@@ -33,7 +28,7 @@
   }
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
-      wireDirty();
+      S.wireDirty('sec-hotkeys', S.markDirty);
       wireKeyCaptures();
       var restartBtn = document.getElementById('restartNowBtn');
       if (restartBtn) {
@@ -43,5 +38,5 @@
       }
     });
   }
-  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
+  S.registerSection(sectionName, {load: load, save: save});
 })();

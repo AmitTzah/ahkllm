@@ -1,6 +1,7 @@
 // menu-items.js — Menu Items settings section (Quick Access + Tray)
 (function() {
   var sectionName = 'menu';
+  var S = window.SettingsShared;
   function load(data) {
     if (!data || !data.menuItems) return;
     var mi = data.menuItems;
@@ -24,17 +25,17 @@
             if (item[f] === v) opt.selected = true;
             sel.appendChild(opt);
           });
-          sel.addEventListener('change', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+          sel.addEventListener('change', S.markDirty);
           td.appendChild(sel); tr.appendChild(td);
         } else {
           var inp = document.createElement('input');
-          inp.value = item[f] || ''; inp.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+          inp.value = item[f] || ''; inp.addEventListener('input', S.markDirty);
           td.appendChild(inp); tr.appendChild(td);
         }
       });
       var tdAct = document.createElement('td'); tdAct.className = 'actions';
       var delBtn = document.createElement('button'); delBtn.className = 'btn-sm danger'; delBtn.textContent = '✕';
-      delBtn.addEventListener('click', function() { tr.remove(); if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+      delBtn.addEventListener('click', function() { tr.remove(); S.markDirty(); });
       tdAct.appendChild(delBtn); tr.appendChild(tdAct); tbody.appendChild(tr);
     });
   }
@@ -58,19 +59,19 @@
         var sel = document.createElement('select');
         sel.style.cssText = 'width:100%;border:1px solid transparent;border-radius:4px;padding:4px 8px;font-size:13px;background:transparent;';
         ['reload', 'exit'].forEach(function(v) { var opt = document.createElement('option'); opt.value = v; opt.textContent = v; sel.appendChild(opt); });
-        sel.addEventListener('change', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+        sel.addEventListener('change', S.markDirty);
         td.appendChild(sel); tr.appendChild(td);
       } else {
         var inp = document.createElement('input');
-        inp.addEventListener('input', function() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+        inp.addEventListener('input', S.markDirty);
         td.appendChild(inp); tr.appendChild(td);
       }
     });
     var tdAct = document.createElement('td'); tdAct.className = 'actions';
     var delBtn = document.createElement('button'); delBtn.className = 'btn-sm danger'; delBtn.textContent = '✕';
-    delBtn.addEventListener('click', function() { tr.remove(); if (window.SettingsPanel) window.SettingsPanel.markDirty(); });
+    delBtn.addEventListener('click', function() { tr.remove(); S.markDirty(); });
     tdAct.appendChild(delBtn); tr.appendChild(tdAct); tbody.appendChild(tr);
-    if (window.SettingsPanel) window.SettingsPanel.markDirty();
+    S.markDirty();
   }
   function save() {
     return { menuItems: { quickAccess: readTable('qaTableBody', ['menuText', 'command']), tray: readTable('trayTableBody', ['menuText', 'action']) } };
@@ -80,5 +81,5 @@
     var addTray = document.getElementById('addTrayRow'); if (addTray) addTray.addEventListener('click', function() { addRow('trayTableBody', ['menuText', 'action']); });
   }
   if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', wire);
-  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
+  S.registerSection(sectionName, {load: load, save: save});
 })();

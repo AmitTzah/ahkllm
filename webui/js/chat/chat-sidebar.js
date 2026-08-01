@@ -37,7 +37,7 @@ function updateTopbarTitle(data) {
   if (foldEl) { foldEl.textContent = folder; foldEl.style.display = ''; }
 }
 
-// Format relative date like mock: "Today, 09:53", "Yesterday, 14:20", "Mon, 11:05"
+// Format relative date: "Today, 09:53", "Yesterday, 14:20", "Mon, 11:05"
 function formatRelativeDate(dateStr) {
   if (!dateStr) return '';
   var d = new Date(dateStr + (dateStr.indexOf('Z') < 0 ? 'Z' : ''));

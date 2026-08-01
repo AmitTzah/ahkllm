@@ -72,7 +72,8 @@ class SSEParser {
         result := {}
 
         ; reasoning fields — tried in order, first non-empty wins
-        ; (matches pi's openai-completions.ts: ["reasoning_content", "reasoning", "reasoning_text"])
+        ; Candidate thinking fields across providers: reasoning_content (DeepSeek),
+        ; reasoning (OpenAI-compatible), reasoning_text (Google).
         reasoningFields := ["reasoning_content", "reasoning", "reasoning_text"]
         for field in reasoningFields {
             if delta.Has(field) && delta[field] != "" {

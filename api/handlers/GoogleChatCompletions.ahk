@@ -2,8 +2,7 @@
 ; GoogleChatCompletions.ahk -- Google-specific thinking config
 ;
 ; Handles Google's extra_body.google.thinking_config for
-; the OpenAI-compatible endpoint. Model-family detection
-; matches pi's google-generative-ai.ts approach.
+; the OpenAI-compatible endpoint.
 ;
 ; Gemini 2.x: thinking_budget (numeric, 0 = off)
 ; Gemini 3.x / Gemma: thinking_level (string)
@@ -11,8 +10,7 @@
 
 class GoogleChatCompletions {
 
-    ; Model-family detection matching pi's regex patterns exactly.
-    ; Pi: google-generative-ai.ts isGemma4Model, isGemini3ProModel, isGemini3FlashModel.
+    ; Model-family detection via regex on the full model id.
     static _IsGemma4(modelId) {
         return RegExMatch(modelId, "i)gemma-?4")
     }
@@ -29,7 +27,6 @@ class GoogleChatCompletions {
 
     ; ----------------------------------------------------
     ; Get disabled thinking config per model family.
-    ; Pi: google-generative-ai.ts getDisabledThinkingConfig.
     ; ----------------------------------------------------
     static DisabledConfig(modelId) {
         if (GoogleChatCompletions._IsGemini3Pro(modelId))
@@ -45,7 +42,7 @@ class GoogleChatCompletions {
     ; ----------------------------------------------------
     ; Build thinking_config for an enabled thinking level.
     ; Uses thinking_level for 3.x/Gemma, budget for 2.x.
-    ; Budget numbers match pi's getGoogleBudget per model family.
+    ; Budget numbers are per-model-family tables (Gemini 2.x).
     ; ----------------------------------------------------
     static ThinkingConfig(modelId, levelValue) {
         tc := { include_thoughts: true }
@@ -61,7 +58,7 @@ class GoogleChatCompletions {
 
     ; ----------------------------------------------------
     ; Get budget token count for a Gemini 2.x model + effort.
-    ; Matches pi's getGoogleBudget hardcoded tables.
+    ; Hardcoded budget tables per Gemini 2.x model family.
     ; ----------------------------------------------------
     static _GoogleBudget(modelId, levelValue) {
         ; If levelValue is already a budget number (from models.dev data), use it
@@ -84,7 +81,7 @@ class GoogleChatCompletions {
     }
 
     ; ----------------------------------------------------
-    ; Budget tables matching pi's getGoogleBudget per model family.
+    ; Budget tables per Gemini 2.x model family.
     ; ----------------------------------------------------
     static _BudgetTable(modelId) {
         if InStr(modelId, "2.5-pro")

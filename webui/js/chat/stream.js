@@ -195,7 +195,7 @@ function _updateUserTokenCount(data) {
 function createStreamingBubble() {
   var container = document.getElementById('chat-messages');
 
-  // Build HTML matching mock assistant message structure exactly
+  // Build the assistant message bubble HTML
   var displayName = streamState.modelName || 'Assistant';
   var html = '<div class="msg bot" id="streaming-bubble">';
   html += '<div class="msg-body">';

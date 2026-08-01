@@ -11,6 +11,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadModule(overrides) {
+    const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
     const src = fs.readFileSync(
         path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'),
         'utf-8'
@@ -41,7 +42,9 @@ function loadModule(overrides) {
         console
     };
     sandbox.global = sandbox;
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
     return sandbox.window.SettingsModels;
 }
 

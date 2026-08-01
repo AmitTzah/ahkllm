@@ -1,5 +1,4 @@
 /* right-panel.css — Right rail: config panel, model card, fields, thread map */
-/* Extracted from chat-ui-mock.html lines 457-555 */
 
 .rr-panel { display: flex; flex-direction: column; min-height: 0; }
 #rr-session { flex: 0 0 auto; height: 50%; min-height: 200px; }

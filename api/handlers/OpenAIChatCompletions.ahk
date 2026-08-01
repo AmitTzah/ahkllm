@@ -11,7 +11,8 @@
 ;   model.HasOwnProp("compat")        -- Object property check
 ;   model.compat.Has("thinkingFormat") -- Map key check
 ;
-; Based on pi's openai-completions.ts.
+; Implements the OpenAI chat completions convention for thinking/reasoning
+; parameters, with provider-specific shims for DeepSeek and Google.
 ; ======================================================
 
 class OpenAIChatCompletions {

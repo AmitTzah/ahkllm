@@ -11,7 +11,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadHelper() {
-  const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'reasoning-levels.js'), 'utf-8');
+  const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'reasoning-levels.js'), 'utf-8');
   const sandbox = { window: {} };
   sandbox.global = sandbox;
   vm.runInContext(src, vm.createContext(sandbox));

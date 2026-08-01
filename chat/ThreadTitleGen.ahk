@@ -73,13 +73,7 @@ _TitleGen_ExecuteRequest(payload, providerInfo) {
     FileOpen(tmpFile, "w", "UTF-8-RAW").Write(payload)
 
     cURLCommand := CurlBuilder.Build(providerInfo, tmpFile, outFile)
-    Run(cURLCommand, , "Hide", &cURLPID)
-    while ProcessExist(cURLPID)
-        Sleep 200
-
-    raw := ""
-    if FileExist(outFile)
-        raw := FileOpen(outFile, "r", "UTF-8-RAW").Read()
+    raw := CurlExecutor.Run(cURLCommand, outFile, 200)
 
     safeDelete(tmpFile)
     safeDelete(outFile)

@@ -1,6 +1,6 @@
 // ======================================================
 // chat-token-tooltip.js — Per-message token info popover
-// Matches mock's .stat-toggle / .stat-popover structure exactly
+// Renders the stat toggle / stat popover in the token bar
 // ======================================================
 
 function createTokenInfoIcon(msg, index) {

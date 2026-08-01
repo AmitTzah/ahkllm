@@ -113,7 +113,7 @@ function updateChatMessages(newMessages) {
 }
 
 
-// Build message HTML by copying the mock's structure EXACTLY, substituting only dynamic values
+// Build message HTML from the shared bubble template, substituting dynamic values
 function _prepUserContent(content) {
   return (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n{3,}/g, '\n\n<br>\n\n');
 }

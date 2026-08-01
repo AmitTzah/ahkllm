@@ -1,6 +1,7 @@
 // assistants.js — Assistants settings section
 (function() {
   var sectionName = 'assistants';
+  var S = window.SettingsShared;
   var _editingCard = null;
   var _modelKeys = ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash', 'openai/gpt-4o', 'google/gemini-2.5-flash'];
   var _models = null;
@@ -15,18 +16,18 @@
   // --- Card HTML template (shared by renderCards and addAssistant) ---
 
   function cardHTML(a, models, modelKeys) {
-    var modelOpts = buildModelOptions(modelKeys, a.baseModel || '');
+    var modelOpts = S.buildModelOptionsHtml(modelKeys, a.baseModel || '');
     var reasoningOpts = _reasoningLevels
       ? _reasoningLevels.buildOptionsHtml(models, a.baseModel || '')
       : '<option value="">Model Default</option><option value="none">None (Disabled)</option><option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>';
     var sysMsgLabel = '\uD83D\uDCC4 ' + (a.systemMessageFile || (a.systemMessage ? '(inline)' : '(none)'));
-    return '<div class="provider-card-header"><input value="' + escHtml(a.name || '') + '" data-field="name" style="border:none;font-weight:600;font-size:14px;background:transparent;width:auto;">' +
-      (a.isDefault ? '<span class="badge" style="margin-left:8px;">default</span>' : '') +
-      '<button class="btn-sm danger" style="margin-left:auto;">Remove</button></div>' +
+    return '<div class="provider-card-header"><input class="settings-card-title-input" value="' + S.escHtml(a.name || '') + '" data-field="name">' +
+      (a.isDefault ? '<span class="badge settings-ml-8">default</span>' : '') +
+      '<button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
       '<div class="grid-2"><div class="field"><label class="field-label">Base Model</label><select data-field="baseModel">' + modelOpts + '</select></div>' +
       '<div class="field"><label class="field-label">Reasoning</label><select data-field="reasoning">' + reasoningOpts + '</select></div></div>' +
-      '<div class="field"><label class="field-label">System Message</label><div style="display:flex;align-items:center;gap:8px;"><span class="sysmsg-label" style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);">' + escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
-      '<div class="field"><label class="field-label">Description</label><input type="text" value="' + escHtml(a.description || '') + '" data-field="description"></div>' +
+      '<div class="field"><label class="field-label">System Message</label><div class="settings-flex-row-center"><span class="sysmsg-label settings-sysmsg-label">' + S.escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
+      '<div class="field"><label class="field-label">Description</label><input type="text" value="' + S.escHtml(a.description || '') + '" data-field="description"></div>' +
       '<div class="toggle-row"><span class="lbl">Set as Default Assistant</span><div class="switch' + (a.isDefault ? ' on' : '') + '" data-field="isDefault" data-type="radio"><div class="knob"></div></div></div>';
   }
 
@@ -113,15 +114,7 @@
     return card;
   }
 
-  function buildModelOptions(keys, current) {
-    var html = '';
-    var all = keys.slice();
-    if (current != null && all.indexOf(current) < 0) all.unshift(current);
-    all.forEach(function(k) { html += '<option' + (k === current ? ' selected' : '') + '>' + k + '</option>'; });
-    return html;
-  }
-
-  function mark() { if (window.SettingsPanel) window.SettingsPanel.markDirty(); }
+  function mark() { S.markDirty(); }
 
   function save() {
     var assistants = [];
@@ -147,13 +140,11 @@
   }
 
   function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random()*16|0, v = c=='x'?r:(r&0x3|0x8); return v.toString(16); }); }
-  function escHtml(s) { return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;').replace(/"/g,'\x26quot;'); }
-
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
       var addBtn = document.getElementById('addAssistantBtn');
       if (addBtn) addBtn.addEventListener('click', addAssistant);
     });
   }
-  (function reg() { if (window.SettingsPanel) window.SettingsPanel.registerSection(sectionName, {load:load, save:save}); else setTimeout(reg, 50); })();
+  S.registerSection(sectionName, {load: load, save: save});
 })();

@@ -17,16 +17,21 @@ global defaultAssistant := ""
 ; API KEY CHECK — Ensures at least one provider key is set
 ; Called AFTER SettingsHandler.Load() so direct-entry keys are available.
 ; ----------------------------------------------------
+; Resolve a provider's API key: direct-entry key wins, else the env var.
+_RuntimeResolver_ApiKeyFor(p) {
+    if p.HasOwnProp("authMode") && p.authMode = "direct" && p.HasOwnProp("apiKey") && p.apiKey != ""
+        return p.apiKey
+    if p.HasOwnProp("authEnvVar")
+        return EnvGet(p.authEnvVar)
+    return ""
+}
+
 RuntimeResolver_CheckApiKeys() {
     global providers
     anyKeyFound := false
     keyProviders := ""
     for providerKey, p in providers {
-        key := ""
-        if p.HasOwnProp("authMode") && p.authMode = "direct" && p.HasOwnProp("apiKey") && p.apiKey != ""
-            key := p.apiKey
-        else if p.HasOwnProp("authEnvVar")
-            key := EnvGet(p.authEnvVar)
+        key := _RuntimeResolver_ApiKeyFor(p)
         if key != "" {
             anyKeyFound := true
             break
@@ -50,11 +55,7 @@ RuntimeResolver_CheckApiKeys() {
 RuntimeResolver_ResolvePrimaryProvider() {
     global providers, APIKey, APIEndpoint, FIMEndpoint
     for providerKey, p in providers {
-        apiKey := ""
-        if p.HasOwnProp("authMode") && p.authMode = "direct" && p.HasOwnProp("apiKey") && p.apiKey != ""
-            apiKey := p.apiKey
-        else if p.HasOwnProp("authEnvVar")
-            apiKey := EnvGet(p.authEnvVar)
+        apiKey := _RuntimeResolver_ApiKeyFor(p)
         if apiKey != "" {
             APIKey := apiKey
             APIEndpoint := p.endpoint

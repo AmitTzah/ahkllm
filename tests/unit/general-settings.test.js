@@ -33,7 +33,7 @@ function loadSection(opts) {
     const { els, withSettingsPanel } = opts || {};
     const elementMap = els || {};
     const domContentLoaded = [];
-    const loadHandlers = [];
+    const timers = [];
     const registered = [];
     const dirtyCalls = [];
 
@@ -51,14 +51,17 @@ function loadSection(opts) {
         },
         window: {
             SettingsPanel: settingsPanel,
-            addEventListener: (type, fn) => { if (type === 'load') loadHandlers.push(fn); },
         },
+        setTimeout: (fn) => { timers.push(fn); },
         console,
     };
     sandbox.global = sandbox;
 
+    const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'general.js'), 'utf-8');
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
 
     const registeredModule = settingsPanel ? registered[0] && registered[0].mod : null;
     return {
@@ -67,7 +70,7 @@ function loadSection(opts) {
         registered,
         dirtyCalls,
         domContentLoaded,
-        loadHandlers,
+        timers,
         module: registeredModule || (registered[0] && registered[0].mod),
         fireDomReady: () => domContentLoaded.forEach((fn) => fn()),
     };
@@ -232,13 +235,12 @@ describe('General settings section', () => {
         assert.ok(typeof ctx.registered[0].mod.save === 'function');
     });
 
-    it('defers registration until load when SettingsPanel is missing', () => {
+    it('defers registration until SettingsPanel appears', () => {
         const ctx = loadSection({ withSettingsPanel: undefined });
-        // window.SettingsPanel absent at module load -> load listener captured
         assert.ok(ctx.registered.length === 0);
-        assert.ok(ctx.loadHandlers.length === 1);
+        assert.ok(ctx.timers.length >= 1, 'registration retry scheduled');
         ctx.sandbox.window.SettingsPanel = ctx.panelStub;
-        ctx.loadHandlers.forEach((fn) => fn());
+        ctx.timers.forEach((fn) => fn());
         assert.ok(ctx.registered.length === 1);
         assert.ok(ctx.registered[0].name === 'general');
     });

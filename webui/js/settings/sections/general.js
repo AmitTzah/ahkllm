@@ -4,6 +4,7 @@
 
 (function() {
   var sectionName = 'general';
+  var S = window.SettingsShared;
 
   function load(data) {
     // Thread Titles
@@ -21,7 +22,7 @@
         }
       }
       var modelSel = document.getElementById('titleGenModel');
-      if (modelSel && data.models) fillSelect(modelSel, Object.keys(data.models).sort(), tt.model);
+      if (modelSel && data.models) S.fillSelect(modelSel, Object.keys(data.models).sort(), tt.model);
       var promptTa = document.getElementById('titleGenPrompt');
       if (promptTa) promptTa.value = tt.prompt || '';
       var maxTok = document.getElementById('titleGenMaxTokens');
@@ -44,8 +45,6 @@
     }
   }
 
-  function num(v, dflt) { var n = parseInt(v, 10); return isNaN(n) ? dflt : n; }
-
   function save() {
     var data = {};
     // Thread Titles
@@ -54,15 +53,15 @@
       enabled: toggle ? toggle.classList.contains('on') : true,
       model: (document.getElementById('titleGenModel') || {}).value || 'deepseek/deepseek-v4-flash',
       prompt: (document.getElementById('titleGenPrompt') || {}).value || '',
-      maxTokens: num((document.getElementById('titleGenMaxTokens') || {}).value, 50)
+      maxTokens: S.num((document.getElementById('titleGenMaxTokens') || {}).value, 50)
     };
     // API Logs
     data.apiLogs = {
-      maxEntries: num((document.getElementById('apiLogMaxEntries') || {}).value, 20)
+      maxEntries: S.num((document.getElementById('apiLogMaxEntries') || {}).value, 20)
     };
     // Trash
     data.trash = {
-      retentionDays: num((document.getElementById('trashRetentionDays') || {}).value, 30)
+      retentionDays: S.num((document.getElementById('trashRetentionDays') || {}).value, 30)
     };
     // Chat Shortcut
     data.chatShortcut = (document.getElementById('chatShortcut') || {}).value || '';
@@ -81,49 +80,17 @@
       } else {
         fields.classList.add('fields-disabled');
       }
-      if (window.SettingsPanel) window.SettingsPanel.markDirty();
+      S.markDirty();
     });
-  }
-
-  // Wire all fields for dirty tracking
-  function wireDirty() {
-    var container = document.getElementById('sec-general');
-    if (!container) return;
-    container.querySelectorAll('input, select, textarea').forEach(function(el) {
-      el.addEventListener('change', function() {
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
-      });
-      el.addEventListener('input', function() {
-        if (window.SettingsPanel) window.SettingsPanel.markDirty();
-      });
-    });
-  }
-
-  function fillSelect(sel, keys, current) {
-    if (!sel) return;
-    sel.innerHTML = '';
-    if (current != null && keys.indexOf(current) < 0) keys.unshift(current);
-    keys.forEach(function(k) { var o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
-    if (current != null) sel.value = current;
   }
 
   // Initialize
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', function() {
       wireToggle();
-      wireDirty();
+      S.wireDirty('sec-general', S.markDirty);
     });
   }
 
-  // Register with settings panel
-  if (typeof window !== 'undefined' && window.SettingsPanel) {
-    window.SettingsPanel.registerSection(sectionName, { load: load, save: save });
-  } else {
-    // Defer registration
-    window.addEventListener('load', function() {
-      if (window.SettingsPanel) {
-        window.SettingsPanel.registerSection(sectionName, { load: load, save: save });
-      }
-    });
-  }
+  S.registerSection(sectionName, { load: load, save: save });
 })();

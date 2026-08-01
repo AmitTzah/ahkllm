@@ -1,5 +1,4 @@
 /* messages.css — Message bubbles, thinking block, edit UI, flash animation */
-/* Extracted from chat-ui-mock.html lines 319-389 */
 
 .msg { display: flex; flex-direction: column; width: 100%; }
 

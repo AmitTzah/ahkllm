@@ -1,4 +1,4 @@
-// chat-settings-modal.test.js — Unit tests for chat-settings-modal.js
+// chat-settings-modal.test.js — Unit tests for model-picker-config.js
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function loadModule() {
-    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'settings', 'chat-settings-modal.js'), 'utf-8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
     const sandbox = {
         document: {
             getElementById: (id) => {
@@ -112,13 +112,6 @@ describe('updateDropdownLabel', () => {
     });
 });
 
-describe('closeModelSettings', () => {
-    it('is a no-op', () => {
-        const ctx = loadModule();
-        assert.doesNotThrow(() => ctx.closeModelSettings());
-    });
-});
-
 describe('toggle switch handler scoping — regression: double-handler on titleGenToggle', () => {
     it('attaches click handler to all three #railRight .toggle-row .switch and calls _sendAllSettings', () => {
         const handlers = [];
@@ -151,7 +144,7 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
         };
         sandbox.global = sandbox;
 
-        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'settings', 'chat-settings-modal.js'), 'utf-8');
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
         vm.runInContext(src, vm.createContext(sandbox));
 
         // All three switches should have click handlers
@@ -190,7 +183,7 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
         };
         sandbox.global = sandbox;
 
-        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'settings', 'chat-settings-modal.js'), 'utf-8');
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
         vm.runInContext(src, vm.createContext(sandbox));
 
         // No handlers should be attached to switches outside #railRight
@@ -214,7 +207,7 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
         };
         sandbox2.global = sandbox2;
 
-        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'settings', 'chat-settings-modal.js'), 'utf-8');
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
         // Should not throw even with no switches
         assert.doesNotThrow(() => vm.runInContext(src, vm.createContext(sandbox2)));
     });

@@ -30,7 +30,7 @@ class SettingsHandlerTest {
     GetDefaults_HasAllTopLevelKeys() {
         defaults := SettingsHandler.GetDefaults()
         expectedKeys := ["version", "providers", "models", "assistants", "commands",
-                          "submenuOrder", "threadTitles", "ui", "theme", "icons",
+                          "submenuOrder", "threadTitles", "ui", "icons",
                           "hotkeys", "apiLogs", "trash", "menuItems"]
         for _, k in expectedKeys {
             if !defaults.Has(k)
@@ -60,16 +60,16 @@ class SettingsHandlerTest {
 
     Merge_FillsMissingKeys() {
         existing := Map()
-        existing["theme"] := Map("darkMode", true)
+        existing["ui"] := Map("chatDefaultModel", "my-model")
         defaults := Map()
-        defaults["theme"] := Map("darkMode", false)
+        defaults["ui"] := Map("chatDefaultModel", "default-model")
         defaults["version"] := 1
 
         merged := SettingsHandler.Merge(existing, defaults)
         if !merged.Has("version") || merged["version"] != 1
             throw Error("Merge should fill missing key 'version'")
-        if !merged.Has("theme") || !merged["theme"].Has("darkMode") || merged["theme"]["darkMode"] != true
-            throw Error("Merge should keep existing value for 'theme.darkMode'")
+        if !merged.Has("ui") || !merged["ui"].Has("chatDefaultModel") || merged["ui"]["chatDefaultModel"] != "my-model"
+            throw Error("Merge should keep existing value for 'ui.chatDefaultModel'")
     }
 
     Merge_KeepsExistingValues() {

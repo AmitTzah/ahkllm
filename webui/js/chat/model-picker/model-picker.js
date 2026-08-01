@@ -1,9 +1,8 @@
 // ======================================================
-// chat-settings.js — Model/Assistant popover (right panel)
-// Matches mock's .selector-item structure exactly
+// model-picker.js — Model/Assistant popover (right panel)
 // ======================================================
 
-// Shared helpers (used by both chat-settings.js and chat-settings-modal.js)
+// Shared helpers (used by both model-picker.js and model-picker-config.js)
 
 var _settingsTimer = null;
 function _sendAllSettings() {

@@ -1,5 +1,4 @@
 /* popover.css — Model/assistant selection popover */
-/* Extracted from chat-ui-mock.html lines 598-652 */
 
 .popover-overlay { position: fixed; inset: 0; background: transparent; z-index: 90; display: none; }
 
