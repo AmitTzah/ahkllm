@@ -143,6 +143,37 @@ class HotkeyRegistrarTest {
             throw Error("Expected 1 Off + 4 On calls, got " _mockHotkeyCalls.Length)
     }
 
+    ; Regression: an empty hotkey value means DISABLED — the previous binding
+    ; must be turned Off and nothing re-registered for it, while non-empty
+    ; hotkeys are still registered as usual.
+    Register_SkipsDisabledEmptyBindings() {
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
+        global _activeHotkeys, _mockHotkeyCalls
+        mainHotkey := ""
+        reloadHotkey := "^!r"
+        closeWindowsHotkey := ""
+        suspendHotkey := "CapsLock & x"
+        _activeHotkeys := { main: "oldmain", reload: "", closeWindows: "oldclose", suspend: "" }
+        _mockHotkeyCalls := []
+
+        _registerAllHotkeys()
+
+        ; Old bindings for now-disabled hotkeys turn Off, then only the
+        ; non-empty hotkeys register: 2 Off + 2 On.
+        if _mockHotkeyCalls.Length != 4
+            throw Error("Expected 2 Off + 2 On calls, got " _mockHotkeyCalls.Length)
+        if _mockHotkeyCalls[1].key != "oldmain" || _mockHotkeyCalls[1].options != "Off"
+            throw Error("old main hotkey should be turned Off when disabled")
+        if _mockHotkeyCalls[2].key != "oldclose" || _mockHotkeyCalls[2].options != "Off"
+            throw Error("old close hotkey should be turned Off when disabled")
+        if _mockHotkeyCalls[3].key != "^!r" || _mockHotkeyCalls[3].options != "On"
+            throw Error("non-empty reload hotkey should still be registered")
+        if _mockHotkeyCalls[4].key != "CapsLock & x" || _mockHotkeyCalls[4].options != "S On"
+            throw Error("non-empty suspend hotkey should still be registered")
+        if _activeHotkeys.main != "" || _activeHotkeys.closeWindows != ""
+            throw Error("active hotkey record should be cleared for disabled bindings")
+    }
+
     Handle_Suspend() {
         global _mockKeyWaitCalls, _mockCapsLockCalls, _mockToggleSuspendCalls
         _mockKeyWaitCalls := []

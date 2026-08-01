@@ -25,11 +25,16 @@ _registerAllHotkeys() {
     if _activeHotkeys.suspend
         Hotkey(_activeHotkeys.suspend, "Off")
 
-    ; Register current hotkeys
-    Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"), "On")
-    Hotkey(reloadHotkey, (*) => handleHotkey("reloadScript"), "On")
-    Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"), "On")
-    Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S On")
+    ; Register current hotkeys. An empty value means the hotkey is disabled —
+    ; skip registration so the old binding is not re-armed after the Off above.
+    if mainHotkey
+        Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"), "On")
+    if reloadHotkey
+        Hotkey(reloadHotkey, (*) => handleHotkey("reloadScript"), "On")
+    if closeWindowsHotkey
+        Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"), "On")
+    if suspendHotkey
+        Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S On")
 
     ; Remember active bindings for next update
     _activeHotkeys.main := mainHotkey

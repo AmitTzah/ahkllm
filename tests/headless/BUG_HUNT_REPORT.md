@@ -138,9 +138,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **16 open bugs**, all `verified` headlessly (2026-08-01; 21/21 harness scenarios passed,
-  one scenario is the refuted-bug regression check).
-- **Where we left off:** bug #1 (removing models/providers does not persist) is `fix applied` — both halves fixed: save applies each section payload per top-level key (`SettingsMerge.Override`), and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`) so removed entries are no longer resurrected from defaults on startup/reopen; scenario 3 extended to hide+reopen Settings and PASS, all 21 headless scenarios PASS, AHK 404/404 + JS 450/450 green; next: user verifies manually, then `awaiting user commit` + commit suggestion.
+- **15 open bugs** (14 verified, 1 fix applied; 2026-08-02; 21/21 harness scenarios passed,
+  7 regression/refuted checks).
+- **Where we left off:** bug #1 (clearing a hotkey field — hotkeys can't be disabled) is `awaiting user commit` — user verified manually; commit suggestion provided; next: after the commit, delete the entry, add a History line, re-rank, and start the next bug.
 
 ---
 
@@ -193,37 +193,23 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Removing models/providers in Settings doesn't persist
-
-**Scenario:** 3 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** Settings → Models/Providers → click ✕/Remove on any row → Save → reopen.
-
-**Expected:** the entry is gone.
-
-**Actual:** every removed model/provider reappeared — two resurrection paths: (1) the deep merge in `_HandleSaveSettings` brought back keys absent from the panel payload, and (2) even after the file was correct, every load/reopen re-merged the saved models/providers with defaults and re-added removed default entries. Fixed both: save applies each section payload per top-level key (`SettingsHandler.Override` → new `SettingsMerge.Override`), and load treats the saved models/providers lists as authoritative for membership while still filling per-entry metadata from defaults (`SettingsMerge.MergeAuthoritativeList`). Top-level keys the UI didn't send keep their saved/default values.
-
-**Evidence:** `chat/callbacks/Dispatch.ahk:119` deep-merged `settingsMap` over `base`; now calls `SettingsHandler.Override`. `app/settings/SettingsMerge.ahk` adds `Override` (save payload over base) and `MergeAuthoritativeList` (saved file defines which models/providers exist). Load call sites (`Main.ahk:21` startup, `Main.ahk:188` WM_SETTINGS_UPDATED, `ChatWindow.ahk:58`, `_HandleRequestAllSettings`) all go through `SettingsMerge.Merge`.
-
-**Verification:** headless — pre-fix, removed `deepseek/deepseek-chat` + provider `deepseek` were back after Save AND after reopening Settings (the user's manual reload repro). Scenario 3 flipped to assert they stay removed in `settings.json` and after hide+reopen Settings (fresh `requestAllSettings` merge); PASS. Regression tests: `SettingsHandlerTest.Override_ReplacesIncomingSectionsWithoutResurrectingRemovedEntries`, `SettingsHandlerTest.Merge_DoesNotResurrectRemovedDefaultModels`, `ChatDispatchTest.Dispatch_SaveSettings_RemovedEntriesStayRemoved`, `ChatDispatchTest.Dispatch_RequestAllSettings_RemovedDefaultsStayRemoved`; all 21 headless scenarios PASS, AHK 404/404, JS 450/450.
-
-### 2. Clearing a hotkey field does nothing — hotkeys can't be disabled
+### 1. Clearing a hotkey field does nothing — hotkeys can't be disabled
 
 **Scenario:** 4 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** awaiting user commit
 
 **Repro:** Settings → Hotkeys → clear "Main menu hotkey" → Save → press backtick.
 
 **Expected:** validation rejects the empty value or the hotkey is disabled.
 
-**Actual:** the field saves `""` but the old binding stays live (`_ApplyHotkeys` skips empty values; AHK throws on `Hotkey("", …)`).
+**Actual:** the field saved `""` but the old binding stayed live — `_ApplyHotkeys` skipped empty values, so the global kept the previous hotkey and `_registerAllHotkeys` re-armed it. Fixed: empty = disabled — `SettingsApply._ApplyHotkeys` now applies the empty value (clears the global) and `app/HotkeyRegistrar.ahk` skips registration for empty bindings (the old binding is still turned Off first). UI hints now say "leave empty to disable", matching the Chat Shortcut field.
 
-**Verification:** headless — `settings.json` saved `""`, backtick still opened the menu.
+**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyHotkeys` applies `hk["main"]` etc. even when empty; `app/HotkeyRegistrar.ahk` `_registerAllHotkeys` guards each `Hotkey(...)` call with `if mainHotkey` / `if reloadHotkey` / ...
 
-### 3. New models added in Settings lose reasoning/thinking metadata
+**Verification:** headless — pre-fix, `settings.json` saved `""` but backtick still opened the menu. Scenario 4 flipped to assert the cleared main hotkey saves as `""` AND backtick no longer opens the command menu; PASS. Regression tests: `HotkeyRegistrarTest.Register_SkipsDisabledEmptyBindings` + `SettingsHandlerTest.ApplyToGlobals_EmptyHotkeyClearsGlobal`; all 21 headless scenarios PASS, AHK 406/406, JS 450/450.
+
+### 2. New models added in Settings lose reasoning/thinking metadata
 
 **Scenario:** 5 (scenario code in verify-bugs.js)
 
@@ -237,7 +223,7 @@ one at a time, in rank order.
 
 **Verification:** headless — dropdown had exactly 1 option; plus JS probe.
 
-### 4. Chat request failure with no output file shows no error and leaves the UI stuck
+### 3. Chat request failure with no output file shows no error and leaves the UI stuck
 
 **Scenario:** 6 (scenario code in verify-bugs.js)
 
@@ -251,7 +237,7 @@ one at a time, in rank order.
 
 **Verification:** headless — refused endpoint; no error banner, stuck until Stop.
 
-### 5. Trash retention never auto-purges
+### 4. Trash retention never auto-purges
 
 **Scenario:** 7 (scenario code in verify-bugs.js)
 
@@ -265,7 +251,7 @@ one at a time, in rank order.
 
 **Verification:** headless — static caller check + expired trashed thread survived.
 
-### 6. "Close Windows" hotkey setting is ignored by the chat window
+### 5. "Close Windows" hotkey setting is ignored by the chat window
 
 **Scenario:** 8 (scenario code in verify-bugs.js)
 
@@ -279,7 +265,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 8 (static trace) + user manual confirmation.
 
-### 7. Suspend banner edits don't take effect until restart
+### 6. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
@@ -293,7 +279,7 @@ one at a time, in rank order.
 
 **Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
 
-### 8. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+### 7. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -307,7 +293,7 @@ one at a time, in rank order.
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 9. Title generation resets the topbar folder label to "Unfiled"
+### 8. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -321,7 +307,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 10. Chat topbar "Export" button does nothing
+### 9. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -335,7 +321,7 @@ one at a time, in rank order.
 
 **Verification:** headless — click produced no message and no state change.
 
-### 11. API Logs viewer latency column always shows "–"
+### 10. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -349,7 +335,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 16.
 
-### 12. System-prompt modal "0 chars" counter never updates
+### 11. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -363,7 +349,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 17.
 
-### 13. Custom icon picked outside the repo never applies to the chat window
+### 12. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -377,7 +363,7 @@ one at a time, in rank order.
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 14. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 13. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -391,7 +377,7 @@ one at a time, in rank order.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 15. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 14. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -405,7 +391,7 @@ one at a time, in rank order.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 16. Reasoning-only responses get no action buttons until reload
+### 15. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -434,3 +420,4 @@ closure; never rewrite past entries.
 - 2026-08-01 — "Command `thinking` settings are dropped after any settings round-trip" — FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.
 - 2026-08-01 — "Deleting the active chat leaks its per-thread settings into the next chat" — FIXED in 76be0ba: deleteThread/deleteThreadForever/emptyTrash now reset requestParams and refresh the UI when the active thread is removed; scenario 1 flipped + dispatch regression tests for active vs inactive deletion.
 - 2026-08-01 — "New chats ignore the configured `New Chats Start With` default" — FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` — `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
+- 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.

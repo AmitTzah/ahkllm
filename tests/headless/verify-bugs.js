@@ -307,7 +307,8 @@ scenarios.push({
 
 scenarios.push({
   id: 4,
-  name: 'Clearing a hotkey field does nothing — old binding stays active',
+  name: 'Clearing a hotkey field disables the hotkey (empty = off)',
+  regression: true, // FIXED bug kept as a regression check (cleared hotkeys must stay disabled)
   mode: null,
   settings: { hotkeys: { main: '`', reload: '~^!r', closeWindows: '~^w', suspend: 'CapsLock & `' } },
   async body({ cdp, dataDir }) {
@@ -321,12 +322,12 @@ scenarios.push({
     if (saved.hotkeys.main !== '') throw new Error('expected empty main hotkey saved, got ' + JSON.stringify(saved.hotkeys.main));
     await sleep(1500); // let Main re-register hotkeys after WM_SETTINGS_UPDATED
     let menu = runProbe('menu-open');
-    if (!menu.open) {
+    if (menu.open) {
       await sleep(1500);
       menu = runProbe('menu-open');
     }
-    if (!menu.open) throw new Error('backtick no longer opens the command menu; probe=' + JSON.stringify(menu));
-    return 'field saved as "" but backtick still opens the command menu (old binding stays live)';
+    if (menu.open) throw new Error('backtick still opens the command menu after disabling the main hotkey; probe=' + JSON.stringify(menu));
+    return 'cleared main hotkey saves as "" and backtick no longer opens the command menu';
   }
 });
 

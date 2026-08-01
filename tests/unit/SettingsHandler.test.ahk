@@ -214,4 +214,42 @@ class SettingsHandlerTest {
         closeWindowsHotkey := oldClose
         suspendHotkey := oldSuspend
     }
+
+    ; Regression: clearing a hotkey field saves "" and must DISABLE the hotkey,
+    ; not silently keep the previous binding. ApplyToGlobals must apply the
+    ; empty value instead of skipping it.
+    ApplyToGlobals_EmptyHotkeyClearsGlobal() {
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
+
+        oldMain := mainHotkey
+        oldReload := reloadHotkey
+        oldClose := closeWindowsHotkey
+        oldSuspend := suspendHotkey
+        mainHotkey := "t"
+        reloadHotkey := "~^!r"
+        closeWindowsHotkey := "^F4"
+        suspendHotkey := "!s"
+
+        settings := Map()
+        hk := Map(
+            "main", "",
+            "reload", "~^!r",
+            "closeWindows", "^F4",
+            "suspend", "!s"
+        )
+        settings["hotkeys"] := hk
+
+        SettingsHandler.ApplyToGlobals(settings)
+
+        if mainHotkey != ""
+            throw Error("Expected mainHotkey='' after clearing the field, got: " mainHotkey)
+        if reloadHotkey != "~^!r" || closeWindowsHotkey != "^F4" || suspendHotkey != "!s"
+            throw Error("Non-cleared hotkeys should keep their saved values")
+
+        ; Restore originals so other tests aren't affected
+        mainHotkey := oldMain
+        reloadHotkey := oldReload
+        closeWindowsHotkey := oldClose
+        suspendHotkey := oldSuspend
+    }
 }

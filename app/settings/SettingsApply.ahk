@@ -261,13 +261,16 @@ class SettingsApply {
         if !settings.Has("hotkeys")
             return
         hk := settings["hotkeys"]
-        if hk.Has("main") && hk["main"] != ""
+        ; Apply the saved value even when empty — an empty field means the
+        ; hotkey is disabled (nothing is registered for it). Skipping empty
+        ; values kept the previous binding alive forever.
+        if hk.Has("main")
             mainHotkey := hk["main"]
-        if hk.Has("reload") && hk["reload"] != ""
+        if hk.Has("reload")
             reloadHotkey := hk["reload"]
-        if hk.Has("closeWindows") && hk["closeWindows"] != ""
+        if hk.Has("closeWindows")
             closeWindowsHotkey := hk["closeWindows"]
-        if hk.Has("suspend") && hk["suspend"] != ""
+        if hk.Has("suspend")
             suspendHotkey := hk["suspend"]
     }
 
