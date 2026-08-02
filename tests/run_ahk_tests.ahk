@@ -80,6 +80,7 @@ global responseWindow := {PostWebMessageAsJSON: (*) => ""}
 ; otherwise never loaded by the test harness.
 #Include ..\chat\ThreadTitleGen.ahk
 #Include ..\app\HotkeyRegistrar.ahk
+#Include ..\chat\ChatHotkeys.ahk
 #Include ..\chat\callbacks\Dispatch.ahk
 
 ; -----------------------------------------------------------
@@ -122,6 +123,7 @@ RegisterTestClass(className) {
 ; Registered last so their global mocks and settings application cannot
 ; affect the rest of the suite.
 #Include unit\HotkeyRegistrar.test.ahk
+#Include unit\ChatHotkeys.test.ahk
 #Include unit\ThreadTitleGen.test.ahk
 #Include unit\ChatDispatch.test.ahk
 #Include unit\CommandThinkingMap.test.ahk

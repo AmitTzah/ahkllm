@@ -30,12 +30,6 @@
     document.addEventListener('DOMContentLoaded', function() {
       S.wireDirty('sec-hotkeys', S.markDirty);
       wireKeyCaptures();
-      var restartBtn = document.getElementById('restartNowBtn');
-      if (restartBtn) {
-        restartBtn.addEventListener('click', function() {
-          window.chrome.webview.postMessage(JSON.stringify({action:'reloadScript'}));
-        });
-      }
     });
   }
   S.registerSection(sectionName, {load: load, save: save});

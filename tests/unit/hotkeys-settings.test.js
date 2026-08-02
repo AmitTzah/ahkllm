@@ -30,7 +30,7 @@ function makeEl(overrides) {
 }
 
 function loadSection(opts) {
-    const { els, keyCaptures, withSettingsPanel, restartBtn, timeoutImpl } = opts || {};
+    const { els, keyCaptures, withSettingsPanel, timeoutImpl } = opts || {};
     const elementMap = els || {};
     const domContentLoaded = [];
     const registered = [];
@@ -158,16 +158,7 @@ describe('Hotkeys settings section', () => {
         assert.ok(true);
     });
 
-    it('restart button posts reloadScript', () => {
-        const restartBtn = makeEl();
-        const ctx = loadSection({ restartBtn });
-        ctx.sandbox.document.getElementById = (id) => (id === 'restartNowBtn' ? restartBtn : null);
-        ctx.fireDomReady();
-        restartBtn.fire('click');
-        assert.strictEqual(JSON.parse(ctx.posted[0]).action, 'reloadScript');
-    });
-
-    it('DOMContentLoaded tolerates missing restart button', () => {
+    it('DOMContentLoaded wires key captures without a restart button', () => {
         const ctx = loadSection({});
         ctx.fireDomReady();
         assert.ok(true);

@@ -1,4 +1,4 @@
-PASS | #07 | Trash retention auto-purges expired trashed threads (wired at startup + timer) | PurgeExpired wired via ChatDB facade in Main.ahk; expired trashed thread purged during app run | 3.9s
+PASS | #08 | Close-Windows hotkey setting is honored by the chat window (dynamic registration) | ChatWindow registers the configured closeWindowsHotkey via ChatHotkeys.ahk (empty=disabled, re-registered on save); Main still handles only the input window; no restart warning shown | 2.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

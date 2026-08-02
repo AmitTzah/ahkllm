@@ -23,16 +23,7 @@ OnError((err, mode) => (
 ; Hotkeys
 ; ----------------------------------------------------
 
-~^w:: ChatHotkeys("closeWindows")
-
-ChatHotkeys(action) {
-    switch action {
-        case "closeWindows":
-            switch WinActive("A") {
-                case chatWindow.hWnd: chatWindow.Hide()
-            }
-    }
-}
+#Include ChatHotkeys.ahk
 
 ; ----------------------------------------------------
 ; Initialize DB and request params
@@ -60,6 +51,7 @@ SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
 debugLog("[CHAT] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
+_registerChatHotkeys()
 
 ; Clean up DB and cURL on exit (ProcessClose from Main.ahk is force-kill;
 ; this runs when ChatWindow exits gracefully via WinClose or user action)

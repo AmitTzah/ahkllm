@@ -104,6 +104,7 @@ _HandleRequestDefaultSettings() {
     ; Save and apply defaults immediately — bypass merge with stale loaded data
     if SettingsHandler.Save(defaults) {
         SettingsHandler.ApplyToGlobals(defaults)
+        _registerChatHotkeys()
         postAssistantsToWebView()
         postCurrentSettingsToWebView()  ; refresh thinking levels for current model
         try {
@@ -133,6 +134,9 @@ _HandleSaveSettings(parsed) {
         if SettingsHandler.Save(merged) {
             ; Apply to this process's globals
             SettingsHandler.ApplyToGlobals(merged)
+            ; Re-register the chat-window hotkeys so a changed "Close Windows"
+            ; setting takes effect without restarting the window.
+            _registerChatHotkeys()
             ; Push updated assistant list (and model list) to the chat sidebar
             postAssistantsToWebView()
             ; Refresh thinking levels for current model

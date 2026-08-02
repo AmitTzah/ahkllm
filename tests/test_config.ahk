@@ -22,6 +22,11 @@ global apiLogMaxEntries := 20
 global iconOn := ""
 global iconOff := ""
 
+; ChatHotkeys.ahk function bodies reference the chat window object; the test
+; harness never loads ChatWindow.ahk, so provide a stub before the module is
+; #Included (unresolved globals in included function bodies hang the runner).
+global chatWindow := { hWnd: 0, Hide: (*) => "" }
+
 global models := Map(
     "deepseek/deepseek-v4-flash", {
         provider: "deepseek", api: "openai-completions",

@@ -426,6 +426,7 @@ scenarios.push({
 scenarios.push({
   id: 7,
   name: 'Trash retention auto-purges expired trashed threads (wired at startup + timer)',
+  regression: true, // FIXED bug kept as a regression check (expired trash must keep purging)
   mode: null,
   settings: { trash: { retentionDays: 1 } },
   fixtures: {
@@ -466,23 +467,43 @@ scenarios.push({
 
 scenarios.push({
   id: 8,
-  name: 'Close-Windows hotkey setting ignored by chat window (Ctrl+W hardcoded)',
+  name: 'Close-Windows hotkey setting is honored by the chat window (dynamic registration)',
   mode: null,
   settings: { hotkeys: { main: '`', reload: '~^!r', closeWindows: '~^q', suspend: 'CapsLock & `' } },
-  async body() {
+  async body({ cdp }) {
     // Live key injection is unreliable in this session (injected keys sometimes
-    // don't reach AHK hotkeys), and the user confirmed Ctrl+W works in the app.
-    // Verify the actual defect statically: the chat window's close binding is
-    // hardcoded and never consults the configured closeWindows setting, while
-    // Main's handler for the configured hotkey only closes the input window.
+    // don't reach AHK hotkeys). Verify the fix statically: the chat window must
+    // register the CONFIGURED closeWindowsHotkey dynamically (no hardcoded
+    // ~^w::), empty = disabled, and re-register after settings saves.
     const chatWin = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
+    const chatHk = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatHotkeys.ahk'), 'utf8');
+    const dispatch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'callbacks', 'Dispatch.ahk'), 'utf8');
     const hr = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'HotkeyRegistrar.ahk'), 'utf8');
-    const hardcoded = /~?\^w::/.test(chatWin) && /ChatHotkeys\("closeWindows"\)/.test(chatWin);
-    const ignoresSetting = !chatWin.includes('closeWindowsHotkey');
+    const noHardcode = !/::\s*ChatHotkeys\("closeWindows"\)/.test(chatWin) && !/~\^w::/.test(chatWin);
+    const includesModule = chatWin.includes('#Include ChatHotkeys.ahk');
+    const registersAtStartup = chatWin.includes('_registerChatHotkeys()');
+    const dynamicRegister = /Hotkey\(\s*closeWindowsHotkey/.test(chatHk) && /_activeChatHotkey/.test(chatHk);
+    const emptyMeansDisabled = /if\s+_activeChatHotkey[\s\S]*Hotkey\(_activeChatHotkey,\s*"Off"\)/.test(chatHk)
+      && /if\s+closeWindowsHotkey[\s\S]*Hotkey\(closeWindowsHotkey/.test(chatHk);
+    const reRegistersOnSave = (dispatch.match(/_registerChatHotkeys\(\)/g) || []).length >= 2;
     const mainOnlyClosesInput = /case "closeWindows":[\s\S]*?commandInputWindow\.guiObj\.hWnd/.test(hr);
-    if (!hardcoded || !ignoresSetting) throw new Error('ChatWindow hotkey not hardcoded/ignoring setting');
+    if (!noHardcode || !includesModule || !registersAtStartup) throw new Error('ChatWindow still hardcodes the close hotkey or does not register it');
+    if (!dynamicRegister || !emptyMeansDisabled) throw new Error('ChatHotkeys.ahk does not register closeWindowsHotkey dynamically with empty=disabled');
+    if (!reRegistersOnSave) throw new Error('Dispatch does not re-register chat hotkeys after settings saves');
     if (!mainOnlyClosesInput) throw new Error('Main closeWindows handler unexpectedly closes the chat window');
-    return 'ChatWindow.ahk hardcodes ~^w:: (never reads closeWindowsHotkey); Main\'s configured-hotkey handler only closes the input window (live Ctrl+W verified manually by user)';
+    // The Hotkeys tab must no longer claim a restart is required — hotkey
+    // changes are live on both the main script and the chat window.
+    await openSettings(cdp);
+    await openSection(cdp, 'hotkeys');
+    await cdp.waitFor('document.getElementById("hkMain") !== null', 10000, 250, 'hotkeys form');
+    const restartWarning = await cdp.eval(`(() => {
+      const btn = document.getElementById('restartNowBtn');
+      const banner = [...document.querySelectorAll('.warning-banner')].find(b => b.textContent.indexOf('restart') >= 0);
+      return { btn: !!btn, banner: !!banner };
+    })()`);
+    if (restartWarning.btn || restartWarning.banner)
+      throw new Error('stale restart warning still shown in Hotkeys: ' + JSON.stringify(restartWarning));
+    return 'ChatWindow registers the configured closeWindowsHotkey via ChatHotkeys.ahk (empty=disabled, re-registered on save); Main still handles only the input window; no restart warning shown';
   }
 });
 
