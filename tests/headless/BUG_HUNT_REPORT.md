@@ -141,13 +141,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **7 open bugs** (2026-08-02; 22/22 harness scenarios passed, 15 regression/refuted
-  checks): 6 still `verified`, bug #1 (input window invisible text — regression from the
-  input-window settings fix) is `fix applied`.
-- **Where we left off:** bug #1 (input window invisible text — regression from the
-  input-window settings fix) has a fix in place — scenario 24 flipped and PASSing (Edit
-  field renders dark), JS (445) + AHK (419) suites green. Next: user manually verifies
-  (repro below), then commit, then close out entry #1.
+- **5 open bugs** (2026-08-02; 23/23 harness scenarios passed, 18 regression/refuted
+  checks): 4 still `verified`, bug #1 (system-prompt modal char counter) is `fix applied`.
+- **Where we left off:** bug #1 (system-prompt modal char counter) has a fix in place —
+  scenario 17 flipped and PASSing, JS (446) + AHK (419) suites green. Next: user manually
+  verifies (repro below), then commit, then close out entry #1.
 
 ---
 
@@ -200,52 +198,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Input window text invisible: Edit field stays white against the dark background
-
-**Scenario:** 24 (scenario code in verify-bugs.js)
-
-**Scenario:** 25 (default-light regression guard)
-
-**Status:** fix applied
-
-**Repro:** open any command with an input box — with dark background + light font
-configured, the field looks white/ugly and typed text is invisible although the cursor
-moves; the default design was also dark, clashing with the app's light theme.
-
-**Expected:** the Edit field uses the configured background (so light text is visible on a
-dark config), and the DEFAULT design is light (white field, black text).
-
-**Actual:** the Edit control does not inherit `Gui.BackColor` — the a35233a fix set the
-window dark + font light, but the field stayed the default white, making light text
-invisible (regression from the input-window settings fix).
-
-**Verification:** headless — scenario 24 opens the input window with a dark config and
-samples a rendered pixel of the Edit field (`PrintWindow` + `GetPixel`), asserting it is
-dark (not `0xFFFFFF`); scenario 25 asserts the DEFAULT design renders light.
-
-**Manual check:** reset to default settings and open any command with an input box — the
-field should be light with readable dark text; switching the background to dark in Settings
-should give a dark field with readable light text.
-
-### 2. API Logs viewer latency column always shows "–"
-
-**Scenario:** 16 (scenario code in verify-bugs.js)
-
-**Status:** fix in progress
-
-**Repro:** make any request, open API Logs.
-
-**Expected:** the request duration.
-
-**Actual:** "–" — the viewer reads `entry.latencyMs`; every logger writes `responseTimeMs`.
-
-**Verification:** headless scenario 16.
-
-### 3. System-prompt modal "0 chars" counter never updates
+### 1. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** edit a system message and type.
 
@@ -253,9 +210,14 @@ should give a dark field with readable light text.
 
 **Actual:** stays "0 chars" — no code writes to `#charCount`.
 
-**Verification:** headless scenario 17.
+**Verification:** headless — scenario 17 opens the chat right-rail system prompt modal
+(`#expandSysMsg` → `#sysMsgOverlay`), types into `#sysMsgFull`, and asserts `#charCount`
+shows the live count; unit test covers the same in the modal module.
 
-### 4. Custom icon picked outside the repo never applies to the chat window
+**Manual check:** in the chat right rail, click "Expand" next to System prompt — type in the
+modal — the "N chars" counter should update as you type (previously stuck at "0 chars").
+
+### 2. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -269,7 +231,7 @@ should give a dark field with readable light text.
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 5. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 3. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -283,7 +245,7 @@ should give a dark field with readable light text.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 6. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 4. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -297,7 +259,7 @@ should give a dark field with readable light text.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 7. Reasoning-only responses get no action buttons until reload
+### 5. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -326,6 +288,8 @@ closure; never rewrite past entries.
 - 2026-08-02 — "Command Input Window settings are dead (colors never apply; size/font need restart)" — FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
 - 2026-08-02 — "Title generation makes sidebar folder groups disappear until re-entry" — FIXED in a5bd97c: `ThreadTitleGen.ahk` now posts `threadList` as `{ threads, folders }` (reusing `_GetFolders()`) so folder sections stay rendered, and posts the thread's real folder name in `updateTopbarTitle` instead of hardcoded "Unfiled"; scenario 14 flipped to a regression check (`regression: true`) + extended unit test.
 - 2026-08-02 — "Chat topbar 'Export' button does nothing" — FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
+- 2026-08-02 — "API Logs viewer latency column always shows '–'" — FIXED in b1f0386: the viewer now renders `responseTimeMs` (the field every logger writes) instead of the never-written `latencyMs`; scenario 16 flipped to a regression check (`regression: true`) + inline-viewer unit tests.
+- 2026-08-02 — "Input window text invisible: Edit field stays white against the dark background" — FIXED in c13d15c: the Edit control now gets its own `Background` option (it doesn't inherit `Gui.BackColor`), and the default design is light (white field + black text) to match the app theme; scenarios 24 + 25 flipped to regression checks (`regression: true`) + a rendered-pixel probe.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

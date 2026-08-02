@@ -648,6 +648,7 @@ scenarios.push({
 scenarios.push({
   id: 16,
   name: 'API Logs viewer latency column shows the request duration',
+  regression: true, // FIXED bug kept as a regression check (latency must keep rendering)
   mode: 'sse-success',
   settings: {},
   async body({ cdp, port }) {
@@ -670,26 +671,21 @@ scenarios.push({
 
 scenarios.push({
   id: 17,
-  name: 'System-prompt modal "0 chars" counter never updates',
+  name: 'System-prompt modal char counter updates while typing',
   mode: null,
-  settings: {
-    commands: [{
-      commandName: 'Inline Cmd', menuText: '&1 - Inline', APIModels: 'deepseek/deepseek-v4-flash',
-      systemMessage: 'Base prompt', pasteMode: 'chat', showInputBox: false, userMessage: '{{selection}}', thinking: ''
-    }]
-  },
+  settings: {},
   async body({ cdp }) {
-    await openSettings(cdp);
-    await openSection(cdp, 'commands');
-    await cdp.waitFor('document.querySelectorAll("#commandsListBody .cmd-item").length > 0', 10000, 250, 'command list');
-    await cdp.click('#commandsListBody .cmd-item');
-    await cdp.waitFor('document.getElementById("cmdEditSysMsg") !== null', 5000, 200, 'cmd detail');
-    await cdp.click('#cmdEditSysMsg');
-    await cdp.waitFor('document.getElementById("sysMsgEditModal").classList.contains("open")', 5000, 200, 'sysmsg modal');
-    await cdp.type('#smInlineText', 'hello world typed by harness');
+    // FIXED: the counter lives in the chat right-rail system prompt modal
+    // (#sysMsgOverlay/#sysMsgFull), opened via #expandSysMsg. Typing must
+    // update #charCount (previously nothing wrote to it).
+    await showChat();
+    await cdp.waitFor('document.getElementById("expandSysMsg") !== null', 10000, 250, 'expand button');
+    await cdp.click('#expandSysMsg');
+    await cdp.waitFor('document.getElementById("sysMsgOverlay").classList.contains("open")', 5000, 200, 'sysmsg overlay');
+    await cdp.type('#sysMsgFull', 'hello world typed by harness');
     const count = await cdp.text('#charCount');
-    if (count !== '0 chars') throw new Error('charCount updated to ' + JSON.stringify(count));
-    return 'after typing, #charCount still shows "0 chars"';
+    if (count !== '28 chars') throw new Error('charCount = ' + JSON.stringify(count) + ' (expected 28 chars)');
+    return 'after typing 28 chars, #charCount shows "28 chars"';
   }
 });
 
@@ -855,6 +851,7 @@ scenarios.push({
 scenarios.push({
   id: 24,
   name: 'Input window Edit field renders the configured background (text stays visible)',
+  regression: true, // FIXED bug kept as a regression check (Edit must keep honoring the configured background)
   mode: null,
   settings: {
     ui: { inputWindow: { background: '0x212529', fontSize: 's14', fontColor: 'cWhite', fontFace: 'Arial', width: 500, height: 250 } },
@@ -883,6 +880,7 @@ scenarios.push({
 scenarios.push({
   id: 25,
   name: 'Input window default design is light (readable text on the default field)',
+  regression: true, // FIXED bug kept as a regression check (default must stay light)
   mode: null,
   settings: {
     commands: [{

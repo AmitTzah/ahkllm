@@ -1,6 +1,5 @@
-PASS | #24 | Input window Edit field renders the configured background (text stays visible) | input window Edit field renders 0x292521 (dark background, light text visible) | 3.1s
-PASS | #25 | Input window default design is light (readable text on the default field) | default input window Edit field renders 0xFFFFFF (light design) | 3.3s
+PASS | #17 | System-prompt modal char counter updates while typing | after typing 28 chars, #charCount shows "28 chars" | 2.0s
 
-Summary: 2/2 scenarios PASS
+Summary: 1/1 scenarios PASS
 Real profile restored: yes
-Report sync: MISMATCH — update BUG_HUNT_REPORT.md or verify-bugs.js
+Report sync: OK

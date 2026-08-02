@@ -212,3 +212,51 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
         assert.doesNotThrow(() => vm.runInContext(src, vm.createContext(sandbox2)));
     });
 });
+
+describe('system prompt modal char counter — regression: never updated', () => {
+    it('updates #charCount on input and when the modal opens', () => {
+        let charCountText = '0 chars';
+        const makeEl = (id) => {
+            const el = {
+                value: id === 'sysMsgFull' ? '' : '',
+                textContent: id === 'charCount' ? charCountText : '',
+                classList: { add: () => {}, remove: () => {} },
+                _handlers: {}
+            };
+            el.addEventListener = (ev, fn) => { el._handlers[ev] = fn; };
+            return el;
+        };
+        const els = {};
+        ['sysMsgFull', 'charCount', 'sysMsgMini', 'sysMsgOverlay', 'expandSysMsg', 'sysMsgSave', 'sysMsgClose', 'sysMsgCancel'].forEach((id) => {
+            els[id] = makeEl(id);
+        });
+        const sandbox = {
+            document: {
+                getElementById: (id) => els[id] || null,
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
+                addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
+            },
+            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {}, _currentSettings: {} },
+            setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
+            _sendAllSettings: () => {}, _updateModelCard: () => {},
+            lucide: { createIcons: () => {} },
+            console: console
+        };
+        sandbox.global = sandbox;
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
+        vm.runInContext(src, vm.createContext(sandbox));
+
+        // Open the modal with existing mini text: counter must reflect it.
+        els.sysMsgFull.value = 'Hello';
+        els.sysMsgMini.value = 'Hello';
+        els.expandSysMsg._handlers.click();
+        assert.strictEqual(els.charCount.textContent, '5 chars');
+
+        // Typing in the full textarea updates the counter live.
+        els.sysMsgFull.value = 'Hello world';
+        els.sysMsgFull._handlers.input();
+        assert.strictEqual(els.charCount.textContent, '11 chars');
+    });
+});

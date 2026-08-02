@@ -151,9 +151,22 @@ document.addEventListener('DOMContentLoaded', function() {
     var full = document.getElementById('sysMsgFull');
     if (overlay && mini && full) {
       full.value = mini.value;
+      updateSysMsgCharCount();
       overlay.classList.add('open');
     }
   });
+
+  // Live char count for the system prompt modal (regression: the counter
+  // stayed "0 chars" because nothing updated it on input).
+  var sysMsgFull = document.getElementById('sysMsgFull');
+  if (sysMsgFull) sysMsgFull.addEventListener('input', updateSysMsgCharCount);
+
+  function updateSysMsgCharCount() {
+    var full = document.getElementById('sysMsgFull');
+    var counter = document.getElementById('charCount');
+    if (!full || !counter) return;
+    counter.textContent = (full.value || '').length + ' chars';
+  }
 
   // System prompt save
   var sysMsgSave = document.getElementById('sysMsgSave');
