@@ -589,6 +589,7 @@ scenarios.push({
 scenarios.push({
   id: 14,
   name: 'Title generation keeps the thread\'s folder label (no hardcoded Unfiled)',
+  regression: true, // FIXED bug kept as a regression check (sidebar folder groups must survive title-gen)
   mode: null,
   settings: {},
   async body() {
@@ -616,17 +617,30 @@ scenarios.push({
 
 scenarios.push({
   id: 15,
-  name: 'Chat topbar Export button does nothing',
+  name: 'Chat topbar Export button downloads the conversation',
   mode: null,
   settings: {},
   async body({ cdp }) {
     await cdp.waitFor('document.querySelector(\'button[title="Export"]\') !== null', 10000, 250, 'export button');
-    await cdp.clearPosted();
-    await cdp.click('button[title="Export"]');
-    await sleep(600);
-    const posted = await cdp.postedMessages();
-    if (posted.length !== 0) throw new Error('Export triggered messages: ' + JSON.stringify(posted));
-    return 'clicking Export produced no postMessage and no state change';
+    // FIXED: the button must have an id + wired handler (previously it had
+    // neither), and clicking it must create a download blob.
+    const wiring = await cdp.eval(`(() => {
+      const btn = document.querySelector('button[title="Export"]');
+      return { id: btn.id, exportFn: typeof window.exportChat === 'function' };
+    })()`);
+    if (wiring.id !== 'export-chat-btn') throw new Error('export button has no id: ' + JSON.stringify(wiring));
+    if (!wiring.exportFn) throw new Error('exportChat not defined: ' + JSON.stringify(wiring));
+    await cdp.eval(`(() => {
+      window.__exportBlobCalls = 0;
+      const orig = URL.createObjectURL;
+      URL.createObjectURL = function() { window.__exportBlobCalls++; return orig.apply(this, arguments); };
+      return true;
+    })()`);
+    await cdp.click('#export-chat-btn');
+    await sleep(400);
+    const blobCalls = await cdp.eval('window.__exportBlobCalls');
+    if (blobCalls < 1) throw new Error('Export did not create a download blob');
+    return 'export button is wired (id=export-chat-btn, handler attached) and clicking it created a download blob';
   }
 });
 

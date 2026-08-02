@@ -1,4 +1,4 @@
-PASS | #14 | Title generation keeps the thread's folder label (no hardcoded Unfiled) | ThreadTitleGen.ahk posts the real folder and refreshes threadList with folders; chat-sidebar.js stores both correctly | 1.7s
+PASS | #15 | Chat topbar Export button downloads the conversation | export button is wired (id=export-chat-btn, handler attached) and clicking it created a download blob | 2.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

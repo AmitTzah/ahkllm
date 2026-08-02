@@ -412,6 +412,10 @@ document.addEventListener('DOMContentLoaded', function () {
   var copyAllBtn = document.getElementById('copy-entire-chat-btn');
   if (copyAllBtn) copyAllBtn.addEventListener('click', copyEntireChat);
 
+  // Export chat button (topbar download icon)
+  var exportChatBtn = document.getElementById('export-chat-btn');
+  if (exportChatBtn) exportChatBtn.addEventListener('click', exportChat);
+
 
   // Tools dropdown toggle
   document.querySelectorAll('.tools-toggle').forEach(function(t) {

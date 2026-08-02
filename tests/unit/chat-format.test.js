@@ -284,6 +284,59 @@ describe('copySingleMessage', () => {
     });
 });
 
+describe('exportChat', () => {
+    function loadExportCtx() {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-format.js'), 'utf-8');
+        let downloadedName = null;
+        let clicked = false;
+        const anchor = {
+            set href(v) { this._href = v; },
+            get href() { return this._href; },
+            set download(v) { downloadedName = v; this._download = v; },
+            get download() { return this._download; },
+            click() { clicked = true; }
+        };
+        const body = { appendChild() {}, removeChild() {} };
+        const sandbox = {
+            document: {
+                getElementById: () => null,
+                createElement: () => anchor,
+                body: body
+            },
+            navigator: { clipboard: { writeText: async () => {} } },
+            console: console,
+            setTimeout: setTimeout,
+            chatMessages: [
+                { role: 'user', content: 'Hello' },
+                { role: 'assistant', content: 'Hi there', model: 'gpt-4o' }
+            ],
+            URL: { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} },
+            Blob: function() {},
+            _threadMeta: { 't1': { title: 'My Chat' } },
+            activeThreadId: 't1',
+            lucide: undefined,
+            Number: Number, String: String
+        };
+        sandbox.global = sandbox;
+        vm.runInContext(src, vm.createContext(sandbox));
+        return { ctx: sandbox, anchor, getDownloadedName: () => downloadedName, wasClicked: () => clicked };
+    }
+
+    it('downloads the conversation as a titled .txt file', () => {
+        const { ctx, getDownloadedName, wasClicked } = loadExportCtx();
+        ctx.exportChat();
+        assert.ok(wasClicked(), 'download anchor click should fire');
+        assert.strictEqual(getDownloadedName(), 'My_Chat.txt');
+    });
+
+    it('falls back to a generic name without a thread title', () => {
+        const { ctx, getDownloadedName } = loadExportCtx();
+        ctx.activeThreadId = '';
+        ctx.exportChat();
+        assert.strictEqual(getDownloadedName(), 'chat.txt');
+    });
+});
+
 describe('copyEntireChat', () => {
     it('joins all messages with separator and writes to clipboard', async () => {
         let copiedText = null;

@@ -59,6 +59,42 @@ function copyEntireChat() {
   });
 }
 
+// Export entire chat to a .txt file (same content as copyEntireChat, saved as a download)
+function exportChat() {
+  var parts = [];
+  for (var i = 0; i < chatMessages.length; i++) {
+    parts.push(getMessageText(chatMessages[i]));
+  }
+
+  var fullText = parts.join('\n\n---\n\n');
+
+  var title = (typeof _threadMeta !== 'undefined' && activeThreadId && _threadMeta[activeThreadId] && _threadMeta[activeThreadId].title)
+    ? _threadMeta[activeThreadId].title
+    : 'chat';
+  var safeName = String(title).replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '_').slice(0, 60) || 'chat';
+
+  var blob = new Blob([fullText], { type: 'text/plain' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = safeName + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  var btn = document.getElementById('export-chat-btn');
+  if (btn) {
+    var originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i data-lucide="check" style="width:20px;height:20px;"></i>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    setTimeout(function() {
+      btn.innerHTML = originalHTML;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }, 2000);
+  }
+}
+
 // Show checkmark feedback on a message's copy button
 function showCopiedFeedback(index) {
   var container = document.getElementById('chat-messages');
