@@ -138,11 +138,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **11 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
-  10 regression/refuted checks).
-- **Where we left off:** bug #1 ("Close Windows" hotkey ignored by chat window) has a fix in
-  place — scenario 8 flipped and PASSing, JS (442) + AHK (413) suites green. Next: user
-  manually verifies (repro below), then commit, then close out entry #1.
+- **10 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
+  11 regression/refuted checks).
+- **Where we left off:** bug #1 (suspend banner edits) has a fix in place — scenario 12
+  flipped and PASSing, JS (441) + AHK (415) suites green. Next: user manually verifies
+  (repro below), then commit, then close out entry #1.
 
 ---
 
@@ -195,35 +195,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. "Close Windows" hotkey setting is ignored by the chat window
-
-**Scenario:** 8 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** change Close Windows to e.g. `~^q` → Save; use it in the chat window.
-
-**Expected:** the new hotkey closes the chat window.
-
-**Actual:** the chat window's close binding is hardcoded `~^w::` in `ChatWindow.ahk` and never reads the setting; the configured hotkey only closes the input window. (Live Ctrl+W itself works — user-verified.)
-
-**Verification:** headless — scenario 8 statically confirms ChatWindow now registers the
-configured `closeWindowsHotkey` via the new `chat/ChatHotkeys.ahk` (no hardcoded `~^w::`,
-empty = disabled, re-registered on settings saves), and asserts the Hotkeys tab no longer
-shows the stale "restart required" banner (removed — hotkey changes are live on both the
-main script and the chat window); unit tests cover registration, Off/On rotation, disable,
-and hide-when-active behavior.
-
-**Manual check:** Settings → Hotkeys → change Close Windows to e.g. `~^q` → Save → with the
-chat window focused, press `Ctrl+Q` — it should hide. Reopen and press `Ctrl+W` — it should
-no longer close the chat window. Clear the field (empty = disabled) → Save → `Ctrl+W` stays
-inactive. The "Hotkey changes require a restart" banner should be gone from the Hotkeys tab.
-
-### 2. Suspend banner edits don't take effect until restart
+### 1. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** change the suspend banner text → Save → suspend.
 
@@ -231,9 +207,15 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Actual:** the old text — the banner GUI is built once at startup.
 
-**Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
+**Verification:** headless — scenario 12 saves "NEW BANNER TEXT" and asserts the suspended
+banner shows it live (no restart), plus a static check that Main's settings-updated handler
+calls `_rebuildSuspendBanner()`; unit tests assert the banner GUI is rebuilt fresh (old
+destroyed) from current settings and re-shown when already suspended.
 
-### 3. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+**Manual check:** Settings → UI → change the Suspend Banner text → Save → toggle Suspend —
+the banner should show the new text immediately (previously it needed a restart).
+
+### 2. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -247,7 +229,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 4. Title generation resets the topbar folder label to "Unfiled"
+### 3. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -261,7 +243,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 5. Chat topbar "Export" button does nothing
+### 4. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -275,7 +257,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless — click produced no message and no state change.
 
-### 6. API Logs viewer latency column always shows "–"
+### 5. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -289,7 +271,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless scenario 16.
 
-### 7. System-prompt modal "0 chars" counter never updates
+### 6. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -303,7 +285,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless scenario 17.
 
-### 8. Custom icon picked outside the repo never applies to the chat window
+### 7. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -317,7 +299,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 9. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 8. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -331,7 +313,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 10. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 9. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -345,7 +327,7 @@ inactive. The "Hotkey changes require a restart" banner should be gone from the 
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 11. Reasoning-only responses get no action buttons until reload
+### 10. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -369,6 +351,7 @@ closure; never rewrite past entries.
 - 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
 - 2026-08-02 — "Chat request failure with no output file shows no error and leaves the UI stuck" — FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
 - 2026-08-02 — "Trash retention never auto-purges" — FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.
+- 2026-08-02 — "Close Windows hotkey setting is ignored by the chat window" — FIXED in 0660294: new `chat/ChatHotkeys.ahk` registers the configured `closeWindowsHotkey` in the chat process at startup and after settings saves (empty = disabled), replacing the hardcoded `~^w::`; the stale "restart required" Hotkeys banner was removed (hotkey changes are live on both processes); scenario 8 flipped to a regression check (`regression: true`) + ChatHotkeys unit tests.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

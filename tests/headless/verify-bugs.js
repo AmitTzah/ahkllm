@@ -468,6 +468,7 @@ scenarios.push({
 scenarios.push({
   id: 8,
   name: 'Close-Windows hotkey setting is honored by the chat window (dynamic registration)',
+  regression: true, // FIXED bug kept as a regression check (chat window must keep honoring the setting)
   mode: null,
   settings: { hotkeys: { main: '`', reload: '~^!r', closeWindows: '~^q', suspend: 'CapsLock & `' } },
   async body({ cdp }) {
@@ -529,22 +530,28 @@ scenarios.push({
 
 scenarios.push({
   id: 12,
-  name: 'Suspend banner edits do not take effect until restart',
+  name: 'Suspend banner edits apply live (no restart required)',
   mode: null,
   settings: { ui: { suspendBanner: { text: 'OLD BANNER TEXT', fontSize: 's10', fontFace: 'Arial', textColor: 'cBlack', background: '0xFFDF00' } } },
   async body({ cdp, dataDir }) {
+    // Static: Main's settings-updated handler must rebuild the banner GUI.
+    const mainAhk = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    const sbModule = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'SuspendBanner.ahk'), 'utf8');
+    if (!mainAhk.includes('_rebuildSuspendBanner()'))
+      throw new Error('Main.ahk does not rebuild the suspend banner on settings updates');
+    if (!/suspendBanner\.Destroy\(\)[\s\S]*suspendBanner := Gui\(\)/.test(sbModule))
+      throw new Error('SuspendBanner.ahk does not rebuild the GUI from scratch');
     await openSettings(cdp);
     await openSection(cdp, 'ui');
     await cdp.waitFor('document.getElementById("sbText") !== null', 10000, 250, 'ui form');
     await cdp.type('#sbText', 'NEW BANNER TEXT');
     await saveSettings(cdp, dataDir);
+    await sleep(1500); // let Main receive WM_SETTINGS_UPDATED and rebuild
     const banner = runProbe('suspend-banner');
     if (!banner.found) throw new Error('suspend banner window not found; probe=' + JSON.stringify(banner));
-    if (String(banner.bannerText).trim() !== 'OLD BANNER TEXT') {
-      if (String(banner.bannerText).trim() === 'NEW BANNER TEXT') throw new Error('banner updated live (bug not reproduced)');
-      throw new Error('unexpected banner text: ' + JSON.stringify(banner.bannerText) + '; probe=' + JSON.stringify(banner));
-    }
-    return 'after saving NEW BANNER TEXT, suspended banner still shows "OLD BANNER TEXT"';
+    if (String(banner.bannerText).trim() !== 'NEW BANNER TEXT')
+      throw new Error('banner still shows ' + JSON.stringify(String(banner.bannerText).trim()) + '; probe=' + JSON.stringify(banner));
+    return 'after saving NEW BANNER TEXT, suspended banner shows it live without a restart';
   }
 });
 

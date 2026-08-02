@@ -180,13 +180,8 @@ commandInputWindow.sendButtonAction(onCommandInputSend)
 ; Initialize Suspend GUI
 ; ----------------------------------------------------
 
-suspendBanner := Gui()
-suspendBanner.SetFont(suspendBannerFontSize, suspendBannerFontFace)
-suspendBanner.Add("Text", suspendBannerTextColor " Center", suspendBannerText)
-suspendBanner.BackColor := suspendBannerBackground
-suspendBanner.Opt("-Caption +Owner -SysMenu +AlwaysOnTop")
-suspendBannerWidth := ""
-suspendBanner.GetPos(, , &suspendBannerWidth)
+#Include app\SuspendBanner.ahk
+_rebuildSuspendBanner()
 
 ; ----------------------------------------------------
 ; Register inter-process communication handlers
@@ -201,6 +196,7 @@ OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     defaults := SettingsHandler.GetDefaults(),
     merged := SettingsHandler.Merge(settings, defaults),
     SettingsHandler.ApplyToGlobals(merged),
+    _rebuildSuspendBanner(),
     _registerAllHotkeys(),
     RuntimeResolver_ResolvePrimaryProvider(),
     ChatDB.Thread_PurgeExpired(),
