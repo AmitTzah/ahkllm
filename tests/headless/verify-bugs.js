@@ -531,6 +531,7 @@ scenarios.push({
 scenarios.push({
   id: 12,
   name: 'Suspend banner edits apply live (no restart required)',
+  regression: true, // FIXED bug kept as a regression check (banner must keep rebuilding on save)
   mode: null,
   settings: { ui: { suspendBanner: { text: 'OLD BANNER TEXT', fontSize: 's10', fontFace: 'Arial', textColor: 'cBlack', background: '0xFFDF00' } } },
   async body({ cdp, dataDir }) {
@@ -557,7 +558,7 @@ scenarios.push({
 
 scenarios.push({
   id: 13,
-  name: 'Command Input Window settings dead — width change requires restart',
+  name: 'Command Input Window settings apply live (width/height/font/colors)',
   mode: null,
   settings: {
     ui: { inputWindow: { background: '0x212529', fontSize: 's14', fontColor: 'cWhite', fontFace: 'Arial', width: 500, height: 250 } },
@@ -572,14 +573,15 @@ scenarios.push({
     await cdp.waitFor('document.getElementById("iwWidth") !== null', 10000, 250, 'ui form');
     await cdp.type('#iwWidth', '800');
     await saveSettings(cdp, dataDir);
+    await sleep(1500); // let Main receive WM_SETTINGS_UPDATED and rebuild
     const opened = runProbe('open-input', ['9']);
     if (!opened.menuOpened) throw new Error('backtick menu did not open for input window; probe=' + JSON.stringify(opened));
     await sleep(600);
     const pos = runProbe('input-window-pos', ['Test Input']);
     if (!pos.hwnd) throw new Error('input window did not open');
     runProbe('close-input');
-    if (Number(pos.w) >= 700) throw new Error('input window resized to ' + pos.w + ' (width setting applied live)');
-    return 'after saving width 800, input window still opened at width ' + pos.w + ' (constructed at startup)';
+    if (Number(pos.w) < 700) throw new Error('input window opened at width ' + pos.w + ' (setting not applied live)');
+    return 'after saving width 800, input window opened at width ' + pos.w + ' (applied live, no restart)';
   }
 });
 

@@ -168,13 +168,9 @@ llmClient := LLMRequestBuilder(APIKey)
 ; Create Input Windows
 ; ----------------------------------------------------
 
-commandInputWindow := InputWindow("Custom command")
-
-; ----------------------------------------------------
-; Register sendButtonActions
-; ----------------------------------------------------
-
-commandInputWindow.sendButtonAction(onCommandInputSend)
+; Create the command input window (rebuildable on settings updates so
+; background/font/size edits apply live).
+_rebuildInputWindow(onCommandInputSend)
 
 ; ----------------------------------------------------
 ; Initialize Suspend GUI
@@ -197,6 +193,7 @@ OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     merged := SettingsHandler.Merge(settings, defaults),
     SettingsHandler.ApplyToGlobals(merged),
     _rebuildSuspendBanner(),
+    _rebuildInputWindow(onCommandInputSend),
     _registerAllHotkeys(),
     RuntimeResolver_ResolvePrimaryProvider(),
     ChatDB.Thread_PurgeExpired(),

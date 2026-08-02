@@ -2,6 +2,8 @@
 ; Input Window
 ; ----------------------------------------------------
 
+global commandInputWindow := ""
+
 class InputWindow {
     __New(windowTitle) {
 
@@ -10,7 +12,8 @@ class InputWindow {
         this.guiObj.OnEvent("Close", this.closeButtonAction.Bind(this))
         this.guiObj.OnEvent("Escape", this.closeButtonAction.Bind(this))
         this.guiObj.OnEvent("Size", this.resizeAction.Bind(this))
-        this.guiObj.SetFont(inputWindowFontSize " cDefault", inputWindowFontFace)
+        this.guiObj.SetFont(inputWindowFontSize " " inputWindowFontColor, inputWindowFontFace)
+        this.guiObj.BackColor := inputWindowBackground
         this.EditControl := this.guiObj.Add("Edit", "-WantReturn x20 y+5 w" inputWindowWidth " h" inputWindowHeight)
         this.SendButton := this.guiObj.Add("Button", "x240 y+10 w80", "Send")
         this.SendButton.Opt("+Default")   ; Make Send the default button (Enter triggers it)
@@ -53,4 +56,18 @@ class InputWindow {
         AutoXYWH("x0.5 y", this.SendButton)
     }
 
+}
+
+; Rebuild the command input window from the CURRENT settings globals. Called at
+; startup and whenever settings change, so background/font/size edits apply
+; live instead of requiring a restart (the GUI was previously built once with
+; the startup values and never rebuilt).
+_rebuildInputWindow(sendCallback) {
+    global commandInputWindow
+
+    if commandInputWindow && commandInputWindow.guiObj
+        commandInputWindow.guiObj.Destroy()
+
+    commandInputWindow := InputWindow("Custom command")
+    commandInputWindow.sendButtonAction(sendCallback)
 }
