@@ -141,11 +141,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 open bugs** (2026-08-02; 23/23 harness scenarios passed, 18 regression/refuted
-  checks): 4 still `verified`, bug #1 (system-prompt modal char counter) is `fix applied`.
-- **Where we left off:** bug #1 (system-prompt modal char counter) has a fix in place —
-  scenario 17 flipped and PASSing, JS (446) + AHK (419) suites green. Next: user manually
-  verifies (repro below), then commit, then close out entry #1.
+- **4 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
+  19 regression/refuted checks).
+- **Where we left off:** bug #1 (system-prompt modal char counter) committed in 6d81eaa and
+  closed out. Next bug in rank order: custom icon picked outside the repo never applies to
+  the chat window (scenario 18) — NOT started.
 
 ---
 
@@ -198,26 +198,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. System-prompt modal "0 chars" counter never updates
-
-**Scenario:** 17 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** edit a system message and type.
-
-**Expected:** the counter updates.
-
-**Actual:** stays "0 chars" — no code writes to `#charCount`.
-
-**Verification:** headless — scenario 17 opens the chat right-rail system prompt modal
-(`#expandSysMsg` → `#sysMsgOverlay`), types into `#sysMsgFull`, and asserts `#charCount`
-shows the live count; unit test covers the same in the modal module.
-
-**Manual check:** in the chat right rail, click "Expand" next to System prompt — type in the
-modal — the "N chars" counter should update as you type (previously stuck at "0 chars").
-
-### 2. Custom icon picked outside the repo never applies to the chat window
+### 1. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -231,7 +212,7 @@ modal — the "N chars" counter should update as you type (previously stuck at "
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 3. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 2. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -245,7 +226,7 @@ modal — the "N chars" counter should update as you type (previously stuck at "
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 4. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 3. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -259,7 +240,7 @@ modal — the "N chars" counter should update as you type (previously stuck at "
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 5. Reasoning-only responses get no action buttons until reload
+### 4. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -290,6 +271,7 @@ closure; never rewrite past entries.
 - 2026-08-02 — "Chat topbar 'Export' button does nothing" — FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
 - 2026-08-02 — "API Logs viewer latency column always shows '–'" — FIXED in b1f0386: the viewer now renders `responseTimeMs` (the field every logger writes) instead of the never-written `latencyMs`; scenario 16 flipped to a regression check (`regression: true`) + inline-viewer unit tests.
 - 2026-08-02 — "Input window text invisible: Edit field stays white against the dark background" — FIXED in c13d15c: the Edit control now gets its own `Background` option (it doesn't inherit `Gui.BackColor`), and the default design is light (white field + black text) to match the app theme; scenarios 24 + 25 flipped to regression checks (`regression: true`) + a rendered-pixel probe.
+- 2026-08-02 — "System-prompt modal '0 chars' counter never updates" — FIXED in 6d81eaa: the chat right-rail system prompt modal now updates `#charCount` on input and when opened; scenario 17 flipped to a regression check (`regression: true`) + unit test.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

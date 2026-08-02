@@ -672,6 +672,7 @@ scenarios.push({
 scenarios.push({
   id: 17,
   name: 'System-prompt modal char counter updates while typing',
+  regression: true, // FIXED bug kept as a regression check (counter must keep updating)
   mode: null,
   settings: {},
   async body({ cdp }) {
