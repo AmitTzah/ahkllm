@@ -334,6 +334,7 @@ scenarios.push({
 scenarios.push({
   id: 5,
   name: 'New model keeps thinking metadata across a Settings save (reasoning dropdown shows its levels)',
+  regression: true, // FIXED bug kept as a regression check (metadata must survive settings saves)
   mode: 'json',
   settings: {},
   preLaunch(dataDir) {
@@ -403,23 +404,21 @@ scenarios.push({
 
 scenarios.push({
   id: 6,
-  name: 'Stream failure with no output file shows no error and leaves UI stuck (Stop re-enables)',
+  name: 'Stream failure with no output file shows an error and re-enables the UI',
   mode: null, // refused port -> curl exits before any output file
   settings: {},
   async body({ cdp }) {
     await showChat();
     await sendChatMessage(cdp, 'hello from bug 6');
     await cdp.waitFor('isLoading === true', 8000, 250, 'loading started');
-    await sleep(4000); // let curl fail + finalize
-    const banners = await cdp.eval('document.querySelectorAll(".error-banner").length');
-    const loading = await cdp.eval('isLoading === true');
-    if (banners > 0) throw new Error('error banner appeared: ' + banners);
-    if (!loading) throw new Error('UI re-enabled itself (no stuck state)');
-    await cdp.click('#chat-send-btn'); // Stop
-    await cdp.waitFor('isLoading === false', 8000, 250, 'stop re-enables');
+    // FIXED behavior: the connection failure must surface an error banner and
+    // re-enable the UI on its own — no Stop press, no stuck loading state.
+    await cdp.waitFor('document.querySelectorAll(".error-banner").length > 0', 20000, 300, 'error banner');
+    await cdp.waitFor('isLoading === false', 15000, 300, 'UI re-enabled');
     const inputDisabled = await cdp.eval('document.getElementById("chat-input").disabled');
-    if (inputDisabled) throw new Error('input still disabled after Stop');
-    return 'no error banner, UI stuck in Stop state until Stop pressed (input disabled=' + inputDisabled + ' before re-enable)';
+    if (inputDisabled) throw new Error('input still disabled after the error');
+    const bannerText = await cdp.text('.error-banner') || '';
+    return 'connection failure shows error banner (' + bannerText.trim().slice(0, 60) + ') and re-enables the UI without Stop';
   }
 });
 

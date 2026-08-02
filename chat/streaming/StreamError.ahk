@@ -22,9 +22,10 @@ _extractErrorMsg(rawOutput) {
 _handleStreamError() {
     try {
     errorFile := requestParams["cURLErrorFile"]
+    stderrText := ""
     if FileExist(errorFile) {
-        errorContent := FileOpen(errorFile, "r", "UTF-8-RAW").Read()
-        debugLog("[STREAM] Error — stderr: " Trim(errorContent))
+        stderrText := Trim(FileOpen(errorFile, "r", "UTF-8-RAW").Read())
+        debugLog("[STREAM] Error — stderr: " stderrText)
     }
 
     rawOutput := ""
@@ -34,14 +35,21 @@ _handleStreamError() {
         rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
         debugLog("[STREAM] Error — output: " SubStr(rawOutput, 1, 500))
         errMsg := _extractErrorMsg(rawOutput)
-        if errMsg {
-            postWebMessage("showError", { message: errMsg })
-        } else {
-            postWebMessage("showError", { message: "Request failed. Check your API key and try again." })
-        }
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
     }
+
+    ; Surface the failure and re-enable the UI regardless of whether the
+    ; output file exists. A connection failure (refused/DNS) makes cURL exit
+    ; before it ever creates the output file — the stderr capture then holds
+    ; the only diagnostic. Previously the whole error/re-enable block was
+    ; inside the FileExist(outputFile) branch, so such failures left the UI
+    ; stuck in the Stop state with no error banner at all.
+    if !errMsg && stderrText
+        errMsg := stderrText
+    if !errMsg
+        errMsg := "Request failed. Check your API key and try again."
+    postWebMessage("showError", { message: errMsg })
+    postWebMessage("setChatButtonsEnabled", true)
+    startLoadingCursor(false)
 
     responseTimeMs := requestParams["_streamRequestStartTime"] > 0
         ? A_TickCount - requestParams["_streamRequestStartTime"]

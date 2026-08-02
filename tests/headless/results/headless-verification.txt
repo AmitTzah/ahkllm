@@ -1,4 +1,4 @@
-PASS | #05 | New model keeps thinking metadata across a Settings save (reasoning dropdown shows its levels) | after Settings save, openai/gpt-brand-new keeps thinkingLevelMap and offers ["Model Default","Low","High"] | 4.2s
+PASS | #06 | Stream failure with no output file shows an error and re-enables the UI | connection failure shows error banner (Request failed. Check your API key and try again.×) and re-enables the UI without Stop | 4.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -138,11 +138,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **14 open bugs** (2026-08-02; 21/21 harness scenarios passed, 7 regression/refuted
-  checks): 13 still `verified`, bug #1 `fix applied` and awaiting user verification.
-- **Where we left off:** bug #1 (new models lose reasoning/thinking metadata) has a fix in
-  place — scenario 5 flipped and PASSing, JS (442) + AHK (406) suites green. Next:
-  user manually verifies (repro below), then commit, then close out entry #1.
+- **13 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
+  8 regression/refuted checks).
+- **Where we left off:** bug #1 (chat failure with no output file) has a fix in place —
+  scenario 6 flipped and PASSing, JS (442) + AHK (407) suites green. Next: user manually
+  verifies (repro below), then commit, then close out entry #1.
 
 ---
 
@@ -195,32 +195,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. New models added in Settings lose reasoning/thinking metadata
-
-**Scenario:** 5 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** Settings → Models → + Add (or Fetch Latest → + Add on a new model) → Save → switch to it.
-
-**Expected:** the Reasoning dropdown shows the model's levels.
-
-**Actual:** only "Model Default" — `models.js save()` drops `compat`/`thinkingLevelMap`/`thinkingOff`/`api`, and new IDs have no default entry to merge from.
-
-**Verification:** headless — scenario 5 seeds a new id (`openai/gpt-brand-new`) carrying
-full metadata, runs a Settings save round-trip, then switches to it and asserts the
-reasoning dropdown offers the model's levels (Low/High) instead of only Model Default;
-unit tests assert `parsePricingRaw` extracts the metadata and `save()` re-emits it.
-
-**Manual check:** Settings → Models → Fetch Latest → + Add a new model → Save → switch to
-it in the chat header → the Reasoning dropdown should list the model's levels (not just
-Model Default). Also re-Save after editing pricing to confirm levels persist.
-
-### 2. Chat request failure with no output file shows no error and leaves the UI stuck
+### 1. Chat request failure with no output file shows no error and leaves the UI stuck
 
 **Scenario:** 6 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** send a chat message while the provider is unreachable (connection refused/DNS).
 
@@ -228,9 +207,16 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Actual:** `_handleStreamError` only posts error/re-enable when the cURL output file exists; connection failures produce no file, so nothing is posted and the UI stays in the Stop state until the user presses Stop.
 
-**Verification:** headless — refused endpoint; no error banner, stuck until Stop.
+**Verification:** headless — scenario 6 sends to a refused port and asserts an error
+banner appears and the UI re-enables itself (no Stop press); unit test asserts
+`_handleStreamError` posts `showError` + `setChatButtonsEnabled(true)` even when the output
+file never exists, using the cURL stderr text when available.
 
-### 3. Trash retention never auto-purges
+**Manual check:** with the provider unreachable (bad endpoint or no network), send a chat
+message — an error banner should appear and the send button/input should re-enable on their
+own within a few seconds (previously it stayed stuck on Stop until you pressed it).
+
+### 2. Trash retention never auto-purges
 
 **Scenario:** 7 (scenario code in verify-bugs.js)
 
@@ -244,7 +230,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — static caller check + expired trashed thread survived.
 
-### 4. "Close Windows" hotkey setting is ignored by the chat window
+### 3. "Close Windows" hotkey setting is ignored by the chat window
 
 **Scenario:** 8 (scenario code in verify-bugs.js)
 
@@ -258,7 +244,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless scenario 8 (static trace) + user manual confirmation.
 
-### 5. Suspend banner edits don't take effect until restart
+### 4. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
@@ -272,7 +258,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
 
-### 6. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+### 5. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -286,7 +272,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 7. Title generation resets the topbar folder label to "Unfiled"
+### 6. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -300,7 +286,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 8. Chat topbar "Export" button does nothing
+### 7. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -314,7 +300,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — click produced no message and no state change.
 
-### 9. API Logs viewer latency column always shows "–"
+### 8. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -328,7 +314,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless scenario 16.
 
-### 10. System-prompt modal "0 chars" counter never updates
+### 9. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -342,7 +328,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless scenario 17.
 
-### 11. Custom icon picked outside the repo never applies to the chat window
+### 10. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -356,7 +342,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 12. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 11. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -370,7 +356,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 13. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 12. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -384,7 +370,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 14. Reasoning-only responses get no action buttons until reload
+### 13. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -405,6 +391,7 @@ Model Default). Also re-Save after editing pricing to confirm levels persist.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

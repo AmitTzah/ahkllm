@@ -100,4 +100,60 @@ class StreamErrorTest {
 
         this._teardown()
     }
+
+    ; ----------------------------------------------------
+    ; Regression: connection failure with NO output file must
+    ; still post an error banner and re-enable the UI.
+    ; (Previously the showError/setChatButtonsEnabled block was
+    ; inside FileExist(outputFile), so a refused connection left
+    ; the chat stuck in the Stop state with no error.)
+    ; ----------------------------------------------------
+    StreamError_NoOutputFile_PostsErrorAndReEnables() {
+        global requestParams, responseWindow, apiLogMaxEntries
+
+        ; Capture webview messages without touching the real log.
+        oldResponseWindow := responseWindow
+        captured := []
+        responseWindow := { PostWebMessageAsJSON: (obj, json) => captured.Push(json) }
+        oldLogLimit := apiLogMaxEntries
+        apiLogMaxEntries := 0
+
+        tmpDir := A_Temp
+        errFile := tmpDir "\llm_test_stderr_" A_TickCount ".txt"
+        FileAppend("curl: (7) Failed to connect to 127.0.0.1 port 12345: Connection refused", errFile)
+        outFile := tmpDir "\llm_test_nonexistent_" A_TickCount ".out"
+        if FileExist(outFile)
+            FileDelete(outFile)
+
+        requestParams["cURLErrorFile"] := errFile
+        requestParams["_streamOutputFile"] := outFile
+        requestParams["_streamRequestStartTime"] := 0
+        requestParams["_streamProviderKey"] := "deepseek"
+        requestParams["windowTitle"] := "test"
+        requestParams["providerName"] := "deepseek"
+        requestParams["singleAPIModelName"] := "deepseek/deepseek-v4-flash"
+        requestParams["pasteMode"] := "chat"
+
+        try {
+            _handleStreamError()
+        } finally {
+            responseWindow := oldResponseWindow
+            apiLogMaxEntries := oldLogLimit
+            FileDelete(errFile)
+        }
+
+        hasError := false
+        hasReenable := false
+        for _, json in captured {
+            if InStr(json, '"target":"showError"') && InStr(json, "Connection refused")
+                hasError := true
+            ; jsongo.Stringify encodes the boolean true as 1.
+            if InStr(json, '"target":"setChatButtonsEnabled"') && InStr(json, '"data":1')
+                hasReenable := true
+        }
+        if !hasError
+            throw Error("Expected showError with cURL stderr text; captured: " jsongo.Stringify(captured))
+        if !hasReenable
+            throw Error("Expected setChatButtonsEnabled true; captured: " jsongo.Stringify(captured))
+    }
 }
