@@ -1,4 +1,4 @@
-PASS | #18 | Custom icon picked outside the repo never applies to the chat window | absolute icon path: direct LoadPicture ok (h=23200991), mangled path h=0, custom icon applied to chat window (customApplied=1) | 1.8s
+PASS | #19 | Dashboard "All Time" chart caps at 365 days while summary sums all rows | All Time: summary shows $6.00 (includes 400-day-old row) and chart spans the full history — 401 labels, first = 2025-06-28 | 2.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

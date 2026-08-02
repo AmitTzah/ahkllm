@@ -9,22 +9,27 @@ function loadDashboardModule() {
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'usage-dashboard.js'), 'utf-8');
     let hostObjectCalled = false;
     let hostObjectFilters = null;
+    // getElementById must return the SAME element for a given id so tests can
+    // set a value (e.g. the time range) and have the module read it back.
+    const els = {};
+    const makeElement = () => ({
+        textContent: '', innerHTML: '', value: '', title: '', style: {},
+        classList: { add: function() {}, remove: function() {}, contains: function() { return false; } },
+        addEventListener: function() {},
+        querySelector: function() { return { dataset: { mode: 'model' }, classList: { add: function() {}, remove: function() {} } }; },
+        querySelectorAll: function() { return []; },
+        getContext: function() { return { createLinearGradient: () => ({}), fillRect: () => {}, fillText: () => {}, beginPath: () => {}, arc: () => {}, fill: () => {}, stroke: () => {}, moveTo: () => {}, lineTo: () => {}, setLineDash: () => {}, clearRect: () => {}, save: () => {}, restore: () => {}, measureText: () => ({ width: 10 }), canvas: { width: 100, height: 100 } }; },
+        appendChild: function() {},
+        getAttribute: function() { return null; },
+        setAttribute: function() {},
+        closest: function() { return null; },
+        remove: function() {}
+    });
     const sandbox = {
         document: {
             getElementById: (id) => {
-                const el = { textContent: '', innerHTML: '', value: '', title: '', style: {},
-                    classList: { add: function() {}, remove: function() {}, contains: function() { return false; } },
-                    addEventListener: function() {},
-                    querySelector: function() { return { dataset: { mode: 'model' }, classList: { add: function() {}, remove: function() {} } }; },
-                    querySelectorAll: function() { return []; },
-                    getContext: function() { return { createLinearGradient: () => ({}), fillRect: () => {}, fillText: () => {}, beginPath: () => {}, arc: () => {}, fill: () => {}, stroke: () => {}, moveTo: () => {}, lineTo: () => {}, setLineDash: () => {}, clearRect: () => {}, save: () => {}, restore: () => {}, measureText: () => ({ width: 10 }), canvas: { width: 100, height: 100 } }; },
-                    appendChild: function() {},
-                    getAttribute: function() { return null; },
-                    setAttribute: function() {},
-                    closest: function() { return null; },
-                    remove: function() {}
-                };
-                return el;
+                if (!els[id]) els[id] = makeElement();
+                return els[id];
             },
             querySelector: function(sel) {
                 return { dataset: { mode: 'model' }, classList: { add: function() {}, remove: function() {} }, querySelectorAll: function() { return []; }, addEventListener: function() {} };
@@ -121,6 +126,39 @@ describe('getDateRangeLabels', () => {
         const ctx = loadDashboardModule();
         const lbls = ctx.getDateRangeLabels();
         assert.ok(lbls.length >= 365);
+    });
+
+    // Regression: "All Time" used the catch-all 365-day branch, so usage older
+    // than a year was summed in the summary but never shown on the chart.
+    it('all-time labels span the full history (oldest row through today)', () => {
+        const ctx = loadDashboardModule();
+        ctx.document.getElementById('timeRange').value = 'all';
+        const now = new Date();
+        const d400 = new Date(now);
+        d400.setDate(d400.getDate() - 400);
+        const oldest = d400.toISOString().substring(0, 10);
+        ctx.allData = { chat: [{ date: oldest, total_cost: 5 }], commands: [] };
+
+        const lbls = ctx.getDateRangeLabels();
+
+        // Oldest row is 400 days before today, so the chart needs 401 labels.
+        assert.strictEqual(lbls.length, 401, 'all-time chart must span oldest->today');
+        const last = new Date(lbls[lbls.length - 1] + 'T00:00:00');
+        const first = new Date(lbls[0] + 'T00:00:00');
+        assert.strictEqual(Math.round((last - first) / 86400000), 400, 'chart must start at the oldest data row');
+    });
+
+    it('all-time labels fall back to 365 days when there is no data', () => {
+        const ctx = loadDashboardModule();
+        ctx.document.getElementById('timeRange').value = 'all';
+        ctx.allData = null;
+        assert.strictEqual(ctx.getDateRangeLabels().length, 365);
+    });
+
+    it('all-time range keeps 30-day label count unchanged', () => {
+        const ctx = loadDashboardModule();
+        ctx.document.getElementById('timeRange').value = 'month';
+        assert.strictEqual(ctx.getDateRangeLabels().length, 30);
     });
 });
 

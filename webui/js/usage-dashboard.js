@@ -23,7 +23,28 @@ function getDateRangeLabels() {
     days = lastDay.getDate();
     today = lastDay;
   } else if (range === 'month') days = 30;
-  else days = 365;
+  else if (range === 'all') {
+    // "All Time" — cover the full history: from the oldest recorded date
+    // through today. Without any data, fall back to 365 days.
+    days = 365;
+    var oldest = null;
+    if (allData) {
+      for (var i = 0; i < allData.chat.length; i++) {
+        var chatDate = allData.chat[i].date;
+        if (chatDate && (!oldest || chatDate < oldest)) oldest = chatDate;
+      }
+      for (var i = 0; i < allData.commands.length; i++) {
+        var cmdDate = allData.commands[i].date;
+        if (cmdDate && (!oldest || cmdDate < oldest)) oldest = cmdDate;
+      }
+    }
+    if (oldest) {
+      var end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      var start = new Date(oldest + 'T00:00:00');
+      days = Math.round((end - start) / 86400000) + 1;
+      if (days < 1) days = 1;
+    }
+  } else days = 365;
   for (var i = days-1; i >= 0; i--) {
     var d = new Date(today);
     d.setDate(d.getDate() - i);

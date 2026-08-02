@@ -141,12 +141,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
+- **3 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
   19 regression/refuted checks).
-- **Where we left off:** bug #1 (custom icon picked outside the repo never applies to the
-  chat window, scenario 18) — fix applied: scenario 18 flipped to expect the fixed
-  behavior and PASSES (customApplied=1), AHK 426/426 + JS 456/456 green. Next: user
-  manual verification, then `awaiting user commit`.
+- **Where we left off:** bug #1 (Dashboard "All Time" caps the chart at 365 days, scenario
+  19) — fix applied: scenario 19 flipped to expect the fixed behavior and PASSES (401
+  labels = full history incl. the 400-day-old row), AHK 426/426 + JS 459/459 green. Next:
+  user manual verification, then `awaiting user commit`.
 
 ---
 
@@ -199,25 +199,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Custom icon picked outside the repo never applies to the chat window
-
-**Scenario:** 18 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** set Icon (active) to an absolute path outside the repo → restart.
-
-**Expected:** the chat window shows it.
-
-**Actual:** `ChatWindow.ahk` builds `A_ScriptDir "\..\" iconOn`, mangling absolute paths (`LoadPicture` returns 0); the tray icon is unaffected.
-
-**Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
-
-### 2. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 1. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** have usage older than a year; open Dashboard → All Time.
 
@@ -227,7 +213,7 @@ one at a time, in rank order.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 3. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 2. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -241,7 +227,7 @@ one at a time, in rank order.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 4. Reasoning-only responses get no action buttons until reload
+### 3. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -262,6 +248,7 @@ one at a time, in rank order.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-02 — "Custom icon picked outside the repo never applies to the chat window" — FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
 - 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
 - 2026-08-02 — "Chat request failure with no output file shows no error and leaves the UI stuck" — FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
 - 2026-08-02 — "Trash retention never auto-purges" — FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.

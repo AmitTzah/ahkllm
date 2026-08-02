@@ -693,6 +693,7 @@ scenarios.push({
 scenarios.push({
   id: 18,
   name: 'Custom icon picked outside the repo never applies to the chat window',
+  regression: true, // FIXED bug kept as a regression check (absolute icon paths must keep loading)
   mode: null,
   settings: { icons: { iconOn: '', iconOff: 'icons/IconOff.ico' } },
   preLaunch(dataDir) {
@@ -734,8 +735,9 @@ scenarios.push({
     const totalCost = await cdp.text('#totalCost');
     const labels = await cdp.eval('mainChart ? mainChart.data.labels.length : -1');
     if (totalCost !== '$6.00') throw new Error('summary total = ' + totalCost + ' (expected $6.00 = all-time)');
-    if (labels !== 365) throw new Error('chart labels = ' + labels + ' (expected 365)');
-    return 'All Time: summary shows $6.00 (includes 400-day-old row) but chart has ' + labels + ' labels (capped at 365)';
+    if (labels !== 401) throw new Error('chart labels = ' + labels + ' (expected 401 = full history incl. the 400-day-old row)');
+    const firstLabel = await cdp.eval('mainChart.data.labels[0]');
+    return 'All Time: summary shows $6.00 (includes 400-day-old row) and chart spans the full history — ' + labels + ' labels, first = ' + firstLabel;
   }
 });
 
