@@ -2,6 +2,9 @@
 
 > **READ THIS FIRST.** This file is the single source of truth for open bugs. The harness
 > manual is `README.md` in this folder. Start here; resume from "Where we left off".
+>
+> Optional: to confirm a `fix applied` entry is real before committing, stash the fix and
+> re-run the repro (see "Verifying a fix with git stash" in the harness README).
 
 ## The lifecycle (which file, when)
 
@@ -138,11 +141,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **9 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
-  12 regression/refuted checks).
-- **Where we left off:** bug #1 (Command Input Window settings dead) has a fix in place —
-  scenario 13 flipped and PASSing, JS (441) + AHK (417) suites green. Next: user manually
-  verifies (repro below), then commit, then close out entry #1.
+- **8 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
+  13 regression/refuted checks).
+- **Where we left off:** bug #1 (title-gen resets folder label) — the source fix + flipped
+  scenario pass, but the user STILL sees "Unfiled" at runtime after a full restart, so the
+  fix is being diagnosed. Added `[TITLEGEN]`/`[FOLDER]` debug logging (AHK) +
+  `window.__lastTopbarUpdate` (JS). Next: user re-runs the repro and shares
+  `%TEMP%\LLM_Debug_Log.txt` / the topbar diagnostic.
 
 ---
 
@@ -195,42 +200,34 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. "Command Input Window" settings are dead (colors never apply; size/font need restart)
-
-**Scenario:** 13 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** change input-window background/font/color/size → Save → run a showInputBox command.
-
-**Expected:** the new appearance.
-
-**Actual:** background and font color are never applied at all; width/height/font only apply after restart.
-
-**Verification:** headless — scenario 13 saves width 800 and asserts the input window opens
-at ~800 live (no restart); unit tests assert the constructor now applies background + font
-color from the current globals and that `_rebuildInputWindow()` builds a fresh GUI from
-current settings on updates.
-
-**Manual check:** Settings → UI → change Input Window background color, font, width (e.g.
-800) → Save → run a command that opens the input box — it should use the new size and
-colors immediately (previously the old width/font until restart, and colors never at all).
-
-### 2. Title generation resets the topbar folder label to "Unfiled"
+### 1. Title generation makes sidebar folder groups disappear until re-entry
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
-**Repro:** move a chat into a folder, send the first message, wait for the auto-title.
+**Repro:** move chats into a folder ("Hi"), send the first message, wait for the auto-title —
+the folder section and its chats vanish from the sidebar until the window is re-entered.
 
-**Expected:** the folder name under the title.
+**Expected:** the folder section and its chats stay visible; the topbar keeps the folder name.
 
-**Actual:** "Unfiled" — `ThreadTitleGen.ahk` posts a hardcoded `folder: "Unfiled"`, and the JS stores it into `_threadMeta`.
+**Actual:** two defects in the title-gen refresh: `updateTopbarTitle` carried a hardcoded
+`folder: "Unfiled"` (overwriting the topbar label), and the `threadList` post sent a bare
+threads array with no folders — so the sidebar rendered no folder sections and dropped
+folder'd chats entirely until the next proper refresh.
 
-**Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
+**Verification:** headless — scenario 14 statically confirms `ThreadTitleGen.ahk` posts the
+thread's real folder (no hardcoded "Unfiled") AND refreshes `threadList` with
+`{ threads, folders }` so sidebar folder groups survive; unit test runs title-gen on a
+thread inside "Work Folder" and asserts both the folder name in `updateTopbarTitle` and the
+folders array in `threadList`.
 
-### 3. Chat topbar "Export" button does nothing
+**Manual check:** move chats into a folder, send a first message, and wait for the
+auto-generated title — the folder section and its chats should stay visible in the sidebar
+and the topbar should keep the folder name (previously the group disappeared until the
+window was re-entered).
+
+### 2. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -244,7 +241,7 @@ colors immediately (previously the old width/font until restart, and colors neve
 
 **Verification:** headless — click produced no message and no state change.
 
-### 4. API Logs viewer latency column always shows "–"
+### 3. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -258,7 +255,7 @@ colors immediately (previously the old width/font until restart, and colors neve
 
 **Verification:** headless scenario 16.
 
-### 5. System-prompt modal "0 chars" counter never updates
+### 4. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -272,7 +269,7 @@ colors immediately (previously the old width/font until restart, and colors neve
 
 **Verification:** headless scenario 17.
 
-### 6. Custom icon picked outside the repo never applies to the chat window
+### 5. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -286,7 +283,7 @@ colors immediately (previously the old width/font until restart, and colors neve
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 7. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 6. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -300,7 +297,7 @@ colors immediately (previously the old width/font until restart, and colors neve
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 8. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 7. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -314,7 +311,7 @@ colors immediately (previously the old width/font until restart, and colors neve
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 9. Reasoning-only responses get no action buttons until reload
+### 8. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -340,6 +337,7 @@ closure; never rewrite past entries.
 - 2026-08-02 — "Trash retention never auto-purges" — FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.
 - 2026-08-02 — "Close Windows hotkey setting is ignored by the chat window" — FIXED in 0660294: new `chat/ChatHotkeys.ahk` registers the configured `closeWindowsHotkey` in the chat process at startup and after settings saves (empty = disabled), replacing the hardcoded `~^w::`; the stale "restart required" Hotkeys banner was removed (hotkey changes are live on both processes); scenario 8 flipped to a regression check (`regression: true`) + ChatHotkeys unit tests.
 - 2026-08-02 — "Suspend banner edits don't take effect until restart" — FIXED in 5957786: new `app/SuspendBanner.ahk` exposes `_rebuildSuspendBanner()`, which Main now calls at startup and on settings updates (destroying the old GUI, rebuilding from current settings, re-showing when already suspended); scenario 12 flipped to a regression check (`regression: true`) + SuspendBanner unit tests.
+- 2026-08-02 — "Command Input Window settings are dead (colors never apply; size/font need restart)" — FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

@@ -148,6 +148,7 @@ _HandleFolderAction(action, params) {
             if params.Has("threadId") && params.Has("folderId") {
                 fid := params["folderId"] = "__none__" ? "NULL" : "'" params["folderId"] "'"
                 ChatDB.db.Exec("UPDATE chat_threads SET folder_id=" fid " WHERE id='" params["threadId"] "';")
+                debugLog("[FOLDER] moveToFolder thread=" params["threadId"] " folderId=" params["folderId"])
                 _postThreadListRefresh()
             }
     }

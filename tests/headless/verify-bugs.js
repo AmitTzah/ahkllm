@@ -559,6 +559,7 @@ scenarios.push({
 scenarios.push({
   id: 13,
   name: 'Command Input Window settings apply live (width/height/font/colors)',
+  regression: true, // FIXED bug kept as a regression check (input window must keep rebuilding on save)
   mode: null,
   settings: {
     ui: { inputWindow: { background: '0x212529', fontSize: 's14', fontColor: 'cWhite', fontFace: 'Arial', width: 500, height: 250 } },
@@ -587,7 +588,7 @@ scenarios.push({
 
 scenarios.push({
   id: 14,
-  name: 'Title generation resets topbar folder label to "Unfiled"',
+  name: 'Title generation keeps the thread\'s folder label (no hardcoded Unfiled)',
   mode: null,
   settings: {},
   async body() {
@@ -596,13 +597,20 @@ scenarios.push({
     // a local mock in this session (streaming works only because AHK Run with the
     // 2> redirection goes through cmd). The bug is statically provable instead.
     const tgen = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ThreadTitleGen.ahk'), 'utf8');
-    const m = tgen.match(/postWebMessage\("updateTopbarTitle",\s*\{\s*text:\s*title,\s*folder:\s*"([^"]+)"\s*\}/);
-    if (!m) throw new Error('updateTopbarTitle post not found with hardcoded folder');
-    if (m[1] !== 'Unfiled') throw new Error('folder value is ' + m[1]);
+    // FIXED: the post must resolve the thread's real folder instead of
+    // hardcoding "Unfiled", and no literal "Unfiled" may remain in the post.
+    const hardcoded = /folder:\s*"Unfiled"/.test(tgen);
+    const resolvesFolder = /folderName[\s\S]*folder:\s*folderName/.test(tgen);
+    if (hardcoded) throw new Error('updateTopbarTitle still hardcodes folder "Unfiled"');
+    if (!resolvesFolder) throw new Error('updateTopbarTitle does not resolve the thread\'s real folder');
+    // FIXED: the threadList refresh must include the folders array so sidebar
+    // folder groups don't disappear after title generation.
+    const postsFoldersWithList = /postWebMessage\("threadList",\s*\{\s*threads:\s*threads,\s*folders:\s*folders\s*\}/.test(tgen);
+    if (!postsFoldersWithList) throw new Error('threadList post after title-gen does not carry the folders array');
     const sidebar = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'chat-sidebar.js'), 'utf8');
     if (!/data\.folder !== undefined[\s\S]*?_threadMeta\[activeThreadId\]\.folder = data\.folder/.test(sidebar))
       throw new Error('JS does not honor the incoming folder value');
-    return 'ThreadTitleGen.ahk posts folder:"Unfiled" hardcoded; chat-sidebar.js stores it into _threadMeta (overwriting the real folder until the next thread-list refresh)';
+    return 'ThreadTitleGen.ahk posts the real folder and refreshes threadList with folders; chat-sidebar.js stores both correctly';
   }
 });
 

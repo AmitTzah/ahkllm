@@ -1,4 +1,4 @@
-PASS | #13 | Command Input Window settings apply live (width/height/font/colors) | after saving width 800, input window opened at width 854 (applied live, no restart) | 6.3s
+PASS | #14 | Title generation keeps the thread's folder label (no hardcoded Unfiled) | ThreadTitleGen.ahk posts the real folder and refreshes threadList with folders; chat-sidebar.js stores both correctly | 1.7s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

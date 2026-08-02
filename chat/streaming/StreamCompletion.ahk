@@ -46,6 +46,7 @@ _maybeGenerateTitle(path) {
         threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
         if threadInfo.count {
             currentTitle := threadInfo[1, "title"]
+            debugLog("[TITLEGEN] trigger check thread=" activeThreadId " title='" currentTitle "'")
             if currentTitle = "New Chat" || InStr(currentTitle, "(")
                 SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
         }

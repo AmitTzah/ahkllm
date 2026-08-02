@@ -61,6 +61,31 @@ Point an agent at this folder — `BUG_HUNT_REPORT.md` is the entry point:
 The results file (`results/headless-verification.txt`) is regenerated on every run; the
 report is the authoritative source for bug status.
 
+## Verifying a fix with git stash (optional)
+
+While a fix is uncommitted (entry status `fix applied`), you can temporarily put it aside
+to confirm the bug was real before you commit:
+
+```powershell
+git stash                     # remove the fix from the working tree
+# run the repro (or the scenario): the buggy behavior should come back
+git stash pop                 # restore the fix
+# run the repro again: the fixed behavior should be back
+```
+
+This works best when the fix is the only thing in the working tree. If you have unrelated
+uncommitted changes you want to keep visible, stash just the fix files instead:
+
+```powershell
+git stash push -- chat/ app/ webui/   # adjust paths to the fix's files
+git stash pop
+```
+
+**Gotcha:** a flipped scenario (asserting the *fixed* behavior) will FAIL while the fix is
+stashed — that failure is the "bug reproduced" signal, not a broken harness. After `pop`,
+the same scenario should PASS again. If `pop` reports a conflict, resolve it and re-run the
+scenario; never commit from a stashed state.
+
 ## Safety: the real profile is never touched
 
 AHK's `A_AppData` comes from the Windows known-folder API, **not** the `APPDATA` env var,

@@ -11,6 +11,8 @@ generateThreadTitle(threadId) {
     if !autoTitleGenerationEnabled || !IsSet(titleGenModel) || !titleGenModel
         return
 
+    debugLog("[TITLEGEN] generateThreadTitle thread=" threadId " model=" titleGenModel)
+
     prompt := _TitleGen_BuildPrompt(threadId)
     if !prompt
         return
@@ -42,8 +44,25 @@ generateThreadTitle(threadId) {
 
     if title {
         ChatDB.Thread_Update(threadId, title)
-        postWebMessage("threadList", ChatDB.Thread_List())
-        postWebMessage("updateTopbarTitle", { text: title, folder: "Unfiled" })
+        threads := ChatDB.Thread_List()
+        folders := _GetFolders()
+        postWebMessage("threadList", { threads: threads, folders: folders })
+        ; Post the thread's REAL folder so the topbar label isn't reset to
+        ; "Unfiled" (the JS stores whatever folder arrives into _threadMeta).
+        folderName := ""
+        for t in threads {
+            if t.id = threadId {
+                folderName := t.folder_name
+                break
+            }
+        }
+        ; Diagnostic: dump what the DB actually holds for this thread at
+        ; title-gen time so a stale/missing folder is visible in the log.
+        folderRow := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" threadId "';")
+        dbFolderId := folderRow.count ? folderRow[1, "folder_id"] : ""
+        debugLog("[TITLEGEN] title='" title "' thread=" threadId
+            . " dbFolderId='" dbFolderId "' resolvedFolderName='" folderName "'")
+        postWebMessage("updateTopbarTitle", { text: title, folder: folderName })
     }
 
     _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, providerInfo.endpoint, payload, raw, title, titleGenStart)

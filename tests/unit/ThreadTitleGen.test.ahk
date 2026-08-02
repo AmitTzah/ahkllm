@@ -192,6 +192,60 @@ class ThreadTitleGenTest {
         this._teardownDb()
     }
 
+    ; ----------------------------------------------------
+    ; Regression: title generation must post the thread's REAL folder name,
+    ; not the hardcoded "Unfiled" that previously overwrote the topbar label.
+    ; ----------------------------------------------------
+    Generate_Success_PostsRealFolder() {
+        global _mockTitleGenOutput, _mockRunCalls
+        this._setupDb()
+        this._setGlobals()
+        threadId := ChatDB.Thread_Create("Folder Title")
+        sysId := ChatDB.Msg_Insert({ thread_id: threadId, role: "system", content: "sys" })
+        usrId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "Hello", parent_id: sysId })
+        ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "Hi", parent_id: usrId })
+
+        ; Move the thread into a folder (same SQL the sidebar folder actions use).
+        ChatDB.db.Exec("INSERT INTO chat_folders (id, name) VALUES('fold-1', 'Work Folder');")
+        ChatDB.db.Exec("UPDATE chat_threads SET folder_id='fold-1' WHERE id='" threadId "';")
+
+        _mockTitleGenOutput := '{"choices":[{"message":{"content":"Folder Title"}}],"usage":{"prompt_tokens":4,"completion_tokens":2}}'
+        web := this._captureWebView()
+        try {
+            generateThreadTitle(threadId)
+        } finally {
+            web.restore()
+        }
+
+        titlePosted := ""
+        listPosted := ""
+        for _, json in web.captured {
+            if InStr(json, "updateTopbarTitle") {
+                titlePosted := json
+                break
+            }
+            if InStr(json, "threadList")
+                listPosted := json
+        }
+        if !titlePosted
+            throw Error("Expected updateTopbarTitle post")
+        if !InStr(titlePosted, "Work Folder")
+            throw Error("updateTopbarTitle should carry the real folder name, got: " titlePosted)
+        if InStr(titlePosted, '"Unfiled"')
+            throw Error("updateTopbarTitle must not hardcode Unfiled: " titlePosted)
+        ; Regression: the threadList post must include the folders array so the
+        ; sidebar keeps rendering folder groups (a bare threads array made the
+        ; whole folder section — and its chats — disappear until re-render).
+        if !listPosted
+            throw Error("Expected threadList post after title update")
+        if !InStr(listPosted, '"threads"') || !InStr(listPosted, '"folders"')
+            throw Error("threadList post must carry threads + folders, got: " listPosted)
+        if !InStr(listPosted, "Work Folder")
+            throw Error("threadList folders should include Work Folder, got: " listPosted)
+
+        this._teardownDb()
+    }
+
     BuildPrompt_ReturnsTruncatedExchange() {
         this._setupDb()
         this._setGlobals()
