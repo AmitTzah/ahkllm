@@ -194,6 +194,34 @@ switch command {
         }
         Write(Map("hwnd", hwnd ? hwnd : 0, "x", x, "y", y, "w", w, "h", h))
 
+    case "input-window-edit-color":
+        ; Sample a pixel inside the input window's Edit field (rendered, not
+        ; style-derived) so a regression like "dark window + light font renders
+        ; invisible text on the Edit's default white background" is caught.
+        title := A_Args[3]
+        hwnd := WinExist(title " ahk_class AutoHotkeyGUI")
+        if !hwnd {
+            Write(Map("hwnd", 0, "color", ""))
+            return
+        }
+        ; The Edit is the first control; sample its center via PrintWindow.
+        RECT := Buffer(16)
+        DllCall("user32.dll\GetClientRect", "ptr", hwnd, "ptr", RECT)
+        cw := NumGet(RECT, 8, "int"), ch := NumGet(RECT, 12, "int")
+        hdcScreen := DllCall("user32.dll\GetDC", "ptr", 0, "ptr")
+        hdcMem := DllCall("gdi32.dll\CreateCompatibleDC", "ptr", hdcScreen, "ptr")
+        hbm := DllCall("gdi32.dll\CreateCompatibleBitmap", "ptr", hdcScreen, "int", cw, "int", ch, "ptr")
+        DllCall("gdi32.dll\SelectObject", "ptr", hdcMem, "ptr", hbm)
+        DllCall("user32.dll\PrintWindow", "ptr", hwnd, "ptr", hdcMem, "uint", 2)
+        ; Edit starts at x20 y+5 and spans most of the window width.
+        sx := 20 + (cw - 40) // 2
+        sy := 5 + (ch - 40) // 2
+        color := DllCall("gdi32.dll\GetPixel", "ptr", hdcMem, "int", sx, "int", sy, "uint")
+        DllCall("gdi32.dll\DeleteObject", "ptr", hbm)
+        DllCall("gdi32.dll\DeleteDC", "ptr", hdcMem)
+        DllCall("user32.dll\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
+        Write(Map("hwnd", hwnd, "color", Format("0x{:06X}", color & 0xFFFFFF), "sample", sx "," sy))
+
     case "send-menu-usage":
         ; Open backtick menu, navigate Quick Access (q) -> 7 (Usage Dashboard)
         Send("``")

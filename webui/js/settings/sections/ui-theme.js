@@ -20,8 +20,8 @@
       S.setVal('responseFontSize', fontSize);
       if (u.inputWindow) {
         var iw = u.inputWindow;
-        S.setVal('iwBackground', iw.background ? iw.background.replace('0x', '#') : '#212529');
-        S.setVal('iwBackgroundHex', iw.background || '0x212529');
+        S.setVal('iwBackground', iw.background ? iw.background.replace('0x', '#') : '#FFFFFF');
+        S.setVal('iwBackgroundHex', iw.background || '0xFFFFFF');
         S.setVal('iwFontSize', iw.fontSize);
         S.setVal('iwFontColor', iw.fontColor);
         S.setVal('iwFontFace', iw.fontFace);

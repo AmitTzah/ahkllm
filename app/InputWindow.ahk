@@ -14,7 +14,11 @@ class InputWindow {
         this.guiObj.OnEvent("Size", this.resizeAction.Bind(this))
         this.guiObj.SetFont(inputWindowFontSize " " inputWindowFontColor, inputWindowFontFace)
         this.guiObj.BackColor := inputWindowBackground
-        this.EditControl := this.guiObj.Add("Edit", "-WantReturn x20 y+5 w" inputWindowWidth " h" inputWindowHeight)
+        ; The Edit control needs its own Background option: unlike the window,
+        ; it does not inherit Gui.BackColor, so without this the configured dark
+        ; background + light font would render as invisible light text on the
+        ; control's default white field.
+        this.EditControl := this.guiObj.Add("Edit", "-WantReturn x20 y+5 w" inputWindowWidth " h" inputWindowHeight " Background" inputWindowBackground)
         this.SendButton := this.guiObj.Add("Button", "x240 y+10 w80", "Send")
         this.SendButton.Opt("+Default")   ; Make Send the default button (Enter triggers it)
     }

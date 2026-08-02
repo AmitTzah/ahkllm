@@ -852,6 +852,61 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 24,
+  name: 'Input window Edit field renders the configured background (text stays visible)',
+  mode: null,
+  settings: {
+    ui: { inputWindow: { background: '0x212529', fontSize: 's14', fontColor: 'cWhite', fontFace: 'Arial', width: 500, height: 250 } },
+    commands: [{
+      commandName: 'Test Input', menuText: '&9 - Test Input', APIModels: 'deepseek/deepseek-v4-flash',
+      pasteMode: 'chat', showInputBox: true, userMessage: '{{input}}', thinking: '', stream: false
+    }]
+  },
+  async body() {
+    // REGRESSION: the input window fix applied a dark background + light font,
+    // but the Edit control does not inherit Gui.BackColor — it stayed white, so
+    // white text was invisible. The Edit must be created with its own
+    // Background option so the field matches the configured background.
+    const opened = runProbe('open-input', ['9']);
+    if (!opened.menuOpened) throw new Error('backtick menu did not open for input window; probe=' + JSON.stringify(opened));
+    await sleep(600);
+    const sample = runProbe('input-window-edit-color', ['Test Input']);
+    if (!sample.hwnd) throw new Error('input window did not open');
+    runProbe('close-input');
+    if (sample.color === '0xFFFFFF')
+      throw new Error('Edit field still renders the default white background (invisible light text): ' + JSON.stringify(sample));
+    return 'input window Edit field renders ' + sample.color + ' (dark background, light text visible)';
+  }
+});
+
+scenarios.push({
+  id: 25,
+  name: 'Input window default design is light (readable text on the default field)',
+  mode: null,
+  settings: {
+    commands: [{
+      commandName: 'Test Input', menuText: '&9 - Test Input', APIModels: 'deepseek/deepseek-v4-flash',
+      pasteMode: 'chat', showInputBox: true, userMessage: '{{input}}', thinking: '', stream: false
+    }]
+  },
+  async body() {
+    // REGRESSION guard: the app is light-themed, so the DEFAULT input window
+    // must be light (white field + dark text). The previous default was dark
+    // (0x212529 + cWhite), which looked broken against the light UI.
+    const opened = runProbe('open-input', ['9']);
+    if (!opened.menuOpened) throw new Error('backtick menu did not open for input window; probe=' + JSON.stringify(opened));
+    await sleep(600);
+    const sample = runProbe('input-window-edit-color', ['Test Input']);
+    if (!sample.hwnd) throw new Error('input window did not open');
+    runProbe('close-input');
+    const isDark = /^0x[0-7]/.test(sample.color); // high byte 0x00-0x7F = dark
+    if (isDark)
+      throw new Error('default input window field is dark (' + sample.color + '); expected light');
+    return 'default input window Edit field renders ' + sample.color + ' (light design)';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {

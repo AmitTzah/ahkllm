@@ -519,9 +519,9 @@ responseWindowFontFace := "Inter"
 responseWindowFontSize := "17"
 
 ; -- Command Input Window --
-inputWindowBackground    := "0x212529"
+inputWindowBackground    := "0xFFFFFF"
 inputWindowFontSize      := "s14"
-inputWindowFontColor     := "cWhite"
+inputWindowFontColor     := "cBlack"
 inputWindowFontFace      := "Arial"
 inputWindowWidth         := 500
 inputWindowHeight        := 250

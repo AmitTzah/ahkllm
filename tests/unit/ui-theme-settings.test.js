@@ -138,7 +138,7 @@ describe('UI & theme settings section', () => {
         const els = { iwBackground: makeEl(), sbBackground: makeEl() };
         const ctx = loadSection({ els });
         ctx.module.load({ theme: {}, ui: { inputWindow: { background: '' }, suspendBanner: { background: '' } } });
-        assert.ok(els.iwBackground.value === '#212529');
+        assert.ok(els.iwBackground.value === '#FFFFFF');
         assert.ok(els.sbBackground.value === '#FFDF00');
     });
 

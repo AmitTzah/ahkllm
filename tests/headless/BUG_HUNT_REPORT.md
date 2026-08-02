@@ -141,13 +141,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
-  15 regression/refuted checks).
-- **Where we left off:** bug #1 (API Logs latency column) has a fix in place — scenario 16
-  flipped and PASSing, JS (445) + AHK (419) suites green. Also added (per user request) a
-  robustness fix so a rejected hotkey key name no longer crashes the app at startup (new
-  `_HotkeyOn`/`_HotkeyOff` guards + regression test). Next: user manually verifies the API
-  Logs fix, then commit, then close out entry #1.
+- **7 open bugs** (2026-08-02; 22/22 harness scenarios passed, 15 regression/refuted
+  checks): 6 still `verified`, bug #1 (input window invisible text — regression from the
+  input-window settings fix) is `fix applied`.
+- **Where we left off:** bug #1 (input window invisible text — regression from the
+  input-window settings fix) has a fix in place — scenario 24 flipped and PASSing (Edit
+  field renders dark), JS (445) + AHK (419) suites green. Next: user manually verifies
+  (repro below), then commit, then close out entry #1.
 
 ---
 
@@ -200,7 +200,34 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. API Logs viewer latency column always shows "–"
+### 1. Input window text invisible: Edit field stays white against the dark background
+
+**Scenario:** 24 (scenario code in verify-bugs.js)
+
+**Scenario:** 25 (default-light regression guard)
+
+**Status:** fix applied
+
+**Repro:** open any command with an input box — with dark background + light font
+configured, the field looks white/ugly and typed text is invisible although the cursor
+moves; the default design was also dark, clashing with the app's light theme.
+
+**Expected:** the Edit field uses the configured background (so light text is visible on a
+dark config), and the DEFAULT design is light (white field, black text).
+
+**Actual:** the Edit control does not inherit `Gui.BackColor` — the a35233a fix set the
+window dark + font light, but the field stayed the default white, making light text
+invisible (regression from the input-window settings fix).
+
+**Verification:** headless — scenario 24 opens the input window with a dark config and
+samples a rendered pixel of the Edit field (`PrintWindow` + `GetPixel`), asserting it is
+dark (not `0xFFFFFF`); scenario 25 asserts the DEFAULT design renders light.
+
+**Manual check:** reset to default settings and open any command with an input box — the
+field should be light with readable dark text; switching the background to dark in Settings
+should give a dark field with readable light text.
+
+### 2. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -214,7 +241,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 16.
 
-### 2. System-prompt modal "0 chars" counter never updates
+### 3. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -228,7 +255,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 17.
 
-### 3. Custom icon picked outside the repo never applies to the chat window
+### 4. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -242,7 +269,7 @@ one at a time, in rank order.
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 4. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 5. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -256,7 +283,7 @@ one at a time, in rank order.
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 5. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 6. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -270,7 +297,7 @@ one at a time, in rank order.
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 6. Reasoning-only responses get no action buttons until reload
+### 7. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
