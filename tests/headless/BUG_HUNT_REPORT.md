@@ -141,11 +141,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **7 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
-  14 regression/refuted checks).
-- **Where we left off:** bug #1 (chat topbar Export button) has a fix in place — scenario 15
-  flipped and PASSing, JS (443) + AHK (418) suites green. Next: user manually verifies
-  (repro below), then commit, then close out entry #1.
+- **6 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
+  15 regression/refuted checks).
+- **Where we left off:** bug #1 (API Logs latency column) has a fix in place — scenario 16
+  flipped and PASSing, JS (445) + AHK (419) suites green. Also added (per user request) a
+  robustness fix so a rejected hotkey key name no longer crashes the app at startup (new
+  `_HotkeyOn`/`_HotkeyOff` guards + regression test). Next: user manually verifies the API
+  Logs fix, then commit, then close out entry #1.
 
 ---
 
@@ -198,31 +200,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Chat topbar "Export" button does nothing
-
-**Scenario:** 15 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** click the download icon in the chat topbar.
-
-**Expected:** conversation export.
-
-**Actual:** nothing — the button has no id/handler.
-
-**Verification:** headless — scenario 15 asserts the button has an id + wired handler and
-that clicking it creates a download blob; unit tests assert `exportChat()` downloads the
-conversation as a titled `.txt` file (with a generic fallback name when no thread title).
-
-**Manual check:** open a chat, click the download icon in the topbar — a `.txt` file named
-after the chat should download containing the full conversation (same format as Copy entire
-chat).
-
-### 2. API Logs viewer latency column always shows "–"
+### 1. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix in progress
 
 **Repro:** make any request, open API Logs.
 
@@ -232,7 +214,7 @@ chat).
 
 **Verification:** headless scenario 16.
 
-### 3. System-prompt modal "0 chars" counter never updates
+### 2. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -246,7 +228,7 @@ chat).
 
 **Verification:** headless scenario 17.
 
-### 4. Custom icon picked outside the repo never applies to the chat window
+### 3. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -260,7 +242,7 @@ chat).
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 5. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 4. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -274,7 +256,7 @@ chat).
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 6. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 5. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -288,7 +270,7 @@ chat).
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 7. Reasoning-only responses get no action buttons until reload
+### 6. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -316,6 +298,7 @@ closure; never rewrite past entries.
 - 2026-08-02 — "Suspend banner edits don't take effect until restart" — FIXED in 5957786: new `app/SuspendBanner.ahk` exposes `_rebuildSuspendBanner()`, which Main now calls at startup and on settings updates (destroying the old GUI, rebuilding from current settings, re-showing when already suspended); scenario 12 flipped to a regression check (`regression: true`) + SuspendBanner unit tests.
 - 2026-08-02 — "Command Input Window settings are dead (colors never apply; size/font need restart)" — FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
 - 2026-08-02 — "Title generation makes sidebar folder groups disappear until re-entry" — FIXED in a5bd97c: `ThreadTitleGen.ahk` now posts `threadList` as `{ threads, folders }` (reusing `_GetFolders()`) so folder sections stay rendered, and posts the thread's real folder name in `updateTopbarTitle` instead of hardcoded "Unfiled"; scenario 14 flipped to a regression check (`regression: true`) + extended unit test.
+- 2026-08-02 — "Chat topbar 'Export' button does nothing" — FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

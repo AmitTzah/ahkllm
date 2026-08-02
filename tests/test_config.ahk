@@ -95,6 +95,7 @@ global commands := []
 ; own top-level initializers would run.
 ; ----------------------------------------------------
 global _mockHotkeyCalls := []
+global _mockHotkeyThrowKey := ""
 global _mockKeyWaitCalls := []
 global _mockCapsLockCalls := []
 global _mockReloadCalls := 0

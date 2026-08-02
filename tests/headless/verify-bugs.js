@@ -618,6 +618,7 @@ scenarios.push({
 scenarios.push({
   id: 15,
   name: 'Chat topbar Export button downloads the conversation',
+  regression: true, // FIXED bug kept as a regression check (Export must keep downloading)
   mode: null,
   settings: {},
   async body({ cdp }) {
@@ -646,7 +647,7 @@ scenarios.push({
 
 scenarios.push({
   id: 16,
-  name: 'API Logs viewer latency column always shows "-"',
+  name: 'API Logs viewer latency column shows the request duration',
   mode: 'sse-success',
   settings: {},
   async body({ cdp, port }) {
@@ -660,8 +661,10 @@ scenarios.push({
     await logs.waitFor('document.querySelectorAll("#logBody tr.clickable").length > 0', 15000, 300, 'log rows');
     const latency = await logs.eval('document.querySelector("#logBody tr.clickable td:nth-child(4)").textContent');
     await logs.close();
-    if (latency !== '-') throw new Error('latency cell = ' + JSON.stringify(latency) + ' (expected "-")');
-    return 'log row latency cell = "-" (viewer reads latencyMs; loggers write responseTimeMs)';
+    // FIXED: the viewer must read responseTimeMs (the field every logger
+    // writes) so the column shows the real duration instead of "-".
+    if (latency === '-' || latency === '') throw new Error('latency cell still empty: ' + JSON.stringify(latency));
+    return 'log row latency cell = ' + JSON.stringify(latency) + ' (viewer reads responseTimeMs)';
   }
 });
 

@@ -13,7 +13,12 @@
 
 ; --- Script-level mocks for built-ins used by the module ---
 Hotkey(key, callback := "", options := "") {
-    global _mockHotkeyCalls
+    global _mockHotkeyCalls, _mockHotkeyThrowKey
+    ; Simulate AHK rejecting a specific key name (e.g. an intermittent
+    ; "Invalid key name" for a lone backtick) so the guarded registrar can be
+    ; exercised without depending on the environment's hook state.
+    if _mockHotkeyThrowKey != "" && key = _mockHotkeyThrowKey
+        throw Error("Invalid key name")
     ; The built-in accepts "On"/"Off"/"Toggle" as the Action argument with no
     ; Options argument; normalize so the recorder sees the mode in `options`.
     if callback = "On" || callback = "Off" || callback = "Toggle" {
@@ -172,6 +177,38 @@ class HotkeyRegistrarTest {
             throw Error("non-empty suspend hotkey should still be registered")
         if _activeHotkeys.main != "" || _activeHotkeys.closeWindows != ""
             throw Error("active hotkey record should be cleared for disabled bindings")
+    }
+
+    ; Regression: a rejected key name must not crash startup. It is logged and
+    ; skipped, other hotkeys still register, and the failed key is not
+    ; remembered as active (so the next pass won't try to turn it Off).
+    Register_SkipsRejectedKey_WithoutCrashing() {
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
+        global _activeHotkeys, _mockHotkeyCalls, _mockHotkeyThrowKey
+        mainHotkey := "``"         ; the key AHK intermittently rejects (single backtick)
+        reloadHotkey := "^!r"
+        closeWindowsHotkey := ""
+        suspendHotkey := "CapsLock & x"
+        _activeHotkeys := { main: "", reload: "", closeWindows: "", suspend: "" }
+        _mockHotkeyCalls := []
+        _mockHotkeyThrowKey := "``"
+
+        ; Must not throw.
+        _registerAllHotkeys()
+        _mockHotkeyThrowKey := ""
+
+        ; The failed main hotkey must not be remembered; the valid reload and
+        ; suspend keys must still register (closeWindows is empty = disabled).
+        if _activeHotkeys.main != ""
+            throw Error("rejected main hotkey should not be remembered as active: '" _activeHotkeys.main "'")
+        if _activeHotkeys.reload != "^!r" || _activeHotkeys.suspend != "CapsLock & x"
+            throw Error("valid hotkeys should still register: " jsongo.Stringify(_activeHotkeys))
+        if _activeHotkeys.closeWindows != ""
+            throw Error("disabled closeWindows should stay empty")
+        ; The rejected key throws before the mock records it: only reload and
+        ; suspend register (main rejected, closeWindows disabled).
+        if _mockHotkeyCalls.Length != 2
+            throw Error("expected reload/suspend On only, got " _mockHotkeyCalls.Length " calls")
     }
 
     Handle_Suspend() {

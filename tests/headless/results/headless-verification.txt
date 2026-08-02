@@ -1,5 +1,6 @@
 PASS | #15 | Chat topbar Export button downloads the conversation | export button is wired (id=export-chat-btn, handler attached) and clicking it created a download blob | 2.0s
+PASS | #16 | API Logs viewer latency column shows the request duration | log row latency cell = "235 ms" (viewer reads responseTimeMs) | 2.5s
 
-Summary: 1/1 scenarios PASS
+Summary: 2/2 scenarios PASS
 Real profile restored: yes
 Report sync: OK

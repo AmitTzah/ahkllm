@@ -154,7 +154,7 @@ function renderTable() {
         html += '<td class="timestamp">' + esc(entry.timestamp||'') + '</td>';
         html += '<td>' + esc(entry.commandName||'') + '</td>';
         html += '<td class="model-name">' + esc(entry.model||entry.provider||'') + '</td>';
-        html += '<td class="timestamp">' + fmtLatency(entry.latencyMs) + '</td>';
+        html += '<td class="timestamp">' + fmtLatency(entry.responseTimeMs) + '</td>';
         html += '<td><span class="status-badge ' + sClass + '">' + esc(status) + '</span></td>';
         html += '<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">' + esc(entry.endpoint||'') + '</td>';
         html += '</tr>';
@@ -216,7 +216,7 @@ function cp(idx, btn) {
                 + '\n\n---\nTimestamp: ' + (e.timestamp||'')
                 + ' | Model: ' + (e.model||'')
                 + ' | Status: ' + (e.status||'')
-                + ' | Latency: ' + fmtLatency(e.latencyMs);
+                + ' | Latency: ' + fmtLatency(e.responseTimeMs);
     navigator.clipboard.writeText(txt).then(function() {
         var orig = btn.textContent;
         btn.textContent = 'Copied!';

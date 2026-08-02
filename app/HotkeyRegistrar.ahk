@@ -16,31 +16,44 @@ _registerAllHotkeys() {
     global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey, _activeHotkeys
 
     ; Turn off any previously registered hotkeys
-    if _activeHotkeys.main
-        Hotkey(_activeHotkeys.main, "Off")
-    if _activeHotkeys.reload
-        Hotkey(_activeHotkeys.reload, "Off")
-    if _activeHotkeys.closeWindows
-        Hotkey(_activeHotkeys.closeWindows, "Off")
-    if _activeHotkeys.suspend
-        Hotkey(_activeHotkeys.suspend, "Off")
+    _HotkeyOff(_activeHotkeys.main)
+    _HotkeyOff(_activeHotkeys.reload)
+    _HotkeyOff(_activeHotkeys.closeWindows)
+    _HotkeyOff(_activeHotkeys.suspend)
 
     ; Register current hotkeys. An empty value means the hotkey is disabled —
     ; skip registration so the old binding is not re-armed after the Off above.
-    if mainHotkey
-        Hotkey(mainHotkey, (*) => handleHotkey("showCommandMenu"), "On")
-    if reloadHotkey
-        Hotkey(reloadHotkey, (*) => handleHotkey("reloadScript"), "On")
-    if closeWindowsHotkey
-        Hotkey(closeWindowsHotkey, (*) => handleHotkey("closeWindows"), "On")
-    if suspendHotkey
-        Hotkey(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S On")
+    ; Each registration is guarded: a rejected key name (e.g. a lone backtick
+    ; that AHK intermittently refuses) must not crash the app at startup. Only
+    ; keys that actually registered are remembered for the next Off pass.
+    _activeHotkeys.main := _HotkeyOn(mainHotkey, (*) => handleHotkey("showCommandMenu"))
+    _activeHotkeys.reload := _HotkeyOn(reloadHotkey, (*) => handleHotkey("reloadScript"))
+    _activeHotkeys.closeWindows := _HotkeyOn(closeWindowsHotkey, (*) => handleHotkey("closeWindows"))
+    _activeHotkeys.suspend := _HotkeyOn(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S On")
+}
 
-    ; Remember active bindings for next update
-    _activeHotkeys.main := mainHotkey
-    _activeHotkeys.reload := reloadHotkey
-    _activeHotkeys.closeWindows := closeWindowsHotkey
-    _activeHotkeys.suspend := suspendHotkey
+; Register one hotkey. Returns the key when it registered, "" when disabled or
+; rejected (so _activeHotkeys only tracks keys that are actually active).
+_HotkeyOn(key, callback, options := "On") {
+    if !key
+        return ""
+    try {
+        Hotkey(key, callback, options)
+        return key
+    } catch Error as e {
+        debugLog("Hotkey registration failed for '" key "': " e.Message, "HotkeyRegistrar")
+        return ""
+    }
+}
+
+; Turn off one previously registered hotkey (best effort — a key that failed to
+; register has no binding to remove).
+_HotkeyOff(key) {
+    if !key
+        return
+    try Hotkey(key, "Off")
+    catch Error as e
+        debugLog("Hotkey unregister failed for '" key "': " e.Message, "HotkeyRegistrar")
 }
 
 ; handleHotkey references global functions and objects (buildCommandMenu, toggleSuspend,
