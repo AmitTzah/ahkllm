@@ -67,7 +67,94 @@
     fields.reasoning = m ? m[1].toLowerCase() === 'true' : false;
     m = raw.match(/vision:\s*(true|false)/i);
     fields.vision = m ? m[1].toLowerCase() === 'true' : false;
+    // Model metadata (api/compat/thinkingLevelMap/thinkingOff) must survive
+    // the refresh -> add -> save round-trip: unlike default model ids, a newly
+    // added id has no defaults entry to refill these from, so whatever the
+    // fetched entry carries is all it will ever have.
+    m = raw.match(/api:\s*"([^"]+)"/);
+    if (m) fields.api = m[1];
+    m = raw.match(/thinkingOff:\s*"([^"]+)"/);
+    if (m) fields.thinkingOff = m[1];
+    var compatIdx = raw.indexOf('compat: Map(');
+    if (compatIdx >= 0) {
+      var compat = _parseAhkMap(raw, compatIdx);
+      if (compat) fields.compat = compat;
+    }
+    var levelsIdx = raw.indexOf('thinkingLevelMap: Map(');
+    if (levelsIdx >= 0) {
+      var levels = _parseAhkMap(raw, levelsIdx);
+      if (levels) fields.thinkingLevelMap = levels;
+    }
     return fields;
+  }
+
+  // Parse an AHK "Map(...)" literal from `text` starting at `fromIndex`
+  // (the "Map(" keyword) into a JS object. Values are strings, booleans, or
+  // numbers; keys are strings. Used for compat / thinkingLevelMap metadata in
+  // the raw fetched entries (scripts/models_metadata.txt format).
+  function _parseAhkMap(text, fromIndex) {
+    var start = text.indexOf('Map(', fromIndex);
+    if (start < 0) return null;
+    var i = start + 4; // skip "Map("
+    var depth = 0;
+    var inStr = false;
+    var bodyStart = i;
+    var bodyEnd = -1;
+    for (; i < text.length; i++) {
+      var ch = text[i];
+      if (inStr) {
+        if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '(') { depth++; continue; }
+      if (ch === ')') {
+        if (depth === 0) { bodyEnd = i; break; }
+        depth--;
+      }
+    }
+    if (bodyEnd < 0) return null;
+    var body = text.slice(bodyStart, bodyEnd);
+    var tokens = _splitMapArgs(body);
+    var obj = {};
+    for (var t = 0; t + 1 < tokens.length; t += 2) {
+      var key = _ahkScalar(tokens[t]);
+      if (typeof key !== 'string') continue;
+      obj[key] = _ahkScalar(tokens[t + 1]);
+    }
+    return obj;
+  }
+
+  // Split Map(...) argument text on top-level commas (ignores commas inside
+  // quoted strings).
+  function _splitMapArgs(body) {
+    var tokens = [];
+    var cur = '';
+    var inStr = false;
+    for (var i = 0; i < body.length; i++) {
+      var ch = body[i];
+      if (inStr) {
+        cur += ch;
+        if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; cur += ch; continue; }
+      if (ch === ',') { tokens.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    if (cur.trim()) tokens.push(cur.trim());
+    return tokens;
+  }
+
+  // Interpret an AHK scalar token: quoted string, true/false, or number.
+  function _ahkScalar(token) {
+    var s = String(token).trim();
+    if (s.length >= 2 && s.charAt(0) === '"' && s.charAt(s.length - 1) === '"')
+      return s.slice(1, -1);
+    if (s === 'true') return true;
+    if (s === 'false') return false;
+    if (s !== '' && !isNaN(Number(s))) return Number(s);
+    return s;
   }
 
   function buildProviderSelect(keys, current) {
@@ -167,9 +254,29 @@
     tr.querySelector('.btn-sm.danger').addEventListener('click', onRemove);
   }
 
+  // Stash model metadata on the row so save() can re-emit it. The Settings
+  // table only edits pricing/features, but the entry in settings.json also
+  // carries api/compat/thinkingLevelMap/thinkingOff. Dropping them on save is
+  // invisible for default ids (SettingsMerge refills from defaults) but
+  // permanently breaks newly added ids (no default entry to merge from).
+  function _stashMeta(tr, m) {
+    if (!tr || !m) return;
+    var meta = {};
+    if (m.api !== undefined) meta.api = m.api;
+    if (m.compat !== undefined) meta.compat = m.compat;
+    if (m.thinkingLevelMap !== undefined) meta.thinkingLevelMap = m.thinkingLevelMap;
+    if (m.thinkingOff !== undefined) meta.thinkingOff = m.thinkingOff;
+    if (Object.keys(meta).length) tr.dataset.modelMeta = JSON.stringify(meta);
+  }
+
+  function _readMeta(tr) {
+    if (!tr || !tr.dataset || !tr.dataset.modelMeta) return {};
+    try { return JSON.parse(tr.dataset.modelMeta) || {}; } catch (e) { return {}; }
+  }
+
   // Read a row's current values from its DOM elements.
   function _readRowValues(tr) {
-    return {
+    var values = {
       provider: (tr.querySelector('[data-field="provider"]') || {}).value || '',
       input: _parsePrice(tr.querySelector('[data-field="input"]')),
       cachedInput: _parsePrice(tr.querySelector('[data-field="cachedInput"]')),
@@ -178,6 +285,9 @@
       vision: (tr.querySelector('[data-field="vision"]') || {}).checked || false,
       reasoning: (tr.querySelector('[data-field="reasoning"]') || {}).checked || false
     };
+    var meta = _readMeta(tr);
+    for (var k in meta) values[k] = meta[k];
+    return values;
   }
 
   function mark() { S.markDirty(); }
@@ -199,6 +309,7 @@
       var tr = document.createElement('tr');
       tr.innerHTML = _mainRowHtml(key, m.provider, m);
       tbody.appendChild(tr);
+      _stashMeta(tr, m);
       _wireMainRow(tr);
     });
   }
@@ -228,8 +339,17 @@
         vision: values.vision,
         reasoning: values.reasoning
       };
+      _applyMeta(models[fullId], values);
     });
     return { models: models };
+  }
+
+  // Copy stashed metadata (api/compat/thinkingLevelMap/thinkingOff) onto a
+  // saved entry so new model ids don't lose their thinking metadata.
+  function _applyMeta(entry, values) {
+    ['api', 'compat', 'thinkingLevelMap', 'thinkingOff'].forEach(function(k) {
+      if (values[k] !== undefined) entry[k] = values[k];
+    });
   }
 
   function _collectCurrentModels() {
@@ -249,6 +369,7 @@
         vision: values.vision,
         reasoning: values.reasoning
       });
+      _applyMeta(models[models.length - 1], values);
     });
     return models;
   }
@@ -340,6 +461,7 @@
       var tr = document.createElement('tr');
       tr.innerHTML = _rightRowHtml(m.id, m);
       tbody.appendChild(tr);
+      _stashMeta(tr, m);
       _wireRightRow(tr, function() { tr.remove(); _renderAvailableModels(); });
     });
     if (!tbody.children.length)
@@ -389,10 +511,12 @@
         vision: p.vision || false,
         reasoning: p.reasoning || false
       };
+      _applyMeta(m, p);
       var tr = document.createElement('tr');
       tr.innerHTML = _rightRowHtml(modelId, m);
       tbody.appendChild(tr);
       tr.classList.add('refresh-row-added');
+      _stashMeta(tr, m);
       _wireRightRow(tr, function() { tr.remove(); _renderAvailableModels(); });
       _renderAvailableModels();
     },
@@ -415,6 +539,7 @@
         var newTr = document.createElement('tr');
         newTr.innerHTML = _mainRowHtml(id, values.provider, values);
         mainTbody.appendChild(newTr);
+        _stashMeta(newTr, values);
         _wireMainRow(newTr);
       });
       mark();

@@ -138,9 +138,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **14 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
-  7 regression/refuted checks).
-- **Where we left off:** bug #1 (clearing a hotkey field) committed in 00bb503 and closed out. Stopped here per user request — the next bug in rank order (new models added in Settings lose reasoning/thinking metadata, scenario 5) is NOT started.
+- **14 open bugs** (2026-08-02; 21/21 harness scenarios passed, 7 regression/refuted
+  checks): 13 still `verified`, bug #1 `fix applied` and awaiting user verification.
+- **Where we left off:** bug #1 (new models lose reasoning/thinking metadata) has a fix in
+  place — scenario 5 flipped and PASSing, JS (442) + AHK (406) suites green. Next:
+  user manually verifies (repro below), then commit, then close out entry #1.
 
 ---
 
@@ -197,7 +199,7 @@ one at a time, in rank order.
 
 **Scenario:** 5 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** Settings → Models → + Add (or Fetch Latest → + Add on a new model) → Save → switch to it.
 
@@ -205,7 +207,14 @@ one at a time, in rank order.
 
 **Actual:** only "Model Default" — `models.js save()` drops `compat`/`thinkingLevelMap`/`thinkingOff`/`api`, and new IDs have no default entry to merge from.
 
-**Verification:** headless — dropdown had exactly 1 option; plus JS probe.
+**Verification:** headless — scenario 5 seeds a new id (`openai/gpt-brand-new`) carrying
+full metadata, runs a Settings save round-trip, then switches to it and asserts the
+reasoning dropdown offers the model's levels (Low/High) instead of only Model Default;
+unit tests assert `parsePricingRaw` extracts the metadata and `save()` re-emits it.
+
+**Manual check:** Settings → Models → Fetch Latest → + Add a new model → Save → switch to
+it in the chat header → the Reasoning dropdown should list the model's levels (not just
+Model Default). Also re-Save after editing pricing to confirm levels persist.
 
 ### 2. Chat request failure with no output file shows no error and leaves the UI stuck
 

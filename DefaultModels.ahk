@@ -1,12 +1,11 @@
-; ============================================================================
+﻿; ============================================================================
 ; DefaultModels.ahk -- AUTO-GENERATED model metadata
 ;
 ; Generated from models.dev by scripts\Refresh-Models.ps1 (with corrections
 ; applied from scripts\models-corrections.json). Do not edit by hand -- use
 ; Models settings -> Fetch Latest Models or run scripts\Refresh-Models.ps1.
 ; ============================================================================
-models := Map(
-    ; -- DeepSeek --
+models := Map(    ; -- DeepSeek --
     "deepseek/deepseek-chat", {
         provider: "deepseek", api: "openai-completions",
         compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),

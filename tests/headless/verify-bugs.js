@@ -333,19 +333,50 @@ scenarios.push({
 
 scenarios.push({
   id: 5,
-  name: 'New models added in Settings lose thinking metadata (reasoning dropdown empty)',
+  name: 'New model keeps thinking metadata across a Settings save (reasoning dropdown shows its levels)',
   mode: 'json',
   settings: {},
+  preLaunch(dataDir) {
+    // Seed a NEW model id (not present in DefaultModels.ahk) that carries full
+    // metadata, exactly as the fetch pipeline produces it. It has no defaults
+    // entry to refill from, so everything it has must survive the save
+    // round-trip on its own.
+    const settingsFile = path.join(dataDir, 'settings.json');
+    const cfg = readJsonFile(settingsFile);
+    cfg.models = {
+      'openai/gpt-brand-new': {
+        provider: 'openai',
+        api: 'openai-completions',
+        compat: {
+          thinkingFormat: 'openai',
+          supportsReasoningEffort: true,
+          supportsUsageInStreaming: true,
+          maxTokensField: 'max_completion_tokens'
+        },
+        thinkingLevelMap: { low: 'low', high: 'high' },
+        thinkingOff: 'none',
+        input: 0.4, cachedInput: 0.1, output: 1.6, context: 128000, reasoning: true, vision: false
+      }
+    };
+    fs.writeFileSync(settingsFile, JSON.stringify(cfg, null, 2));
+  },
   async body({ cdp, dataDir }) {
     await showChat();
     await openSettings(cdp);
     await openSection(cdp, 'models');
     await cdp.waitFor('document.querySelectorAll("#modelsTableBody tr").length > 0', 10000, 250, 'models table');
-    await cdp.click('#addModelBtn');
-    await sleep(300);
-    const rows = await cdp.eval('document.querySelectorAll("#modelsTableBody tr").length');
-    await cdp.type('#modelsTableBody tr:last-child [data-field="id"]', 'gpt-brand-new');
-    await saveSettings(cdp, dataDir);
+    // Make the panel dirty (Save is disabled otherwise) with a no-op edit on
+    // the seeded row, then run the save round-trip.
+    const rowSel = '#modelsTableBody tr:first-child [data-field="context"]';
+    await cdp.waitFor('document.querySelector(' + JSON.stringify(rowSel) + ') !== null', 5000, 200, 'seeded model row');
+    await cdp.type(rowSel, '128K');
+    await cdp.click('.nav-footer .btn-primary');
+    await cdp.waitFor('window.SettingsPanel && !window.SettingsPanel.isDirty()', 15000, 300, 'save acknowledged');
+    // The saved file must still carry the metadata for the new id.
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    const back = saved.models && saved.models['openai/gpt-brand-new'];
+    if (!back || !back.thinkingLevelMap || !back.thinkingLevelMap.high)
+      throw new Error('saved model lost thinking metadata: ' + JSON.stringify(back));
     await hideSettingsToChat(cdp);
     await cdp.waitFor('window.modelList && Object.keys(window.modelList).length > 0', 15000, 300, 'model list');
     await cdp.click('#modelCardTrigger');
@@ -359,10 +390,14 @@ scenarios.push({
       return true;
     })()`);
     await cdp.waitFor('window._currentSettings.model.indexOf("gpt-brand-new") >= 0', 10000, 250, 'model selected');
-    await cdp.waitFor('document.getElementById("reasoningDropdown").options.length === 1', 15000, 300, 'reasoning dropdown');
+    // FIXED behavior: the model's levels must be offered after the save
+    // round-trip (before the fix, only "Model Default" remained).
+    await cdp.waitFor('document.getElementById("reasoningDropdown").options.length > 1', 15000, 300, 'reasoning dropdown shows levels');
     const opts = await cdp.eval('[...document.getElementById("reasoningDropdown").options].map(o => o.textContent)');
-    if (opts.length !== 1) throw new Error('expected only Model Default, got ' + JSON.stringify(opts));
-    return 'new model gpt-brand-new offers only "' + opts[0] + '" (no thinking levels)';
+    if (opts.length <= 1) throw new Error('expected the model\'s levels, got only ' + JSON.stringify(opts));
+    if (opts.filter((o) => o === 'Low' || o === 'High').length < 2)
+      throw new Error('seeded levels low/high missing from dropdown: ' + JSON.stringify(opts));
+    return 'after Settings save, openai/gpt-brand-new keeps thinkingLevelMap and offers ' + JSON.stringify(opts);
   }
 });
 
