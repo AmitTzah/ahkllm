@@ -1,4 +1,4 @@
-PASS | #17 | System-prompt modal char counter updates while typing | after typing 28 chars, #charCount shows "28 chars" | 2.0s
+PASS | #18 | Custom icon picked outside the repo never applies to the chat window | absolute icon path: direct LoadPicture ok (h=23200991), mangled path h=0, custom icon applied to chat window (customApplied=1) | 1.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

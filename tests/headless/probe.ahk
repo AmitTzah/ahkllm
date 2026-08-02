@@ -59,6 +59,44 @@ ChatHwnd() {
     return 0
 }
 
+; Render an HICON into a 32x32 BGRA DIB and return its bytes as hex. Two
+; LoadPicture calls for the same file return different handles, so handle
+; equality cannot prove two icons are the same image — rendered bytes can.
+IconFingerprint(hIcon) {
+    if !hIcon
+        return ""
+    w := 32, h := 32
+    bi := Buffer(40)  ; BITMAPINFOHEADER
+    NumPut("uint", 40, bi, 0)
+    NumPut("int", w, bi, 4)
+    NumPut("int", -h, bi, 8)    ; negative height = top-down
+    NumPut("ushort", 1, bi, 12)
+    NumPut("ushort", 32, bi, 14)
+    hdcScreen := DllCall("user32.dll\GetDC", "ptr", 0, "ptr")
+    hdcMem := DllCall("gdi32.dll\CreateCompatibleDC", "ptr", hdcScreen, "ptr")
+    bits := 0
+    hbm := DllCall("gdi32.dll\CreateDIBSection", "ptr", hdcMem, "ptr", bi, "uint", 0, "ptr*", &bits, "ptr", 0, "uint", 0, "ptr")
+    if !hbm {
+        DllCall("gdi32.dll\DeleteDC", "ptr", hdcMem)
+        DllCall("user32.dll\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
+        return ""
+    }
+    old := DllCall("gdi32.dll\SelectObject", "ptr", hdcMem, "ptr", hbm, "ptr")
+    ; DI_NORMAL = 3
+    DllCall("user32.dll\DrawIconEx", "ptr", hdcMem, "int", 0, "int", 0, "ptr", hIcon, "int", w, "int", h, "uint", 0, "ptr", 0, "uint", 3)
+    byteCount := w * h * 4
+    buf := Buffer(byteCount)
+    DllCall("ntdll.dll\RtlMoveMemory", "ptr", buf, "ptr", bits, "uptr", byteCount)
+    hex := ""
+    loop byteCount
+        hex .= Format("{:02X}", NumGet(buf, A_Index - 1, "uchar"))
+    DllCall("gdi32.dll\SelectObject", "ptr", hdcMem, "ptr", old)
+    DllCall("gdi32.dll\DeleteObject", "ptr", hbm)
+    DllCall("gdi32.dll\DeleteDC", "ptr", hdcMem)
+    DllCall("user32.dll\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
+    return hex
+}
+
 switch command {
     case "preflight":
         running := WinExist("Main.ahk ahk_class AutoHotkey") || WinExist("ChatWindow.ahk ahk_class AutoHotkey")
@@ -132,7 +170,9 @@ switch command {
         if iconPath && FileExist(iconPath) {
             try hCustom := LoadPicture(iconPath, "Icon1 w32 h32", &imgT)
         }
-        ; Mangled path reproduction (ChatWindow.ahk: A_ScriptDir "\..\" iconOn)
+        ; The OLD buggy path (ChatWindow.ahk prefixed every icon path with
+        ; A_ScriptDir "\..\"); it must still fail to load — the fixed code
+        ; resolves absolute paths without that prefix.
         scriptDir := A_ScriptDir "\..\..\chat"
         hMangled := 0
         try hMangled := LoadPicture(scriptDir "\..\" iconPath, "Icon1 w32 h32", &imgT2)
@@ -141,7 +181,9 @@ switch command {
             "hBig", hBig, "hSmall", hSmall,
             "hCustom", hCustom,
             "hMangled", hMangled,
-            "customApplied", (hBig = hCustom || hSmall = hCustom) ? 1 : 0,
+            ; Handle equality is unreliable (same file loaded twice gives two
+            ; handles), so compare rendered pixels instead.
+            "customApplied", (IconFingerprint(hBig) = IconFingerprint(hCustom) || IconFingerprint(hSmall) = IconFingerprint(hCustom)) ? 1 : 0,
             "mangledLoaded", hMangled ? 1 : 0
         ))
 

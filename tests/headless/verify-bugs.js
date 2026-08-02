@@ -709,8 +709,8 @@ scenarios.push({
     const mangled = runProbe('icon-check', [absIco]);
     if (mangled.hCustom === 0) throw new Error('direct LoadPicture of the chosen icon failed; probe=' + JSON.stringify(mangled));
     if (mangled.hMangled !== 0) throw new Error('mangled path unexpectedly loaded; probe=' + JSON.stringify(mangled));
-    if (mangled.customApplied !== 0) throw new Error('custom icon applied to chat window; probe=' + JSON.stringify(mangled));
-    return 'absolute icon path: direct LoadPicture ok (h=' + mangled.hCustom + '), mangled path h=' + mangled.hMangled + ', window icon unchanged (customApplied=0)';
+    if (mangled.customApplied !== 1) throw new Error('custom icon NOT applied to chat window; probe=' + JSON.stringify(mangled));
+    return 'absolute icon path: direct LoadPicture ok (h=' + mangled.hCustom + '), mangled path h=' + mangled.hMangled + ', custom icon applied to chat window (customApplied=1)';
   }
 });
 

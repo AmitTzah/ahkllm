@@ -24,6 +24,7 @@ OnError((err, mode) => (
 ; ----------------------------------------------------
 
 #Include ChatHotkeys.ahk
+#Include ChatIconResolver.ahk
 
 ; ----------------------------------------------------
 ; Initialize DB and request params
@@ -98,8 +99,13 @@ responseWindow.OnEvent("Close", (*) => responseWindow.Hide())
 responseWindow.Title := "LLM AutoHotkey Assistant"
 global chatWindow := responseWindow
 
-; Set window icon (title bar / taskbar) to match the main script's tray icon
-hIcon := LoadPicture(A_ScriptDir "\..\" iconOn, "Icon1 w32 h32", &imgType)
+; Set window icon (title bar / taskbar) to match the main script's tray icon.
+; Resolve the configured path first — absolute paths (e.g. an icon picked
+; outside the repo) are used as-is; repo-relative paths resolve against the
+; repo root. An empty value means no icon.
+hIcon := 0
+if iconOn != ""
+    hIcon := LoadPicture(ResolveIconPath(iconOn), "Icon1 w32 h32", &imgType)
 if hIcon {
     SendMessage(0x80, 0, hIcon, , "ahk_id " chatWindow.hWnd)  ; WM_SETICON, ICON_BIG (Alt+Tab)
     SendMessage(0x80, 1, hIcon, , "ahk_id " chatWindow.hWnd)  ; WM_SETICON, ICON_SMALL (title bar / taskbar)

@@ -143,9 +143,10 @@ How to run AHK safely:
 
 - **4 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
   19 regression/refuted checks).
-- **Where we left off:** bug #1 (system-prompt modal char counter) committed in 6d81eaa and
-  closed out. Next bug in rank order: custom icon picked outside the repo never applies to
-  the chat window (scenario 18) — NOT started.
+- **Where we left off:** bug #1 (custom icon picked outside the repo never applies to the
+  chat window, scenario 18) — fix applied: scenario 18 flipped to expect the fixed
+  behavior and PASSES (customApplied=1), AHK 426/426 + JS 456/456 green. Next: user
+  manual verification, then `awaiting user commit`.
 
 ---
 
@@ -202,7 +203,7 @@ one at a time, in rank order.
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** set Icon (active) to an absolute path outside the repo → restart.
 
