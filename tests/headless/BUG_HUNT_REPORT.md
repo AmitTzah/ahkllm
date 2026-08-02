@@ -138,10 +138,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **13 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
-  8 regression/refuted checks).
-- **Where we left off:** bug #1 (chat failure with no output file) has a fix in place —
-  scenario 6 flipped and PASSing, JS (442) + AHK (407) suites green. Next: user manually
+- **12 open bugs**, all `verified` headlessly (2026-08-02; 21/21 harness scenarios passed,
+  9 regression/refuted checks).
+- **Where we left off:** bug #1 (trash retention never auto-purges) has a fix in place —
+  scenario 7 flipped and PASSing, JS (442) + AHK (408) suites green. Next: user manually
   verifies (repro below), then commit, then close out entry #1.
 
 ---
@@ -195,32 +195,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Chat request failure with no output file shows no error and leaves the UI stuck
-
-**Scenario:** 6 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** send a chat message while the provider is unreachable (connection refused/DNS).
-
-**Expected:** an error banner and re-enabled send button.
-
-**Actual:** `_handleStreamError` only posts error/re-enable when the cURL output file exists; connection failures produce no file, so nothing is posted and the UI stays in the Stop state until the user presses Stop.
-
-**Verification:** headless — scenario 6 sends to a refused port and asserts an error
-banner appears and the UI re-enables itself (no Stop press); unit test asserts
-`_handleStreamError` posts `showError` + `setChatButtonsEnabled(true)` even when the output
-file never exists, using the cURL stderr text when available.
-
-**Manual check:** with the provider unreachable (bad endpoint or no network), send a chat
-message — an error banner should appear and the send button/input should re-enable on their
-own within a few seconds (previously it stayed stuck on Stop until you pressed it).
-
-### 2. Trash retention never auto-purges
+### 1. Trash retention never auto-purges
 
 **Scenario:** 7 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** set Trash retention to 1 day, trash a chat, wait.
 
@@ -228,9 +207,16 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Actual:** never — `ThreadRepo.PurgeExpired()` has zero callers.
 
-**Verification:** headless — static caller check + expired trashed thread survived.
+**Verification:** headless — scenario 7 seeds an expired trashed thread and asserts it is
+purged during the app run, plus a static check that Main.ahk calls
+`ChatDB.Thread_PurgeExpired()` (startup + hourly timer + settings update); unit test
+asserts `Thread_PurgeExpired` deletes expired threads but keeps recent ones.
 
-### 3. "Close Windows" hotkey setting is ignored by the chat window
+**Manual check:** Settings → General → Trash Retention (days) → set 1 → trash a chat → wait
+a day (or restart the app with an already-expired trashed chat) → it should disappear from
+Trash.
+
+### 2. "Close Windows" hotkey setting is ignored by the chat window
 
 **Scenario:** 8 (scenario code in verify-bugs.js)
 
@@ -244,7 +230,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless scenario 8 (static trace) + user manual confirmation.
 
-### 4. Suspend banner edits don't take effect until restart
+### 3. Suspend banner edits don't take effect until restart
 
 **Scenario:** 12 (scenario code in verify-bugs.js)
 
@@ -258,7 +244,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless — after saving "NEW BANNER TEXT", the suspended banner still showed "OLD BANNER TEXT".
 
-### 5. "Command Input Window" settings are dead (colors never apply; size/font need restart)
+### 4. "Command Input Window" settings are dead (colors never apply; size/font need restart)
 
 **Scenario:** 13 (scenario code in verify-bugs.js)
 
@@ -272,7 +258,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless — after saving width 800, the window opened at 554.
 
-### 6. Title generation resets the topbar folder label to "Unfiled"
+### 5. Title generation resets the topbar folder label to "Unfiled"
 
 **Scenario:** 14 (scenario code in verify-bugs.js)
 
@@ -286,7 +272,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless scenario 14 (static trace; end-to-end title-gen isn't automatable here — see README limitations).
 
-### 7. Chat topbar "Export" button does nothing
+### 6. Chat topbar "Export" button does nothing
 
 **Scenario:** 15 (scenario code in verify-bugs.js)
 
@@ -300,7 +286,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless — click produced no message and no state change.
 
-### 8. API Logs viewer latency column always shows "–"
+### 7. API Logs viewer latency column always shows "–"
 
 **Scenario:** 16 (scenario code in verify-bugs.js)
 
@@ -314,7 +300,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless scenario 16.
 
-### 9. System-prompt modal "0 chars" counter never updates
+### 8. System-prompt modal "0 chars" counter never updates
 
 **Scenario:** 17 (scenario code in verify-bugs.js)
 
@@ -328,7 +314,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless scenario 17.
 
-### 10. Custom icon picked outside the repo never applies to the chat window
+### 9. Custom icon picked outside the repo never applies to the chat window
 
 **Scenario:** 18 (scenario code in verify-bugs.js)
 
@@ -342,7 +328,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless — direct LoadPicture ok, mangled path h=0, window icon unchanged.
 
-### 11. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
+### 10. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
 **Scenario:** 19 (scenario code in verify-bugs.js)
 
@@ -356,7 +342,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
 
-### 12. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 11. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
@@ -370,7 +356,7 @@ own within a few seconds (previously it stayed stuck on Stop until you pressed i
 
 **Verification:** headless — payload unchanged; only visual state changed.
 
-### 13. Reasoning-only responses get no action buttons until reload
+### 12. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -392,6 +378,7 @@ Entries move here when a bug is closed (user committed) or refuted. Add one line
 closure; never rewrite past entries.
 
 - 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
+- 2026-08-02 — "Chat request failure with no output file shows no error and leaves the UI stuck" — FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
 - 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check

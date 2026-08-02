@@ -400,6 +400,43 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; ----------------------------------------------------
+    ; Regression: Thread_PurgeExpired must permanently delete trashed threads
+    ; past the retention period (previously nothing called it, so trash never
+    ; auto-purged). Expired threads go; recent ones survive.
+    ; ----------------------------------------------------
+    Thread_PurgeExpired_DeletesExpiredKeepsRecent() {
+        global trashRetentionDays
+        oldRetention := trashRetentionDays
+        trashRetentionDays := 1
+        try {
+            this._setup()
+            expiredId := ChatDB.Thread_Create("Expired Trash")
+            recentId  := ChatDB.Thread_Create("Recent Trash")
+
+            ChatDB.Thread_SoftDelete(expiredId)
+            ChatDB.Thread_SoftDelete(recentId)
+
+            ; Age the expired thread past the 1-day retention window.
+            ChatDB.db.Exec("UPDATE chat_threads SET deleted_at=datetime('now', '-2 days') WHERE id='" expiredId "';")
+
+            ChatDB.Thread_PurgeExpired()
+
+            recentSurvived := false
+            for t in ChatDB.Thread_List(true) {
+                if t.id = expiredId
+                    throw Error("Expired trashed thread survived PurgeExpired")
+                if t.id = recentId
+                    recentSurvived := true
+            }
+            if !recentSurvived
+                throw Error("Recent trashed thread was purged before its retention period")
+        } finally {
+            trashRetentionDays := oldRetention
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Cumulative counter persistence
     ; --------------------

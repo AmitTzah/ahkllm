@@ -405,6 +405,7 @@ scenarios.push({
 scenarios.push({
   id: 6,
   name: 'Stream failure with no output file shows an error and re-enables the UI',
+  regression: true, // FIXED bug kept as a regression check (stream errors must always surface + re-enable)
   mode: null, // refused port -> curl exits before any output file
   settings: {},
   async body({ cdp }) {
@@ -424,16 +425,19 @@ scenarios.push({
 
 scenarios.push({
   id: 7,
-  name: 'Trash retention never auto-purges (no caller of PurgeExpired)',
+  name: 'Trash retention auto-purges expired trashed threads (wired at startup + timer)',
   mode: null,
   settings: { trash: { retentionDays: 1 } },
   fixtures: {
     threads: [{ id: 't-trash-1', title: 'Old Trashed', is_deleted: 1, deleted_at: '2026-07-01 00:00:00' }]
   },
   async body({ cdp, dbPath }) {
-    // Static: PurgeExpired defined but never called outside its definition/facade.
-    // The ONLY call to the purge implementation must be the facade in ChatDB.
-    let callCount = 0;
+    // Static: the purge must now be reachable from production code. The ONLY
+    // direct call to the repo implementation stays the ChatDB facade, and
+    // Main.ahk must call the facade at startup + on the timer (settings-update
+    // re-purge is a bonus, so >= 2 is enough).
+    let repoCalls = 0;
+    let facadeCalls = 0;
     const scanDirs = ['app', 'api', 'chat', 'shared', 'ipc'];
     const files = [path.join(launcher.REPO_ROOT, 'Main.ahk')];
     const walk = (dir) => {
@@ -446,14 +450,17 @@ scenarios.push({
     for (const d of scanDirs) walk(path.join(launcher.REPO_ROOT, d));
     for (const f of files) {
       const txt = fs.readFileSync(f, 'utf8');
-      callCount += (txt.match(/ThreadRepo\.PurgeExpired\(/g) || []).length;
+      repoCalls += (txt.match(/ThreadRepo\.PurgeExpired\(/g) || []).length;
+      facadeCalls += (txt.match(/ChatDB\.Thread_PurgeExpired\(/g) || []).length;
     }
-    if (callCount !== 1) throw new Error('expected exactly 1 ThreadRepo.PurgeExpired() call (the ChatDB facade), found ' + callCount);
-    // Live: an expired trashed thread survives a full app cycle.
+    if (repoCalls !== 1) throw new Error('expected exactly 1 direct ThreadRepo.PurgeExpired() call (the ChatDB facade), found ' + repoCalls);
+    if (facadeCalls < 2) throw new Error('expected Main.ahk to call ChatDB.Thread_PurgeExpired() at startup + timer, found ' + facadeCalls);
+    // Live: an expired trashed thread must be purged during the app run
+    // (the startup purge runs before the chat page is ready).
     await sleep(2500);
     const rows = seed.query(dbPath, "SELECT id FROM chat_threads WHERE id='t-trash-1' AND is_deleted=1");
-    if (rows.length !== 1) throw new Error('trashed thread was purged');
-    return 'PurgeExpired has no callers; expired trashed thread still present after app run';
+    if (rows.length !== 0) throw new Error('expired trashed thread was not purged');
+    return 'PurgeExpired wired via ChatDB facade in Main.ahk; expired trashed thread purged during app run';
   }
 });
 

@@ -1,4 +1,4 @@
-PASS | #06 | Stream failure with no output file shows an error and re-enables the UI | connection failure shows error banner (Request failed. Check your API key and try again.×) and re-enables the UI without Stop | 4.2s
+PASS | #07 | Trash retention auto-purges expired trashed threads (wired at startup + timer) | PurgeExpired wired via ChatDB facade in Main.ahk; expired trashed thread purged during app run | 3.9s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

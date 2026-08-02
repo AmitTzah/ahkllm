@@ -51,6 +51,19 @@ _registerAllHotkeys()
 ChatDB.Open()
 
 ; ----------------------------------------------------
+; Trash retention — auto-purge expired trashed threads
+; ----------------------------------------------------
+
+; Purge once at startup so threads past their retention period don't survive
+; a restart, then keep checking on a timer (settings changes below re-purge
+; immediately so lowering retention takes effect without waiting for the tick).
+TrashRetentionPurge() {
+    ChatDB.Thread_PurgeExpired()
+}
+ChatDB.Thread_PurgeExpired()
+SetTimer(TrashRetentionPurge, 3600000)
+
+; ----------------------------------------------------
 ; Pre-warm ChatWindow: spawn hidden at startup so WebView2
 ; is initialized before user first opens it (avoids black flash)
 ; ----------------------------------------------------
@@ -190,6 +203,7 @@ OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     SettingsHandler.ApplyToGlobals(merged),
     _registerAllHotkeys(),
     RuntimeResolver_ResolvePrimaryProvider(),
+    ChatDB.Thread_PurgeExpired(),
     debugLog("[SETTINGS] Reloaded settings globals and re-registered hotkeys")
 ))
 
