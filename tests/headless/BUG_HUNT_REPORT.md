@@ -154,17 +154,18 @@ How to run AHK safely:
 
 ## Current state
 
-- **20 verified, 0 fix in progress** (2026-08-03). Sweep #6 added 44 (fork drops
-  the per-thread font size and Advanced toggles), 45 ("Response Font" is not
-  applied to chat messages until Settings is opened), 46 (command "Stream
-  Response" + pasteMode replace/append silently produces no output), and 47
-  (per-thread system prompt / temperature edits are discarded on reload when an
-  assistant is active). Scenario count is enforced by
+- **24 verified, 0 fix in progress** (2026-08-03). Sweep #7 (chat tree
+  operations) added 48 (fork resets token/cost stats) and 49 (cancel edit
+  leaves removed attachments hidden-but-still-sent); sweep #8 (commands) added
+  50 (commands lose their system prompt after a settings save — bare
+  system-message filenames unresolvable) and 51 (vision gate rejects
+  images/screenshots for short-form model ids). Scenario count is enforced by
   `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-47 are `verified` and
-  ranked (26 highest; 47 inserted right after 26, 44 after 31, 45 after 38, 46
-  last). Next per the fix cycle: fix bug #26, then the rest in rank order, one
-  at a time, each with a flipped scenario + code-level regression test. Harness
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-51 are `verified` and
+  ranked (26 highest; 47 after 26, 44 after 31, 45 after 38, 46 last, and the
+  sweep #7/#8 entries appended as 49, 50, 48, 51 — 49/50 the highest of those).
+  Next per the fix cycle: fix bug #26, then the rest in rank order, one at a
+  time, each with a flipped scenario + code-level regression test. Harness
   cleanup is PID-targeted: use
   `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
@@ -776,6 +777,130 @@ and asserts the stream flag is added to the body for any pasteMode while the
 inline runner uses the non-streaming single-shot parse path (no SSEParser) â€”
 proving a replace/append + stream command sends an SSE-mode request it cannot
 read back.
+
+### 49. Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)
+
+**Scenario:** 49 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** in a chat with an attachment, click Edit on the message, click the
+attachment's Ã— (it hides), then click Cancel instead of Save/Branch.
+
+**Expected:** canceling an edit restores the attachment (or at least the removal
+is consistently applied or not — never half-applied).
+
+**Actual:** the attachment stays hidden in the UI while its DB row survives, so
+the next request still sends it to the API. `editMessage` sets
+`_editingMessageId` and starts `_removedAttachmentIds = []`; the attachment Ã—
+handler defers deletion to the next Save (`_removedAttachmentIds.push(attId)` +
+`wrapper.style.display = 'none'`), but the Cancel handler only removes the
+`.editing` class — it neither applies the deferred deletion nor restores the
+hidden wrapper, and it leaves `_editingMessageId` truthy, so subsequent Ã—
+clicks on any attachment also defer (hide) instead of deleting.
+
+**Evidence:** `webui/js/chat/chat-branching.js` `editMessage()` /
+`commitEdit()` and the cancel wiring (`bubble.classList.remove('editing')`
+only); `webui/js/chat/attachments/chat-attachments-setup.js`
+`setupMessageAttachmentDeleteDelegation()` defers when `_editingMessageId` is
+truthy.
+
+**Verification:** headless scenario 49 seeds a user message with an attachment,
+clicks Edit â†’ Ã— (wrapper hides, DB row still present) â†’ Cancel, and observes
+the wrapper stays hidden, the DB row is still there, and `_editingMessageId`
+remains set.
+
+### 50. Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path
+
+**Scenario:** 50 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** open Settings â†’ Commands â†’ select a command whose System Message
+uses an app-default file (e.g. "rephrase-in-context.txt") â†’ click Save without
+changing anything â†’ trigger that command with a selection.
+
+**Expected:** the command keeps reading its system-message file.
+
+**Actual:** the command fails to read the file and runs without its system
+prompt. The system-message modal stores the select's BARE filename (e.g.
+"rephrase-in-context.txt"), but the command path
+(`CommandMenu._resolveSystemMessage`) resolves relative file paths only against
+`A_ScriptDir` — it never searches `system-messages\` or the AppData folder the
+way the assistant path does. `repo\rephrase-in-context.txt` does not exist
+(the file is `repo\system-messages\rephrase-in-context.txt`), so `FileRead`
+throws, a MsgBox appears, and the inline fallback (empty for stock commands)
+is used — the request fires without the system prompt.
+
+**Evidence:** `app/menu/CommandMenu.ahk` `_resolveSystemMessage()` (only
+`filePath := A_ScriptDir "\\" filePath`); `chat/db/AssistantRepo.ahk`
+`_resolveSystemMessage()` searches `A_ScriptDir\system-messages\`,
+`A_AppData\...\system-messages\`, etc.; `webui/js/settings/sections/
+sysmsg-modal.js` saves `fileSelect.value` (bare name).
+
+**Verification:** headless scenario 50 (noApp) statically proves the mismatch:
+the modal saves bare filenames, the command path has no system-messages
+search while the assistant path does, and every app-default file exists only
+under `system-messages/` — so after a settings save the command trigger
+cannot find its file.
+
+### 48. Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)
+
+**Scenario:** 48 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** open a chat with some token/cost history (token bar shows context
+used and a running cost), click Fork on a message, and look at the forked
+chat's token bar.
+
+**Expected:** the fork reflects the copied conversation — at least the active
+path's context tokens, and ideally the totals.
+
+**Actual:** the fork's token bar resets to 0 / $0.00. `TreeRepo.ForkThread`
+copies message rows but neither the thread's `cumulative_*` counters nor the
+leaf's `active_path_tokens`, and it never calls `_RecomputeActivePath` on the
+new thread — so `GetThreadStats` reads zeros.
+
+**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread()`/`_InsertForkMessage()` —
+no `active_path_tokens` column in the INSERT and no `_RecomputeActivePath`
+call; `ThreadRepo.Create()` starts cumulative counters at 0.
+
+**Verification:** headless scenario 48 seeds a thread with token stats
+(`active_path_tokens` + cumulative counters), confirms the source token bar
+shows them, forks from the UI, and observes the fork's token bar shows $0.00
+and the new thread's leaf `active_path_tokens` is 0.
+
+### 51. Vision gate rejects images/screenshots for short-form model ids (no provider prefix)
+
+**Scenario:** 51 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** use a command or thread whose model id is written without the
+provider prefix (e.g. `gpt-4.1-mini` — as stock commands do) and attach an
+image or enable the screenshot command.
+
+**Expected:** vision-capable models accept images regardless of whether the id
+has the provider prefix (the prefix-less form resolves to the same model).
+
+**Actual:** the request is refused with "Model does not support vision".
+`AttachmentUtils.HasVision` only checks `models.Has(modelName)`, and the
+models map is keyed by full `provider/model` ids — a short id never matches, so
+HasVision returns false even for vision-capable models. `ChatRequestBuilder.
+_ProcessAttachmentsForLastUser` and `processInitialRequest`'s screenshot gate
+both pass the raw (possibly short) model name.
+
+**Evidence:** `shared/AttachmentUtils.ahk` `HasVision()` (no short-name
+fallback, unlike `CostCalculator`/`TreeRepo._LookupPricing`);
+`chat/ChatRequestBuilder.ahk` vision gate; `app/RequestProcessor.ahk`
+`AttachmentUtils.HasVision(APIModelsArr[1])`; `DefaultModels.ahk` keys every
+entry as `"provider/model"`.
+
+**Verification:** headless scenario 51 (noApp) statically proves the gate has
+no prefix fallback and the raw short id is passed by both chat and command
+paths, while vision-capable entries (e.g. `openai/gpt-4.1-mini`, `vision:
+true`) exist only under full keys.
 
 ---
 

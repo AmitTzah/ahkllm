@@ -1620,6 +1620,171 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 48,
+  name: 'Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-stats-48', title: 'Stats Source', active_leaf_id: 'm-stats-48b' }],
+    messages: [
+      { id: 'm-stats-48a', thread_id: 't-stats-48', role: 'user', content: 'hello', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-stats-48b', thread_id: 't-stats-48', role: 'assistant', content: 'hi', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-stats-48a', token_count: 20, active_path_tokens: 40 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    // Give the source thread real cumulative usage stats (the fixtures builder
+    // defaults them to 0), matching what MessageRepo.Insert accumulates.
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("UPDATE chat_threads SET cumulative_input_tokens=10, cumulative_output_tokens=20, cumulative_cached_tokens=2, cumulative_cost=0.5, cumulative_input_cost=0.3, cumulative_cached_input_cost=0.01, cumulative_output_cost=0.2 WHERE id='t-stats-48'");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    const sourceBar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(sourceBar).indexOf('$0.50') < 0)
+      throw new Error('source token bar missing $0.50 (setup): ' + JSON.stringify(sourceBar));
+    // Fork the chat from the user message.
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-stats-48"', 15000, 300, 'fork created');
+    const newId = await cdp.eval('window.activeThreadId');
+    await sleep(800);
+    const forkBar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    const forkRow = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cost, active_leaf_id FROM chat_threads WHERE id = ?', [newId])[0] || {};
+    const leafStats = forkRow.active_leaf_id
+      ? seed.query(dbPath, 'SELECT active_path_tokens FROM messages WHERE id = ?', [forkRow.active_leaf_id])[0] || {}
+      : {};
+    // BUG: TreeRepo.ForkThread copies messages but neither the thread's
+    // cumulative_* counters nor the leaf's active_path_tokens (and never calls
+    // _RecomputeActivePath), so the fork's token bar and cost reset to zero.
+    if (String(forkBar).indexOf('$0.50') >= 0)
+      throw new Error('fork kept the cost stats (bug not reproduced): ' + JSON.stringify(forkBar));
+    return 'source token bar: ' + JSON.stringify(sourceBar) + '; fork token bar: ' + JSON.stringify(forkBar) +
+      ' (cumulative_cost=' + forkRow.cumulative_cost + ', leaf active_path_tokens=' + leafStats.active_path_tokens + ')';
+  }
+});
+
+scenarios.push({
+  id: 49,
+  name: 'Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-att-49', title: 'Attachment Thread', active_leaf_id: 'm-att-49' }],
+    messages: [{ id: 'm-att-49', thread_id: 't-att-49', role: 'user', content: 'with file' }]
+  },
+  async body({ cdp, dbPath }) {
+    // Seed an attachment row (the fixtures builder has no attachments support).
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES ('att-49', 'm-att-49', 'text_file', 'attachments/att-49.txt', 'text/plain', 'notes.txt', 12, 'SGVsbG8gd29ybGQ=')");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(700);
+    await cdp.waitFor('document.querySelector(".msg-attachment-file .msg-attachment-delete") !== null', 10000, 300, 'attachment delete btn');
+    // Open the editor and remove the attachment (deferred deletion).
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Edit"]');
+    await sleep(200);
+    await cdp.click('#chat-messages .msg .msg-attachment-delete');
+    await sleep(200);
+    const hiddenDuringEdit = await cdp.eval(`(() => {
+      const w = document.querySelector('.msg-attachment-file');
+      return w ? w.style.display : 'no-wrapper';
+    })()`);
+    const rowDuring = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE id='att-49'")[0].c;
+    // Cancel the edit.
+    await cdp.click('#chat-messages .msg .cancel-edit');
+    await sleep(200);
+    const hiddenAfterCancel = await cdp.eval(`(() => {
+      const w = document.querySelector('.msg-attachment-file');
+      return w ? w.style.display : 'no-wrapper';
+    })()`);
+    const editingId = await cdp.eval('typeof _editingMessageId !== "undefined" ? _editingMessageId : "undef"');
+    const rowAfter = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE id='att-49'")[0].c;
+    // BUG: cancel neither applies nor rolls back the deferred removal - the
+    // wrapper stays hidden while the DB row survives, and _editingMessageId is
+    // left truthy so later attachment clicks also defer instead of deleting.
+    if (hiddenAfterCancel !== 'none' || rowAfter === 0)
+      throw new Error('cancel restored/removed the attachment (bug not reproduced): hidden=' + hiddenAfterCancel + ' rows=' + rowAfter);
+    return 'Edit -> remove attachment -> Cancel: wrapper display=' + hiddenDuringEdit + ' -> ' + hiddenAfterCancel +
+      ', DB rows during=' + rowDuring + ' after=' + rowAfter + ', stale _editingMessageId=' + editingId +
+      ' (attachment stays hidden but is still in the DB and will be sent)';
+  }
+});
+
+scenarios.push({
+  id: 50,
+  name: 'Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path (static check)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const modal = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'sysmsg-modal.js'), 'utf8');
+    const cmdMenu = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'menu', 'CommandMenu.ahk'), 'utf8');
+    const asstRepo = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'db', 'AssistantRepo.ahk'), 'utf8');
+    // The settings modal saves the select's value - for app-default files that
+    // is the BARE filename ("refine.txt"), not the "system-messages/..." path.
+    const modalSavesValue = /sysMsgFile = fileSelect \? fileSelect\.value : ''/.test(modal);
+    // The command path resolves relative files only against A_ScriptDir...
+    const commandResolvesAgainstScriptDir = /if !InStr\(filePath, ":"\) && !InStr\(filePath, "\\\\"\)[\s\S]*?filePath := A_ScriptDir "\\\\" filePath/.test(cmdMenu);
+    // ...and has no system-messages/ or AppData search (unlike the assistant path).
+    const commandSearchesSysMsgDir = /A_ScriptDir[^\n]*system-messages|A_AppData[^\n]*system-messages/.test(cmdMenu);
+    const assistantSearches = /A_ScriptDir "\\system-messages\\" filePath/.test(asstRepo);
+    // The stock app-default files live ONLY under system-messages/.
+    const sysDir = path.join(launcher.REPO_ROOT, 'system-messages');
+    const bareFiles = fs.readdirSync(sysDir).filter((f) => f.endsWith('.txt'));
+    const missingAtRoot = bareFiles.filter((f) => !fs.existsSync(path.join(launcher.REPO_ROOT, f)));
+    // BUG: after any settings save of a command that uses an app-default file,
+    // systemMessageFile becomes the bare name; at trigger time the command path
+    // looks for repo\refine.txt (missing) instead of repo\system-messages\refine.txt,
+    // so FileRead throws -> MsgBox + empty inline fallback -> the command runs
+    // without its system prompt.
+    if (!modalSavesValue || !commandResolvesAgainstScriptDir || commandSearchesSysMsgDir || !assistantSearches || missingAtRoot.length === 0)
+      throw new Error('bug not reproduced: modalSavesValue=' + modalSavesValue +
+        ' commandResolvesAgainstScriptDir=' + commandResolvesAgainstScriptDir +
+        ' commandSearchesSysMsgDir=' + commandSearchesSysMsgDir +
+        ' assistantSearches=' + assistantSearches + ' missingAtRoot=' + missingAtRoot.length);
+    return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); command _resolveSystemMessage only prepends A_ScriptDir (no system-messages search) while the assistant path searches system-messages/; e.g. ' +
+      bareFiles[0] + ' exists only under system-messages/ -> commands lose their system prompt after a settings save';
+  }
+});
+
+scenarios.push({
+  id: 51,
+  name: 'Vision gate rejects images/screenshots for short-form model ids (no provider prefix) - static check',
+  mode: null,
+  noApp: true,
+  async body() {
+    const au = fs.readFileSync(path.join(launcher.REPO_ROOT, 'shared', 'AttachmentUtils.ahk'), 'utf8');
+    const crb = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatRequestBuilder.ahk'), 'utf8');
+    const rp = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
+    const dm = fs.readFileSync(path.join(launcher.REPO_ROOT, 'DefaultModels.ahk'), 'utf8');
+    // HasVision only consults models.Has(modelName) - no short-name fallback
+    // (unlike CostCalculator / TreeRepo._LookupPricing which strip the prefix).
+    const noShortFormFallback = /static HasVision\(modelName\) \{[\s\S]*?if !IsSet\(models\) \|\| !models\.Has\(modelName\)[\s\S]*?return false/.test(au);
+    // Both the chat attachment gate and the command screenshot gate pass the
+    // raw model name straight through.
+    const chatGateUsesRawName = /_ProcessAttachmentsForLastUser\(&apiMessages, modelName\)[\s\S]*?AttachmentUtils\.HasVision\(modelName\)/.test(crb);
+    const commandGateUsesRawName = /AttachmentUtils\.HasVision\(APIModelsArr\[1\]\)/.test(rp);
+    // A vision-capable model exists, keyed ONLY by its full "provider/model" id.
+    const m = dm.match(/"openai\/gpt-4\.1-mini", \{([\s\S]*?)\n    \},/);
+    const fullEntryHasVision = !!m && /vision: true/.test(m[1]);
+    const shortKeyExists = /^\s*"gpt-4\.1-mini", \{/m.test(dm);
+    if (!noShortFormFallback || !chatGateUsesRawName || !commandGateUsesRawName || !fullEntryHasVision || shortKeyExists)
+      throw new Error('bug not reproduced: noShortFormFallback=' + noShortFormFallback +
+        ' chatGateUsesRawName=' + chatGateUsesRawName + ' commandGateUsesRawName=' + commandGateUsesRawName +
+        ' fullEntryHasVision=' + fullEntryHasVision + ' shortKeyExists=' + shortKeyExists);
+    return 'AttachmentUtils.HasVision returns false for any id missing from the models map; openai/gpt-4.1-mini is vision:true but only keyed with the provider prefix, while the chat attachment gate and command screenshot gate pass raw short ids (e.g. "gpt-4.1-mini") - so images/screenshots are wrongly refused for short-form ids';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {
