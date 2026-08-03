@@ -161,3 +161,21 @@ describe('_makeModelClickHandler — keeps reasoning, clears assistant overrides
         assert.strictEqual(ctx.window._currentSettings.temperature, '');
     });
 });
+
+describe('_sendAllSettings', () => {
+    it('includes the right-rail advanced toggle flags in the payload', () => {
+        const ctx = loadSettingsModule();
+        const posted = [];
+        ctx.window.chrome.webview.postMessage = (m) => posted.push(m);
+        ctx.window._currentSettings = {
+            model: 'deepseek/deepseek-v4-flash', systemMessage: '', reasoning: '', temperature: '',
+            codeExecution: false, webSearch: true
+        };
+        ctx._sendAllSettings();
+        assert.strictEqual(posted.length, 1);
+        const payload = JSON.parse(posted[0]);
+        assert.strictEqual(payload.action, 'updateModelSettings');
+        assert.strictEqual(payload.codeExecution, false);
+        assert.strictEqual(payload.webSearch, true);
+    });
+});

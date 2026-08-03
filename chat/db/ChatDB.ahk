@@ -53,6 +53,9 @@ class ChatDB {
     static _CreateSchema() {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL);")
         try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN font_size INTEGER DEFAULT 17;")
+        ; Right-rail Advanced toggles (Code Execution / Web Search — persisted
+        ; stubs), stored as a JSON object, e.g. {"codeExecution":true,...}
+        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN advanced_toggles TEXT DEFAULT '';")
         ; messages.active_path_tokens: total context tokens from root to this message (inclusive).
         ; For assistants: API prompt_tokens + token_count (ground truth at insert time).
         ; For user/system: parent.active_path_tokens + token_count (prefix sum).

@@ -1,4 +1,4 @@
-PASS | #19 | Dashboard "All Time" chart caps at 365 days while summary sums all rows | All Time: summary shows $6.00 (includes 400-day-old row) and chart spans the full history — 401 labels, first = 2025-06-28 | 2.8s
+PASS | #20 | Right-rail Advanced toggles (Code Execution / Web Search) do nothing | toggle posts updateModelSettings with codeExecution=true and the switch stays on (on=true) | 3.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

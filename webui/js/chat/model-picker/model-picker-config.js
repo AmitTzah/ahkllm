@@ -20,8 +20,13 @@ function populateCurrentSettings(settings) {
     fontSize: settings.fontSize || '17',
     assistantName: settings.assistantName || '',
     assistantBaseModel: settings.assistantBaseModel || '',
-    assistantDescription: settings.assistantDescription || ''
+    assistantDescription: settings.assistantDescription || '',
+    codeExecution: !!settings.codeExecution,
+    webSearch: !!settings.webSearch
   };
+
+  // Sync the right-rail Advanced toggle switches with the current settings
+  _syncAdvancedToggles();
 
   // Apply per-chat font size
   if (settings.fontSize) {
@@ -109,10 +114,22 @@ function updateDropdownLabel(data) {
   }
 }
 
+// The right-rail Advanced switches map 1:1 (by row order) to request flags.
+var _advancedToggleKeys = ['codeExecution', 'webSearch'];
+
+function _syncAdvancedToggles() {
+  var switches = document.querySelectorAll('#advancedWrap .toggle-row .switch');
+  for (var i = 0; i < switches.length && i < _advancedToggleKeys.length; i++) {
+    var on = window._currentSettings && window._currentSettings[_advancedToggleKeys[i]];
+    if (on) switches[i].classList.add('on');
+    else switches[i].classList.remove('on');
+  }
+}
+
 // Wire right panel controls
 if (typeof document !== 'undefined' && document.addEventListener) {
 document.addEventListener('DOMContentLoaded', function() {
-  window._currentSettings = { model: '', systemMessage: '', reasoning: '', temperature: '' };
+  window._currentSettings = { model: '', systemMessage: '', reasoning: '', temperature: '', codeExecution: false, webSearch: false };
 
   // Temperature slider — auto-enable on interaction, reset to default
   var tempSlider = document.getElementById('tempSlider');
@@ -215,6 +232,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('#railRight .toggle-row .switch').forEach(function(sw) {
     sw.addEventListener('click', function() {
       sw.classList.toggle('on');
+      if (!window._currentSettings) window._currentSettings = {};
+      // Map the clicked switch back to its request flag via the row's label.
+      var row = sw.closest('.toggle-row');
+      var labelEl = row ? row.querySelector('.lbl') : null;
+      var label = labelEl ? (labelEl.textContent || '').trim() : '';
+      var key = label === 'Code Execution' ? 'codeExecution' :
+                label === 'Web Search' ? 'webSearch' : '';
+      if (key) window._currentSettings[key] = sw.classList.contains('on');
       _sendAllSettings();
     });
   });

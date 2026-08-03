@@ -88,6 +88,26 @@ describe('populateCurrentSettings', () => {
         assert.strictEqual(ctx.window._currentSettings.assistantName, 'Violet');
         assert.strictEqual(ctx.window._currentSettings.assistantDescription, 'A friendly bot');
     });
+
+    it('stores the advanced toggles and syncs the right-rail switches', () => {
+        const ctx = loadModule();
+        const added = [], removed = [];
+        const switches = [0, 1].map(() => ({
+            classList: { add: (c) => added.push(c), remove: (c) => removed.push(c), contains: () => false }
+        }));
+        ctx.document.querySelectorAll = () => switches;
+
+        ctx.populateCurrentSettings({
+            model: 'deepseek/deepseek-v4-flash', systemMessage: '', reasoning: '', temperature: '',
+            codeExecution: false, webSearch: true
+        });
+
+        assert.strictEqual(ctx.window._currentSettings.codeExecution, false);
+        assert.strictEqual(ctx.window._currentSettings.webSearch, true);
+        // Row order: Code Execution / Web Search
+        assert.strictEqual(added.length, 1, 'one switch should turn on');
+        assert.ok(removed.includes('on'), 'off toggle should have its class removed');
+    });
 });
 
 describe('updateDropdownLabel', () => {
@@ -119,6 +139,7 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
 
         const makeSwitch = () => ({
             classList: { toggle: () => {}, contains: () => false },
+            closest: () => null,
             addEventListener: (ev, fn) => { handlers.push(fn); }
         });
 

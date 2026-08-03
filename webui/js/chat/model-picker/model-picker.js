@@ -18,7 +18,9 @@ function _sendAllSettings() {
       model: modelToSend,
       systemMessage: s.systemMessage || '',
       reasoning: s.reasoning || '',
-      temperature: s.temperature || ''
+      temperature: s.temperature || '',
+      codeExecution: !!s.codeExecution,
+      webSearch: !!s.webSearch
     }));
   }, 300);
 }

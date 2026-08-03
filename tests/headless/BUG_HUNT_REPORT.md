@@ -141,12 +141,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
-  19 regression/refuted checks).
-- **Where we left off:** bug #1 (Dashboard "All Time" caps the chart at 365 days, scenario
-  19) — fix applied: scenario 19 flipped to expect the fixed behavior and PASSES (401
-  labels = full history incl. the 400-day-old row), AHK 426/426 + JS 459/459 green. Next:
-  user manual verification, then `awaiting user commit`.
+- **2 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
+  21 regression/refuted checks).
+- **Where we left off:** bug #1 (Right-panel Advanced toggles do nothing, scenario 20) —
+  fix applied (reworked): Structured Outputs was removed entirely; Code Execution / Web
+  Search are now persisted stubs — their state flows through
+  updateModelSettings/requestParams/thread DB and round-trips to the UI, but no
+  `response_format`/`tools` fields are sent. Scenario 20 PASSES, AHK 428/428 + JS 461/461
+  green. Next: user manual verification, then `awaiting user commit`.
 
 ---
 
@@ -201,33 +203,29 @@ one at a time, in rank order.
 
 ### 1. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
-**Scenario:** 19 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** have usage older than a year; open Dashboard → All Time.
-
-**Expected:** the chart covers the full history.
-
-**Actual:** summary sums every row, but the chart renders only 365 labels.
-
-**Verification:** headless — summary $6.00 incl. a 400-day-old row; chart 365 labels.
-
-### 2. Right-panel Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing
+### 1. Right-panel Advanced toggles (Code Execution / Web Search) do nothing
 
 **Scenario:** 20 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
-**Repro:** toggle them and send.
+**Repro:** toggle them, switch threads, reload.
 
-**Expected:** the request is affected.
+**Expected:** the remaining toggles are placeholders (stubs) — their state persists and
+restores, but the API request is never altered (Code Execution / Web Search are future
+features). Structured Outputs was removed from the Advanced tab entirely.
 
-**Actual:** only a CSS class toggles; the same `updateModelSettings` payload is posted.
+**Actual:** before this change only a CSS class toggled and nothing was stored. Now the
+state flows through `updateModelSettings` → requestParams → per-thread DB and back to the
+switches on reload, but no request fields are sent. `response_format: json_object` was
+attempted for Structured Outputs first but rejected (OpenAI requires the prompt to contain
+"json", and it isn't a chat-app fit), so that toggle and its injection were removed.
 
-**Verification:** headless — payload unchanged; only visual state changed.
+**Verification:** headless scenario 20 — toggling Code Execution posts `updateModelSettings`
+with `codeExecution: true` and the switch stays on; AHK test asserts the request body never
+gains `response_format` or `tools`.
 
-### 3. Reasoning-only responses get no action buttons until reload
+### 2. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
@@ -248,6 +246,7 @@ one at a time, in rank order.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-02 — "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" — FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.
 - 2026-08-02 — "Custom icon picked outside the repo never applies to the chat window" — FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
 - 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
 - 2026-08-02 — "Chat request failure with no output file shows no error and leaves the UI stuck" — FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.

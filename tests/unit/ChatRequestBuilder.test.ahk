@@ -32,7 +32,7 @@ class ChatRequestBuilderTest {
 
     ; Helper: create a thread with a user message, configure requestParams,
     ; call buildRequest, return the parsed request JSON.
-    _buildRequest(providerModel, reasoningOverride := "") {
+    _buildRequest(providerModel, reasoningOverride := "", toggleFlags := unset) {
         global activeThreadId, requestParams
 
         ; Ensure API keys are set for the test (buildRequest validates).
@@ -74,6 +74,10 @@ class ChatRequestBuilderTest {
         )
         if reasoningOverride != ""
             requestParams["reasoningOverride"] := reasoningOverride
+        if IsSet(toggleFlags) {
+            for toggleKey, toggleValue in toggleFlags
+                requestParams[toggleKey] := toggleValue
+        }
 
         result := buildRequest()
 
@@ -90,6 +94,27 @@ class ChatRequestBuilderTest {
             try FileDelete(requestParams["cURLErrorFile"])
 
         return result
+    }
+
+    ; --------------------------------------------------------
+    ; Right-rail Advanced toggles are STUBS: they persist their state but
+    ; must NEVER alter the API request body. response_format/tools would be
+    ; wrong here (the features aren't implemented yet) — keep the body clean.
+    ; --------------------------------------------------------
+    AdvancedToggles_AreStubs_DoNotTouchRequestBody() {
+        result := this._buildRequest("deepseek/deepseek-v4-flash", "", Map(
+            "codeExecution", true,
+            "webSearch", true
+        ))
+
+        if result = ""
+            throw Error("buildRequest returned empty")
+
+        parsed := jsongo.Parse(result)
+        if parsed.Has("response_format")
+            throw Error("stub toggles must not add response_format to the request")
+        if parsed.Has("tools")
+            throw Error("stub toggles must not add tools to the request")
     }
 
     ; --------------------------------------------------------

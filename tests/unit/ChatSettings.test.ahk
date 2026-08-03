@@ -123,6 +123,46 @@ class ChatSettingsTest {
         this._closeDb()
     }
 
+    ; Regression: right-rail Advanced toggles (Code Execution / Web Search)
+    ; used to do nothing — only a CSS class changed. They must be stored,
+    ; round-tripped, and persisted with the thread as stubs.
+    test_advancedToggles_storedAndPersisted() {
+        global requestParams, activeThreadId, assistants
+
+        this._openDb()
+
+        assistants := [{id: "asst-1", name: "Test Asst", baseModel: "deepseek/test", systemMessage: "Hello", reasoning: "", temperature: "", isDefault: true}]
+        if requestParams.Has("activeAssistantId")
+            requestParams.Delete("activeAssistantId")
+        requestParams["singleAPIModelName"] := "deepseek/deepseek-v4-flash"
+
+        ChatDB.Thread_Create("Toggle Thread")
+        threads := ChatDB.Thread_List()
+        activeThreadId := threads[threads.Length].id
+
+        parsed := jsongo.Parse('{"model":"deepseek/deepseek-v4-flash","systemMessage":"","reasoning":"","temperature":"","codeExecution":false,"webSearch":true}')
+        handleModelSettingsUpdate(parsed)
+
+        ; In-memory flags
+        if requestParams["codeExecution"] != false
+            throw Error("codeExecution should be false in requestParams")
+        if requestParams["webSearch"] != true
+            throw Error("webSearch was not stored in requestParams")
+
+        ; Round-trip through the settings object
+        obj := _CurrentSettingsObject()
+        if obj.codeExecution != false || obj.webSearch != true
+            throw Error("_CurrentSettingsObject does not carry the advanced toggles")
+
+        ; Persisted to the thread and restored by Thread_GetSettings
+        saved := ChatDB.Thread_GetSettings(activeThreadId)
+        if saved.codeExecution != false || saved.webSearch != true
+            throw Error("advanced toggles did not persist to the thread: " jsongo.Stringify(saved))
+
+        activeThreadId := ""
+        this._closeDb()
+    }
+
     test_applyNewChatDefault_appDefault_keepsChatDefaultModel() {
         global newChatStartsWith, requestParams, assistants, appDefaultModel
 

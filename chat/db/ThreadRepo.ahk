@@ -7,6 +7,13 @@
 
 class ThreadRepo {
 
+    ; Normalize a JSON boolean / 1 / 0 / "true" / "false" value to a real boolean.
+    static _ToBool(value) {
+        if value = 1 || value = "1" || value = "true" || value = "on" || value = "yes"
+            return true
+        return false
+    }
+
     ; Create a new thread. Returns thread id string.
     static Create(title := "New Chat") {
         id := ChatDB._UUID()
@@ -15,7 +22,8 @@ class ThreadRepo {
         return id
     }
 
-    ; Save per-thread settings (model, assistant, system, reasoning, temperature, fontSize).
+    ; Save per-thread settings (model, assistant, system, reasoning, temperature,
+    ; fontSize, and the right-rail Advanced toggles).
     static UpdateSettings(threadId, settings) {
         safeId := SQLite.Escape(threadId)
         parts := []
@@ -31,6 +39,13 @@ class ThreadRepo {
             parts.Push("temperature_override = " (settings.temperatureOverride != "" ? settings.temperatureOverride : "NULL"))
         if settings.HasOwnProp("fontSize")
             parts.Push("font_size = " (settings.fontSize ? settings.fontSize : "17"))
+        if settings.HasOwnProp("codeExecution") || settings.HasOwnProp("webSearch") {
+            togglesJson := jsongo.Stringify({
+                codeExecution: settings.HasOwnProp("codeExecution") ? ThreadRepo._ToBool(settings.codeExecution) : false,
+                webSearch: settings.HasOwnProp("webSearch") ? ThreadRepo._ToBool(settings.webSearch) : false
+            })
+            parts.Push("advanced_toggles = '" SQLite.Escape(togglesJson) "'")
+        }
         if parts.Length {
             setClause := ""
             for i, p in parts
@@ -42,15 +57,27 @@ class ThreadRepo {
     ; Get per-thread settings.
     static GetSettings(threadId) {
         safeId := SQLite.Escape(threadId)
-        table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size FROM chat_threads WHERE id='" safeId "';")
+        table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, advanced_toggles FROM chat_threads WHERE id='" safeId "';")
         if table.count {
             row := table[1]
+            codeExecution := false, webSearch := false
+            if row.advanced_toggles {
+                try {
+                    toggles := jsongo.Parse(row.advanced_toggles)
+                    codeExecution := toggles.Has("codeExecution") ? ThreadRepo._ToBool(toggles["codeExecution"]) : false
+                    webSearch := toggles.Has("webSearch") ? ThreadRepo._ToBool(toggles["webSearch"]) : false
+                } catch {
+                    debugLog("[THREAD] Failed to parse advanced_toggles for " threadId)
+                }
+            }
             return {
                 assistantId: row.assistant_id,
                 modelOverride: row.model_override,
                 systemOverride: row.system_override,
                 reasoningOverride: row.reasoning_override,
                 temperatureOverride: row.temperature_override,
+                codeExecution: codeExecution,
+                webSearch: webSearch,
                 fontSize: row.font_size ? row.font_size : 17
             }
         }

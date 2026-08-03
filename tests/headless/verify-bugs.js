@@ -718,6 +718,7 @@ scenarios.push({
 scenarios.push({
   id: 19,
   name: 'Dashboard "All Time" chart caps at 365 days while summary sums all rows',
+  regression: true, // FIXED bug kept as a regression check (All Time must keep spanning the full history)
   mode: null,
   settings: {},
   fixtures: {
@@ -743,31 +744,26 @@ scenarios.push({
 
 scenarios.push({
   id: 20,
-  name: 'Right-rail Advanced toggles (Structured Outputs / Code Execution / Web Search) do nothing',
+  name: 'Right-rail Advanced toggles (Code Execution / Web Search) do nothing',
   mode: null,
   settings: {},
   async body({ cdp }) {
     await showChat();
     await cdp.click('#advancedToggle');
     await cdp.waitFor('document.getElementById("advancedWrap").classList.contains("open")', 5000, 200, 'advanced open');
-    const before = await cdp.postedMessages();
     await cdp.clearPosted();
-    await cdp.click('#advancedWrap .toggle-row .switch');
+    await cdp.click('#advancedWrap .toggle-row .switch'); // first row = Code Execution
     await sleep(900); // debounce 300ms + IPC round trip
     const after = await cdp.postedMessages();
     const nonSettings = after.filter((m) => !m.includes('"updateModelSettings"'));
     if (nonSettings.length > 0) throw new Error('toggle triggered unexpected actions: ' + JSON.stringify(nonSettings));
-    const parse = (m) => { try { return JSON.parse(m).data || {}; } catch { return {}; } };
-    const lastBefore = before.filter((m) => m.includes('"updateModelSettings"')).pop();
     const lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop();
-    if (lastBefore && lastAfter) {
-      const a = parse(lastBefore), b = parse(lastAfter);
-      for (const k of ['model', 'systemMessage', 'reasoning', 'temperature']) {
-        if ((a[k] || '') !== (b[k] || '')) throw new Error('payload changed on ' + k);
-      }
-    }
+    if (!lastAfter) throw new Error('no updateModelSettings posted after toggling a switch');
+    const payload = JSON.parse(lastAfter);
+    if (payload.codeExecution !== true) throw new Error('codeExecution not true in updateModelSettings payload: ' + lastAfter);
     const toggled = await cdp.eval('document.querySelector("#advancedWrap .toggle-row .switch").classList.contains("on")');
-    return 'toggle visual state changed (on=' + toggled + ') but only updateModelSettings (unchanged payload) was posted';
+    if (!toggled) throw new Error('Code Execution switch did not stay visually on');
+    return 'toggle posts updateModelSettings with codeExecution=true and the switch stays on (on=' + toggled + ')';
   }
 });
 

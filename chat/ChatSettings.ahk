@@ -18,6 +18,8 @@ _ClearRequestOverrides() {
     requestParams["systemOverride"] := ""
     requestParams["reasoningOverride"] := ""
     requestParams["temperatureOverride"] := ""
+    requestParams["codeExecution"] := false
+    requestParams["webSearch"] := false
     if requestParams.Has("activeAssistantId")
         requestParams.Delete("activeAssistantId")
     if requestParams.Has("fontSize")
@@ -44,6 +46,9 @@ _restoreThreadSettings(threadId) {
         requestParams["temperatureOverride"] := settings.temperatureOverride
     if settings.fontSize
         requestParams["fontSize"] := settings.fontSize
+    ; Right-rail Advanced toggles (Code Execution / Web Search) — persisted stubs
+    requestParams["codeExecution"] := _BoolFrom(settings.HasOwnProp("codeExecution") ? settings.codeExecution : false)
+    requestParams["webSearch"] := _BoolFrom(settings.HasOwnProp("webSearch") ? settings.webSearch : false)
     if settings.assistantId {
         requestParams["activeAssistantId"] := settings.assistantId
         asst := AssistantRepo.GetFromSettings(settings.assistantId)
@@ -56,6 +61,13 @@ _restoreThreadSettings(threadId) {
     }
 }
 
+; Normalize a JSON boolean / 1 / 0 / "true" / "false" value to a real boolean.
+_BoolFrom(value) {
+    if value = 1 || value = "1" || value = "true" || value = "on" || value = "yes"
+        return true
+    return false
+}
+
 ; Build the settings object from current requestParams state.
 _CurrentSettingsObject() {
     global responseWindowFontSize
@@ -66,6 +78,8 @@ _CurrentSettingsObject() {
         systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
         reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
         temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
+        codeExecution: requestParams.Has("codeExecution") ? requestParams["codeExecution"] : false,
+        webSearch: requestParams.Has("webSearch") ? requestParams["webSearch"] : false,
         fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
     }
 }
@@ -177,6 +191,8 @@ handleModelSettingsUpdate(parsed) {
     systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
     temperature := parsed.Get("temperature", "")
+    codeExecution := _BoolFrom(parsed.Get("codeExecution", false))
+    webSearch := _BoolFrom(parsed.Get("webSearch", false))
 
     ; Only clear assistant when user explicitly changes the model (non-empty).
     ; When model is empty, the user is adjusting side settings (reasoning, temperature, etc.)
@@ -193,6 +209,8 @@ handleModelSettingsUpdate(parsed) {
     requestParams["systemOverride"] := systemMessage
     requestParams["reasoningOverride"] := reasoning
     requestParams["temperatureOverride"] := temperature
+    requestParams["codeExecution"] := codeExecution
+    requestParams["webSearch"] := webSearch
 
     ; Persist to DB
     if activeThreadId {
@@ -214,6 +232,8 @@ postCurrentSettingsToWebView() {
     temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
     defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
     fontSize := requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
+    codeExecution := requestParams.Has("codeExecution") ? requestParams["codeExecution"] : false
+    webSearch := requestParams.Has("webSearch") ? requestParams["webSearch"] : false
 
     ; Include assistant metadata when active
     assistantName := ""
@@ -246,6 +266,8 @@ postCurrentSettingsToWebView() {
         systemMessage: systemMessage,
         reasoning: reasoning,
         temperature: temperature,
+        codeExecution: codeExecution,
+        webSearch: webSearch,
         fontSize: fontSize,
         assistantName: assistantName,
         assistantBaseModel: assistantBaseModel,
