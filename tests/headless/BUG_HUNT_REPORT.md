@@ -154,15 +154,20 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 fix in progress** (2026-08-03). 23/23 regression/refuted checks
-  still pass. Full-app sweep added three verified bugs: 26 + 27 (settings tab) and
-  29 (blank cached-input price). Suspect 28 was REFUTED (Escape cancels sidebar
-  renames correctly) and kept as a regression check.
-- **Where we left off:** bugs 26, 27, 29 are `verified` and ranked (26 highest).
-  Next per the fix cycle: fix bug #26, then #27, then #29 - one at a time, each
-  with a flipped scenario + code-level regression test. Harness cleanup is
-  PID-targeted: use `node tests/headless/verify-bugs.js --cleanup` after aborted
-  runs and NEVER blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
+- **11 verified, 0 fix in progress** (2026-08-03). Sweeps #2-#4 added 35
+  (temperature 0 override dropped on thread reload), 36 (command
+  temperature/reasoning dropped when the model equals the app default), 37
+  (tray menu item changes need a restart), and 38 (chat window title stays stale
+  after rename + thread switch). Suspect 32 (composer Tools dropdown switches)
+  was REFUTED - user-confirmed intentional stubs for a future feature; its
+  scenario was removed. Scenario count is enforced by
+  `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-38 are `verified` and ranked
+  (26 highest, 30+ appended after 29). Next per the fix cycle: fix bug #26, then
+  the rest in rank order, one at a time, each with a flipped scenario +
+  code-level regression test. Harness cleanup is PID-targeted: use
+  `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
+  blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
 ---
 
@@ -304,6 +309,212 @@ when the saved entry lacks it).
 token costs for a model missing `cachedInput` (control = 1.0 fallback works) and for
 a model with `cachedInput: ""` (throws "Expected a Number but got an empty string").
 
+### 30. Deleting a message confirms "data is preserved" but hard-deletes it
+
+**Scenario:** 30 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** in a chat, click the trash icon on any message bubble; read the
+confirmation; click Delete.
+
+**Expected:** either the confirmation honestly says the deletion is permanent, or
+the delete preserves the message data.
+
+**Actual:** the confirmation says "This removes it from the current view but data
+is preserved", but confirming calls `ChatDB.Msg_HardDelete` — the message row,
+its attachments, and its FTS index entry are permanently removed. Users who
+believe the message is recoverable can lose content with no undo.
+
+**Evidence:** `webui/js/chat/chat-branching.js` `deleteMessage()` shows the
+"data is preserved" copy; `chat/callbacks/Edit.ahk` `handleDelete()` calls
+`ChatDB.Msg_HardDelete(msgId)` (permanent delete + re-parenting).
+
+**Verification:** headless scenario 30 seeds a two-message thread, clicks Delete
+on the user message, reads the dialog text (contains "data is preserved"), confirms,
+and queries the DB — the message row is gone.
+
+### 31. Font-size +/- buttons use a stale 17px base after a thread with a custom size loads
+
+**Scenario:** 31 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** set a per-thread font size (e.g. 20px via the topbar + button) and
+switch to that thread from another chat, then click the topbar + button again.
+
+**Expected:** the + button increases the thread's current size (20px -> 21px).
+
+**Actual:** clicking + jumps the display to 18px. `UiControls.initFontControls()`
+reads `--chat-font-size` once at page load and caches 17; `populateCurrentSettings`
+later applies the thread's stored size (20px) to the CSS var and the display, but
+never resyncs the cached base — every +/- click counts from 17, so the font can
+jump downward while the user is trying to increase it.
+
+**Evidence:** `webui/js/ui-controls.js` `initFontControls()` caches
+`getComputedStyle(...).getPropertyValue('--chat-font-size')` at load;
+`webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings()`
+sets `--chat-font-size` without updating that cached value.
+
+**Verification:** headless scenario 31 seeds a thread with `font_size=20`, loads it
+(display shows 20px), clicks `#btn-font-inc`, and observes the display becomes 18px
+instead of 21px.
+
+### 33. Clearing the chat-window icon setting still loads the default custom icon
+
+**Scenario:** 33 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Icons -> clear both icon paths -> Save -> look at the chat
+window title-bar/taskbar icon.
+
+**Expected:** with no icon configured, the chat window keeps the plain window icon
+(the app only loads an icon when `iconOn` is non-empty).
+
+**Actual:** the window still shows `icons\IconOn.ico`. `SettingsApply._ApplyIcons`
+only assigns the globals when the saved value is non-empty, so saving an empty
+`icons.iconOn` leaves the `DefaultSettings.ahk` value (`icons\IconOn.ico`) in the
+`iconOn` global and `ChatWindow.ahk` loads it — clearing the icon can never take
+effect, not even after a restart.
+
+**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyIcons` skips `""` values;
+`DefaultSettings.ahk` `iconOn := "icons\IconOn.ico"`; `chat/ChatWindow.ahk`
+`if iconOn != "" hIcon := LoadPicture(ResolveIconPath(iconOn), ...)`.
+
+**Verification:** headless scenario 33 seeds `icons: {iconOn:'', iconOff:''}`,
+launches the app, and probes the chat window icon via `WM_GETICON` — the rendered
+pixels match IconOn.ico's fingerprint (`customApplied=1`), proving the cleared
+setting is ignored.
+
+### 34. Tray icon changes don't apply until restart
+
+**Scenario:** 34 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Icons -> pick a different tray icon -> Save -> look at the
+system tray.
+
+**Expected:** the tray icon changes immediately (like the fixed Suspend-banner and
+Input-window settings that rebuild on every settings update).
+
+**Actual:** the tray keeps the old icon until the app is restarted. `TraySetIcon(iconOn)`
+runs once at Main startup (and again only when suspend is toggled); the
+`WM_SETTINGS_UPDATED` handler reloads globals, hotkeys, the suspend banner, and the
+input window, but never re-applies the tray icon.
+
+**Evidence:** `Main.ahk` startup `TraySetIcon(iconOn)`; the `WM_SETTINGS_UPDATED`
+OnMessage handler has no `TraySetIcon` call (visual — cannot be asserted by the
+headless harness, hence the static scenario).
+
+**Verification:** headless scenario 34 (noApp) statically scans `Main.ahk`:
+`TraySetIcon(iconOn)` exists at startup but not inside the `WM_SETTINGS_UPDATED`
+handler. Final visual confirmation requires a human looking at the tray after
+changing the icon.
+
+### 35. Temperature override of 0 is dropped when the thread reloads (right rail shows Default)
+
+**Scenario:** 35 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** set the chat right-rail temperature slider to 0.0, then switch to
+another chat and back (or restart the app) and look at the temperature slider.
+
+**Expected:** the slider shows 0.0 and the next request uses temperature 0.
+
+**Actual:** the override is silently lost — the rail shows "Default" (slider 1.0)
+and requests use the model default. `_restoreThreadSettings` gates restoration
+with `if settings.temperatureOverride`, and AHK treats the numeric 0 as falsy, so
+the saved 0 override is never applied back to `requestParams`. A later right-rail
+save then overwrites `temperature_override` with NULL, wiping it permanently.
+
+**Evidence:** `chat/ChatSettings.ahk` `_restoreThreadSettings()`:
+`if settings.temperatureOverride requestParams["temperatureOverride"] := settings.temperatureOverride`;
+`chat/db/ThreadRepo.ahk` `GetSettings()` returns the raw numeric column
+(0 when set), and `_ClearRequestOverrides()` empties the override on every load.
+
+**Verification:** headless scenario 35 seeds a thread with
+`temperature_override = 0`, loads it in the real app, and observes the right-rail
+temperature shows "Default" / slider 1.0 instead of 0.0.
+
+### 36. Command temperature/reasoning are dropped when the command model equals the app default
+
+**Scenario:** 36 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** create a chat-mode command whose API Model is the app default
+(`deepseek/deepseek-v4-flash`), set a Temperature (e.g. 0) or a Thinking level,
+save, then trigger the command and watch the request.
+
+**Expected:** the command's temperature and thinking level are sent to the API.
+
+**Actual:** they are silently dropped. `processInitialRequest` persists
+per-thread settings (`temperatureOverride`, `reasoningOverride`, ...) only inside
+`if fullAPIModelName != appDefaultModel`, so a command using the default model
+never writes those overrides — the thread loads with defaults and the fired
+request uses the model default temperature and no thinking config. (The system
+message survives because it is stored as a system message row, not an override.)
+
+**Evidence:** `app/RequestProcessor.ahk` — `ChatDB.Thread_UpdateSettings(threadId,
+{ ... temperatureOverride: temperature, reasoningOverride: ... })` is nested in
+`if fullAPIModelName != appDefaultModel`.
+
+**Verification:** headless scenario 36 (noApp) statically scans
+`app/RequestProcessor.ahk` and asserts the temperature/reasoning overrides live
+inside the `!= appDefaultModel` gate — proving default-model commands skip them.
+
+### 37. Tray menu item changes don't apply until restart
+
+**Scenario:** 37 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Menu Items -> add/remove/rename a Tray item -> Save -> open
+the tray menu.
+
+**Expected:** the tray menu shows the new items immediately (the Quick Access
+submenu is rebuilt on every open).
+
+**Actual:** the tray keeps the startup entries until the app restarts. `Main.ahk`
+populates `A_TrayMenu` once at startup from `trayMenuItems`; the
+`WM_SETTINGS_UPDATED` handler reloads the globals but never rebuilds the tray menu.
+
+**Evidence:** `Main.ahk` `A_TrayMenu.Delete()` / `A_TrayMenu.Add(...)` at startup
+only; the `WM_SETTINGS_UPDATED` handler has no `A_TrayMenu` call.
+
+**Verification:** headless scenario 37 (noApp) statically scans `Main.ahk`:
+`A_TrayMenu.Add` exists at startup but not in the `WM_SETTINGS_UPDATED` handler.
+Final visual confirmation requires a human opening the tray after saving.
+
+### 38. Chat window title stays stale after renaming a thread and switching to another
+
+**Scenario:** 38 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** open a chat, rename it from the sidebar (or the topbar rename button),
+then click a different chat in the sidebar and look at the window title bar.
+
+**Expected:** the title bar shows the active thread ("Chat - <current title>").
+
+**Actual:** the title bar keeps the previously renamed thread's title.
+`chatWindow.Title` is only set at startup and in the `renameThread` handler
+(`chat/callbacks/Sidebar.ahk`); `_LoadThreadAndRefreshUI` never updates it, so
+switching threads leaves the stale title (and before any rename it just shows
+"Chat" / the generic app title).
+
+**Evidence:** `chat/ChatWindow.ahk` `responseWindow.Title := "LLM AutoHotkey Assistant"`;
+`chat/callbacks/Sidebar.ahk` `renameThread` sets `chatWindow.Title := "Chat - " title`;
+`chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI()` never touches the window title.
+
+**Verification:** headless scenario 38 seeds two threads, renames the first via
+the sidebar, switches to the second, and probes the window title (WinGetTitle):
+the topbar shows the second thread's title while the window title still contains
+the renamed first thread's title.
+
 ---
 
 ## History (append-only)
@@ -311,6 +522,7 @@ a model with `cachedInput: ""` (throws "Expected a Number but got an empty strin
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-03 - "Composer Tools dropdown switches do nothing (dead toggles)" - REFUTED: the composer Tools toggles (Web Search / Code Execution / Calculator) are intentional stubs for a future feature (user-confirmed); scenario 32 removed.
 - 2026-08-03 - "Sidebar inline rename saves on Escape instead of canceling" - REFUTED: WebView2 does not dispatch blur when the focused input is removed from the DOM, so Escape cancels the rename and no renameThread is posted. Scenario 28 kept as a regression check (regression: true).
 - 2026-08-03 - "Reasoning-only responses get no action buttons until reload" - FIXED in ff6a6c3: onStreamDone now persists the assistant message and adds action buttons when thinking was streamed with empty final content (mirrors the existing cancelStreaming guard); scenario 21 flipped to a regression check (regression: true) + stream-state unit test.
 - 2026-08-03 - "Right-panel Advanced toggles (Code Execution / Web Search) do nothing" - FIXED in aafa4ed (+247d6c5): Structured Outputs removed entirely; Code Execution / Web Search are persisted stubs (state round-trips through updateModelSettings/requestParams/thread DB, no response_format/tools sent); scenario 20 flipped to a regression check (regression: true) + ChatSettings/request-builder AHK + JS unit tests.

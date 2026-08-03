@@ -1,4 +1,4 @@
-PASS | #28 | Sidebar inline rename saves on Escape instead of canceling | Escape canceled the rename (no renameThread posted); title stays "Original Title" | 2.0s
+PASS | #38 | Chat window title stays stale after renaming a thread and switching to another | topbar shows "Beta Thread" but the window title is "Chat — Alpha Renamed" (stale renamed-A title) | 4.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -1037,6 +1037,251 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 30,
+  name: 'Deleting a message confirms "data is preserved" but hard-deletes it',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-del-30', title: 'Delete Copy Thread', active_leaf_id: 'm-del-30b' }],
+    messages: [
+      { id: 'm-del-30a', thread_id: 't-del-30', role: 'user', content: 'first message' },
+      { id: 'm-del-30b', thread_id: 't-del-30', role: 'assistant', content: 'reply', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-del-30a' }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    // Load the seeded thread first - bubbles only render after loadThread.
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'messages rendered');
+    // Delete the user message: the confirm dialog must claim the data survives.
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Delete"]');
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm overlay');
+    const confirmText = await cdp.eval('document.getElementById("customConfirmOverlay").textContent');
+    const saysPreserved = confirmText.indexOf('data is preserved') >= 0;
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900); // IPC round trip + DB delete + re-render
+    const rows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-del-30a'");
+    const deletedForever = rows[0].c === 0;
+    // BUG: the dialog promises the data is preserved, but handleDelete calls
+    // Msg_HardDelete (permanent row + attachment + FTS removal).
+    if (!saysPreserved || !deletedForever)
+      throw new Error('bug not reproduced: saysPreserved=' + saysPreserved + ' deletedForever=' + deletedForever + ' text=' + JSON.stringify(confirmText.trim()));
+    return 'confirm dialog said "' + confirmText.trim() + '" but the message row is permanently gone from the DB';
+  }
+});
+
+scenarios.push({
+  id: 31,
+  name: 'Font-size +/- buttons use a stale 17px base after a thread with a custom size loads',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-font-31', title: 'Font Thread', active_leaf_id: 'm-font-31', font_size: 20 }],
+    messages: [{ id: 'm-font-31', thread_id: 't-font-31', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    // The thread's per-thread font size (20) arrives via currentSettings and is
+    // applied to the CSS var + display. UiControls.initFontControls cached the
+    // CSS default (17) at page load and is never resynced.
+    await cdp.waitFor('document.getElementById("font-size-display") && document.getElementById("font-size-display").textContent === "20px"', 15000, 300, 'thread font size applied');
+    const before = await cdp.eval('document.getElementById("font-size-display").textContent');
+    await cdp.click('#btn-font-inc');
+    await sleep(300);
+    const after = await cdp.eval('document.getElementById("font-size-display").textContent');
+    // BUG: the + button bumps the stale 17px base to 18px instead of the
+    // thread's 20px -> 21px.
+    if (after === '21px')
+      throw new Error('font-size increment used the thread size (bug not reproduced): ' + before + ' -> ' + after);
+    return 'after loading a 20px thread, clicking + changed the display from ' + before + ' to ' + after + ' instead of 21px';
+  }
+});
+
+scenarios.push({
+  id: 33,
+  name: 'Clearing the chat-window icon setting still loads the default custom icon',
+  mode: null,
+  settings: { icons: { iconOn: '', iconOff: '' } },
+  async body() {
+    const defaultIco = path.join(launcher.REPO_ROOT, 'icons', 'IconOn.ico');
+    const info = runProbe('icon-check', [defaultIco]);
+    if (info.hwnd === 0) throw new Error('chat window not found; probe=' + JSON.stringify(info));
+    // BUG: with icons.iconOn="" the window still shows the default IconOn.ico
+    // because SettingsApply._ApplyIcons skips empty values, so the global keeps
+    // DefaultSettings.ahk's icons\IconOn.ico and ChatWindow loads it.
+    if (info.customApplied !== 1)
+      throw new Error('cleared icon was honored (bug not reproduced): ' + JSON.stringify(info));
+    return 'window shows the default IconOn.ico fingerprint even though icons.iconOn was cleared (' + JSON.stringify(info) + ')';
+  }
+});
+
+scenarios.push({
+  id: 34,
+  name: 'Tray icon changes do not apply until restart (static check of the settings-update path)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    // Startup applies the tray icon; the WM_SETTINGS_UPDATED handler must too
+    // for icon edits to take effect live.
+    const hasStartupApply = /TraySetIcon\(iconOn\)/.test(mainSrc);
+    const updStart = mainSrc.indexOf('WM_SETTINGS_UPDATED');
+    const reloadStart = mainSrc.indexOf('WM_RELOAD_MAIN');
+    const handler = mainSrc.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
+    const hasLiveApply = /TraySetIcon/.test(handler);
+    // BUG: the settings-update handler reloads globals and re-registers
+    // hotkeys but never re-applies the tray icon, so icon edits need a restart.
+    if (!hasStartupApply || hasLiveApply)
+      throw new Error('bug not reproduced: startupApply=' + hasStartupApply + ' liveApplyInHandler=' + hasLiveApply);
+    return 'TraySetIcon is called at startup but NOT in the WM_SETTINGS_UPDATED handler; tray icon edits require a restart';
+  }
+});
+
+scenarios.push({
+  id: 35,
+  name: 'Temperature override of 0 is dropped when the thread reloads (right rail shows Default)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-temp0-35', title: 'Temp Zero Thread', active_leaf_id: 'm-temp0-35', temperature_override: 0 }],
+    messages: [{ id: 'm-temp0-35', thread_id: 't-temp0-35', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    // Wait until the thread actually loads (messages render), then read the
+    // right-rail temperature state.
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(500); // currentSettings round trip for the right rail
+    const tempVal = await cdp.eval('document.getElementById("tempVal") ? document.getElementById("tempVal").textContent : "(missing)"');
+    const slider = await cdp.eval('document.getElementById("tempSlider") ? document.getElementById("tempSlider").value : "(missing)"');
+    // BUG: ChatSettings._restoreThreadSettings uses a truthiness check
+    // (`if settings.temperatureOverride`), and AHK treats 0 as falsy, so a
+    // saved 0 override is never restored - the rail falls back to Default/1.0.
+    if (tempVal === '0.0' || slider === '0')
+      throw new Error('temperature 0 override was restored (bug not reproduced): tempVal=' + JSON.stringify(tempVal) + ' slider=' + JSON.stringify(slider));
+    return 'thread with temperature_override=0 shows tempVal=' + JSON.stringify(tempVal) + ' slider=' + JSON.stringify(slider) + ' instead of 0.0';
+  }
+});
+
+scenarios.push({
+  id: 36,
+  name: 'Command temperature/reasoning are dropped when the command model equals the app default (static check)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
+    const gatePos = src.indexOf('if fullAPIModelName != appDefaultModel');
+    if (gatePos < 0) throw new Error('model-default gate not found in RequestProcessor.ahk');
+    const block = src.slice(gatePos, gatePos + 1200);
+    const hasTemp = block.indexOf('temperatureOverride') >= 0;
+    const hasReasoning = block.indexOf('reasoningOverride') >= 0;
+    // BUG: Thread_UpdateSettings (with temperatureOverride/reasoningOverride) is
+    // nested inside the "model != appDefaultModel" branch, so a chat-mode command
+    // whose model IS the app default never persists its temperature/thinking and
+    // the fired request silently uses defaults.
+    if (!hasTemp || !hasReasoning)
+      throw new Error('overrides not inside the gated block (bug not reproduced): hasTemp=' + hasTemp + ' hasReasoning=' + hasReasoning);
+    return 'Thread_UpdateSettings with temperatureOverride/reasoningOverride sits inside `if fullAPIModelName != appDefaultModel`; default-model commands drop them';
+  }
+});
+
+scenarios.push({
+  id: 37,
+  name: 'Tray menu item changes do not apply until restart (static check of the settings-update path)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    // The tray menu is populated once at startup from trayMenuItems...
+    const hasStartupBuild = /A_TrayMenu\.Add/.test(mainSrc);
+    // ...but the WM_SETTINGS_UPDATED handler never rebuilds it.
+    const updStart = mainSrc.indexOf('WM_SETTINGS_UPDATED');
+    const reloadStart = mainSrc.indexOf('WM_RELOAD_MAIN');
+    const handler = mainSrc.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
+    const hasRebuild = /A_TrayMenu/.test(handler);
+    // BUG: Menu Items -> tray edits are written to settings.json but the tray
+    // menu keeps the startup entries until the app is restarted.
+    if (!hasStartupBuild || hasRebuild)
+      throw new Error('bug not reproduced: startupBuild=' + hasStartupBuild + ' rebuildInHandler=' + hasRebuild);
+    return 'A_TrayMenu is populated at startup but never rebuilt in WM_SETTINGS_UPDATED; tray menu edits require a restart';
+  }
+});
+
+scenarios.push({
+  id: 38,
+  name: 'Chat window title stays stale after renaming a thread and switching to another',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-title-38a', title: 'Alpha Thread', active_leaf_id: 'm-title-38a' },
+      { id: 't-title-38b', title: 'Beta Thread', active_leaf_id: 'm-title-38b' }
+    ],
+    messages: [
+      { id: 'm-title-38a', thread_id: 't-title-38a', role: 'user', content: 'hello alpha' },
+      { id: 'm-title-38b', thread_id: 't-title-38b', role: 'user', content: 'hello beta' }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    const clickItem = (idx) => cdp.eval(`(() => {
+      const items = document.querySelectorAll('#thread-list .chat-item');
+      if (!items[${idx}]) return false;
+      items[${idx}].click();
+      return true;
+    })()`);
+    const clickRename = (idx) => cdp.eval(`(() => {
+      const items = document.querySelectorAll('#thread-list .chat-item');
+      const btn = items[${idx}] && items[${idx}].querySelector('.chat-action-btn[title="Rename"]');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()`);
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    // Load thread A, then rename it via the sidebar (this sets the window title).
+    await clickItem(0);
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread A loaded');
+    await clickRename(0);
+    await cdp.waitFor('document.querySelector("#thread-list .chat-item .chat-name input") !== null', 5000, 200, 'rename input');
+    await cdp.type('#thread-list .chat-item .chat-name input', 'Alpha Renamed');
+    const inputVal = await cdp.eval('document.querySelector("#thread-list .chat-item .chat-name input") ? document.querySelector("#thread-list .chat-item .chat-name input").value : "(missing)"');
+    await cdp.clearPosted();
+    await cdp.eval(`(() => {
+      const inp = document.querySelector('#thread-list .chat-item .chat-name input');
+      if (!inp) return false;
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(900); // rename IPC + title update + list refresh
+    const postedAfterRename = await cdp.postedMessages();
+    if (!postedAfterRename.some((m) => m.includes('renameThread')))
+      throw new Error('renameThread was not posted after blur; inputVal=' + JSON.stringify(inputVal) + ' posted=' + JSON.stringify(postedAfterRename));
+    const renamedRows = seed.query(dbPath, "SELECT title FROM chat_threads WHERE id='t-title-38a'");
+    if (!renamedRows.length || renamedRows[0].title !== 'Alpha Renamed')
+      throw new Error('rename did not commit before switching (setup): ' + JSON.stringify(renamedRows));
+    // Switch to thread B.
+    await clickItem(1);
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread B loaded');
+    await sleep(800);
+    const topbarTitle = await cdp.eval('document.querySelector(".title-text") ? document.querySelector(".title-text").textContent : ""');
+    const info = runProbe('chat-info');
+    // BUG: _LoadThreadAndRefreshUI never updates chatWindow.Title; only
+    // renameThread does. After renaming A and switching to B the title bar still
+    // shows the renamed A title.
+    if (topbarTitle.indexOf('Beta') < 0)
+      throw new Error('thread B did not load (setup): topbar=' + JSON.stringify(topbarTitle));
+    if ((info.title || '').indexOf('Beta') >= 0)
+      throw new Error('window title followed the thread (bug not reproduced): ' + JSON.stringify(info.title));
+    return 'topbar shows "' + topbarTitle + '" but the window title is "' + info.title + '" (stale renamed-A title)';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {
