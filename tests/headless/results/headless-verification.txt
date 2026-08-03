@@ -1,5 +1,9 @@
-PASS | #43 | Thinking config is silently dropped for short-form model ids (no provider prefix) | thread model_override=deepseek-v4-pro + reasoning_override=high: right-rail dropdown has 1 option(s), and the sent request body has no thinking config (model=deepseek-v4-pro) | 3.8s
+PASS | #04 | Clearing a hotkey field disables the hotkey (empty = off) | cleared main hotkey saves as "" and backtick no longer opens the command menu | 4.5s
+PASS | #07 | Trash retention auto-purges expired trashed threads (wired at startup + timer) | PurgeExpired wired via ChatDB facade in Main.ahk; expired trashed thread purged during app run | 4.2s
+PASS | #12 | Suspend banner edits apply live (no restart required) | after saving NEW BANNER TEXT, suspended banner shows it live without a restart | 5.1s
+PASS | #31 | Font-size +/- buttons use a stale 17px base after a thread with a custom size loads | after loading a 20px thread, clicking + changed the display from 20px to 18px instead of 21px | 2.6s
+PASS | #40 | Refresh-models modal discards edits to a model id (stale data-full-id wins on Save) | edited the first model id to "renamed-model-id" in the refresh modal; after Save the table still shows "deepseek-chat" (stale data-full-id="deepseek/deepseek-chat") | 3.3s
 
-Summary: 1/1 scenarios PASS
+Summary: 5/5 scenarios PASS
 Real profile restored: yes
 Report sync: OK

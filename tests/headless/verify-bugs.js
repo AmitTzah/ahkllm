@@ -1468,6 +1468,158 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 44,
+  name: 'Forking a chat drops the per-thread font size and Advanced toggles',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-fork-44', title: 'Fork Source', active_leaf_id: 'm-fork-44', font_size: 20 }],
+    messages: [{ id: 'm-fork-44', thread_id: 't-fork-44', role: 'user', content: 'fork me' }]
+  },
+  async body({ cdp, dbPath }) {
+    // Seed advanced_toggles on the source thread (the fixtures builder has no
+    // column for it) BEFORE loading the thread so the fork must copy both
+    // per-thread settings to preserve them.
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("UPDATE chat_threads SET advanced_toggles = '{\"codeExecution\":true,\"webSearch\":true}' WHERE id='t-fork-44'");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(700);
+    const fontBefore = await cdp.eval('document.getElementById("font-size-display").textContent');
+    if (fontBefore !== '20px')
+      throw new Error('source thread font size not applied (setup): ' + JSON.stringify(fontBefore));
+    // Fork the chat from the user message.
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-fork-44"', 15000, 300, 'fork created');
+    const newId = await cdp.eval('window.activeThreadId');
+    await sleep(700);
+    const rows = seed.query(dbPath, 'SELECT font_size, advanced_toggles FROM chat_threads WHERE id = ?', [newId]);
+    const s = rows[0] || {};
+    const fontAfter = await cdp.eval('document.getElementById("font-size-display").textContent');
+    // BUG: TreeRepo._CopyThreadSettings copies model/system/reasoning/temperature/
+    // assistant but NOT font_size or advanced_toggles, so the fork starts at the
+    // defaults (17px, toggles off) instead of inheriting the source thread.
+    if (Number(s.font_size) === 20 && String(s.advanced_toggles || '').indexOf('codeExecution') >= 0 && fontAfter === '20px')
+      throw new Error('fork kept the source settings (bug not reproduced): ' + JSON.stringify(s) + ' font=' + fontAfter);
+    return 'source thread font_size=20 + advanced_toggles set; fork id=' + newId +
+      ' has font_size=' + s.font_size + ' advanced_toggles=' + JSON.stringify(s.advanced_toggles) +
+      ' and the UI shows ' + fontAfter + ' instead of 20px';
+  }
+});
+
+scenarios.push({
+  id: 45,
+  name: '"Response Font" setting is not applied to chat messages until Settings is opened',
+  mode: null,
+  settings: { ui: { responseFont: 'Georgia' } },
+  fixtures: {
+    threads: [{ id: 't-font-45', title: 'Font Face Thread', active_leaf_id: 'm-font-45' }],
+    messages: [{ id: 'm-font-45', thread_id: 't-font-45', role: 'assistant', content: 'hello world', model: 'deepseek/deepseek-v4-flash' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(500);
+    const familyBefore = await cdp.eval(`getComputedStyle(document.querySelector('.msg-content')).fontFamily`);
+    const varBefore = await cdp.eval(`getComputedStyle(document.documentElement).getPropertyValue('--chat-font-family').trim()`);
+    // BUG: ui-theme.js only sets --chat-font-family inside load(), which runs
+    // when the Settings panel receives the full settings payload. At startup the
+    // CSS var keeps the default, so the configured Response Font is not applied.
+    if (String(familyBefore).indexOf('Georgia') >= 0)
+      throw new Error('response font was applied before opening settings (bug not reproduced): ' + familyBefore);
+    await openSettings(cdp);
+    await sleep(400);
+    const familyAfter = await cdp.eval(`getComputedStyle(document.querySelector('.msg-content')).fontFamily`);
+    return 'configured ui.responseFont=Georgia; before opening Settings msg font=' + JSON.stringify(familyBefore) +
+      ' (var=' + JSON.stringify(varBefore) + '); after opening Settings it becomes ' + JSON.stringify(familyAfter);
+  }
+});
+
+scenarios.push({
+  id: 46,
+  name: 'Command "Stream Response" + pasteMode replace/append silently produces no output (static check)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const lb = fs.readFileSync(path.join(launcher.REPO_ROOT, 'api', 'LLMRequestBuilder.ahk'), 'utf8');
+    const irr = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'InlineRequestRunner.ahk'), 'utf8');
+    // createJSONRequest unconditionally adds stream:true to the JSON body when the
+    // command's stream flag is set (no pasteMode check)...
+    const bodyAddsStream = /if stream \{[\s\S]*?requestObj\.stream := true/.test(lb);
+    // ...the inline runner builds the request via createJSONRequest and executes it
+    // with the NON-streaming single-shot CurlBuilder.Build (not BuildStream)...
+    const nonFimUsesBuild = /LLMRequestBuilder\.createJSONRequest[\s\S]*?CurlBuilder\.Build\(providerInfo, requestFile, outputFile\)/.test(irr);
+    // ...and parses the whole output file as ONE JSON document.
+    const parsesAsJson = /JSONResponseFromLLM := CurlExecutor\.Run[\s\S]*?jsongo\.Parse\(JSONResponseFromLLM\)/.test(irr);
+    const noSseInInline = !/SSEParser/.test(irr);
+    // BUG: with stream=true the API answers with SSE (multiple data: lines),
+    // which jsongo.Parse cannot parse as one JSON document; ParseChatResponse is
+    // skipped and success=false, so nothing is pasted and no error is shown.
+    if (!bodyAddsStream || !nonFimUsesBuild || !parsesAsJson || !noSseInInline)
+      throw new Error('bug not reproduced: bodyAddsStream=' + bodyAddsStream +
+        ' nonFimUsesBuild=' + nonFimUsesBuild + ' parsesAsJson=' + parsesAsJson + ' noSseInInline=' + noSseInInline);
+    return 'createJSONRequest adds stream:true for any pasteMode; InlineRequestRunner executes with single-shot CurlBuilder.Build and parses the whole output as one JSON document (no SSEParser) - a replace/append command with Stream Response ON receives SSE it cannot parse, so it silently pastes nothing';
+  }
+});
+
+scenarios.push({
+  id: 47,
+  name: 'Per-thread system prompt / temperature edits are discarded on reload when an assistant is active',
+  mode: null,
+  settings: {
+    assistants: [{
+      id: 'asst-47', name: 'Test Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+      systemMessage: 'assistant system', systemMessageFile: '', description: '',
+      reasoning: 'high', temperature: '0.3'
+    }]
+  },
+  fixtures: {
+    threads: [{ id: 't-asst-47', title: 'Assistant Thread', active_leaf_id: 'm-asst-47', assistant_id: 'asst-47' }],
+    messages: [{ id: 'm-asst-47', thread_id: 't-asst-47', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Edit the system prompt while the assistant is active (right-rail modal).
+    await cdp.click('#expandSysMsg');
+    await cdp.waitFor('document.getElementById("sysMsgOverlay").classList.contains("open")', 5000, 200, 'sysmsg overlay');
+    await cdp.type('#sysMsgFull', 'user override');
+    await cdp.click('#sysMsgSave');
+    await sleep(900); // 300ms debounce + IPC round trip
+    const miniAfter = await cdp.eval('document.getElementById("sysMsgMini").value');
+    if (miniAfter !== 'user override')
+      throw new Error('system prompt edit did not apply (setup): ' + JSON.stringify(miniAfter));
+    // Reload the thread (click the same sidebar item -> _restoreThreadSettings).
+    await cdp.eval(`(() => {
+      const items = document.querySelectorAll('#thread-list .chat-item');
+      if (!items[0]) return false;
+      items[0].click();
+      return true;
+    })()`);
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread reloaded');
+    await sleep(700);
+    const miniReloaded = await cdp.eval('document.getElementById("sysMsgMini").value');
+    const rows = seed.query(dbPath, "SELECT system_override, temperature_override FROM chat_threads WHERE id='t-asst-47'");
+    // BUG: the override IS persisted (system_override='user override') but
+    // _restoreThreadSettings overwrites it with the assistant's system message.
+    if (miniReloaded === 'user override')
+      throw new Error('per-thread override survived the reload (bug not reproduced): ' + JSON.stringify(miniReloaded));
+    return 'edited system prompt to "user override" with assistant active; DB still holds system_override=' +
+      JSON.stringify(rows[0] && rows[0].system_override) + ' but after reload the rail shows "' + miniReloaded + '"';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {

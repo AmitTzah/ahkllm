@@ -154,18 +154,18 @@ How to run AHK safely:
 
 ## Current state
 
-- **16 verified, 0 fix in progress** (2026-08-03). Sweep #5 added 39 (system-
-  message modal clears custom files), 40 (refresh-models modal discards model id
-  edits), 41 (tray "New Chat" ignores the start-with default), 42 (dashboard
-  chart date labels UTC-shift), and 43 (thinking config dropped for short-form
-  model ids). Suspect 32 (composer Tools dropdown switches) was REFUTED -
-  user-confirmed intentional stubs for a future feature; its scenario was
-  removed. Scenario count is enforced by
+- **20 verified, 0 fix in progress** (2026-08-03). Sweep #6 added 44 (fork drops
+  the per-thread font size and Advanced toggles), 45 ("Response Font" is not
+  applied to chat messages until Settings is opened), 46 (command "Stream
+  Response" + pasteMode replace/append silently produces no output), and 47
+  (per-thread system prompt / temperature edits are discarded on reload when an
+  assistant is active). Scenario count is enforced by
   `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-43 are `verified` and
-  ranked (26 highest; 30+ appended after 29). Next per the fix cycle: fix bug
-  #26, then the rest in rank order, one at a time, each with a flipped scenario
-  + code-level regression test. Harness cleanup is PID-targeted: use
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-47 are `verified` and
+  ranked (26 highest; 47 inserted right after 26, 44 after 31, 45 after 38, 46
+  last). Next per the fix cycle: fix bug #26, then the rest in rank order, one
+  at a time, each with a flipped scenario + code-level regression test. Harness
+  cleanup is PID-targeted: use
   `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -252,6 +252,38 @@ and never re-posts the partial per-thread payload afterwards.
 **Verification:** headless scenario 26 types a system message via the right-rail
 modal, confirms `#sysMsgMini` shows it, opens Settings, and observes `#sysMsgMini`
 is blank.
+
+### 47. Per-thread system prompt / temperature edits are discarded on reload when an assistant is active
+
+**Scenario:** 47 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** load a chat that uses an assistant, edit the system prompt (or
+temperature / thinking level) in the right rail, then switch to another thread
+and back (or reload the thread).
+
+**Expected:** the per-thread edits persist — the right rail keeps the edited
+values after reload.
+
+**Actual:** the edits revert to the assistant's values on reload. The edits ARE
+persisted to the DB (`system_override` / `temperature_override` columns), but
+`_restoreThreadSettings` first applies the stored overrides and then
+unconditionally overwrites them from the assistant block
+(`if settings.assistantId` sets `systemOverride :=
+AssistantRepo._resolveSystemMessage(asst)`, `temperatureOverride :=
+asst.temperature`, `reasoningOverride := asst.reasoning`). Any per-thread change
+made while an assistant is active therefore silently vanishes on the next load
+— the override only lives until the user switches threads or restarts.
+
+**Evidence:** `chat/ChatSettings.ahk` `_restoreThreadSettings()` — the
+`if settings.assistantId { ... }` block assigns all three overrides from the
+assistant without checking whether per-thread overrides already exist.
+
+**Verification:** headless scenario 47 loads an assistant thread, edits the
+system prompt to "user override" via the right-rail modal (rail confirms), reloads
+the thread, and observes the rail reverts to "assistant system" while the DB still
+holds `system_override='user override'`.
 
 ### 27. Commands Advanced card collapses when you click inside it to edit a field
 
@@ -359,6 +391,33 @@ sets `--chat-font-size` without updating that cached value.
 **Verification:** headless scenario 31 seeds a thread with `font_size=20`, loads it
 (display shows 20px), clicks `#btn-font-inc`, and observes the display becomes 18px
 instead of 21px.
+
+### 44. Forking a chat drops the per-thread font size and Advanced toggles
+
+**Scenario:** 44 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** set a custom chat font size (topbar +/â€“) and/or Advanced toggles
+(Code Execution / Web Search) in a thread, then click Fork on any message.
+
+**Expected:** the forked thread inherits the per-thread settings — same font size
+and same toggle states.
+
+**Actual:** the fork starts at the defaults (17px, toggles off).
+`TreeRepo._CopyThreadSettings` copies model/system/reasoning/temperature/assistant
+but never `font_size` or `advanced_toggles`, even though both are per-thread
+columns that every other settings path reads and writes (`Thread_UpdateSettings`,
+`ThreadRepo.GetSettings`).
+
+**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` contains no
+`font_size` / `advanced_toggles` UPDATE; `chat/db/ThreadRepo.ahk` `GetSettings()`
+returns both fields.
+
+**Verification:** headless scenario 44 seeds a thread with `font_size=20` and
+`advanced_toggles` JSON, forks it from the UI, and queries the new thread:
+`font_size=17` and `advanced_toggles=''`, while the topbar font display shows
+17px instead of 20px.
 
 ### 33. Clearing the chat-window icon setting still loads the default custom icon
 
@@ -515,6 +574,33 @@ the sidebar, switches to the second, and probes the window title (WinGetTitle):
 the topbar shows the second thread's title while the window title still contains
 the renamed first thread's title.
 
+### 45. "Response Font" setting is not applied to chat messages until Settings is opened
+
+**Scenario:** 45 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings â†’ UI & Theme â†’ set Response Font to something other than
+Inter (e.g. Georgia) â†’ Save â†’ close Settings â†’ look at the message text.
+
+**Expected:** messages render in the configured font immediately, and keep it
+after every restart.
+
+**Actual:** messages keep the default font until the user opens Settings again.
+`ui-theme.js` applies `--chat-font-family` only inside `load()`, which runs when
+the Settings panel receives the full settings payload. At app start (and after a
+save until Settings is reopened) the WebView never receives the CSS var, so the
+saved Response Font is silently ignored.
+
+**Evidence:** `webui/js/settings/sections/ui-theme.js` sets
+`--chat-font-family` only in `load()`; `SettingsApply._ApplyUI` only updates the
+AHK global `responseWindowFontFace` â€” nothing applies it to the WebView.
+
+**Verification:** headless scenario 45 seeds `ui.responseFont: "Georgia"`,
+launches, loads a thread, and reads the computed font-family of a rendered
+message â€” it is the default Inter stack; after opening Settings it becomes
+Georgia.
+
 ### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
 
 **Scenario:** 39 (scenario code in verify-bugs.js)
@@ -659,6 +745,37 @@ stock commands use short ids (`"deepseek-v4-pro"`, `"deepseek-v4-flash"`).
 `model_override: "deepseek-v4-pro"` + `reasoning_override: "high"`, sends a chat
 message to the mock LLM, and asserts the sent request body has no `thinking` /
 `reasoning_effort` field while the right-rail dropdown shows only "Model Default".
+
+### 46. Command "Stream Response" + pasteMode replace/append silently produces no output
+
+**Scenario:** 46 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** create a command with Paste Mode replace (or append) and Stream
+Response ON, then trigger it with a text selection.
+
+**Expected:** the response is pasted, or at least a clear error is shown.
+
+**Actual:** nothing is pasted and no error is shown. `LLMRequestBuilder.
+createJSONRequest` writes `"stream": true` into the request body whenever the
+command's stream flag is set, but `InlineRequestRunner` always executes the
+request with the single-shot `CurlBuilder.Build` and parses the whole output file
+as one JSON document (`jsongo.Parse` + `ResponseParser.ParseChatResponse`). A
+streaming API answers with SSE (`data:` lines), which cannot be parsed as one JSON
+document, so `success=false` and the response is silently discarded (only a debug
+log line is written).
+
+**Evidence:** `api/LLMRequestBuilder.ahk` `createJSONRequest()` â€”
+`if stream { requestObj.stream := true }` with no pasteMode check;
+`app/InlineRequestRunner.ahk` `_BuildAndWriteRequest()` / `_ExecuteCurlAndParse()`
+use `CurlBuilder.Build` + `jsongo.Parse` with no SSE handling.
+
+**Verification:** headless scenario 46 (noApp) statically scans the three files
+and asserts the stream flag is added to the body for any pasteMode while the
+inline runner uses the non-streaming single-shot parse path (no SSEParser) â€”
+proving a replace/append + stream command sends an SSE-mode request it cannot
+read back.
 
 ---
 
