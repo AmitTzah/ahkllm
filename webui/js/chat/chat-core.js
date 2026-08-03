@@ -138,8 +138,10 @@ function _showChatConfirm(message, onYes) {
   overlay.addEventListener('click', function(e) { if (e.target === overlay) { overlay.remove(); _chatConfirmCallback = null; } });
 }
 
-// Global Escape handler: closes any open overlay (search, confirm, tree).
-// If nothing was open, posts hideWindow to AHK (unless streaming -- cancels that first).
+// Global Escape handler: closes any open overlay (search, confirm, tree,
+// settings confirm) and cancels an in-flight stream. It deliberately does NOT
+// hide the chat window — hiding is the configurable Close Windows hotkey's job
+// (chat/ChatHotkeys.ahk).
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape') return;
 
@@ -173,12 +175,16 @@ document.addEventListener('keydown', function(e) {
     return;
   }
 
-  // Streaming -- cancel it (don't hide window)
+  // Settings confirmation modal (e.g. "Reset to Defaults") — cancel it
+  var settingsConfirm = document.getElementById('confirmModal');
+  if (settingsConfirm && settingsConfirm.classList.contains('open')) {
+    settingsConfirm.classList.remove('open');
+    return;
+  }
+
+  // Streaming -- cancel it
   if (typeof isLoading !== 'undefined' && isLoading) {
     window.chrome.webview.postMessage(JSON.stringify({ action: 'cancelStream' }));
     return;
   }
-
-  // Nothing open -- hide window
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'hideWindow' }));
 });

@@ -308,6 +308,40 @@ describe('_makeInlineEditor', () => {
     });
 });
 
+describe('global Escape handler', () => {
+    it('cancels the stream while loading (posts cancelStream)', () => {
+        const ctx = loadModule();
+        ctx.isLoading = true;
+        ctx.document._docListeners.keydown({ key: 'Escape' });
+        assert.strictEqual(ctx._postedMessages.length, 1);
+        assert.strictEqual(JSON.parse(ctx._postedMessages[0]).action, 'cancelStream');
+    });
+
+    it('does nothing when not streaming (Escape must not hide the window)', () => {
+        const ctx = loadModule();
+        ctx.isLoading = false;
+        ctx.document._docListeners.keydown({ key: 'Escape' });
+        assert.strictEqual(ctx._postedMessages.length, 0, 'Escape should post nothing when idle');
+    });
+
+    it('closes the settings confirm modal on Escape', () => {
+        const ctx = loadModule();
+        const modal = {
+            classList: {
+                _open: true,
+                contains: function(c) { return c === 'open' && this._open; },
+                remove: function(c) { if (c === 'open') this._open = false; },
+                add: function() {}
+            }
+        };
+        ctx._elementCache['confirmModal'] = modal;
+        ctx.isLoading = false;
+        ctx.document._docListeners.keydown({ key: 'Escape' });
+        assert.strictEqual(modal.classList._open, false, 'confirm modal should close on Escape');
+        assert.strictEqual(ctx._postedMessages.length, 0);
+    });
+});
+
 describe('_showChatConfirm', () => {
     it('opens its own overlay with the message and runs the callback on confirm', () => {
         const ctx = loadModule();
