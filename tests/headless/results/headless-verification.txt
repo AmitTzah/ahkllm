@@ -1,27 +1,5 @@
-PASS | #01 | New chat after deleting active chat starts clean (no leaked per-thread settings) | new thread 0926347e-7fd2-acb9-e120-00006374e534 starts clean (no assistant/system/reasoning/temp/font from deleted chat) | 2.6s
-PASS | #02 | New chat honors the "New Chats Start With" default (assistant) | new chat starts with assistant "Default Assistant" (deepseek/deepseek-v4-flash) | 2.8s
-PASS | #03 | Removing models/providers in Settings persists (removed entries stay removed) | after removing deepseek/deepseek-chat and provider deepseek, both stay removed in settings.json and after reopening settings | 5.7s
-PASS | #04 | Clearing a hotkey field disables the hotkey (empty = off) | cleared main hotkey saves as "" and backtick no longer opens the command menu | 4.8s
-PASS | #05 | New model keeps thinking metadata across a Settings save (reasoning dropdown shows its levels) | after Settings save, openai/gpt-brand-new keeps thinkingLevelMap and offers ["Model Default","Low","High"] | 4.5s
-PASS | #06 | Stream failure with no output file shows an error and re-enables the UI | connection failure shows error banner (Request failed. Check your API key and try again.×) and re-enables the UI without Stop | 4.1s
-PASS | #07 | Trash retention auto-purges expired trashed threads (wired at startup + timer) | PurgeExpired wired via ChatDB facade in Main.ahk; expired trashed thread purged during app run | 4.1s
-PASS | #08 | Close-Windows hotkey setting is honored by the chat window (dynamic registration) | ChatWindow registers the configured closeWindowsHotkey via ChatHotkeys.ahk (empty=disabled, re-registered on save); Main still handles only the input window; no restart warning shown | 2.5s
-PASS | #09 | Quick Access > Usage Dashboard does nothing on prewarmed window | REFUTED: Quick Access > usage: OPENED the dashboard despite prewarmed title "LLM AutoHotkey Assistant" | 4.2s
-PASS | #12 | Suspend banner edits apply live (no restart required) | after saving NEW BANNER TEXT, suspended banner shows it live without a restart | 4.6s
-PASS | #13 | Command Input Window settings apply live (width/height/font/colors) | after saving width 800, input window opened at width 854 (applied live, no restart) | 6.2s
-PASS | #14 | Title generation keeps the thread's folder label (no hardcoded Unfiled) | ThreadTitleGen.ahk posts the real folder and refreshes threadList with folders; chat-sidebar.js stores both correctly | 1.6s
-PASS | #15 | Chat topbar Export button downloads the conversation | export button is wired (id=export-chat-btn, handler attached) and clicking it created a download blob | 2.0s
-PASS | #16 | API Logs viewer latency column shows the request duration | log row latency cell = "2.2 s" (viewer reads responseTimeMs) | 2.7s
-PASS | #17 | System-prompt modal char counter updates while typing | after typing 28 chars, #charCount shows "28 chars" | 1.9s
-PASS | #18 | Custom icon picked outside the repo never applies to the chat window | absolute icon path: direct LoadPicture ok (h=11012671), mangled path h=0, custom icon applied to chat window (customApplied=1) | 1.6s
-PASS | #19 | Dashboard "All Time" chart caps at 365 days while summary sums all rows | All Time: summary shows $6.00 (includes 400-day-old row) and chart spans the full history — 401 labels, first = 2025-06-29 | 2.7s
-PASS | #20 | Right-rail Advanced toggles (Code Execution / Web Search) do nothing | toggle posts updateModelSettings with codeExecution=true and the switch stays on (on=true) | 2.7s
-PASS | #21 | Reasoning-only responses (thinking, no visible text) get no action buttons | thinking block shown, assistant message added to chatMessages, bubble has 7 action buttons | 2.1s
-PASS | #22 | Command thinking setting survives settings round-trip (Map/object forms) | ﻿Map-form thinking  -> type='enabled' level='none' | Object-form thinking -> type='enabled' level='none' | RESULT: BUG22 FIXED (Map-form and object-form thinking both survive) | 0.0s
-PASS | #23 | Chat delete confirmation works (chat overlay opens; Delete posts and deletes) | delete confirm opens the chat overlay with the right message; clicking Delete posts deleteThread and deletes the chat | 3.0s
-PASS | #24 | Input window Edit field renders the configured background (text stays visible) | input window Edit field renders 0x292521 (dark background, light text visible) | 3.4s
-PASS | #25 | Input window default design is light (readable text on the default field) | default input window Edit field renders 0xFFFFFF (light design) | 3.5s
+RUNNER ERROR: EPERM: operation not permitted, rename 'C:\Users\Amit\AppData\Roaming\LLM-AutoHotkey-Assistant' -> 'C:\Users\Amit\AppData\Local\Temp\llm-profile-bak-1785750443006'
 
-Summary: 23/23 scenarios PASS
-Real profile restored: yes
+Summary: 0/23 scenarios PASS
+Real profile restored: not attempted
 Report sync: OK

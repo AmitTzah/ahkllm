@@ -771,6 +771,7 @@ scenarios.push({
 scenarios.push({
   id: 21,
   name: 'Reasoning-only responses (thinking, no visible text) get no action buttons',
+  regression: true, // FIXED bug kept as a regression check (thinking-only completions must keep getting actions)
   mode: 'sse-reasoning-only',
   settings: {},
   async body({ cdp }) {
