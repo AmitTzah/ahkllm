@@ -48,13 +48,19 @@ Save the file — the script auto-reloads on save (Ctrl+S).
 ## Running Tests
 
 ```cmd
-# Run the full test suite (AHK + JS)
+# Unit + integration tests (AHK + JS)
 tests\run_all_tests.bat
 
 # Or individually:
 tests\run_js_tests.bat    # Node.js unit tests (requires Node.js)
 tests\run_ahk_tests.ahk   # AHK unit & integration tests
+
+# Headless end-to-end GUI suite (launches the real app; needs an interactive session)
+node tests\headless\verify-bugs.js --all
 ```
+
+The headless harness manual (targeted scenarios, sync check, cleanup) is
+`tests/headless/README.md`; the live bug report is `tests/headless/BUG_HUNT_REPORT.md`.
 
 ## Architecture
 

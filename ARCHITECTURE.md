@@ -141,6 +141,7 @@ autohotkey-llm-client/
 │   ├── LLMRequestBuilder.ahk    # JSON request building, FIM, thinking config, cost, response parse
 │   ├── ProviderResolver.ahk     # "provider/model" → endpoint + API key resolution
 │   ├── CurlBuilder.ahk          # cURL command construction
+│   ├── CurlExecutor.ahk         # Sync cURL run: spawn, wait, read output file
 │   ├── SSEParser.ahk            # SSE streaming line parser
 │   ├── ResponseParser.ahk       # Response parsing, usage extraction
 │   ├── CostCalculator.ahk       # Token cost calculation
@@ -163,6 +164,7 @@ autohotkey-llm-client/
 │   ├── InputWindow.ahk          # GUI popup for custom prompts
 │   ├── LoadingTracker.ahk       # Active request tracking, loading state, IPC
 │   ├── LoadingUI.ahk            # Cursor changes, tooltip, suspend banner
+│   ├── SuspendBanner.ahk        # Suspended-state banner GUI (rebuilt on settings updates)
 │   ├── menu/                    # Command menu system
 │   │   ├── CommandMenu.ahk      # Menu building: command menu, tags, submenus
 │   │   └── CommandState.ahk     # Command state management
@@ -172,6 +174,8 @@ autohotkey-llm-client/
 │
 ├── chat/                        # ChatWindow sub-process
 │   ├── ChatWindow.ahk           # Window lifecycle, WebView2, show/hide, pre-warm
+│   ├── ChatHotkeys.ahk          # Chat-window hotkeys (configured close-windows key)
+│   ├── ChatIconResolver.ahk     # Resolve the configured chat-window icon path
 │   ├── ChatIPC.ahk              # IPC handlers: OnLoadThread, OnTriggerLLM
 │   ├── ChatSettings.ahk         # Chat sidebar settings, postCurrentSettingsToWebView, assistant/model mgmt
 │   ├── ChatRequestBuilder.ahk   # buildRequest (chat payload + per-model thinking), sendRequestToLLM
@@ -224,6 +228,10 @@ autohotkey-llm-client/
 │   ├── Sync-Pi-Corrections.ps1  # Dev tool: sync corrections from the pi repo
 │   ├── models-corrections.json  # Manual overrides (source of truth for corrections)
 │   ├── models_metadata.txt      # Timestamped backup of DefaultModels.ahk (gitignored)
+│   ├── models_pricing.txt       # Legacy flat pricing export (gitignored)
+│   ├── run-js-coverage.ps1      # JS test coverage runner (v8 coverage)
+│   ├── js-coverage-preload.js   # Coverage preload hook for node --test
+│   ├── js-coverage-report.js    # Coverage report generator
 │   └── README.md                # Pipeline documentation
 │
 ├── system-messages/             # Default system message text files
@@ -244,7 +252,7 @@ autohotkey-llm-client/
 │       │       ├── icons.js, ui-theme.js, hotkeys.js, menu-items.js
 │       │       ├── providers.js, models.js, sysmsg-modal.js
 │       │       ├── assistants.js       # Chat profiles (single model-scoped reasoning dropdown)
-│       │       └── commands/           # Command editor (commands-core, -render, -drag)
+│       │       └── commands/           # Command editor (commands-core, -render, -actions, -drag)
 │       ├── shared/
 │       │   ├── settings-shared.js      # Shared section helpers (escaping, select fill, registration)
 │       │   └── reasoning-levels.js     # Shared reasoning-level labels/ordering/options builder
@@ -265,7 +273,8 @@ autohotkey-llm-client/
 │   ├── run_js_tests.bat         # JS test runner (node:test)
 │   ├── test_config.ahk          # Test overrides (mock models/providers for unit tests)
 │   ├── unit/                    # Unit tests — AHK (.test.ahk) + JS (.test.js)
-│   └── integration/             # Integration tests (BranchFlow, ChatFlow, UsageFlow, ...)
+│   ├── integration/             # Integration tests (BranchFlow, ChatFlow, UsageFlow, ...)
+│   └── headless/                # Headless e2e harness: verify-bugs.js + BUG_HUNT_REPORT.md
 ```
 
 ## Key Design Decisions
@@ -323,7 +332,7 @@ The solution is [`CacheInitialDefaults()`](app/settings/SettingsDefaults.ahk:15)
 
 ### Settings Persistence
 
-`Save()` is destructive (delete + rewrite), so all merging happens at call sites: `_HandleSaveSettings` merges the incoming UI data over `(saved file + defaults)` before saving. API keys stay out of the file — they're read from environment variables per provider (`authEnvVar`).
+`Save()` is destructive (delete + rewrite), so all merging happens at call sites: `_HandleSaveSettings` merges the incoming UI data over `(saved file + defaults)` before saving. API keys normally live in environment variables per provider (`authEnvVar`), but a provider can also store a direct key in `settings.json` (`authMode: "direct"` + `apiKey`) — the UI warns that direct entry persists the key in the file.
 
 ## Model Metadata Pipeline
 
@@ -377,7 +386,7 @@ Both request paths only send a thinking config when the reasoning value is a lev
 
 ### One model-scoped dropdown everywhere
 
-The chat sidebar, assistant settings, and command settings each use a **single dropdown**: "Model Default" + the model's supported levels, sorted least→most thinking by the shared frontend helper [`webui/js/settings/reasoning-levels.js`](webui/js/settings/reasoning-levels.js) (`ReasoningLevels` — the single source for labels/order). The backend sends raw level values for the chat sidebar; assistants and commands build options from `data.models` metadata.
+The chat sidebar, assistant settings, and command settings each use a **single dropdown**: "Model Default" + the model's supported levels, sorted least→most thinking by the shared frontend helper [`webui/js/shared/reasoning-levels.js`](webui/js/shared/reasoning-levels.js) (`ReasoningLevels` — the single source for labels/order). The backend sends raw level values for the chat sidebar; assistants and commands build options from `data.models` metadata.
 
 **Thread title generation** has no UI control — it always passes `"disabled"` so the cheap utility call never thinks.
 
@@ -469,17 +478,20 @@ Requests with `stream: true` are executed via cURL `-N`; `chat/streaming/StreamH
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | TEXT PRIMARY KEY | UUID |
-| `title` | TEXT | Auto-generated by ThreadTitleGen |
+| `title` | TEXT | Default "New Chat"; auto-titled after the first exchange |
 | `folder_id` | TEXT | FK to chat_folders (NULL = unfiled) |
 | `is_deleted` | INTEGER | 0=active, 1=trashed (soft-delete) |
 | `deleted_at` | TEXT | Timestamp when trashed |
-| `created_at` / `updated_at` | TEXT | ISO 8601 |
+| `created_at` / `updated_at` | TEXT | UTC `YYYY-MM-DD HH:MM:SS` (`datetime('now')`) |
 | `active_leaf_id` | TEXT | Current leaf in message tree |
 | `model_override` / `system_override` | TEXT | Per-thread overrides |
 | `reasoning_override` / `temperature_override` | TEXT / REAL | Per-thread reasoning / temperature |
 | `assistant_id` | TEXT | Per-thread assistant |
 | `cumulative_input_tokens` / `cumulative_output_tokens` / `cumulative_cached_tokens` | INTEGER | Token sums |
 | `cumulative_cost` | REAL | Total cost USD |
+| `cumulative_input_cost` / `cumulative_cached_input_cost` / `cumulative_output_cost` | REAL | Cost breakdown (input / cached-input / output) |
+| `font_size` | INTEGER | Per-thread chat font size (default 17) |
+| `advanced_toggles` | TEXT | JSON `{"codeExecution":..., "webSearch":...}` right-rail toggles |
 
 ### `messages`
 | Column | Type | Description |
@@ -610,6 +622,18 @@ tests\run_js_tests.bat               # JS only (node:test)
 tests\run_ahk_tests.ahk              # AHK only (custom runner)
 ```
 
+Headless end-to-end (GUI bug harness — launches the real app; needs an interactive
+session + elevated permissions; deliberately not part of `run_all_tests.bat`):
+
+```
+node tests\headless\verify-bugs.js --all          # every scenario against the real app
+```
+
+The harness also supports targeted re-runs (`--scenarios=...`), report/scenario sync
+checks (`--check-sync`), and PID-targeted cleanup after aborted runs (`--cleanup`) — see
+`tests/headless/README.md` for the manual and `tests/headless/BUG_HUNT_REPORT.md` for the
+live bug list and workflow.
+
 ### Structure
 
 AHK (`.test.ahk`) and JS (`.test.js`) tests live side by side under `tests/unit/` and `tests/integration/`:
@@ -636,14 +660,13 @@ report** — this is the workflow to point an agent at when auditing or fixing t
   report and the scenario list stay in sync (no stale/dangling ids), and `--all` re-verifies
   every scenario against the real app.
 
-**Lifecycle in one paragraph:** a suspected bug is written into the report as `reported`;
-an agent adds a reproducing scenario to `verify-bugs.js` and runs it — PASS makes the entry
-`verified` and ranked. Fixes happen one verified bug at a time: mark `fix in progress`
-(before editing), fix the source, add regression tests, **flip the scenario assertion to
-expect the fixed behavior**, run the scenario + the full suites, mark `fix applied`, ask the
-user to verify, mark `awaiting user commit`, suggest a commit — and after the user commits,
-delete the entry and move it to History. Interruption guard: every status change is written
-before the work it describes, so a task closed midway resumes from "Where we left off".
+**Lifecycle:** the full lifecycle (intake → `reported` → headless verification → `verified`
+→ fix cycle → History) is defined in `tests/headless/BUG_HUNT_REPORT.md` — that file is the
+authoritative source and must be read first. In short: suspected bugs are written into the
+report as `reported`, reproduced headlessly (scenario PASS = `verified`, then ranked), and
+fixed one at a time in rank order — each fix flips its scenario to assert the **fixed**
+behavior, turning it into a permanent regression check. Every status change is written before
+the work it describes, so a task closed midway resumes from "Where we left off".
 
 **How a developer points an agent at it:** "fix bug #5", "add more bugs to the bug hunt",
 "verify this repro: …", "continue", or "re-verify everything" — all are handled by the
