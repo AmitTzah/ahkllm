@@ -1965,6 +1965,84 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 56,
+  name: 'Stopping a stream before the first token shows an error banner instead of a clean cancel (static check)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const sh = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamHandler.ahk'), 'utf8');
+    const se = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamError.ahk'), 'utf8');
+    // _finalizeStreaming handles the empty-content case BEFORE checking
+    // _streamCancelled...
+    const emptyCheckBeforeCancel = /_streamContent"\] = "" && requestParams\["_streamReasoning"\] = ""[\s\S]{0,400}?_streamCancelled/.test(sh);
+    // ...and that empty branch calls _handleStreamError.
+    const emptyPathCallsError = /if \(requestParams\["_streamContent"\] = "" && requestParams\["_streamReasoning"\] = ""\) \{[\s\S]*?_handleStreamError\(\)/.test(sh);
+    // _handleStreamError falls back to a message that blames the API key.
+    const genericError = /Request failed\. Check your API key and try again\./.test(se);
+    if (!emptyCheckBeforeCancel || !emptyPathCallsError || !genericError)
+      throw new Error('bug not reproduced: emptyCheckBeforeCancel=' + emptyCheckBeforeCancel +
+        ' emptyPathCallsError=' + emptyPathCallsError + ' genericError=' + genericError);
+    return '_finalizeStreaming routes the empty-content case (-> _handleStreamError, "Request failed. Check your API key") BEFORE checking _streamCancelled, so pressing Stop before the first token surfaces a misleading API error instead of a clean cancellation';
+  }
+});
+
+scenarios.push({
+  id: 57,
+  name: 'Chat message content is rendered as raw HTML with no sanitization (embedded HTML executes in the WebView)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-xss-57', title: 'XSS Thread', active_leaf_id: 'm-xss-57' }],
+    messages: [{ id: 'm-xss-57', thread_id: 't-xss-57', role: 'assistant', content: '<img src="x" onerror="window.__xssPwned = 1">', model: 'deepseek/deepseek-v4-flash' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(700);
+    const pwned = await cdp.eval('window.__xssPwned || 0');
+    // BUG: chat-render.js feeds msg.content straight into md.render() with
+    // markdown-it html:true (and linkify), so embedded HTML/event handlers are
+    // executed. The WebView page has chrome.webview.postMessage access, so a
+    // malicious model response (or pasted message) can drive the app.
+    if (pwned !== 1)
+      throw new Error('inline handler did not execute (bug not reproduced): pwned=' + pwned);
+    return 'assistant message <img src="x" onerror=...> executed in the WebView (window.__xssPwned=1) - message content is rendered unsanitized with markdown-it html:true';
+  }
+});
+
+scenarios.push({
+  id: 58,
+  name: 'Forking a chat drops the thread\'s folder (the copy lands in Unfiled)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    folders: [{ id: 'f-fork-58', name: 'My Folder' }],
+    threads: [{ id: 't-fork-58', title: 'Forked Source', active_leaf_id: 'm-fork-58', folder_id: 'f-fork-58' }],
+    messages: [{ id: 'm-fork-58', thread_id: 't-fork-58', role: 'user', content: 'fork me' }]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(500);
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-fork-58"', 15000, 300, 'fork created');
+    const newId = await cdp.eval('window.activeThreadId');
+    await sleep(500);
+    const rows = seed.query(dbPath, 'SELECT folder_id FROM chat_threads WHERE id = ?', [newId]);
+    const folder = rows[0] && rows[0].folder_id;
+    // BUG: TreeRepo._CopyThreadSettings copies settings but never folder_id, so
+    // the forked thread appears in Unfiled instead of the source's folder.
+    if (folder === 'f-fork-58')
+      throw new Error('fork kept the folder (bug not reproduced): folder=' + folder);
+    return 'source thread is in folder f-fork-58; fork id=' + newId + ' has folder_id=' + JSON.stringify(folder) + ' (Unfiled)';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {

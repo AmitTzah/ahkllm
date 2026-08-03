@@ -1,5 +1,8 @@
-PASS | #13 | Command Input Window settings apply live (width/height/font/colors) | after saving width 800, input window opened at width 854 (applied live, no restart) | 6.2s
+PASS | #30 | Deleting a message confirms "data is preserved" but hard-deletes it | confirm dialog said "Delete this message? This removes it from the current view but data is preserved.CancelDelete" but the message row is permanently gone from the DB | 3.3s
+PASS | #31 | Font-size +/- buttons use a stale 17px base after a thread with a custom size loads | after loading a 20px thread, clicking + changed the display from 20px to 18px instead of 21px | 2.7s
+PASS | #45 | "Response Font" setting is not applied to chat messages until Settings is opened | configured ui.responseFont=Georgia; before opening Settings msg font="Inter, system-ui, sans-serif" (var="'Inter', system-ui, sans-serif"); after opening Settings it becomes "Georgia, sans-serif" | 3.8s
+PASS | #47 | Per-thread system prompt / temperature edits are discarded on reload when an assistant is active | edited system prompt to "user override" with assistant active; DB still holds system_override="user override" but after reload the rail shows "assistant system" | 4.7s
 
-Summary: 1/1 scenarios PASS
+Summary: 4/4 scenarios PASS
 Real profile restored: yes
 Report sync: OK

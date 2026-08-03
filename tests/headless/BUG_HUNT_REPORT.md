@@ -154,20 +154,19 @@ How to run AHK safely:
 
 ## Current state
 
-- **27 verified, 0 fix in progress** (2026-08-03). Sweep #10 (chat header /
-  token bar) verified 55 (branch switch / search navigation land on the OLDEST
-  continuation while the tree modal lands on the newest, so the header shows
-  the stale branch's context) and REFUTED the suspected header-contract
-  violation (context follows the active path on branch switch while cumulative
-  cost/totals stay — scenario 54 kept as a regression check). Scenario count is
-  enforced by
+- **30 verified, 0 fix in progress** (2026-08-03). Sweep #11 (deep pass over
+  streaming, message rendering, and thread metadata) verified 56 (stopping a
+  stream before the first token shows an error banner), 57 (message content
+  renders as raw HTML — embedded handlers execute in the WebView), and 58
+  (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-53, 55 are `verified` and
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-53, 55-58 are `verified`
+  and
   ranked (26 highest; 47 after 26, 44 after 31, 45 after 38, 46 last, and the
-  sweep #7/#8/#9/#10 entries appended as 49, 50, 48, 51, 52, 53, 55 — 49/50 the
-  highest of those). Next per the fix cycle: fix bug #26, then the rest in rank
-  order, one at a time, each with a flipped scenario + code-level regression
-  test. Harness cleanup is PID-targeted: use
+  sweep #7-#11 entries appended as 49, 50, 48, 51, 52, 53, 55, 56, 57, 58 —
+  49/50/57 the highest of those). Next per the fix cycle: fix bug #26, then the
+  rest in rank order, one at a time, each with a flipped scenario +
+  code-level regression test. Harness cleanup is PID-targeted: use
   `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -992,6 +991,83 @@ LIMIT 1`); `webui/js/chat/chat-tree-modal.js` `_findDefaultLeaf()`
 continuation (context 70 vs 95) plus a sibling branch, switches branches with
 the nav arrows, and observes Context Used shows 70 (oldest); clicking the same
 node in the tree modal navigates to 95 (newest).
+
+### 56. Stopping a stream before the first token shows an error banner instead of a clean cancel
+
+**Scenario:** 56 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** send a message to a slow model and press Stop (or Esc) before any
+content or reasoning token has arrived.
+
+**Expected:** a user-initiated cancellation is reported as cancelled — no error
+banner.
+
+**Actual:** the UI shows the generic failure banner "Request failed. Check your
+API key and try again." `_finalizeStreaming` checks "no content AND no
+reasoning" FIRST and routes that case to `_handleStreamError`; the
+`_streamCancelled` flag is only consulted after that check. A Stop that lands
+before the first token therefore looks exactly like a connection failure.
+
+**Evidence:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming()` — the
+empty-content branch (`_handleStreamError()`) precedes the `wasCancelled`
+check; `chat/streaming/StreamError.ahk` `_handleStreamError()` falls back to
+the generic API-key message when stderr is empty.
+
+**Verification:** headless scenario 56 (noApp) statically scans
+`StreamHandler.ahk` and asserts the empty-content error branch runs before the
+`_streamCancelled` branch and that the fallback error text blames the API key.
+
+### 57. Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)
+
+**Scenario:** 57 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** have a model respond with (or paste into a message) HTML such as
+`<img src="x" onerror="...">` and view the message.
+
+**Expected:** message content is displayed as inert text; HTML from the model
+or pasted input must not execute.
+
+**Actual:** `markdown-it` is configured with `html: true` and every message /
+streamed chunk is fed straight into `md.render()` without escaping or
+sanitizing, so inline event handlers execute in the WebView. Because the page
+has access to `window.chrome.webview.postMessage`, a malicious model response
+or pasted message can drive app actions (send messages, change settings, etc.).
+
+**Evidence:** `webui/js/main.js` `markdownit({ html: true, ... })`;
+`webui/js/chat/chat-render.js` `createMessageBubble()` (`md.render(msg.content
+|| '')`); `webui/js/chat/stream.js` `onStreamContent()` /
+`_finalizeStreamContent()`; no CSP or sanitizer anywhere in `webui/`.
+
+**Verification:** headless scenario 57 seeds an assistant message containing
+`<img src="x" onerror="window.__xssPwned = 1">`, loads the thread, and observes
+`window.__xssPwned === 1` — the handler executed.
+
+### 58. Forking a chat drops the thread's folder (the copy lands in Unfiled)
+
+**Scenario:** 58 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** put a chat in a folder, click Fork on a message, and look at the
+sidebar.
+
+**Expected:** the forked copy appears in the same folder as its source (like
+the other copied thread-level settings).
+
+**Actual:** the fork is created with `folder_id = NULL` and appears under
+Unfiled. `TreeRepo._CopyThreadSettings` copies model/system/reasoning/
+temperature/assistant but never `folder_id`.
+
+**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` (no `folder_id`
+UPDATE); `ThreadRepo.Create()` inserts a thread without a folder.
+
+**Verification:** headless scenario 58 seeds a folder + a thread inside it,
+forks from the UI, and queries the new thread's `folder_id` — it is NULL
+(Unfiled) instead of the source folder.
 
 ---
 
