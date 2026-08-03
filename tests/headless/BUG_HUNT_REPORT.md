@@ -154,17 +154,20 @@ How to run AHK safely:
 
 ## Current state
 
-- **26 verified, 0 fix in progress** (2026-08-03). Sweep #9 (token usage) added
-  52 (dashboard double-counts thinking tokens for command usage) and 53
-  (dashboard "Last 24 Hours" spans two calendar days while the chart plots one).
-  Scenario count is enforced by
+- **27 verified, 0 fix in progress** (2026-08-03). Sweep #10 (chat header /
+  token bar) verified 55 (branch switch / search navigation land on the OLDEST
+  continuation while the tree modal lands on the newest, so the header shows
+  the stale branch's context) and REFUTED the suspected header-contract
+  violation (context follows the active path on branch switch while cumulative
+  cost/totals stay — scenario 54 kept as a regression check). Scenario count is
+  enforced by
   `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-53 are `verified` and
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-53, 55 are `verified` and
   ranked (26 highest; 47 after 26, 44 after 31, 45 after 38, 46 last, and the
-  sweep #7/#8/#9 entries appended as 49, 50, 48, 51, 52, 53 — 49/50 the highest
-  of those). Next per the fix cycle: fix bug #26, then the rest in rank order,
-  one at a time, each with a flipped scenario + code-level regression test.
-  Harness cleanup is PID-targeted: use
+  sweep #7/#8/#9/#10 entries appended as 49, 50, 48, 51, 52, 53, 55 — 49/50 the
+  highest of those). Next per the fix cycle: fix bug #26, then the rest in rank
+  order, one at a time, each with a flipped scenario + code-level regression
+  test. Harness cleanup is PID-targeted: use
   `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -960,6 +963,36 @@ therefore always over-reports vs the chart for this range.
 today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
 (both days) while the chart has exactly 1 label (today only).
 
+### 55. Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest (header shows the stale branch's context)
+
+**Scenario:** 55 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** in a chat, branch from the same assistant message twice (two
+different follow-ups created at different times), then use the branch-nav
+arrows (or a search result) to switch to that branch; compare the header's
+Context Used with what the tree modal shows for the same node.
+
+**Expected:** switching to a branch lands on its newest continuation (the same
+leaf the tree modal navigates to), so the header's Context Used reflects that
+branch's latest state.
+
+**Actual:** the branch switch (and search navigation) descend via
+`TreeRepo._WalkToLeaf`, which picks the FIRST child by `ORDER BY created_at
+LIMIT 1` — the OLDEST continuation — while the tree modal's `_findDefaultLeaf`
+picks `children[children.length - 1]` (the newest). The header then shows the
+stale branch's Context Used, disagreeing with the tree modal.
+
+**Evidence:** `chat/db/TreeRepo.ahk` `_WalkToLeaf()` (`ORDER BY created_at
+LIMIT 1`); `webui/js/chat/chat-tree-modal.js` `_findDefaultLeaf()`
+(`children[children.length - 1]`).
+
+**Verification:** headless scenario 55 seeds a message with an old and a new
+continuation (context 70 vs 95) plus a sibling branch, switches branches with
+the nav arrows, and observes Context Used shows 70 (oldest); clicking the same
+node in the tree modal navigates to 95 (newest).
+
 ---
 
 ## History (append-only)
@@ -967,6 +1000,9 @@ today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-03 - "Chat-header token bar contract on branch switch" - REFUTED: the
+  header honors its tooltips (Context Used follows the active path 65->80 while
+  cumulative cost/totals stay); scenario 54 kept as a regression check.
 - 2026-08-03 - "Composer Tools dropdown switches do nothing (dead toggles)" - REFUTED: the composer Tools toggles (Web Search / Code Execution / Calculator) are intentional stubs for a future feature (user-confirmed); scenario 32 removed.
 - 2026-08-03 - "Sidebar inline rename saves on Escape instead of canceling" - REFUTED: WebView2 does not dispatch blur when the focused input is removed from the DOM, so Escape cancels the rename and no renameThread is posted. Scenario 28 kept as a regression check (regression: true).
 - 2026-08-03 - "Reasoning-only responses get no action buttons until reload" - FIXED in ff6a6c3: onStreamDone now persists the assistant message and adds action buttons when thinking was streamed with empty final content (mirrors the existing cancelStreaming guard); scenario 21 flipped to a regression check (regression: true) + stream-state unit test.

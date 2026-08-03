@@ -1858,6 +1858,113 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 54,
+  name: 'Chat-header token bar contract on branch switch: context follows the active path, cumulative cost/tokens stay',
+  regression: true, // REFUTED: the contract HOLDS (context 65->80, cost/totals unchanged); kept as a regression check
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-br-54', title: 'Branch Tokens', active_leaf_id: 'm-br-a2' }],
+    messages: [
+      { id: 'm-br-u1', thread_id: 't-br-54', role: 'user', content: 'first', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-br-a1', thread_id: 't-br-54', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-u1', sibling_group: 'sg-br', sibling_index: 0, token_count: 20, active_path_tokens: 30 },
+      { id: 'm-br-u2', thread_id: 't-br-54', role: 'user', content: 'follow A', parent_id: 'm-br-a1', token_count: 5, active_path_tokens: 35 },
+      { id: 'm-br-a2', thread_id: 't-br-54', role: 'assistant', content: 'answer A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-u2', token_count: 30, active_path_tokens: 65 },
+      { id: 'm-br-a1b', thread_id: 't-br-54', role: 'assistant', content: 'reply B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-u1', sibling_group: 'sg-br', sibling_index: 1, token_count: 20, active_path_tokens: 30 },
+      { id: 'm-br-u2b', thread_id: 't-br-54', role: 'user', content: 'follow B', parent_id: 'm-br-a1b', token_count: 10, active_path_tokens: 40 },
+      { id: 'm-br-a2b', thread_id: 't-br-54', role: 'assistant', content: 'answer B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-u2b', token_count: 40, active_path_tokens: 80 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    // Shared per-thread cumulative ledger (tooltip: "across all conversation
+    // branches") - must NOT change on branch switch.
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("UPDATE chat_threads SET cumulative_input_tokens=25, cumulative_output_tokens=110, cumulative_cached_tokens=4, cumulative_cost=1.5, cumulative_input_cost=0.5, cumulative_cached_input_cost=0.1, cumulative_output_cost=1.0 WHERE id='t-br-54'");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 4', 15000, 300, 'branch A loaded');
+    await sleep(700);
+    const barA = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(barA).indexOf('65') < 0 || String(barA).indexOf('$1.50') < 0)
+      throw new Error('branch A header values missing (setup): ' + JSON.stringify(barA));
+    // Switch to branch B via the nav arrow on the shared assistant message.
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Next branch"]');
+    await cdp.waitFor('chatMessages.length >= 4 && chatMessages[3] && chatMessages[3].id === "m-br-a2b"', 15000, 300, 'branch B loaded');
+    await sleep(700);
+    const barB = await cdp.eval('document.getElementById("tokenBar").textContent');
+    const costB = await cdp.eval('document.querySelector("#tokenBar .tu-item:last-child .tu-val").textContent');
+    const contextB = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
+    // CONTRACT: context follows the active path (65 -> 80) while the cumulative
+    // cost and totals stay per-thread. Throw with observed values if violated.
+    if (String(contextB).indexOf('80') < 0 || costB !== '$1.50')
+      throw new Error('token bar contract violated on branch switch: branch A bar=' + JSON.stringify(barA) +
+        ' branch B bar=' + JSON.stringify(barB) + ' contextB=' + JSON.stringify(contextB) + ' costB=' + JSON.stringify(costB));
+    return 'branch A bar=' + JSON.stringify(barA) + ' -> branch B bar=' + JSON.stringify(barB) +
+      ' (context ' + JSON.stringify(contextB) + ', cost ' + costB + ' - contract holds)';
+  }
+});
+
+scenarios.push({
+  id: 55,
+  name: 'Branch switch / search navigation land on the OLDEST continuation while the tree modal lands on the newest (header context disagrees)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-br-55', title: 'Multi-Child Branch', active_leaf_id: 'm-br-55-a2x' }],
+    messages: [
+      { id: 'm-br-55-u1', thread_id: 't-br-55', role: 'user', content: 'first', token_count: 10, active_path_tokens: 10, created_at: '2026-08-01 09:00:00' },
+      { id: 'm-br-55-a1', thread_id: 't-br-55', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-55-u1', sibling_group: 'sg-55', sibling_index: 0, token_count: 20, active_path_tokens: 30, created_at: '2026-08-01 09:01:00' },
+      { id: 'm-br-55-u2', thread_id: 't-br-55', role: 'user', content: 'follow A1', parent_id: 'm-br-55-a1', token_count: 5, active_path_tokens: 35, created_at: '2026-08-01 09:02:00' },
+      { id: 'm-br-55-a2', thread_id: 't-br-55', role: 'assistant', content: 'ans A1', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-55-u2', token_count: 30, active_path_tokens: 65, created_at: '2026-08-01 09:03:00' },
+      { id: 'm-br-55-u2x', thread_id: 't-br-55', role: 'user', content: 'follow A2', parent_id: 'm-br-55-a1', token_count: 10, active_path_tokens: 40, created_at: '2026-08-01 10:00:00' },
+      { id: 'm-br-55-a2x', thread_id: 't-br-55', role: 'assistant', content: 'ans A2', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-55-u2x', token_count: 40, active_path_tokens: 90, created_at: '2026-08-01 10:01:00' },
+      { id: 'm-br-55-a1b', thread_id: 't-br-55', role: 'assistant', content: 'reply B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-55-u1', sibling_group: 'sg-55', sibling_index: 1, token_count: 20, active_path_tokens: 30, created_at: '2026-08-01 09:05:00' },
+      { id: 'm-br-55-u2b', thread_id: 't-br-55', role: 'user', content: 'follow B1', parent_id: 'm-br-55-a1b', token_count: 10, active_path_tokens: 40, created_at: '2026-08-01 09:06:00' },
+      { id: 'm-br-55-a2b', thread_id: 't-br-55', role: 'assistant', content: 'ans B1', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-55-u2b', token_count: 30, active_path_tokens: 70, created_at: '2026-08-01 09:07:00' },
+      { id: 'm-br-55-u2bx', thread_id: 't-br-55', role: 'user', content: 'follow B2', parent_id: 'm-br-55-a1b', token_count: 15, active_path_tokens: 45, created_at: '2026-08-01 11:00:00' },
+      { id: 'm-br-55-a2bx', thread_id: 't-br-55', role: 'assistant', content: 'ans B2', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-br-55-u2bx', token_count: 50, active_path_tokens: 95, created_at: '2026-08-01 11:01:00' }
+    ]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length >= 4 && chatMessages[chatMessages.length - 1].id === "m-br-55-a2x"', 15000, 300, 'newest continuation loaded');
+    await sleep(700);
+    const contextStart = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
+    if (String(contextStart).indexOf('90') < 0)
+      throw new Error('active continuation context missing (setup): ' + JSON.stringify(contextStart));
+    // Branch-nav switch to the sibling (a1 -> a1b). a1b has TWO continuations:
+    // u2b (oldest, leaf context 70) and u2bx (newest, leaf context 95).
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Next branch"]');
+    await cdp.waitFor('chatMessages.length >= 4 && chatMessages[chatMessages.length - 1].id !== "m-br-55-a2x"', 15000, 300, 'branch switched');
+    await sleep(700);
+    const contextSwitch = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
+    const leafAfterSwitch = await cdp.eval('chatMessages[chatMessages.length - 1] ? chatMessages[chatMessages.length - 1].id : ""');
+    // BUG: _WalkToLeaf picks ORDER BY created_at LIMIT 1 -> the OLDEST child
+    // (a2b, context 70) instead of the newest continuation (a2bx, context 95)
+    // that the tree modal's _findDefaultLeaf would pick.
+    if (leafAfterSwitch === 'm-br-55-a2bx' && String(contextSwitch).indexOf('95') >= 0)
+      throw new Error('branch switch landed on the newest continuation (bug not reproduced): leaf=' + leafAfterSwitch + ' context=' + contextSwitch);
+    // Tree modal navigation to the SAME node must land on the newest leaf (95) -
+    // proving the two navigation paths disagree.
+    await cdp.click('#treeBtn');
+    await cdp.waitFor('typeof window._treeData !== "undefined" && window._treeData.length > 0', 15000, 300, 'tree data');
+    await cdp.waitFor('document.querySelector(\'.tree-node[data-target="m-br-55-a1b"]\') !== null', 15000, 300, 'tree node');
+    await cdp.click('.tree-node[data-target="m-br-55-a1b"]');
+    await cdp.waitFor('chatMessages[chatMessages.length - 1] && chatMessages[chatMessages.length - 1].id === "m-br-55-a2bx"', 15000, 300, 'tree navigated to newest');
+    await sleep(700);
+    const contextTree = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
+    return 'branch-nav switch from a1 landed on leaf ' + leafAfterSwitch + ' (context ' + JSON.stringify(contextSwitch) +
+      ', oldest) while the tree modal lands on m-br-55-a2bx (context ' + JSON.stringify(contextTree) + ', newest)';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {
