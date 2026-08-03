@@ -21,12 +21,25 @@ The app must **not already be running** (it is `#SingleInstance`; the harness ab
 node tests/headless/verify-bugs.js --all              # run every scenario
 node tests/headless/verify-bugs.js --scenarios=1,6,15 # specific scenario ids
 node tests/headless/verify-bugs.js --check-sync       # report <-> scenarios in sync?
+node tests/headless/verify-bugs.js --cleanup          # close leftover app processes only
 ```
 
 Launching the app is a GUI operation, so the sandbox will ask for elevated permissions —
 that is expected (`--check-sync` needs no app and no permission). Results go to
 `tests/headless/results/headless-verification.txt` and stdout, one `PASS/FAIL` line per
 scenario.
+
+## Cleanup after an aborted run
+
+`--cleanup` closes ONLY this repo's app processes (`Main.ahk`, `chat/ChatWindow.ahk` -
+matched by process command line, which works even when the user started the app on their
+own desktop that the sandbox cannot see, plus script-window title; killed by PID) so a
+stale app instance never blocks a run. It prints the PIDs it closed. **Never** run
+`Stop-Process -Name AutoHotkey64 -Force` or `taskkill /IM AutoHotkey64.exe` to "clean
+up" - the user runs their own AHK scripts on this machine and a blanket kill closes all
+of them. If `--cleanup` reports `Closed 0` but the app profile is still locked, another
+process (possibly a hung, windowless AHK script) holds it - do not kill AHK processes by
+guesswork; ask the user to close their scripts.
 
 Scenario ids are stable keys defined in `verify-bugs.js`; each bug entry in
 `BUG_HUNT_REPORT.md` lists the scenario that verifies it and a **Status** (reported →

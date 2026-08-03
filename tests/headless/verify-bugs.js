@@ -964,13 +964,30 @@ async function main() {
   if (process.argv.includes('--check-sync')) {
     process.exit(checkReportSync() ? 0 : 1);
   }
+  if (process.argv.includes('--cleanup')) {
+    // Close ONLY this repo's app scripts (Main.ahk, chat/ChatWindow.ahk), by PID.
+    // Never kill AutoHotkey64.exe processes wholesale -- the user runs their own
+    // AHK scripts and a blanket kill (Stop-Process -Name AutoHotkey64 -Force,
+    // taskkill /IM AutoHotkey64.exe) closes those too. The probe matches by
+    // process command line, so it also finds an app the user started on their
+    // own (interactive) desktop, which this sandbox desktop cannot see.
+    let out;
+    try {
+      out = runProbe('kill-app');
+    } catch (e) {
+      console.error('cleanup probe failed: ' + e.message);
+      process.exit(4);
+    }
+    console.log('Closed ' + out.closed + ' app process(es)' + (out.pids ? ' (pids: ' + out.pids + ')' : '') + '. Other AutoHotkey scripts were not touched.');
+    process.exit(0);
+  }
   const selected = scenarios.filter((s) => ids.includes(s.id));
   if (selected.length !== ids.length) {
     console.error('Unknown scenario ids: ' + ids.filter((i) => !scenarios.some((s) => s.id === i)).join(','));
     process.exit(2);
   }
   if (launcher.preflight()) {
-    console.error('ABORT: the app (Main.ahk/ChatWindow.ahk) appears to be running already (#SingleInstance). Close it and re-run.');
+    console.error('ABORT: the app (Main.ahk/ChatWindow.ahk) appears to be running already (#SingleInstance). Close it and re-run, or if it is a leftover from an aborted run: node tests/headless/verify-bugs.js --cleanup');
     process.exit(3);
   }
   console.log('Isolating the real profile (junction redirect)...');
@@ -996,6 +1013,9 @@ async function main() {
     }
   } catch (e) {
     console.error('Runner error:', e);
+    if (/EPERM|isolat/i.test(String(e && e.message))) {
+      console.error('Hint: the profile could not be moved. Two common causes: (1) the app is running or left over and holds the profile -- run `node tests/headless/verify-bugs.js --cleanup` (closes ONLY this repo\'s Main.ahk / chat/ChatWindow.ahk by command line + window title, never other AHK scripts); (2) the runner lacks permission to move the real profile (sandbox) -- re-run with elevated permissions, since launching the app and isolating the profile need the user\'s rights. If cleanup reports "Closed 0" and the profile is still blocked, ask the user before killing any AutoHotkey64.exe.');
+    }
     lines.push('RUNNER ERROR: ' + (e && e.message ? e.message : String(e)));
   } finally {
     for (const pid of spawnedPids) launcher.teardown(pid);

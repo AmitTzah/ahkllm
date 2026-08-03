@@ -135,9 +135,22 @@ How to run AHK safely:
    and `try FileAppend` for results.
 3. **Always launch with a hard bound** — e.g. .NET `Process.Start` + `WaitForExit(ms)` +
    `Kill()`, or `spawnSync` with `timeout` — never bare `&`.
-4. **After any aborted run, kill stray `AutoHotkey64.exe` processes** before
-   retrying (`Stop-Process -Name AutoHotkey64 -Force`).
-5. Give the shell command itself a `timeout_ms`.
+4. **Never blanket-kill `AutoHotkey64.exe` processes.** No
+   `Stop-Process -Name AutoHotkey64 -Force`, no `taskkill /IM AutoHotkey64.exe`.
+   The user runs their own AHK scripts on this machine, and a blanket kill closes
+   ALL of them. This is the #1 way agents have destroyed unrelated user scripts.
+5. **After any aborted run, clean up with the targeted command instead:**
+   `node tests/headless/verify-bugs.js --cleanup`. It closes ONLY this repo's
+   app processes (`Main.ahk`, `chat/ChatWindow.ahk` - matched by process command
+   line, which works even when the user started the app on their own desktop
+   that this sandbox cannot see, plus script-window title; killed by PID) and
+   prints what it closed; every other AHK script keeps running. If it prints
+   `Closed 0` but the profile is still locked (EPERM when isolating), or
+   `AutoHotkey64.exe` processes linger with no recognizable cmdline/script
+   window (load-time hang / modal error dialog), they are NOT identifiable as
+   app scripts - do NOT kill them by guessing; report it and let the user close
+   their own scripts.
+6. Give the shell command itself a `timeout_ms`.
 
 ## Current state
 
@@ -146,7 +159,9 @@ How to run AHK safely:
   reported.
 - **Where we left off:** bug #2 (Reasoning-only responses get no action buttons) was
   committed in `ff6a6c3` and moved to History; scenario 21 is a regression check. No
-  verified bugs remain.
+  verified bugs remain. Harness cleanup is now PID-targeted: use
+  `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
+  blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
 ---
 

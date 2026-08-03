@@ -97,10 +97,115 @@ IconFingerprint(hIcon) {
     return hex
 }
 
+; PIDs of THIS repo's app scripts only: Main.ahk and chat/ChatWindow.ahk.
+; Matched two ways, so a user's unrelated AHK scripts are never included:
+;  1) process command line (works even when the app was started on the user's
+;     interactive desktop, which this sandbox desktop cannot see), and
+;  2) script-window title (full path + " - AutoHotkey vX.Y").
+; A windowless hung AutoHotkey64.exe (load-time hang / modal error dialog) has
+; no recognizable cmdline/window and is never matched -- it is NOT one of the
+; app scripts and must not be killed by guesswork.
+AppScriptPids() {
+    pids := []
+    ; Command-line match: "<exe>" "<path>\Main.ahk" / ...\chat\ChatWindow.ahk"
+    for proc in ProcessList() {
+        if !InStr(proc["exe"], "AutoHotkey64.exe")
+            continue
+        cmd := ProcessCmdLine(proc["pid"])
+        if !(InStr(cmd, "\Main.ahk`"") || InStr(cmd, "\ChatWindow.ahk`""))
+            continue
+        if !HasVal(pids, proc["pid"])
+            pids.Push(proc["pid"])
+    }
+    ; Window-title match (catches instances on this desktop with unusual cmdlines).
+    for h in WinGetList("ahk_class AutoHotkey") {
+        t := WinGetTitle("ahk_id " h)
+        if !(InStr(t, "\Main.ahk - AutoHotkey") || InStr(t, "\ChatWindow.ahk - AutoHotkey"))
+            continue
+        pid := WinGetPID("ahk_id " h)
+        if !HasVal(pids, pid)
+            pids.Push(pid)
+    }
+    return pids
+}
+
+; Read another process's command line via its PEB (works for same-user processes
+; even on a different desktop, where window enumeration cannot see them).
+; Returns "" when it cannot be read (access denied / not an AHK process).
+ProcessCmdLine(pid) {
+    hProc := DllCall("kernel32.dll\OpenProcess", "uint", 0x0410, "int", 0, "uint", pid, "ptr") ; QUERY_INFORMATION | VM_READ
+    if !hProc
+        return ""
+    try {
+        ; PROCESS_BASIC_INFORMATION: PebBaseAddress at offset 8 (x64).
+        pbi := Buffer(48)
+        DllCall("ntdll.dll\NtQueryInformationProcess", "ptr", hProc, "int", 0, "ptr", pbi, "uint", 48, "uint*", &retLen := 0)
+        peb := NumGet(pbi, 8, "ptr")
+        ; PEB.ProcessParameters at offset 0x20 (x64).
+        ppBuf := Buffer(8)
+        if !DllCall("kernel32.dll\ReadProcessMemory", "ptr", hProc, "ptr", peb + 0x20, "ptr", ppBuf, "uptr", 8, "uptr*", &bytesRead := 0)
+            return ""
+        params := NumGet(ppBuf, 0, "ptr")
+        ; RTL_USER_PROCESS_PARAMETERS.CommandLine at offset 0x70 (x64):
+        ; UNICODE_STRING { Length(2), MaxLength(2), pad(4), Buffer(8) }.
+        uni := Buffer(16)
+        if !DllCall("kernel32.dll\ReadProcessMemory", "ptr", hProc, "ptr", params + 0x70, "ptr", uni, "uptr", 16, "uptr*", &bytesRead := 0)
+            return ""
+        cmdLen := NumGet(uni, 0, "ushort")
+        cmdBuf := NumGet(uni, 8, "ptr")
+        if !cmdLen || !cmdBuf
+            return ""
+        out := Buffer(cmdLen)
+        if !DllCall("kernel32.dll\ReadProcessMemory", "ptr", hProc, "ptr", cmdBuf, "ptr", out, "uptr", cmdLen, "uptr*", &bytesRead := 0)
+            return ""
+        return StrGet(out, cmdLen // 2, "UTF-16")
+    } finally {
+        DllCall("kernel32.dll\CloseHandle", "ptr", hProc)
+    }
+}
+
+; Enumerate processes via Toolhelp32; returns an array of Map(pid, exe).
+ProcessList() {
+    procs := []
+    hSnap := DllCall("kernel32.dll\CreateToolhelp32Snapshot", "uint", 0x2, "uint", 0, "ptr") ; TH32CS_SNAPPROCESS
+    if !hSnap || hSnap = -1
+        return procs
+    try {
+        pe32 := Buffer(568)
+        NumPut("uint", 568, pe32, 0)
+        if !DllCall("kernel32.dll\Process32FirstW", "ptr", hSnap, "ptr", pe32)
+            return procs
+        loop {
+            procs.Push(Map("pid", NumGet(pe32, 8, "uint"), "exe", StrGet(pe32.Ptr + 44, 260, "UTF-16")))
+        } until !DllCall("kernel32.dll\Process32NextW", "ptr", hSnap, "ptr", pe32)
+    } finally {
+        DllCall("kernel32.dll\CloseHandle", "ptr", hSnap)
+    }
+    return procs
+}
+
+HasVal(arr, v) {
+    for x in arr
+        if x = v
+            return true
+    return false
+}
+
 switch command {
     case "preflight":
         running := WinExist("Main.ahk ahk_class AutoHotkey") || WinExist("ChatWindow.ahk ahk_class AutoHotkey")
         Write(Map("running", running ? 1 : 0))
+
+    case "app-pids":
+        pids := AppScriptPids()
+        Write(Map("count", pids.Length, "pids", Join(",", pids)))
+
+    case "kill-app":
+        pids := AppScriptPids()
+        closed := 0
+        for pid in pids
+            closed += ProcessClose(pid) ? 1 : 0
+        Write(Map("closed", closed, "pids", Join(",", pids)))
 
     case "kill-chat":
         hwnd := WinExist("ChatWindow.ahk ahk_class AutoHotkey")
