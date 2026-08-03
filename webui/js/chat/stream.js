@@ -133,7 +133,10 @@ function onStreamDone(data) {
   _finalizeThinkingBlock();
   _finalizeStreamContent();
 
-  if (streamState.contentBuffer) {
+  // Persist and add action buttons even when the final content is empty but
+  // reasoning was streamed (reasoning-only responses) - otherwise the message
+  // never lands in chatMessages and the bubble has no Copy/Retry/etc until reload.
+  if (streamState.contentBuffer || streamState.thinkingBuffer) {
     _persistStreamedMessage(streamState.contentBuffer, modelName, dbMsg);
     if (streamState.bubble) addStreamingActions(streamState.bubble, chatMessages.length - 1);
   }

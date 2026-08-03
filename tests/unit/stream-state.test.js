@@ -12,6 +12,7 @@ function loadStreamModule() {
         document: {
             getElementById: () => null, createElement: () => ({ style: {}, appendChild: () => {}, querySelector: () => null, querySelectorAll: () => [], insertBefore: () => {} }),
             querySelectorAll: () => [],
+            querySelector: () => null,
         },
         window: { addEventListener: () => {} },
         console: console,
@@ -110,5 +111,42 @@ describe('cancelStreaming state', () => {
         ctx.streamState.contentDiv = { innerHTML: '' };
         ctx.cancelStreaming({});
         assert.strictEqual(ctx.streamState.active, false);
+    });
+});
+
+describe('onStreamDone reasoning-only responses', () => {
+    function makeBubble() {
+        const shared = { textContent: '' };
+        return {
+            dataset: {},
+            querySelector(sel) {
+                return sel === '.msg-content' ? shared : shared;
+            },
+            querySelectorAll: () => [],
+        };
+    }
+
+    it('persists the message and adds actions when only thinking was streamed', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [{ role: 'user', content: 'think only please' }];
+        const bubble = makeBubble();
+        ctx.streamState.active = true;
+        ctx.streamState.bubble = bubble;
+        ctx.streamState.contentDiv = { innerHTML: '' };
+        ctx.streamState.thinkingDetails = { querySelector: () => ({ innerHTML: '', remove: () => {} }) };
+        ctx.streamState.contentBuffer = '';
+        ctx.streamState.thinkingBuffer = 'reasoning text';
+        ctx.streamState.modelName = 'thinking-model';
+        let actionsAdded = 0;
+        ctx.addStreamingActions = (b, idx) => { actionsAdded++; assert.strictEqual(b, bubble); assert.strictEqual(idx, 1); };
+
+        ctx.onStreamDone({ model: 'thinking-model', dbMsg: { id: 'm-reasoning-1', reasoning: 'reasoning text' } });
+
+        assert.strictEqual(ctx.chatMessages.length, 2);
+        assert.strictEqual(ctx.chatMessages[1].role, 'assistant');
+        assert.strictEqual(ctx.chatMessages[1].content, '');
+        assert.strictEqual(ctx.chatMessages[1].id, 'm-reasoning-1');
+        assert.strictEqual(ctx.chatMessages[1].reasoning, 'reasoning text');
+        assert.strictEqual(actionsAdded, 1);
     });
 });

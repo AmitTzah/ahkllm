@@ -141,14 +141,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 open bugs**, all `verified` headlessly (2026-08-02; 23/23 harness scenarios passed,
-  21 regression/refuted checks).
-- **Where we left off:** bug #1 (Right-panel Advanced toggles do nothing, scenario 20) —
-  fix applied (reworked): Structured Outputs was removed entirely; Code Execution / Web
-  Search are now persisted stubs — their state flows through
-  updateModelSettings/requestParams/thread DB and round-trips to the UI, but no
-  `response_format`/`tools` fields are sent. Scenario 20 PASSES, AHK 428/428 + JS 461/461
-  green. Next: user manual verification, then `awaiting user commit`.
+- **1 open bug**, verified headlessly (2026-08-03; 23/23 harness scenarios passed,
+  22 regression/refuted checks).
+- **Where we left off:** bug #1 (Right-panel Advanced toggles) is closed out - the user
+  committed the fix (`aafa4ed` + `247d6c5`), scenario 20 is a regression check, and the
+  entry moved to History. Bug #2 (Reasoning-only responses get no action buttons,
+  scenario 21) has `fix applied`: `onStreamDone` now persists + adds actions when
+  thinking was streamed even with empty content. Scenario 21 flipped + PASSES, AHK
+  428/428, JS 455/455. Next: user manual verification, then `awaiting user commit`.
 
 ---
 
@@ -201,35 +201,12 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 1. Dashboard "All Time" caps the chart at 365 days (summary shows all time)
 
-### 1. Right-panel Advanced toggles (Code Execution / Web Search) do nothing
-
-**Scenario:** 20 (scenario code in verify-bugs.js)
-
-**Status:** fix applied
-
-**Repro:** toggle them, switch threads, reload.
-
-**Expected:** the remaining toggles are placeholders (stubs) — their state persists and
-restores, but the API request is never altered (Code Execution / Web Search are future
-features). Structured Outputs was removed from the Advanced tab entirely.
-
-**Actual:** before this change only a CSS class toggled and nothing was stored. Now the
-state flows through `updateModelSettings` → requestParams → per-thread DB and back to the
-switches on reload, but no request fields are sent. `response_format: json_object` was
-attempted for Structured Outputs first but rejected (OpenAI requires the prompt to contain
-"json", and it isn't a chat-app fit), so that toggle and its injection were removed.
-
-**Verification:** headless scenario 20 — toggling Code Execution posts `updateModelSettings`
-with `codeExecution: true` and the switch stays on; AHK test asserts the request body never
-gains `response_format` or `tools`.
-
-### 2. Reasoning-only responses get no action buttons until reload
+### 1. Reasoning-only responses get no action buttons until reload
 
 **Scenario:** 21 (scenario code in verify-bugs.js)
 
-**Status:** verified — open
+**Status:** fix applied
 
 **Repro:** a model returns reasoning with empty final content.
 
@@ -237,7 +214,11 @@ gains `response_format` or `tools`.
 
 **Actual:** the message is not added to `chatMessages` and no actions render until reload.
 
-**Verification:** headless scenario 21.
+**Verification:** headless scenario 21 (flipped to expect the fixed behavior) -
+thinking block shows, the assistant message IS added to chatMessages (with the
+reasoning), and the bubble renders 7 action buttons. Unit regression test added in
+`tests/unit/stream-state.test.js` (onStreamDone reasoning-only persists + adds
+actions).
 
 ---
 
@@ -246,6 +227,7 @@ gains `response_format` or `tools`.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-03 - "Right-panel Advanced toggles (Code Execution / Web Search) do nothing" - FIXED in aafa4ed (+247d6c5): Structured Outputs removed entirely; Code Execution / Web Search are persisted stubs (state round-trips through updateModelSettings/requestParams/thread DB, no response_format/tools sent); scenario 20 flipped to a regression check (regression: true) + ChatSettings/request-builder AHK + JS unit tests.
 - 2026-08-02 — "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" — FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.
 - 2026-08-02 — "Custom icon picked outside the repo never applies to the chat window" — FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
 - 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
@@ -269,3 +251,4 @@ closure; never rewrite past entries.
 - 2026-08-01 — "New chats ignore the configured `New Chats Start With` default" — FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` — `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
 - 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
 - 2026-08-02 — "Clearing a hotkey field does nothing — hotkeys can't be disabled" — FIXED in 00bb503: empty hotkey now means disabled — `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
+

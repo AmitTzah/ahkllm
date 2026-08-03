@@ -745,6 +745,7 @@ scenarios.push({
 scenarios.push({
   id: 20,
   name: 'Right-rail Advanced toggles (Code Execution / Web Search) do nothing',
+  regression: true, // FIXED bug kept as a regression check (toggles must keep persisting as stubs)
   mode: null,
   settings: {},
   async body({ cdp }) {
@@ -785,9 +786,9 @@ scenarios.push({
       return last.querySelectorAll('.msg-action-btn').length;
     })()`);
     if (thinking === 0) throw new Error('no thinking block rendered');
-    if (lastMsgRole !== 'user') throw new Error('assistant message was added to chatMessages: ' + lastMsgRole);
-    if (lastBubbleActions !== 0) throw new Error('assistant bubble has ' + lastBubbleActions + ' action buttons');
-    return 'thinking block shown but message not added to chatMessages; assistant bubble has 0 action buttons';
+    if (lastMsgRole !== 'assistant') throw new Error('assistant message not added to chatMessages: ' + lastMsgRole);
+    if (lastBubbleActions === 0) throw new Error('assistant bubble has no action buttons');
+    return 'thinking block shown, assistant message added to chatMessages, bubble has ' + lastBubbleActions + ' action buttons';
   }
 });
 
