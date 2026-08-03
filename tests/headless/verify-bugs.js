@@ -1785,6 +1785,79 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 52,
+  name: 'Usage dashboard double-counts thinking tokens for command usage (completion_tokens already includes thinking)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    chatUsage: [
+      { date: seed.daysAgo(0), model: 'gpt-5-mini', provider: 'openai', call_count: 1, prompt_tokens: 10, completion_tokens: 100, thinking_tokens: 40, cached_tokens: 0, input_cost: 0, cached_input_cost: 0, output_cost: 0, total_cost: 0 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    // Insert a command_usage row with the SAME shape the app writes for inline
+    // commands: completion_tokens is the FULL completion (thinking included,
+    // per ResponseParser.ParseChatResponse) plus a separate thinking_tokens
+    // column. The fixtures builder has no commandUsage support, so insert it
+    // directly before the dashboard loads.
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES ('" + seed.daysAgo(0) + "', 'gpt-5-mini', 'openai', 'Test', 1, 10, 100, 40, 0, 0, 0, 0, 0, 0, 0)");
+    db.close();
+
+    await showChat();
+    await cdp.click('#dashboard-icon');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat && allData.commands && allData.chat.length >= 1 && allData.commands.length >= 1', 15000, 300, 'dashboard data');
+    await cdp.eval('document.getElementById("timeRange").value = "all"; loadData(); true');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat.length === 1 && allData.commands.length === 1', 15000, 300, 'all-time data');
+    await sleep(500); // let the async host-object query + render settle
+    const totalTokens = await cdp.text('#totalTokens');
+    // BUG: renderSummary adds completion_tokens + thinking_tokens for commands
+    // (cmdOutput = completion + thinking) even though command_usage
+    // completion_tokens already includes thinking. The equivalent chat row is
+    // counted once (output_tokens), so the same 100-token response with 40
+    // thinking tokens is counted as 140 for commands vs 100 for chat.
+    if (totalTokens === '220')
+      throw new Error('command thinking tokens were not double-counted (bug not reproduced): ' + totalTokens);
+    return 'chat row (prompt 10 + completion 100) + command row (prompt 10 + completion 100 + thinking 40): dashboard Total Tokens = ' + totalTokens +
+      ' (220 = counted once; 260 = thinking double-counted for the command)';
+  }
+});
+
+scenarios.push({
+  id: 53,
+  name: 'Dashboard "Last 24 Hours" spans two calendar days - summary counts yesterday while the chart only plots today',
+  mode: null,
+  settings: {},
+  fixtures: {
+    chatUsage: [
+      { date: seed.daysAgo(1), model: 'deepseek/deepseek-v4-flash', provider: 'deepseek', call_count: 1, prompt_tokens: 100, completion_tokens: 50, cached_tokens: 0, input_cost: 1, cached_input_cost: 0, output_cost: 1, total_cost: 2 },
+      { date: seed.daysAgo(0), model: 'deepseek/deepseek-v4-flash', provider: 'deepseek', call_count: 1, prompt_tokens: 50, completion_tokens: 25, cached_tokens: 0, input_cost: 1, cached_input_cost: 0, output_cost: 1, total_cost: 2 }
+    ]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.click('#dashboard-icon');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat && allData.chat.length >= 2', 15000, 300, 'dashboard data');
+    await cdp.eval('document.getElementById("timeRange").value = "day"; loadData(); true');
+    // Wait for the DAY render specifically: the day chart has exactly one
+    // "today" label (the month render, which also passes the data-count check,
+    // has 30 labels and would race with this assertion).
+    await cdp.waitFor('mainChart && mainChart.data.labels.length === 1', 15000, 300, 'day-range chart rendered');
+    const totalCost = await cdp.text('#totalCost');
+    const labels = await cdp.eval('mainChart.data.labels.length');
+    // BUG: the "day" SQL filter is date >= date('now','-1 day') - yesterday's
+    // 00:00 UTC through now (up to ~48 hours) - so the summary counts both
+    // seeded days, while getDateRangeLabels('day') produces ONE label (today),
+    // so yesterday's usage is counted in the summary but never plotted.
+    if (totalCost !== '$4.00')
+      throw new Error('day summary no longer over-counts yesterday (bug not reproduced): cost=' + totalCost + ' labels=' + labels);
+    return 'seeded yesterday + today rows (total $4.00): "Last 24 Hours" summary shows $' + totalCost +
+      ' (both days) while the chart has ' + labels + ' label(s) (today only)';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {

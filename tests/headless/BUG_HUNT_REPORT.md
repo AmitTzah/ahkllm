@@ -154,19 +154,17 @@ How to run AHK safely:
 
 ## Current state
 
-- **24 verified, 0 fix in progress** (2026-08-03). Sweep #7 (chat tree
-  operations) added 48 (fork resets token/cost stats) and 49 (cancel edit
-  leaves removed attachments hidden-but-still-sent); sweep #8 (commands) added
-  50 (commands lose their system prompt after a settings save — bare
-  system-message filenames unresolvable) and 51 (vision gate rejects
-  images/screenshots for short-form model ids). Scenario count is enforced by
+- **26 verified, 0 fix in progress** (2026-08-03). Sweep #9 (token usage) added
+  52 (dashboard double-counts thinking tokens for command usage) and 53
+  (dashboard "Last 24 Hours" spans two calendar days while the chart plots one).
+  Scenario count is enforced by
   `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-51 are `verified` and
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-53 are `verified` and
   ranked (26 highest; 47 after 26, 44 after 31, 45 after 38, 46 last, and the
-  sweep #7/#8 entries appended as 49, 50, 48, 51 — 49/50 the highest of those).
-  Next per the fix cycle: fix bug #26, then the rest in rank order, one at a
-  time, each with a flipped scenario + code-level regression test. Harness
-  cleanup is PID-targeted: use
+  sweep #7/#8/#9 entries appended as 49, 50, 48, 51, 52, 53 — 49/50 the highest
+  of those). Next per the fix cycle: fix bug #26, then the rest in rank order,
+  one at a time, each with a flipped scenario + code-level regression test.
+  Harness cleanup is PID-targeted: use
   `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -901,6 +899,66 @@ entry as `"provider/model"`.
 no prefix fallback and the raw short id is passed by both chat and command
 paths, while vision-capable entries (e.g. `openai/gpt-4.1-mini`, `vision:
 true`) exist only under full keys.
+
+### 52. Usage dashboard double-counts thinking tokens for command usage
+
+**Scenario:** 52 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** run an inline command (pasteMode replace/append) or a title-gen call
+with a reasoning model that reports thinking tokens, then open Usage Dashboard
+and look at Total Tokens or the per-model Output chart.
+
+**Expected:** each generated token is counted once, and identical usage counts
+identically for chat vs commands.
+
+**Actual:** command output tokens are counted twice when thinking is present.
+The command-usage rows store `completion_tokens` as the FULL completion
+(`ResponseParser` returns the raw `completion_tokens`, which include reasoning
+tokens for OpenAI-style models, or the Gemini-inflated `total - prompt`) plus a
+separate `thinking_tokens` column; `renderSummary` then computes
+`cmdOutput = completion_tokens + thinking_tokens` and `renderModelSections`
+does the same, so thinking tokens are added twice. Chat rows are stored as
+`output_tokens` (already full, incl. thinking) and counted once — the same
+100-token response with 40 thinking tokens is counted as 100 for chat and 140
+for commands.
+
+**Evidence:** `webui/js/usage-dashboard.js` `renderSummary()` (`cmdOutput =
+(c.completion_tokens||0) + (c.thinking_tokens||0)`) and `renderModelSections()`
+(same); `api/ResponseParser.ahk` `ParseChatResponse()` (completionTokens =
+full); `app/InlineRequestRunner.ahk` `_PasteAndLogResponse()` /
+`_ExtractUsage()`; `chat/ThreadTitleGen.ahk` `_TitleGen_TrackUsage()`.
+
+**Verification:** headless scenario 52 seeds one chat row and one command row
+with identical usage (prompt 10, completion 100, thinking 40) and opens the
+dashboard: Total Tokens shows 260 (command counted as 140) instead of 220.
+
+### 53. Dashboard "Last 24 Hours" spans two calendar days — the summary counts yesterday while the chart only plots today
+
+**Scenario:** 53 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** open Usage Dashboard, select "Last 24 Hours", and compare the
+summary with the chart when there was usage both yesterday and today.
+
+**Expected:** the chart and summary cover the same window.
+
+**Actual:** the SQL filter is `date >= date('now', '-1 day')` — yesterday's
+00:00 UTC through now, i.e. up to ~48 hours — so the summary sums BOTH
+yesterday's and today's rows, while `getDateRangeLabels('day')` produces a
+single "today" label and the chart only plots today's rows. The summary
+therefore always over-reports vs the chart for this range.
+
+**Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate()` (`"day"` returns
+`date >= date('now', '-1 day')`); `webui/js/usage-dashboard.js`
+`getDateRangeLabels()` (`day` â†’ 1 label) and `renderMainChart()` /
+`renderSummary()`.
+
+**Verification:** headless scenario 53 seeds usage rows for yesterday and
+today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
+(both days) while the chart has exactly 1 label (today only).
 
 ---
 
