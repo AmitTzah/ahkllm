@@ -154,14 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 open bugs** (2026-08-03; 23/23 harness scenarios passed, 23 regression/refuted
-  checks). The verified backlog is exhausted - bug hunt complete unless new bugs are
-  reported.
-- **Where we left off:** bug #2 (Reasoning-only responses get no action buttons) was
-  committed in `ff6a6c3` and moved to History; scenario 21 is a regression check. No
-  verified bugs remain. Harness cleanup is now PID-targeted: use
-  `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
-  blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
+- **3 verified, 0 fix in progress** (2026-08-03). 23/23 regression/refuted checks
+  still pass. Full-app sweep added three verified bugs: 26 + 27 (settings tab) and
+  29 (blank cached-input price). Suspect 28 was REFUTED (Escape cancels sidebar
+  renames correctly) and kept as a regression check.
+- **Where we left off:** bugs 26, 27, 29 are `verified` and ranked (26 highest).
+  Next per the fix cycle: fix bug #26, then #27, then #29 - one at a time, each
+  with a flipped scenario + code-level regression test. Harness cleanup is
+  PID-targeted: use `node tests/headless/verify-bugs.js --cleanup` after aborted
+  runs and NEVER blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
 ---
 
@@ -214,8 +215,94 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
+### 26. Opening Settings wipes the right-rail per-thread settings
 
-No open bugs.
+**Scenario:** 26 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** set a system prompt (or temperature/thinking/font size) in the chat
+right rail, then click the Settings icon (or close Settings afterwards) and look at
+the right rail.
+
+**Expected:** the right-rail per-thread settings (system message, temperature,
+reasoning level, font size, Advanced toggles) stay exactly as they were.
+
+**Actual:** they are wiped to empty/defaults. Opening Settings posts
+`requestAllSettings`; AHK answers with the FULL merged settings object as a
+`currentSettings` message, and `main.js` routes every `currentSettings` message
+through `populateCurrentSettings`, which reads only per-thread fields
+(`settings.model` / `systemMessage` / ...) that the full object does not have. So
+`#sysMsgMini` is cleared, temperature resets to 1.0/Default, the thinking dropdown
+resets to "Model Default", Advanced toggles turn off, and the chat font size resets
+to 17px. A later right-rail change also sends `model: ""`, silently resetting the
+thread's model to the app default.
+
+**Evidence:** `webui/js/main.js` `case 'currentSettings'` calls
+`populateCurrentSettings(data)` unconditionally; `webui/js/chat/model-picker/
+model-picker-config.js` `populateCurrentSettings()` sets `settings.model || ''` etc.;
+`chat/callbacks/Dispatch.ahk` `_HandleRequestAllSettings()` posts the merged full map
+and never re-posts the partial per-thread payload afterwards.
+
+**Verification:** headless scenario 26 types a system message via the right-rail
+modal, confirms `#sysMsgMini` shows it, opens Settings, and observes `#sysMsgMini`
+is blank.
+
+### 27. Commands Advanced card collapses when you click inside it to edit a field
+
+**Scenario:** 27 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Commands -> select any command -> click "Advanced" to open the
+card -> click inside any field (e.g. "Input Box Default") to edit it.
+
+**Expected:** the Advanced card stays open while you edit its fields.
+
+**Actual:** the card collapses on the first click inside. `_wireDetail` attaches the
+toggle listener to the whole `.cmd-advanced-wrap`, so any click (including on the
+inputs/selects inside the body) calls `_toggleAdvanced` and hides the body again.
+This makes the Advanced fields effectively unusable.
+
+**Evidence:** `webui/js/settings/sections/commands/commands-render.js` `_wireDetail()`:
+`aw.addEventListener('click', function() { _toggleAdvanced(aw); })` where
+`aw = document.querySelector('.cmd-advanced-wrap')` contains the whole body.
+
+**Verification:** headless scenario 27 selects the seeded command, opens the Advanced
+card, clicks `#cmdInputBoxDefault`, and observes the `.cmd-advanced-body` re-hides
+(`display: none`).
+
+### 29. Blank cached-input price costs 0 instead of the advertised 10% fallback
+
+**Scenario:** 29 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Models -> add a model (or edit one) -> leave "Cached" blank
+-> Save -> send a request with cached-token usage and check the cost.
+
+**Expected:** the Models table hint says "Cached input defaults to 10% of input if
+blank", so a blank Cached price should cost 10% of the input price.
+
+**Actual:** the advertised fallback never applies. `CostCalculator._ResolvePricing`
+only falls back to `inputPrice * 0.1` when the property is entirely MISSING; the
+settings round-trip always writes a `cachedInput` key. Two failure modes, same root
+cause:
+- UI-blank (saved as `0` by the pricing input's focus/blur): cached tokens cost $0
+  instead of 10% of input (usage bar / dashboard under-report cached cost).
+- Legacy/hand-edited entry with `cachedInput: ""`: `cachedTokens * "" / 1000000`
+  THROWS AHK's "Expected a Number but got an empty string". In the chat flow that
+  exception propagates out of `MessageRepo.Insert`, so the streamed assistant
+  message is never persisted and `streamDone` never posts (UI stuck in Stop state).
+
+**Evidence:** `api/CostCalculator.ahk` `_ResolvePricing`:
+`cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)`;
+`app/settings/SettingsApply.ahk` `_ApplyModels` always sets `cachedInput` (to `""`
+when the saved entry lacks it).
+
+**Verification:** headless scenario 29 (noApp) runs `probe-cost.ahk`, which computes
+token costs for a model missing `cachedInput` (control = 1.0 fallback works) and for
+a model with `cachedInput: ""` (throws "Expected a Number but got an empty string").
 
 ---
 
@@ -224,6 +311,7 @@ No open bugs.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-03 - "Sidebar inline rename saves on Escape instead of canceling" - REFUTED: WebView2 does not dispatch blur when the focused input is removed from the DOM, so Escape cancels the rename and no renameThread is posted. Scenario 28 kept as a regression check (regression: true).
 - 2026-08-03 - "Reasoning-only responses get no action buttons until reload" - FIXED in ff6a6c3: onStreamDone now persists the assistant message and adds action buttons when thinking was streamed with empty final content (mirrors the existing cancelStreaming guard); scenario 21 flipped to a regression check (regression: true) + stream-state unit test.
 - 2026-08-03 - "Right-panel Advanced toggles (Code Execution / Web Search) do nothing" - FIXED in aafa4ed (+247d6c5): Structured Outputs removed entirely; Code Execution / Web Search are persisted stubs (state round-trips through updateModelSettings/requestParams/thread DB, no response_format/tools sent); scenario 20 flipped to a regression check (regression: true) + ChatSettings/request-builder AHK + JS unit tests.
 - 2026-08-02 — "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" — FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.

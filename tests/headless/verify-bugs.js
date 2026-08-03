@@ -906,6 +906,137 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 26,
+  name: 'Opening Settings wipes the right-rail per-thread settings',
+  mode: null,
+  settings: {},
+  async body({ cdp }) {
+    // Set a per-thread system message through the right rail first, so there
+    // is something to lose when Settings is opened.
+    await showChat();
+    await cdp.waitFor('document.getElementById("sysMsgMini") !== null && document.getElementById("expandSysMsg") !== null', 10000, 250, 'right rail');
+    await cdp.click('#expandSysMsg');
+    await cdp.waitFor('document.getElementById("sysMsgOverlay").classList.contains("open")', 5000, 200, 'sysmsg overlay');
+    await cdp.type('#sysMsgFull', 'must survive settings open');
+    await cdp.click('#sysMsgSave');
+    await sleep(900); // 300ms debounce + IPC round trip
+    const before = await cdp.eval('document.getElementById("sysMsgMini").value');
+    if (before !== 'must survive settings open')
+      throw new Error('system message not applied before opening settings: ' + JSON.stringify(before));
+    // Open Settings: AHK answers requestAllSettings with the FULL merged
+    // settings object, which main.js routes through populateCurrentSettings.
+    await openSettings(cdp);
+    const after = await cdp.eval('document.getElementById("sysMsgMini").value');
+    // BUG: the full payload has no per-thread model/systemMessage fields, so
+    // populateCurrentSettings blanks the right rail (system message, temp,
+    // thinking, font size, advanced toggles).
+    if (after === before)
+      throw new Error('right-rail system message survived opening settings (bug not reproduced): ' + JSON.stringify(after));
+    return 'opening Settings cleared the right-rail system message: "' + before + '" -> "' + after + '"';
+  }
+});
+
+scenarios.push({
+  id: 27,
+  name: 'Commands Advanced card collapses when you click inside it to edit a field',
+  mode: null,
+  settings: {
+    commands: [{
+      commandName: 'Test Command', menuText: 'Test Command', APIModels: '',
+      pasteMode: 'chat', userMessage: '{{input}}', stream: false
+    }]
+  },
+  async body({ cdp }) {
+    await openSettings(cdp);
+    await openSection(cdp, 'commands');
+    await cdp.waitFor('document.querySelectorAll("#commandsListBody .cmd-item").length > 0', 10000, 250, 'command list');
+    await cdp.click('#commandsListBody .cmd-item');
+    await sleep(400);
+    // Open the Advanced card via its header.
+    await cdp.click('.cmd-advanced-wrap .cmd-advanced-toggle');
+    await sleep(300);
+    const opened = await cdp.eval('document.querySelector(".cmd-advanced-body").style.display');
+    if (opened !== 'block')
+      throw new Error('advanced card did not open: ' + JSON.stringify(opened));
+    // Click inside a field. _wireDetail puts the toggle listener on the whole
+    // .cmd-advanced-wrap, so any click inside collapses the card.
+    await cdp.click('#cmdInputBoxDefault');
+    await sleep(300);
+    const afterClick = await cdp.eval('document.querySelector(".cmd-advanced-body").style.display');
+    // BUG: the card collapses while the user is trying to edit a field.
+    if (afterClick !== 'none')
+      throw new Error('advanced card stayed open after clicking inside (bug not reproduced): ' + JSON.stringify(afterClick));
+    return 'clicking inside the Advanced card to edit a field collapsed it (display=' + afterClick + ')';
+  }
+});
+
+scenarios.push({
+  id: 28,
+  name: 'Sidebar inline rename saves on Escape instead of canceling',
+  regression: true, // REFUTED: Escape cancels correctly (blur does not fire on DOM removal); kept as a regression check
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-ren-1', title: 'Original Title', active_leaf_id: 'm-ren-1' }],
+    messages: [{ id: 'm-ren-1', thread_id: 't-ren-1', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item .chat-action-btn[title="Rename"]');
+    await cdp.waitFor('document.querySelector("#thread-list .chat-item .chat-name input") !== null', 5000, 200, 'inline rename input');
+    // Type a new name without committing.
+    await cdp.eval(`(() => {
+      const inp = document.querySelector("#thread-list .chat-item .chat-name input");
+      if (!inp) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(inp, 'Renamed By Escape');
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await cdp.clearPosted();
+    // Press Escape: this must CANCEL the rename, not save it.
+    await cdp.eval(`(() => {
+      const inp = document.querySelector("#thread-list .chat-item .chat-name input");
+      if (!inp) return false;
+      inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    await sleep(300);
+    const posted = await cdp.postedMessages();
+    const renamePosted = posted.some((m) => m.includes('renameThread'));
+    const shown = await cdp.eval('document.querySelector("#thread-list .chat-item .chat-name").textContent');
+    // FIXED/expected: Escape cancels the rename - no renameThread is posted and
+    // the original title is restored (the earlier suspicion that blur fires on
+    // DOM removal was refuted in WebView2).
+    if (renamePosted) throw new Error('Escape still posts renameThread: ' + JSON.stringify(posted.filter((m) => m.includes('renameThread'))));
+    if (shown !== 'Original Title') throw new Error('Escape did not restore the original title: ' + JSON.stringify(shown));
+    return 'Escape canceled the rename (no renameThread posted); title stays ' + JSON.stringify(shown);
+  }
+});
+
+scenarios.push({
+  id: 29,
+  name: 'Blank cached-input price costs 0 instead of the advertised 10% fallback',
+  mode: null,
+  noApp: true,
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-cost-probe-' + process.pid + '.json');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, 'probe-cost.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('cost probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe-cost stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    // BUG: a blank cachedInput ("" stored by the settings round-trip) makes
+    // ComputeTokenCosts THROW ("Expected a Number but got an empty string"),
+    // while the missing-property control correctly falls back to 10% (1.0).
+    if (!text.includes('BUG29 throw=YES')) throw new Error('probe output: ' + text);
+    return text.split('\n').filter((l) => l.includes('Cost=') || l.includes('BUG29')).join(' | ');
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {
