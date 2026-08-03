@@ -1282,6 +1282,192 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 39,
+  name: 'System-message modal silently clears a custom (unlisted) system-message file on Save',
+  mode: null,
+  settings: {
+    commands: [{
+      commandName: 'Custom File Command', menuText: 'Custom File Command',
+      APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'chat', stream: false,
+      systemMessageFile: 'system-messages/my-custom-prompt.txt'
+    }]
+  },
+  async body({ cdp }) {
+    await openSettings(cdp);
+    await openSection(cdp, 'commands');
+    await cdp.waitFor('document.querySelectorAll("#commandsListBody .cmd-item").length > 0', 15000, 250, 'command list');
+    await cdp.click('#commandsListBody .cmd-item');
+    await sleep(400);
+    // Open the system-message edit modal for the selected command.
+    await cdp.click('#cmdEditSysMsg');
+    await cdp.waitFor('document.getElementById("sysMsgEditModal").classList.contains("open")', 5000, 200, 'sysmsg modal');
+    const selState = await cdp.eval(`(() => {
+      const sel = document.getElementById('smFileSelect');
+      return sel ? { selectedIndex: sel.selectedIndex, value: sel.value } : null;
+    })()`);
+    // The seeded file (system-messages/my-custom-prompt.txt) is NOT one of the
+    // hardcoded options, so the select falls back to value "" (no selection).
+    // Click Save without changing anything.
+    await cdp.click('#sysMsgEditSave');
+    await sleep(300);
+    const after = await cdp.eval(`(() => {
+      const c = window.Cmds && window.Cmds.commands();
+      return c && c[0] ? { systemMessageFile: c[0].systemMessageFile, systemMessage: c[0].systemMessage } : null;
+    })()`);
+    const label = await cdp.eval('document.getElementById("cmdSysMsgLabel") ? document.getElementById("cmdSysMsgLabel").textContent : ""');
+    // BUG: sysmsg-modal.js saves fileSelect.value (""), so the command's
+    // systemMessageFile is silently cleared even though the user changed nothing.
+    if (after && after.systemMessageFile === 'system-messages/my-custom-prompt.txt')
+      throw new Error('custom file survived the modal save (bug not reproduced): ' + JSON.stringify(after));
+    return 'modal select selectedIndex=' + selState.selectedIndex + ' value=' + JSON.stringify(selState.value) +
+      '; after Save systemMessageFile=' + JSON.stringify(after && after.systemMessageFile) + ' label="' + label + '"';
+  }
+});
+
+scenarios.push({
+  id: 40,
+  name: 'Refresh-models modal discards edits to a model id (stale data-full-id wins on Save)',
+  mode: null,
+  settings: {},
+  async body({ cdp }) {
+    await openSettings(cdp);
+    await openSection(cdp, 'models');
+    await cdp.waitFor('document.querySelectorAll("#modelsTableBody tr").length > 0', 15000, 250, 'models table');
+    await cdp.click('#refreshPricingBtn');
+    await cdp.waitFor('document.getElementById("refreshModal").classList.contains("open")', 5000, 200, 'refresh modal');
+    await cdp.waitFor('document.querySelectorAll("#refreshRightTbody tr [data-field=id]").length > 0', 15000, 250, 'right panel models');
+    const before = await cdp.eval(`(() => {
+      const inp = document.querySelector('#refreshRightTbody tr [data-field=id]');
+      return inp ? { value: inp.value, fullId: inp.getAttribute('data-full-id') } : null;
+    })()`);
+    // Rename the model id in the "Your Models" panel.
+    await cdp.type('#refreshRightTbody tr [data-field=id]', 'renamed-model-id');
+    await sleep(200);
+    await cdp.click('#refreshSaveBtn');
+    await sleep(400);
+    const after = await cdp.eval(`(() => {
+      const inp = document.querySelector('#modelsTableBody tr [data-field=id]');
+      return inp ? inp.value : null;
+    })()`);
+    // BUG: saveRefresh reads data-full-id (the ORIGINAL id) instead of the
+    // edited input value, so the rename is silently discarded.
+    if (after === 'renamed-model-id')
+      throw new Error('model id edit was kept (bug not reproduced): before=' + JSON.stringify(before) + ' after=' + after);
+    return 'edited the first model id to "renamed-model-id" in the refresh modal; after Save the table still shows "' + after +
+      '" (stale data-full-id=' + JSON.stringify(before && before.fullId) + ')';
+  }
+});
+
+scenarios.push({
+  id: 41,
+  name: 'Tray "New Chat" ignores the "New Chats Start With" default (static check of the tray path)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    const sidebarSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'callbacks', 'Sidebar.ahk'), 'utf8');
+    const utilsSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatUtils.ahk'), 'utf8');
+    const ipcSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
+    // Tray "New Chat" creates the thread directly and opens it...
+    const trayNewChat = /openChatWindow\(ChatDB\.Thread_Create\(\)\)/.test(mainSrc);
+    // ...while the sidebar newChat action DOES apply the start-with default.
+    const sidebarApplies = sidebarSrc.includes('_applyNewChatDefault()');
+    // The unified loader path (tray -> notifyLoadThread -> LoadThreadIntoUI ->
+    // _LoadThreadAndRefreshUI) never applies the default.
+    const loaderApplies = ipcSrc.includes('_applyNewChatDefault') || utilsSrc.includes('_applyNewChatDefault');
+    // BUG: tray-started chats skip _applyNewChatDefault (and the default font
+    // size that the sidebar newChat path writes), so they always start with the
+    // raw app default model instead of the configured "New Chats Start With".
+    if (!trayNewChat || !sidebarApplies || loaderApplies)
+      throw new Error('bug not reproduced: trayNewChat=' + trayNewChat + ' sidebarApplies=' + sidebarApplies + ' loaderApplies=' + loaderApplies);
+    return 'tray New Chat calls openChatWindow(ChatDB.Thread_Create()) directly; LoadThreadIntoUI/_LoadThreadAndRefreshUI never call _applyNewChatDefault, so tray-started chats ignore newChatStartsWith and the default font size';
+  }
+});
+
+scenarios.push({
+  id: 42,
+  name: 'Usage dashboard chart date labels shift a day in UTC+x timezones (toISOString on local dates)',
+  mode: null,
+  noApp: true,
+  async body() {
+    const dashSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'usage-dashboard.js'), 'utf8');
+    const m = dashSrc.match(/function getDateRangeLabels\(\) \{[\s\S]*?\n\}/);
+    if (!m) throw new Error('getDateRangeLabels not found in usage-dashboard.js');
+    const script = `
+      const RealDate = Date;
+      const fixed = new RealDate('2026-08-02T21:30:00Z'); // 2026-08-03 00:30 in UTC+3 (Asia/Jerusalem)
+      const MockDate = class extends RealDate {
+        constructor(...args) { if (args.length === 0) super(fixed.getTime()); else super(...args); }
+      };
+      global.Date = MockDate;
+      global.allData = null;
+      global.document = { getElementById: (id) => id === 'timeRange' ? { value: 'day' } : null };
+      ${m[0]}
+      console.log('LABELS ' + JSON.stringify(getDateRangeLabels()));
+    `;
+    const res = spawnSync(process.execPath, ['-e', script], {
+      encoding: 'utf8', timeout: 15000, windowsHide: true,
+      env: Object.assign({}, process.env, { TZ: 'Asia/Jerusalem' })
+    });
+    if (res.error || res.status !== 0)
+      throw new Error('label probe failed: ' + (res.error && res.error.message) + ' ' + (res.stderr || res.stdout || ''));
+    const line = String(res.stdout).split(/\r?\n/).find((l) => l.startsWith('LABELS '));
+    if (!line) throw new Error('no LABELS line in probe output: ' + String(res.stdout));
+    const labels = JSON.parse(line.slice(7));
+    const localToday = '2026-08-03';
+    const lastLabel = labels[labels.length - 1];
+    // BUG: the label for "today" is built via d.toISOString(), which converts
+    // the local Date to UTC — in UTC+3 before 03:00 local it lands on yesterday,
+    // so today's local rows (keyed "2026-08-03") are plotted on a stale date.
+    if (lastLabel === localToday)
+      throw new Error('chart label for today is correct (bug not reproduced): ' + JSON.stringify(labels));
+    return 'range=day labels=' + JSON.stringify(labels) + ' — the "today" slot is labeled ' + lastLabel + ' (UTC date) instead of ' + localToday;
+  }
+});
+
+scenarios.push({
+  id: 43,
+  name: 'Thinking config is silently dropped for short-form model ids (no provider prefix)',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [{
+      id: 't-think-43', title: 'Short Model Think', active_leaf_id: 'm-think-43',
+      model_override: 'deepseek-v4-pro', reasoning_override: 'high'
+    }],
+    messages: [{ id: 'm-think-43', thread_id: 't-think-43', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // The models metadata map is keyed by full "provider/model" ids, so a
+    // thread whose model_override is the short form ("deepseek-v4-pro") gets an
+    // EMPTY thinking-levels list in the right rail.
+    const optionCount = await cdp.eval('document.getElementById("reasoningDropdown") ? document.getElementById("reasoningDropdown").options.length : -1');
+    if (optionCount !== 1)
+      throw new Error('right-rail thinking dropdown unexpectedly has levels (bug not reproduced): options=' + optionCount);
+    // Send a message and inspect the actual request sent to the (mock) API.
+    await sendChatMessage(cdp, 'second message');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean);
+    const chatReq = lines.map((l) => JSON.parse(l)).find((e) => e.body && e.body.stream === true);
+    if (!chatReq) throw new Error('no streaming chat request was logged; lines=' + lines.length);
+    const b = chatReq.body;
+    // BUG: ChatRequestBuilder._BuildRequestObj only applies the reasoning
+    // override when models.Has(singleAPIModelName) — the short form never
+    // matches, so thinking is silently dropped from the request.
+    if (b.thinking || b.reasoning_effort)
+      throw new Error('thinking WAS applied for the short-form model (bug not reproduced): ' + JSON.stringify(b));
+    return 'thread model_override=deepseek-v4-pro + reasoning_override=high: right-rail dropdown has ' + optionCount +
+      ' option(s), and the sent request body has no thinking config (model=' + b.model + ')';
+  }
+});
+
 // ---------- Runner ----------
 
 function parseArgs() {

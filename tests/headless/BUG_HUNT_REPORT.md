@@ -154,18 +154,18 @@ How to run AHK safely:
 
 ## Current state
 
-- **11 verified, 0 fix in progress** (2026-08-03). Sweeps #2-#4 added 35
-  (temperature 0 override dropped on thread reload), 36 (command
-  temperature/reasoning dropped when the model equals the app default), 37
-  (tray menu item changes need a restart), and 38 (chat window title stays stale
-  after rename + thread switch). Suspect 32 (composer Tools dropdown switches)
-  was REFUTED - user-confirmed intentional stubs for a future feature; its
-  scenario was removed. Scenario count is enforced by
+- **16 verified, 0 fix in progress** (2026-08-03). Sweep #5 added 39 (system-
+  message modal clears custom files), 40 (refresh-models modal discards model id
+  edits), 41 (tray "New Chat" ignores the start-with default), 42 (dashboard
+  chart date labels UTC-shift), and 43 (thinking config dropped for short-form
+  model ids). Suspect 32 (composer Tools dropdown switches) was REFUTED -
+  user-confirmed intentional stubs for a future feature; its scenario was
+  removed. Scenario count is enforced by
   `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-38 are `verified` and ranked
-  (26 highest, 30+ appended after 29). Next per the fix cycle: fix bug #26, then
-  the rest in rank order, one at a time, each with a flipped scenario +
-  code-level regression test. Harness cleanup is PID-targeted: use
+- **Where we left off:** bugs 26, 27, 29, 30, 31, 33-43 are `verified` and
+  ranked (26 highest; 30+ appended after 29). Next per the fix cycle: fix bug
+  #26, then the rest in rank order, one at a time, each with a flipped scenario
+  + code-level regression test. Harness cleanup is PID-targeted: use
   `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -514,6 +514,151 @@ switching threads leaves the stale title (and before any rename it just shows
 the sidebar, switches to the second, and probes the window title (WinGetTitle):
 the topbar shows the second thread's title while the window title still contains
 the renamed first thread's title.
+
+### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
+
+**Scenario:** 39 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Commands -> select a command whose System Message uses a
+file NOT in the hardcoded App Defaults list (e.g. `system-messages/my-prompt.txt`
+created in AppData per the UI hint) -> click Edit next to System Message -> click
+Save without changing anything -> look at the command's System Message label.
+
+**Expected:** the file reference is preserved (opening and saving a modal should
+never silently change the value).
+
+**Actual:** the file reference is cleared to empty and the label becomes
+"(none)". `populateSysMsgModal` sets `#smFileSelect` from the stored value, and
+the fallback only strips the directory prefix; the select's options are a
+hardcoded list of 7 app-default files (the "Your Files" optgroup is never
+populated), so any other file leaves `selectedIndex = -1` / `value = ""`. The
+Save handler writes `fileSelect.value` back, wiping `systemMessageFile`. The
+command then runs without its system prompt (falls back to empty inline).
+
+**Evidence:** `webui/js/settings/sections/sysmsg-modal.js` `populateSysMsgModal()`
+sets `fileSelect.value = opts.systemMessageFile` with a prefix-strip fallback and
+the Save handler does `sysMsgFile = fileSelect ? fileSelect.value : ''`;
+`webui/index.html` `#smFileSelect` contains only the app-default filenames.
+
+**Verification:** headless scenario 39 seeds a command with
+`systemMessageFile: "system-messages/my-custom-prompt.txt"`, opens the modal
+(select ends with `selectedIndex=-1`), clicks Save, and observes the command's
+`systemMessageFile` becomes `""` and the label "(none)".
+
+### 41. Tray "New Chat" ignores the "New Chats Start With" default
+
+**Scenario:** 41 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** set General -> New Chats Start With to an assistant (or model), then
+right-click the tray icon -> New Chat, and look at the chat's model/assistant.
+
+**Expected:** the new chat starts with the configured default (same as the
+sidebar "+ New Chat" button, which applies `_applyNewChatDefault()` and the
+default font size).
+
+**Actual:** the tray-created chat starts with the raw app-default model and no
+assistant. `Main.ahk`'s tray item calls `openChatWindow(ChatDB.Thread_Create())`
+directly; the loaded-thread path (`notifyLoadThread` -> `LoadThreadIntoUI` ->
+`_LoadThreadAndRefreshUI`) never calls `_applyNewChatDefault()` nor writes the
+default font size. Only `_HandleThreadAction`'s `newChat` case applies them.
+
+**Evidence:** `Main.ahk` `A_TrayMenu.Add("📝 New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))`;
+`chat/ChatIPC.ahk` `LoadThreadIntoUI` / `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`
+contain no `_applyNewChatDefault` call; `chat/callbacks/Sidebar.ahk` `newChat`
+does.
+
+**Verification:** headless scenario 41 (noApp) statically scans `Main.ahk`,
+`Sidebar.ahk`, `ChatIPC.ahk`, and `ChatUtils.ahk`: the tray lambda creates the
+thread directly while the loader path never applies the start-with default.
+
+### 40. Refresh-models modal discards edits to a model id (stale `data-full-id` wins on Save)
+
+**Scenario:** 40 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Models -> Fetch Latest Models -> in the "Your Models"
+panel edit a model's id field -> Save.
+
+**Expected:** the edited id is saved to the models table.
+
+**Actual:** the edit is silently discarded. `saveRefresh()` reads
+`idEl.getAttribute('data-full-id') || idEl.value`; the `data-full-id` attribute
+was stamped when the row was built and is never updated as the user types, so it
+always wins over the visible (edited) value. Renames in the refresh modal are
+impossible.
+
+**Evidence:** `webui/js/settings/sections/models.js` `_rightRowHtml()` writes
+`data-full-id`; `saveRefresh()` reads `data-full-id` first; no input listener
+updates it.
+
+**Verification:** headless scenario 40 opens the refresh modal, changes the first
+row's id to "renamed-model-id", clicks Save, and observes the models table still
+shows the original id.
+
+### 42. Usage dashboard chart date labels shift a day in UTC+x timezones
+
+**Scenario:** 42 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** open Usage Dashboard in a timezone ahead of UTC (e.g. Asia/Jerusalem)
+between midnight and ~03:00 local, with "Last 24 Hours" selected.
+
+**Expected:** the rightmost chart column is labeled with today's local date, so
+today's usage (keyed by local `YYYY-MM-DD`) plots under today.
+
+**Actual:** the labels are built with `d.toISOString().substring(0,10)` on a
+local `Date`; `toISOString()` converts to UTC, so in UTC+3 before 03:00 local
+the "today" slot is labeled with yesterday's date and today's rows land on a
+stale column (the summary still counts them, so chart and summary disagree).
+
+**Evidence:** `webui/js/usage-dashboard.js` `getDateRangeLabels()` pushes
+`d.toISOString().substring(0,10)` while the DB rows are keyed by local dates
+(`UsageRepo` stores `FormatTime(, "yyyy-MM-dd")`).
+
+**Verification:** headless scenario 42 (noApp) extracts `getDateRangeLabels()`
+from the actual file and runs it under `TZ=Asia/Jerusalem` with the clock fixed
+at 2026-08-03 00:30 local; the returned "day" label is "2026-08-02" instead of
+"2026-08-03".
+
+### 43. Thinking config is silently dropped for short-form model ids (no provider prefix)
+
+**Scenario:** 43 (scenario code in verify-bugs.js)
+
+**Status:** verified
+
+**Repro:** trigger any chat/command whose model id is written without the
+provider prefix (e.g. the stock "DeepSeek V4 Pro" command uses
+`APIModels: "deepseek-v4-pro"` with `thinking: enabled/high`), then watch the
+right rail / request.
+
+**Expected:** the selected thinking level is sent to the API.
+
+**Actual:** the request carries no thinking config at all. `ChatRequestBuilder`
+only resolves the model metadata via `models.Has(requestParams["singleAPIModelName"])`,
+and the models map is keyed by full `provider/model` ids — a short id like
+"deepseek-v4-pro" never matches, so `modelMeta` is empty and the reasoning
+override is never applied (`ApplyThinking` is skipped). The right-rail thinking
+dropdown also collapses to just "Model Default" (`thinkingLevels` comes from the
+same map lookup). Commands with full ids (e.g. `openai/gpt-5.4`) are unaffected;
+most stock commands use short ids, so their thinking setting silently does
+nothing.
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` `_BuildRequestObj()`:
+`modelMeta := models.Has(requestParams["singleAPIModelName"]) ? models[...] : ""`
+then `if (reasoning != "" && hasLevelMap && ...)` applies thinking;
+`DefaultModels.ahk` keys every entry as `"provider/model"`; `DefaultSettings.ahk`
+stock commands use short ids (`"deepseek-v4-pro"`, `"deepseek-v4-flash"`).
+
+**Verification:** headless scenario 43 seeds a thread with
+`model_override: "deepseek-v4-pro"` + `reasoning_override: "high"`, sends a chat
+message to the mock LLM, and asserts the sent request body has no `thinking` /
+`reasoning_effort` field while the right-rail dropdown shows only "Model Default".
 
 ---
 

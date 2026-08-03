@@ -1,4 +1,4 @@
-PASS | #38 | Chat window title stays stale after renaming a thread and switching to another | topbar shows "Beta Thread" but the window title is "Chat — Alpha Renamed" (stale renamed-A title) | 4.2s
+PASS | #43 | Thinking config is silently dropped for short-form model ids (no provider prefix) | thread model_override=deepseek-v4-pro + reasoning_override=high: right-rail dropdown has 1 option(s), and the sent request body has no thinking config (model=deepseek-v4-pro) | 3.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
