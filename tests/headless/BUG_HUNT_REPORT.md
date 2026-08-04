@@ -154,16 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **29 verified, 1 fix applied** (2026-08-04). Sweep #11 (deep pass over
+- **29 verified, 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
   streaming, message rendering, and thread metadata) verified 56 (stopping a
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bug #50 fix is applied (scenario 50 flipped to a
-  regression check + AHK unit test; AHK and JS suites green). Waiting for the
-  user's manual verification, then the commit (entry then moves to History).
-  Next after #50 is committed: fix bug #26, then the rest in rank order.
+- **Where we left off:** bug #50 fixed and committed (6f7ae77); entry moved to
+  History. Next per the fix cycle: fix bug #26, then the rest in rank order,
+  one at a time, each with a flipped scenario + code-level regression test.
   Harness cleanup is PID-targeted: use
   `node tests/headless/e2e-suite.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
@@ -808,42 +807,6 @@ clicks Edit â†’ Ã— (wrapper hides, DB row still present) â†’ Cancel
 the wrapper stays hidden, the DB row is still there, and `_editingMessageId`
 remains set.
 
-### 50. Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path
-
-**Scenario:** 50 (scenario code in e2e-suite.js)
-
-**Status:** awaiting user commit
-
-**Repro:** open Settings â†’ Commands â†’ select a command whose System Message
-uses an app-default file (e.g. "rephrase-in-context.txt") â†’ click Save without
-changing anything â†’ trigger that command with a selection.
-
-**Expected:** the command keeps reading its system-message file.
-
-**Actual:** the command fails to read the file and runs without its system
-prompt. The system-message modal stores the select's BARE filename (e.g.
-"rephrase-in-context.txt"), but the command path
-(`CommandMenu._resolveSystemMessage`) resolves relative file paths only against
-`A_ScriptDir` — it never searches `default-settings\system-messages\` or the AppData folder the
-way the assistant path does. `repo\rephrase-in-context.txt` does not exist
-(the file is `repo\default-settings\system-messages\rephrase-in-context.txt`), so `FileRead`
-throws, a MsgBox appears, and the inline fallback (empty for stock commands)
-is used — the request fires without the system prompt.
-
-**Evidence:** `app/menu/CommandMenu.ahk` `_resolveSystemMessage()` (only
-`filePath := A_ScriptDir "\\" filePath`); `chat/db/AssistantRepo.ahk`
-`_resolveSystemMessage()` searches `A_ScriptDir\default-settings\system-messages\`,
-`A_AppData\...\system-messages\`, etc.; `webui/js/settings/sections/
-sysmsg-modal.js` saves `fileSelect.value` (bare name).
-
-**Verification:** headless scenario 50 (noApp) was flipped to a regression
-check asserting the FIXED behavior: the modal saves bare filenames, the
-command path now searches `default-settings/system-messages/` and AppData
-like the assistant path, and every app-default file exists only under
-`default-settings/system-messages/` so commands keep their system prompt
-after a settings save (also covered by AHK unit test
-`UserConfigTest.ResolveSystemMessage_BareDefaultSettingsFile`).
-
 ### 48. Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)
 
 **Scenario:** 48 (scenario code in e2e-suite.js)
@@ -1106,3 +1069,5 @@ closure; never rewrite past entries.
 - 2026-08-01 — "New chats ignore the configured `New Chats Start With` default" — FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` — `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
 - 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
 - 2026-08-02 — "Clearing a hotkey field does nothing — hotkeys can't be disabled" — FIXED in 00bb503: empty hotkey now means disabled — `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
+- 2026-08-04 - "Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path" - FIXED in 6f7ae77: CommandMenu._resolveSystemMessage now searches default-settings/system-messages/ + AppData like the assistant path; scenario 50 flipped to a regression check (`regression: true`) + UserConfig AHK unit test.
+
