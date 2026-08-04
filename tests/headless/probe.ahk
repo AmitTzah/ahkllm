@@ -39,12 +39,16 @@ ChatHwnd() {
     ; the hidden script window). Find the ChatWindow process via its script
     ; window, then return its GUI window ("LLM AutoHotkey Assistant" while
     ; prewarmed, "Chat" / "Chat — <title>" after being shown/renamed).
+    ; A stale ChatWindow from an earlier scenario can briefly outlive its
+    ; teardown; if several are alive, prefer the most recently started one
+    ; (highest PID) so probes never inspect a zombie window from a previous run.
     chatPid := 0
     for h in WinGetList("ahk_class AutoHotkey") {
         t := WinGetTitle("ahk_id " h)
         if InStr(t, "ChatWindow.ahk") {
-            chatPid := WinGetPID("ahk_id " h)
-            break
+            pid := WinGetPID("ahk_id " h)
+            if pid > chatPid
+                chatPid := pid
         }
     }
     if !chatPid
@@ -62,7 +66,7 @@ ChatHwnd() {
 ; Render an HICON into a 32x32 BGRA DIB and return its bytes as hex. Two
 ; LoadPicture calls for the same file return different handles, so handle
 ; equality cannot prove two icons are the same image — rendered bytes can.
-IconFingerprint(hIcon) {
+IconFingerprint(hIcon, &crc := 0) {
     if !hIcon
         return ""
     w := 32, h := 32
@@ -90,11 +94,31 @@ IconFingerprint(hIcon) {
     hex := ""
     loop byteCount
         hex .= Format("{:02X}", NumGet(buf, A_Index - 1, "uchar"))
+    ; Compact CRC of the rendered pixels so failures can say WHAT the window
+    ; icon actually was (blank/zeros = the cross-process draw failed; a real
+    ; but different icon = the app applied something else).
+    crc := 2166136261
+    loop byteCount
+        crc := (crc ^ NumGet(buf, A_Index - 1, "uchar")) * 16777619 & 0xFFFFFFFF
+    crc := Format("{:08X}", crc)
     DllCall("gdi32.dll\SelectObject", "ptr", hdcMem, "ptr", old)
     DllCall("gdi32.dll\DeleteObject", "ptr", hbm)
     DllCall("gdi32.dll\DeleteDC", "ptr", hdcMem)
     DllCall("user32.dll\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
     return hex
+}
+
+; CreateDIBSection/DrawIconEx can fail transiently in a fresh process (GDI),
+; which used to make icon-check report a bogus "custom icon NOT applied".
+; Retry a few times; "" means the icon could not be rendered at all.
+RenderFingerprint(hIcon, &crc := "") {
+    loop 6 {
+        fp := IconFingerprint(hIcon, &crc)
+        if fp != ""
+            return fp
+        Sleep 300
+    }
+    return ""
 }
 
 ; PIDs of THIS repo's app scripts only: Main.ahk and chat/ChatWindow.ahk.
@@ -105,7 +129,7 @@ IconFingerprint(hIcon) {
 ; A windowless hung AutoHotkey64.exe (load-time hang / modal error dialog) has
 ; no recognizable cmdline/window and is never matched -- it is NOT one of the
 ; app scripts and must not be killed by guesswork.
-AppScriptPids() {
+AppScriptPids(includeWebView2 := true) {
     pids := []
     ; Command-line match: "<exe>" "<path>\Main.ahk" / ...\chat\ChatWindow.ahk"
     for proc in ProcessList() {
@@ -116,6 +140,21 @@ AppScriptPids() {
             continue
         if !HasVal(pids, proc["pid"])
             pids.Push(proc["pid"])
+    }
+    if includeWebView2 {
+        ; Also close THIS harness's WebView2 browser processes
+        ; (msedgewebview2.exe). They carry our unique --user-data-dir marker
+        ; (llm-webview2-*); matching it never touches other applications'
+        ; WebView2 processes.
+        for proc in ProcessList() {
+            if !InStr(proc["exe"], "msedgewebview2.exe")
+                continue
+            cmd := ProcessCmdLine(proc["pid"])
+            if !InStr(cmd, "llm-webview2-")
+                continue
+            if !HasVal(pids, proc["pid"])
+                pids.Push(proc["pid"])
+        }
     }
     ; Window-title match (catches instances on this desktop with unusual cmdlines).
     for h in WinGetList("ahk_class AutoHotkey") {
@@ -193,8 +232,16 @@ HasVal(arr, v) {
 
 switch command {
     case "preflight":
-        running := WinExist("Main.ahk ahk_class AutoHotkey") || WinExist("ChatWindow.ahk ahk_class AutoHotkey")
-        Write(Map("running", running ? 1 : 0))
+        ; Command-line match works across desktops (PEB), so a leftover instance
+        ; from an aborted hidden-desktop run is caught even though no window of
+        ; it exists on the caller's desktop. Window match covers legacy cases.
+        ; A stale WebView2 browser process ALONE (our marker, no Main.ahk
+        ; parent) does not block the run - the next run uses its own
+        ; user-data folder, so only a real app-script instance conflicts
+        ; (#SingleInstance).
+        pids := AppScriptPids(false)
+        running := pids.Length > 0 || WinExist("Main.ahk ahk_class AutoHotkey") || WinExist("ChatWindow.ahk ahk_class AutoHotkey")
+        Write(Map("running", running ? 1 : 0, "pids", Join(",", pids)))
 
     case "app-pids":
         pids := AppScriptPids()
@@ -228,7 +275,7 @@ switch command {
                 childClass := StrGet(buf)
             }
         }
-        Write(Map("hwnd", hwnd ? hwnd : 0, "title", title, "chatWinExist", chatWin, "w", w, "h", h, "childClass", childClass))
+        Write(Map("hwnd", hwnd ? hwnd : 0, "title", title, "chatWinExist", chatWin, "x", x, "y", y, "w", w, "h", h, "childClass", childClass))
 
     case "active-window":
         a := WinActive("A")
@@ -251,10 +298,15 @@ switch command {
         Write(Map("count", parts.Length, "windows", Join("; ", parts)))
 
     case "show-chat":
+        ; Show the ChatWindow OFF-SCREEN: the harness drives the app via CDP and
+        ; probes, and the backtick command menu needs a visible window in this
+        ; session - but the window must never appear on the user's screen or
+        ; steal focus. Positioning it far off-screen keeps it invisible while
+        ; staying "shown" (IsWindowVisible = true, rendered on its desktop).
         hwnd := ChatHwnd()
         if hwnd {
+            WinMove(-20000, -20000, , , "ahk_id " hwnd)
             WinShow("ahk_id " hwnd)
-            WinActivate("ahk_id " hwnd)
         }
         Write(Map("shown", hwnd ? 1 : 0))
 
@@ -263,17 +315,40 @@ switch command {
         hwnd := ChatHwnd()
         hBig := 0
         hSmall := 0
-        if hwnd {
-            ; NOTE: read the SendMessage return value directly — referencing the
-            ; built-in ErrorLevel hangs AutoHotkey64.exe at load in this environment.
-            ; The Control parameter must be OMITTED ("" means "target control" and
-            ; fails with 'Target control not found' on window-level messages).
-            hBig := SendMessage(0x7F, 0, 0, , "ahk_id " hwnd)    ; WM_GETICON ICON_BIG
-            hSmall := SendMessage(0x7F, 1, 0, , "ahk_id " hwnd)  ; WM_GETICON ICON_SMALL
-        }
         hCustom := 0
         if iconPath && FileExist(iconPath) {
             try hCustom := LoadPicture(iconPath, "Icon1 w32 h32", &imgT)
+        }
+        customFp := hCustom ? RenderFingerprint(hCustom, &crcCustom) : ""
+        if hwnd {
+            ; The window icon is applied asynchronously at startup, so sample
+            ; until the icons are stable (two consecutive identical reads) or
+            ; the timeout hits — a single early sample caused a flaky "custom
+            ; icon NOT applied" result. NOTE: read the SendMessage return value
+            ; directly — referencing the built-in ErrorLevel hangs
+            ; AutoHotkey64.exe at load in this environment. The Control
+        ; parameter must be OMITTED ("" means "target control" and fails
+        ; with 'Target control not found' on window-level messages).
+            lastBig := 0, lastSmall := 0
+            deadline := A_TickCount + 5000
+            loop {
+                hBig := SendMessage(0x7F, 0, 0, , "ahk_id " hwnd)    ; WM_GETICON ICON_BIG
+                hSmall := SendMessage(0x7F, 1, 0, , "ahk_id " hwnd)  ; WM_GETICON ICON_SMALL
+                fpBig := hBig ? RenderFingerprint(hBig, &crcBig) : ""
+                fpSmall := hSmall ? RenderFingerprint(hSmall, &crcSmall) : ""
+                ; Drawing a window icon handle cross-process is not always
+                ; reliable, and the icon can be applied asynchronously, so
+                ; re-verify the pixel match on every sample rather than
+                ; trusting a single draw of one handle.
+                if (fpBig && customFp && fpBig = customFp) || (fpSmall && customFp && fpSmall = customFp)
+                    break
+                if (hBig != 0 || hSmall != 0) && hBig = lastBig && hSmall = lastSmall
+                    break
+                lastBig := hBig, lastSmall := hSmall
+                if A_TickCount > deadline
+                    break
+                Sleep 200
+            }
         }
         ; The OLD buggy path (ChatWindow.ahk prefixed every icon path with
         ; A_ScriptDir "\..\"); it must still fail to load — the fixed code
@@ -286,13 +361,24 @@ switch command {
             "hBig", hBig, "hSmall", hSmall,
             "hCustom", hCustom,
             "hMangled", hMangled,
+            "crcBig", IsSet(crcBig) ? crcBig : "",
+            "crcSmall", IsSet(crcSmall) ? crcSmall : "",
+            "crcCustom", IsSet(crcCustom) ? crcCustom : "",
+            ; The comparison is meaningless when the expected icon could not be
+            ; rendered (transient GDI failure in this process) — report it so
+            ; the runner can retry with a fresh process instead of treating it
+            ; as "icon not applied".
+            "renderFailed", customFp = "" ? 1 : 0,
             ; Handle equality is unreliable (same file loaded twice gives two
             ; handles), so compare rendered pixels instead.
-            "customApplied", (IconFingerprint(hBig) = IconFingerprint(hCustom) || IconFingerprint(hSmall) = IconFingerprint(hCustom)) ? 1 : 0,
+            "customApplied", (fpBig && fpBig = customFp) || (fpSmall && fpSmall = customFp) ? 1 : 0,
             "mangledLoaded", hMangled ? 1 : 0
         ))
 
     case "menu-open":
+        ; MANUAL DEBUGGING ONLY — injects a real backtick into the interactive
+        ; desktop. No scenario uses this anymore (it can leak a keystroke into
+        ; the user's typing when the injection misses the app's hotkey).
         Send("``")
         Sleep 400
         open := WinExist("ahk_class #32768") ? 1 : 0
@@ -301,6 +387,7 @@ switch command {
         Write(Map("open", open))
 
     case "close-test":
+        ; MANUAL DEBUGGING ONLY — activates the chat window and sends keys.
         hwnd := ChatHwnd()
         keys := A_Args.Length > 3 ? A_Args[3] : "^w"
         if hwnd {
@@ -314,6 +401,7 @@ switch command {
         Write(Map("hwnd", hwnd ? hwnd : 0, "keys", keys, "visibleAfterKeys", visible))
 
     case "suspend-banner":
+        ; MANUAL DEBUGGING ONLY — sends the CapsLock+backtick combo.
         ; Send the suspend hotkey combo (CapsLock & `)
         Send("{CapsLock Down}``{CapsLock Up}")
         Sleep 600
@@ -370,6 +458,7 @@ switch command {
         Write(Map("hwnd", hwnd, "color", Format("0x{:06X}", color & 0xFFFFFF), "sample", sx "," sy))
 
     case "send-menu-usage":
+        ; MANUAL DEBUGGING ONLY — sends the backtick + menu keys.
         ; Open backtick menu, navigate Quick Access (q) -> 7 (Usage Dashboard)
         Send("``")
         Sleep 350
@@ -384,12 +473,18 @@ switch command {
         Write(Map("menuOpened", menuOpened))
 
     case "open-input":
-        ; Open the backtick menu and press the given accelerator key
+        ; MANUAL DEBUGGING ONLY — sends the backtick + accelerator key.
+        ; Open the backtick menu and press the given accelerator key. The key is
+        ; ONLY sent if the menu actually opened - otherwise it would leak into
+        ; whatever the user is typing on the interactive desktop (the harness
+        ; must never inject stray keystrokes into the user's session).
         Send("``")
         Sleep 350
         menuOpened := WinExist("ahk_class #32768") ? 1 : 0
-        Send(A_Args[3])
-        Sleep 500
+        if menuOpened {
+            Send(A_Args[3])
+            Sleep 500
+        }
         Write(Map("done", 1, "menuOpened", menuOpened))
 
     case "close-input":

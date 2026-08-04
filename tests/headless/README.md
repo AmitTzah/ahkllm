@@ -18,14 +18,17 @@ Requirements: an interactive Windows session, AutoHotkey v2
 The app must **not already be running** (it is `#SingleInstance`; the harness aborts if so).
 
 ```powershell
-node tests/headless/verify-bugs.js --all              # run every scenario
-node tests/headless/verify-bugs.js --scenarios=1,6,15 # specific scenario ids
-node tests/headless/verify-bugs.js --check-sync       # report <-> scenarios in sync?
-node tests/headless/verify-bugs.js --cleanup          # close leftover app processes only
+node tests/headless/e2e-suite.js --all              # run every scenario
+node tests/headless/e2e-suite.js --scenarios=1,6,15 # specific scenario ids
+node tests/headless/e2e-suite.js --check-sync       # report <-> scenarios in sync?
+node tests/headless/e2e-suite.js --cleanup          # close leftover app processes only
 ```
 
-Launching the app is a GUI operation, so the sandbox will ask for elevated permissions —
-that is expected (`--check-sync` needs no app and no permission). Results go to
+The app launches with the chat window positioned OFF-SCREEN, so nothing flashes on your
+screen and no focus is stolen. It still needs elevated permissions (profile isolation +
+WebView2 startup), so the sandbox will ask - that is expected (`--check-sync` needs no app
+and no permission). Each run gets its own WebView2 user-data folder, so leftover browser
+processes from aborted runs cannot block the next launch. Results go to
 `tests/headless/results/headless-verification.txt` and stdout, one `PASS/FAIL` line per
 scenario.
 
@@ -33,29 +36,36 @@ scenario.
 
 `--cleanup` closes ONLY this repo's app processes (`Main.ahk`, `chat/ChatWindow.ahk` -
 matched by process command line, which works even when the user started the app on their
-own desktop that the sandbox cannot see, plus script-window title; killed by PID) so a
-stale app instance never blocks a run. It prints the PIDs it closed. **Never** run
+own desktop that the sandbox cannot see, plus script-window title; killed by PID) plus the
+harness's own WebView2 browser processes (matched by their unique `--user-data-dir=...llm-webview2-*`
+marker - never other apps' WebView2), and removes leftover `llm-webview2-*` temp folders,
+so a stale instance never blocks a run. It prints the PIDs it closed. **Never** run
 `Stop-Process -Name AutoHotkey64 -Force` or `taskkill /IM AutoHotkey64.exe` to "clean
 up" - the user runs their own AHK scripts on this machine and a blanket kill closes all
 of them. If `--cleanup` reports `Closed 0` but the app profile is still locked, another
 process (possibly a hung, windowless AHK script) holds it - do not kill AHK processes by
 guesswork; ask the user to close their scripts.
 
-Scenario ids are stable keys defined in `verify-bugs.js`; each bug entry in
+Scenario ids are stable keys defined by the scenario objects in `scenarios/*.js`
+(assembled into the run list by `e2e-suite.js`); each bug entry in
 `BUG_HUNT_REPORT.md` lists the scenario that verifies it and a **Status** (reported →
 verified → fix in progress → fix applied → awaiting user commit → removed). Keep the two
 in sync — `--check-sync` enforces it.
 
 **What is a scenario?** One automated reproduction of one bug. Each scenario is a
-numbered block in `verify-bugs.js` that (1) seeds a fresh isolated app state, (2) launches
+numbered object in `scenarios/*.js` that (1) seeds a fresh isolated app state, (2) launches
 the real app, (3) connects to the real WebView2 UI, (4) performs the repro steps (clicks,
 typing, saving, sending), and (5) asserts the expected outcome. **PASS = the buggy
 behavior was reproduced** (the bug is real); **FAIL = it wasn't** (the error message says
 which assertion failed). Run one with `--scenarios=<id>`.
 
 Each bug entry in `BUG_HUNT_REPORT.md` carries a `**Scenario:** <id>` line — that id points
-at the scenario *code* in `verify-bugs.js`; the report only references it (the Repro /
+at the scenario *code* in `scenarios/*.js`; the report only references it (the Repro /
 Evidence text in the entry is the human-readable description).
+
+Scenario files are grouped by area (`chat-tree`, `commands`, `settings`,
+`usage-tokens`, `chat-ui`, `misc`); see `scenarios/README.md` for the object shape and
+how to add a scenario.
 
 ## How a developer uses this
 
@@ -67,7 +77,7 @@ Point an agent at this folder — `BUG_HUNT_REPORT.md` is the entry point:
   write the entry (`reported`) → add a scenario → run it → `verified` + ranked → `--check-sync`.
 - **"Verify this: \<repro steps\>"** → the agent writes the entry, adds a scenario, verifies.
 - **"Continue"** → the agent resumes from "Where we left off" + the entries' Statuses.
-- **"Re-verify everything"** → run `node tests/headless/verify-bugs.js --all` and update
+- **"Re-verify everything"** → run `node tests/headless/e2e-suite.js --all` and update
   the entries' Statuses.
 - **"What's open?"** → read "Current state" / the open-bug list.
 
@@ -112,9 +122,12 @@ so env-based isolation does not work. Instead the harness:
 4. Removes the junction and renames the backup back, verifying `settings.json` exists
    (the run prints "Real profile restored: yes").
 
-If a run is interrupted, the real profile is safe in the `.bak` folder; the next run
-auto-recovers. Manual recovery: delete the junction at the real path and rename the
-`.bak` folder back.
+If a run is interrupted, the real profile is safe in the `.bak` folder. Ctrl+C /
+SIGTERM triggers an in-process cleanup that restores it immediately; a hard kill
+(taskkill /F, IDE stop) leaves it isolated until you run `--cleanup`, which now
+detects the interrupted state and restores the profile (verifying `settings.json`
+before moving anything) before sweeping leftover WebView2/profile-sandbox folders.
+The next scenario run also auto-recovers as a fallback.
 
 ## Architecture
 
@@ -126,7 +139,9 @@ auto-recovers. Manual recovery: delete the junction at the real path and rename 
 | `launch.js` | Profile isolation (junction), app launch with WebView2 remote-debugging args, CDP discovery, teardown |
 | `probe.ahk` | Win32 checks the browser can't see: window titles, icons via `WM_GETICON` + pixel fingerprint, hotkey presses, suspend banner, input window |
 | `probe-thinking.ahk` | Standalone AHK check used by one scenario (see report) |
-| `verify-bugs.js` | Scenario runner + all scenarios (the file to extend) |
+| `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
+| `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
+| `scenarios/helpers.js` | Shared helpers used by scenario bodies (probes, UI navigation) |
 | `BUG_HUNT_REPORT.md` | Live bug list + agent workflow (start here) |
 
 ## Adding a scenario (template)
@@ -182,9 +197,11 @@ These cost the original author many hours — do not repeat them:
    app's cURL command contains a `2>` redirection, which makes AHK `Run` go through cmd.
    Non-stream requests (title-gen, inline commands) are therefore not end-to-end
    automatable here — verify those statically or with unit tests.
-7. Injected keyboard input sometimes does not reach AHK hotkeys in this session.
-   Hotkey-dependent live checks use the app context where proven reliable; otherwise fall
-   back to static/unit evidence and note the limitation in the report entry.
+7. Keyboard injection is inherently unreliable here AND can leak keystrokes into whatever
+   the user is typing on the interactive desktop. For that reason NO scenario injects
+   keys: the hotkey-dependent checks (#4, #9, #12, #13, #24, #25) were converted to
+   static/unit checks. The key-sending probe commands (`menu-open`, `open-input`,
+   `send-menu-usage`, `suspend-banner`, ...) remain for MANUAL debugging only.
 
 ## Limitations
 

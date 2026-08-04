@@ -11,10 +11,39 @@ const AHK = 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const MAIN_AHK = path.join(REPO_ROOT, 'Main.ahk');
 const PROBE_AHK = path.join(__dirname, 'probe.ahk');
+// Unique WebView2 user-data folder for the current run. The app's WebView2
+// defaults to the SHARED machine Edge folder (%LOCALAPPDATA%\Microsoft\Edge\
+// User Data), so a leftover browser process from an aborted run holds it and
+// the next launch fails with ERROR_BUSY (0x800700AA, "resource in use"). A
+// per-run folder removes the collision entirely, and doubles as a safe marker
+// for cleanup (only OUR msedgewebview2.exe processes carry it).
+let activeWebView2Dir = '';
 // The app resolves A_AppData via the Windows known-folder API, NOT the APPDATA
 // env var, so env-based isolation cannot work. Instead we temporarily move the
 // real profile aside and point it at a temp dir via a junction, restoring after.
 const REAL_DATA_DIR = 'C:\\Users\\Amit\\AppData\\Roaming\\LLM-AutoHotkey-Assistant';
+
+// Synchronous short sleep for teardown retries without spawning child processes.
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Remove every leftover llm-webview2-* folder (they are all ours, unique per
+// run). The browser processes can hold files briefly after taskkill /F, so
+// retry until nothing remains or the bounded attempt budget runs out.
+function sweepWebView2Dirs(maxAttempts = 8) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let removed = 0;
+    try {
+      for (const name of fs.readdirSync(os.tmpdir())) {
+        if (!name.startsWith('llm-webview2-')) continue;
+        try { fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); removed++; } catch {}
+      }
+    } catch {}
+    if (removed === 0) break;
+    sleepSync(500);
+  }
+}
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -111,8 +140,10 @@ function preflight() {
 
 // Launch the app with an isolated environment. Returns { mainPid, port, cdpBase }.
 function launch({ sandbox, port }) {
+  activeWebView2Dir = path.join(os.tmpdir(), 'llm-webview2-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
   const env = Object.assign({}, process.env, {
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=' + port + ' --remote-allow-origins=*',
+    WEBVIEW2_USER_DATA_FOLDER: activeWebView2Dir,
     DEEPSEEK_API_KEY: 'sk-headless-test',
     OPENAI_API_KEY: 'sk-headless-test',
     GEMINI_API_KEY: 'sk-headless-test'
@@ -133,7 +164,7 @@ async function listTargets(port) {
 }
 
 // Wait until the CDP endpoint reports the chat page (webui/index.html).
-async function waitForChatTarget(port, timeoutMs = 120000) {
+async function waitForChatTarget(port, timeoutMs = 30000) {
   const start = Date.now();
   for (;;) {
     try {
@@ -162,13 +193,27 @@ async function findTarget(port, urlPart, timeoutMs = 30000) {
 // Kill only the process tree we spawned (Main + its ChatWindow + WebView2 children).
 function teardown(mainPid) {
   if (!mainPid) return;
-  try {
-    spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
-  } catch {}
-  // A stray ChatWindow orphan (if taskkill missed it) is closed by title.
+  // Graceful close FIRST: WinClose on the ChatWindow lets its OnExit handler
+  // run and lets in-flight WebView2 operations settle. Force-killing first
+  // raced those operations and popped modal AHK error dialogs
+  // (0x800700AA "the requested resource is in use").
   try {
     spawnSync(AHK, [PROBE_AHK, 'kill-chat'], { windowsHide: true, timeout: 10000 });
   } catch {}
+  try {
+    spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 800'], { windowsHide: true, timeout: 5000 });
+  } catch {}
+  try {
+    spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
+  } catch {}
+  // Remove our unique WebView2 user-data folder once the browser processes are
+  // dead. taskkill /F returns before the browser processes have fully released
+  // their file handles, so a single immediate rmSync routinely fails and leaves
+  // the folder behind. Sweep every leftover llm-webview2-* folder (they are
+  // all ours, unique per run) so a missed folder self-heals instead of
+  // accumulating in temp. Bounded: ~4s worst case.
+  sweepWebView2Dirs(8);
+  activeWebView2Dir = '';
 }
 
-module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, isolateProfile, resetDataDir, restoreProfile, AHK, PROBE_AHK, REPO_ROOT, listTargets };
+module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, isolateProfile, resetDataDir, restoreProfile, sweepWebView2Dirs, AHK, PROBE_AHK, REPO_ROOT, listTargets };

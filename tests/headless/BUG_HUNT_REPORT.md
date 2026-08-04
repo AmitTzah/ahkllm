@@ -13,7 +13,7 @@
 | File | Touched when |
 |---|---|
 | `BUG_HUNT_REPORT.md` (this file) | every step — statuses, entries, history, "Where we left off" |
-| `verify-bugs.js` | intake: add a scenario; fix cycle: flip an assertion |
+| `e2e-suite.js` + `scenarios/*.js` | intake: add a scenario; fix cycle: flip an assertion |
 | `tests/unit/*` + `tests/run_ahk_tests.ahk` | fix cycle: regression tests |
 | production source (`app/`, `chat/`, `webui/`, `api/`, `shared/`) | fix cycle step 2 only |
 
@@ -31,17 +31,17 @@
 Only `verified` bugs are fixed, one at a time, in rank order.
 
 **Scenario line:** every entry references its verifying scenario by id — the scenario
-*code* lives in `verify-bugs.js`, not in this file. Run it with
-`node tests/headless/verify-bugs.js --scenarios=<id>`. `--check-sync` verifies every
+*code* lives in `scenarios/*.js` (runner: `e2e-suite.js`), not in this file. Run it with
+`node tests/headless/e2e-suite.js --scenarios=<id>`. `--check-sync` verifies every
 entry's id exists (and that every non-regression scenario has an entry).
 
 **Phase 1 — Intake** (a bug enters and gets verified here):
 
 1. Write the entry in this file (Repro / Expected / Actual / Evidence + scenario id) with
    `Status: reported`. **[file: this file]**
-2. Ensure a verifying scenario exists in `verify-bugs.js`; add one if not.
-   **[file: `verify-bugs.js`]**
-3. Run `node tests/headless/verify-bugs.js --check-sync` (must say OK), then
+2. Ensure a verifying scenario exists in `scenarios/*.js`; add one if not.
+   **[file: `tests/headless/scenarios/`]**
+3. Run `node tests/headless/e2e-suite.js --check-sync` (must say OK), then
    `--scenarios=<id>` (must PASS = bug reproduced). **[no file edits]**
 4. PASS → set `Status: verified`, rank the entry, and update "Current state" (open count).
    FAIL → the bug is not reproducible — delete the entry and add a one-line note to History.
@@ -60,8 +60,8 @@ confirm the fix, never to re-verify the bug):
 2. Fix the bug in production source. **[files: `app/`, `chat/`, `webui/`, `api/`, `shared/`]**
 3. Add/extend regression tests that assert the **fixed** behavior (unit/AHK as appropriate— the flipped scenario is the end-to-end check, but the fix also needs a code-level regression test when feasible; never delete or loosen an existing assertion to make it pass). **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
    if you added an AHK test]**
-4. Flip the scenario assertion in `verify-bugs.js` to expect the **fixed** behavior
-   (otherwise it fails forever). **[file: `verify-bugs.js`]**
+4. Flip the scenario assertion in `scenarios/*.js` to expect the **fixed** behavior
+   (otherwise it fails forever). **[file: `tests/headless/scenarios/`]**
 5. Run `--scenarios=<id>` (must PASS = fix works) and the full AHK + JS suites. If it
    FAILs, the fix is incomplete — go back to step 2. **[no file edits]**
 6. **Gate:** only after step 5 passes (scenario PASS + suites green) set
@@ -98,7 +98,7 @@ confirm the fix, never to re-verify the bug):
   mock mode), update `README.md`; if you change the workflow itself, update `ARCHITECTURE.md`.
   Never hard-code drift-prone numbers (e.g. test totals) in docs — point at the runner
   instead.
-- Only two files must stay in sync: this file and `verify-bugs.js` — `--check-sync`
+- Only two files must stay in sync: this file and `e2e-suite.js` — `--check-sync`
   enforces it after every edit.
 
 ## Harness safety: avoid the hanging-command trap
@@ -124,7 +124,7 @@ Why it hangs (verified 2026-08-01):
 
 How to run AHK safely:
 
-1. **Prefer the harness.** Add a scenario to `verify-bugs.js` (it wraps every AHK
+1. **Prefer the harness.** Add a scenario to `scenarios/*.js` (it wraps every AHK
    call in `spawnSync` with `/ErrorStdOut` and a 25s timeout) or reuse a probe
    command (`probe.ahk <command> <outFile>`, `probe-thinking.ahk`). Re-verify bugs
    by running the scenario, never by hand.
@@ -140,7 +140,7 @@ How to run AHK safely:
    The user runs their own AHK scripts on this machine, and a blanket kill closes
    ALL of them. This is the #1 way agents have destroyed unrelated user scripts.
 5. **After any aborted run, clean up with the targeted command instead:**
-   `node tests/headless/verify-bugs.js --cleanup`. It closes ONLY this repo's
+   `node tests/headless/e2e-suite.js --cleanup`. It closes ONLY this repo's
    app processes (`Main.ahk`, `chat/ChatWindow.ahk` - matched by process command
    line, which works even when the user started the app on their own desktop
    that this sandbox cannot see, plus script-window title; killed by PID) and
@@ -159,7 +159,7 @@ How to run AHK safely:
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
-  `node tests/headless/verify-bugs.js --check-sync` (do not hard-code it here).
+  `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** bugs 26, 27, 29, 30, 31, 33-53, 55-58 are `verified`
   and
   ranked (26 highest; 47 after 26, 44 after 31, 45 after 38, 46 last, and the
@@ -167,7 +167,7 @@ How to run AHK safely:
   49/50/57 the highest of those). Next per the fix cycle: fix bug #26, then the
   rest in rank order, one at a time, each with a flipped scenario +
   code-level regression test. Harness cleanup is PID-targeted: use
-  `node tests/headless/verify-bugs.js --cleanup` after aborted runs and NEVER
+  `node tests/headless/e2e-suite.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
 ---
@@ -177,12 +177,12 @@ How to run AHK safely:
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
 a bug is fixed and committed, its entry moves to History (one line) — this template
 stays so future entries always have the same fields. `--check-sync` enforces that
-every entry's scenario id exists in `verify-bugs.js` (and that every
+every entry's scenario id exists in `scenarios/*.js`, assembled by `e2e-suite.js` (and that every
 non-regression scenario has an entry).
 
     ### N. <short bug title>
 
-    **Scenario:** <id> (scenario code in verify-bugs.js)
+    **Scenario:** <id> (scenario code in e2e-suite.js)
 
     **Status:** reported | verified | fix in progress | fix applied | awaiting user commit
 
@@ -202,7 +202,7 @@ Example (shape only, not a real bug):
 
     ### 1. Example: hotkey does nothing
 
-    **Scenario:** 99 (scenario code in verify-bugs.js)
+    **Scenario:** 99 (scenario code in e2e-suite.js)
 
     **Status:** verified — open
 
@@ -223,7 +223,7 @@ one at a time, in rank order.
 
 ### 26. Opening Settings wipes the right-rail per-thread settings
 
-**Scenario:** 26 (scenario code in verify-bugs.js)
+**Scenario:** 26 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -256,7 +256,7 @@ is blank.
 
 ### 47. Per-thread system prompt / temperature edits are discarded on reload when an assistant is active
 
-**Scenario:** 47 (scenario code in verify-bugs.js)
+**Scenario:** 47 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -288,7 +288,7 @@ holds `system_override='user override'`.
 
 ### 27. Commands Advanced card collapses when you click inside it to edit a field
 
-**Scenario:** 27 (scenario code in verify-bugs.js)
+**Scenario:** 27 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -312,7 +312,7 @@ card, clicks `#cmdInputBoxDefault`, and observes the `.cmd-advanced-body` re-hid
 
 ### 29. Blank cached-input price costs 0 instead of the advertised 10% fallback
 
-**Scenario:** 29 (scenario code in verify-bugs.js)
+**Scenario:** 29 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -344,7 +344,7 @@ a model with `cachedInput: ""` (throws "Expected a Number but got an empty strin
 
 ### 30. Deleting a message confirms "data is preserved" but hard-deletes it
 
-**Scenario:** 30 (scenario code in verify-bugs.js)
+**Scenario:** 30 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -369,7 +369,7 @@ and queries the DB — the message row is gone.
 
 ### 31. Font-size +/- buttons use a stale 17px base after a thread with a custom size loads
 
-**Scenario:** 31 (scenario code in verify-bugs.js)
+**Scenario:** 31 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -395,7 +395,7 @@ instead of 21px.
 
 ### 44. Forking a chat drops the per-thread font size and Advanced toggles
 
-**Scenario:** 44 (scenario code in verify-bugs.js)
+**Scenario:** 44 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -422,7 +422,7 @@ returns both fields.
 
 ### 33. Clearing the chat-window icon setting still loads the default custom icon
 
-**Scenario:** 33 (scenario code in verify-bugs.js)
+**Scenario:** 33 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -449,7 +449,7 @@ setting is ignored.
 
 ### 34. Tray icon changes don't apply until restart
 
-**Scenario:** 34 (scenario code in verify-bugs.js)
+**Scenario:** 34 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -475,7 +475,7 @@ changing the icon.
 
 ### 35. Temperature override of 0 is dropped when the thread reloads (right rail shows Default)
 
-**Scenario:** 35 (scenario code in verify-bugs.js)
+**Scenario:** 35 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -501,7 +501,7 @@ temperature shows "Default" / slider 1.0 instead of 0.0.
 
 ### 36. Command temperature/reasoning are dropped when the command model equals the app default
 
-**Scenario:** 36 (scenario code in verify-bugs.js)
+**Scenario:** 36 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -528,7 +528,7 @@ inside the `!= appDefaultModel` gate — proving default-model commands skip the
 
 ### 37. Tray menu item changes don't apply until restart
 
-**Scenario:** 37 (scenario code in verify-bugs.js)
+**Scenario:** 37 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -551,7 +551,7 @@ Final visual confirmation requires a human opening the tray after saving.
 
 ### 38. Chat window title stays stale after renaming a thread and switching to another
 
-**Scenario:** 38 (scenario code in verify-bugs.js)
+**Scenario:** 38 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -577,7 +577,7 @@ the renamed first thread's title.
 
 ### 45. "Response Font" setting is not applied to chat messages until Settings is opened
 
-**Scenario:** 45 (scenario code in verify-bugs.js)
+**Scenario:** 45 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -604,12 +604,12 @@ Georgia.
 
 ### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
 
-**Scenario:** 39 (scenario code in verify-bugs.js)
+**Scenario:** 39 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
 **Repro:** Settings -> Commands -> select a command whose System Message uses a
-file NOT in the hardcoded App Defaults list (e.g. `system-messages/my-prompt.txt`
+file NOT in the hardcoded App Defaults list (e.g. `default-settings/system-messages/my-prompt.txt`
 created in AppData per the UI hint) -> click Edit next to System Message -> click
 Save without changing anything -> look at the command's System Message label.
 
@@ -630,13 +630,13 @@ the Save handler does `sysMsgFile = fileSelect ? fileSelect.value : ''`;
 `webui/index.html` `#smFileSelect` contains only the app-default filenames.
 
 **Verification:** headless scenario 39 seeds a command with
-`systemMessageFile: "system-messages/my-custom-prompt.txt"`, opens the modal
+`systemMessageFile: "default-settings/system-messages/my-custom-prompt.txt"`, opens the modal
 (select ends with `selectedIndex=-1`), clicks Save, and observes the command's
 `systemMessageFile` becomes `""` and the label "(none)".
 
 ### 41. Tray "New Chat" ignores the "New Chats Start With" default
 
-**Scenario:** 41 (scenario code in verify-bugs.js)
+**Scenario:** 41 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -664,7 +664,7 @@ thread directly while the loader path never applies the start-with default.
 
 ### 40. Refresh-models modal discards edits to a model id (stale `data-full-id` wins on Save)
 
-**Scenario:** 40 (scenario code in verify-bugs.js)
+**Scenario:** 40 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -689,7 +689,7 @@ shows the original id.
 
 ### 42. Usage dashboard chart date labels shift a day in UTC+x timezones
 
-**Scenario:** 42 (scenario code in verify-bugs.js)
+**Scenario:** 42 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -715,7 +715,7 @@ at 2026-08-03 00:30 local; the returned "day" label is "2026-08-02" instead of
 
 ### 43. Thinking config is silently dropped for short-form model ids (no provider prefix)
 
-**Scenario:** 43 (scenario code in verify-bugs.js)
+**Scenario:** 43 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -749,7 +749,7 @@ message to the mock LLM, and asserts the sent request body has no `thinking` /
 
 ### 46. Command "Stream Response" + pasteMode replace/append silently produces no output
 
-**Scenario:** 46 (scenario code in verify-bugs.js)
+**Scenario:** 46 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -780,7 +780,7 @@ read back.
 
 ### 49. Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)
 
-**Scenario:** 49 (scenario code in verify-bugs.js)
+**Scenario:** 49 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -812,7 +812,7 @@ remains set.
 
 ### 50. Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path
 
-**Scenario:** 50 (scenario code in verify-bugs.js)
+**Scenario:** 50 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -826,27 +826,27 @@ changing anything â†’ trigger that command with a selection.
 prompt. The system-message modal stores the select's BARE filename (e.g.
 "rephrase-in-context.txt"), but the command path
 (`CommandMenu._resolveSystemMessage`) resolves relative file paths only against
-`A_ScriptDir` — it never searches `system-messages\` or the AppData folder the
+`A_ScriptDir` — it never searches `default-settings\system-messages\` or the AppData folder the
 way the assistant path does. `repo\rephrase-in-context.txt` does not exist
-(the file is `repo\system-messages\rephrase-in-context.txt`), so `FileRead`
+(the file is `repo\default-settings\system-messages\rephrase-in-context.txt`), so `FileRead`
 throws, a MsgBox appears, and the inline fallback (empty for stock commands)
 is used — the request fires without the system prompt.
 
 **Evidence:** `app/menu/CommandMenu.ahk` `_resolveSystemMessage()` (only
 `filePath := A_ScriptDir "\\" filePath`); `chat/db/AssistantRepo.ahk`
-`_resolveSystemMessage()` searches `A_ScriptDir\system-messages\`,
+`_resolveSystemMessage()` searches `A_ScriptDir\default-settings\system-messages\`,
 `A_AppData\...\system-messages\`, etc.; `webui/js/settings/sections/
 sysmsg-modal.js` saves `fileSelect.value` (bare name).
 
 **Verification:** headless scenario 50 (noApp) statically proves the mismatch:
 the modal saves bare filenames, the command path has no system-messages
 search while the assistant path does, and every app-default file exists only
-under `system-messages/` — so after a settings save the command trigger
+under `default-settings/system-messages/` — so after a settings save the command trigger
 cannot find its file.
 
 ### 48. Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)
 
-**Scenario:** 48 (scenario code in verify-bugs.js)
+**Scenario:** 48 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -873,7 +873,7 @@ and the new thread's leaf `active_path_tokens` is 0.
 
 ### 51. Vision gate rejects images/screenshots for short-form model ids (no provider prefix)
 
-**Scenario:** 51 (scenario code in verify-bugs.js)
+**Scenario:** 51 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -904,7 +904,7 @@ true`) exist only under full keys.
 
 ### 52. Usage dashboard double-counts thinking tokens for command usage
 
-**Scenario:** 52 (scenario code in verify-bugs.js)
+**Scenario:** 52 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -938,7 +938,7 @@ dashboard: Total Tokens shows 260 (command counted as 140) instead of 220.
 
 ### 53. Dashboard "Last 24 Hours" spans two calendar days — the summary counts yesterday while the chart only plots today
 
-**Scenario:** 53 (scenario code in verify-bugs.js)
+**Scenario:** 53 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -964,7 +964,7 @@ today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
 
 ### 55. Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest (header shows the stale branch's context)
 
-**Scenario:** 55 (scenario code in verify-bugs.js)
+**Scenario:** 55 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -994,7 +994,7 @@ node in the tree modal navigates to 95 (newest).
 
 ### 56. Stopping a stream before the first token shows an error banner instead of a clean cancel
 
-**Scenario:** 56 (scenario code in verify-bugs.js)
+**Scenario:** 56 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -1021,7 +1021,7 @@ the generic API-key message when stderr is empty.
 
 ### 57. Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)
 
-**Scenario:** 57 (scenario code in verify-bugs.js)
+**Scenario:** 57 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
@@ -1048,7 +1048,7 @@ or pasted message can drive app actions (send messages, change settings, etc.).
 
 ### 58. Forking a chat drops the thread's folder (the copy lands in Unfiled)
 
-**Scenario:** 58 (scenario code in verify-bugs.js)
+**Scenario:** 58 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
