@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { installIpc } = require('./helpers/ipc-test-utils');
 
 function loadBranchingModule() {
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-branching.js'), 'utf-8');
@@ -46,7 +47,9 @@ function loadBranchingModule() {
         updateBranchInfo: undefined,
     };
     sandbox.global = sandbox;
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
+    vm.runInContext(src, ctx);
     return { ctx: sandbox, postedMessages };
 }
 

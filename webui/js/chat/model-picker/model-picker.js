@@ -13,15 +13,14 @@ function _sendAllSettings() {
     // The assistant manages the model — sending it would cause AHK to treat it
     // as an explicit model switch and clear the assistant.
     var modelToSend = s.assistantName ? '' : (s.model || '');
-    window.chrome.webview.postMessage(JSON.stringify({
-      action: 'updateModelSettings',
+    Ipc.postToHost('updateModelSettings', {
       model: modelToSend,
       systemMessage: s.systemMessage || '',
       reasoning: s.reasoning || '',
       temperature: s.temperature || '',
       codeExecution: !!s.codeExecution,
       webSearch: !!s.webSearch
-    }));
+    });
   }, 300);
 }
 
@@ -152,7 +151,7 @@ function _makeAssistantClickHandler(el, asstId) {
     if (mini) mini.value = sysPrompt;
     if (!window._currentSettings) window._currentSettings = {};
     window._currentSettings.systemMessage = sysPrompt;
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'switchAssistant', assistantId: asstId }));
+    Ipc.postToHost('switchAssistant', { assistantId: asstId });
     var p = document.getElementById('modelPopover'); if (p) p.classList.remove('open');
     var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
   };

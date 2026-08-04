@@ -54,6 +54,15 @@ function handleWebMessage(event) {
     var target = message.target;
     var data = message.data;
 
+    // Validate every incoming AHK message against the shared IPC contract.
+    // Dev-time guard: report contract violations loudly, never throw.
+    if (typeof IPCMessages !== 'undefined' && target) {
+      var ipcProblems = IPCMessages.validate(target, data, 'ahk->web');
+      if (ipcProblems.length) {
+        console.error('[IPC] invalid message from AHK "' + target + '": ' + ipcProblems.join('; '));
+      }
+    }
+
     switch (target) {
       case 'initChatMode':
         initChatMode(data);
@@ -264,7 +273,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     // Don't re-request when already open — that would wipe unsaved edits
     if (!alreadyOpen) {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'requestAllSettings' }));
+      Ipc.postToHost('requestAllSettings');
     }
   }
 
@@ -356,8 +365,8 @@ document.addEventListener('DOMContentLoaded', function () {
   if (typeof openModelSettings === 'function') openModelSettings();
 
   // Request thread list and trash list on load (sidebar always visible in new UI)
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTrashList' }));
+  Ipc.postToHost('sidebarAction', { subAction: 'loadThreadList' });
+  Ipc.postToHost('sidebarAction', { subAction: 'loadTrashList' });
 
   // Wire topbar rename button — inline editing
   var renameBtn = document.querySelector('.rename-chat-btn');
@@ -377,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var newTitle = input.value.trim();
       titleEl.textContent = newTitle || currentTitle;
       if (newTitle && newTitle !== currentTitle) {
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameThread', threadId: activeThreadId, title: newTitle }));
+    Ipc.postToHost('sidebarAction', { subAction: 'renameThread', threadId: activeThreadId, title: newTitle });
       }
     };
     input.addEventListener('blur', save);
@@ -457,7 +466,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var name = input.value.trim();
       input.remove();
       if (name) {
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'createFolder', name: name }));
+    Ipc.postToHost('sidebarAction', { subAction: 'createFolder', name: name });
       }
     };
     input.addEventListener('blur', save);
@@ -474,7 +483,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Notify AHK that the WebView is ready — AHK responds with initChatMode
   // for the current thread (DB is the single source of truth, not sessionStorage).
   try {
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'webViewReady' }));
+    Ipc.postToHost('webViewReady');
   } catch(e) {}
 
   // Restore fallback markdown content

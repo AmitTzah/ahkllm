@@ -14,6 +14,13 @@ function getDateRangeLabels() {
   var labels = [];
   var today = new Date();
   var days;
+  // Local date key (YYYY-MM-DD) - toISOString() shifts labels a day in UTC+x
+  // timezones because local midnight is still the previous UTC day (bug #42).
+  function localDateKey(d) {
+    var m = String(d.getMonth() + 1);
+    var day = String(d.getDate());
+    return d.getFullYear() + '-' + (m.length < 2 ? '0' + m : m) + '-' + (day.length < 2 ? '0' + day : day);
+  }
   if (range === 'day') days = 1;
   else if (range === 'thisMonth') {
     days = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
@@ -48,7 +55,7 @@ function getDateRangeLabels() {
   for (var i = days-1; i >= 0; i--) {
     var d = new Date(today);
     d.setDate(d.getDate() - i);
-    labels.push(d.toISOString().substring(0,10));
+    labels.push(localDateKey(d));
   }
   return labels;
 }
@@ -366,5 +373,5 @@ document.querySelector('#stackToggle').addEventListener('click', function(e) {
 
 // Wire API Logs button (inline onclick may not fire in complex DOM)
 document.getElementById('apiLogsBtn').addEventListener('click', function() {
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'showApiLogs' }));
+  Ipc.postToHost('showApiLogs');
 });

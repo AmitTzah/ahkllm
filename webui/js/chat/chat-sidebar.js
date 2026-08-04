@@ -8,8 +8,8 @@ var _threadMeta = {};
 var _folders = [];
 
 function toggleSidebar() {
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTrashList' }));
+  Ipc.postToHost('sidebarAction', { subAction: 'loadThreadList' });
+  Ipc.postToHost('sidebarAction', { subAction: 'loadTrashList' });
 }
 
 // -----------------------------------------------------------
@@ -151,7 +151,7 @@ function createChatItem(t) {
   item.querySelector('.chat-action-btn.danger').addEventListener('click', function(e) {
     e.stopPropagation();
     _showChatConfirm('Delete this chat?', function() {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThread', threadId: t.id }));
+      Ipc.postToHost('sidebarAction', { subAction: 'deleteThread', threadId: t.id });
     });
   });
 
@@ -162,7 +162,7 @@ function _wireRenameHandler(item, t) {
   item.querySelector('.chat-action-btn[title="Rename"]').addEventListener('click', function(e) {
     e.stopPropagation();
     _makeInlineEditor(item.querySelector('.chat-name'), item.querySelector('.chat-name').textContent, function(newTitle) {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameThread', threadId: t.id, title: newTitle }));
+          Ipc.postToHost('sidebarAction', { subAction: 'renameThread', threadId: t.id, title: newTitle });
     });
   });
 }
@@ -175,7 +175,7 @@ function _addFolderPickItem(dd, label, folderId, threadId) {
   item.addEventListener('mouseleave', function() { this.style.background = ''; });
   item.addEventListener('click', function(ev) {
     ev.stopPropagation();
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'moveToFolder', threadId: threadId, folderId: folderId }));
+    Ipc.postToHost('sidebarAction', { subAction: 'moveToFolder', threadId: threadId, folderId: folderId });
     dd.remove();
   });
   dd.appendChild(item);
@@ -230,13 +230,13 @@ function _buildFolderSection(folder, threads) {
   head.querySelector('.folder-action-btn:not(.danger)').addEventListener('click', function(e) {
     e.stopPropagation();
     _makeInlineEditor(this.closest('.folder-head').querySelector('.folder-name'), folder.name, function(newName) {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'renameFolder', folderId: folder.id, name: newName }));
+    Ipc.postToHost('sidebarAction', { subAction: 'renameFolder', folderId: folder.id, name: newName });
     }, '120px');
   });
   head.querySelector('.folder-delete-btn').addEventListener('click', function(e) {
     e.stopPropagation();
     _showChatConfirm('Delete folder "' + escHtml(folder.name) + '"? Chats will become unfiled.', function() {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteFolder', folderId: folder.id }));
+    Ipc.postToHost('sidebarAction', { subAction: 'deleteFolder', folderId: folder.id });
     });
   });
   folderDiv.appendChild(head);
@@ -277,17 +277,17 @@ function loadThread(threadId) {
   activeThreadId = threadId;
   updateTopbarTitle();
   _setActiveHighlight(threadId);
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThread', threadId: threadId }));
+    Ipc.postToHost('sidebarAction', { subAction: 'loadThread', threadId: threadId });
 }
 
 function newChat() {
   activeThreadId = '';
   updateTopbarTitle();
   _setActiveHighlight('');
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'newChat' }));
+    Ipc.postToHost('sidebarAction', { subAction: 'newChat' });
 }
 
 function threadForked(data) {
   loadThread(data.newThreadId);
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadThreadList' }));
+  Ipc.postToHost('sidebarAction', { subAction: 'loadThreadList' });
 }

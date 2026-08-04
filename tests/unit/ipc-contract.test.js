@@ -1,0 +1,77 @@
+// ipc-contract.test.js - Unit tests for the shared AHK <-> WebView
+// message contract (webui/js/shared/ipc-contract.js): registry integrity
+// and validate() behavior.
+const { describe, it } = require('node:test');
+const assert = require('node:assert');
+const contract = require('../../webui/js/shared/ipc-contract.js');
+
+describe('ipc-contract registry integrity', () => {
+  it('declares unique message names', () => {
+    const names = contract.names;
+    assert.strictEqual(new Set(names).size, names.length, 'message names must be unique');
+  });
+
+  it('uses only valid directions', () => {
+    for (const name of contract.names) {
+      const dir = contract.messages[name].dir;
+      assert.ok(dir === 'ahk->web' || dir === 'web->ahk', name + ' has invalid dir ' + dir);
+    }
+  });
+
+  it('declares every sidebarAction sub-action used by the app', () => {
+    const expected = [
+      'createFolder', 'deleteFolder', 'deleteThread', 'deleteThreadForever',
+      'loadThread', 'loadThreadList', 'loadTrashList', 'loadTree',
+      'moveToFolder', 'navigateToMessage', 'newChat', 'renameFolder',
+      'renameThread', 'restoreThread'
+    ];
+    for (const sa of expected) {
+      assert.ok(Array.isArray(contract.subActions[sa]), 'sub-action ' + sa + ' must be declared');
+    }
+  });
+});
+
+describe('ipc-contract validate', () => {
+  it('accepts valid messages in both directions', () => {
+    assert.deepStrictEqual(contract.validate('initChatMode', { messages: [], threadId: 't1' }, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('streamDone', { model: 'm', displayName: '', dbMsg: '', userTokenCount: 0 }, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('setChatButtonsEnabled', true, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi' }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi', attachments: [] }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('updateModelSettings', { model: 'm', systemMessage: '', reasoning: '', temperature: '', codeExecution: false, webSearch: false }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('sidebarAction', { subAction: 'moveToFolder', threadId: 't', folderId: 'f' }, 'web->ahk'), []);
+  });
+
+  it('flags undeclared message names', () => {
+    const problems = contract.validate('madeUpTarget', {}, 'ahk->web');
+    assert.ok(problems.some((p) => p.indexOf('undeclared message') >= 0));
+  });
+
+  it('flags wrong-direction messages', () => {
+    const problems = contract.validate('chatSend', { message: 'x' }, 'ahk->web');
+    assert.ok(problems.some((p) => p.indexOf('declared as web->ahk') >= 0));
+  });
+
+  it('flags missing required fields', () => {
+    const problems = contract.validate('searchMessages', { query: 'x' }, 'web->ahk');
+    assert.ok(problems.some((p) => p.indexOf('missing required field "queryId"') >= 0));
+  });
+
+  it('flags undeclared payload fields', () => {
+    const problems = contract.validate('deleteMessage', { id: 'm1', latencyMs: 5 }, 'web->ahk');
+    assert.ok(problems.some((p) => p.indexOf('undeclared field "latencyMs"') >= 0),
+      'misspelled field names must be caught (latencyMs vs responseTimeMs class)');
+  });
+
+  it('flags unknown sidebarAction sub-actions and missing sub-action fields', () => {
+    const unknown = contract.validate('sidebarAction', { subAction: 'explode' }, 'web->ahk');
+    assert.ok(unknown.some((p) => p.indexOf('undeclared sidebarAction') >= 0));
+    const missing = contract.validate('sidebarAction', { subAction: 'renameThread', threadId: 't' }, 'web->ahk');
+    assert.ok(missing.some((p) => p.indexOf('sidebarAction "renameThread" is missing field "title"') >= 0));
+  });
+
+  it('flags wrong scalar payload types', () => {
+    const problems = contract.validate('streamContent', { text: 'x' }, 'ahk->web');
+    assert.ok(problems.some((p) => p.indexOf('payload should be string') >= 0));
+  });
+});

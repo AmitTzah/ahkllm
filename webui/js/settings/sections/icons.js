@@ -33,7 +33,7 @@
         container.querySelectorAll('button[data-icon-field]').forEach(function(btn) {
           btn.addEventListener('click', function() {
             var field = this.getAttribute('data-icon-field');
-            window.chrome.webview.postMessage(JSON.stringify({action:'browseIcon', field: field}));
+            Ipc.postToHost('browseIcon', { field: field });
           });
         });
       }

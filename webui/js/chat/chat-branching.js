@@ -41,20 +41,20 @@ function editMessage(index) {
 }
 
 function commitEdit(index, msgId, newContent, mode) {
-  var payload = { action: 'editMessage', id: msgId, content: newContent, mode: mode };
+  var payload = { id: msgId, content: newContent, mode: mode };
   if (_removedAttachmentIds.length > 0) {
     payload.removedAttachmentIds = _removedAttachmentIds.slice();
   }
   _editingMessageId = null;
   _removedAttachmentIds = [];
-  window.chrome.webview.postMessage(JSON.stringify(payload));
+  Ipc.postToHost('editMessage', payload);
 }
 
 // Fork chat at a specific message — creates a copy thread up to that point
 function forkChat(index) {
   var msg = chatMessages[index];
   if (!msg || isLoading) return;
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'forkChat', id: msg.id }));
+  Ipc.postToHost('forkChat', { id: msg.id });
 }
 
 // D2: Delete message
@@ -63,16 +63,12 @@ function deleteMessage(index) {
   if (!msg || isLoading) return;
 
   _showChatConfirm('Delete this message? This removes it from the current view but data is preserved.', function() {
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteMessage', id: msg.id }));
+    Ipc.postToHost('deleteMessage', { id: msg.id });
   });
 }
 
 // D3: Switch branch
 function switchBranch(msgId, direction) {
-  window.chrome.webview.postMessage(JSON.stringify({
-    action: 'switchBranch',
-    id: msgId,
-    direction: direction
-  }));
+  Ipc.postToHost('switchBranch', { id: msgId, direction: direction });
 }
 

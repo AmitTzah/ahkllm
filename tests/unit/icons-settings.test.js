@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { installIpc } = require('./helpers/ipc-test-utils');
 
 function makeClassList() {
     const classes = [];
@@ -58,6 +59,7 @@ function loadSection(opts) {
     const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'icons.js'), 'utf-8');
     const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
     vm.runInContext(sharedSrc, ctx);
     vm.runInContext(src, ctx);
 

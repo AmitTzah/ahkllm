@@ -19,7 +19,7 @@ function toggleTreeModal() {
     var pct = document.getElementById('zoomPct');
     if (layer) layer.style.transform = 'translate(0px,0px) scale(1)';
     if (pct) pct.textContent = '100%';
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'loadTree' }));
+    Ipc.postToHost('sidebarAction', { subAction: 'loadTree' });
   }
 }
 
@@ -181,7 +181,7 @@ function renderChatTree(tree) {
         e.stopPropagation();
         var leafId = _findDefaultLeaf(targetId, window._treeData);
         var resolvedId = leafId || targetId;
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'navigateToMessage', messageId: resolvedId }));
+    Ipc.postToHost('sidebarAction', { subAction: 'navigateToMessage', messageId: resolvedId });
         closeTreeModal();
         setTimeout(function() {
           for (var i = 0; i < chatMessages.length; i++) {

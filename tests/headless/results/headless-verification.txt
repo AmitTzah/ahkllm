@@ -1,5 +1,10 @@
-PASS | #27 | Commands Advanced card collapses when you click inside it to edit a field | clicking inside the Advanced card to edit a field keeps it open (display=block) | 4.8s
+PASS | #06 | Stream failure with no output file shows an error and re-enables the UI | connection failure shows error banner (Request failed. Check your API key and try again.×) and re-enables the UI without Stop | 5.3s
+PASS | #16 | API Logs viewer latency column shows the request duration | log row latency cell = "218 ms" (viewer reads responseTimeMs) | 4.7s
+PASS | #26 | Opening Settings wipes the right-rail per-thread settings | right-rail system message survived opening Settings ("must survive settings open") | 4.5s
+PASS | #27 | Commands Advanced card collapses when you click inside it to edit a field | clicking inside the Advanced card to edit a field keeps it open (display=block) | 5.9s
+PASS | #47 | Per-thread system prompt / temperature edits are discarded on reload when an assistant is active | edited system prompt to "user override" with assistant active; after reload the rail still shows "user override" (DB system_override="user override") | 5.7s
+PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 7.5s
 
-Summary: 1/1 scenarios PASS
+Summary: 6/6 scenarios PASS
 Real profile restored: NO — CHECK MANUALLY
 Report sync: OK

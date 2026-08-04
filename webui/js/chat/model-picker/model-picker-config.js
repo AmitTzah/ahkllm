@@ -5,7 +5,7 @@
 function openModelSettings() {
   // Settings are always visible in right panel — no modal to open
   // Request current settings from AHK
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'requestCurrentSettings' }));
+  Ipc.postToHost('requestCurrentSettings');
 }
 
 function populateCurrentSettings(settings) {

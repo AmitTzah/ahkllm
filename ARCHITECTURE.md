@@ -533,6 +533,28 @@ Full-text search index over `messages.content`, kept in sync explicitly by `Mess
 
 ## WebView ↔ AHK Communication
 
+### Typed IPC contract
+
+Every message crossing the WebView boundary is declared in
+`webui/js/shared/ipc-contract.js` — the single source of truth for message
+names, direction (`ahk->web` / `web->ahk`), allowed payload fields, and
+required fields. The contract works as a browser script (`window.IPCMessages`)
+and as a CommonJS module for tests.
+
+- **Incoming** (`AHK → WebView`): `main.js` validates every message in
+  `handleWebMessage` against the contract and logs contract violations to the
+  console (never throws).
+- **Outgoing** (`WebView → AHK`): all call sites post through
+  `Ipc.postToHost(action, payload)` in `webui/js/shared/ipc.js`, which
+  validates the action + payload before posting. New IPC work must go through
+  this choke point — no inline `window.chrome.webview.postMessage` calls.
+- **Drift check**: `node scripts/check-ipc-contract.js` scans the AHK sources
+  for `postWebMessage("...")` targets and the WebView sources for
+  `Ipc.postToHost('...')` calls and fails when any posted message is not
+  declared (or is declared with the wrong direction). Run it after any IPC
+  change; the scenario suite's `--check-sync` covers the bug report, this
+  covers the message contract.
+
 ### AHK → WebView (`postWebMessage`)
 
 Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `defaultSettings`, `settingsSaved`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`.

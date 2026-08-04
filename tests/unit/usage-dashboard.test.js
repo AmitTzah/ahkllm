@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { installIpc } = require('./helpers/ipc-test-utils');
 
 function loadDashboardModule() {
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'usage-dashboard.js'), 'utf-8');
@@ -54,7 +55,9 @@ function loadDashboardModule() {
     sandbox.global = sandbox;
     sandbox._hostObjectCalled = () => hostObjectCalled;
     sandbox._hostObjectFilters = () => hostObjectFilters;
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
+    vm.runInContext(src, ctx);
     return sandbox;
 }
 
@@ -136,7 +139,11 @@ describe('getDateRangeLabels', () => {
         const now = new Date();
         const d400 = new Date(now);
         d400.setDate(d400.getDate() - 400);
-        const oldest = d400.toISOString().substring(0, 10);
+        // Local date key, matching how getDateRangeLabels derives labels
+        // (toISOString would shift a day in UTC+x timezones - bug #42).
+        const oldest = d400.getFullYear() + '-' +
+            String(d400.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d400.getDate()).padStart(2, '0');
         ctx.allData = { chat: [{ date: oldest, total_cost: 5 }], commands: [] };
 
         const lbls = ctx.getDateRangeLabels();

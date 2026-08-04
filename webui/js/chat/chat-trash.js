@@ -25,11 +25,11 @@ function loadTrashList(threads) {
         '</div>';
 
       item.querySelector('button[title="Restore"]').addEventListener('click', function() {
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'restoreThread', threadId: t.id }));
+    Ipc.postToHost('sidebarAction', { subAction: 'restoreThread', threadId: t.id });
       });
       item.querySelector('button.danger').addEventListener('click', function() {
         _showChatConfirm('Permanently delete?', function() {
-          window.chrome.webview.postMessage(JSON.stringify({ action: 'sidebarAction', subAction: 'deleteThreadForever', threadId: t.id }));
+    Ipc.postToHost('sidebarAction', { subAction: 'deleteThreadForever', threadId: t.id });
         });
       });
 

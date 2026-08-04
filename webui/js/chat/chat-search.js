@@ -76,12 +76,12 @@ function triggerSearch(input, isScoped) {
     var queryId = _activeQueryId;
     _activeSearchWrapper = input.closest('.search-wrap');
 
-    var payload = { action: 'searchMessages', query: query, queryId: queryId };
+    var payload = { query: query, queryId: queryId };
     if (isScoped && activeThreadId) {
         payload.threadId = activeThreadId;
     }
 
-    window.chrome.webview.postMessage(JSON.stringify(payload));
+  Ipc.postToHost('searchMessages', payload);
 
     // 10-second timeout
     _searchTimeout = setTimeout(function() {
@@ -210,9 +210,7 @@ function selectSearchResult(index) {
     if (!messageId) {
         // Title-only result — just load the thread
         if (threadId && threadId !== activeThreadId) {
-            window.chrome.webview.postMessage(JSON.stringify({
-                action: 'sidebarAction', subAction: 'loadThread', threadId: threadId
-            }));
+            Ipc.postToHost('sidebarAction', { subAction: 'loadThread', threadId: threadId });
         }
         return;
     }
@@ -223,16 +221,12 @@ function selectSearchResult(index) {
         // Cross-thread: optimistic loadThread (sidebar click pattern), then navigate+scroll
         if (typeof loadThread === 'function') loadThread(threadId);
         _pendingSearchScrollMsgId = messageId;
-        window.chrome.webview.postMessage(JSON.stringify({
-            action: 'sidebarAction', subAction: 'loadThread', threadId: threadId
-        }));
+        Ipc.postToHost('sidebarAction', { subAction: 'loadThread', threadId: threadId });
         return;
     }
 
     // Same thread, off-path: navigateToMessage + scroll (tree pattern)
-    window.chrome.webview.postMessage(JSON.stringify({
-        action: 'sidebarAction', subAction: 'navigateToMessage', messageId: messageId
-    }));
+    Ipc.postToHost('sidebarAction', { subAction: 'navigateToMessage', messageId: messageId });
     setTimeout(function() { scrollToMessageById(messageId); }, 150);
 }
 
@@ -242,9 +236,7 @@ function onSearchCrossThreadLoaded() {
     if (!_pendingSearchScrollMsgId) return;
     var msgId = _pendingSearchScrollMsgId;
     _pendingSearchScrollMsgId = null;
-    window.chrome.webview.postMessage(JSON.stringify({
-        action: 'sidebarAction', subAction: 'navigateToMessage', messageId: msgId
-    }));
+    Ipc.postToHost('sidebarAction', { subAction: 'navigateToMessage', messageId: msgId });
     setTimeout(function() { scrollToMessageById(msgId); }, 150);
 }
 

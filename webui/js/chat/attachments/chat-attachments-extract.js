@@ -46,14 +46,13 @@ function _extractPDFWithOfficeParser(arrayBuffer, attId) {
             var charsPerPage = Math.round(plainText.length / pageCount);
             var isScanned = _isScannedPDF(plainText, pageCount);
             try {
-                window.chrome.webview.postMessage(JSON.stringify({
-                    action: 'debugLog',
+                Ipc.postToHost('debugLog', {
                     message: '[Extract] officeParser → pages=' + pageCount +
                         ' textLength=' + plainText.length +
                         ' charsPerPage=' + charsPerPage +
                         ' scanned=' + isScanned +
                         (isScanned ? ' → falling back to pdf.js images' : ' → using markdown')
-                }));
+                });
             } catch(e) { /* ignore if IPC unavailable */ }
             if (isScanned) return null; // signal fallback to pdf.js
             return ast.to('md');

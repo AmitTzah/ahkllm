@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { installIpc } = require('./helpers/ipc-test-utils');
 
 function makeClassList() {
     const classes = [];
@@ -87,7 +88,9 @@ function loadPanel({ navItems, sections, saveBtn, resetBtn, content, elements, s
     sandbox.global = sandbox;
 
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'settings-panel.js'), 'utf-8');
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
+    vm.runInContext(src, ctx);
 
     const panel = sandbox.window.SettingsPanel;
     panel.__internals = {
@@ -323,6 +326,8 @@ function loadPanelWithConsole(consoleMock) {
     };
     sandbox.global = sandbox;
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'settings-panel.js'), 'utf-8');
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
+    vm.runInContext(src, ctx);
     return sandbox.window.SettingsPanel;
 }

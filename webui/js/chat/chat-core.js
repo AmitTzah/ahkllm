@@ -184,7 +184,7 @@ document.addEventListener('keydown', function(e) {
 
   // Streaming -- cancel it
   if (typeof isLoading !== 'undefined' && isLoading) {
-    window.chrome.webview.postMessage(JSON.stringify({ action: 'cancelStream' }));
+    Ipc.postToHost('cancelStream');
     return;
   }
 });

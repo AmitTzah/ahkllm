@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { installIpc } = require('../unit/helpers/ipc-test-utils');
 
 function loadModule(filePath, extraGlobals = {}) {
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', filePath), 'utf-8');
@@ -32,7 +33,9 @@ function loadModule(filePath, extraGlobals = {}) {
         ...extraGlobals,
     };
     sandbox.global = sandbox;
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
+    vm.runInContext(src, ctx);
     return { ctx: sandbox, postedMessages };
 }
 

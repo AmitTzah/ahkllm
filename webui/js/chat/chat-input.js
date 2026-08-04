@@ -36,9 +36,9 @@ function onChatSend() {
     var sendBtn = document.getElementById('chat-send-btn');
     if (sendBtn) sendBtn.disabled = true;
     input.disabled = true;
-    var payload = { action: 'chatSend', message: message || 'Describe the attached content.' };
+    var payload = { message: message || 'Describe the attached content.' };
     if (attachments.length > 0) payload.attachments = attachments;
-    window.chrome.webview.postMessage(JSON.stringify(payload));
+    Ipc.postToHost('chatSend', payload);
     if (typeof clearAttachments === 'function') clearAttachments();
     return;
   }
@@ -60,7 +60,7 @@ function onChatSend() {
       var btn = document.getElementById('chat-send-btn');
       if (btn) btn.disabled = true;
       input.disabled = true;
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'retry' }));
+      Ipc.postToHost('retry');
       return;
     }
   }
@@ -107,7 +107,7 @@ function setChatButtonsEnabled(enabled) {
 
 // Cancel streaming — sends cancel message to AHK
 function onStopStreaming() {
-  window.chrome.webview.postMessage(JSON.stringify({ action: 'cancelStream' }));
+  Ipc.postToHost('cancelStream');
 }
 
 // Retry an assistant message
@@ -133,9 +133,9 @@ function retryLastAssistantMessage(messageId) {
   if (sendBtn) sendBtn.disabled = true;
   if (input) input.disabled = true;
 
-  var payload = { action: 'retry' };
+  var payload = {};
   if (messageId) payload.messageId = messageId;
-  window.chrome.webview.postMessage(JSON.stringify(payload));
+  Ipc.postToHost('retry', payload);
 }
 
 // Keyboard handlers

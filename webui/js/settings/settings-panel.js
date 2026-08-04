@@ -106,15 +106,12 @@ window.SettingsPanel = (function() {
         }
       }
     }
-    window.chrome.webview.postMessage(JSON.stringify({
-      action: 'saveSettings',
-      data: data
-    }));
+    Ipc.postToHost('saveSettings', { data: data });
   }
 
   function resetToDefaults() {
     window._showConfirm('Reset to Defaults', 'Reset all settings to their default values? This cannot be undone.', 'Reset', function() {
-      window.chrome.webview.postMessage(JSON.stringify({ action: 'requestDefaultSettings' }));
+      Ipc.postToHost('requestDefaultSettings');
     });
   }
 

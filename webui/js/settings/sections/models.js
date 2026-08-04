@@ -387,7 +387,7 @@
     _refreshQuery = '';
     _populateRightPanel();
     if (_refreshAvailable.length) _renderAvailableModels();
-    window.chrome.webview.postMessage(JSON.stringify({action:'refreshModelPricing'}));
+    Ipc.postToHost('refreshModelPricing');
   }
 
   function filterAvailableModels(list, query) {
@@ -558,7 +558,7 @@
       if (saveBtn) saveBtn.addEventListener('click', function() { window.SettingsModels.saveRefresh(); });
       var modalRefreshBtn = document.getElementById('refreshPricingRefreshBtn');
       if (modalRefreshBtn) modalRefreshBtn.addEventListener('click', function() {
-        window.chrome.webview.postMessage(JSON.stringify({action:'refreshModelPricing'}));
+    Ipc.postToHost('refreshModelPricing');
       });
       var refreshSearch = document.getElementById('refreshModelSearch');
       if (refreshSearch) refreshSearch.addEventListener('input', function() {

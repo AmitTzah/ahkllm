@@ -21,11 +21,8 @@ window.UiControls = (function() {
       document.documentElement.style.setProperty('--chat-font-size', size + 'px');
       fontDisp.textContent = size + 'px';
       // Persist per-chat font size to AHK/DB
-      if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(JSON.stringify({
-          action: 'updateFontSize',
-          fontSize: size
-        }));
+      if (typeof Ipc !== 'undefined' && window.chrome && window.chrome.webview) {
+        Ipc.postToHost('updateFontSize', { fontSize: size });
       }
     }
 

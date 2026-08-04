@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { installIpc } = require('./helpers/ipc-test-utils');
 
 function loadModule() {
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-core.js'), 'utf-8');
@@ -93,7 +94,9 @@ function loadModule() {
     sandbox.global = sandbox;
     sandbox._postedMessages = postedMessages;
     sandbox._elementCache = elementCache;
-    vm.runInContext(src, vm.createContext(sandbox));
+    const ctx = vm.createContext(sandbox);
+    installIpc(ctx);
+    vm.runInContext(src, ctx);
     return sandbox;
 }
 

@@ -120,7 +120,7 @@ function setupMessageAttachmentDeleteDelegation() {
                 return;
             }
         }
-        window.chrome.webview.postMessage(JSON.stringify({ action: 'deleteAttachment', id: attId }));
+    Ipc.postToHost('deleteAttachment', { id: attId });
     });
 }
 
