@@ -1,6 +1,5 @@
-PASS | #02 | New chat honors the "New Chats Start With" default (assistant) | new chat starts with assistant "Default Assistant" (deepseek/deepseek-v4-flash) | 3.9s
-PASS | #33 | Clearing the chat-window icon setting still loads the default custom icon | window shows the default IconOn.ico fingerprint even though icons.iconOn was cleared ({"crcBig":"A39E453E","crcCustom":"A39E453E","crcSmall":"A39E453E","customApplied":1,"hBig":15009315,"hCustom":174066727,"hMangled":0,"hSmall":15009315,"hwnd":21759100,"mangledLoaded":0,"renderFailed":0}) | 3.4s
+PASS | #99 | SCRATCH: per-thread system message reaches the API request (assistant active, thread reload) | railBeforeReload="SYSTEM PROBE MESSAGE" railAfterReload="" db={"assistant_id":"asst-99","system_override":"SYSTEM PROBE MESSAGE"} request.messages=[{"content":"first message","role":"user"},{"content":"second message","role":"user"}] userSystemFound=false | 7.0s
 
-Summary: 2/2 scenarios PASS
+Summary: 1/1 scenarios PASS
 Real profile restored: yes
 Report sync: OK

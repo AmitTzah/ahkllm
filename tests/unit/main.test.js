@@ -118,11 +118,15 @@ describe('handleWebMessage routing', () => {
         assert.strictEqual(ctx._receivedCalls.loadThreadList[0].id, 't1');
     });
 
-    it('routes currentSettings with FULL settings to the settings panel', () => {
+    it('routes currentSettings with FULL settings to the settings panel only (right rail untouched)', () => {
+        // Regression (bug #26): the FULL merged settings object (from
+        // requestAllSettings) has no per-thread fields. Routing it through
+        // populateCurrentSettings wiped the right rail (system prompt,
+        // temperature, thinking level, font size) every time Settings opened.
         const ctx = loadMainModule();
         const full = { commands: [{ commandName: 'C' }], assistants: [], models: {} };
         ctx.handleWebMessage({ data: JSON.stringify({ target: 'currentSettings', data: full }) });
-        assert.ok(ctx._receivedCalls.populateCurrentSettings !== undefined, 'populateCurrentSettings should be called');
+        assert.strictEqual(ctx._receivedCalls.populateCurrentSettings, undefined, 'populateCurrentSettings must NOT be called for the full settings payload');
         assert.ok(ctx._receivedCalls.onSettingsReceived !== undefined, 'onSettingsReceived should be called for full settings (has commands)');
     });
 
@@ -136,6 +140,22 @@ describe('handleWebMessage routing', () => {
         ctx.handleWebMessage({ data: JSON.stringify({ target: 'currentSettings', data: chatPayload }) });
         assert.ok(ctx._receivedCalls.populateCurrentSettings !== undefined, 'populateCurrentSettings should still be called for the chat payload');
         assert.strictEqual(ctx._receivedCalls.onSettingsReceived, undefined, 'onSettingsReceived must NOT be called for the chat-sidebar payload');
+    });
+
+    it('keeps the right rail populated when Settings opens (bug #26 regression)', () => {
+        // Simulate the real sequence: the right rail holds per-thread values
+        // from a partial payload, then Settings opens and the FULL merged
+        // settings payload arrives. The partial values must survive.
+        const ctx = loadMainModule();
+        const chatPayload = { model: 'deepseek/deepseek-v4-flash', systemMessage: 'must survive', reasoning: 'high', temperature: '0.7', fontSize: '20', thinkingLevels: ['none', 'low', 'high'] };
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'currentSettings', data: chatPayload }) });
+        const populated = ctx._receivedCalls.populateCurrentSettings;
+        assert.ok(populated, 'right rail should be populated from the partial payload first');
+        ctx._receivedCalls.populateCurrentSettings = undefined;
+        const full = { commands: [], assistants: [], models: {} };
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'currentSettings', data: full }) });
+        assert.strictEqual(ctx._receivedCalls.populateCurrentSettings, undefined, 'opening Settings must not re-populate (and thus wipe) the right rail');
+        assert.ok(ctx._receivedCalls.onSettingsReceived !== undefined, 'settings panel should still receive the full payload');
     });
 
     it('routes loadThread', () => {

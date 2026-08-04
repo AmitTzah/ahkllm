@@ -266,12 +266,12 @@ scenarios.push({
     // settings object, which main.js routes through populateCurrentSettings.
     await openSettings(cdp);
     const after = await cdp.eval('document.getElementById("sysMsgMini").value');
-    // BUG: the full payload has no per-thread model/systemMessage fields, so
-    // populateCurrentSettings blanks the right rail (system message, temp,
-    // thinking, font size, advanced toggles).
-    if (after === before)
-      throw new Error('right-rail system message survived opening settings (bug not reproduced): ' + JSON.stringify(after));
-    return 'opening Settings cleared the right-rail system message: "' + before + '" -> "' + after + '"';
+    // FIXED (bug #26): the full merged settings payload (requestAllSettings)
+    // is no longer routed through populateCurrentSettings, so the right rail
+    // keeps its per-thread system message when Settings opens.
+    if (after !== before)
+      throw new Error('opening Settings wiped the right-rail system message: "' + before + '" -> "' + after + '"');
+    return 'right-rail system message survived opening Settings ("' + after + '")';
   }
 });
 

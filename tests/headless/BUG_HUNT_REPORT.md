@@ -154,16 +154,22 @@ How to run AHK safely:
 
 ## Current state
 
-- **29 verified, 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
+- **28 verified, 1 fix applied (bug #26), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
   streaming, message rendering, and thread metadata) verified 56 (stopping a
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bug #50 fixed and committed (6f7ae77); entry moved to
-  History. Next per the fix cycle: fix bug #26, then the rest in rank order,
-  one at a time, each with a flipped scenario + code-level regression test.
-  Harness cleanup is PID-targeted: use
+- **Where we left off:** bug #26 fixed — `main.js` no longer routes the FULL
+  merged settings payload through `populateCurrentSettings`, so the right rail
+  keeps its per-thread values (system prompt, temperature, thinking level,
+  font size, Advanced toggles) when Settings opens; scenario 26 flipped to
+  assert the fixed behavior and PASSES, a regression unit test was added in
+  `tests/unit/main.test.js`, and the full AHK (431/431) + JS (466/466) suites
+  are green. Entry is `fix applied` — waiting for the user's manual
+  verification, then the commit. Next per the fix cycle: bug #47, then the
+  rest in rank order, one at a time, each with a flipped scenario + code-level
+  regression test. Harness cleanup is PID-targeted: use
   `node tests/headless/e2e-suite.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -222,7 +228,7 @@ one at a time, in rank order.
 
 **Scenario:** 26 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** set a system prompt (or temperature/thinking/font size) in the chat
 right rail, then click the Settings icon (or close Settings afterwards) and look at
@@ -1070,4 +1076,3 @@ closure; never rewrite past entries.
 - 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
 - 2026-08-02 — "Clearing a hotkey field does nothing — hotkeys can't be disabled" — FIXED in 00bb503: empty hotkey now means disabled — `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
 - 2026-08-04 - "Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path" - FIXED in 6f7ae77: CommandMenu._resolveSystemMessage now searches default-settings/system-messages/ + AppData like the assistant path; scenario 50 flipped to a regression check (`regression: true`) + UserConfig AHK unit test.
-

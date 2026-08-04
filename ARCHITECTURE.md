@@ -544,7 +544,10 @@ The `currentSettings` action is used by **two different senders**:
 1. **Chat sidebar** (`chat/ChatSettings.ahk` → `postCurrentSettingsToWebView`): partial payload — `model`, `reasoning`, `temperature`, `thinkingLevels` (raw level values), assistant metadata. **No `commands`/`assistants`/`models`.**
 2. **Full settings** (`chat/callbacks/Dispatch.ahk` → `_HandleRequestAllSettings`): the complete merged settings Map (includes `commands`, `assistants`, `models`, `providers`, ...).
 
-`main.js` always calls `populateCurrentSettings(data)` (chat sidebar dropdowns), but only calls `SettingsPanel.onSettingsReceived(data)` when the payload carries the full settings structure (`Array.isArray(data.commands)`). Feeding the chat-sidebar payload into the settings panel would reload every section with empty data and blank the Commands tab — this was a real bug.
+`main.js` routes the two payloads to different consumers, discriminated by `Array.isArray(data.commands)` (only the full settings object has a `commands` array):
+
+- **Partial payload → `populateCurrentSettings(data)`** (right-rail per-thread fields). The full payload must NOT go here — it has no per-thread `model`/`systemMessage`/`temperature`/`fontSize` fields, so routing it through `populateCurrentSettings` wiped the right rail every time Settings opened (fixed in bug #26).
+- **Full payload → `SettingsPanel.onSettingsReceived(data)`** (each section's `load`). The partial payload must NOT go here — it would reload every section with empty data and blank the Commands tab (a previously-fixed real bug).
 
 ### WebView → AHK (`postMessage`)
 
