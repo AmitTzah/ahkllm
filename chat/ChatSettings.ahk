@@ -278,7 +278,7 @@ postCurrentSettingsToWebView() {
 
 postAssistantsToWebView() {
     global assistants, models
-    if !IsSet(assistants)
+    if !IsSet(assistants) || !IsSet(models)
         return
     postWebMessage("assistantList", assistants)
 

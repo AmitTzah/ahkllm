@@ -137,6 +137,45 @@ class ChatDispatchTest {
             throw Error("requestCurrentSettings should post currentSettings")
     }
 
+    ; Regression: the ready handshake is the ONLY reliable point to wire the
+    ; Send button (WebView2 drops messages posted before the page installed its
+    ; listener, so the startup setChatButtonsEnabled post is racy). The handler
+    ; must re-post it on EVERY page load.
+    OnWebViewReady_AlwaysPostsSetChatButtonsEnabled() {
+        global activeThreadId
+        web := this._captureWebView()
+        oldActive := IsSet(activeThreadId) ? activeThreadId : ""
+        try {
+            activeThreadId := ""
+            _OnWebViewReady()
+        } finally {
+            activeThreadId := oldActive
+            web.restore()
+        }
+        if !this._findCaptured(web.captured, "setChatButtonsEnabled")
+            throw Error("_OnWebViewReady must post setChatButtonsEnabled on every page load")
+    }
+
+    OnWebViewReady_AlwaysPostsAssistantList() {
+        global activeThreadId, assistants
+        web := this._captureWebView()
+        oldActive := IsSet(activeThreadId) ? activeThreadId : ""
+        oldAssistants := assistants
+        try {
+            activeThreadId := ""
+            assistants := [
+                { id: 'asst-d', name: 'Default Assistant', baseModel: 'deepseek/deepseek-v4-flash', systemMessage: 'default sys' }
+            ]
+            _OnWebViewReady()
+        } finally {
+            activeThreadId := oldActive
+            assistants := oldAssistants
+            web.restore()
+        }
+        if !this._findCaptured(web.captured, "assistantList")
+            throw Error("_OnWebViewReady must re-push the assistant list on every page load (startup 500ms timer races slow loads)")
+    }
+
     Dispatch_RequestAllSettings_PostsMerged() {
         sp := this._withTempSettingsPath()
         web := this._captureWebView()

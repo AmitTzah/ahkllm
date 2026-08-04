@@ -30,7 +30,11 @@ TestErrorHandler(err, mode) {
     try Log("[RUNTIME ERROR] " err.Message "`n")
     if err.HasProp("Stack") && err.Stack
         try Log(err.Stack "`n")
-    ExitApp(1)
+    ; ExitApp is overridden below (and swallowed) so production code cannot
+    ; kill the runner mid-run, but that also turns any runtime error into an
+    ; invisible orphaned AutoHotkey64.exe that never exits. Terminate for
+    ; real instead so a failed run can never hang an automated command.
+    DllCall("ExitProcess", "UInt", 1)
 }
 
 ; -----------------------------------------------------------
@@ -193,7 +197,7 @@ RunTestClass(className) {
 
 if MsgBox("test") != "OK" {
     Log("[CRITICAL] MsgBox override not active! Tests aborted.`n")
-    ExitApp(1)
+    DllCall("ExitProcess", "UInt", 1)
 }
 
 RunAllTests()

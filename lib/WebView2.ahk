@@ -76,8 +76,16 @@ class WebView2 {
 				options.TargetCompatibleBrowserVersion := ver
 			options := this.EnvironmentOptions(options)
 		}
+		; Honor the standard WEBVIEW2_USER_DATA_FOLDER override before falling
+		; back to the SHARED machine Edge folder. The harness sets this to a
+		; unique per-run folder so a leftover browser process from an aborted
+		; run cannot lock the shared folder and break the next launch with
+		; ERROR_BUSY (0x800700AA); normal users can set it to relocate their
+		; WebView2 data too.
+		if !dataDir
+			dataDir := EnvGet('WEBVIEW2_USER_DATA_FOLDER') || RegExReplace(A_AppData, 'Roaming$', 'Local\Microsoft\Edge\User Data')
 		DllCall(dllPath '\CreateCoreWebView2EnvironmentWithOptions', 'str', edgeRuntime,
-			'str', dataDir || RegExReplace(A_AppData, 'Roaming$', 'Local\Microsoft\Edge\User Data'), 'ptr', options,
+			'str', dataDir, 'ptr', options,
 			'ptr', this.AsyncHandler(&p, this.Environment), 'hresult')
 		return p
 	}

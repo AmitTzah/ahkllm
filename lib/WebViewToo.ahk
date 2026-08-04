@@ -69,7 +69,7 @@ class WebViewToo {
 		this.Gui.OnEvent("Size", this.Size.Bind(this))
 		this.LastKnownX := this.LastKnownY := this.LastKnownWidth := this.LastKnownHeight := 0
 		this.Gui.Add("Text", "x0 y0 vWebViewTooContainer BackgroundTrans", "If you can see this, something went wrong.")
-		this.wvc := !A_IsCompiled ? WebView2.CreateControllerAsync(this.Gui["WebViewTooContainer"].Hwnd).await2() : WebView2.CreateControllerAsync(this.Gui["WebViewTooContainer"].Hwnd,,,, WebViewToo.DllPath).await2()
+		this.wvc := this._CreateControllerWithRetry(this.Gui["WebViewTooContainer"].Hwnd)
 		this.IsVisible := 1, this.wv := this.wvc.CoreWebView2, this.IsNonClientRegionSupportEnabled := 1
 		this.wv.InjectAhkComponent().await2()
 		this.AddCallbackToScript("Close", this.Close)
@@ -84,6 +84,25 @@ class WebViewToo {
 		this.NavigateToString(Format(WebViewToo.Template.Framework, Html, Css, JavaScript))
 		if (this.CustomCaption) {
 			this.CustomCaptionBarInit()
+		}
+	}
+
+	; WebView2 controller creation can transiently fail with ERROR_BUSY
+	; (0x800700AA, "the requested resource is in use") when the browser process
+	; for the user-data folder is being (re)started - e.g. a fresh per-run folder
+	; or other WebView2 apps on the machine. That is a transient race, so retry
+	; a few times before giving up.
+	_CreateControllerWithRetry(hwnd) {
+		attempt := 0
+		loop {
+			try
+				return (!A_IsCompiled ? WebView2.CreateControllerAsync(hwnd).await2() : WebView2.CreateControllerAsync(hwnd,,,, WebViewToo.DllPath).await2())
+			catch Error as e {
+				if (attempt >= 5) || !(InStr(e.Message, "0x800700AA") || InStr(e.Message, "resource is in use"))
+					throw
+				attempt++
+				Sleep 500
+			}
 		}
 	}
 	

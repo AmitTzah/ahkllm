@@ -10,12 +10,19 @@
 #Include ..\lib\Config.ahk
 #SingleInstance Off
 
-; Global error handler — surfaces errors to chat UI and debug log
+; Global error handler — surfaces errors to chat UI and debug log.
+; Returns true so AHK does not ALSO show a modal error dialog: a modal dialog
+; blocks the window (and the headless harness) on background/async errors like
+; WebView2 teardown races, and the UI banner + log already carry the details.
+; The lambda body is a comma expression (AHK v2 fat arrows cannot take a block);
+; the trailing `true` is the return value, which tells AHK not to ALSO show a
+; modal error dialog (the UI banner + log already carry the details).
 OnError((err, mode) => (
     debugLog("RUNTIME ERROR: " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
     (IsSet(postWebMessage) ? postWebMessage("showError", { message: "Runtime Error: " err.Message }) : ""),
     (IsSet(startLoadingCursor) ? startLoadingCursor(false) : ""),
-    (IsSet(postWebMessage) ? postWebMessage("setChatButtonsEnabled", true) : "")
+    (IsSet(postWebMessage) ? postWebMessage("setChatButtonsEnabled", true) : ""),
+    true
 ), -1)
 #NoTrayIcon
 

@@ -23,11 +23,18 @@ SettingsHandler.ApplyToGlobals(merged)
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
 debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
-; Global error handler for main script — surfaces to tooltip + debug log
+; Global error handler for main script — surfaces to tooltip + debug log.
+; Returns true so AHK does not ALSO show a modal error dialog: a modal dialog
+; blocks the app (and the headless harness) on background/async errors like
+; WebView2 teardown races, and the log + tooltip already carry the details.
+; The lambda body is a comma expression (AHK v2 fat arrows cannot take a block);
+; the trailing `true` is the return value, which tells AHK not to ALSO show a
+; modal error dialog (the log + tooltip already carry the details).
 OnError((err, mode) => (
     debugLog("RUNTIME ERROR (main): " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
     ToolTip("Error: " err.Message, , , 19),
-    SetTimer(() => ToolTip(, , , 19), -5000)
+    SetTimer(() => ToolTip(, , , 19), -5000),
+    true
 ), -1)
 
 ; ----------------------------------------------------

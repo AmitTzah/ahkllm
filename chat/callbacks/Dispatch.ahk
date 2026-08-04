@@ -85,6 +85,19 @@ OnWebMessageReceived(sender, args) {
 ; Replaces sessionStorage-based recovery with DB as single source of truth.
 _OnWebViewReady() {
     global activeThreadId
+    ; Always re-enable the chat buttons on the ready handshake. The startup
+    ; setChatButtonsEnabled posts in ChatWindow.ahk race the page load:
+    ; WebView2 drops messages posted before the page installed its 'message'
+    ; listener, which left the Send button unwired on those launches. The page
+    ; posts webViewReady AFTER installing the listener, so this is the only
+    ; reliable point to wire the UI.
+    postWebMessage("setChatButtonsEnabled", true)
+    ; The assistant/model list has the same race: ChatSettings.ahk pushes it
+    ; on a one-shot 500ms timer at startup, and a slow page load drops that
+    ; post, leaving the assistant picker (and _assistantList) empty until the
+    ; user opens Settings. Re-push on the ready handshake — the one point we
+    ; know the page is listening.
+    postAssistantsToWebView()
     if activeThreadId
         _LoadThreadAndRefreshUI(activeThreadId)
 }
@@ -173,7 +186,7 @@ _HandleRefreshModelPricing() {
             return
         }
         ; Read the generated model metadata file the pipeline writes
-        pricingFile := A_ScriptDir "\..\DefaultModels.ahk"
+        pricingFile := A_ScriptDir "\..\default-settings\DefaultModels.ahk"
         if !FileExist(pricingFile) {
             postWebMessage("modelPricingRefresh", { success: false, error: "DefaultModels.ahk not generated" })
             return
