@@ -555,6 +555,7 @@ scenarios.push({
 scenarios.push({
   id: 60,
   name: 'Typing a system prompt directly into the right-rail field never reaches the API request',
+  regression: true, // FIXED bug kept as a regression check (direct typing must reach the API request)
   mode: 'sse-success',
   settings: {},
   async body({ cdp, mockLog }) {

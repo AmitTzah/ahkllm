@@ -1,4 +1,4 @@
-PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 6.6s
+PASS | #27 | Commands Advanced card collapses when you click inside it to edit a field | clicking inside the Advanced card to edit a field keeps it open (display=block) | 4.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: NO — CHECK MANUALLY

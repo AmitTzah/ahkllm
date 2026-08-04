@@ -56,10 +56,11 @@ scenarios.push({
     await cdp.click('#cmdInputBoxDefault');
     await sleep(300);
     const afterClick = await cdp.eval('document.querySelector(".cmd-advanced-body").style.display');
-    // BUG: the card collapses while the user is trying to edit a field.
-    if (afterClick !== 'none')
-      throw new Error('advanced card stayed open after clicking inside (bug not reproduced): ' + JSON.stringify(afterClick));
-    return 'clicking inside the Advanced card to edit a field collapsed it (display=' + afterClick + ')';
+    // FIXED (bug #27): the toggle lives on the header only, so clicking
+    // inside a field must NOT collapse the card.
+    if (afterClick !== 'block')
+      throw new Error('advanced card collapsed after clicking inside a field (display=' + JSON.stringify(afterClick) + ')');
+    return 'clicking inside the Advanced card to edit a field keeps it open (display=' + afterClick + ')';
   }
 });
 

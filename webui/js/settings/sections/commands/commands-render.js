@@ -307,7 +307,13 @@
     var atb=document.getElementById('addCmdTagBtn'); if(atb)atb.addEventListener('click',C.addTagToSelected);
     var db=document.getElementById('cmdDeleteBtn'); if(db)db.addEventListener('click',C.deleteSelected);
     var aw=document.querySelector('.cmd-advanced-wrap');
-    if(aw)aw.addEventListener('click',function() { _toggleAdvanced(aw); });
+    if(aw){
+      // Toggle only from the header, not from clicks inside the body - the
+      // old whole-wrap listener collapsed the card on the first click into a
+      // field, making the Advanced inputs unusable (bug #27).
+      var at=aw.querySelector('.cmd-advanced-toggle');
+      if(at)at.addEventListener('click',function() { _toggleAdvanced(aw); });
+    }
   }
 
   C.syncDetail = function() {

@@ -154,23 +154,24 @@ How to run AHK safely:
 
 ## Current state
 
-- **27 verified, 1 fix applied (bug #60), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
+- **26 verified, 1 fix applied (bug #27), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
   streaming, message rendering, and thread metadata) verified 56 (stopping a
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs #26 (f64a59d) and #47 (a30ae19) fixed and
-  committed; both entries moved to History (scenarios 26/47 flipped to
+- **Where we left off:** bugs #26 (f64a59d), #47 (a30ae19), and #60 (50d4111)
+  fixed and committed; entries moved to History (scenarios 26/47/60 flipped to
   regression checks). Bug #59 closed as won't-fix (single-user, no migration;
-  profile corrected manually, scenario removed). Bug #60 fixed — typing
-  directly into the right-rail "System prompt" field now updates
-  `_currentSettings.systemMessage` and posts the debounced save (mirroring the
-  modal Save path); scenario 60 flipped to assert the fixed behavior and
-  PASSES, a regression unit test added in `tests/unit/chat-settings-modal.test.js`,
-  and the full AHK (433/433) + JS (467/467) suites are green. Entry is
+  profile corrected manually, scenario removed). Bug #27 fixed — the Commands
+  Advanced toggle now lives on the card header only, so clicking inside a
+  field no longer collapses the card; scenario 27 flipped to assert the fixed
+  behavior and PASSES, a regression unit test added in
+  `tests/unit/commands-advanced-toggle.test.js`, and the full AHK (433/433,
+  run with user privileges — the sandbox user lost write access to the
+  recreated AppData profile) + JS (468/468) suites are green. Entry is
   `fix applied` — waiting for the user's manual verification, then the commit.
-  Next per the fix cycle: bug #27, then the rest in rank order,
+  Next per the fix cycle: bug #29, then the rest in rank order,
   one at a time, each with a flipped scenario + code-level regression test.
   Bug #60 reported (intake, not yet verified): typing directly into the
   right-rail "System prompt" field is display-only — no input wiring, so the
@@ -231,46 +232,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 60. Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)
-
-**Scenario:** 60 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** load any chat (or choose an assistant), click into the "System
-prompt" textarea in the right rail, and type a new system message — without
-using the Expand modal.
-
-**Expected:** typing updates the per-thread system prompt like the Expand
--> Save path does: the value shows in the rail and is sent in the next API
-request.
-
-**Actual:** the text appears in the box but nothing else happens. `#sysMsgMini`
-has no input/change listener, so `window._currentSettings.systemMessage` and
-`requestParams["systemOverride"]` are never updated and no `updateModelSettings`
-is posted. The next API request carries whatever was last saved via the modal
-(or the assistant's file message) — the typed text is silently dropped. Only
-the Expand -> Save (modal) path persists.
-
-**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` —
-`sysMsgMini` is only ever WRITTEN (`populateCurrentSettings`, modal open/save,
-assistant click) and has no input/change wiring; `_sendAllSettings()` is only
-called from the modal save, temperature, thinking-dropdown, and toggle
-handlers; `webui/index.html:368` defines the textarea without a listener;
-`chat/ChatSettings.ahk` `handleModelSettingsUpdate` is only reached via
-`updateModelSettings` posts.
-
-**Verification:** headless scenario 60 chooses an assistant, types directly
-into `#sysMsgMini`, sends a chat, and inspects the mock request — the typed
-text is absent (the previous system message is sent instead). Pending: the
-scenario has not run yet (app must be closed so the harness can isolate the
-profile).
-
 ### 27. Commands Advanced card collapses when you click inside it to edit a field
 
 **Scenario:** 27 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Settings -> Commands -> select any command -> click "Advanced" to open the
 card -> click inside any field (e.g. "Input Box Default") to edit it.
@@ -1056,3 +1022,4 @@ closure; never rewrite past entries.
 - 2026-08-04 - "Opening Settings wipes the right-rail per-thread settings" - FIXED in f64a59d: main.js routes only the chat-sidebar partial `currentSettings` payload through `populateCurrentSettings`; the full merged settings object goes only to `SettingsPanel.onSettingsReceived` (discriminator: `Array.isArray(data.commands)`); scenario 26 flipped to a regression check (`regression: true`) + main.js routing unit test.
 - 2026-08-04 - "System-message files referenced by their legacy `system-messages/` path are never resolved" - CLOSED as won't-fix (single-user, no migration): the path only exists in profiles saved before commit 0229368 moved the files into default-settings/; the user corrected their one profile manually. Scenario 59 removed (no regression check kept).
 - 2026-08-04 - "Per-thread system prompt / temperature edits are discarded on reload when an assistant is active" - FIXED in a30ae19: `_restoreThreadSettings` now applies the assistant's system message / reasoning / temperature ONLY when the thread has no per-thread override for that field, so per-thread edits survive reloads and reach the API request; scenario 47 flipped to a regression check (`regression: true`) + ChatSettings AHK unit tests (overrides win; assistant defaults still apply when no override).
+- 2026-08-04 - "Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)" - FIXED in 50d4111: `#sysMsgMini` now has an input listener that updates `_currentSettings.systemMessage` and posts the debounced `updateModelSettings` (mirrors the modal Save path); scenario 60 flipped to a regression check (`regression: true`) + model-picker-config unit test.
