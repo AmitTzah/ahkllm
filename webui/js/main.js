@@ -156,21 +156,18 @@ function handleWebMessage(event) {
         showError(data);
         break;
 
-      case 'currentSettings':
-        // "currentSettings" carries two different payloads:
-        //  - Chat sidebar (requestCurrentSettings): PARTIAL per-thread payload
-        //    (model/systemMessage/reasoning/temperature/fontSize/...).
-        //  - Full settings (requestAllSettings): the complete merged settings
-        //    object (has "commands"/"assistants"/"models"/...).
-        // Only the partial payload may feed the right rail: populateCurrentSettings
-        // reads per-thread fields the full object does not have, so routing the
-        // full object there wiped the right rail every time Settings opened.
-        var isFullSettings = data && Array.isArray(data.commands);
-        if (!isFullSettings && typeof populateCurrentSettings === 'function') populateCurrentSettings(data);
-        // Only feed the FULL settings into the settings panel — routing the
-        // partial payload here would reload every settings section with empty
-        // data and blank the Commands tab.
-        if (window.SettingsPanel && isFullSettings && typeof window.SettingsPanel.onSettingsReceived === 'function') {
+      case 'threadSettings':
+        // Right-rail per-thread payload (requestCurrentSettings). Must not be
+        // routed anywhere else - it only feeds the right rail.
+        if (typeof populateCurrentSettings === 'function') populateCurrentSettings(data);
+        break;
+
+      case 'appSettings':
+        // Full merged settings payload (requestAllSettings). Only the settings
+        // panel consumes it; routing it to the right rail would blank the
+        // per-thread fields (bug #26 fixed by the threadSettings/appSettings
+        // split in step 3 of the IPC refactor).
+        if (window.SettingsPanel && typeof window.SettingsPanel.onSettingsReceived === 'function') {
           window.SettingsPanel.onSettingsReceived(data);
         }
         break;

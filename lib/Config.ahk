@@ -6,6 +6,7 @@
 #Include ..\app\settings\SettingsMerge.ahk
 #Include ..\app\settings\SettingsApply.ahk
 #Include ..\app\settings\SettingsHandler.ahk
+#Include ..\app\settings\SettingsService.ahk
 #Include ..\shared\RuntimeResolver.ahk              ; API key check & provider resolution
 #Include WebViewToo.ahk             ; WebView2 Framework for Web-based GUIs
 #Include jsongo.v2.ahk              ; JSON parsing

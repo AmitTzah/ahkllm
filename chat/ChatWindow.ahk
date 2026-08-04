@@ -52,14 +52,16 @@ ChatDB.Open()
 ; ----------------------------------------------------
 ; Load settings from settings.json (fall back to DefaultSettings.ahk)
 ; ----------------------------------------------------
-settings := SettingsHandler.Load()
+; Single apply path: SettingsService.Apply runs the registered update hooks,
+; so the chat hotkeys re-register on every settings change without another
+; call site in the save chain.
+SettingsService.RegisterHook("chatHotkeys", _registerChatHotkeys)
 SettingsHandler.CacheInitialDefaults()
-merged := SettingsHandler.Merge(settings, SettingsHandler.GetDefaults())
-SettingsHandler.ApplyToGlobals(merged)
+settings := SettingsHandler.Load()
+SettingsService.Apply(SettingsHandler.Merge(settings, SettingsHandler.GetDefaults()))
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
 debugLog("[CHAT] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
-_registerChatHotkeys()
 
 ; Clean up DB and cURL on exit (ProcessClose from Main.ahk is force-kill;
 ; this runs when ChatWindow exits gracefully via WinClose or user action)

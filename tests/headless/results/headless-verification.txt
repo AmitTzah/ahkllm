@@ -1,12 +1,5 @@
-PASS | #03 | Removing models/providers in Settings persists (removed entries stay removed) | after removing deepseek/deepseek-chat and provider deepseek, both stay removed in settings.json and after reopening settings | 6.4s
-PASS | #06 | Stream failure with no output file shows an error and re-enables the UI | connection failure shows error banner (Request failed. Check your API key and try again.×) and re-enables the UI without Stop | 6.5s
-PASS | #16 | API Logs viewer latency column shows the request duration | log row latency cell = "234 ms" (viewer reads responseTimeMs) | 4.1s
-PASS | #26 | Opening Settings wipes the right-rail per-thread settings | right-rail system message survived opening Settings ("must survive settings open") | 5.4s
-PASS | #27 | Commands Advanced card collapses when you click inside it to edit a field | clicking inside the Advanced card to edit a field keeps it open (display=block) | 4.6s
-PASS | #33 | Clearing the chat-window icon setting still loads the default custom icon | window shows the default IconOn.ico fingerprint even though icons.iconOn was cleared ({"crcBig":"A39E453E","crcCustom":"A39E453E","crcSmall":"A39E453E","customApplied":1,"hBig":9308091,"hCustom":22413803,"hMangled":0,"hSmall":9308091,"hwnd":4130524,"mangledLoaded":0,"renderFailed":0}) | 4.7s
-PASS | #47 | Per-thread system prompt / temperature edits are discarded on reload when an assistant is active | edited system prompt to "user override" with assistant active; after reload the rail still shows "user override" (DB system_override="user override") | 5.6s
-PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 7.5s
+PASS | #08 | Close-Windows hotkey setting is honored by the chat window (dynamic registration) | ChatWindow registers closeWindowsHotkey via a SettingsService hook (empty=disabled, re-registered on every settings apply); Main still handles only the input window; no restart warning shown | 3.4s
 
-Summary: 8/8 scenarios PASS
+Summary: 1/1 scenarios PASS
 Real profile restored: NO — CHECK MANUALLY
 Report sync: OK

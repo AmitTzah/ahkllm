@@ -269,7 +269,9 @@ postCurrentSettingsToWebView() {
         }
     }
 
-    postWebMessage("currentSettings", {
+    ; Step 3 of the IPC refactor: the right-rail per-thread payload is its own
+    ; message (threadSettings) — distinct from the full appSettings payload.
+    postWebMessage("threadSettings", {
         model: model,
         systemMessage: systemMessage,
         reasoning: reasoning,

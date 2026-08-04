@@ -178,11 +178,14 @@ scenarios.push({
     const hr = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'HotkeyRegistrar.ahk'), 'utf8');
     const noHardcode = !/::\s*ChatHotkeys\("closeWindows"\)/.test(chatWin) && !/~\^w::/.test(chatWin);
     const includesModule = chatWin.includes('#Include ChatHotkeys.ahk');
-    const registersAtStartup = chatWin.includes('_registerChatHotkeys()');
+    // Step 3 of the IPC refactor: the chat window registers the hotkey hook
+    // with SettingsService, which runs it at startup and on every settings
+    // apply (replacing the old explicit _registerChatHotkeys() call sites).
+    const registersAtStartup = chatWin.includes('SettingsService.RegisterHook("chatHotkeys", _registerChatHotkeys)');
     const dynamicRegister = /Hotkey\(\s*closeWindowsHotkey/.test(chatHk) && /_activeChatHotkey/.test(chatHk);
     const emptyMeansDisabled = /if\s+_activeChatHotkey[\s\S]*Hotkey\(_activeChatHotkey,\s*"Off"\)/.test(chatHk)
       && /if\s+closeWindowsHotkey[\s\S]*Hotkey\(closeWindowsHotkey/.test(chatHk);
-    const reRegistersOnSave = (dispatch.match(/_registerChatHotkeys\(\)/g) || []).length >= 2;
+    const reRegistersOnSave = (dispatch.match(/SettingsService\.(Apply|SaveFromWebView|ReloadFromDisk)\(/g) || []).length >= 2;
     const mainOnlyClosesInput = /case "closeWindows":[\s\S]*?commandInputWindow\.guiObj\.hWnd/.test(hr);
     if (!noHardcode || !includesModule || !registersAtStartup) throw new Error('ChatWindow still hardcodes the close hotkey or does not register it');
     if (!dynamicRegister || !emptyMeansDisabled) throw new Error('ChatHotkeys.ahk does not register closeWindowsHotkey dynamically with empty=disabled');
@@ -200,7 +203,7 @@ scenarios.push({
     })()`);
     if (restartWarning.btn || restartWarning.banner)
       throw new Error('stale restart warning still shown in Hotkeys: ' + JSON.stringify(restartWarning));
-    return 'ChatWindow registers the configured closeWindowsHotkey via ChatHotkeys.ahk (empty=disabled, re-registered on save); Main still handles only the input window; no restart warning shown';
+    return 'ChatWindow registers closeWindowsHotkey via a SettingsService hook (empty=disabled, re-registered on every settings apply); Main still handles only the input window; no restart warning shown';
   }
 });
 

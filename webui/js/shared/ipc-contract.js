@@ -41,8 +41,8 @@
     'threadForked': { dir: 'ahk->web', fields: ['newThreadId'], required: ['newThreadId'] },
     'showError': { dir: 'ahk->web', fields: ['message'], required: ['message'] },
     'showDashboard': { dir: 'ahk->web', data: 'any' },
-    // Step 3 of the IPC refactor splits this into threadSettings + appSettings.
-    'currentSettings': { dir: 'ahk->web', data: 'object' },
+    'threadSettings': { dir: 'ahk->web', fields: ['model', 'systemMessage', 'reasoning', 'temperature', 'codeExecution', 'webSearch', 'fontSize', 'assistantName', 'assistantBaseModel', 'assistantDescription', 'thinkingLevels'], required: ['model'] },
+    'appSettings': { dir: 'ahk->web', data: 'object' },
     'defaultSettings': { dir: 'ahk->web', data: 'object' },
     'settingsSaved': { dir: 'ahk->web', fields: ['success', 'error'], required: ['success'] },
     'dropdownLabel': { dir: 'ahk->web', fields: ['text', 'isAssistant'], required: ['text', 'isAssistant'] },

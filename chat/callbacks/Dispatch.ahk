@@ -125,7 +125,10 @@ _HandleRequestAllSettings() {
     defaults := SettingsHandler.GetDefaults()
     loaded := SettingsHandler.Load()
     merged := SettingsHandler.Merge(loaded, defaults)
-    postWebMessage("currentSettings", merged)
+    ; Step 3 of the IPC refactor: the full settings payload is a distinct
+    ; message (appSettings) so it can never be mistaken for the right-rail
+    ; per-thread payload (threadSettings).
+    postWebMessage("appSettings", merged)
 }
 
 ; Send raw defaults (not merged with loaded) to WebView for Reset button.
@@ -134,8 +137,8 @@ _HandleRequestDefaultSettings() {
     defaults := SettingsHandler.GetDefaults()
     ; Save and apply defaults immediately — bypass merge with stale loaded data
     if SettingsHandler.Save(defaults) {
-        SettingsHandler.ApplyToGlobals(defaults)
-        _registerChatHotkeys()
+        ; Apply + run registered update hooks (chat hotkeys re-register here).
+        SettingsService.Apply(defaults)
         postAssistantsToWebView()
         postCurrentSettingsToWebView()  ; refresh thinking levels for current model
         try {
@@ -155,19 +158,10 @@ _HandleSaveSettings(parsed) {
         return
     }
     try {
-        ; Convert jsongo object to AHK Map
-        settingsMap := SettingsHandler._ToMap(settingsData)
-        ; Keep saved values for keys the UI didn't send, but treat each
-        ; section's payload as authoritative for its own top-level key —
-        ; a deep merge would resurrect removed models/providers/commands.
-        base := SettingsHandler.Merge(SettingsHandler.Load(), SettingsHandler.GetDefaults())
-        merged := SettingsHandler.Override(settingsMap, base)
-        if SettingsHandler.Save(merged) {
-            ; Apply to this process's globals
-            SettingsHandler.ApplyToGlobals(merged)
-            ; Re-register the chat-window hotkeys so a changed "Close Windows"
-            ; setting takes effect without restarting the window.
-            _registerChatHotkeys()
+        ; Single apply path: merge (each section payload authoritative for its
+        ; own top-level key), persist, apply globals, run update hooks.
+        merged := SettingsService.SaveFromWebView(settingsData)
+        if merged {
             ; Push updated assistant list (and model list) to the chat sidebar
             postAssistantsToWebView()
             ; Refresh thinking levels for current model

@@ -45,17 +45,20 @@ scenarios.push({
   async body() {
     // Zero-injection: Main's settings-updated handler must rebuild the banner
     // GUI (the live check sent the CapsLock+backtick suspend hotkey, which can
-    // leak into the user's typing).
+    // leak into the user's typing). Step 3 of the IPC refactor moved the
+    // rebuild into the SettingsService hook registry.
     const mainAhk = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
     const sbModule = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'SuspendBanner.ahk'), 'utf8');
     const updStart = mainAhk.indexOf('WM_SETTINGS_UPDATED');
     const reloadStart = mainAhk.indexOf('WM_RELOAD_MAIN');
     const handler = mainAhk.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
-    if (!/_rebuildSuspendBanner\(\)/.test(handler))
-      throw new Error('Main.ahk does not rebuild the suspend banner on settings updates');
+    if (!/SettingsService\.ReloadFromDisk\(\)/.test(handler))
+      throw new Error('Main.ahk settings-updated handler does not reload through SettingsService');
+    if (!/SettingsService\.RegisterHook\("suspendBanner", _rebuildSuspendBanner\)/.test(mainAhk))
+      throw new Error('Main.ahk does not register the suspend banner rebuild hook');
     if (!/suspendBanner\.Destroy\(\)[\s\S]*suspendBanner := Gui\(\)/.test(sbModule))
       throw new Error('SuspendBanner.ahk does not rebuild the GUI from scratch');
-    return 'Main.ahk rebuilds the suspend banner on settings updates; SuspendBanner.ahk rebuilds from current globals (no key injection)';
+    return 'Main.ahk reloads via SettingsService with a registered suspendBanner hook; SuspendBanner.ahk rebuilds from current globals (no key injection)';
   }
 });
 
@@ -74,11 +77,13 @@ scenarios.push({
     const updStart = mainAhk.indexOf('WM_SETTINGS_UPDATED');
     const reloadStart = mainAhk.indexOf('WM_RELOAD_MAIN');
     const handler = mainAhk.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
-    if (!/_rebuildInputWindow\(onCommandInputSend\)/.test(handler))
-      throw new Error('Main.ahk does not rebuild the input window on settings updates');
+    if (!/SettingsService\.ReloadFromDisk\(\)/.test(handler))
+      throw new Error('Main.ahk settings-updated handler does not reload through SettingsService');
+    if (!/SettingsService\.RegisterHook\("inputWindow", _rebuildInputWindow\.Bind\(onCommandInputSend\)\)/.test(mainAhk))
+      throw new Error('Main.ahk does not register the input window rebuild hook');
     if (!/w" inputWindowWidth " h" inputWindowHeight/.test(iw))
       throw new Error('InputWindow does not apply the configured width/height');
-    return 'Main.ahk rebuilds the input window on settings updates; InputWindow applies width/height from globals (no key injection)';
+    return 'Main.ahk reloads via SettingsService with a registered inputWindow hook; InputWindow applies width/height from globals (no key injection)';
   }
 });
 

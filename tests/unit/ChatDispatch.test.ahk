@@ -133,8 +133,8 @@ class ChatDispatchTest {
         }
         if !this._findCaptured(web.captured, "assistantList")
             throw Error("requestAssistantList should post assistantList")
-        if !this._findCaptured(web.captured, "currentSettings")
-            throw Error("requestCurrentSettings should post currentSettings")
+        if !this._findCaptured(web.captured, "threadSettings")
+            throw Error("requestCurrentSettings should post threadSettings")
     }
 
     ; Step 2 of the IPC refactor: every WebView request carries a reqId and
@@ -223,8 +223,8 @@ class ChatDispatchTest {
             web.restore()
             sp.restore()
         }
-        if !this._findCaptured(web.captured, "currentSettings")
-            throw Error("requestAllSettings should post currentSettings")
+        if !this._findCaptured(web.captured, "appSettings")
+            throw Error("requestAllSettings should post appSettings")
     }
 
     ; Regression: reopening Settings (requestAllSettings) re-merges the saved
@@ -245,11 +245,11 @@ class ChatDispatchTest {
             }
             payload := ""
             for _, json in web.captured {
-                if InStr(json, '"target":"currentSettings"')
+                if InStr(json, '"target":"appSettings"')
                     payload := json
             }
             if payload = ""
-                throw Error("requestAllSettings should post currentSettings")
+                throw Error("requestAllSettings should post appSettings")
             parsed := SettingsHandler._ToMap(jsongo.Parse(payload))
             models := parsed["data"]["models"]
             providers := parsed["data"]["providers"]

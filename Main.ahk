@@ -17,9 +17,7 @@ debugLog("[APP] Started")
 ; ----------------------------------------------------
 settings := SettingsHandler.Load()
 SettingsHandler.CacheInitialDefaults()
-defaults := SettingsHandler.GetDefaults()
-merged := SettingsHandler.Merge(settings, defaults)
-SettingsHandler.ApplyToGlobals(merged)
+SettingsService.Apply(SettingsHandler.Merge(settings, SettingsHandler.GetDefaults()))
 RuntimeResolver_CheckApiKeys()
 RuntimeResolver_ResolvePrimaryProvider()
 debugLog("[APP] Settings loaded" (settings.Count ? " from settings.json" : " from DefaultSettings"))
@@ -187,6 +185,18 @@ _rebuildInputWindow(onCommandInputSend)
 _rebuildSuspendBanner()
 
 ; ----------------------------------------------------
+; Settings update hooks — single apply path (SettingsService)
+; ----------------------------------------------------
+; SettingsService.Apply runs these after every settings reload, replacing the
+; old inline rebuild chain in the WM_SETTINGS_UPDATED handler. New settings-
+; driven rebuilds register a hook here instead of adding another call site.
+SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
+SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend))
+SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)
+SettingsService.RegisterHook("runtimeResolver", RuntimeResolver_ResolvePrimaryProvider)
+SettingsService.RegisterHook("purgeExpired", ChatDB.Thread_PurgeExpired)
+
+; ----------------------------------------------------
 ; Register inter-process communication handlers
 ; ----------------------------------------------------
 
@@ -195,15 +205,7 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 ; Handle settings updated notification from ChatWindow
 OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     debugLog("[SETTINGS] Received settingsUpdated from ChatWindow, reloading..."),
-    settings := SettingsHandler.Load(),
-    defaults := SettingsHandler.GetDefaults(),
-    merged := SettingsHandler.Merge(settings, defaults),
-    SettingsHandler.ApplyToGlobals(merged),
-    _rebuildSuspendBanner(),
-    _rebuildInputWindow(onCommandInputSend),
-    _registerAllHotkeys(),
-    RuntimeResolver_ResolvePrimaryProvider(),
-    ChatDB.Thread_PurgeExpired(),
+    SettingsService.ReloadFromDisk(),
     debugLog("[SETTINGS] Reloaded settings globals and re-registered hotkeys")
 ))
 

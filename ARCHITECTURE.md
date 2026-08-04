@@ -571,17 +571,35 @@ The Settings Save flow is the first consumer: it awaits the ack and shows a
 
 Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `defaultSettings`, `settingsSaved`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`.
 
-### ⚠ `currentSettings` carries two different payloads
+### `threadSettings` vs `appSettings` (no more dual-purpose payload)
 
-The `currentSettings` action is used by **two different senders**:
+Step 3 of the IPC refactor split the old dual-purpose `currentSettings`
+message into two distinct messages, so a payload can no longer mean two
+things:
 
-1. **Chat sidebar** (`chat/ChatSettings.ahk` → `postCurrentSettingsToWebView`): partial payload — `model`, `reasoning`, `temperature`, `thinkingLevels` (raw level values), assistant metadata. **No `commands`/`assistants`/`models`.**
-2. **Full settings** (`chat/callbacks/Dispatch.ahk` → `_HandleRequestAllSettings`): the complete merged settings Map (includes `commands`, `assistants`, `models`, `providers`, ...).
+- **`threadSettings`** (`chat/ChatSettings.ahk` → `postCurrentSettingsToWebView`): the right-rail per-thread payload — `model`, `systemMessage`, `reasoning`, `temperature`, `thinkingLevels`, assistant metadata, font size, Advanced toggles. Consumed only by `populateCurrentSettings` in `webui/js/chat/model-picker/model-picker-config.js`.
+- **`appSettings`** (`chat/callbacks/Dispatch.ahk` → `_HandleRequestAllSettings`): the complete merged settings Map (`commands`, `assistants`, `models`, `providers`, ...). Consumed only by `SettingsPanel.onSettingsReceived` (each section's `load`).
 
-`main.js` routes the two payloads to different consumers, discriminated by `Array.isArray(data.commands)` (only the full settings object has a `commands` array):
+Routing the wrong one into the other consumer was bug #26 (full payload wiped
+the right rail) and an earlier Commands-tab-blanking bug; the split removes
+the ambiguity by construction.
 
-- **Partial payload → `populateCurrentSettings(data)`** (right-rail per-thread fields). The full payload must NOT go here — it has no per-thread `model`/`systemMessage`/`temperature`/`fontSize` fields, so routing it through `populateCurrentSettings` wiped the right rail every time Settings opened (fixed in bug #26).
-- **Full payload → `SettingsPanel.onSettingsReceived(data)`** (each section's `load`). The partial payload must NOT go here — it would reload every section with empty data and blank the Commands tab (a previously-fixed real bug).
+### Settings update hooks (`SettingsService`)
+
+Settings changes go through one apply path:
+`app/settings/SettingsService.ahk` — `Apply(settings)` runs
+`SettingsHandler.ApplyToGlobals` and then every registered update hook. Each
+process registers the hooks it owns:
+
+- **Main.ahk**: `suspendBanner` (rebuild), `inputWindow` (rebuild), `hotkeys`
+  (re-register), `runtimeResolver` (re-resolve provider), `purgeExpired`
+  (trash retention).
+- **ChatWindow.ahk**: `chatHotkeys` (re-register).
+
+`Main.ahk`'s `WM_SETTINGS_UPDATED` handler is now just
+`SettingsService.ReloadFromDisk()`; the chat save path uses
+`SettingsService.SaveFromWebView()`. New settings-driven rebuilds register a
+hook instead of adding another call site to the message chain.
 
 ### WebView → AHK (`postMessage`)
 
