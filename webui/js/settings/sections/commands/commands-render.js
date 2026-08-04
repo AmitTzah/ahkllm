@@ -223,7 +223,7 @@
           '<span class="settings-sysmsg-label" id="cmdSysMsgLabel">\uD83D\uDCC4 (none)</span>' +
           '<button class="btn-sm" id="cmdEditSysMsg">Edit</button>' +
         '</div>' +
-        '<div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div>' +
+        '<div class="field-hint">From app defaults (default-settings/system-messages/). Create your own in AppData\\...\\system-messages\\</div>' +
       '</div>' +
     '</div>';
   }

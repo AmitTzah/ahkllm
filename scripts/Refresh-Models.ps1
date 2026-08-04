@@ -1,8 +1,8 @@
 # Refresh-Models.ps1
 # Fetches model metadata, applies corrections from models-corrections.json,
-# and updates DefaultSettings.ahk in-place.
+# and writes the generated model metadata to default-settings/DefaultModels.ahk.
 #
-# Pipeline: models.dev (raw) -> models-corrections.json (override) -> DefaultSettings.ahk
+# Pipeline: models.dev (raw) -> models-corrections.json (override) -> DefaultModels.ahk
 #
 # Run from terminal: powershell -ExecutionPolicy Bypass -File "scripts\Refresh-Models.ps1"
 # Also accessible from Quick Access menu in the app.
@@ -14,7 +14,7 @@ param([switch]$NoPause)
 try {
     $ErrorActionPreference = "Stop"
     $scriptDir = $PSScriptRoot
-    $defaultSettingsPath = Join-Path $scriptDir "..\DefaultSettings.ahk"
+$defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings.ahk"
     $backupFile = Join-Path $scriptDir "models_metadata.txt"
     $correctionsFile = Join-Path $scriptDir "models-corrections.json"
 
@@ -217,7 +217,7 @@ try {
     ($header + "models := Map(" + ($lines -join "`r`n") + "`r`n)") | Out-File $backupFile -Encoding utf8
 
     # Write the generated model metadata file (single source of truth).
-    $defaultModelsPath = Join-Path $scriptDir "..\DefaultModels.ahk"
+$defaultModelsPath = Join-Path $scriptDir "..\default-settings\DefaultModels.ahk"
     $modelsHeader = @"
 ; ============================================================================
 ; DefaultModels.ahk -- AUTO-GENERATED model metadata

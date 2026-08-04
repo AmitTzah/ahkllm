@@ -25,7 +25,7 @@
       '<button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
       '<div class="grid-2"><div class="field"><label class="field-label">Base Model</label><select data-field="baseModel">' + modelOpts + '</select></div>' +
       '<div class="field"><label class="field-label">Reasoning</label><select data-field="reasoning">' + reasoningOpts + '</select></div></div>' +
-      '<div class="field"><label class="field-label">System Message</label><div class="settings-flex-row-center"><span class="sysmsg-label settings-sysmsg-label">' + S.escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
+      '<div class="field"><label class="field-label">System Message</label><div class="settings-flex-row-center"><span class="sysmsg-label settings-sysmsg-label">' + S.escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (default-settings/system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
       '<div class="field"><label class="field-label">Description</label><input type="text" value="' + S.escHtml(a.description || '') + '" data-field="description"></div>';
   }
 

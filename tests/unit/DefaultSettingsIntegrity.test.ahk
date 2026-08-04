@@ -18,7 +18,7 @@ class DefaultSettingsIntegrityTest {
     ; UTF-8 sequences that indicate Windows-1252 misinterpretation.
     ; --------------------------------------------------------
     NoCorruptedUnicode_DefaultSettings() {
-        path := A_ScriptDir "\..\DefaultSettings.ahk"
+	path := A_ScriptDir "\..\default-settings\DefaultSettings.ahk"
         if !FileExist(path)
             throw Error("DefaultSettings.ahk not found at " path)
 

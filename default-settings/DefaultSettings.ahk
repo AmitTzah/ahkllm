@@ -91,7 +91,7 @@ providerMap := Map(
 ; ============================================================================
 ; Each assistant: name, baseModel ("provider/model"), systemMessage (or systemMessageFile), description, reasoning, temperature, isDefault.
 ;   description: short description shown in the model card (optional). Keep it one sentence or less.
-;   Use systemMessageFile: "system-messages/my-assistant.txt" for longer prompts.
+;   Use systemMessageFile: "default-settings/system-messages/my-assistant.txt" for longer prompts.
 ;   reasoning: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" or "" for model default.
 ;     DeepSeek: "none" uses thinking:{type:"disabled"}; low/medium->high, xhigh->max
 ;     OpenAI:   "none" only on gpt-5.1+; "xhigh" only on gpt-5.1-codex-max+
@@ -104,7 +104,7 @@ assistants := [
      {
         name: "Natural Conversationalist",
         baseModel: "deepseek/deepseek-v4-pro",
-        systemMessageFile: "system-messages/natural-conversationalist.txt",
+        systemMessageFile: "default-settings/system-messages/natural-conversationalist.txt",
         reasoning: "none",
         temperature: "",
         description : "A friendly, natural conversationalist that responds in a human-like manner.",
@@ -113,7 +113,7 @@ assistants := [
      {
         name: "Violet",
         baseModel: "google/gemma-4-31b-it",
-        systemMessageFile: "system-messages/violet.txt",
+        systemMessageFile: "default-settings/system-messages/violet.txt",
         reasoning: "none",
         temperature: "",
         description : "Violet is pretty crazy. Talk to her at your own risk.",
@@ -153,7 +153,7 @@ assistants := [
 ;   systemMessageFile: Path to a .txt file containing the system message.
 ;                      Supports the same template variables as systemMessage.
 ;                      Takes precedence over systemMessage.
-;                      Example: systemMessageFile: "system-messages/define.txt"
+;                      Example: systemMessageFile: "default-settings/system-messages/define.txt"
 ;
 ;   userMessage:       The user message sent to the LLM.  Supports the same
 ;                      template variables as systemMessage.
@@ -265,7 +265,7 @@ assistants := [
         commandName: "Your Command Name",
         menuText: "&9 - Your Menu Label",        
         systemMessage: "Your system message here. This sets the model's role.",
-        ; systemMessageFile: "system-messages/my-command.txt", 
+; systemMessageFile: "default-settings/system-messages/my-command.txt",
         APIModels: "deepseek-v4-flash",
         ; APIModels: "openai/gpt-4o",
 
@@ -343,7 +343,7 @@ commands := [
         {
         commandName: "Rephrase in Context",
         menuText: "&3 - Rephrase in Context",
-        systemMessageFile: "system-messages/rephrase-in-context.txt",
+        systemMessageFile: "default-settings/system-messages/rephrase-in-context.txt",
         userMessage: "### Full document context:`n`n{{fullText}}`n`n### Text to rephrase:`n`n{{selection}}",
         APIModels: "deepseek/deepseek-v4-flash",
         thinking: { type: "enabled", level: "none" },  ; disabled — fast rephrase
@@ -356,7 +356,7 @@ commands := [
     {
         commandName: "Refine",
         menuText: "&4 - Refine",
-        systemMessageFile: "system-messages/refine.txt",
+        systemMessageFile: "default-settings/system-messages/refine.txt",
         APIModels: "deepseek/deepseek-v4-flash",
         userMessage: "{{selection}}",
         pasteMode: "replace",
@@ -382,7 +382,7 @@ commands := [
      {
         commandName: "Summarize",
         menuText: "&1 - Summarize",
-        systemMessageFile: "system-messages/summarize.txt",
+        systemMessageFile: "default-settings/system-messages/summarize.txt",
         APIModels: "deepseek/deepseek-v4-pro",
         userMessage: "{{selection}}",
         thinking: { type: "enabled", level: "high" },
@@ -393,7 +393,7 @@ commands := [
     , {
         commandName: "Translate to English",
         menuText: "&2 - Translate to English",
-        systemMessageFile: "system-messages/translate-to-english.txt",
+        systemMessageFile: "default-settings/system-messages/translate-to-english.txt",
         APIModels: "deepseek/deepseek-v4-pro",
         userMessage: "{{selection}}",
         thinking: { type: "enabled", level: "none" },  ; disabled — fast translate

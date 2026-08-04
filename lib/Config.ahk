@@ -1,6 +1,6 @@
 #Requires AutoHotkey v2.0.18+
-#Include ..\DefaultSettings.ahk        ; App defaults (fallback for settings.json)
-#Include ..\DefaultModels.ahk          ; Auto-generated model metadata
+#Include ..\default-settings\DefaultSettings.ahk        ; App defaults (fallback for settings.json)
+#Include ..\default-settings\DefaultModels.ahk          ; Auto-generated model metadata
 #Include ..\app\settings\SettingsPersistence.ahk
 #Include ..\app\settings\SettingsDefaults.ahk
 #Include ..\app\settings\SettingsMerge.ahk

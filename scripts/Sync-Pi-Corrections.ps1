@@ -140,4 +140,4 @@ if (Test-Path $deepseekFile) {
 # Summary
 Write-Host ""
 Write-Host "Sync complete. Corrections file: $correctionsFile"
-Write-Host "Run Refresh-Models.ps1 to regenerate DefaultSettings.ahk."
+Write-Host "Run Refresh-Models.ps1 to regenerate default-settings\DefaultSettings.ahk."

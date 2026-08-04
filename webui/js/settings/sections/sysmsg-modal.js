@@ -19,7 +19,7 @@
       if (inlineSection) inlineSection.style.display = 'none';
       if (fileSelect) {
         fileSelect.value = opts.systemMessageFile;
-        // Stored value may include a directory prefix (e.g. "system-messages/refine.txt")
+        // Stored value may include a directory prefix (e.g. "default-settings/system-messages/refine.txt")
         // while the select options are bare filenames. Strip the prefix if no match.
         if (fileSelect.selectedIndex === -1 && opts.systemMessageFile.indexOf('/') >= 0) {
           var bareName = opts.systemMessageFile.replace(/^.*[\\/]/, '');
