@@ -312,4 +312,71 @@ class ChatSettingsTest {
 
         this._closeDb()
     }
+
+    ; Step 4 of the architecture refactor: ThreadSettings.ComputeEffective is
+    ; the single precedence implementation (override wins, assistant falls
+    ; back). These tests pin the precedence so the restore path and the
+    ; message builder cannot drift again.
+    test_ThreadSettings_ComputeEffective_overridesWin() {
+        global assistants
+        oldAsst := assistants
+        assistants := [{
+            id: "asst-eff-1", name: "Eff Asst", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+        try {
+            row := {
+                assistantId: "asst-eff-1",
+                modelOverride: "openai/gpt-5-mini",
+                systemOverride: "user override",
+                reasoningOverride: "low",
+                temperatureOverride: "0.9",
+                codeExecution: true,
+                webSearch: false,
+                fontSize: 20
+            }
+            eff := ThreadSettings.ComputeEffective(row, assistants[1])
+            if eff.model != "openai/gpt-5-mini"
+                throw Error("model override should win: " eff.model)
+            if eff.systemMessage != "user override"
+                throw Error("system override should win: " eff.systemMessage)
+            if eff.reasoning != "low"
+                throw Error("reasoning override should win: " eff.reasoning)
+            if eff.temperature != "0.9"
+                throw Error("temperature override should win: " eff.temperature)
+            if eff.codeExecution != true || eff.webSearch != false
+                throw Error("advanced toggles should round-trip")
+            if eff.fontSize != 20
+                throw Error("font size should round-trip: " eff.fontSize)
+            if eff.assistantName != "Eff Asst"
+                throw Error("assistant metadata should be attached: " eff.assistantName)
+        } finally {
+            assistants := oldAsst
+        }
+    }
+
+    test_ThreadSettings_ComputeEffective_assistantFallback() {
+        global assistants
+        oldAsst := assistants
+        assistants := [{
+            id: "asst-eff-2", name: "Eff Asst", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+        try {
+            row := { assistantId: "asst-eff-2" }
+            eff := ThreadSettings.ComputeEffective(row, assistants[1])
+            if eff.model != "deepseek/test"
+                throw Error("assistant base model should be the fallback: " eff.model)
+            if eff.systemMessage != "assistant system"
+                throw Error("assistant system message should be the fallback")
+            if eff.reasoning != "high"
+                throw Error("assistant reasoning should be the fallback")
+            if eff.temperature != "0.3"
+                throw Error("assistant temperature should be the fallback")
+        } finally {
+            assistants := oldAsst
+        }
+    }
 }

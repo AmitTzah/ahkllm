@@ -601,6 +601,23 @@ process registers the hooks it owns:
 `SettingsService.SaveFromWebView()`. New settings-driven rebuilds register a
 hook instead of adding another call site to the message chain.
 
+### Thread settings are derived in one place (`ThreadSettings`)
+
+`chat/ThreadSettings.ahk` owns a thread's effective per-thread settings:
+
+- `ComputeEffective(dbRow, assistant)` — the single precedence
+  implementation: per-thread overrides win, the assistant's values are the
+  fallback (the restore path used to overwrite the edit path's overrides —
+  bug #47).
+- `RestoreIntoRequestParams(threadId)` — the thread-load path (was
+  `_restoreThreadSettings`).
+- `ToDbObject()` — persistence shape (was `_CurrentSettingsObject`).
+- `ToThreadSettingsMessage()` — the right-rail `threadSettings` payload (was
+  the body of `postCurrentSettingsToWebView`).
+
+`ChatSettings.ahk` now delegates to these, so the restore path, the DB
+serializer, and the WebView presenter read the same precedence rules.
+
 ### WebView → AHK (`postMessage`)
 
 Dispatched by `OnWebMessageReceived` in `chat/callbacks/Dispatch.ahk`. Actions include: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `requestAllSettings`, `requestDefaultSettings`, `saveSettings`, `refreshModelPricing`, `showApiLogs`, `debugLog` (JS→AHK log bridge), `webViewReady`.

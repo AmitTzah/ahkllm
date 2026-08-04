@@ -6,6 +6,8 @@
 ; model settings persistence.
 ; ======================================================
 
+#Include ..\chat\ThreadSettings.ahk
+
 ; Update provider tracking for API logs from a model id.
 _updateProviderFromModel(model) {
     parts := ModelParser.Split(model)
@@ -15,58 +17,14 @@ _updateProviderFromModel(model) {
 
 ; Clear all request-level overrides to default state.
 _ClearRequestOverrides() {
-    requestParams["systemOverride"] := ""
-    requestParams["reasoningOverride"] := ""
-    requestParams["temperatureOverride"] := ""
-    requestParams["codeExecution"] := false
-    requestParams["webSearch"] := false
-    if requestParams.Has("activeAssistantId")
-        requestParams.Delete("activeAssistantId")
-    if requestParams.Has("fontSize")
-        requestParams.Delete("fontSize")
-    requestParams["singleAPIModelName"] := appDefaultModel
+    ThreadSettings._ClearOverrides()
 }
 
 ; Apply saved per-thread settings from DB to requestParams.
 _restoreThreadSettings(threadId) {
-    ; Always clear previous overrides before loading new ones.
-    ; Prevents system messages, reasoning, etc. from leaking across threads.
-    _ClearRequestOverrides()
-
-    settings := ChatDB.Thread_GetSettings(threadId)
-    if !settings
-        return
-    if settings.modelOverride
-        requestParams["singleAPIModelName"] := settings.modelOverride
-    if settings.systemOverride
-        requestParams["systemOverride"] := settings.systemOverride
-    if settings.reasoningOverride
-        requestParams["reasoningOverride"] := settings.reasoningOverride
-    if settings.temperatureOverride
-        requestParams["temperatureOverride"] := settings.temperatureOverride
-    if settings.fontSize
-        requestParams["fontSize"] := settings.fontSize
-    ; Right-rail Advanced toggles (Code Execution / Web Search) — persisted stubs
-    requestParams["codeExecution"] := _BoolFrom(settings.HasOwnProp("codeExecution") ? settings.codeExecution : false)
-    requestParams["webSearch"] := _BoolFrom(settings.HasOwnProp("webSearch") ? settings.webSearch : false)
-    if settings.assistantId {
-        requestParams["activeAssistantId"] := settings.assistantId
-        asst := AssistantRepo.GetFromSettings(settings.assistantId)
-        if asst {
-            requestParams["singleAPIModelName"] := asst.baseModel
-            ; Fall back to the assistant's values ONLY where the thread has no
-            ; per-thread override. Stored overrides (system prompt, reasoning,
-            ; temperature) must win over the assistant defaults - otherwise a
-            ; per-thread edit made while an assistant is active silently
-            ; vanishes on the next reload (bug #47).
-            if !settings.systemOverride
-                requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
-            if !settings.reasoningOverride
-                requestParams["reasoningOverride"] := asst.reasoning
-            if !settings.temperatureOverride
-                requestParams["temperatureOverride"] := asst.temperature
-        }
-    }
+    ; Single precedence implementation (bug #47 fixed here): per-thread
+    ; overrides win, assistant values are the fallback.
+    ThreadSettings.RestoreIntoRequestParams(threadId)
 }
 
 ; Normalize a JSON boolean / 1 / 0 / "true" / "false" value to a real boolean.
@@ -78,18 +36,7 @@ _BoolFrom(value) {
 
 ; Build the settings object from current requestParams state.
 _CurrentSettingsObject() {
-    global responseWindowFontSize
-    defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
-    return {
-        assistantId: requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : "",
-        modelOverride: requestParams["singleAPIModelName"] != appDefaultModel ? requestParams["singleAPIModelName"] : "",
-        systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
-        reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
-        temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
-        codeExecution: requestParams.Has("codeExecution") ? requestParams["codeExecution"] : false,
-        webSearch: requestParams.Has("webSearch") ? requestParams["webSearch"] : false,
-        fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
-    }
+    return ThreadSettings.ToDbObject()
 }
 
 ; Persist current requestParams settings to a thread (called on thread creation).
@@ -233,57 +180,10 @@ handleModelSettingsUpdate(parsed) {
 }
 
 postCurrentSettingsToWebView() {
-    global responseWindowFontSize
-    model := requestParams["singleAPIModelName"]
-    systemMessage := requestParams.Has("systemOverride") ? requestParams["systemOverride"] : ""
-    reasoning := requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : ""
-    temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
-    defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
-    fontSize := requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
-    codeExecution := requestParams.Has("codeExecution") ? requestParams["codeExecution"] : false
-    webSearch := requestParams.Has("webSearch") ? requestParams["webSearch"] : false
-
-    ; Include assistant metadata when active
-    assistantName := ""
-    assistantBaseModel := ""
-    assistantDescription := ""
-    if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
-        asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
-        if asst {
-            assistantName := asst.name
-            assistantBaseModel := asst.baseModel ? asst.baseModel : ""
-            assistantDescription := asst.HasOwnProp("description") ? asst.description : ""
-        }
-    }
-
-    ; Build thinking level options from the current model's metadata.
-    ; Raw level values only — the frontend labels and sorts them via the shared
-    ; ReasoningLevels helper (single source of truth for labels/order).
-    thinkingLevels := []
-    global models
-    if models.Has(model) {
-        modelMeta := models[model]
-        if modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap) {
-            for level in modelMeta.thinkingLevelMap
-                thinkingLevels.Push(level)
-        }
-    }
-
-    ; Step 3 of the IPC refactor: the right-rail per-thread payload is its own
-    ; message (threadSettings) — distinct from the full appSettings payload.
-    postWebMessage("threadSettings", {
-        model: model,
-        systemMessage: systemMessage,
-        reasoning: reasoning,
-        temperature: temperature,
-        codeExecution: codeExecution,
-        webSearch: webSearch,
-        fontSize: fontSize,
-        assistantName: assistantName,
-        assistantBaseModel: assistantBaseModel,
-        assistantDescription: assistantDescription,
-        thinkingLevels: thinkingLevels
-    })
+    ; Step 4 of the IPC refactor: the payload builder lives in
+    ; ThreadSettings.ToThreadSettingsMessage (single place with the restore
+    ; and persistence logic, so the four representations cannot drift).
+    postWebMessage("threadSettings", ThreadSettings.ToThreadSettingsMessage())
 }
 
 postAssistantsToWebView() {

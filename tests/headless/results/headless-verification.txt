@@ -1,5 +1,12 @@
-PASS | #08 | Close-Windows hotkey setting is honored by the chat window (dynamic registration) | ChatWindow registers closeWindowsHotkey via a SettingsService hook (empty=disabled, re-registered on every settings apply); Main still handles only the input window; no restart warning shown | 3.4s
+PASS | #01 | New chat after deleting active chat starts clean (no leaked per-thread settings) | new thread 00f44756-0360-7a18-dc92-0000a2f81b9f starts clean (no assistant/system/reasoning/temp/font from deleted chat) | 4.0s
+PASS | #02 | New chat honors the "New Chats Start With" default (assistant) | new chat starts with assistant "Default Assistant" (deepseek/deepseek-v4-flash) | 5.0s
+PASS | #26 | Opening Settings wipes the right-rail per-thread settings | right-rail system message survived opening Settings ("must survive settings open") | 4.4s
+PASS | #31 | Font-size +/- buttons use a stale 17px base after a thread with a custom size loads | after loading a 20px thread, clicking + changed the display from 20px to 18px instead of 21px | 4.8s
+PASS | #35 | Temperature override of 0 is dropped when the thread reloads (right rail shows Default) | thread with temperature_override=0 shows tempVal="Default" slider="1" instead of 0.0 | 3.8s
+PASS | #45 | "Response Font" setting is not applied to chat messages until Settings is opened | configured ui.responseFont=Georgia; before opening Settings msg font="Inter, system-ui, sans-serif" (var="'Inter', system-ui, sans-serif"); after opening Settings it becomes "Georgia, sans-serif" | 5.9s
+PASS | #47 | Per-thread system prompt / temperature edits are discarded on reload when an assistant is active | edited system prompt to "user override" with assistant active; after reload the rail still shows "user override" (DB system_override="user override") | 5.6s
+PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 7.5s
 
-Summary: 1/1 scenarios PASS
+Summary: 8/8 scenarios PASS
 Real profile restored: NO — CHECK MANUALLY
 Report sync: OK
