@@ -281,3 +281,43 @@ describe('system prompt modal char counter — regression: never updated', () =>
         assert.strictEqual(els.charCount.textContent, '11 chars');
     });
 });
+
+describe('direct system prompt typing — regression: never reached the API request (bug #60)', () => {
+    it('updates _currentSettings.systemMessage and posts the debounced save on input', () => {
+        let sendAllSettingsCalls = 0;
+        const mini = {
+            value: '',
+            classList: { add: () => {}, remove: () => {} },
+            _handlers: {}
+        };
+        mini.addEventListener = (ev, fn) => { mini._handlers[ev] = fn; };
+
+        const sandbox = {
+            document: {
+                getElementById: (id) => (id === 'sysMsgMini' ? mini : null),
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
+                addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
+            },
+            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {}, _currentSettings: {} },
+            setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
+            _sendAllSettings: () => { sendAllSettingsCalls++; },
+            _updateModelCard: () => {},
+            lucide: { createIcons: () => {} },
+            console: console
+        };
+        sandbox.global = sandbox;
+
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
+        vm.runInContext(src, vm.createContext(sandbox));
+
+        assert.ok(mini._handlers.input, 'an input handler should be attached to #sysMsgMini');
+        mini.value = 'typed directly';
+        mini._handlers.input();
+        assert.strictEqual(sandbox.window._currentSettings.systemMessage, 'typed directly',
+            'typing must update _currentSettings.systemMessage');
+        assert.strictEqual(sendAllSettingsCalls, 1,
+            'typing must trigger the debounced updateModelSettings post');
+    });
+});

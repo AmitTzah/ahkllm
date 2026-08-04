@@ -503,6 +503,7 @@ scenarios.push({
 scenarios.push({
   id: 47,
   name: 'Per-thread system prompt / temperature edits are discarded on reload when an assistant is active',
+  regression: true, // FIXED bug kept as a regression check (overrides must survive reloads)
   mode: null,
   settings: {
     assistants: [{
@@ -586,12 +587,11 @@ scenarios.push({
     const b = chatReq.body;
     const sysMsg = (b.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || ''));
     const containsTyped = sysMsg.some((c) => c.indexOf('DIRECT TYPED MESSAGE') >= 0);
-    // BUG: the typed text is visible in the box but never reaches
-    // requestParams (no input wiring on #sysMsgMini), so the sent request
-    // carries the assistant's system message instead.
-    if (containsTyped)
-      throw new Error('typed message unexpectedly reached the request (bug not reproduced)');
-    return 'typed directly into the rail field; box shows "DIRECT TYPED MESSAGE" but the sent request carries the assistant system message (head=' +
+    // FIXED (bug #60): typing into #sysMsgMini now updates requestParams, so
+    // the sent request must carry the typed system message.
+    if (!containsTyped)
+      throw new Error('typed message did not reach the request: ' + JSON.stringify(sysMsg));
+    return 'typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head=' +
       JSON.stringify(sysMsg[0] ? sysMsg[0].slice(0, 50) : '(none)') + ')';
   }
 });

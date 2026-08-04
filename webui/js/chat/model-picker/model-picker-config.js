@@ -173,6 +173,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  // Direct typing in the mini field must behave like the modal Save path:
+  // update _currentSettings and post the debounced updateModelSettings.
+  // Regression (bug #60): typing used to be display-only, so a system prompt
+  // typed straight into the field never reached requestParams / the API call.
+  var sysMsgMini = document.getElementById('sysMsgMini');
+  if (sysMsgMini) sysMsgMini.addEventListener('input', function() {
+    if (!window._currentSettings) window._currentSettings = {};
+    window._currentSettings.systemMessage = sysMsgMini.value;
+    _sendAllSettings();
+  });
+
   // Live char count for the system prompt modal (regression: the counter
   // stayed "0 chars" because nothing updated it on input).
   var sysMsgFull = document.getElementById('sysMsgFull');

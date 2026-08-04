@@ -154,26 +154,23 @@ How to run AHK safely:
 
 ## Current state
 
-- **27 verified, 1 fix applied (bug #47), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
+- **27 verified, 1 fix applied (bug #60), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
   streaming, message rendering, and thread metadata) verified 56 (stopping a
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bug #26 fixed and committed (f64a59d); its entry moved
-  to History. Bug #47 fixed —
-  `_restoreThreadSettings` now applies the assistant's system message /
-  reasoning / temperature ONLY when the thread has no per-thread override for
-  that field, so per-thread edits survive reloads (and reach the API request);
-  scenario 47 flipped to assert the fixed behavior and PASSES, two regression
-  unit tests added in `tests/unit/ChatSettings.test.ahk`, and the full AHK
-  (433/433) + JS (466/466) suites are green. An API-level headless check
-  confirmed the sent request carries the override after reload. Entry is
+- **Where we left off:** bugs #26 (f64a59d) and #47 (a30ae19) fixed and
+  committed; both entries moved to History (scenarios 26/47 flipped to
+  regression checks). Bug #59 closed as won't-fix (single-user, no migration;
+  profile corrected manually, scenario removed). Bug #60 fixed — typing
+  directly into the right-rail "System prompt" field now updates
+  `_currentSettings.systemMessage` and posts the debounced save (mirroring the
+  modal Save path); scenario 60 flipped to assert the fixed behavior and
+  PASSES, a regression unit test added in `tests/unit/chat-settings-modal.test.js`,
+  and the full AHK (433/433) + JS (467/467) suites are green. Entry is
   `fix applied` — waiting for the user's manual verification, then the commit.
-  Bug #59 closed as won't-fix (single-user, no migration): the legacy
-  `system-messages/` path only exists in profiles saved before commit 0229368;
-  the user corrected their one profile manually, scenario 59 removed. Next per
-  the fix cycle: bug #47's commit, then bug #27 and the rest in rank order,
+  Next per the fix cycle: bug #27, then the rest in rank order,
   one at a time, each with a flipped scenario + code-level regression test.
   Bug #60 reported (intake, not yet verified): typing directly into the
   right-rail "System prompt" field is display-only — no input wiring, so the
@@ -234,43 +231,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 47. Per-thread system prompt / temperature edits are discarded on reload when an assistant is active
-
-**Scenario:** 47 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** load a chat that uses an assistant, edit the system prompt (or
-temperature / thinking level) in the right rail, then switch to another thread
-and back (or reload the thread).
-
-**Expected:** the per-thread edits persist — the right rail keeps the edited
-values after reload.
-
-**Actual:** the edits revert to the assistant's values on reload. The edits ARE
-persisted to the DB (`system_override` / `temperature_override` columns), but
-`_restoreThreadSettings` first applies the stored overrides and then
-unconditionally overwrites them from the assistant block
-(`if settings.assistantId` sets `systemOverride :=
-AssistantRepo._resolveSystemMessage(asst)`, `temperatureOverride :=
-asst.temperature`, `reasoningOverride := asst.reasoning`). Any per-thread change
-made while an assistant is active therefore silently vanishes on the next load
-— the override only lives until the user switches threads or restarts.
-
-**Evidence:** `chat/ChatSettings.ahk` `_restoreThreadSettings()` — the
-`if settings.assistantId { ... }` block assigns all three overrides from the
-assistant without checking whether per-thread overrides already exist.
-
-**Verification:** headless scenario 47 loads an assistant thread, edits the
-system prompt to "user override" via the right-rail modal (rail confirms), reloads
-the thread, and observes the rail reverts to "assistant system" while the DB still
-holds `system_override='user override'`.
-
 ### 60. Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)
 
 **Scenario:** 60 (scenario code in e2e-suite.js)
 
-**Status:** reported
+**Status:** fix applied
 
 **Repro:** load any chat (or choose an assistant), click into the "System
 prompt" textarea in the right rail, and type a new system message — without
@@ -1090,3 +1055,4 @@ closure; never rewrite past entries.
 - 2026-08-04 - "Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path" - FIXED in 6f7ae77: CommandMenu._resolveSystemMessage now searches default-settings/system-messages/ + AppData like the assistant path; scenario 50 flipped to a regression check (`regression: true`) + UserConfig AHK unit test.
 - 2026-08-04 - "Opening Settings wipes the right-rail per-thread settings" - FIXED in f64a59d: main.js routes only the chat-sidebar partial `currentSettings` payload through `populateCurrentSettings`; the full merged settings object goes only to `SettingsPanel.onSettingsReceived` (discriminator: `Array.isArray(data.commands)`); scenario 26 flipped to a regression check (`regression: true`) + main.js routing unit test.
 - 2026-08-04 - "System-message files referenced by their legacy `system-messages/` path are never resolved" - CLOSED as won't-fix (single-user, no migration): the path only exists in profiles saved before commit 0229368 moved the files into default-settings/; the user corrected their one profile manually. Scenario 59 removed (no regression check kept).
+- 2026-08-04 - "Per-thread system prompt / temperature edits are discarded on reload when an assistant is active" - FIXED in a30ae19: `_restoreThreadSettings` now applies the assistant's system message / reasoning / temperature ONLY when the thread has no per-thread override for that field, so per-thread edits survive reloads and reach the API request; scenario 47 flipped to a regression check (`regression: true`) + ChatSettings AHK unit tests (overrides win; assistant defaults still apply when no override).

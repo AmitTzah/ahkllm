@@ -1,5 +1,5 @@
-RUNNER ERROR: EPERM: operation not permitted, rename 'C:\Users\Amit\AppData\Roaming\LLM-AutoHotkey-Assistant' -> 'C:\Users\Amit\AppData\Local\Temp\llm-profile-bak-1785875342034'
+PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 6.6s
 
-Summary: 0/1 scenarios PASS
-Real profile restored: not attempted
+Summary: 1/1 scenarios PASS
+Real profile restored: NO — CHECK MANUALLY
 Report sync: OK
