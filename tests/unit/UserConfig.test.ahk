@@ -52,6 +52,22 @@ class UserConfigTest {
             throw Error("Expected 'Fallback' on missing file, got '" result "'")
     }
 
+    ResolveSystemMessage_BareDefaultSettingsFile() {
+        ; Bug #50: the settings modal saves bare filenames, so the command path
+        ; must resolve them under default-settings/system-messages/ (like the
+        ; assistant path) instead of only A_ScriptDir.
+        file := A_ScriptDir "\..\default-settings\system-messages\refine.txt"
+        if !FileExist(file)
+            throw Error("Expected shipped default system message at " file)
+        cmd := { systemMessage: "Inline fallback", systemMessageFile: "refine.txt" }
+        result := _resolveSystemMessage(cmd)
+        if result = "Inline fallback" || result = ""
+            throw Error("Bare filename did not resolve under default-settings/system-messages/ (bug #50)")
+        expected := StrReplace(StrReplace(FileRead(file, "UTF-8"), "`r`n", "`n"), "`r", "`n")
+        if result != expected
+            throw Error("Expected file content, got '" SubStr(result, 1, 80) "'")
+    }
+
     ; --------------------------------------------------------
     ; _LookupPricing — TreeRepo helper
     ; --------------------------------------------------------

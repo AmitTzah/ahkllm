@@ -114,7 +114,8 @@ scenarios.push({
 
 scenarios.push({
   id: 50,
-  name: 'Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path (static check)',
+  name: 'Commands keep their system prompt after a settings save: bare system-message filenames resolve against default-settings/system-messages/ (static check)',
+  regression: true, // FIXED bug kept as a regression check (commands must keep resolving app-default system messages)
   mode: null,
   noApp: true,
   async body() {
@@ -124,27 +125,23 @@ scenarios.push({
     // The settings modal saves the select's value - for app-default files that
     // is the BARE filename ("refine.txt"), not the prefixed path.
     const modalSavesValue = /sysMsgFile = fileSelect \? fileSelect\.value : ''/.test(modal);
-    // The command path resolves relative files only against A_ScriptDir...
-    const commandResolvesAgainstScriptDir = /if !InStr\(filePath, ":"\) && !InStr\(filePath, "\\\\"\)[\s\S]*?filePath := A_ScriptDir "\\\\" filePath/.test(cmdMenu);
-    // ...and has no default-settings/system-messages/ or AppData search (unlike the assistant path).
-    const commandSearchesSysMsgDir = /A_ScriptDir[^\n]*system-messages|A_AppData[^\n]*system-messages/.test(cmdMenu);
+    // FIXED: the command path now searches default-settings/system-messages/
+    // and the user AppData folder like the assistant path.
+    const cmdSearchesDefaults = /A_ScriptDir "\\default-settings\\system-messages\\" filePath/.test(cmdMenu);
+    const cmdSearchesAppData = /A_AppData "\\LLM-AutoHotkey-Assistant\\system-messages\\" name/.test(cmdMenu);
     const assistantSearches = /A_ScriptDir "\\default-settings\\system-messages\\" filePath/.test(asstRepo);
     // The stock app-default files live ONLY under default-settings/system-messages/.
     const sysDir = path.join(launcher.REPO_ROOT, 'default-settings', 'system-messages');
     const bareFiles = fs.readdirSync(sysDir).filter((f) => f.endsWith('.txt'));
     const missingAtRoot = bareFiles.filter((f) => !fs.existsSync(path.join(launcher.REPO_ROOT, f)));
-    // BUG: after any settings save of a command that uses an app-default file,
-    // systemMessageFile becomes the bare name; at trigger time the command path
-    // looks for repo\refine.txt (missing) instead of repo\default-settings\system-messages\refine.txt,
-    // so FileRead throws -> MsgBox + empty inline fallback -> the command runs
-    // without its system prompt.
-    if (!modalSavesValue || !commandResolvesAgainstScriptDir || commandSearchesSysMsgDir || !assistantSearches || missingAtRoot.length === 0)
-      throw new Error('bug not reproduced: modalSavesValue=' + modalSavesValue +
-        ' commandResolvesAgainstScriptDir=' + commandResolvesAgainstScriptDir +
-        ' commandSearchesSysMsgDir=' + commandSearchesSysMsgDir +
+    // After a settings save, systemMessageFile is the bare name; the command
+    // path must resolve it under default-settings/system-messages/ so the
+    // command keeps its system prompt.
+    if (!modalSavesValue || !cmdSearchesDefaults || !cmdSearchesAppData || !assistantSearches || missingAtRoot.length === 0)
+      throw new Error('regression check failed: modalSavesValue=' + modalSavesValue +
+        ' cmdSearchesDefaults=' + cmdSearchesDefaults + ' cmdSearchesAppData=' + cmdSearchesAppData +
         ' assistantSearches=' + assistantSearches + ' missingAtRoot=' + missingAtRoot.length);
-    return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); command _resolveSystemMessage only prepends A_ScriptDir (no default-settings/system-messages search) while the assistant path searches default-settings/system-messages/; e.g. ' +
-      bareFiles[0] + ' exists only under default-settings/system-messages/ -> commands lose their system prompt after a settings save';
+    return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); command _resolveSystemMessage now searches default-settings/system-messages/ and AppData like the assistant path';
   }
 });
 

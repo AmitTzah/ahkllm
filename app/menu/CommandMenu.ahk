@@ -86,8 +86,22 @@ buildCommandMenu() {
 _resolveSystemMessage(cmd) {
     if cmd.HasProp("systemMessageFile") && cmd.systemMessageFile {
         filePath := cmd.systemMessageFile
-        if !InStr(filePath, ":") && !InStr(filePath, "\\")
-            filePath := A_ScriptDir "\\" filePath
+        if !InStr(filePath, ":") {
+            ; Relative path - search script dir, repo root, system-messages/
+            ; dirs, then the user AppData folder (mirrors AssistantRepo).
+            SplitPath(filePath, &name)
+            candidates := [A_ScriptDir "\" filePath
+                         , A_ScriptDir "\..\" filePath
+                         , A_ScriptDir "\default-settings\system-messages\" filePath
+                         , A_ScriptDir "\..\default-settings\system-messages\" filePath]
+            candidates.Push(A_AppData "\LLM-AutoHotkey-Assistant\system-messages\" name)
+            for _, cand in candidates {
+                if FileExist(cand) {
+                    filePath := cand
+                    break
+                }
+            }
+        }
         try {
             content := FileRead(filePath, "UTF-8")
             ; Normalize all line endings to LF: `r`n pairs first, then any stray `r
