@@ -32,6 +32,7 @@ scenarios.push({
 scenarios.push({
   id: 27,
   name: 'Commands Advanced card collapses when you click inside it to edit a field',
+  regression: true, // FIXED bug kept as a regression check (card must stay open while editing)
   mode: null,
   settings: {
     commands: [{

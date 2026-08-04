@@ -154,23 +154,16 @@ How to run AHK safely:
 
 ## Current state
 
-- **26 verified, 1 fix applied (bug #27), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
+- **25 verified, 0 fix applied, 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
   streaming, message rendering, and thread metadata) verified 56 (stopping a
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs #26 (f64a59d), #47 (a30ae19), and #60 (50d4111)
-  fixed and committed; entries moved to History (scenarios 26/47/60 flipped to
-  regression checks). Bug #59 closed as won't-fix (single-user, no migration;
-  profile corrected manually, scenario removed). Bug #27 fixed — the Commands
-  Advanced toggle now lives on the card header only, so clicking inside a
-  field no longer collapses the card; scenario 27 flipped to assert the fixed
-  behavior and PASSES, a regression unit test added in
-  `tests/unit/commands-advanced-toggle.test.js`, and the full AHK (433/433,
-  run with user privileges — the sandbox user lost write access to the
-  recreated AppData profile) + JS (468/468) suites are green. Entry is
-  `fix applied` — waiting for the user's manual verification, then the commit.
+- **Where we left off:** bugs #26 (f64a59d), #47 (a30ae19), #60 (50d4111), and
+  #27 (b31a6b9) fixed and committed; entries moved to History (scenarios
+  26/47/60/27 flipped to regression checks). Bug #59 closed as won't-fix
+  (single-user, no migration; profile corrected manually, scenario removed).
   Next per the fix cycle: bug #29, then the rest in rank order,
   one at a time, each with a flipped scenario + code-level regression test.
   Bug #60 reported (intake, not yet verified): typing directly into the
@@ -231,30 +224,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 27. Commands Advanced card collapses when you click inside it to edit a field
-
-**Scenario:** 27 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Settings -> Commands -> select any command -> click "Advanced" to open the
-card -> click inside any field (e.g. "Input Box Default") to edit it.
-
-**Expected:** the Advanced card stays open while you edit its fields.
-
-**Actual:** the card collapses on the first click inside. `_wireDetail` attaches the
-toggle listener to the whole `.cmd-advanced-wrap`, so any click (including on the
-inputs/selects inside the body) calls `_toggleAdvanced` and hides the body again.
-This makes the Advanced fields effectively unusable.
-
-**Evidence:** `webui/js/settings/sections/commands/commands-render.js` `_wireDetail()`:
-`aw.addEventListener('click', function() { _toggleAdvanced(aw); })` where
-`aw = document.querySelector('.cmd-advanced-wrap')` contains the whole body.
-
-**Verification:** headless scenario 27 selects the seeded command, opens the Advanced
-card, clicks `#cmdInputBoxDefault`, and observes the `.cmd-advanced-body` re-hides
-(`display: none`).
 
 ### 29. Blank cached-input price costs 0 instead of the advertised 10% fallback
 
@@ -1023,3 +992,4 @@ closure; never rewrite past entries.
 - 2026-08-04 - "System-message files referenced by their legacy `system-messages/` path are never resolved" - CLOSED as won't-fix (single-user, no migration): the path only exists in profiles saved before commit 0229368 moved the files into default-settings/; the user corrected their one profile manually. Scenario 59 removed (no regression check kept).
 - 2026-08-04 - "Per-thread system prompt / temperature edits are discarded on reload when an assistant is active" - FIXED in a30ae19: `_restoreThreadSettings` now applies the assistant's system message / reasoning / temperature ONLY when the thread has no per-thread override for that field, so per-thread edits survive reloads and reach the API request; scenario 47 flipped to a regression check (`regression: true`) + ChatSettings AHK unit tests (overrides win; assistant defaults still apply when no override).
 - 2026-08-04 - "Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)" - FIXED in 50d4111: `#sysMsgMini` now has an input listener that updates `_currentSettings.systemMessage` and posts the debounced `updateModelSettings` (mirrors the modal Save path); scenario 60 flipped to a regression check (`regression: true`) + model-picker-config unit test.
+- 2026-08-04 - "Commands Advanced card collapses when you click inside it to edit a field" - FIXED in b31a6b9: the Advanced toggle listener moved from the whole `.cmd-advanced-wrap` to the `.cmd-advanced-toggle` header, so clicks inside fields no longer collapse the card; scenario 27 flipped to a regression check (`regression: true`) + commands-advanced-toggle unit test.
