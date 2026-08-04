@@ -32,7 +32,7 @@ The LLM AutoHotkey Assistant is an AutoHotkey v2 application that:
 - Binds global hotkeys to an LLM **command menu** (`backtick` by default).
 - Captures selected text via **UIA (UI Automation)** and sends it to LLM providers through **cURL**.
 - Renders conversations in a persistent **WebView2** chat window with branching, attachments, folders, search, and per-thread usage tracking.
-- Manages all settings through an in-app **Settings panel** backed by a JSON file, with a **model metadata pipeline** (models.dev → corrections → `DefaultSettings.ahk`).
+- Manages all settings through an in-app **Settings panel** backed by a JSON file, with a **model metadata pipeline** (models.dev → corrections → `DefaultModels.ahk`).
 
 It talks to multiple providers through OpenAI-compatible endpoints plus provider-specific shims (DeepSeek's `thinking` toggle, Google's `thinking_config`), driven entirely by per-model metadata.
 
@@ -133,8 +133,10 @@ This is the same reason Chrome runs each tab in its own process, and Electron sp
 ```
 autohotkey-llm-client/
 ├── Main.ahk                     # Main process entry point (hotkeys, tray, inline requests)
-├── DefaultSettings.ahk          # Default settings as top-level globals (commands, hotkeys, ...)
-├── DefaultModels.ahk            # Auto-generated model metadata (pricing, thinking, compat)
+├── default-settings/            # Shipped app defaults
+│   ├── DefaultSettings.ahk      # Default settings as top-level globals (commands, hotkeys, ...)
+│   ├── DefaultModels.ahk        # Auto-generated model metadata (pricing, thinking, compat)
+│   └── system-messages/         # Default system message text files
 ├── README.md, ARCHITECTURE.md, LICENSE
 │
 ├── api/                         # API client layer
@@ -234,7 +236,6 @@ autohotkey-llm-client/
 │   ├── js-coverage-report.js    # Coverage report generator
 │   └── README.md                # Pipeline documentation
 │
-├── system-messages/             # Default system message text files
 ├── icons/                       # Provider icons + tray icons (IconOn/IconOff)
 │
 ├── webui/                       # WebView2 frontend (chat + settings + api logs)
@@ -274,14 +275,14 @@ autohotkey-llm-client/
 │   ├── test_config.ahk          # Test overrides (mock models/providers for unit tests)
 │   ├── unit/                    # Unit tests — AHK (.test.ahk) + JS (.test.js)
 │   ├── integration/             # Integration tests (BranchFlow, ChatFlow, UsageFlow, ...)
-│   └── headless/                # Headless e2e harness: verify-bugs.js + BUG_HUNT_REPORT.md
+│   └── headless/                # Headless e2e harness: e2e-suite.js + scenarios/ + BUG_HUNT_REPORT.md
 ```
 
 ## Key Design Decisions
 
-- **Entry point**: `Main.ahk` — double-click to run. It includes `lib/Config.ahk` (the include chain) which loads `DefaultSettings.ahk`, `shared/`, `api/`, `app/`, `chat/`, `ipc/`.
+- **Entry point**: `Main.ahk` — double-click to run. It includes `lib/Config.ahk` (the include chain) which loads `default-settings/DefaultSettings.ahk`, `shared/`, `api/`, `app/`, `chat/`, `ipc/`.
 - **Settings are JSON**: `app/settings/SettingsHandler.ahk` loads/saves `%APPDATA%\LLM-AutoHotkey-Assistant\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
-- **DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; model metadata is generated into `DefaultModels.ahk` by `scripts/Refresh-Models.ps1`.
+- **default-settings/DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; model metadata is generated into `default-settings/DefaultModels.ahk` by `scripts/Refresh-Models.ps1`.
 - **Persistent single-window model**: one `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
 - **SQLite persistence**: chat history in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Branching, soft-delete, reasoning, attachments, folders, usage tracking.
 - **Content-addressable attachments**: files stored by SHA-256 hash; O(1) dedup; reference-counted deletion. Scanned PDF pages rendered as images via pdf.js canvas.
@@ -355,7 +356,7 @@ Sync-Pi-Corrections.ps1   (dev tool: extracts corrections from the pi repo)
 ```
 
 - `scripts/models-corrections.json` is the single, version-controlled override file (e.g. fixing deepseek-v4-flash's effort values to `["none","low","high","max"]`).
-- `scripts/Refresh-Models.ps1` writes `DefaultModels.ahk` (the committed generated model metadata) and keeps a timestamped backup at `scripts/models_metadata.txt`.
+- `scripts/Refresh-Models.ps1` writes `default-settings/DefaultModels.ahk` (the committed generated model metadata) and keeps a timestamped backup at `scripts/models_metadata.txt`.
 - Each model entry carries: `provider`, `api`, `compat` (`thinkingFormat`, `supportsReasoningEffort`, `supportsUsageInStreaming`, `maxTokensField`), `thinkingLevelMap`, `thinkingOff`, pricing (`input`/`cachedInput`/`output`), `context`, `reasoning`, `vision`.
 - See `scripts/README.md` for the full pipeline explanation.
 
@@ -622,11 +623,13 @@ tests\run_js_tests.bat               # JS only (node:test)
 tests\run_ahk_tests.ahk              # AHK only (custom runner)
 ```
 
-Headless end-to-end (GUI bug harness — launches the real app; needs an interactive
-session + elevated permissions; deliberately not part of `run_all_tests.bat`):
+Headless end-to-end (GUI bug harness — launches the real app with the window kept
+off-screen and NO keystroke injection, so it never flashes, steals focus, or types into
+your session; needs elevated permissions for profile isolation; deliberately not part of
+`run_all_tests.bat`):
 
 ```
-node tests\headless\verify-bugs.js --all          # every scenario against the real app
+node tests\headless\e2e-suite.js --all          # every scenario against the real app
 ```
 
 The harness also supports targeted re-runs (`--scenarios=...`), report/scenario sync
@@ -656,7 +659,7 @@ report** — this is the workflow to point an agent at when auditing or fixing t
   defines the full lifecycle (intake + fix cycle) with the exact file to touch at each step.
 - `tests/headless/README.md` — harness manual: how to run scenarios, add one, write AHK
   probes, and the environment quirks to avoid.
-- `tests/headless/verify-bugs.js` — the scenario runner. `--check-sync` enforces that the
+- `tests/headless/e2e-suite.js` — the scenario runner (scenario definitions live in `tests/headless/scenarios/*.js`). `--check-sync` enforces that the
   report and the scenario list stay in sync (no stale/dangling ids), and `--all` re-verifies
   every scenario against the real app.
 
@@ -671,3 +674,44 @@ the work it describes, so a task closed midway resumes from "Where we left off".
 **How a developer points an agent at it:** "fix bug #5", "add more bugs to the bug hunt",
 "verify this repro: …", "continue", or "re-verify everything" — all are handled by the
 report's lifecycle rules (see `tests/headless/README.md → How a developer uses this`).
+
+## Development & Editing Notes
+
+Practical rules for anyone (human or agent) editing this repo. The encoding rule
+exists because a PowerShell bulk edit once double-encoded every non-ASCII
+character in four docs.
+
+### Encoding safety
+
+- Use `apply_patch` for edits. It preserves UTF-8 and line endings.
+- **Never** bulk-rewrite text files with PowerShell `Get-Content` /
+  `Set-Content`. Windows PowerShell 5.1 decodes UTF-8 files without a BOM as
+  ANSI (Windows-1252) and re-encodes them, double-encoding every non-ASCII
+  character (box-drawing, arrows, em-dashes become mojibake) and flipping LF to
+  CRLF.
+- For bulk mechanical rewrites, use Node with explicit UTF-8
+  (`fs.readFileSync(..., 'utf8')` / `fs.writeFileSync`) or git (`git mv`,
+  `git checkout --` to revert). After any doc edit, run `git diff` and confirm
+  no unintended encoding/line-ending changes. Repo text files are UTF-8,
+  LF-only, no BOM.
+
+### Testing
+
+- Unit suites: `tests\run_all_tests.bat` (AHK + JS); the headless E2E suite
+  entry is `node tests/headless/e2e-suite.js --all` (see the Testing and
+  Bug-Hunt sections above). Both must pass before declaring a task done.
+- Every fixed bug adds a `regression: true` scenario; `--check-sync` enforces
+  report <-> scenario agreement.
+
+### Process safety
+
+- **Never** kill `AutoHotkey64.exe` or `msedgewebview2.exe` by name — the user
+  runs their own AHK scripts, and other apps use WebView2. Use
+  `node tests/headless/e2e-suite.js --cleanup`, which matches only this repo's
+  processes (by command line / unique temp-folder marker).
+- Never `rm -rf` broad paths; scope deletions to explicit, verified targets.
+
+### Git
+
+- Don't auto-commit or push. Suggest a commit message covering all uncommitted
+  changes when a task is done.

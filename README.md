@@ -37,7 +37,7 @@ A Windows-native AI assistant that lives in your taskbar. Press `` ` `` (backtic
 
 ## Configuration
 
-Edit [`DefaultSettings.ahk`](DefaultSettings.ahk) to customize:
+Edit [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk) to customize:
 - API providers and models
 - Commands (the `` ` `` menu)
 - Assistants (chat profiles with custom system prompts)
@@ -56,7 +56,7 @@ tests\run_js_tests.bat    # Node.js unit tests (requires Node.js)
 tests\run_ahk_tests.ahk   # AHK unit & integration tests
 
 # Headless end-to-end GUI suite (launches the real app; needs an interactive session)
-node tests\headless\verify-bugs.js --all
+node tests\headless\e2e-suite.js --all
 ```
 
 The headless harness manual (targeted scenarios, sync check, cleanup) is
