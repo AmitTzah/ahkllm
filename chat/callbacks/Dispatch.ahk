@@ -16,12 +16,17 @@ _SurfaceError(context, err) {
 }
 
 OnWebMessageReceived(sender, args) {
+    reqId := ""
     try {
         msg := args.TryGetWebMessageAsString()
         if !msg
             return
         parsed := jsongo.Parse(msg)
         action := parsed.Get("action", "")
+        ; Correlation id (step 2 of the IPC refactor): every WebView request
+        ; carries a reqId; the dispatch answers with an ack carrying the same
+        ; id so the WebView can resolve promises and surface failures.
+        reqId := parsed.Get("reqId", "")
         switch action {
             case "chatSend":
                 handleChatSend(parsed)
@@ -76,9 +81,22 @@ OnWebMessageReceived(sender, args) {
             case "updateFontSize":
                 handleUpdateFontSize(parsed)
         }
+        _AckWebMessage(reqId, action, true, "")
     } catch Error as e {
         _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)
+        _AckWebMessage(reqId, IsSet(action) ? action : "unknown", false, e.Message)
     }
+}
+
+; Acknowledge a WebView request. Only sent when the request carried a reqId
+; (older ad-hoc posts are not acknowledged, keeping the contract opt-in).
+_AckWebMessage(reqId, action, ok, errorMsg) {
+    if reqId = ""
+        return
+    ack := { reqId: reqId, action: action, ok: ok }
+    if errorMsg != ""
+        ack.error := errorMsg
+    postWebMessage("ack", ack)
 }
 
 ; WebView just loaded/reloaded — send current thread data if one exists.

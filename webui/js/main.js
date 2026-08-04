@@ -54,6 +54,13 @@ function handleWebMessage(event) {
     var target = message.target;
     var data = message.data;
 
+    // Acks resolve pending Ipc.request() promises - handle them before the
+    // regular message switch (they are not UI messages).
+    if (target === 'ack' && typeof Ipc !== 'undefined') {
+      Ipc.handleAck(message);
+      return;
+    }
+
     // Validate every incoming AHK message against the shared IPC contract.
     // Dev-time guard: report contract violations loudly, never throw.
     if (typeof IPCMessages !== 'undefined' && target) {

@@ -106,7 +106,16 @@ window.SettingsPanel = (function() {
         }
       }
     }
-    Ipc.postToHost('saveSettings', { data: data });
+    // Step 2 of the IPC refactor: await the AHK acknowledgement so a
+    // dispatch failure or a dropped message surfaces instead of failing
+    // silently (the settingsSaved handler reports save-level errors).
+    Ipc.request('saveSettings', { data: data }).catch(function(err) {
+      if (typeof window._showConfirm === 'function') {
+        window._showConfirm('Save Failed', err.message || 'Settings could not be saved.', 'OK');
+      } else {
+        console.error('[Settings] save failed: ' + (err && err.message));
+      }
+    });
   }
 
   function resetToDefaults() {
@@ -132,6 +141,9 @@ window.SettingsPanel = (function() {
       console.log('[Settings] Saved successfully');
     } else {
       console.error('[Settings] Save failed:', response ? response.error : 'unknown');
+      if (typeof window._showConfirm === 'function') {
+        window._showConfirm('Save Failed', (response && response.error) || 'Settings could not be saved.', 'OK');
+      }
     }
   }
 

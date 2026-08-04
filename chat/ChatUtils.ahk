@@ -17,7 +17,7 @@ cURLState(action, data := 0) {
 ; Post a message to the WebView
 ; ----------------------------------------------------
 
-postWebMessage(target, data := unset) {
+postWebMessage(target, data := unset, reqId := "") {
     global responseWindow
     if !IsSet(responseWindow) || !responseWindow {
         return
@@ -27,6 +27,10 @@ postWebMessage(target, data := unset) {
 
     ; If data is provided, add it to the message object
     msgObj.data := IsSet(data) ? data : unset
+    ; Correlation id from a WebView request (step 2 of the IPC refactor):
+    ; replies echo it so the WebView can match responses to requests.
+    if reqId != ""
+        msgObj.reqId := reqId
 
     jsonStr := jsongo.Stringify(msgObj)
     try responseWindow.PostWebMessageAsJSON(jsonStr)

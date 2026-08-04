@@ -54,6 +54,7 @@
     'updateChatView': { dir: 'ahk->web', data: 'array' },
     'iconFileSelected': { dir: 'ahk->web', fields: ['field', 'path'], required: ['field', 'path'] },
     'modelPricingRefresh': { dir: 'ahk->web', fields: ['success', 'models', 'error'], required: ['success'] },
+    'ack': { dir: 'ahk->web', fields: ['reqId', 'action', 'ok', 'error'], required: ['reqId', 'action', 'ok'] },
 
     // ---------- WebView -> AHK ----------
     'chatSend': { dir: 'web->ahk', fields: ['message', 'attachments'], required: ['message'] },

@@ -555,6 +555,18 @@ and as a CommonJS module for tests.
   change; the scenario suite's `--check-sync` covers the bug report, this
   covers the message contract.
 
+### Correlation ids and acknowledgements
+
+Every outgoing WebView message carries a `reqId` (added by
+`Ipc.postToHost`/`Ipc.request`). `chat/callbacks/Dispatch.ahk` reads the id and
+answers with an `ack` message (`{ reqId, action, ok, error? }`) for every
+request that carries one, including the error path. `Ipc.request(action,
+payload)` returns a Promise resolved by the matching ack (rejected on
+`ok: false` or a 10s timeout), so fire-and-forget failures can be surfaced.
+The Settings Save flow is the first consumer: it awaits the ack and shows a
+"Save Failed" confirmation when the dispatch fails or times out, and the
+`settingsSaved` handler surfaces save-level failures the same way.
+
 ### AHK → WebView (`postWebMessage`)
 
 Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `defaultSettings`, `settingsSaved`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`.

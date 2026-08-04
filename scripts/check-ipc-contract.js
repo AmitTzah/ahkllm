@@ -43,8 +43,9 @@ function scanJsActions() {
     if (!p.endsWith('.js') || VENDOR_RE.test(rel)) return;
     const src = fs.readFileSync(p, 'utf8');
     for (const m of src.matchAll(/action\s*:\s*'([A-Za-z]+)'/g)) found.add(m[1]);
-    // All outgoing messages go through Ipc.postToHost after the IPC refactor.
+    // All outgoing messages go through Ipc.postToHost / Ipc.request.
     for (const m of src.matchAll(/Ipc\.postToHost\('([A-Za-z]+)'/g)) found.add(m[1]);
+    for (const m of src.matchAll(/Ipc\.request\('([A-Za-z]+)'/g)) found.add(m[1]);
   });
   return found;
 }

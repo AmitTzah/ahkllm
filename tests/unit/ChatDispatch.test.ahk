@@ -137,6 +137,44 @@ class ChatDispatchTest {
             throw Error("requestCurrentSettings should post currentSettings")
     }
 
+    ; Step 2 of the IPC refactor: every WebView request carries a reqId and
+    ; the dispatch must acknowledge it with an ok ack echoing the same id.
+    Dispatch_AcksWebRequests_WithCorrelationId() {
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"requestAssistantList","reqId":"r42"}'))
+        } finally {
+            web.restore()
+        }
+        found := false
+        for _, json in web.captured {
+            if InStr(json, '"target":"ack"') && InStr(json, '"reqId":"r42"')
+                && InStr(json, '"action":"requestAssistantList"') && InStr(json, '"ok":1')
+                found := true
+        }
+        if !found
+            throw Error("action with reqId should receive an ok ack echoing the reqId")
+    }
+
+    ; The ack error path: _AckWebMessage reports dispatch failures with the
+    ; same reqId so the WebView can reject its pending request.
+    AckReportsErrors_WithCorrelationId() {
+        web := this._captureWebView()
+        try {
+            _AckWebMessage("r7", "saveSettings", false, "boom")
+        } finally {
+            web.restore()
+        }
+        found := false
+        for _, json in web.captured {
+            if InStr(json, '"target":"ack"') && InStr(json, '"reqId":"r7"')
+                && InStr(json, '"ok":0') && InStr(json, '"error":"boom"')
+                found := true
+        }
+        if !found
+            throw Error("_AckWebMessage should post an error ack with the reqId")
+    }
+
     ; Regression: the ready handshake is the ONLY reliable point to wire the
     ; Send button (WebView2 drops messages posted before the page installed its
     ; listener, so the startup setChatButtonsEnabled post is racy). The handler

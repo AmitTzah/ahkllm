@@ -40,6 +40,7 @@ describe('ipc-contract validate', () => {
     assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi', attachments: [] }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('updateModelSettings', { model: 'm', systemMessage: '', reasoning: '', temperature: '', codeExecution: false, webSearch: false }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('sidebarAction', { subAction: 'moveToFolder', threadId: 't', folderId: 'f' }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('ack', { reqId: 'r1', action: 'saveSettings', ok: true }, 'ahk->web'), []);
   });
 
   it('flags undeclared message names', () => {
@@ -55,6 +56,11 @@ describe('ipc-contract validate', () => {
   it('flags missing required fields', () => {
     const problems = contract.validate('searchMessages', { query: 'x' }, 'web->ahk');
     assert.ok(problems.some((p) => p.indexOf('missing required field "queryId"') >= 0));
+  });
+
+  it('flags acks without a correlation id', () => {
+    const problems = contract.validate('ack', { action: 'saveSettings', ok: true }, 'ahk->web');
+    assert.ok(problems.some((p) => p.indexOf('missing required field "reqId"') >= 0));
   });
 
   it('flags undeclared payload fields', () => {
