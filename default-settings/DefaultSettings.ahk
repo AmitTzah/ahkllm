@@ -116,7 +116,7 @@ assistants := [
         systemMessageFile: "default-settings/system-messages/violet.txt",
         reasoning: "none",
         temperature: "",
-        description : "Violet is pretty crazy. Talk to her at your own risk.",
+        description : "A direct, unfiltered conversationalist with her own opinions.",
         isDefault: false
     }
 ]
