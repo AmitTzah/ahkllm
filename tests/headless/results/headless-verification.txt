@@ -1,5 +1,5 @@
-PASS | #99 | SCRATCH: per-thread system message reaches the API request (assistant active, thread reload) | railBeforeReload="SYSTEM PROBE MESSAGE" railAfterReload="" db={"assistant_id":"asst-99","system_override":"SYSTEM PROBE MESSAGE"} request.messages=[{"content":"first message","role":"user"},{"content":"second message","role":"user"}] userSystemFound=false | 7.0s
+RUNNER ERROR: EPERM: operation not permitted, rename 'C:\Users\Amit\AppData\Roaming\LLM-AutoHotkey-Assistant' -> 'C:\Users\Amit\AppData\Local\Temp\llm-profile-bak-1785875342034'
 
-Summary: 1/1 scenarios PASS
-Real profile restored: yes
+Summary: 0/1 scenarios PASS
+Real profile restored: not attempted
 Report sync: OK

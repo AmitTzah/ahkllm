@@ -54,9 +54,17 @@ _restoreThreadSettings(threadId) {
         asst := AssistantRepo.GetFromSettings(settings.assistantId)
         if asst {
             requestParams["singleAPIModelName"] := asst.baseModel
-            requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
-            requestParams["reasoningOverride"] := asst.reasoning
-            requestParams["temperatureOverride"] := asst.temperature
+            ; Fall back to the assistant's values ONLY where the thread has no
+            ; per-thread override. Stored overrides (system prompt, reasoning,
+            ; temperature) must win over the assistant defaults - otherwise a
+            ; per-thread edit made while an assistant is active silently
+            ; vanishes on the next reload (bug #47).
+            if !settings.systemOverride
+                requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
+            if !settings.reasoningOverride
+                requestParams["reasoningOverride"] := asst.reasoning
+            if !settings.temperatureOverride
+                requestParams["temperatureOverride"] := asst.temperature
         }
     }
 }

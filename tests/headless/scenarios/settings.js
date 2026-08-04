@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, hideSettingsToChat } = require('./helpers');
+const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, hideSettingsToChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
 
@@ -247,6 +247,7 @@ scenarios.push({
 scenarios.push({
   id: 26,
   name: 'Opening Settings wipes the right-rail per-thread settings',
+  regression: true, // FIXED bug kept as a regression check (right rail must survive opening Settings)
   mode: null,
   settings: {},
   async body({ cdp }) {
@@ -540,12 +541,58 @@ scenarios.push({
     await sleep(700);
     const miniReloaded = await cdp.eval('document.getElementById("sysMsgMini").value');
     const rows = seed.query(dbPath, "SELECT system_override, temperature_override FROM chat_threads WHERE id='t-asst-47'");
-    // BUG: the override IS persisted (system_override='user override') but
-    // _restoreThreadSettings overwrites it with the assistant's system message.
-    if (miniReloaded === 'user override')
-      throw new Error('per-thread override survived the reload (bug not reproduced): ' + JSON.stringify(miniReloaded));
-    return 'edited system prompt to "user override" with assistant active; DB still holds system_override=' +
-      JSON.stringify(rows[0] && rows[0].system_override) + ' but after reload the rail shows "' + miniReloaded + '"';
+    // FIXED (bug #47): the per-thread override is persisted AND wins over the
+    // assistant's defaults when the thread reloads.
+    if (miniReloaded !== 'user override')
+      throw new Error('per-thread override did not survive the reload: "' + miniReloaded + '" (DB system_override=' +
+        JSON.stringify(rows[0] && rows[0].system_override) + ')');
+    return 'edited system prompt to "user override" with assistant active; after reload the rail still shows "' +
+      miniReloaded + '" (DB system_override=' + JSON.stringify(rows[0] && rows[0].system_override) + ')';
+  }
+});
+
+scenarios.push({
+  id: 60,
+  name: 'Typing a system prompt directly into the right-rail field never reaches the API request',
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.getElementById("modelCardTrigger") !== null && typeof window._assistantList !== "undefined"', 15000, 300, 'model card + list');
+    await cdp.click('#modelCardTrigger');
+    await cdp.waitFor('document.getElementById("modelPopover").classList.contains("open")', 5000, 200, 'popover open');
+    await cdp.waitFor('[...document.querySelectorAll("#tab-assistants .selector-item .si-name")].some(e => e.textContent === "Violet")', 10000, 250, 'violet listed');
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#tab-assistants .selector-item')];
+      const it = items.find((el) => el.querySelector('.si-name') && el.querySelector('.si-name').textContent === 'Violet');
+      if (!it) return false;
+      it.click();
+      return true;
+    })()`);
+    await sleep(1500); // switchAssistant round trip
+    // Type DIRECTLY into the mini field (no Expand modal), then send.
+    await cdp.eval('document.getElementById("sysMsgMini").value = ""');
+    await cdp.type('#sysMsgMini', 'DIRECT TYPED MESSAGE');
+    await sleep(800);
+    const railAfter = await cdp.eval('document.getElementById("sysMsgMini").value');
+    if (railAfter !== 'DIRECT TYPED MESSAGE')
+      throw new Error('typed message not visible in the rail (setup): ' + JSON.stringify(railAfter));
+    await sendChatMessage(cdp, 'hello from direct typing');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l));
+    const chatReq = lines.find((e) => e.body && e.body.stream === true);
+    if (!chatReq) throw new Error('no streaming chat request was logged; lines=' + lines.length);
+    const b = chatReq.body;
+    const sysMsg = (b.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || ''));
+    const containsTyped = sysMsg.some((c) => c.indexOf('DIRECT TYPED MESSAGE') >= 0);
+    // BUG: the typed text is visible in the box but never reaches
+    // requestParams (no input wiring on #sysMsgMini), so the sent request
+    // carries the assistant's system message instead.
+    if (containsTyped)
+      throw new Error('typed message unexpectedly reached the request (bug not reproduced)');
+    return 'typed directly into the rail field; box shows "DIRECT TYPED MESSAGE" but the sent request carries the assistant system message (head=' +
+      JSON.stringify(sysMsg[0] ? sysMsg[0].slice(0, 50) : '(none)') + ')';
   }
 });
 

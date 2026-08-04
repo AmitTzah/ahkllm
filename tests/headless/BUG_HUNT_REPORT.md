@@ -154,22 +154,32 @@ How to run AHK safely:
 
 ## Current state
 
-- **28 verified, 1 fix applied (bug #26), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
+- **27 verified, 1 fix applied (bug #47), 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
   streaming, message rendering, and thread metadata) verified 56 (stopping a
   stream before the first token shows an error banner), 57 (message content
   renders as raw HTML — embedded handlers execute in the WebView), and 58
   (forking a chat drops the thread's folder). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bug #26 fixed — `main.js` no longer routes the FULL
-  merged settings payload through `populateCurrentSettings`, so the right rail
-  keeps its per-thread values (system prompt, temperature, thinking level,
-  font size, Advanced toggles) when Settings opens; scenario 26 flipped to
-  assert the fixed behavior and PASSES, a regression unit test was added in
-  `tests/unit/main.test.js`, and the full AHK (431/431) + JS (466/466) suites
-  are green. Entry is `fix applied` — waiting for the user's manual
-  verification, then the commit. Next per the fix cycle: bug #47, then the
-  rest in rank order, one at a time, each with a flipped scenario + code-level
-  regression test. Harness cleanup is PID-targeted: use
+- **Where we left off:** bug #26 fixed and committed (f64a59d); its entry moved
+  to History. Bug #47 fixed —
+  `_restoreThreadSettings` now applies the assistant's system message /
+  reasoning / temperature ONLY when the thread has no per-thread override for
+  that field, so per-thread edits survive reloads (and reach the API request);
+  scenario 47 flipped to assert the fixed behavior and PASSES, two regression
+  unit tests added in `tests/unit/ChatSettings.test.ahk`, and the full AHK
+  (433/433) + JS (466/466) suites are green. An API-level headless check
+  confirmed the sent request carries the override after reload. Entry is
+  `fix applied` — waiting for the user's manual verification, then the commit.
+  Bug #59 closed as won't-fix (single-user, no migration): the legacy
+  `system-messages/` path only exists in profiles saved before commit 0229368;
+  the user corrected their one profile manually, scenario 59 removed. Next per
+  the fix cycle: bug #47's commit, then bug #27 and the rest in rank order,
+  one at a time, each with a flipped scenario + code-level regression test.
+  Bug #60 reported (intake, not yet verified): typing directly into the
+  right-rail "System prompt" field is display-only — no input wiring, so the
+  typed text never reaches the API request; scenario 60 added, run pending
+  (the app must be closed so the harness can isolate the profile). Harness
+  cleanup is PID-targeted: use
   `node tests/headless/e2e-suite.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -224,44 +234,11 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 26. Opening Settings wipes the right-rail per-thread settings
-
-**Scenario:** 26 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** set a system prompt (or temperature/thinking/font size) in the chat
-right rail, then click the Settings icon (or close Settings afterwards) and look at
-the right rail.
-
-**Expected:** the right-rail per-thread settings (system message, temperature,
-reasoning level, font size, Advanced toggles) stay exactly as they were.
-
-**Actual:** they are wiped to empty/defaults. Opening Settings posts
-`requestAllSettings`; AHK answers with the FULL merged settings object as a
-`currentSettings` message, and `main.js` routes every `currentSettings` message
-through `populateCurrentSettings`, which reads only per-thread fields
-(`settings.model` / `systemMessage` / ...) that the full object does not have. So
-`#sysMsgMini` is cleared, temperature resets to 1.0/Default, the thinking dropdown
-resets to "Model Default", Advanced toggles turn off, and the chat font size resets
-to 17px. A later right-rail change also sends `model: ""`, silently resetting the
-thread's model to the app default.
-
-**Evidence:** `webui/js/main.js` `case 'currentSettings'` calls
-`populateCurrentSettings(data)` unconditionally; `webui/js/chat/model-picker/
-model-picker-config.js` `populateCurrentSettings()` sets `settings.model || ''` etc.;
-`chat/callbacks/Dispatch.ahk` `_HandleRequestAllSettings()` posts the merged full map
-and never re-posts the partial per-thread payload afterwards.
-
-**Verification:** headless scenario 26 types a system message via the right-rail
-modal, confirms `#sysMsgMini` shows it, opens Settings, and observes `#sysMsgMini`
-is blank.
-
 ### 47. Per-thread system prompt / temperature edits are discarded on reload when an assistant is active
 
 **Scenario:** 47 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** load a chat that uses an assistant, edit the system prompt (or
 temperature / thinking level) in the right rail, then switch to another thread
@@ -288,6 +265,41 @@ assistant without checking whether per-thread overrides already exist.
 system prompt to "user override" via the right-rail modal (rail confirms), reloads
 the thread, and observes the rail reverts to "assistant system" while the DB still
 holds `system_override='user override'`.
+
+### 60. Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)
+
+**Scenario:** 60 (scenario code in e2e-suite.js)
+
+**Status:** reported
+
+**Repro:** load any chat (or choose an assistant), click into the "System
+prompt" textarea in the right rail, and type a new system message — without
+using the Expand modal.
+
+**Expected:** typing updates the per-thread system prompt like the Expand
+-> Save path does: the value shows in the rail and is sent in the next API
+request.
+
+**Actual:** the text appears in the box but nothing else happens. `#sysMsgMini`
+has no input/change listener, so `window._currentSettings.systemMessage` and
+`requestParams["systemOverride"]` are never updated and no `updateModelSettings`
+is posted. The next API request carries whatever was last saved via the modal
+(or the assistant's file message) — the typed text is silently dropped. Only
+the Expand -> Save (modal) path persists.
+
+**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` —
+`sysMsgMini` is only ever WRITTEN (`populateCurrentSettings`, modal open/save,
+assistant click) and has no input/change wiring; `_sendAllSettings()` is only
+called from the modal save, temperature, thinking-dropdown, and toggle
+handlers; `webui/index.html:368` defines the textarea without a listener;
+`chat/ChatSettings.ahk` `handleModelSettingsUpdate` is only reached via
+`updateModelSettings` posts.
+
+**Verification:** headless scenario 60 chooses an assistant, types directly
+into `#sysMsgMini`, sends a chat, and inspects the mock request — the typed
+text is absent (the previous system message is sent instead). Pending: the
+scenario has not run yet (app must be closed so the harness can isolate the
+profile).
 
 ### 27. Commands Advanced card collapses when you click inside it to edit a field
 
@@ -1076,3 +1088,5 @@ closure; never rewrite past entries.
 - 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
 - 2026-08-02 — "Clearing a hotkey field does nothing — hotkeys can't be disabled" — FIXED in 00bb503: empty hotkey now means disabled — `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
 - 2026-08-04 - "Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path" - FIXED in 6f7ae77: CommandMenu._resolveSystemMessage now searches default-settings/system-messages/ + AppData like the assistant path; scenario 50 flipped to a regression check (`regression: true`) + UserConfig AHK unit test.
+- 2026-08-04 - "Opening Settings wipes the right-rail per-thread settings" - FIXED in f64a59d: main.js routes only the chat-sidebar partial `currentSettings` payload through `populateCurrentSettings`; the full merged settings object goes only to `SettingsPanel.onSettingsReceived` (discriminator: `Array.isArray(data.commands)`); scenario 26 flipped to a regression check (`regression: true`) + main.js routing unit test.
+- 2026-08-04 - "System-message files referenced by their legacy `system-messages/` path are never resolved" - CLOSED as won't-fix (single-user, no migration): the path only exists in profiles saved before commit 0229368 moved the files into default-settings/; the user corrected their one profile manually. Scenario 59 removed (no regression check kept).

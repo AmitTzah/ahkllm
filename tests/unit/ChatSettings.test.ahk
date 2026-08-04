@@ -243,4 +243,73 @@ class ChatSettingsTest {
                 requestParams.Delete("activeAssistantId")
         }
     }
+
+    ; Regression (bug #47): per-thread overrides must survive a reload even
+    ; when an assistant is active. _restoreThreadSettings used to apply the
+    ; stored overrides and THEN overwrite all three with the assistant's
+    ; values, so any per-thread edit (system prompt, thinking, temperature)
+    ; made while an assistant was active silently vanished on the next load.
+    test_restoreThreadSettings_keepsPerThreadOverrides_whenAssistantActive() {
+        global requestParams, activeThreadId, assistants
+
+        this._openDb()
+
+        assistants := [{
+            id: "asst-47", name: "Test Asst", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+
+        threadId := ChatDB.Thread_Create("Override Thread")
+        ChatDB.Thread_UpdateSettings(threadId, {
+            assistantId: "asst-47",
+            systemOverride: "user override",
+            reasoningOverride: "low",
+            temperatureOverride: "0.9"
+        })
+
+        _restoreThreadSettings(threadId)
+
+        if !requestParams.Has("activeAssistantId") || requestParams["activeAssistantId"] != "asst-47"
+            throw Error("assistant should stay active")
+        if requestParams["systemOverride"] != "user override"
+            throw Error("systemOverride was overwritten by the assistant: " requestParams["systemOverride"])
+        if requestParams["reasoningOverride"] != "low"
+            throw Error("reasoningOverride was overwritten by the assistant: " requestParams["reasoningOverride"])
+        if requestParams["temperatureOverride"] != "0.9"
+            throw Error("temperatureOverride was overwritten by the assistant: " requestParams["temperatureOverride"])
+
+        this._closeDb()
+    }
+
+    ; The fallback must stay intact: with NO per-thread overrides, the
+    ; assistant's values (system message, reasoning, temperature) still apply
+    ; when the thread reloads.
+    test_restoreThreadSettings_fallsBackToAssistantDefaults() {
+        global requestParams, activeThreadId, assistants
+
+        this._openDb()
+
+        assistants := [{
+            id: "asst-47b", name: "Test Asst", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+
+        threadId := ChatDB.Thread_Create("Assistant Thread")
+        ChatDB.Thread_UpdateSettings(threadId, { assistantId: "asst-47b" })
+
+        _restoreThreadSettings(threadId)
+
+        if !requestParams.Has("activeAssistantId") || requestParams["activeAssistantId"] != "asst-47b"
+            throw Error("assistant should be active")
+        if requestParams["systemOverride"] != "assistant system"
+            throw Error("assistant system message should apply when no override: " requestParams["systemOverride"])
+        if requestParams["reasoningOverride"] != "high"
+            throw Error("assistant reasoning should apply when no override: " requestParams["reasoningOverride"])
+        if requestParams["temperatureOverride"] != "0.3"
+            throw Error("assistant temperature should apply when no override: " requestParams["temperatureOverride"])
+
+        this._closeDb()
+    }
 }
