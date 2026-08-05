@@ -1,4 +1,4 @@
-# LLM AutoHotkey Assistant — Architecture Guide
+# AhkLLM — Architecture Guide
 
 ## Contents
 
@@ -27,7 +27,7 @@
 
 ## Overview
 
-The LLM AutoHotkey Assistant is an AutoHotkey v2 application that:
+AhkLLM is an AutoHotkey v2 application that:
 
 - Binds global hotkeys to an LLM **command menu** (`backtick` by default).
 - Captures selected text via **UIA (UI Automation)** and sends it to LLM providers through **cURL**.
@@ -38,7 +38,7 @@ It talks to multiple providers through OpenAI-compatible endpoints plus provider
 
 ## Data Storage Locations
 
-All persistent data lives under `%APPDATA%\LLM-AutoHotkey-Assistant\`:
+All persistent data lives under `%APPDATA%\AhkLLM\`:
 
 | Path | What | Format |
 |---|---|---|
@@ -281,10 +281,10 @@ autohotkey-llm-client/
 ## Key Design Decisions
 
 - **Entry point**: `Main.ahk` — double-click to run. It includes `lib/Config.ahk` (the include chain) which loads `default-settings/DefaultSettings.ahk`, `shared/`, `api/`, `app/`, `chat/`, `ipc/`.
-- **Settings are JSON**: `app/settings/SettingsHandler.ahk` loads/saves `%APPDATA%\LLM-AutoHotkey-Assistant\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
+- **Settings are JSON**: `app/settings/SettingsHandler.ahk` loads/saves `%APPDATA%\AhkLLM\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
 - **default-settings/DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; model metadata is generated into `default-settings/DefaultModels.ahk` by `scripts/Refresh-Models.ps1`.
 - **Persistent single-window model**: one `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
-- **SQLite persistence**: chat history in `%APPDATA%\LLM-AutoHotkey-Assistant\chat_history.db` (WAL mode). Branching, soft-delete, reasoning, attachments, folders, usage tracking.
+- **SQLite persistence**: chat history in `%APPDATA%\AhkLLM\chat_history.db` (WAL mode). Branching, soft-delete, reasoning, attachments, folders, usage tracking.
 - **Content-addressable attachments**: files stored by SHA-256 hash; O(1) dedup; reference-counted deletion. Scanned PDF pages rendered as images via pdf.js canvas.
 - **Virtual host mapping**: WebView2 loads from `https://ahk.localhost/` (not `file://`) — gives a proper origin for workers/fetch, eliminating pdf.js "fake worker" warnings.
 - **cURL for API calls**: JSON payloads written to `%TEMP%`, `cURL.exe` performs the request (streaming via `-N`).

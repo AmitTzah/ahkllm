@@ -37,8 +37,8 @@ Join(sep, arr) {
 ChatHwnd() {
     ; AHK v2 GUI windows have class "AutoHotkeyGUI" (the "AutoHotkey" class is
     ; the hidden script window). Find the ChatWindow process via its script
-    ; window, then return its GUI window ("LLM AutoHotkey Assistant" while
-    ; prewarmed, "Chat" / "Chat — <title>" after being shown/renamed).
+    ; window, then return its GUI window ("AhkLLM" while prewarmed,
+    ; "AhkLLM - <title>" after being shown/renamed).
     ; A stale ChatWindow from an earlier scenario can briefly outlive its
     ; teardown; if several are alive, prefer the most recently started one
     ; (highest PID) so probes never inspect a zombie window from a previous run.
@@ -57,7 +57,7 @@ ChatHwnd() {
         if WinGetClass("ahk_id " h) != "AutoHotkeyGUI"
             continue
         t := WinGetTitle("ahk_id " h)
-        if (t = "LLM AutoHotkey Assistant") || (SubStr(t, 1, 4) = "Chat")
+        if (t = "AhkLLM") || (SubStr(t, 1, 6) = "AhkLLM")
             return h
     }
     return 0
@@ -263,7 +263,7 @@ switch command {
     case "chat-info":
         hwnd := ChatHwnd()
         title := hwnd ? WinGetTitle("ahk_id " hwnd) : ""
-        chatWin := WinExist("Chat ahk_exe AutoHotkey64.exe") ? 1 : 0
+        chatWin := WinExist("AhkLLM ahk_exe AutoHotkey64.exe") ? 1 : 0
         x := "", y := "", w := "", h := ""
         childClass := ""
         if hwnd {

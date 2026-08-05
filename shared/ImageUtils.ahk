@@ -6,12 +6,13 @@
 ; ======================================================
 
 #Include DebugLog.ahk
+#Include AppInfo.ahk
 
 class ImageUtils {
 
     ; Ensure the attachments directory exists under AppData.
     static EnsureAttachmentDir() {
-        dir := A_AppData "\LLM-AutoHotkey-Assistant\attachments"
+        dir := AppInfo.DataDir "\attachments"
         if !DirExist(dir)
             DirCreate(dir)
         return dir
@@ -31,7 +32,7 @@ class ImageUtils {
         if contentHash {
             safeName := contentHash safeExt
             filePath := "attachments\" safeName
-            fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
+            fullPath := AppInfo.DataDir "\" filePath
             ; If file already exists (dedup hit), skip write
             if FileExist(fullPath) {
                 return filePath
@@ -40,7 +41,7 @@ class ImageUtils {
             ; Fallback: counter-based name for screenshots and legacy
             safeName := messageId "_att" A_TickCount safeExt
             filePath := "attachments\" safeName
-            fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
+            fullPath := AppInfo.DataDir "\" filePath
         }
         ; Decode base64 to binary and write to file
         binData := ImageUtils._Base64Decode(base64Data)
@@ -62,7 +63,7 @@ class ImageUtils {
         ImageUtils._EnsureGdiPlusInitialized()
         fileName := messageId "_screenshot.png"
         filePath := "attachments\" fileName
-        fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
+        fullPath := AppInfo.DataDir "\" filePath
 
         ; Get screen dimensions
         hdcScreen := DllCall("GetDC", "Ptr", 0, "Ptr")
@@ -98,7 +99,7 @@ class ImageUtils {
     ; Read file and base64-encode its content.
     ; Used by buildRequest to read attachment files for API calls.
     static ReadAndEncode(filePath) {
-        fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
+        fullPath := AppInfo.DataDir "\" filePath
         if !FileExist(fullPath) {
             return ""
         }

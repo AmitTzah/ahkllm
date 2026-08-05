@@ -21,7 +21,7 @@ let activeWebView2Dir = '';
 // The app resolves A_AppData via the Windows known-folder API, NOT the APPDATA
 // env var, so env-based isolation cannot work. Instead we temporarily move the
 // real profile aside and point it at a temp dir via a junction, restoring after.
-const REAL_DATA_DIR = 'C:\\Users\\Amit\\AppData\\Roaming\\LLM-AutoHotkey-Assistant';
+const REAL_DATA_DIR = 'C:\\Users\\Amit\\AppData\\Roaming\\AhkLLM';
 
 // Synchronous short sleep for teardown retries without spawning child processes.
 function sleepSync(ms) {

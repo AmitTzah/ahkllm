@@ -12,7 +12,7 @@ class SettingsPersistence {
     static _Path() {
         if SettingsPersistence.settingsPath
             return SettingsPersistence.settingsPath
-        SettingsPersistence.settingsPath := A_AppData "\LLM-AutoHotkey-Assistant\settings.json"
+        SettingsPersistence.settingsPath := AppInfo.DataDir "\settings.json"
         return SettingsPersistence.settingsPath
     }
 
@@ -71,7 +71,7 @@ class SettingsPersistence {
         if !DirExist(dirPath)
             DirCreate(dirPath)
         ; Create user system-messages directory
-        userSysMsgDir := A_AppData "\LLM-AutoHotkey-Assistant\system-messages"
+        userSysMsgDir := AppInfo.DataDir "\system-messages"
         if !DirExist(userSysMsgDir)
             DirCreate(userSysMsgDir)
         try {

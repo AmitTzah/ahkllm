@@ -16,6 +16,8 @@
 ; inside functions.
 ; ======================================================
 
+#Include AppInfo.ahk
+
 class SystemMessageResolver {
 
     ; Resolve an object's system message:
@@ -34,7 +36,7 @@ class SystemMessageResolver {
                              , A_ScriptDir "\..\" filePath
                              , A_ScriptDir "\default-settings\system-messages\" filePath
                              , A_ScriptDir "\..\default-settings\system-messages\" filePath]
-                candidates.Push(A_AppData "\LLM-AutoHotkey-Assistant\system-messages\" name)
+                candidates.Push(AppInfo.DataDir "\system-messages\" name)
                 for _, cand in candidates {
                     if FileExist(cand) {
                         filePath := cand

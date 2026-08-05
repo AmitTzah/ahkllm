@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo  LLM AutoHotkey Assistant — Full Test Suite
+echo  AhkLLM - Full Test Suite
 echo ============================================
 echo.
 
@@ -34,7 +34,7 @@ if !JS_EXIT! NEQ 0 (
 echo.
 echo ============================================
 if !FAILED! EQU 1 (
-    echo Some tests FAILED — check output above for details.
+    echo Some tests FAILED - check output above for details.
     exit /b 1
 ) else (
     echo All tests passed!

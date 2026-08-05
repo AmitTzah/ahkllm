@@ -53,13 +53,13 @@ toggleSuspend(*) {
     Suspend -1
     if (A_IsSuspended) {
         TraySetIcon(iconOff, , 1)
-        A_IconTip := "LLM AutoHotkey Assistant - Suspended"
+        A_IconTip := AppInfo.Name " - Suspended"
 
         ; Show GUI at the bottom, centered
         suspendBanner.Show("AutoSize x" (A_ScreenWidth - suspendBannerWidth) / 2 " y" (A_ScreenHeight - 80) " NA")
     } else {
         TraySetIcon(iconOn)
-        A_IconTip := "LLM AutoHotkey Assistant"
+        A_IconTip := AppInfo.Name
         suspendBanner.Hide()
     }
 }

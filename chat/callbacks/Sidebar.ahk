@@ -114,7 +114,7 @@ _HandleThreadAction(action, params) {
                 if activeThreadId = params["threadId"] {
                     threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" params["threadId"] "';")
                     if threadInfo.count
-                        chatWindow.Title := "Chat — " threadInfo[1, "title"]
+                        chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
                 }
             }
     }

@@ -161,7 +161,7 @@ for _, item in trayMenuItems {
         case "exit":   A_TrayMenu.Add(item.menuText, (*) => ExitApp())
     }
 }
-A_IconTip := "LLM AutoHotkey Assistant"
+A_IconTip := AppInfo.Name
 
 ; ----------------------------------------------------
 ; Create new instance of LLMRequestBuilder class

@@ -1,8 +1,8 @@
 {
-  "name": "llm-autohotkey-assistant",
+  "name": "ahkllm",
   "version": "1.0.0",
   "private": true,
-  "description": "AutoHotkey LLM client with an embedded WebView2 chat UI",
+  "description": "AhkLLM - a Windows-native AI assistant built on AutoHotkey v2 with a WebView2 chat UI",
   "scripts": {
     "test": "npm run test:fast",
     "test:fast": "npm run test:contract && npm run test:load && npm run test:ahk && npm run test:unit",

@@ -199,7 +199,7 @@ class SettingsDefaults {
                 "height", IsSet(inputWindowHeight) ? inputWindowHeight : 250
             ),
             "suspendBanner", Map(
-                "text", IsSet(suspendBannerText) ? suspendBannerText : "LLM AutoHotkey Assistant Suspended",
+                "text", IsSet(suspendBannerText) ? suspendBannerText : "AhkLLM Suspended",
                 "fontSize", IsSet(suspendBannerFontSize) ? suspendBannerFontSize : "s10",
                 "fontFace", IsSet(suspendBannerFontFace) ? suspendBannerFontFace : "Arial",
                 "textColor", IsSet(suspendBannerTextColor) ? suspendBannerTextColor : "cBlack",

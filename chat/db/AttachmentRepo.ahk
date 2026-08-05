@@ -4,6 +4,8 @@
 ; Insert, select, delete, copy. File cleanup on disk.
 ; ======================================================
 
+#Include ..\..\shared\AppInfo.ahk
+
 class AttachmentRepo {
 
     ; Extract fields from a JS attachment object, save base64 to disk,
@@ -142,7 +144,7 @@ class AttachmentRepo {
         count := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM message_attachments WHERE file_path='" safePath "';")
         refs := count.count ? count[1, "cnt"] : 0
         if refs <= 1 {
-            fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" filePath
+            fullPath := AppInfo.DataDir "\" filePath
             try FileDelete(fullPath)
         }
     }

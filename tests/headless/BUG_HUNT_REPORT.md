@@ -467,16 +467,16 @@ Final visual confirmation requires a human opening the tray after saving.
 **Repro:** open a chat, rename it from the sidebar (or the topbar rename button),
 then click a different chat in the sidebar and look at the window title bar.
 
-**Expected:** the title bar shows the active thread ("Chat - <current title>").
+**Expected:** the title bar shows the active thread ("AhkLLM - <current title>").
 
 **Actual:** the title bar keeps the previously renamed thread's title.
 `chatWindow.Title` is only set at startup and in the `renameThread` handler
 (`chat/callbacks/Sidebar.ahk`); `_LoadThreadAndRefreshUI` never updates it, so
 switching threads leaves the stale title (and before any rename it just shows
-"Chat" / the generic app title).
+the generic app title).
 
-**Evidence:** `chat/ChatWindow.ahk` `responseWindow.Title := "LLM AutoHotkey Assistant"`;
-`chat/callbacks/Sidebar.ahk` `renameThread` sets `chatWindow.Title := "Chat - " title`;
+**Evidence:** `chat/ChatWindow.ahk` `responseWindow.Title := AppInfo.Name`;
+`chat/callbacks/Sidebar.ahk` `renameThread` sets `chatWindow.Title := AppInfo.Name " - " title`;
 `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI()` never touches the window title.
 
 **Verification:** headless scenario 38 seeds two threads, renames the first via

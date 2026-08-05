@@ -114,7 +114,7 @@ scenario; never commit from a stashed state.
 AHK's `A_AppData` comes from the Windows known-folder API, **not** the `APPDATA` env var,
 so env-based isolation does not work. Instead the harness:
 
-1. Moves the real profile (`%APPDATA%\LLM-AutoHotkey-Assistant`) aside to
+1. Moves the real profile (`%APPDATA%\AhkLLM`) aside to
    `%TEMP%\llm-profile-bak-<ts>`.
 2. Creates a **junction** at the real path pointing to a temp data dir
    (`%TEMP%\llm-data-<ts>`).

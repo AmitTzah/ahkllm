@@ -132,7 +132,7 @@ scenarios.push({
     // default-settings/system-messages/ and the user AppData folder, and both
     // the command path and the assistant path delegate to it (no more copies).
     const resolverSearchesDefaults = /A_ScriptDir "\\default-settings\\system-messages\\" filePath/.test(resolver);
-    const resolverSearchesAppData = /A_AppData "\\LLM-AutoHotkey-Assistant\\system-messages\\" name/.test(resolver);
+    const resolverSearchesAppData = /AppInfo\.DataDir "\\system-messages\\" name/.test(resolver);
     const cmdDelegates = /SystemMessageResolver\.Resolve\(cmd\)/.test(cmdMenu);
     const assistantDelegates = /SystemMessageResolver\.Resolve\(a\)/.test(asstRepo);
     // The stock app-default files live ONLY under default-settings/system-messages/.

@@ -105,7 +105,7 @@ activeThreadId := ""
 
 global responseWindow := WebViewToo(, , ,)
 responseWindow.OnEvent("Close", (*) => responseWindow.Hide())
-responseWindow.Title := "LLM AutoHotkey Assistant"
+responseWindow.Title := AppInfo.Name
 global chatWindow := responseWindow
 
 ; Set window icon (title bar / taskbar) to match the main script's tray icon.

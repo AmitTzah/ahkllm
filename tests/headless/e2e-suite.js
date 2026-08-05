@@ -1,4 +1,4 @@
-// e2e-suite.js - Growing headless E2E suite for the LLM AutoHotkey client.
+// e2e-suite.js - Growing headless E2E suite for AhkLLM.
 //
 // Usage:
 //   node e2e-suite.js --all               # every scenario against the real app
@@ -158,7 +158,7 @@ function checkReportSync() {
 // line) are closed, only llm-* temp folders we created are removed, and the
 // profile is only moved back when the backup contains settings.json.
 function recoverInterruptedRun() {
-  const realProfile = path.join(process.env.APPDATA || '', 'LLM-AutoHotkey-Assistant');
+  const realProfile = path.join(process.env.APPDATA || '', 'AhkLLM');
   const parts = [];
   // 1. Close leftover repo app processes (command-line matched only; never a
   //    blanket AutoHotkey64.exe kill — the user runs their own scripts).

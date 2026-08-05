@@ -1,7 +1,7 @@
 ; ============================================================================
 ; DefaultSettings.ahk -- App defaults (fallback when settings.json is missing)
 ; ============================================================================
-; Edit this file to customize the LLM AutoHotkey Assistant.
+; Edit this file to customize AhkLLM.
 ; Changes take effect after saving (Ctrl+S auto-reloads).
 ;
 ; Quick reference -- search for the section you need:
@@ -527,7 +527,7 @@ inputWindowWidth         := 500
 inputWindowHeight        := 250
 
 ; -- Suspend Banner --
-suspendBannerText        := "LLM AutoHotkey Assistant Suspended"
+suspendBannerText        := "AhkLLM Suspended"
 suspendBannerFontSize    := "s10"
 suspendBannerFontFace    := "Arial"
 suspendBannerTextColor   := "cBlack"

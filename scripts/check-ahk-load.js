@@ -28,6 +28,7 @@ const TIMEOUT_MS = 30000;
 
 const shared = (name) => path.join(REPO_ROOT, 'shared', name);
 const standaloneTargets = [
+  { name: 'shared/AppInfo', file: shared('AppInfo.ahk') },
   { name: 'shared/ModelParser', file: shared('ModelParser.ahk') },
   { name: 'shared/ModelResolver', file: shared('ModelResolver.ahk') },
   { name: 'shared/SystemMessageResolver', file: shared('SystemMessageResolver.ahk') },

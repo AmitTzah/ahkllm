@@ -14,6 +14,7 @@
 #Include SearchRepo.ahk
 #Include AttachmentRepo.ahk
 #Include UsageRepo.ahk
+#Include ..\..\shared\AppInfo.ahk
 
 class ChatDB {
     static db := unset
@@ -24,13 +25,13 @@ class ChatDB {
     static Open(dbPath := "") {
         if ChatDB.isOpen
             return
-        if !dbPath || InStr(dbPath, "LLM-AutoHotkey-Assistant") {
+        if !dbPath || InStr(dbPath, AppInfo.Name) {
             if IsSet(testMode) && testMode {
                 FileAppend("[CRITICAL] ChatDB.Open() attempted production DB path in test mode! Path: '" dbPath "'`n", "*")
                 ExitApp(99)
             }
         }
-        ChatDB.dbPath := dbPath ? dbPath : A_AppData "\LLM-AutoHotkey-Assistant\chat_history.db"
+        ChatDB.dbPath := dbPath ? dbPath : AppInfo.DataDir "\chat_history.db"
         dirPath := SubStr(ChatDB.dbPath, 1, InStr(ChatDB.dbPath, "\", , -1))
         if !DirExist(dirPath)
             DirCreate(dirPath)

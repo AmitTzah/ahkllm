@@ -94,7 +94,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
 
             ; Attach screenshot to user message
             if includeImageContext && screenshotPath && userMsgId {
-                fullPath := A_AppData "\LLM-AutoHotkey-Assistant\" screenshotPath
+                fullPath := AppInfo.DataDir "\" screenshotPath
                 fileSize := FileExist(fullPath) ? FileGetSize(fullPath) : 0
                 ChatDB.Attachment_Insert(userMsgId, {
                     attachment_type: "image",

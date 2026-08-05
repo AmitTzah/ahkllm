@@ -19,3 +19,4 @@
 #Include DebugLog.ahk
 #Include ImageUtils.ahk
 #Include AttachmentUtils.ahk
+#Include AppInfo.ahk
