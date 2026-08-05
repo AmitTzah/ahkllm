@@ -28,8 +28,8 @@ global models := Map(
     "test/no-cached",    { provider: "test", input: 10, output: 20, context: 1000000 }
 )
 
-#Include ..\..\shared\ModelParser.ahk
-#Include ..\..\shared\ModelResolver.ahk
+; CostCalculator self-includes ModelResolver -> ModelParser, so this probe
+; loads the module standalone (regression check for the module-loading fix).
 #Include ..\..\api\CostCalculator.ahk
 
 Finish() {

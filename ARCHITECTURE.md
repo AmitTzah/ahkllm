@@ -643,11 +643,37 @@ identifiers are case-insensitive: a class named `ModelId` is treated as an
 unset local inside any function that uses a `modelId` loop variable and
 triggers `#Warn` dialogs.
 
-Dependency rule: any standalone loader of a consumer module (for example the
-headless probes that include `CostCalculator.ahk` or `CommandMenu.ahk`
-directly) must include the resolver module too. `lib/Config.ahk` already does;
-missing the include makes AHK hang at load with a `#Warn` modal (see
-`tests/headless/probe-cost.ahk` / `probe-thinking.ahk`).
+### AHK module loading: self-contained dependencies (no include-order fragility)
+
+AHK v2 (2.0.18+) hangs at parse time when a function body references a name
+that is defined NOWHERE in the final script - even if the function is never
+called - and pops a `#Warn` modal when `#Warn` is enabled. The pre-refactor
+design relied on `lib/Config.ahk` including every dependency before its
+consumer, so any standalone loader (a probe, a test, a future entry point)
+that forgot the exact include order froze the process (the 20-minute
+`ModelResolver` / `#Warn` hang).
+
+Fixes, verified empirically with bounded watchdog probes:
+
+- **Self-includes:** every module `#Include`s the files that define the
+  classes it references (`CostCalculator` -> `ModelResolver`,
+  `CommandMenu`/`AssistantRepo` -> `SystemMessageResolver`,
+  `AttachmentUtils` -> `ModelResolver`, `ModelResolver` -> `ModelParser`,
+  `ImageUtils` -> `DebugLog`, ...). AHK v2 deduplicates `#Include` (a file is
+  parsed at most once per process), so this is idempotent and include order no
+  longer matters.
+- **`shared/SharedLib.ahk`:** the one-stop manifest for the shared layer;
+  `lib/Config.ahk` and standalone loaders use it instead of hand-listing
+  shared files.
+- **Bounded load check:** `node scripts/check-ahk-load.js` loads the full
+  production chain and every standalone-loadable module with `#Warn All,
+  StdOut`, a watchdog timer, and a hard spawnSync timeout; any unresolved
+  identifier or hang fails the check with the offending text. Run it after
+  any AHK module change (it can never hang the caller).
+
+The guarantee is about class/code dependencies. Data dependencies (the
+`models` map, app globals such as `commands`/`requestParams`) are runtime
+state supplied by the loader, exactly as before.
 
 ### WebView → AHK (`postMessage`)
 

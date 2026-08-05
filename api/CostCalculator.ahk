@@ -7,6 +7,8 @@
 ; lookup by stripping the provider prefix.
 ; ----------------------------------------------------
 
+#Include ..\shared\ModelResolver.ahk
+
 class CostCalculator {
     ; Extract pricing from a model object into the provided output variables
     static _ResolvePricing(m, &inputPrice, &cachedInputPrice, &outputPrice, &contextWin) {

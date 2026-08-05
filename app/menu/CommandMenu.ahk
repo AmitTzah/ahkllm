@@ -2,6 +2,8 @@
 ; Command menu building
 ; ----------------------------------------------------
 
+#Include ..\..\shared\SystemMessageResolver.ahk
+
 buildCommandMenu() {
     commandMenu := Menu()
     tagsMap := Map()

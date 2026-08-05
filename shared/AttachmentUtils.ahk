@@ -3,6 +3,8 @@
 ; filename sanitization, and validation.
 ; ======================================================
 
+#Include ModelResolver.ahk
+
 class AttachmentUtils {
 
     ; Check if a model has vision capability.

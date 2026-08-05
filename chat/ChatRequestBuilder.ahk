@@ -9,6 +9,11 @@
 ; Also: sendRequestToLLM (thin wrapper).
 ; ======================================================
 
+#Include ..\shared\ModelParser.ahk
+#Include ..\shared\ModelResolver.ahk
+#Include ..\shared\AttachmentUtils.ahk
+#Include ..\shared\ImageUtils.ahk
+
 buildRequest() {
     if !activeThreadId {
         return ""

@@ -15,6 +15,9 @@
 ;   ToThreadSettingsMessage   - right-rail payload
 ; ======================================================
 
+#Include ..\shared\ModelResolver.ahk
+#Include db\AssistantRepo.ahk
+
 class ThreadSettings {
 
     ; Effective settings for a thread from a DB row (Thread_GetSettings

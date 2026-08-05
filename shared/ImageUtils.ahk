@@ -5,6 +5,8 @@
 ; Uses GDI+ (gdiplus.dll) for screen capture and bitmap save.
 ; ======================================================
 
+#Include DebugLog.ahk
+
 class ImageUtils {
 
     ; Ensure the attachments directory exists under AppData.

@@ -4,6 +4,9 @@
 ; Part of ChatDB split. Extracted from ChatDB.ahk.
 ; ======================================================
 
+#Include ..\..\shared\SystemMessageResolver.ahk
+#Include ..\..\shared\DebugLog.ahk
+
 class AssistantRepo {
 
     ; Get an assistant by ID from the global assistants array (populated by SettingsHandler)

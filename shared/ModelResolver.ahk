@@ -18,6 +18,8 @@
 ; header for the same warning).
 ; ======================================================
 
+#Include ModelParser.ahk
+
 class ModelResolver {
 
     ; Look up model metadata by full or short id. Returns "" when unknown.

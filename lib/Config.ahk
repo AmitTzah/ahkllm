@@ -18,13 +18,7 @@ global IUIAutomationActivateScreenReader := false  ; Prevent UIA from setting SP
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
 ; Shared utilities
-#Include ..\shared\ModelParser.ahk
-#Include ..\shared\ModelResolver.ahk
-#Include ..\shared\SystemMessageResolver.ahk
-#Include ..\shared\ModelPricingParser.ahk
-#Include ..\shared\DebugLog.ahk
-#Include ..\shared\ImageUtils.ahk
-#Include ..\shared\AttachmentUtils.ahk
+#Include ..\shared\SharedLib.ahk
 
 ; Application classes
 #Include ..\api\CurlBuilder.ahk

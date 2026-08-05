@@ -5,6 +5,8 @@
 ; Extracted from MessageRepo.ahk.
 ; ======================================================
 
+#Include ..\..\shared\ModelResolver.ahk
+
 class TreeRepo {
 
     static GetActivePath(threadId) {

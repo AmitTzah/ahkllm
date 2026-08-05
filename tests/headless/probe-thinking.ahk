@@ -37,7 +37,8 @@ processInitialRequest(*) => ""
 openChatWindow(*) => ""
 runOptionsMenuAction(*) => ""
 
-#Include ..\..\shared\SystemMessageResolver.ahk
+; CommandMenu self-includes SystemMessageResolver, so this probe loads the
+; module standalone (regression check for the module-loading fix).
 #Include ..\..\app\menu\CommandMenu.ahk
 
 Finish() {
