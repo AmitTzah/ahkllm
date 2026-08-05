@@ -22,13 +22,13 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 
 ## What you get
 
-- **A command menu you can shape.** Each command is a small config entry with its own model, prompt, thinking level, and output mode. The defaults cover summarize, translate, explain, refine, rephrase in context, FIM fill, and FIM continue. Add your own in `DefaultSettings.ahk` and it shows up in the menu, no code changes needed.
+- **A command menu you can shape.** Each command is a small config entry with its own model, prompt, thinking level, and output mode. The defaults cover summarize, translate, explain, refine, rephrase in context, FIM fill and continue, and a screenshot command that sends your screen as image context. Add your own in `DefaultSettings.ahk` and it shows up in the menu, no code changes needed.
 - **Rewrite or rephrase in place.** AhkLLM reads your selection through UI Automation, and when a command asks for it, the whole document around it. "Rephrase in Context" rewrites the highlighted text with the full page as context and drops the result back over the selection. You stay in the same app the whole time.
 - **Keep typing, it takes over.** FIM Continue and FIM Fill use DeepSeek's coding endpoint, but they're not just for code. Put your cursor mid-line, trigger the command, and the model continues your sentence, your paragraph, or your function. No selection needed.
 - **A real chat window.** Streaming responses, markdown with syntax highlighting and math rendering, edit, retry, quote, copy, and export.
 - **Branching you can see.** Fork any message and explore alternate replies. Conversations render as an interactive tree, so you can hop between branches instead of scrolling a flat wall of text.
 - **Drag in files.** Images, PDFs (scanned pages included), DOCX, and code, straight into the conversation.
-- **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, with per-conversation, per-command, and per-assistant model selection.
+- **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, plus any OpenAI-compatible provider you add (OpenRouter, local servers, whatever has an API endpoint). Model selection is per conversation, per command, and per assistant.
 - **Everything stays organized.** Folders, trash with auto-retention, real-time search across all your chats, assistant profiles with custom system prompts, and per-thread model, reasoning, and temperature settings.
 - **Know what it costs.** The usage dashboard charts tokens, spend, speed, and latency per model and provider, with filters and CSV export. A built-in API logs viewer lets you inspect requests and responses when something looks off.
 
@@ -37,7 +37,7 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 - Windows 10 or later
 - [AutoHotkey v2.0.18+](https://www.autohotkey.com/)
 - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11)
-- API keys for the providers you want to use, set as environment variables:
+- API keys for the providers you want to use, set as environment variables or entered directly in Settings:
   - `DEEPSEEK_API_KEY`
   - `OPENAI_API_KEY`
   - `GEMINI_API_KEY`
@@ -52,10 +52,19 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
    ```
 4. Double-click `Main.ahk` (or run `AutoHotkey64.exe Main.ahk`)
 5. Press `` ` `` to open the command menu
+6. Press `` ` `` then `1` to open the chat window, or right-click the tray icon
 
 ## Configuration
 
-Edit [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk) to customize providers and models, the `` ` `` menu, assistant profiles, hotkeys, theme, and more. Save the file and the script auto-reloads (Ctrl+S).
+Most settings live in the in-app Settings panel (gear icon in the chat window): providers, models, commands, assistants, hotkeys, theme, icons, and menu items. Add any OpenAI-compatible provider from the Providers tab, or refresh model metadata (pricing, capabilities) from the Models tab.
+
+For power users, everything is also editable in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Save the file and the script auto-reloads (Ctrl+S).
+
+Default hotkeys: `` ` `` (backtick) opens the command menu, Ctrl+Alt+R reloads the script, Ctrl+W closes pop-ups, and CapsLock+`` ` `` suspends and resumes. All of them are remappable.
+
+## Where your data lives
+
+Chats, settings, and attachments are stored locally under `%APPDATA%\AhkLLM\`: `settings.json`, a SQLite chat database with real-time search, and your uploaded files. The only thing leaving your machine is the request you send to the provider you picked.
 
 ## Running Tests
 
