@@ -142,7 +142,21 @@ The next scenario run also auto-recovers as a fallback.
 | `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
 | `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
 | `scenarios/helpers.js` | Shared helpers used by scenario bodies (probes, UI navigation) |
+| `capture-screenshots.js` | Generates README screenshots: runs the real app off-screen, captures WebView2 pages via CDP `Page.captureScreenshot` |
 | `BUG_HUNT_REPORT.md` | Live bug list + agent workflow (start here) |
+
+## Capturing screenshots
+
+`capture-screenshots.js` reuses the launch/seed/CDP machinery to render the real app
+with an isolated profile and save PNGs of the chat window, tree view, usage dashboard,
+and Settings Providers tab to `docs/screenshots/`. It is useful both for the README and
+for vision-capable agents that need a fresh look at the UI. The same preflight rule
+applies as for scenarios: the app must not already be running. The real profile is
+restored on exit.
+
+```powershell
+node tests/headless/capture-screenshots.js
+```
 
 ## Adding a scenario (template)
 

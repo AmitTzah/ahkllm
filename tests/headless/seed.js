@@ -79,14 +79,18 @@ function createDb(dir, fixtures = {}) {
   }
   for (const t of fixtures.threads || []) {
     db.prepare(
-      `INSERT INTO chat_threads (id, title, is_deleted, deleted_at, active_leaf_id, assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, folder_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`
+      `INSERT INTO chat_threads (id, title, is_deleted, deleted_at, active_leaf_id, assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, folder_id, cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`
     ).run(
       t.id, t.title || 'New Chat', t.is_deleted ? 1 : 0, t.deleted_at || null,
       t.active_leaf_id || null, t.assistant_id || null, t.model_override || null,
       t.system_override || null, t.reasoning_override || null,
       t.temperature_override != null ? t.temperature_override : null,
       t.font_size != null ? t.font_size : 17, t.folder_id || null,
+      t.cumulative_input_tokens || 0, t.cumulative_output_tokens || 0,
+      t.cumulative_cached_tokens || 0, t.cumulative_cost || 0,
+      t.cumulative_input_cost || 0, t.cumulative_cached_input_cost || 0,
+      t.cumulative_output_cost || 0,
       t.created_at || null, t.created_at || null
     );
   }

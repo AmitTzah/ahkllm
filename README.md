@@ -12,13 +12,13 @@ Select text in any app, press `` ` ``, and pick from a menu of commands. Explain
 
 AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It sits quietly in your system tray and preloads the chat window in the background, so it's ready the instant you hit the key.
 
-| What it is | What it isn't |
-|---|---|
-| One keystroke away, in any app | A wrapper around a website |
-| Direct API calls with your own keys | A relay that skims your tokens |
-| Native Windows, light on resources | An Electron app that eats RAM |
-| Local chat history in SQLite | A cloud service that owns your data |
-| Keyboard-first by design | A tool that needs a mouse |
+<p align="center">
+  <img src="docs/screenshots/chat-window.png" alt="AhkLLM chat window" width="320">
+  <img src="docs/screenshots/usage-dashboard.png" alt="Usage dashboard" width="320">
+  <img src="docs/screenshots/settings-providers.png" alt="Settings panel Providers tab" width="320">
+</p>
+
+<p align="center"><em>Chat, the usage dashboard, and provider settings.</em></p>
 
 ## What you get
 

@@ -310,6 +310,18 @@ switch command {
         }
         Write(Map("shown", hwnd ? 1 : 0))
 
+    case "resize-chat":
+        ; Keep the ChatWindow off-screen but resize it, so CDP captures have a
+        ; roomier viewport (wider tree canvas, bigger dashboard charts).
+        w := A_Args[3] ? Integer(A_Args[3]) : 1600
+        h := A_Args[4] ? Integer(A_Args[4]) : 900
+        hwnd := ChatHwnd()
+        if hwnd {
+            WinMove(-20000, -20000, w, h, "ahk_id " hwnd)
+            WinShow("ahk_id " hwnd)
+        }
+        Write(Map("resized", hwnd ? 1 : 0))
+
     case "icon-check":
         iconPath := A_Args[3]
         hwnd := ChatHwnd()

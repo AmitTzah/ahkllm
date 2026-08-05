@@ -291,7 +291,7 @@ ahkllm/
 │   ├── fixtures/                # Committed test data (models_metadata.txt CI fallback)
 │   ├── unit/                    # Unit tests — AHK (.test.ahk) + JS (.test.js)
 │   ├── integration/             # Integration tests (BranchFlow, ChatFlow, UsageFlow, ...)
-│   └── headless/                # Headless e2e harness (launch.js, cdp.js, seed.js, scenarios/, results/)
+│   └── headless/                # Headless e2e harness (launch.js, cdp.js, seed.js, scenarios/, capture-screenshots.js, results/)
 ```
 
 ## Key Design Decisions
@@ -848,6 +848,11 @@ report** — this is the workflow to point an agent at when auditing or fixing t
 - `tests/headless/e2e-suite.js` — the scenario runner (scenario definitions live in `tests/headless/scenarios/*.js`). `--check-sync` enforces that the
   report and the scenario list stay in sync (no stale/dangling ids), and `--all` re-verifies
   every scenario against the real app.
+- `tests/headless/capture-screenshots.js` — generates the README screenshots by running
+  the real app with an isolated profile and capturing WebView2 pages through CDP
+  (`Page.captureScreenshot`), so vision-capable agents can take fresh UI shots without
+  anything flashing on screen. Same safety rules as scenarios: the app must not already
+  be running, and the real profile is restored on exit.
 
 **Lifecycle:** the full lifecycle (intake → `reported` → headless verification → `verified`
 → fix cycle → History) is defined in `tests/headless/BUG_HUNT_REPORT.md` — that file is the
