@@ -8,7 +8,7 @@
 
 <p align="center"><b>The AI assistant that's one keystroke away on Windows.</b></p>
 
-Select text in any app, press `` ` ``, and pick from a menu of commands. Explain a diff, translate a paragraph, rewrite an email, or keep typing and let FIM Continue pick up where you left off. You can also just open the chat window and talk. You never leave the app you're in.
+Select text in any app, press `` ` ``, and pick from a menu of commands. Explain a diff, translate a paragraph, rewrite an email, or keep typing and let AhkLLM pick up where you left off. You can also just open the chat window and talk. You never leave the app you're in.
 
 AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It sits quietly in your system tray and preloads the chat window in the background, so it's ready the instant you hit the key.
 
@@ -22,13 +22,15 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 
 ## What you get
 
-- **A real chat window.** Streaming responses, message branching, editing, and retry.
-- **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, with per-conversation and per-command model selection.
-- **Text commands.** Summarize, translate, rephrase, refine, or run your own prompts on selected text in any app.
-- **Inline code completions.** Fill-in-the-middle (FIM) mode for DeepSeek's coding beta.
-- **Drop in files.** Images, PDFs, DOCX, and code files, dragged straight into the conversation.
-- **Know what it costs.** A usage dashboard tracks tokens and spend across all your providers.
-- **Chats that stay organized.** Folders, real-time search across everything, and assistant profiles with custom system prompts.
+- **A command menu you can shape.** Each command is a small config entry with its own model, prompt, thinking level, and output mode. The defaults cover summarize, translate, explain, refine, rephrase in context, FIM fill, and FIM continue. Add your own in `DefaultSettings.ahk` and it shows up in the menu, no code changes needed.
+- **Rewrite or rephrase in place.** AhkLLM reads your selection through UI Automation, and when a command asks for it, the whole document around it. "Rephrase in Context" rewrites the highlighted text with the full page as context and drops the result back over the selection. You stay in the same app the whole time.
+- **Keep typing, it takes over.** FIM Continue and FIM Fill use DeepSeek's coding endpoint, but they're not just for code. Put your cursor mid-line, trigger the command, and the model continues your sentence, your paragraph, or your function. No selection needed.
+- **A real chat window.** Streaming responses, markdown with syntax highlighting and math rendering, edit, retry, quote, copy, and export.
+- **Branching you can see.** Fork any message and explore alternate replies. Conversations render as an interactive tree, so you can hop between branches instead of scrolling a flat wall of text.
+- **Drag in files.** Images, PDFs (scanned pages included), DOCX, and code, straight into the conversation.
+- **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, with per-conversation, per-command, and per-assistant model selection.
+- **Everything stays organized.** Folders, trash with auto-retention, real-time search across all your chats, assistant profiles with custom system prompts, and per-thread model, reasoning, and temperature settings.
+- **Know what it costs.** The usage dashboard charts tokens, spend, speed, and latency per model and provider, with filters and CSV export. A built-in API logs viewer lets you inspect requests and responses when something looks off.
 
 ## Requirements
 
