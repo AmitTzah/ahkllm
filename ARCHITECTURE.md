@@ -132,7 +132,7 @@ This is the same reason Chrome runs each tab in its own process, and Electron sp
 ## Directory Structure
 
 ```
-autohotkey-llm-client/
+ahkllm/
 ├── Main.ahk                     # Main process entry point (hotkeys, tray, inline requests)
 ├── default-settings/            # Shipped app defaults
 │   ├── DefaultSettings.ahk      # Default settings as top-level globals (commands, hotkeys, ...)
