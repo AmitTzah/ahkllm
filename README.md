@@ -1,18 +1,34 @@
-# AhkLLM
+<h1 align="center">AhkLLM</h1>
 
-A Windows-native AI assistant that lives in your taskbar. Press `` ` `` (backtick) anywhere and it's there: a full chat window, a command menu, or a quick transform on the text you just selected.
+<p align="center">
+  <a href="#requirements"><img src="https://img.shields.io/badge/Windows-10%2B-0078D6" alt="Windows"></a>
+  <a href="https://www.autohotkey.com/"><img src="https://img.shields.io/badge/AutoHotkey-v2.0.18%2B-5e81ac" alt="AutoHotkey"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License: GPL-3.0"></a>
+</p>
 
-Select a paragraph, hit backtick, and tell it to explain the diff, translate the text, or rewrite the email — without ever leaving the app you're in. AhkLLM is built on AutoHotkey v2 with a WebView2 chat UI, so it's small, fast, and keyboard-first: no Electron install, no browser tab, just a keystroke.
+<p align="center"><b>The AI assistant that's one keystroke away on Windows.</b></p>
+
+Select text in any app, press `` ` ``, and pick from a menu of commands. Explain a diff, translate a paragraph, rewrite an email, or keep typing and let FIM Continue pick up where you left off. You can also just open the chat window and talk. You never leave the app you're in.
+
+AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It sits quietly in your system tray and preloads the chat window in the background, so it's ready the instant you hit the key.
+
+| What it is | What it isn't |
+|---|---|
+| One keystroke away, in any app | A wrapper around a website |
+| Direct API calls with your own keys | A relay that skims your tokens |
+| Native Windows, light on resources | An Electron app that eats RAM |
+| Local chat history in SQLite | A cloud service that owns your data |
+| Keyboard-first by design | A tool that needs a mouse |
 
 ## What you get
 
-- **A real chat window** — streaming responses, message branching, editing, and retry. Not a wrapper around a website.
-- **Bring your own model** — DeepSeek, OpenAI, and Google Gemini out of the box, with per-conversation and per-command model selection.
-- **Text commands** — summarize, translate, rephrase, refine, or run your own prompts on selected text in any app.
-- **Inline code completions** — fill-in-the-middle (FIM) mode for DeepSeek's coding beta.
-- **Drop in files** — images, PDFs, DOCX, and code files, dragged straight into the conversation.
-- **Know what it costs** — a usage dashboard tracks tokens and spend across all your providers.
-- **Chats that stay organized** — folders, real-time search across everything, and assistant profiles with custom system prompts.
+- **A real chat window.** Streaming responses, message branching, editing, and retry.
+- **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, with per-conversation and per-command model selection.
+- **Text commands.** Summarize, translate, rephrase, refine, or run your own prompts on selected text in any app.
+- **Inline code completions.** Fill-in-the-middle (FIM) mode for DeepSeek's coding beta.
+- **Drop in files.** Images, PDFs, DOCX, and code files, dragged straight into the conversation.
+- **Know what it costs.** A usage dashboard tracks tokens and spend across all your providers.
+- **Chats that stay organized.** Folders, real-time search across everything, and assistant profiles with custom system prompts.
 
 ## Requirements
 
@@ -33,7 +49,7 @@ Select a paragraph, hit backtick, and tell it to explain the diff, translate the
    setx DEEPSEEK_API_KEY "sk-your-key"
    ```
 4. Double-click `Main.ahk` (or run `AutoHotkey64.exe Main.ahk`)
-5. Press `` ` `` — the command menu appears
+5. Press `` ` `` to open the command menu
 
 ## Configuration
 
@@ -61,6 +77,6 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for a deep dive into the data model, IP
 
 ## License
 
-GNU General Public License v3.0 — see [`LICENSE`](LICENSE).
+GNU General Public License v3.0. See [`LICENSE`](LICENSE).
 
 AhkLLM is a derivative of [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant) by [kdalanon](https://github.com/kdalanon), extended with a full WebView2 chat GUI, message branching, multi-provider streaming, file attachments, and a comprehensive test suite.
