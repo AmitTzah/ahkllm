@@ -55,7 +55,8 @@ All temporary data lives in `%TEMP%\`:
 | `ChatWindow_cURL_*.txt` | Generated cURL command | Per request |
 | `ChatWindow_Out_*.json` | API response output | Per request |
 | `ChatWindow_Err_*.txt` | cURL stderr | Per request |
-| `ChatWindow_TitleGen_*.json` | Title generation payload | Per request |
+| `ChatWindow_TitleGen_*.json` / `ChatWindow_TitleGen_Out_*.json` | Title generation payload / output | Per request |
+| `chat_load_thread.txt` | Thread ID handed from Main to ChatWindow via `WM_LOAD_THREAD` | Per load request |
 | `chatHistoryJSONRequest_*.json` | Inline command request | Per request |
 | `cURLCommand_*.txt` | Inline command cURL | Per request |
 | `cURLOutput_*.json` | Inline command output | Per request |
@@ -158,7 +159,8 @@ autohotkey-llm-client/
 │   │   ├── SettingsDefaults.ahk    # pristine defaults snapshot
 │   │   ├── SettingsMerge.ahk       # deep-merge loaded settings with defaults
 │   │   ├── SettingsApply.ahk       # apply a settings Map to the globals
-│   │   └── SettingsHandler.ahk     # facade over the above (stable public API)
+│   │   ├── SettingsHandler.ahk     # facade over the above (stable public API)
+│   │   └── SettingsService.ahk     # Apply/SaveFromWebView/ReloadFromDisk + update hooks
 │   ├── HotkeyRegistrar.ahk      # Dynamic hotkey registration (turn off + re-register on settings update)
 │   ├── RequestProcessor.ahk     # Orchestrator: text capture → LLM request dispatch
 │   ├── TextCapture.ahk          # UIA TextPattern (primary) + clipboard (fallback)
@@ -182,6 +184,7 @@ autohotkey-llm-client/
 │   ├── ChatSettings.ahk         # Chat sidebar settings, postCurrentSettingsToWebView, assistant/model mgmt
 │   ├── ChatRequestBuilder.ahk   # buildRequest (chat payload + per-model thinking), sendRequestToLLM
 │   ├── ChatUtils.ahk            # Structured messages, cURL state, postWebMessage
+│   ├── ThreadSettings.ahk       # Single precedence for per-thread settings (ComputeEffective, Restore, ToDbObject, ToThreadSettingsMessage)
 │   ├── ThreadTitleGen.ahk       # Fire-and-forget thread title generation (thinking always disabled)
 │   ├── callbacks/               # WebMessage handlers (OnWebMessageReceived → Dispatch)
 │   │   ├── Dispatch.ahk         # Router + settings save/reset/all-settings handlers
@@ -204,8 +207,13 @@ autohotkey-llm-client/
 │       ├── SearchRepo.ahk       # FTS5 search queries
 │       └── UsageRepo.ahk        # Daily usage aggregation + dashboard queries
 │
-├── shared/                      # Shared application utilities
+├── shared/                      # Shared application utilities (self-including, order-independent)
+│   ├── SharedLib.ahk            # One-stop include manifest for the shared layer
+│   ├── AppInfo.ahk              # App name + %APPDATA% data dir (single source of truth)
 │   ├── ModelParser.ahk          # Model ID parsing ("provider/model" → provider + name)
+│   ├── ModelResolver.ahk        # Single full-id → short-name → version-stripped lookup
+│   ├── SystemMessageResolver.ahk# Single system-message search (inline text or file)
+│   ├── ModelPricingParser.ahk   # Parses the models_metadata.txt backup format
 │   ├── AttachmentUtils.ahk      # Vision gate, MIME classification, file size checks
 │   ├── ImageUtils.ahk           # Base64 encode/decode, GDI+ screenshot, file I/O
 │   ├── DebugLog.ahk             # Rolling debug log (~500KB in %TEMP%)
@@ -224,7 +232,7 @@ autohotkey-llm-client/
 │   ├── jsongo.v2.ahk            # JSON parse/serialize
 │   ├── AutoXYWH.ahk, ToolTipEx.ahk, Promise.ahk
 │
-├── scripts/                     # Model metadata pipeline
+├── scripts/                     # Model metadata pipeline + test guardrails
 │   ├── Refresh-Models.ps1 / .bat# Main: models.dev + corrections → DefaultModels.ahk
 │   ├── Fetch-Models.ps1         # Dumb fetcher: raw models.dev JSON
 │   ├── Sync-Pi-Corrections.ps1  # Dev tool: sync corrections from the pi repo
@@ -234,6 +242,9 @@ autohotkey-llm-client/
 │   ├── run-js-coverage.ps1      # JS test coverage runner (v8 coverage)
 │   ├── js-coverage-preload.js   # Coverage preload hook for node --test
 │   ├── js-coverage-report.js    # Coverage report generator
+│   ├── check-ipc-contract.js    # IPC contract drift check (npm run test:contract)
+│   ├── check-ahk-load.js        # Bounded AHK load check (#Warn All + watchdog + timeout)
+│   ├── run-ahk-tests.js         # Bounded AHK test runner (npm run test:ahk)
 │   └── README.md                # Pipeline documentation
 │
 ├── icons/                       # Provider icons + tray icons (IconOn/IconOff)
@@ -246,6 +257,8 @@ autohotkey-llm-client/
 │   ├── icons/filetypes/         # 35+ branded SVG file-type icons (no CDN)
 │   └── js/
 │       ├── main.js              # WebMessage dispatch (routes to chat modules + SettingsPanel)
+│       ├── ui-controls.js       # Font controls, composer resize, seam resizers, auto-collapse
+│       ├── usage-dashboard.js   # Chart.js usage dashboard
 │       ├── settings/
 │       │   ├── settings-panel.js       # Settings panel: section registry, save/load, dirty, reset
 │       │   └── sections/               # One module per settings tab
@@ -255,8 +268,10 @@ autohotkey-llm-client/
 │       │       ├── assistants.js       # Chat profiles (single model-scoped reasoning dropdown)
 │       │       └── commands/           # Command editor (commands-core, -render, -actions, -drag)
 │       ├── shared/
-│       │   ├── settings-shared.js      # Shared section helpers (escaping, select fill, registration)
-│       │   └── reasoning-levels.js     # Shared reasoning-level labels/ordering/options builder
+│       │   ├── ipc-contract.js        # Typed AHK ↔ WebView message contract (single source of truth)
+│       │   ├── ipc.js                 # postToHost/request — validates, adds reqId, awaits acks
+│       │   ├── settings-shared.js     # Shared section helpers (escaping, select fill, registration)
+│       │   └── reasoning-levels.js    # Shared reasoning-level labels/ordering/options builder
 │       ├── chat/                       # Chat JS modules
 │       │   ├── chat-core.js, chat-render.js, chat-input.js, chat-branching.js
 │       │   ├── chat-sidebar.js, chat-search.js, chat-threadmap.js, chat-trash.js
@@ -273,14 +288,16 @@ autohotkey-llm-client/
 │   ├── run_ahk_tests.ahk        # AHK test runner
 │   ├── run_js_tests.bat         # JS test runner (node:test)
 │   ├── test_config.ahk          # Test overrides (mock models/providers for unit tests)
+│   ├── fixtures/                # Committed test data (models_metadata.txt CI fallback)
 │   ├── unit/                    # Unit tests — AHK (.test.ahk) + JS (.test.js)
 │   ├── integration/             # Integration tests (BranchFlow, ChatFlow, UsageFlow, ...)
-│   └── headless/                # Headless e2e harness: e2e-suite.js + scenarios/ + BUG_HUNT_REPORT.md
+│   └── headless/                # Headless e2e harness (launch.js, cdp.js, seed.js, scenarios/, results/)
 ```
 
 ## Key Design Decisions
 
 - **Entry point**: `Main.ahk` — double-click to run. It includes `lib/Config.ahk` (the include chain) which loads `default-settings/DefaultSettings.ahk`, `shared/`, `api/`, `app/`, `chat/`, `ipc/`.
+- **Single app identity**: `shared/AppInfo.ahk` owns the app name and the `%APPDATA%` data directory; every title and data path derives from it, so the repo, the data dir, and the runtime UI can never drift apart again.
 - **Settings are JSON**: `app/settings/SettingsHandler.ahk` loads/saves `%APPDATA%\AhkLLM\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
 - **default-settings/DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; model metadata is generated into `default-settings/DefaultModels.ahk` by `scripts/Refresh-Models.ps1`.
 - **Persistent single-window model**: one `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
@@ -320,6 +337,9 @@ The solution is [`CacheInitialDefaults()`](app/settings/SettingsDefaults.ahk:15)
 | `Save(settings)` | Delete `settings.json` + write the given Map fresh (no merge) |
 | `Merge(existing, defaults)` | Fill missing keys from defaults, keep existing values |
 | `ApplyToGlobals(settings)` | Write settings into the section globals (providers, models, assistants, commands, hotkeys, chatShortcut, ...) |
+| `SettingsService.Apply(settings)` | One apply path: `ApplyToGlobals` + every registered update hook (see [WebView ↔ AHK Communication](#webview--ahk-communication)) |
+| `SettingsService.SaveFromWebView(data)` | Merge UI payload → persist → apply → run hooks (the chat Settings save path) |
+| `SettingsService.ReloadFromDisk()` | Re-read `settings.json` + apply (the `WM_SETTINGS_UPDATED` path) |
 | `_Defaults*()` | Build each section's default Map from `DefaultSettings.ahk` globals |
 | `_Apply*()` | Apply each section's saved values to globals |
 
@@ -329,7 +349,7 @@ The solution is [`CacheInitialDefaults()`](app/settings/SettingsDefaults.ahk:15)
 
 1. `defaults := SettingsHandler.GetDefaults()` → pristine defaults from `DefaultSettings.ahk`.
 2. `SettingsHandler.Save(defaults)` → **deletes** `settings.json` and writes a fresh file containing only the defaults.
-3. `ApplyToGlobals(defaults)`, notify Main to reload, and send `defaultSettings` to the WebUI (`reloadWithDefaults` repopulates every settings section).
+3. `SettingsService.Apply(defaults)` (globals + update hooks), notify Main to reload, and send `defaultSettings` to the WebUI (`reloadWithDefaults` repopulates every settings section).
 
 ### Settings Persistence
 
@@ -420,10 +440,11 @@ Commands are user-configurable hotkey actions in the `` ` `` menu, defined in th
 ## Startup Flow
 
 1. `Main.ahk` runs → `#Include <Config>` loads `lib/Config.ahk` (vendor libs + shared utils + app modules).
-2. `SettingsHandler.CacheInitialDefaults()` snapshots pristine defaults **before** any `ApplyToGlobals`.
-3. `defaults := SettingsHandler.GetDefaults()`; `settings := SettingsHandler.Load()`; `merged := Merge(settings, defaults)`; `ApplyToGlobals(merged)`.
-4. `Main.ahk` opens `ChatDB` (SQLite), spawns `ChatWindow.ahk` hidden with a "prewarm" flag, registers hotkeys via `HotkeyRegistrar._registerAllHotkeys()`, and pre-creates the API Logs Viewer (deferred 2s).
-5. `ChatWindow.ahk` also calls `CacheInitialDefaults()` + merges settings (it's a separate process with its own globals), then builds the WebView2 UI.
+2. `settings := SettingsHandler.Load()`; `SettingsHandler.CacheInitialDefaults()` snapshots pristine defaults **before** any apply; `SettingsService.Apply(Merge(settings, GetDefaults()))` writes globals and runs update hooks; runtime API-key/provider resolution follows.
+3. `_registerAllHotkeys()` (via `HotkeyRegistrar`), `ChatDB.Open()` (SQLite), and `TrashRetentionPurge()` + hourly timer.
+4. Spawns `ChatWindow.ahk` hidden with a `prewarm` arg so WebView2 is initialized before the first open.
+5. `SetTimer(InitApiLogsViewer, -2000)` pre-creates the API Logs Viewer (deferred 2s).
+6. `ChatWindow.ahk` (separate process with its own globals) opens `ChatDB`, calls `CacheInitialDefaults()` + merges settings the same way, then builds the WebView2 UI and hides itself when prewarming.
 
 ## Request Flow
 
@@ -523,6 +544,29 @@ Requests with `stream: true` are executed via cURL `-N`; `chat/streaming/StreamH
 | `temperature` | REAL | Temperature |
 | `is_default` | INTEGER | 1 if default assistant |
 
+### `message_attachments`
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PRIMARY KEY | UUID |
+| `message_id` | TEXT | FK to messages |
+| `attachment_type` | TEXT | `image`, `pdf`, `docx`, `text_file`, ... |
+| `file_path` | TEXT | Path relative to the AppData data dir |
+| `mime_type` / `original_filename` / `file_size` | TEXT / TEXT / INTEGER | File metadata |
+| `extracted_text` | TEXT | Text extracted by pdf.js/officeParser |
+| `created_at` | TEXT | ISO 8601 |
+
+### `chat_usage` / `command_usage`
+
+Daily aggregation rows (one per `date + model + provider`, plus `command_name` for commands):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `date` / `model` / `provider` (+ `command_name`) | TEXT | Composite PK |
+| `call_count` | INTEGER | Requests that day |
+| `prompt_tokens` / `completion_tokens` / `thinking_tokens` / `cached_tokens` | INTEGER | Token sums |
+| `input_cost` / `cached_input_cost` / `output_cost` / `total_cost` | REAL | Cost sums (USD) |
+| `total_response_time_ms` / `total_ttft_ms` | INTEGER | Timing sums |
+
 ### Branching Model
 
 Messages form a tree via `parent_id`. Edits/retries create a sibling with the same `sibling_group` and incremented `sibling_index`. `active_leaf_id` tracks the current position. `TreeRepo` handles navigation, stats, fork, and visualization. `ForkThread` copies the active path with fresh UUIDs, new sibling groups, all siblings, thread settings, and attachments (content-addressed).
@@ -569,7 +613,7 @@ The Settings Save flow is the first consumer: it awaits the ack and shows a
 
 ### AHK → WebView (`postWebMessage`)
 
-Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `currentSettings`, `defaultSettings`, `settingsSaved`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`.
+Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamModelName`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `threadSettings`, `appSettings`, `defaultSettings`, `settingsSaved`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`, `updateBranchInfo`, `updateChatView`, `iconFileSelected`, `modelPricingRefresh`, `ack`.
 
 ### `threadSettings` vs `appSettings` (no more dual-purpose payload)
 
@@ -677,14 +721,14 @@ state supplied by the loader, exactly as before.
 
 ### WebView → AHK (`postMessage`)
 
-Dispatched by `OnWebMessageReceived` in `chat/callbacks/Dispatch.ahk`. Actions include: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `requestAllSettings`, `requestDefaultSettings`, `saveSettings`, `refreshModelPricing`, `showApiLogs`, `debugLog` (JS→AHK log bridge), `webViewReady`.
+Dispatched by `OnWebMessageReceived` in `chat/callbacks/Dispatch.ahk`. Actions include: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `requestAllSettings`, `requestDefaultSettings`, `saveSettings`, `refreshModelPricing`, `showApiLogs`, `debugLog` (JS→AHK log bridge), `webViewReady`, `browseIcon`, `reloadScript`, `updateFontSize`.
 
 ## Settings Panel (WebUI)
 
 The Settings panel is a set of sections rendered in `webui/index.html`, orchestrated by `webui/js/settings/settings-panel.js`:
 
 - **Registry**: each `sections/*.js` module registers `{ load(data), save() }` with `SettingsPanel.registerSection()`.
-- **Load**: `SettingsPanel.onSettingsReceived(data)` (full settings only — see the `currentSettings` caveat) and `reloadWithDefaults(defaults)` (after Reset) call every section's `load`.
+- **Load**: `SettingsPanel.onSettingsReceived(data)` (full settings only — `appSettings`, never the right-rail `threadSettings`; see [WebView ↔ AHK Communication](#webview--ahk-communication)) and `reloadWithDefaults(defaults)` (after Reset) call every section's `load`.
 - **Save**: `saveSettings()` calls every section's `save()`, collects the results, and posts `{action:'saveSettings', data}` to AHK; `Dispatch._HandleSaveSettings` merges and persists.
 - **Sections**: General (thread titles, API logs, trash, chat shortcut), Icons, UI/Theme, Hotkeys, Menu Items, Providers, Models (pricing/metadata), Assistants, Commands, plus the system-message modal.
 - **Dirty tracking**: `markDirty()/clearDirty()/isDirty()` guard navigation away from unsaved changes.
@@ -710,22 +754,21 @@ The Settings panel is a set of sections rendered in `webui/index.html`, orchestr
 Load order in `index.html` (bottom of `<body>`):
 
 ```
-vendor (lucide, highlight, chart.js, markdown-it, katex, mhchem, texmath, pdf, officeParser)
-  └── chat/chat-core.js             # State, escHtml, _showChatConfirm, _makeInlineEditor
-       ├── chat/model-picker/model-picker.js    # Model/assistant popover
-       ├── chat/chat-format.js                  # Token bar, copy
-       ├── chat/chat-render.js                  # Message bubbles
-       ├── chat/chat-token-tooltip.js, chat-actions.js
-       ├── chat/attachments/*                   # State, extraction, setup
+vendor (lucide, highlight; markdown-it, katex, mhchem, texmath, pdf, officeParser)
+  └── chat/chat-core.js                 # State, escHtml, _showChatConfirm, _makeInlineEditor
+       ├── vendor/chart.umd.min.js + usage-dashboard.js   # Chart.js dashboard
+       ├── chat/model-picker/model-picker.js              # Model/assistant popover
+       ├── chat/chat-format.js, chat-render.js, chat-token-tooltip.js, chat-actions.js
+       ├── chat/attachments/*            # State, extraction, setup
        ├── chat/chat-input.js, chat-branching.js, chat-tree-modal.js
-       ├── chat/chat-sidebar.js, chat-threadmap.js, chat-trash.js
-       ├── chat/chat-search.js, chat-quote.js, stream.js
-       ├── chat/model-picker/model-picker-config.js # Right panel config
-       ├── settings/settings-panel.js           # Settings panel orchestrator
-       │    ├── shared/reasoning-levels.js      # Shared level labels/ordering
-       │    └── settings/sections/*             # One module per tab (incl. commands/*)
-       ├── main.js               # WebMessage dispatch
-       └── (ui controls / usage dashboard are loaded alongside)
+       ├── chat/chat-sidebar.js, chat-threadmap.js, chat-trash.js, chat-quote.js, stream.js
+       ├── chat/model-picker/model-picker-config.js       # Right panel config
+       ├── chat/chat-search.js          # Debounced search (uses shared/ipc)
+       ├── settings/settings-panel.js   # Settings panel orchestrator
+       │    ├── shared/settings-shared.js, shared/reasoning-levels.js
+       │    └── settings/sections/*     # One module per tab (incl. commands/*)
+       ├── shared/ipc-contract.js, shared/ipc.js          # Typed IPC + acks
+       └── main.js, ui-controls.js      # WebMessage dispatch, font/composer/resize controls
 ```
 
 ## Usage Dashboard
@@ -747,10 +790,24 @@ Rolling log at `%TEMP%\LLM_Debug_Log.txt` (~500KB kept when the file exceeds 1MB
 ### How to Run
 
 ```
-tests\run_all_tests.bat              # All tests (AHK + JS) — primary entry
-tests\run_js_tests.bat               # JS only (node:test)
-tests\run_ahk_tests.ahk              # AHK only (custom runner)
+npm run test:fast                     # Everything below, in one command (CI uses this)
+npm run test:contract                 # IPC contract drift check (scripts/check-ipc-contract.js)
+npm run test:load                     # Bounded AHK load check (#Warn All + watchdog + timeout)
+npm run test:ahk                      # Bounded AHK test runner (scripts/run-ahk-tests.js)
+npm run test:unit                     # JS unit + integration tests (node --test)
+
+tests\run_all_tests.bat               # Same coverage via batch (primary legacy entry)
+tests\run_js_tests.bat                # JS only
+tests\run_ahk_tests.ahk               # AHK only (custom runner)
 ```
+
+CI (`.github/workflows/ci.yml`) runs `npm run test:fast` on every push and pull
+request; the full headless e2e suite is a separate job that only runs on manual
+`workflow_dispatch` (it launches the real app and takes minutes). The AHK test
+runner and the load check are hard-bounded (spawnSync timeouts + watchdog), so
+they can never hang a command. `tests/fixtures/models_metadata.txt` is a
+committed sample of the gitignored generated metadata, so CI passes even when
+`scripts/models_metadata.txt` has not been regenerated.
 
 Headless end-to-end (GUI bug harness — launches the real app with the window kept
 off-screen and NO keystroke injection, so it never flashes, steals focus, or types into
