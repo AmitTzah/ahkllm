@@ -91,7 +91,8 @@ scenarios.push({
 
 scenarios.push({
   id: 42,
-  name: 'Usage dashboard chart date labels shift a day in UTC+x timezones (toISOString on local dates)',
+  name: 'Usage dashboard chart date labels use the local date (no UTC day shift in UTC+x timezones)',
+  regression: true, // FIXED by the step-1 IPC refactor (8df50b4): getDateRangeLabels keys labels by local date
   mode: null,
   noApp: true,
   async body() {
@@ -121,12 +122,12 @@ scenarios.push({
     const labels = JSON.parse(line.slice(7));
     const localToday = '2026-08-03';
     const lastLabel = labels[labels.length - 1];
-    // BUG: the label for "today" is built via d.toISOString(), which converts
-    // the local Date to UTC — in UTC+3 before 03:00 local it lands on yesterday,
-    // so today's local rows (keyed "2026-08-03") are plotted on a stale date.
-    if (lastLabel === localToday)
-      throw new Error('chart label for today is correct (bug not reproduced): ' + JSON.stringify(labels));
-    return 'range=day labels=' + JSON.stringify(labels) + ' — the "today" slot is labeled ' + lastLabel + ' (UTC date) instead of ' + localToday;
+    // FIXED: labels are keyed by the LOCAL date (localDateKey), so a UTC+x
+    // clock stuck at 2026-08-02T21:30Z must still label today "2026-08-03"
+    // (the old toISOString() path produced "2026-08-02" and misplotted rows).
+    if (lastLabel !== localToday)
+      throw new Error('chart label for today shifted to UTC date: ' + JSON.stringify(labels) + ' (expected ' + localToday + ')');
+    return 'range=day labels=' + JSON.stringify(labels) + ' — the "today" slot is labeled ' + lastLabel + ' (local date, not the UTC-shifted date)';
   }
 });
 

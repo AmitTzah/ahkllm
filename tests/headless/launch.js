@@ -109,7 +109,10 @@ function resetDataDir(sandboxData) {
   fs.mkdirSync(sandboxData, { recursive: true });
 }
 
-// Remove the junction and restore the real profile. Verifies settings.json.
+// Remove the junction and restore the real profile. A restore is only
+// successful when the backup was actually moved back into place; the profile
+// is NOT required to contain settings.json (a fresh or wiped profile has
+// none until the first Settings save, and that is legitimate).
 function restoreProfile(iso) {
   let ok = false;
   if (isJunction(REAL_DATA_DIR)) {
@@ -119,7 +122,7 @@ function restoreProfile(iso) {
     if (!fs.existsSync(REAL_DATA_DIR)) {
       fs.mkdirSync(path.dirname(REAL_DATA_DIR), { recursive: true });
       fs.renameSync(iso.backupDir, REAL_DATA_DIR);
-      ok = fs.existsSync(path.join(REAL_DATA_DIR, 'settings.json'));
+      ok = fs.existsSync(REAL_DATA_DIR);
     }
   }
   if (iso.sandboxData) rmrf(iso.sandboxData);

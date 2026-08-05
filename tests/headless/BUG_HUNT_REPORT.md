@@ -154,23 +154,17 @@ How to run AHK safely:
 
 ## Current state
 
-- **25 verified, 0 fix applied, 0 fix in progress** (2026-08-04). Sweep #11 (deep pass over
-  streaming, message rendering, and thread metadata) verified 56 (stopping a
-  stream before the first token shows an error banner), 57 (message content
-  renders as raw HTML — embedded handlers execute in the WebView), and 58
-  (forking a chat drops the thread's folder). Scenario count is enforced by
+- **23 verified, 0 fix applied, 0 fix in progress** (2026-08-05). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** bugs #26 (f64a59d), #47 (a30ae19), #60 (50d4111), and
-  #27 (b31a6b9) fixed and committed; entries moved to History (scenarios
-  26/47/60/27 flipped to regression checks). Bug #59 closed as won't-fix
-  (single-user, no migration; profile corrected manually, scenario removed).
-  Next per the fix cycle: bug #29, then the rest in rank order,
-  one at a time, each with a flipped scenario + code-level regression test.
-  Bug #60 reported (intake, not yet verified): typing directly into the
-  right-rail "System prompt" field is display-only — no input wiring, so the
-  typed text never reaches the API request; scenario 60 added, run pending
-  (the app must be closed so the harness can isolate the profile). Harness
-  cleanup is PID-targeted: use
+- **Where we left off:** architecture branch `arch/robust-ipc-settings` steps 1-5 landed
+  (typed IPC contract 8df50b4, correlation ids/acks 0a0ab9c, SettingsService +
+  threadSettings/appSettings split 5c6a5f6, ThreadSettings consolidation 58bf6f3,
+  shared ModelResolver/SystemMessageResolver cc3db48). Bug #42 closed (fixed in
+  8df50b4); #43/#51 closed (fixed in cc3db48); entries moved to History with
+  scenarios 42/43/51 flipped to regression checks. All 56 e2e scenarios pass
+  (run in batches) plus the full AHK and JS suites. Next per the fix cycle:
+  bug #29, then the rest in rank order, one at a time, each with a flipped
+  scenario + code-level regression test. Harness cleanup is PID-targeted: use
   `node tests/headless/e2e-suite.js --cleanup` after aborted runs and NEVER
   blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
 
@@ -602,66 +596,6 @@ updates it.
 row's id to "renamed-model-id", clicks Save, and observes the models table still
 shows the original id.
 
-### 42. Usage dashboard chart date labels shift a day in UTC+x timezones
-
-**Scenario:** 42 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open Usage Dashboard in a timezone ahead of UTC (e.g. Asia/Jerusalem)
-between midnight and ~03:00 local, with "Last 24 Hours" selected.
-
-**Expected:** the rightmost chart column is labeled with today's local date, so
-today's usage (keyed by local `YYYY-MM-DD`) plots under today.
-
-**Actual:** the labels are built with `d.toISOString().substring(0,10)` on a
-local `Date`; `toISOString()` converts to UTC, so in UTC+3 before 03:00 local
-the "today" slot is labeled with yesterday's date and today's rows land on a
-stale column (the summary still counts them, so chart and summary disagree).
-
-**Evidence:** `webui/js/usage-dashboard.js` `getDateRangeLabels()` pushes
-`d.toISOString().substring(0,10)` while the DB rows are keyed by local dates
-(`UsageRepo` stores `FormatTime(, "yyyy-MM-dd")`).
-
-**Verification:** headless scenario 42 (noApp) extracts `getDateRangeLabels()`
-from the actual file and runs it under `TZ=Asia/Jerusalem` with the clock fixed
-at 2026-08-03 00:30 local; the returned "day" label is "2026-08-02" instead of
-"2026-08-03".
-
-### 43. Thinking config is silently dropped for short-form model ids (no provider prefix)
-
-**Scenario:** 43 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** trigger any chat/command whose model id is written without the
-provider prefix (e.g. the stock "DeepSeek V4 Pro" command uses
-`APIModels: "deepseek-v4-pro"` with `thinking: enabled/high`), then watch the
-right rail / request.
-
-**Expected:** the selected thinking level is sent to the API.
-
-**Actual:** the request carries no thinking config at all. `ChatRequestBuilder`
-only resolves the model metadata via `models.Has(requestParams["singleAPIModelName"])`,
-and the models map is keyed by full `provider/model` ids — a short id like
-"deepseek-v4-pro" never matches, so `modelMeta` is empty and the reasoning
-override is never applied (`ApplyThinking` is skipped). The right-rail thinking
-dropdown also collapses to just "Model Default" (`thinkingLevels` comes from the
-same map lookup). Commands with full ids (e.g. `openai/gpt-5.4`) are unaffected;
-most stock commands use short ids, so their thinking setting silently does
-nothing.
-
-**Evidence:** `chat/ChatRequestBuilder.ahk` `_BuildRequestObj()`:
-`modelMeta := models.Has(requestParams["singleAPIModelName"]) ? models[...] : ""`
-then `if (reasoning != "" && hasLevelMap && ...)` applies thinking;
-`DefaultModels.ahk` keys every entry as `"provider/model"`; `DefaultSettings.ahk`
-stock commands use short ids (`"deepseek-v4-pro"`, `"deepseek-v4-flash"`).
-
-**Verification:** headless scenario 43 seeds a thread with
-`model_override: "deepseek-v4-pro"` + `reasoning_override: "high"`, sends a chat
-message to the mock LLM, and asserts the sent request body has no `thinking` /
-`reasoning_effort` field while the right-rail dropdown shows only "Model Default".
-
 ### 46. Command "Stream Response" + pasteMode replace/append silently produces no output
 
 **Scenario:** 46 (scenario code in e2e-suite.js)
@@ -751,37 +685,6 @@ call; `ThreadRepo.Create()` starts cumulative counters at 0.
 (`active_path_tokens` + cumulative counters), confirms the source token bar
 shows them, forks from the UI, and observes the fork's token bar shows $0.00
 and the new thread's leaf `active_path_tokens` is 0.
-
-### 51. Vision gate rejects images/screenshots for short-form model ids (no provider prefix)
-
-**Scenario:** 51 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** use a command or thread whose model id is written without the
-provider prefix (e.g. `gpt-4.1-mini` — as stock commands do) and attach an
-image or enable the screenshot command.
-
-**Expected:** vision-capable models accept images regardless of whether the id
-has the provider prefix (the prefix-less form resolves to the same model).
-
-**Actual:** the request is refused with "Model does not support vision".
-`AttachmentUtils.HasVision` only checks `models.Has(modelName)`, and the
-models map is keyed by full `provider/model` ids — a short id never matches, so
-HasVision returns false even for vision-capable models. `ChatRequestBuilder.
-_ProcessAttachmentsForLastUser` and `processInitialRequest`'s screenshot gate
-both pass the raw (possibly short) model name.
-
-**Evidence:** `shared/AttachmentUtils.ahk` `HasVision()` (no short-name
-fallback, unlike `CostCalculator`/`TreeRepo._LookupPricing`);
-`chat/ChatRequestBuilder.ahk` vision gate; `app/RequestProcessor.ahk`
-`AttachmentUtils.HasVision(APIModelsArr[1])`; `DefaultModels.ahk` keys every
-entry as `"provider/model"`.
-
-**Verification:** headless scenario 51 (noApp) statically proves the gate has
-no prefix fallback and the raw short id is passed by both chat and command
-paths, while vision-capable entries (e.g. `openai/gpt-4.1-mini`, `vision:
-true`) exist only under full keys.
 
 ### 52. Usage dashboard double-counts thinking tokens for command usage
 
@@ -956,6 +859,10 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-05 - "Usage dashboard chart date labels shift a day in UTC+x timezones (toISOString on local dates)" - FIXED in 8df50b4: getDateRangeLabels() keys labels by the LOCAL date (localDateKey) instead of toISOString(); scenario 42 flipped to a regression check (regression: true).
+- 2026-08-05 - "Thinking config is silently dropped for short-form model ids (no provider prefix)" - FIXED in cc3db48: ChatRequestBuilder/ThreadSettings resolve model metadata through ModelResolver.Lookup (short ids now match, thinking kept); scenario 43 flipped to a regression check (regression: true) + unit tests.
+- 2026-08-05 - "Vision gate rejects images/screenshots for short-form model ids (no provider prefix)" - FIXED in cc3db48: AttachmentUtils.HasVision resolves through ModelResolver.Lookup; scenario 51 flipped to a regression check (regression: true) + unit tests.
 
 - 2026-08-03 - "Chat-header token bar contract on branch switch" - REFUTED: the
   header honors its tooltips (Context Used follows the active path 65->80 while

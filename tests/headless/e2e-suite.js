@@ -167,13 +167,15 @@ function recoverInterruptedRun() {
   if (out.closed) parts.push('closed ' + out.closed + ' app process(es)' + (out.pids ? ' (' + out.pids + ')' : ''));
   // 2. Restore a real profile that is still isolated (junction -> temp sandbox)
   //    with its backup still in temp. fs.unlinkSync on a junction removes only
-  //    the link, never the target.
+  //    the link, never the target. The backup does not need a settings.json:
+  //    a wiped/fresh profile legitimately has none until the first Settings
+  //    save, and requiring it left real profiles "restored: NO" forever.
   let backups = [];
   try { backups = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('llm-profile-bak-')).sort(); } catch {}
   const bak = backups.length ? path.join(os.tmpdir(), backups[backups.length - 1]) : '';
   let profileIsJunction = false;
   try { profileIsJunction = fs.lstatSync(realProfile).isSymbolicLink(); } catch {}
-  if (profileIsJunction && bak && fs.existsSync(path.join(bak, 'settings.json'))) {
+  if (profileIsJunction && bak && fs.existsSync(bak)) {
     try {
       fs.unlinkSync(realProfile);
       fs.renameSync(bak, realProfile);
@@ -182,7 +184,7 @@ function recoverInterruptedRun() {
     } catch (e) {
       parts.push('profile restore FAILED: ' + e.message + ' (run --cleanup again or check manually)');
     }
-  } else if (!profileIsJunction && bak && !fs.existsSync(realProfile) && fs.existsSync(path.join(bak, 'settings.json'))) {
+  } else if (!profileIsJunction && bak && !fs.existsSync(realProfile) && fs.existsSync(bak)) {
     try {
       fs.renameSync(bak, realProfile);
       parts.push('restored real profile from backup');
