@@ -1,0 +1,30 @@
+; ============================================================================
+; Committed sample of scripts/models_metadata.txt (auto-generated model
+; metadata from models.dev). scripts/Refresh-Models.ps1 writes the full file
+; locally and it is gitignored; CI and fresh checkouts use this representative
+; slice so ModelPricingParser is exercised deterministically. To refresh,
+; copy a few full entries from a regenerated scripts/models_metadata.txt.
+; ============================================================================
+models := Map(
+    "deepseek/deepseek-chat", {
+        provider: "deepseek", api: "openai-completions",
+        compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
+        thinkingLevelMap: Map("high", "high", "max", "max"),
+        thinkingOff: "disabled",
+        input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: false, vision: false
+    },
+    "deepseek/deepseek-reasoner", {
+        provider: "deepseek", api: "openai-completions",
+        compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
+        thinkingLevelMap: Map("high", "high", "max", "max"),
+        thinkingOff: "disabled",
+        input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1000000, reasoning: true, vision: false
+    },
+    "openai/gpt-5", {
+        provider: "openai", api: "openai-completions",
+        compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
+        thinkingLevelMap: Map("minimal", "minimal", "low", "low", "medium", "medium", "high", "high"),
+        thinkingOff: "minimal",
+        input: 1.25, cachedInput: 0.125, output: 10, context: 400000, reasoning: true, vision: true
+    },
+)

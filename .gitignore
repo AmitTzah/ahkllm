@@ -30,9 +30,9 @@ desktop.ini
 debug*.txt
 
 # Auto-generated model metadata
-models_pricing.txt
-models_metadata.txt
-scripts/models_metadata.txt
+# (anchored to scripts/ so tests/fixtures/ can keep a committed sample)
+/scripts/models_pricing.txt
+/scripts/models_metadata.txt
 
 # Test artifacts
 %TEMP%/test_results.txt

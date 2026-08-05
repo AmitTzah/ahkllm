@@ -53,7 +53,14 @@ class ModelPricingParserTest {
     }
 
     ParsesGeneratedMetadataFile() {
+        ; Prefer the locally generated metadata (scripts/models_metadata.txt,
+        ; written by scripts/Refresh-Models.ps1 and gitignored); fall back to
+        ; the committed sample (tests/fixtures/models_metadata.txt) so the
+        ; parser is always exercised in CI, where the generated file does not
+        ; exist (regression: CI failed with "models_metadata.txt not found").
         path := A_ScriptDir "\..\scripts\models_metadata.txt"
+        if !FileExist(path)
+            path := A_ScriptDir "\fixtures\models_metadata.txt"
         if !FileExist(path)
             throw Error("models_metadata.txt not found at " path)
         content := FileRead(path, "UTF-8")
