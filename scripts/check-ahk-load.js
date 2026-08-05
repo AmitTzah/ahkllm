@@ -23,7 +23,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const AHK = 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe';
+const AHK = process.env.AHK_EXE || 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe';
 const TIMEOUT_MS = 30000;
 
 const shared = (name) => path.join(REPO_ROOT, 'shared', name);

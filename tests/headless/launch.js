@@ -7,7 +7,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawn, spawnSync } = require('node:child_process');
 
-const AHK = 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe';
+const AHK = process.env.AHK_EXE || 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const MAIN_AHK = path.join(REPO_ROOT, 'Main.ahk');
 const PROBE_AHK = path.join(__dirname, 'probe.ahk');

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fast:
+    name: Fast checks (contract, load, AHK, JS)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install AutoHotkey v2
+        shell: pwsh
+        run: |
+          $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest'
+          $asset = $latest.assets | Where-Object { $_.name -match '^AutoHotkey_2\.\d+\.\d+\.zip$' } | Select-Object -First 1
+          if (-not $asset) { throw 'AutoHotkey v2 zip asset not found in latest release' }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ahk.zip"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\ahk" | Out-Null
+          Expand-Archive -Path "$env:RUNNER_TEMP\ahk.zip" -DestinationPath "$env:RUNNER_TEMP\ahk" -Force
+          $exe = Get-ChildItem -Path "$env:RUNNER_TEMP\ahk" -Filter AutoHotkey64.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw 'AutoHotkey64.exe not found in the downloaded zip' }
+          "AHK_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Run fast checks
+        shell: pwsh
+        run: npm run test:fast
+
+  e2e:
+    name: E2E (real app, manual trigger only)
+    runs-on: windows-latest
+    # The full e2e suite launches the real app + WebView2 against an isolated
+    # profile and takes minutes; it only runs when triggered explicitly from
+    # the Actions UI (workflow_dispatch), not on every push.
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install AutoHotkey v2
+        shell: pwsh
+        run: |
+          $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest'
+          $asset = $latest.assets | Where-Object { $_.name -match '^AutoHotkey_2\.\d+\.\d+\.zip$' } | Select-Object -First 1
+          if (-not $asset) { throw 'AutoHotkey v2 zip asset not found in latest release' }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ahk.zip"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\ahk" | Out-Null
+          Expand-Archive -Path "$env:RUNNER_TEMP\ahk.zip" -DestinationPath "$env:RUNNER_TEMP\ahk" -Force
+          $exe = Get-ChildItem -Path "$env:RUNNER_TEMP\ahk" -Filter AutoHotkey64.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw 'AutoHotkey64.exe not found in the downloaded zip' }
+          "AHK_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Run full e2e suite
+        shell: pwsh
+        run: npm run test:e2e

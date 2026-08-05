@@ -1,0 +1,18 @@
+{
+  "name": "llm-autohotkey-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AutoHotkey LLM client with an embedded WebView2 chat UI",
+  "scripts": {
+    "test": "npm run test:fast",
+    "test:fast": "npm run test:contract && npm run test:load && npm run test:ahk && npm run test:unit",
+    "test:contract": "node scripts/check-ipc-contract.js",
+    "test:load": "node scripts/check-ahk-load.js",
+    "test:ahk": "node scripts/run-ahk-tests.js",
+    "test:unit": "node --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\"",
+    "test:e2e": "node tests/headless/e2e-suite.js --all"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
