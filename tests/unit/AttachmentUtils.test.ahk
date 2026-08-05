@@ -30,6 +30,13 @@ class AttachmentUtilsTest {
             throw Error("Expected vision=false for unknown model")
     }
 
+    ; Step 5: short-form ids resolve through ModelId.Lookup (bug #51).
+    HasVision_ShortFormId_ResolvesToFullKey() {
+        ; openai/gpt-5-mini has vision:true in test_config.
+        if !AttachmentUtils.HasVision("gpt-5-mini")
+            throw Error("Expected vision=true for short-form id 'gpt-5-mini'")
+    }
+
     ValidateAttachments_ImageWithVisionModel_ReturnsEmpty() {
         attachments := [{type: "image"}]
         errors := AttachmentUtils.ValidateAttachments(attachments, "google/gemini-2.5-flash")

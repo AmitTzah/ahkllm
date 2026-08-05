@@ -84,6 +84,14 @@ class CostCalculatorTest {
             throw Error("Expected to find pricing for short name 'deepseek-v4-flash'")
     }
 
+    ; Step 5: short-form ids resolve through ModelId.Lookup for every caller.
+    LookupByShortName_OpenAI() {
+        usage := { promptTokens: 1000, completionTokens: 100, cachedTokens: 0 }
+        costs := CostCalculator.ComputeTokenCosts("gpt-5-mini", usage)
+        if costs.inputCost = ""
+            throw Error("Expected to find pricing for short name 'gpt-5-mini'")
+    }
+
     ; --- context window is returned ---
 
     ContextWindow() {

@@ -618,6 +618,37 @@ hook instead of adding another call site to the message chain.
 `ChatSettings.ahk` now delegates to these, so the restore path, the DB
 serializer, and the WebView presenter read the same precedence rules.
 
+### Model id and system-message resolution live in one shared module each
+
+Step 5 consolidated the lookups that used to be re-implemented (or skipped) at
+each call site:
+
+- **`shared/ModelResolver.ahk`** - `ModelResolver.Lookup(models, id)` is the
+  single full-id -> short-name -> version-stripped fallback. It replaced
+  near-identical copies in `CostCalculator`, `TreeRepo._LookupPricing`, and
+  `AttachmentUtils.HasVision`, and added the fallback that was missing in
+  `ChatRequestBuilder` / `ThreadSettings` (the root cause of the short-form-id
+  bug cluster: #43 thinking dropped, #51 vision gate, #36 command
+  temperature/reasoning). Consumers call `ModelResolver.Lookup`/`Has` and pass
+  the raw id through unchanged.
+- **`shared/SystemMessageResolver.ahk`** - `SystemMessageResolver.Resolve(obj)`
+  is the single search for an object's system message (inline text, or a file
+  resolved against script dir, repo root, `default-settings/system-messages/`,
+  and the user AppData folder). It replaced duplicated search logic in
+  `AssistantRepo` and `CommandMenu`; the command copy had never searched
+  `default-settings/system-messages/` (bug #50).
+
+Both are named `...Resolver` (not `ModelId`/`SystemMessage`) because AHK v2
+identifiers are case-insensitive: a class named `ModelId` is treated as an
+unset local inside any function that uses a `modelId` loop variable and
+triggers `#Warn` dialogs.
+
+Dependency rule: any standalone loader of a consumer module (for example the
+headless probes that include `CostCalculator.ahk` or `CommandMenu.ahk`
+directly) must include the resolver module too. `lib/Config.ahk` already does;
+missing the include makes AHK hang at load with a `#Warn` modal (see
+`tests/headless/probe-cost.ahk` / `probe-thinking.ahk`).
+
 ### WebView → AHK (`postMessage`)
 
 Dispatched by `OnWebMessageReceived` in `chat/callbacks/Dispatch.ahk`. Actions include: `chatSend`, `deleteAttachment`, `retry`, `editMessage`, `deleteMessage`, `switchBranch`, `forkChat`, `sidebarAction`, `searchMessages`, `hideWindow`, `switchAssistant`, `updateModelSettings`, `cancelStream`, `requestAssistantList`, `requestCurrentSettings`, `requestAllSettings`, `requestDefaultSettings`, `saveSettings`, `refreshModelPricing`, `showApiLogs`, `debugLog` (JS→AHK log bridge), `webViewReady`.

@@ -374,25 +374,8 @@ class TreeRepo {
     }
 
     static _LookupPricing(modelName) {
-        ; Try full "provider/model" key first
-        if models.Has(modelName)
-            return models[modelName]
-
-        ; Fallback: strip provider prefix and search by short name
-        modelShort := ModelParser.StripProvider(modelName)
-        for fullKey, m in models {
-            if ModelParser.StripProvider(fullKey) = modelShort
-                return m
-        }
-        ; Second fallback: strip version suffix and try again
-        modelBase := ModelParser.StripVersion(modelShort)
-        if modelBase != modelShort {
-            for fullKey, m in models {
-                if ModelParser.StripVersion(ModelParser.StripProvider(fullKey)) = modelBase
-                    return m
-            }
-        }
-        return ""
+        ; Single lookup accepting full or short model ids.
+        return ModelResolver.Lookup(models, modelName)
     }
 
     static _WalkToLeaf(msgId) {

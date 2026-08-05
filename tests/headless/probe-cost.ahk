@@ -29,6 +29,7 @@ global models := Map(
 )
 
 #Include ..\..\shared\ModelParser.ahk
+#Include ..\..\shared\ModelResolver.ahk
 #Include ..\..\api\CostCalculator.ahk
 
 Finish() {

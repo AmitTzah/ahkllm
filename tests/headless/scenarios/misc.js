@@ -68,7 +68,8 @@ scenarios.push({
 
 scenarios.push({
   id: 43,
-  name: 'Thinking config is silently dropped for short-form model ids (no provider prefix)',
+  name: 'Short-form model ids keep thinking metadata (provider prefix not required)',
+  regression: true, // FIXED by the ModelId consolidation (step 5)
   mode: 'sse-success',
   settings: {},
   fixtures: {
@@ -84,12 +85,12 @@ scenarios.push({
     await cdp.click('#thread-list .chat-item');
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
     await sleep(700);
-    // The models metadata map is keyed by full "provider/model" ids, so a
-    // thread whose model_override is the short form ("deepseek-v4-pro") gets an
-    // EMPTY thinking-levels list in the right rail.
+    // FIXED (ModelId.Lookup): the models map is keyed by full ids, but the
+    // short form now resolves to its full key, so the right rail gets the
+    // model's thinking levels.
     const optionCount = await cdp.eval('document.getElementById("reasoningDropdown") ? document.getElementById("reasoningDropdown").options.length : -1');
-    if (optionCount !== 1)
-      throw new Error('right-rail thinking dropdown unexpectedly has levels (bug not reproduced): options=' + optionCount);
+    if (optionCount < 2)
+      throw new Error('right-rail thinking dropdown has no levels for the short-form model: options=' + optionCount);
     // Send a message and inspect the actual request sent to the (mock) API.
     await sendChatMessage(cdp, 'second message');
     await waitStreamingIdle(cdp, 30000);
@@ -98,19 +99,19 @@ scenarios.push({
     const chatReq = lines.map((l) => JSON.parse(l)).find((e) => e.body && e.body.stream === true);
     if (!chatReq) throw new Error('no streaming chat request was logged; lines=' + lines.length);
     const b = chatReq.body;
-    // BUG: ChatRequestBuilder._BuildRequestObj only applies the reasoning
-    // override when models.Has(singleAPIModelName) — the short form never
-    // matches, so thinking is silently dropped from the request.
-    if (b.thinking || b.reasoning_effort)
-      throw new Error('thinking WAS applied for the short-form model (bug not reproduced): ' + JSON.stringify(b));
+    // FIXED: the reasoning override must now reach the request for the
+    // short-form id.
+    if (!b.thinking && !b.reasoning_effort)
+      throw new Error('thinking was dropped for the short-form model: ' + JSON.stringify(b));
     return 'thread model_override=deepseek-v4-pro + reasoning_override=high: right-rail dropdown has ' + optionCount +
-      ' option(s), and the sent request body has no thinking config (model=' + b.model + ')';
+      ' option(s), and the sent request carries thinking config (model=' + b.model + ')';
   }
 });
 
 scenarios.push({
   id: 51,
-  name: 'Vision gate rejects images/screenshots for short-form model ids (no provider prefix) - static check',
+  name: 'Vision gate accepts short-form model ids (provider prefix not required) - static check',
+  regression: true, // FIXED by the ModelId consolidation (step 5)
   mode: null,
   noApp: true,
   async body() {
@@ -118,9 +119,9 @@ scenarios.push({
     const crb = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatRequestBuilder.ahk'), 'utf8');
     const rp = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
     const dm = fs.readFileSync(path.join(launcher.REPO_ROOT, 'default-settings', 'DefaultModels.ahk'), 'utf8');
-    // HasVision only consults models.Has(modelName) - no short-name fallback
-    // (unlike CostCalculator / TreeRepo._LookupPricing which strip the prefix).
-    const noShortFormFallback = /static HasVision\(modelName\) \{[\s\S]*?if !IsSet\(models\) \|\| !models\.Has\(modelName\)[\s\S]*?return false/.test(au);
+    // FIXED: HasVision resolves through ModelId.Lookup, which accepts short
+    // ids (the old models.Has-only check refused short ids - bug #51).
+    const hasShortFormFallback = /static HasVision\(modelName\) \{[\s\S]*?ModelResolver\.Lookup\(models, modelName\)/.test(au);
     // Both the chat attachment gate and the command screenshot gate pass the
     // raw model name straight through.
     const chatGateUsesRawName = /_ProcessAttachmentsForLastUser\(&apiMessages, modelName\)[\s\S]*?AttachmentUtils\.HasVision\(modelName\)/.test(crb);
@@ -129,11 +130,11 @@ scenarios.push({
     const m = dm.match(/"openai\/gpt-4\.1-mini", \{([\s\S]*?)\n    \},/);
     const fullEntryHasVision = !!m && /vision: true/.test(m[1]);
     const shortKeyExists = /^\s*"gpt-4\.1-mini", \{/m.test(dm);
-    if (!noShortFormFallback || !chatGateUsesRawName || !commandGateUsesRawName || !fullEntryHasVision || shortKeyExists)
-      throw new Error('bug not reproduced: noShortFormFallback=' + noShortFormFallback +
+    if (!hasShortFormFallback || !chatGateUsesRawName || !commandGateUsesRawName || !fullEntryHasVision || shortKeyExists)
+      throw new Error('short-form vision fallback missing: hasShortFormFallback=' + hasShortFormFallback +
         ' chatGateUsesRawName=' + chatGateUsesRawName + ' commandGateUsesRawName=' + commandGateUsesRawName +
         ' fullEntryHasVision=' + fullEntryHasVision + ' shortKeyExists=' + shortKeyExists);
-    return 'AttachmentUtils.HasVision returns false for any id missing from the models map; openai/gpt-4.1-mini is vision:true but only keyed with the provider prefix, while the chat attachment gate and command screenshot gate pass raw short ids (e.g. "gpt-4.1-mini") - so images/screenshots are wrongly refused for short-form ids';
+    return 'AttachmentUtils.HasVision resolves short ids via ModelId.Lookup, so "gpt-4.1-mini" finds the vision:true openai/gpt-4.1-mini entry; both gates still pass the raw id, which now works';
   }
 });
 

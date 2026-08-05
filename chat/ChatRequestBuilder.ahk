@@ -175,8 +175,9 @@ _BuildRequestObj(apiMessages, providerInfo) {
 
     ; Look up model metadata for thinking/compat
     global models
-    modelMeta := models.Has(requestParams["singleAPIModelName"])
-        ? models[requestParams["singleAPIModelName"]] : ""
+    ; Single lookup accepting full or short model ids (bug #43: short ids
+    ; used to get an empty modelMeta, silently dropping thinking config).
+    modelMeta := ModelResolver.Lookup(models, requestParams["singleAPIModelName"])
 
     ; Apply reasoning override via metadata-driven handler.
     ; Only send thinking config for a thinking level this model actually offers.

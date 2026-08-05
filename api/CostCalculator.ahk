@@ -24,22 +24,11 @@ class CostCalculator {
         inputPrice := 0
         outputPrice := 0
 
-        ; Lookup in the models map — try full "provider/model" key first
-        if models.Has(model) {
-            CostCalculator._ResolvePricing(models[model], &inputPrice, &cachedInputPrice, &outputPrice, &contextWin)
-        }
-
-        ; Fallback: strip provider prefix or version suffix
-        if !models.Has(model) {
-            modelShort := ModelParser.StripProvider(model)
-            for fullKey, m in models {
-                shortKey := ModelParser.StripProvider(fullKey)
-                if shortKey = modelShort || ModelParser.StripVersion(shortKey) = ModelParser.StripVersion(modelShort) {
-                    CostCalculator._ResolvePricing(m, &inputPrice, &cachedInputPrice, &outputPrice, &contextWin)
-                    break
-                }
-            }
-        }
+        ; Single lookup accepting full or short model ids (exact key, then
+        ; short-name / version-stripped fallback).
+        m := ModelResolver.Lookup(models, model)
+        if IsObject(m)
+            CostCalculator._ResolvePricing(m, &inputPrice, &cachedInputPrice, &outputPrice, &contextWin)
 
         ; Calculate costs using resolved pricing
         if inputPrice > 0 || outputPrice > 0 || contextWin != "" {

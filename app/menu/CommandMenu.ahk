@@ -84,36 +84,12 @@ buildCommandMenu() {
 ; Resolve systemMessage: if cmd has systemMessageFile, read the file;
 ; otherwise use cmd.systemMessage (inline text). Returns the message string.
 _resolveSystemMessage(cmd) {
-    if cmd.HasProp("systemMessageFile") && cmd.systemMessageFile {
-        filePath := cmd.systemMessageFile
-        if !InStr(filePath, ":") {
-            ; Relative path - search script dir, repo root, system-messages/
-            ; dirs, then the user AppData folder (mirrors AssistantRepo).
-            SplitPath(filePath, &name)
-            candidates := [A_ScriptDir "\" filePath
-                         , A_ScriptDir "\..\" filePath
-                         , A_ScriptDir "\default-settings\system-messages\" filePath
-                         , A_ScriptDir "\..\default-settings\system-messages\" filePath]
-            candidates.Push(A_AppData "\LLM-AutoHotkey-Assistant\system-messages\" name)
-            for _, cand in candidates {
-                if FileExist(cand) {
-                    filePath := cand
-                    break
-                }
-            }
-        }
-        try {
-            content := FileRead(filePath, "UTF-8")
-            ; Normalize all line endings to LF: `r`n pairs first, then any stray `r
-            content := StrReplace(content, "`r`n", "`n")
-            return StrReplace(content, "`r", "`n")
-        } catch Error as e {
-            MsgBox("Failed to read system message file:`n" filePath "`n`n" e.Message,
-                "System Message Error", "IconX")
-            return cmd.HasProp("systemMessage") ? cmd.systemMessage : ""
-        }
-    }
-    return cmd.HasProp("systemMessage") ? cmd.systemMessage : ""
+    ; Single resolver shared with the assistant path (bug #50 family).
+    res := SystemMessageResolver.Resolve(cmd)
+    if res.error != ""
+        MsgBox("Failed to read system message file:`n" res.error,
+            "System Message Error", "IconX")
+    return res.text
 }
 
 ; Extract optional command properties shared by onCommandSelected and onCommandInputSend.

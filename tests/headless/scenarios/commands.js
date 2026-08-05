@@ -124,14 +124,17 @@ scenarios.push({
     const modal = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'sysmsg-modal.js'), 'utf8');
     const cmdMenu = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'menu', 'CommandMenu.ahk'), 'utf8');
     const asstRepo = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'db', 'AssistantRepo.ahk'), 'utf8');
+    const resolver = fs.readFileSync(path.join(launcher.REPO_ROOT, 'shared', 'SystemMessageResolver.ahk'), 'utf8');
     // The settings modal saves the select's value - for app-default files that
     // is the BARE filename ("refine.txt"), not the prefixed path.
     const modalSavesValue = /sysMsgFile = fileSelect \? fileSelect\.value : ''/.test(modal);
-    // FIXED: the command path now searches default-settings/system-messages/
-    // and the user AppData folder like the assistant path.
-    const cmdSearchesDefaults = /A_ScriptDir "\\default-settings\\system-messages\\" filePath/.test(cmdMenu);
-    const cmdSearchesAppData = /A_AppData "\\LLM-AutoHotkey-Assistant\\system-messages\\" name/.test(cmdMenu);
-    const assistantSearches = /A_ScriptDir "\\default-settings\\system-messages\\" filePath/.test(asstRepo);
+    // FIXED: the shared resolver (SystemMessageResolver) searches
+    // default-settings/system-messages/ and the user AppData folder, and both
+    // the command path and the assistant path delegate to it (no more copies).
+    const resolverSearchesDefaults = /A_ScriptDir "\\default-settings\\system-messages\\" filePath/.test(resolver);
+    const resolverSearchesAppData = /A_AppData "\\LLM-AutoHotkey-Assistant\\system-messages\\" name/.test(resolver);
+    const cmdDelegates = /SystemMessageResolver\.Resolve\(cmd\)/.test(cmdMenu);
+    const assistantDelegates = /SystemMessageResolver\.Resolve\(a\)/.test(asstRepo);
     // The stock app-default files live ONLY under default-settings/system-messages/.
     const sysDir = path.join(launcher.REPO_ROOT, 'default-settings', 'system-messages');
     const bareFiles = fs.readdirSync(sysDir).filter((f) => f.endsWith('.txt'));
@@ -139,11 +142,11 @@ scenarios.push({
     // After a settings save, systemMessageFile is the bare name; the command
     // path must resolve it under default-settings/system-messages/ so the
     // command keeps its system prompt.
-    if (!modalSavesValue || !cmdSearchesDefaults || !cmdSearchesAppData || !assistantSearches || missingAtRoot.length === 0)
+    if (!modalSavesValue || !resolverSearchesDefaults || !resolverSearchesAppData || !cmdDelegates || !assistantDelegates || missingAtRoot.length === 0)
       throw new Error('regression check failed: modalSavesValue=' + modalSavesValue +
-        ' cmdSearchesDefaults=' + cmdSearchesDefaults + ' cmdSearchesAppData=' + cmdSearchesAppData +
-        ' assistantSearches=' + assistantSearches + ' missingAtRoot=' + missingAtRoot.length);
-    return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); command _resolveSystemMessage now searches default-settings/system-messages/ and AppData like the assistant path';
+        ' resolverSearchesDefaults=' + resolverSearchesDefaults + ' resolverSearchesAppData=' + resolverSearchesAppData +
+        ' cmdDelegates=' + cmdDelegates + ' assistantDelegates=' + assistantDelegates + ' missingAtRoot=' + missingAtRoot.length);
+    return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); SystemMessageResolver searches default-settings/system-messages/ + AppData, and both command and assistant paths delegate to it';
   }
 });
 

@@ -141,12 +141,12 @@ class ThreadSettings {
         }
 
         thinkingLevels := []
-        if models.Has(model) {
-            modelMeta := models[model]
-            if modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap) {
-                for level in modelMeta.thinkingLevelMap
-                    thinkingLevels.Push(level)
-            }
+        ; Single lookup accepting full or short model ids (the short-form id
+        ; used to get no thinking levels in the right rail).
+        modelMeta := ModelResolver.Lookup(models, model)
+        if IsObject(modelMeta) && modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap) {
+            for level in modelMeta.thinkingLevelMap
+                thinkingLevels.Push(level)
         }
 
         return {

@@ -37,6 +37,7 @@ processInitialRequest(*) => ""
 openChatWindow(*) => ""
 runOptionsMenuAction(*) => ""
 
+#Include ..\..\shared\SystemMessageResolver.ahk
 #Include ..\..\app\menu\CommandMenu.ahk
 
 Finish() {

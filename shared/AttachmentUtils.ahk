@@ -8,9 +8,11 @@ class AttachmentUtils {
     ; Check if a model has vision capability.
     ; Returns false if models map missing or vision field absent.
     static HasVision(modelName) {
-        if !IsSet(models) || !models.Has(modelName)
+        if !IsSet(models)
             return false
-        m := models[modelName]
+        ; Single lookup accepting full or short model ids (bug #51: short ids
+        ; used to be rejected because the map is keyed by "provider/model").
+        m := ModelResolver.Lookup(models, modelName)
         if !IsObject(m) || !m.HasOwnProp("vision")
             return false
         return m.vision = true
