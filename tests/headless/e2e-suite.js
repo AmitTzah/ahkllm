@@ -241,6 +241,7 @@ async function main() {
   const onInterrupt = (signal) => {
     if (interrupted) process.exit(130); // second interrupt forces exit
     interrupted = true;
+    try { fs.appendFileSync(RESULTS_FILE, 'RUN INTERRUPTED (' + signal + ') - partial record above.\n', 'utf-8'); } catch {}
     console.error('\n[' + signal + '] stopping headless run — cleaning up...');
     try { console.error(recoverInterruptedRun()); } catch (e) { console.error('cleanup error: ' + e.message); }
     process.exit(130);
@@ -255,17 +256,26 @@ async function main() {
   try {
     iso = launcher.isolateProfile();
     console.log('Launching headless verification for ' + selected.length + ' scenarios...');
+    // Fresh record per run; each scenario appends immediately so an externally
+    // killed run (e.g. another process blanket-killing AHK/node) still leaves a
+    // diagnosable partial record instead of silently discarding progress.
+    fs.writeFileSync(RESULTS_FILE, '# ' + new Date().toISOString() + ' | run of ' + selected.length + ' scenario(s)\n', 'utf-8');
     for (const sc of selected) {
       const started = Date.now();
       const r = await runScenario(sc, iso, {});
       if (r.pid) spawnedPids.push(r.pid);
-      if (r.dataDir) lines.push('  (data dir for inspection: ' + r.dataDir + ')');
+      if (r.dataDir) {
+        const dataDirLine = '  (data dir for inspection: ' + r.dataDir + ')';
+        lines.push(dataDirLine);
+        fs.appendFileSync(RESULTS_FILE, dataDirLine + '\n', 'utf-8');
+      }
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       const tag = r.pass ? 'PASS' : 'FAIL';
       if (r.pass) passCount++;
       const line = tag + ' | #' + String(r.id).padStart(2, '0') + ' | ' + r.name + ' | ' + r.detail + (r.pass ? '' : '');
       console.log(line);
       lines.push(line + ' | ' + secs + 's');
+      fs.appendFileSync(RESULTS_FILE, line + ' | ' + secs + 's\n', 'utf-8');
     }
   } catch (e) {
     console.error('Runner error:', e);
@@ -288,11 +298,7 @@ async function main() {
     (failedScenarios.length ? ' — FAILED: ' + failedScenarios.join(', ') : '');
   const syncOk = checkReportSync();
   const syncLine = syncOk ? 'OK' : 'MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js';
-  lines.push('');
-  lines.push(summary);
-  lines.push('Real profile restored: ' + restored);
-  lines.push('Report sync: ' + syncLine);
-  fs.writeFileSync(RESULTS_FILE, lines.join('\n') + '\n', 'utf-8');
+  fs.appendFileSync(RESULTS_FILE, '\n' + summary + '\nReal profile restored: ' + restored + '\nReport sync: ' + syncLine + '\n', 'utf-8');
   console.log('\n' + summary);
   console.log('Results written to ' + RESULTS_FILE);
   console.log('Real profile restored: ' + restored);

@@ -207,3 +207,13 @@ These cost the original author many hours — do not repeat them:
 
 - Purely visual bugs (tray icon/menu appearance) are not automated — a human verifies them.
 - AHK `#Persistent` does not exist in v2 (scripts with hotkeys stay alive automatically).
+
+## Interrupted runs
+
+Results are written **per scenario** (plus a run header and a final summary), so a run
+that is killed mid-flight still leaves a partial record showing exactly how far it got.
+If a run dies with no summary, the most likely cause is another process or agent running
+a **blanket** `AutoHotkey64.exe`/`node` cleanup (this harness only ever closes this
+repo's own `Main.ahk`/`ChatWindow.ahk` by command line, never unrelated AHK scripts).
+Recover with `node tests/headless/e2e-suite.js --cleanup`, which also restores an
+isolated profile even when the backup has no `settings.json`.
