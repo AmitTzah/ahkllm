@@ -4,6 +4,9 @@
 //   sse-reasoning-only streaming: reasoning only, empty content
 //   json               non-stream chat completion
 //   title              non-stream short title response (max_tokens 50)
+//   sse-script         streaming with a custom chunk script (opts.script)
+//   json               non-stream chat completion; FIM requests (body.prompt)
+//                      answered with choices[0].text (opts.fimText)
 //   error-json         HTTP 401 with {"error":{"message":...}}
 //   drop               accept then destroy socket without any response
 //   refuse             (no server) — caller points the endpoint at a closed port
@@ -54,7 +57,43 @@ function makeSseHandler(opts) {
   };
 }
 
-function startMockServer(mode = 'sse-success', logFile = '') {
+// Scripted SSE: emits the given delta chunks (content or reasoning) with
+// per-chunk delays, then usage + [DONE]. Each step: { type: 'content'|'reasoning',
+// text, delay }.
+function makeScriptedSseHandler(script = []) {
+  return (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    (async () => {
+      for (const step of script) {
+        const delta = step.type === 'reasoning' ? { reasoning_content: step.text } : { content: step.text };
+        sseChunk(res, { choices: [{ delta }] });
+        await delay(step.delay || 80);
+      }
+      sseChunk(res, {
+        choices: [{ delta: {}, finish_reason: 'stop' }],
+        model: 'deepseek-v4-flash',
+        usage: { prompt_tokens: 24, completion_tokens: 18, total_tokens: 42, prompt_tokens_details: { cached_tokens: 6 } }
+      });
+      await delay(40);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    })().catch(() => { try { res.end(); } catch {} });
+  };
+}
+
+// startMockServer(mode, logFile, opts)
+//   opts.chatText  - content used by the JSON chat response.
+//   opts.fimText   - choices[0].text used when the JSON body carries a
+//                    FIM `prompt` field (FIM requests land on the same URL).
+//   opts.fimTextMap - [{ match, text }] picked by substring against the FIM
+//                    prompt, first match wins; falls back to opts.fimText.
+//   opts.script    - chunk script for mode 'sse-script'.
+function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
@@ -76,12 +115,29 @@ function startMockServer(mode = 'sse-success', logFile = '') {
         return;
       }
       if (mode === 'json' || mode === 'title') {
+        // FIM requests (createFIMRequest) post a `prompt` field; answer with
+        // choices[0].text, which ResponseParser.ParseFIMResponse expects.
+        if (parsed.prompt != null) {
+          let fimText = opts.fimText || 'mock FIM fill';
+          for (const entry of opts.fimTextMap || []) {
+            if (String(parsed.prompt).includes(entry.match)) { fimText = entry.text; break; }
+          }
+          json({
+            choices: [{ text: fimText }],
+            model: 'deepseek-v4-flash'
+          }, res);
+          return;
+        }
         const title = parsed.max_tokens === 50;
         json({
-          choices: [{ message: { content: title ? 'Mock Auto Title' : 'Hello from the mock LLM (non-stream).' }, finish_reason: 'stop' }],
+          choices: [{ message: { content: title ? 'Mock Auto Title' : (opts.chatText || 'Hello from the mock LLM (non-stream).') }, finish_reason: 'stop' }],
           model: 'deepseek-v4-flash',
           usage: { prompt_tokens: 8, completion_tokens: title ? 5 : 12, total_tokens: 20, prompt_tokens_details: { cached_tokens: 3 } }
         }, res);
+        return;
+      }
+      if (mode === 'sse-script') {
+        makeScriptedSseHandler(opts.script || [])(req, res);
         return;
       }
       if (mode === 'sse-success') {

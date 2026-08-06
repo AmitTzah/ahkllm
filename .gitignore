@@ -42,3 +42,11 @@ scripts/.pi-cache/
 
 # Agent workspace (dev planning)
 agent-workspace/
+
+# Local tooling (ffmpeg static build for video production)
+.tools/
+
+# Video production artifacts (raw gdigrab takes + caption sources are
+# transient; interrupted runs can leave them behind)
+docs/videos/*-raw.mp4
+docs/videos/*.ass

@@ -193,22 +193,39 @@ async function findTarget(port, urlPart, timeoutMs = 30000) {
   }
 }
 
-// Kill only the process tree we spawned (Main + its ChatWindow + WebView2 children).
+// Kill every leftover AhkLLM app process for THIS repo, matched by command line
+// (never by name, so the user's own AHK scripts are untouched). Covers runs
+// that crashed before a PID was captured, and WebView2 children whose process
+// tree escaped the main kill.
+function killRepoAppProcesses() {
+  const ps = [
+    '-NoProfile', '-Command',
+    "$procs = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'AutoHotkey64.exe') -and ($_.CommandLine -match 'ahkllm') -and ($_.CommandLine -match 'Main\\.ahk|ChatWindow\\.ahk') }; foreach ($p in $procs) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
+    "$wv = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedgewebview2.exe') -and ($_.CommandLine -match 'llm-webview2') }; foreach ($p in $wv) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null }"
+  ];
+  spawnSync('powershell.exe', ps, { timeout: 25000, windowsHide: true });
+}
+
+// Kill the tree we spawned (Main + its ChatWindow + WebView2 children), then
+// run the repo-scoped backstop so no orphan survives even when mainPid is
+// unknown (e.g. a run that crashed before launch returned).
 function teardown(mainPid) {
-  if (!mainPid) return;
-  // Graceful close FIRST: WinClose on the ChatWindow lets its OnExit handler
-  // run and lets in-flight WebView2 operations settle. Force-killing first
-  // raced those operations and popped modal AHK error dialogs
-  // (0x800700AA "the requested resource is in use").
-  try {
-    spawnSync(AHK, [PROBE_AHK, 'kill-chat'], { windowsHide: true, timeout: 10000 });
-  } catch {}
-  try {
-    spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 800'], { windowsHide: true, timeout: 5000 });
-  } catch {}
-  try {
-    spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
-  } catch {}
+  if (mainPid) {
+    // Graceful close FIRST: WinClose on the ChatWindow lets its OnExit handler
+    // run and lets in-flight WebView2 operations settle. Force-killing first
+    // raced those operations and popped modal AHK error dialogs
+    // (0x800700AA "the requested resource is in use").
+    try {
+      spawnSync(AHK, [PROBE_AHK, 'kill-chat'], { windowsHide: true, timeout: 10000 });
+    } catch {}
+    try {
+      spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 800'], { windowsHide: true, timeout: 5000 });
+    } catch {}
+    try {
+      spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
+    } catch {}
+  }
+  killRepoAppProcesses();
   // Remove our unique WebView2 user-data folder once the browser processes are
   // dead. taskkill /F returns before the browser processes have fully released
   // their file handles, so a single immediate rmSync routinely fails and leaves
@@ -219,4 +236,4 @@ function teardown(mainPid) {
   activeWebView2Dir = '';
 }
 
-module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, isolateProfile, resetDataDir, restoreProfile, sweepWebView2Dirs, AHK, PROBE_AHK, REPO_ROOT, listTargets };
+module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, killRepoAppProcesses, isolateProfile, resetDataDir, restoreProfile, sweepWebView2Dirs, AHK, PROBE_AHK, REPO_ROOT, listTargets };
