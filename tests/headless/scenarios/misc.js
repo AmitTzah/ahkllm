@@ -765,7 +765,8 @@ scenarios.push({
 
 scenarios.push({
   id: 97,
-  name: "SettingsPersistence.Save non-atomic FileDelete then FileAppend",
+  name: "SettingsPersistence.Save writes temp file then renames atomically (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (settings must never be deleted before write)
   mode: null,
   noApp: true,
   async body() {
@@ -773,9 +774,15 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sp=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsPersistence.ahk"),"utf8");
-    const hasPattern = /FileDelete\(path\)/.test(sp) && /FileAppend\(jsonStr, path/.test(sp);
-    if(!hasPattern) throw new Error("bug not reproduced");
-    return "SettingsPersistence.Save FileDelete then FileAppend non-atomic";
+    const saveBlock=sp.slice(sp.indexOf("static Save"), sp.indexOf("static Save")+1400);
+    // FIXED (bug #97): write to a temp file, then rename over the target.
+    const hasTempWrite = /tmpPath := path "\.tmp"/.test(saveBlock) && /FileOpen\(tmpPath, "w"/.test(saveBlock);
+    const hasAtomicMove = /FileMove\(tmpPath, path, 1\)/.test(saveBlock);
+    const deletesFirst = /FileDelete\(path\)/.test(saveBlock);
+    const appendsDirect = /FileAppend\(jsonStr, path/.test(saveBlock);
+    if(!hasTempWrite || !hasAtomicMove || deletesFirst || appendsDirect)
+      throw new Error("bug #97 not fixed: hasTempWrite="+hasTempWrite+" hasAtomicMove="+hasAtomicMove+" deletesFirst="+deletesFirst+" appendsDirect="+appendsDirect);
+    return "SettingsPersistence.Save writes settings.json.tmp then FileMove(tmpPath, path, 1) - a mid-write failure can no longer destroy the original settings.json";
   }
 });
 

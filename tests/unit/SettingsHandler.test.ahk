@@ -44,6 +44,63 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #97): Save must be atomic - write a temp file in the same
+    ; directory, then rename it over settings.json, so a failure mid-write never
+    ; leaves the original deleted or half-written.
+    Save_IsAtomic() {
+        oldPath := SettingsHandler.settingsPath
+        target := A_Temp "\test_settings_atomic_" A_TickCount ".json"
+        tmp := target ".tmp"
+        SettingsHandler.settingsPath := target
+        try {
+            try FileDelete(target)
+            try FileDelete(tmp)
+            s := Map("version", 1, "trash", Map("retentionDays", 30))
+            if !SettingsHandler.Save(s)
+                throw Error("Save() should return true on success")
+            if !FileExist(target)
+                throw Error("settings.json should exist after Save()")
+            if FileExist(tmp)
+                throw Error("temp file should be renamed away after a successful Save()")
+            loaded := SettingsHandler.Load()
+            if !loaded.Has("trash") || loaded["trash"]["retentionDays"] != 30
+                throw Error("saved settings should load back with the expected values")
+            ; A second save must replace, not append to, the file.
+            s2 := Map("version", 2)
+            if !SettingsHandler.Save(s2)
+                throw Error("second Save() should return true")
+            loaded2 := SettingsHandler.Load()
+            if loaded2.Has("trash")
+                throw Error("second Save() should replace the file content (got leftover 'trash')")
+            if !loaded2.Has("version") || loaded2["version"] != 2
+                throw Error("second Save() should persist the new content")
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(target)
+            try FileDelete(tmp)
+        }
+    }
+
+    ; Regression (bug #97): when the write/move fails, Save returns false,
+    ; leaves no temp behind, and does not throw.
+    Save_FailureCleansTempAndReturnsFalse() {
+        oldPath := SettingsHandler.settingsPath
+        ; ':' is invalid in a Windows filename, so the temp write must fail.
+        target := A_Temp "\test_settings_bad:name.json"
+        SettingsHandler.settingsPath := target
+        try {
+            result := SettingsHandler.Save(Map("version", 1))
+            if result
+                throw Error("Save() should return false when the write fails")
+            if FileExist(target ".tmp")
+                throw Error("failed Save() should clean up its temp file")
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(target)
+            try FileDelete(target ".tmp")
+        }
+    }
+
     GetDefaults_HasAllTopLevelKeys() {
         defaults := SettingsHandler.GetDefaults()
         expectedKeys := ["version", "providers", "models", "assistants", "commands",
