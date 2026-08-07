@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **33 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **32 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #72 FIXED in d58d2bf; next: bug #73 (GoogleChatCompletions disabled thinking config omits include_thoughts).
+- **Where we left off:** 2026-08-07 — bug #73 FIXED in d8c0096; next: bug #74 (SettingsApply leaves providerMap stale when all prefixes are cleared).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 73. GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)
-
-**Scenario:** 73 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** select a Gemini 2.x model (e.g. `google/gemini-2.0-flash`) and set Thinking Level to the disabled option (or to Model Default where `ApplyDefaults` is not used), then send a request and inspect the JSON payload (`requestFile`).
-
-**Expected:** disabled payload should be symmetric with enabled: `extra_body.google.thinking_config = {include_thoughts:false, thinking_budget:0}` or at least consistently include `include_thoughts`.
-
-**Actual:** `GoogleChatCompletions.ThinkingConfig` (enabled) always sets `include_thoughts:true` plus a budget/level, but `DisabledConfig` for 2.x returns only `{thinking_budget:0}` with no `include_thoughts` field. The API may therefore still return thoughts or behave inconsistently between enabled/disabled.
-
-**Evidence:** `api/handlers/GoogleChatCompletions.ahk` `DisabledConfig()` `return {thinking_budget:0}` vs `ThinkingConfig()` `tc := {include_thoughts:true}`.
-
-**Verification:** headless scenario 73 (noApp) slices `DisabledConfig` and asserts `thinking_budget:0` present and `include_thoughts` absent.
 
 ### 74. SettingsApply leaves providerMap stale when all prefixes are cleared
 
@@ -794,6 +778,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)" - FIXED in d8c0096: DisabledConfig now returns {include_thoughts:false, thinking_budget:0} for Gemini 2.x, symmetric with the enabled config; scenario 73 flipped to a regression static check + LLMRequestBuilder unit test.
 
 - 2026-08-07 - "SystemMessageResolver treats UNC \\server\\share paths as relative - file not found" - FIXED in d58d2bf: Resolve now treats paths starting with \\ or / as absolute (no drive-letter colon required), so UNC/rooted system-message files are read as-is; scenario 72 flipped to a regression static check + UserConfig unit test.
 
