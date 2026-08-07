@@ -1,5 +1,5 @@
-# 2026-08-07T20:44:36.719Z | run of 1 scenario(s)
-PASS | #46 | Command "Stream Response" + pasteMode replace/append builds a non-streaming request (static check) | InlineRequestRunner builds its request with stream=false (single-shot CurlBuilder.Build + JSON parse), so a replace/append command with Stream Response ON pastes its response instead of silently dropping SSE | 0.0s
+# 2026-08-07T20:46:36.940Z | run of 1 scenario(s)
+PASS | #49 | Canceling a message edit rolls back deferred attachment removals | Edit -> remove attachment -> Cancel: wrapper display=none -> , DB rows during=1 after=1, _editingMessageId=null (cancel rolls back the deferred removal) | 5.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

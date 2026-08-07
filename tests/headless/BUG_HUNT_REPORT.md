@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **52 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **51 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #46 FIXED in 1979523; next: bug #49 (canceling a message edit leaves removed attachments hidden in the UI but still in the DB).
+- **Where we left off:** 2026-08-07 — bug #49 FIXED in 5597ff1; next: bug #48 (forking a chat resets the token/cost stats).
 ---
 
 ## Bug entry template
@@ -207,38 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 49. Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)
-
-**Scenario:** 49 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** in a chat with an attachment, click Edit on the message, click the
-attachment's Ãƒâ€” (it hides), then click Cancel instead of Save/Branch.
-
-**Expected:** canceling an edit restores the attachment (or at least the removal
-is consistently applied or not â€” never half-applied).
-
-**Actual:** the attachment stays hidden in the UI while its DB row survives, so
-the next request still sends it to the API. `editMessage` sets
-`_editingMessageId` and starts `_removedAttachmentIds = []`; the attachment Ãƒâ€”
-handler defers deletion to the next Save (`_removedAttachmentIds.push(attId)` +
-`wrapper.style.display = 'none'`), but the Cancel handler only removes the
-`.editing` class â€” it neither applies the deferred deletion nor restores the
-hidden wrapper, and it leaves `_editingMessageId` truthy, so subsequent Ãƒâ€”
-clicks on any attachment also defer (hide) instead of deleting.
-
-**Evidence:** `webui/js/chat/chat-branching.js` `editMessage()` /
-`commitEdit()` and the cancel wiring (`bubble.classList.remove('editing')`
-only); `webui/js/chat/attachments/chat-attachments-setup.js`
-`setupMessageAttachmentDeleteDelegation()` defers when `_editingMessageId` is
-truthy.
-
-**Verification:** headless scenario 49 seeds a user message with an attachment,
-clicks Edit Ã¢â€ â€™ Ãƒâ€” (wrapper hides, DB row still present) Ã¢â€ â€™ Cancel, and observes
-the wrapper stays hidden, the DB row is still there, and `_editingMessageId`
-remains set.
 
 ### 48. Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)
 
@@ -1198,6 +1166,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)" - FIXED in 5597ff1: the edit Cancel handler now restores wrappers of deferred-removed attachments, clears _removedAttachmentIds, and resets _editingMessageId, so cancel is a clean rollback; scenario 49 flipped to a regression check + chat-branching unit test.
 
 - 2026-08-07 - "Command \"Stream Response\" + pasteMode replace/append silently produces no output" - FIXED in 1979523: InlineRequestRunner now builds its non-FIM request with stream=false (was passing the command's stream flag, so the API answered SSE the single-shot parser could not read); scenario 46 flipped to a regression static check + InlineRequestRunner unit test.
 
