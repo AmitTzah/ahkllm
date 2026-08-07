@@ -1,5 +1,5 @@
-# 2026-08-07T21:13:35.710Z | run of 1 scenario(s)
-PASS | #62 | Forking a chat with temperature 0 keeps the override (TreeRepo zero-safe) | TreeRepo._CopyThreadSettings checks temperatureOverride != "" (0 is a valid override), so forking a thread with temp 0 keeps it | 0.0s
+# 2026-08-07T21:15:56.533Z | run of 1 scenario(s)
+PASS | #63 | Thread pricing unit falls back to 10% when cachedInput is empty string | TreeRepo GetThreadStats pricingUnit treats cachedInput="" as missing and falls back to 10% of input | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
