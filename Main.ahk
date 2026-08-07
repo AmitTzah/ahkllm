@@ -147,10 +147,11 @@ closeChatWindow(ExitReason, ExitCode) {
 }
 
 ; ----------------------------------------------------
-; Generate tray menu dynamically from DefaultSettings.ahk
+; Generate tray menu + icon dynamically from DefaultSettings.ahk
 ; ----------------------------------------------------
 
-TraySetIcon(iconOn)
+#Include app\TrayIcon.ahk
+_rebuildTrayIcon()
 A_TrayMenu.Delete()
 A_TrayMenu.Add("📋 Open Chat Window", (*) => openChatWindow())
 A_TrayMenu.Add("📝 New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))
@@ -190,6 +191,7 @@ _rebuildSuspendBanner()
 ; SettingsService.Apply runs these after every settings reload, replacing the
 ; old inline rebuild chain in the WM_SETTINGS_UPDATED handler. New settings-
 ; driven rebuilds register a hook here instead of adding another call site.
+SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)
 SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
 SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend))
 SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)

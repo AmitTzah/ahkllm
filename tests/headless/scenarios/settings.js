@@ -300,23 +300,32 @@ scenarios.push({
 
 scenarios.push({
   id: 34,
-  name: 'Tray icon changes do not apply until restart (static check of the settings-update path)',
+  name: 'Tray icon changes apply live on settings updates (static check of the settings-update path)',
+  regression: true, // FIXED bug kept as a regression check (tray icon must re-apply on settings updates)
   mode: null,
   noApp: true,
   async body() {
     const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
-    // Startup applies the tray icon; the WM_SETTINGS_UPDATED handler must too
-    // for icon edits to take effect live.
-    const hasStartupApply = /TraySetIcon\(iconOn\)/.test(mainSrc);
+    const traySrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayIcon.ahk'), 'utf8');
+    // FIXED: startup applies the icon through the shared rebuild, the rebuild
+    // is registered as the trayIcon settings hook, and it honors suspend state.
+    const hasStartupRebuild = /_rebuildTrayIcon\(\)/.test(mainSrc);
+    const hasHook = mainSrc.includes('SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)');
+    const hasApply = /TraySetIcon\(_trayIconForCurrentState\(\)/.test(traySrc);
+    const hasOnBranch = /iconOn/.test(traySrc);
+    const hasOffBranch = /iconOff/.test(traySrc);
+    const hasSuspendBranch = /A_IsSuspended/.test(traySrc);
     const updStart = mainSrc.indexOf('WM_SETTINGS_UPDATED');
     const reloadStart = mainSrc.indexOf('WM_RELOAD_MAIN');
     const handler = mainSrc.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
-    const hasLiveApply = /TraySetIcon/.test(handler);
-    // BUG: the settings-update handler reloads globals and re-registers
-    // hotkeys but never re-applies the tray icon, so icon edits need a restart.
-    if (!hasStartupApply || hasLiveApply)
-      throw new Error('bug not reproduced: startupApply=' + hasStartupApply + ' liveApplyInHandler=' + hasLiveApply);
-    return 'TraySetIcon is called at startup but NOT in the WM_SETTINGS_UPDATED handler; tray icon edits require a restart';
+    // The handler reloads through SettingsService, which runs the registered
+    // trayIcon hook, so icon edits apply without a restart.
+    const handlerReloads = handler.includes('SettingsService.ReloadFromDisk()');
+    if (!hasStartupRebuild || !hasHook || !hasApply || !hasOnBranch || !hasOffBranch || !hasSuspendBranch || !handlerReloads)
+      throw new Error('tray icon fix not wired: startupRebuild=' + hasStartupRebuild + ' hook=' + hasHook +
+        ' apply=' + hasApply + ' onBranch=' + hasOnBranch + ' offBranch=' + hasOffBranch + ' suspendBranch=' + hasSuspendBranch +
+        ' handlerReloads=' + handlerReloads);
+    return 'Tray icon rebuild runs at startup, is registered as the trayIcon settings hook, honors suspend state, and the settings-update handler reloads via SettingsService';
   }
 });
 
