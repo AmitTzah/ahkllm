@@ -1,5 +1,5 @@
-# 2026-08-07T20:50:12.469Z | run of 1 scenario(s)
-PASS | #48 | Forking a chat keeps the token/cost stats (active_path_tokens and cumulative counters are copied) | source token bar: "40 / 1m↑ 10  ↓ 202$0.50"; fork token bar: "10 / 1m↑ 10  ↓ 202$0.50" (cumulative_cost=0.5, leaf active_path_tokens=10) | 6.1s
+# 2026-08-07T20:52:33.689Z | run of 1 scenario(s)
+PASS | #52 | Usage dashboard counts command thinking tokens once (completion_tokens already includes thinking) | chat row (prompt 10 + completion 100) + command row (prompt 10 + completion 100 + thinking 40): dashboard Total Tokens = 220 (220 = counted once; 260 = thinking double-counted for the command) | 4.9s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

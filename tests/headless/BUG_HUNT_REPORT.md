@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **50 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **49 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #48 FIXED in 4bdfc51; next: bug #52 (usage dashboard double-counts thinking tokens for command usage).
+- **Where we left off:** 2026-08-07 — bug #52 FIXED in f9f34ea; next: bug #53 (dashboard "Last 24 Hours" spans two calendar days).
 ---
 
 ## Bug entry template
@@ -207,40 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 52. Usage dashboard double-counts thinking tokens for command usage
-
-**Scenario:** 52 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** run an inline command (pasteMode replace/append) or a title-gen call
-with a reasoning model that reports thinking tokens, then open Usage Dashboard
-and look at Total Tokens or the per-model Output chart.
-
-**Expected:** each generated token is counted once, and identical usage counts
-identically for chat vs commands.
-
-**Actual:** command output tokens are counted twice when thinking is present.
-The command-usage rows store `completion_tokens` as the FULL completion
-(`ResponseParser` returns the raw `completion_tokens`, which include reasoning
-tokens for OpenAI-style models, or the Gemini-inflated `total - prompt`) plus a
-separate `thinking_tokens` column; `renderSummary` then computes
-`cmdOutput = completion_tokens + thinking_tokens` and `renderModelSections`
-does the same, so thinking tokens are added twice. Chat rows are stored as
-`output_tokens` (already full, incl. thinking) and counted once â€” the same
-100-token response with 40 thinking tokens is counted as 100 for chat and 140
-for commands.
-
-**Evidence:** `webui/js/usage-dashboard.js` `renderSummary()` (`cmdOutput =
-(c.completion_tokens||0) + (c.thinking_tokens||0)`) and `renderModelSections()`
-(same); `api/ResponseParser.ahk` `ParseChatResponse()` (completionTokens =
-full); `app/InlineRequestRunner.ahk` `_PasteAndLogResponse()` /
-`_ExtractUsage()`; `chat/ThreadTitleGen.ahk` `_TitleGen_TrackUsage()`.
-
-**Verification:** headless scenario 52 seeds one chat row and one command row
-with identical usage (prompt 10, completion 100, thinking 40) and opens the
-dashboard: Total Tokens shows 260 (command counted as 140) instead of 220.
 
 ### 53. Dashboard "Last 24 Hours" spans two calendar days â€” the summary counts yesterday while the chart only plots today
 
@@ -1139,6 +1105,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Usage dashboard double-counts thinking tokens for command usage" - FIXED in f9f34ea: renderSummary and renderModelSections now count command_usage.completion_tokens once (it already includes thinking, matching chat's output_tokens) instead of adding thinking_tokens again; scenario 52 flipped to a regression check + usage-dashboard unit test.
 
 - 2026-08-07 - "Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)" - FIXED in 4bdfc51: TreeRepo.GetActivePath now selects active_path_tokens, _InsertForkMessage/_CopyOffPathSiblings copy it per message, and ForkThread carries the source thread's cumulative counters to the fork, so the token bar keeps context + cost; scenario 48 flipped to a regression check + ChatDB fork unit test.
 
