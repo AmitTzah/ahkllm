@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **29 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **28 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #76 FIXED in f4cd45f; next: bug #77 (empty Send with existing chat history triggers an unexpected retry).
+- **Where we left off:** 2026-08-07 — bug #77 FIXED in 8c651dd; next: bug #78 (right-rail temperature 0 displays as "Default").
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 77. Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry
-
-**Scenario:** 77 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open a chat that already has messages (e.g. last message is an assistant response), clear the input (`input.value = ""`), click Send (or press Enter).
-
-**Expected:** no action - empty input should be a no-op (like most chat UIs) or show a hint.
-
-**Actual:** `webui/js/chat/chat-input.js` `onChatSend` trims input to `""`, finds `message` falsy and `attachments` empty, then falls through to `if (chatMessages && chatMessages.length>0) { var lastMsg = chatMessages[chatMessages.length-1]; if (lastMsg.role==="assistant") retryLastAssistantMessage(...) ; else if (lastMsg.role==="user") Ipc.postToHost('retry') }`. An empty Send therefore re-fires the last assistant message (or resends the last user message) instead of doing nothing - a single accidental click/Enter duplicates a request and burns tokens/cost.
-
-**Evidence:** `webui/js/chat/chat-input.js` `onChatSend` empty-input branch with `retryLastAssistantMessage` and `Ipc.postToHost('retry')`.
-
-**Verification:** headless scenario 77 (noApp) asserts the empty-input `chatMessages.length` branch and `retry` post exist.
 
 ### 78. Right-rail temperature 0 displays as "Default" instead of 0.0 - falsy check hides 0
 
@@ -730,6 +714,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry" - FIXED in 8c651dd: onChatSend now returns early when the input is empty and there are no attachments, so an accidental click/Enter no longer retries the last assistant/user message and burns tokens; scenario 77 flipped to a regression static check + chat-input unit test.
 
 - 2026-08-07 - "initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread" - FIXED in f4cd45f: initChatMode now assigns activeThreadId whenever a threadId is provided (the old !activeThreadId guard left it stale on switches, so sends/search targeted the wrong thread); scenario 76 flipped to a regression static check + chat-core unit test.
 

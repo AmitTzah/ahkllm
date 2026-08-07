@@ -1,5 +1,5 @@
-# 2026-08-07T21:53:14.979Z | run of 1 scenario(s)
-PASS | #76 | initChatMode always updates activeThreadId on thread switch | initChatMode always updates activeThreadId from the loaded thread, so thread switches/search/sends target the right thread | 0.0s
+# 2026-08-07T21:55:31.476Z | run of 1 scenario(s)
+PASS | #77 | onChatSend empty input is a no-op (no accidental retry) | chat-input.js onChatSend returns early for empty input, so an empty Send no longer retries the last message | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
