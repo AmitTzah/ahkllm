@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **43 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **45 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #80 (ThreadRepo SQL injection via threadId), #81 (Branch sibling_group SQL injection) � both headless PASS. Sync OK 43 entries / 77 scenarios (34 regression). Previous batches #61-79 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #82 (dashboard filter XSS), #83 (threadmap who XSS) � both headless PASS (noApp static). Sync OK 45 entries / 79 scenarios (34 regression). Previous batches up to #81 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1164,6 +1164,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` `WHERE id='" msg.id "'`.
 
 **Verification:** headless scenario 81 (noApp) asserts `SQLite.Escape(msg.id)` absent and `WHERE id='" msg.id "'` present.
+
+### 82. Usage dashboard provider/model filter dropdown XSS � option values not escaped
+
+**Scenario:** 82 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set a provider `displayName` or model id to `"><img src=x onerror=alert(1)>` via Settings ? Providers/Models ? Save, then open Usage Dashboard.
+
+**Expected:** the filter dropdowns show the name as inert text.
+
+**Actual:** `webui/js/usage-dashboard.js` `populateFilters` does `provSel.innerHTML += '<option value="'+p+'">'+p+'</option>'` and `modSel.innerHTML += '<option value="'+m+'">'+m+'</option>'` with no `escHtml`. A provider/model name containing HTML is parsed as HTML and its event handlers execute in the WebView (same `chrome.webview.postMessage` access as #57).
+
+**Evidence:** `webui/js/usage-dashboard.js` `populateFilters` raw `innerHTML` for `p` and `m`.
+
+**Verification:** headless scenario 82 (noApp) asserts raw `innerHTML` with `p`/`m` and no `escHtml(p)` exists.
+
+### 83. Thread-map "who" label XSS � model name not escaped in right-panel nav list
+
+**Scenario:** 83 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set a custom model id to `"><img src=x onerror=...>` (or have an assistant with such a model), send a message with that model, then look at the right-panel Thread Map.
+
+**Expected:** the `who` label shows the model name as text.
+
+**Actual:** `webui/js/chat/chat-threadmap.js` `renderNavList` does `var who = msg.model || 'Assistant'; item.innerHTML = '<span class="who">' + who + '</span>...' ` with no `escHtml(who)`. The model string is interpreted as HTML. `createMessageBubble` correctly uses `escHtml` for the model in the header, but the thread map does not.
+
+**Evidence:** `webui/js/chat/chat-threadmap.js` `renderNavList` `+ who +` without `escHtml`.
+
+**Verification:** headless scenario 83 (noApp) asserts `+ who +` raw and no `escHtml(who)` exists.
 
 ---
 

@@ -483,4 +483,32 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 82,
+  name: "Usage dashboard provider/model filter XSS � option values not escaped",
+  mode: null,
+  noApp: true,
+  async body() {
+    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
+    const hasEsc = /escHtml\(p\)/.test(dash) || /escHtml\(m\)/.test(dash);
+    const hasRaw = /provSel\.innerHTML \+=.*\'<option value="\'\+p\+/.test(dash);
+    if(hasEsc || !hasRaw) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRaw="+hasRaw);
+    return "usage-dashboard.js populateFilters does provSel.innerHTML += '<option value=\"'+p+'\">'+p without escHtml � XSS via provider/model name";
+  }
+});
+
+scenarios.push({
+  id: 83,
+  name: "Threadmap who XSS � model name not escaped in nav list",
+  mode: null,
+  noApp: true,
+  async body() {
+    const tm=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-threadmap.js"),"utf8");
+    const hasEsc = /escHtml\(who\)/.test(tm);
+    const hasRawWho = /item\.innerHTML =.*\+ who \+/.test(tm);
+    if(hasEsc || !hasRawWho) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRawWho="+hasRawWho);
+    return "chat-threadmap.js renderNavList does item.innerHTML = ... + who + ... without escHtml � model name XSS";
+  }
+});
+
 module.exports = scenarios;
