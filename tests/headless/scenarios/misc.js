@@ -462,16 +462,17 @@ scenarios.push({
 
 scenarios.push({
   id: 78,
-  name: "Right-rail temperature 0 shows Default instead of 0.0 (falsy check)",
+  name: "Right-rail temperature 0 shows 0.0 (falsy check fixed)",
+  regression: true, // FIXED bug kept as a regression check (0 must be a valid displayed temperature)
   mode: null,
   noApp: true,
   async body() {
     const cfg=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","model-picker","model-picker-config.js"),"utf8");
-    const hasFalsy = /var hasTemp = settings\.temperature && settings\.temperature !==/.test(cfg);
-    const handlesZero = /settings\.temperature != "" && settings\.temperature !== undefined/.test(cfg) || /hasTemp =.*temperature.*!= ""/.test(cfg) && !/settings\.temperature &&/.test(cfg);
-    if(!hasFalsy) throw new Error("bug not reproduced hasFalsy false");
-    // hasFalsy true means 0 is treated as falsy -> shows Default
-    return "model-picker-config.js hasTemp = settings.temperature && ... ï¿½ 0 is falsy, shows Default";
+    // FIXED (bug #78): hasTemp uses explicit empty checks so 0 is valid.
+    const hasFalsy = /var hasTemp = settings\.temperature &&/.test(cfg);
+    const handlesZero = /settings\.temperature !== '' && settings\.temperature !== undefined/.test(cfg);
+    if(hasFalsy || !handlesZero) throw new Error("bug #78 not fixed: hasFalsy=" + hasFalsy + " handlesZero=" + handlesZero);
+    return "model-picker-config.js hasTemp uses explicit empty checks, so a 0 override shows 0.0 instead of Default";
   }
 });
 
