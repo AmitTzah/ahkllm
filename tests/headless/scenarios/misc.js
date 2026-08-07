@@ -835,7 +835,8 @@ scenarios.push({
 
 scenarios.push({
   id: 100,
-  name: "LLMRequestBuilder._FixStreamBoolean naive StrReplace corrupts user content",
+  name: "LLMRequestBuilder._FixStreamBoolean is quote-aware (user content safe)",
+  regression: true, // FIXED bug kept as a regression check (boolean fix must not touch string values)
   mode: null,
   noApp: true,
   async body() {
@@ -843,9 +844,14 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const lb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","LLMRequestBuilder.ahk"),"utf8");
-    const hasFix = /static _FixStreamBoolean\(jsonStr\)/.test(lb) && /StrReplace\(jsonStr,.*stream/.test(lb);
-    if (!hasFix) throw new Error("bug not reproduced");
-    return "LLMRequestBuilder._FixStreamBoolean does global StrReplace stream 1->true";
+    const block=lb.slice(lb.indexOf("static _FixStreamBoolean"), lb.indexOf("static _FixStreamBoolean")+1400);
+    // FIXED (bug #100): no global StrReplace over the whole payload - the
+    // rewrite is quote-aware (scans outside string literals).
+    const naiveReplace = block.includes('StrReplace(jsonStr,');
+    const quoteAware = /inString/.test(block);
+    if(naiveReplace || !quoteAware)
+      throw new Error("bug #100 not fixed: naiveReplace="+naiveReplace+" quoteAware="+quoteAware);
+    return "LLMRequestBuilder._FixStreamBoolean scans outside JSON string literals (inString tracking), so user content containing stream/include_usage snippets can never be rewritten";
   }
 });
 

@@ -370,6 +370,35 @@ class LLMRequestBuilderTest {
             throw Error("Non-target booleans should remain unchanged")
     }
 
+    ; Regression (bug #100): the rewrite must only touch real JSON keys, never
+    ; string values. User content containing `"stream":1` (escaped inside a
+    ; JSON string) must survive unchanged while the real top-level stream is
+    ; still converted.
+    FixStreamBoolean_DoesNotCorruptUserContent() {
+        raw := '{"messages":[{"content":"{\"stream\":1,\"include_usage\":1}","role":"user"}],"stream":1}'
+        result := LLMRequestBuilder._FixStreamBoolean(raw)
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("stream") || parsed["stream"] != true
+            throw Error("top-level stream should become true, got: " (parsed.Has("stream") ? parsed["stream"] : "(absent)"))
+        content := parsed["messages"][1]["content"]
+        if content != '{"stream":1,"include_usage":1}'
+            throw Error("user content must survive unchanged, got: " content)
+    }
+
+    ; Regression (bug #100): end-to-end through createJSONRequest - a user
+    ; prompt containing `"stream":1` must be sent verbatim.
+    CreateJSONRequest_UserContentWithStreamSnippet_Survives() {
+        prompt := '{"stream":1,"include_usage":1} in my prompt'
+        result := LLMRequestBuilder.createJSONRequest("deepseek-v4-flash", "sys", prompt, "", "", "", true, "")
+        parsed := jsongo.Parse(result)
+        if parsed["stream"] != true
+            throw Error("top-level stream should be true, got: " parsed["stream"])
+        msgs := parsed["messages"]
+        userContent := msgs[msgs.Length]["content"]
+        if userContent != prompt
+            throw Error("user prompt must survive unchanged, got: " userContent)
+    }
+
     ; ----------------------------------------------------
     ; createJSONRequest — strengthened assertions
     ; ----------------------------------------------------
