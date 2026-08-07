@@ -23,6 +23,11 @@ class SettingsPersistence {
             return Map()
         try {
             raw := FileRead(path, "UTF-8")
+            ; Bug #79: some editors write a UTF-8 BOM - strip it before parsing
+            ; (jsongo chokes on the leading \uFEFF and settings were silently
+            ; reset to defaults).
+            if SubStr(raw, 1, 1) = Chr(0xFEFF)
+                raw := SubStr(raw, 2)
             parsed := jsongo.Parse(raw)
             if !IsObject(parsed)
                 return Map()

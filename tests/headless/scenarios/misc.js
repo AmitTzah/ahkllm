@@ -478,16 +478,17 @@ scenarios.push({
 
 scenarios.push({
   id: 79,
-  name: "SettingsPersistence.Load does not strip UTF-8 BOM before JSON parse ï¿½ settings may be lost",
+  name: "SettingsPersistence.Load strips a UTF-8 BOM before parsing",
+  regression: true, // FIXED bug kept as a regression check (BOM'd settings files must load)
   mode: null,
   noApp: true,
   async body() {
     const sp=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsPersistence.ahk"),"utf8");
     const loadsRaw = /raw := FileRead\(path, "UTF-8"\)/.test(sp);
-    const stripsBOM = /Strip.*BOM|SubStr\(raw, 1, 1\) =/.test(sp) || /BOM/.test(sp);
+    const stripsBOM = /Chr\(0xFEFF\)/.test(sp) || /FEFF/.test(sp);
     const parsesDirect = /parsed := jsongo\.Parse\(raw\)/.test(sp);
-    if(!loadsRaw || !parsesDirect || stripsBOM) throw new Error("bug not reproduced loadsRaw="+loadsRaw+" parsesDirect="+parsesDirect+" stripsBOM="+stripsBOM);
-    return "SettingsPersistence.Load reads with FileRead UTF-8 and parses directly without stripping BOM ï¿½ BOM would cause parse failure";
+    if(!loadsRaw || !stripsBOM || !parsesDirect) throw new Error("bug #79 not fixed: loadsRaw=" + loadsRaw + " stripsBOM=" + stripsBOM + " parsesDirect=" + parsesDirect);
+    return "SettingsPersistence.Load strips a leading UTF-8 BOM (Chr(0xFEFF)) before jsongo.Parse, so BOM'd settings files load normally";
   }
 });
 

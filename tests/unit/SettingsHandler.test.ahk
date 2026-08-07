@@ -27,6 +27,23 @@ class SettingsHandlerTest {
         SettingsHandler.settingsPath := oldPath
     }
 
+    ; Regression (bug #79): a UTF-8 BOM before the JSON must not break loading.
+    Load_BomPrefix_StillParses() {
+        oldPath := SettingsHandler.settingsPath
+        SettingsHandler.settingsPath := this._tempPath()
+        FileAppend(Chr(0xFEFF) . '{"version":1,"trash":{"retentionDays":30}}', SettingsHandler.settingsPath, "UTF-8-RAW")
+        try {
+            result := SettingsHandler.Load()
+            if !result.Has("trash")
+                throw Error("BOM-prefixed settings should parse, got " Type(result))
+            if result["trash"]["retentionDays"] != 30
+                throw Error("expected retentionDays=30, got " result["trash"]["retentionDays"])
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(SettingsHandler.settingsPath)
+        }
+    }
+
     GetDefaults_HasAllTopLevelKeys() {
         defaults := SettingsHandler.GetDefaults()
         expectedKeys := ["version", "providers", "models", "assistants", "commands",
