@@ -151,17 +151,9 @@ closeChatWindow(ExitReason, ExitCode) {
 ; ----------------------------------------------------
 
 #Include app\TrayIcon.ahk
+#Include app\TrayMenu.ahk
 _rebuildTrayIcon()
-A_TrayMenu.Delete()
-A_TrayMenu.Add("📋 Open Chat Window", (*) => openChatWindow())
-A_TrayMenu.Add("📝 New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))
-A_TrayMenu.Add()
-for _, item in trayMenuItems {
-    switch item.action {
-        case "reload": A_TrayMenu.Add(item.menuText, (*) => Reload())
-        case "exit":   A_TrayMenu.Add(item.menuText, (*) => ExitApp())
-    }
-}
+_rebuildTrayMenu()
 A_IconTip := AppInfo.Name
 
 ; ----------------------------------------------------
@@ -192,6 +184,7 @@ _rebuildSuspendBanner()
 ; old inline rebuild chain in the WM_SETTINGS_UPDATED handler. New settings-
 ; driven rebuilds register a hook here instead of adding another call site.
 SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)
+SettingsService.RegisterHook("trayMenu", _rebuildTrayMenu)
 SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
 SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend))
 SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)

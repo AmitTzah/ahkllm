@@ -365,23 +365,28 @@ scenarios.push({
 
 scenarios.push({
   id: 37,
-  name: 'Tray menu item changes do not apply until restart (static check of the settings-update path)',
+  name: 'Tray menu item changes apply live via the settings hook (static check of the settings-update path)',
+  regression: true, // FIXED bug kept as a regression check (tray menu must rebuild from trayMenuItems on settings update)
   mode: null,
   noApp: true,
   async body() {
     const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
-    // The tray menu is populated once at startup from trayMenuItems...
-    const hasStartupBuild = /A_TrayMenu\.Add/.test(mainSrc);
-    // ...but the WM_SETTINGS_UPDATED handler never rebuilds it.
-    const updStart = mainSrc.indexOf('WM_SETTINGS_UPDATED');
-    const reloadStart = mainSrc.indexOf('WM_RELOAD_MAIN');
-    const handler = mainSrc.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
-    const hasRebuild = /A_TrayMenu/.test(handler);
-    // BUG: Menu Items -> tray edits are written to settings.json but the tray
-    // menu keeps the startup entries until the app is restarted.
-    if (!hasStartupBuild || hasRebuild)
-      throw new Error('bug not reproduced: startupBuild=' + hasStartupBuild + ' rebuildInHandler=' + hasRebuild);
-    return 'A_TrayMenu is populated at startup but never rebuilt in WM_SETTINGS_UPDATED; tray menu edits require a restart';
+    const trayMenuSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayMenu.ahk'), 'utf8');
+    // FIXED (bug #37): the tray menu rebuild lives in app/TrayMenu.ahk and is
+    // registered as a SettingsService hook, so Menu Items edits apply live
+    // (the WM_SETTINGS_UPDATED handler reloads via SettingsService, which runs
+    // the hooks).
+    const hasInclude = /#Include app\\TrayMenu\.ahk/.test(mainSrc);
+    const hasHook = /SettingsService\.RegisterHook\("trayMenu", _rebuildTrayMenu\)/.test(mainSrc);
+    const hasStartupCall = /_rebuildTrayMenu\(\)/.test(mainSrc);
+    const menuDeletes = /A_TrayMenu\.Delete\(\)/.test(trayMenuSrc);
+    const menuAdds = /A_TrayMenu\.Add/.test(trayMenuSrc);
+    const iteratesItems = /for _, item in trayMenuItems/.test(trayMenuSrc);
+    if (!hasInclude || !hasHook || !hasStartupCall || !menuDeletes || !menuAdds || !iteratesItems)
+      throw new Error('tray menu rebuild not wired through the settings hook: include=' + hasInclude +
+        ' hook=' + hasHook + ' startupCall=' + hasStartupCall + ' deletes=' + menuDeletes +
+        ' adds=' + menuAdds + ' iterates=' + iteratesItems);
+    return 'A_TrayMenu is rebuilt from trayMenuItems by _rebuildTrayMenu (app/TrayMenu.ahk), registered as the trayMenu settings hook in Main.ahk - menu edits apply without restart';
   }
 });
 

@@ -46,6 +46,19 @@ const standaloneTargets = [
     name: 'app/TrayIcon',
     file: path.join(REPO_ROOT, 'app', 'TrayIcon.ahk'),
     stubs: 'global iconOn := "icons\\IconOn.ico"\nglobal iconOff := "icons\\IconOff.ico"\n'
+  },
+  {
+    name: 'app/TrayMenu',
+    file: path.join(REPO_ROOT, 'app', 'TrayMenu.ahk'),
+    stubs: 'global trayMenuItems := []\n' +
+      'openChatWindow(threadId := "") {\n' +
+      '    return ""\n' +
+      '}\n' +
+      'class ChatDB {\n' +
+      '    static Thread_Create(title := "") {\n' +
+      '        return ""\n' +
+      '    }\n' +
+      '}\n'
   }
 ];
 const allTargets = [
