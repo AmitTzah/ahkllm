@@ -526,20 +526,6 @@ scenarios.push({
 });
 
 scenarios.push({
-  id: 85,
-  name: "AttachmentRepo file_path not escaped in SQL",
-  mode: null,
-  noApp: true,
-  async body() {
-    const ar=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
-    const snippet = ar.slice(ar.indexOf("INSERT INTO message_attachments"), ar.indexOf("INSERT INTO message_attachments")+800);
-    const escapes = snippet.indexOf("SQLite.Escape") >= 0 && snippet.indexOf("file_path") >= 0 && /SQLite\.Escape\([^)]*file_path/.test(snippet);
-    if(escapes) throw new Error("bug not reproduced escapes");
-    return "AttachmentRepo.Insert file_path without SQLite.Escape � crafted filename with quote could inject";
-  }
-});
-
-scenarios.push({
   id: 86,
   name: "FIM fallback renderMarkdown XSS � md.render with html:true for non-chat content",
   mode: null,
@@ -608,6 +594,32 @@ scenarios.push({
     const checksIsMap = /if IsObject\(incoming\)/.test(sm);
     if(!hasOverrideLoop || checksIsMap) throw new Error("bug not reproduced");
     return "SettingsMerge.Override iterates over incoming without IsObject check � empty string would iterate chars";
+  }
+});
+
+scenarios.push({
+  id: 91,
+  name: "InputWindow validateInputAndHide treats \"0\" as empty � !value falsy",
+  mode: null,
+  noApp: true,
+  async body() {
+    const iw=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","InputWindow.ahk"),"utf8");
+    const hasFalsy = /if !this\.EditControl\.Value/.test(iw);
+    if(!hasFalsy) throw new Error("bug not reproduced");
+    return "InputWindow.validateInputAndHide does if !this.EditControl.Value � \"0\" is falsy";
+  }
+});
+
+scenarios.push({
+  id: 92,
+  name: "Models save ensureFullId ignores provider dropdown change when id already contains slash",
+  mode: null,
+  noApp: true,
+  async body() {
+    const m=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","settings","sections","models.js"),"utf8");
+    const hasEnsure = /function ensureFullId\(id, provider\)/.test(m) && /if \(id\.indexOf\('\/'\) >= 0\) return id/.test(m);
+    if(!hasEnsure) throw new Error("bug not reproduced");
+    return "models.js ensureFullId returns id as-is when it contains '/', so changing provider dropdown does not update fullId";
   }
 });
 

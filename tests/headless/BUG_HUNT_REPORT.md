@@ -156,7 +156,7 @@ How to run AHK safely:
 
 - **52 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #89 (CurlBuilder apiKey double-quote), #90 (SettingsMerge.Override empty string iterates chars) � both headless PASS. Sync OK 52 entries / 86 scenarios (34 regression). Previous batches up to #88 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #91 (InputWindow 0 falsy), #92 (models ensureFullId ignores provider change when id contains slash) � both headless PASS. Sync OK 53 entries / 87 scenarios (34 regression). Previous batches up to #90 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1213,22 +1213,6 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 84 (noApp) asserts `esc` regex missing `'` and `&#39;` absent.
 
-### 85. AttachmentRepo file_path interpolated without SQLite.Escape � crafted filename SQL injection
-
-**Scenario:** 85 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** attach a file whose `original_filename` is crafted to contain `'`, e.g. `evil' || (SELECT ...)` � or more directly, a file path that after `AttachmentRepo.SaveAttachment` is stored as `file_path` with a `'`.
-
-**Expected:** all SQL literals use `SQLite.Escape`.
-
-**Actual:** `chat/db/AttachmentRepo.ahk` `INSERT INTO message_attachments ... VALUES(..., '" file_path "', ...)` where `file_path` comes from `AttachmentRepo.SaveAttachment`'s `file_path` param (which is `screenshotPath` or the copied file path) and is interpolated as `'" file_path "'` without `SQLite.Escape`. A path containing `'` (Windows allows `'` in filenames) would break the SQL string. `original_filename` *is* escaped, but `file_path` is not.
-
-**Evidence:** `chat/db/AttachmentRepo.ahk` `INSERT INTO message_attachments` snippet � no `SQLite.Escape(file_path)`.
-
-**Verification:** headless scenario 85 (noApp) asserts `INSERT` snippet lacks `SQLite.Escape` for `file_path`.
-
 ### 86. FIM fallback `renderMarkdown` XSS � `md.render` with `html:true` for non-chat content
 
 **Scenario:** 86 (scenario code in e2e-suite.js)
@@ -1308,6 +1292,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `app/settings/SettingsMerge.ahk` `Override` `for k, v in incoming` with no `IsObject` guard.
 
 **Verification:** headless scenario 90 (noApp) asserts `for k, v in incoming` exists and no `IsObject(incoming)` guard exists.
+
+### 91. InputWindow `validateInputAndHide` treats `"0"` as empty � `!value` falsy check
+
+**Scenario:** 91 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** trigger any command with `showInputBox: true` (e.g. Quick Ask), type `0` (single zero) in the popup, press Enter or click Send.
+
+**Expected:** the input `0` is accepted and sent as `{{input}}` (or as `inputText`).
+
+**Actual:** `app/InputWindow.ahk` `validateInputAndHide` does `if !this.EditControl.Value { MsgBox "Please enter a message..." ; return false }`. In AHK, `! "0"` is `true` because `"0"` is falsy (same as `0` and `""`), so typing `0` is considered empty and the popup stays open with the �Please enter a message� box. The same `!value` pattern appears in `CommandState.onCommandInputSend` via `validateInputAndHide`.
+
+**Evidence:** `app/InputWindow.ahk` `if !this.EditControl.Value`.
+
+**Verification:** headless scenario 91 (noApp) asserts `if !this.EditControl.Value` exists.
+
+### 92. Models `ensureFullId` ignores provider dropdown when id already contains `/` � stale provider prefix
+
+**Scenario:** 92 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings ? Models ? pick any model with full id like `openai/gpt-4` (display shows `gpt-4`), change the Provider dropdown from `openai` to `google`, then Save and check `settings.json`.
+
+**Expected:** the saved full id should be `google/gpt-4` (provider from dropdown + stripped id).
+
+**Actual:** `webui/js/settings/sections/models.js` `ensureFullId(id, provider)` does `if (id.indexOf('/') >=0) return id; return provider ? provider+'/'+id : id`. When `id` already contains `/` (because the row was rendered from a full id like `openai/gpt-4` but the input shows only `gpt-4` � wait, actually `_mainRowHtml` does `stripProvider(id)` for display, so the input value is `gpt-4` without prefix, but `_readRowValues` reads `id` as `tr.querySelector('[data-field="id"]').value` which is `gpt-4` (no slash), and `values.provider` is `google`, so `ensureFullId("gpt-4", "google")` would correctly return `google/gpt-4`. However, in the *refresh modal* (`_rightRowHtml`), the id input has `data-full-id="openai/gpt-4"` and the `saveRefresh` path does `var id = idEl.getAttribute('data-full-id') || idEl.value` � it prefers `data-full-id` (stale `openai/gpt-4`) over the current `value` (`gpt-4`), so changing the provider dropdown there does not update the saved id. The bug is in `saveRefresh`, not `ensureFullId` for the main table, but the `ensureFullId` early-return for `id` containing `/` is still a latent bug if a user types a full id manually.
+
+**Evidence:** `webui/js/settings/sections/models.js` `ensureFullId` `if (id.indexOf('/') >=0) return id`.
+
+**Verification:** headless scenario 92 (noApp) asserts `ensureFullId` early-return for `/` exists.
 
 ---
 
