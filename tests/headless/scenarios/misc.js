@@ -553,4 +553,34 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 87,
+  name: "UsageRepo lastMonth SQL uses UTC date('now') while dashboard labels use local � off by timezone",
+  mode: null,
+  noApp: true,
+  async body() {
+    const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
+    const hasUTC = /date\('now', 'start of month'/.test(ur);
+    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
+    const hasLocal = /getDateRangeLabels/.test(dash) && /new Date\(/.test(dash);
+    if(!hasUTC || !hasLocal) throw new Error("bug not reproduced");
+    return "UsageRepo _WhereDate lastMonth uses UTC date('now') while getDateRangeLabels uses local new Date() � timezone mismatch";
+  }
+});
+
+scenarios.push({
+  id: 88,
+  name: "UsageRepo month (last 30 days) SQL uses UTC while dashboard uses local � timezone mismatch",
+  mode: null,
+  noApp: true,
+  async body() {
+    const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
+    const has30UTC = /date\('now', '-30 days'\)/.test(ur);
+    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
+    const has30Local = /days = 30/.test(dash) && /new Date/.test(dash);
+    if(!has30UTC || !has30Local) throw new Error("bug not reproduced");
+    return "UsageRepo _WhereDate month uses UTC date('now','-30 days') while dashboard month uses local today minus 30 days";
+  }
+});
+
 module.exports = scenarios;

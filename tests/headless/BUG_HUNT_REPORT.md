@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **48 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **50 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added verified bug #86 (FIM fallback renderMarkdown XSS) � headless PASS, removed non-bug #87. Sync OK 48 entries / 82 scenarios (34 regression). Previous batches up to #85 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #87 (Last Month UTC vs local), #88 (Last 30 Days UTC vs local) � both headless PASS. Sync OK 50 entries / 84 scenarios (34 regression). Previous batches up to #86 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1244,6 +1244,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `webui/js/chat/chat-core.js` `renderMarkdown` `md.render` + `innerHTML`; `webui/js/main.js` `markdownit({ html:true })`.
 
 **Verification:** headless scenario 86 (noApp) asserts `md.render` with `html:true` and `contentElement.innerHTML = result` exist.
+
+### 87. Usage dashboard "Last Month" SQL uses UTC `date('now')` while chart labels use local `new Date()` � timezone drift
+
+**Scenario:** 87 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set system timezone to UTC+9 (e.g. Asia/Tokyo), seed usage rows for last month's first day in local time, open Dashboard ? Last Month.
+
+**Expected:** chart labels and SQL summary cover the same local last-month window.
+
+**Actual:** `chat/db/UsageRepo.ahk` `_WhereDate("lastMonth")` returns `WHERE date >= date('now','start of month','-1 month') AND date < date('now','start of month')` � `date('now')` is UTC. `webui/js/usage-dashboard.js` `getDateRangeLabels("lastMonth")` builds labels from local `new Date()`. In UTC+9, local last month 01 00:00 is still previous UTC day, so the SQL window and chart labels are off by one day and the summary total mismatches the chart.
+
+**Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate` `date('now','start of month',...)`; `webui/js/usage-dashboard.js` `getDateRangeLabels` `new Date()` local.
+
+**Verification:** headless scenario 87 (noApp) asserts UTC `date('now')` in `UsageRepo` and local `new Date()` in dashboard exist.
+
+### 88. Usage dashboard "Last 30 Days" SQL uses UTC while chart uses local � same timezone drift as Last Month
+
+**Scenario:** 88 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** same as #87 but select �Last 30 Days� (range `month`) in Dashboard.
+
+**Expected:** SQL and chart cover the same 30-day window in local time.
+
+**Actual:** `_WhereDate("month")` is `WHERE date >= date('now','-30 days')` (UTC), while `getDateRangeLabels("month")` does `days=30` from local `today`. Same UTC vs local drift as #87 and #53 (which was for `day`). The fix for #42 (chart labels `localDateKey`) did not fix the SQL side.
+
+**Evidence:** `chat/db/UsageRepo.ahk` `date('now','-30 days')`; `webui/js/usage-dashboard.js` `days=30` + `new Date()`.
+
+**Verification:** headless scenario 88 (noApp) asserts both UTC and local patterns exist.
 
 ---
 
