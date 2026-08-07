@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **64 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **64 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #31 fix applied (font-size +/- syncs cached base, scenario 31 PASS, suites green); awaiting user commit.
+- **Where we left off:** 2026-08-07 — bug #31 FIXED and committed in bf7d0aa (font-size +/- syncs cached base, scenario 31 flipped to regression); next: bug #44 per rank order.
 ---
 
 ## Bug entry template
@@ -207,32 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 31. Font-size +/- buttons use a stale 17px base after a thread with a custom size loads
-
-**Scenario:** 31 (scenario code in e2e-suite.js)
-
-**Status:** awaiting user commit
-
-**Repro:** set a per-thread font size (e.g. 20px via the topbar + button) and
-switch to that thread from another chat, then click the topbar + button again.
-
-**Expected:** the + button increases the thread's current size (20px -> 21px).
-
-**Actual:** clicking + jumps the display to 18px. `UiControls.initFontControls()`
-reads `--chat-font-size` once at page load and caches 17; `populateCurrentSettings`
-later applies the thread's stored size (20px) to the CSS var and the display, but
-never resyncs the cached base â€” every +/- click counts from 17, so the font can
-jump downward while the user is trying to increase it.
-
-**Evidence:** `webui/js/ui-controls.js` `initFontControls()` caches
-`getComputedStyle(...).getPropertyValue('--chat-font-size')` at load;
-`webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings()`
-sets `--chat-font-size` without updating that cached value.
-
-**Verification:** headless scenario 31 seeds a thread with `font_size=20`, loads it
-(display shows 20px), clicks `#btn-font-inc`, and observes the display becomes 18px
-instead of 21px.
 
 ### 44. Forking a chat drops the per-thread font size and Advanced toggles
 
@@ -1549,6 +1523,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Font-size +/- buttons use a stale 17px base after a thread with a custom size loads" - FIXED in bf7d0aa: UiControls now exposes syncFontSize() and model-picker-config calls it when applying per-thread font size; scenario 31 flipped to regression check (regression: true) + ui-controls unit test.
 
 - 2026-08-07 - "Deleting a message confirms "data is preserved" but hard-deletes it" - FIXED in 6877a5e: webui/js/chat/chat-branching.js deleteMessage now says "This permanently deletes the message and cannot be undone." (was lie "data is preserved"); scenario 30 flipped to regression check (regression: true) + chat-branching unit test.
 
