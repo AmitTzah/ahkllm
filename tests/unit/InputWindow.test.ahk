@@ -74,4 +74,31 @@ class InputWindowTest {
             commandInputWindow.guiObj.Destroy()
         }
     }
+
+    ; Regression (bug #91): "0" is valid input - only empty/whitespace is empty.
+    Validate_AcceptsZero() {
+        this._setGlobals()
+        win := InputWindow("test")
+        try {
+            win.EditControl.Value := "0"
+            result := win.validateInputAndHide()
+            if !result
+                throw Error("input '0' must be accepted, got false")
+        } finally {
+            win.guiObj.Destroy()
+        }
+    }
+
+    Validate_RejectsEmpty() {
+        this._setGlobals()
+        win := InputWindow("test")
+        try {
+            win.EditControl.Value := ""
+            result := win.validateInputAndHide()
+            if result
+                throw Error("empty input must be rejected")
+        } finally {
+            win.guiObj.Destroy()
+        }
+    }
 }

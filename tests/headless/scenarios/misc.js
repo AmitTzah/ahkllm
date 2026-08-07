@@ -655,14 +655,17 @@ scenarios.push({
 
 scenarios.push({
   id: 91,
-  name: "InputWindow validateInputAndHide treats \"0\" as empty ï¿½ !value falsy",
+  name: "InputWindow validateInputAndHide accepts '0' as valid input",
+  regression: true, // FIXED bug kept as a regression check ("0" must not be treated as empty)
   mode: null,
   noApp: true,
   async body() {
     const iw=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","InputWindow.ahk"),"utf8");
-    const hasFalsy = /if !this\.EditControl\.Value/.test(iw);
-    if(!hasFalsy) throw new Error("bug not reproduced");
-    return "InputWindow.validateInputAndHide does if !this.EditControl.Value ï¿½ \"0\" is falsy";
+    const block = iw.slice(iw.indexOf("validateInputAndHide"), iw.indexOf("validateInputAndHide")+300);
+    const usesTrim = /Trim\(this\.EditControl\.Value\) = ""/.test(block);
+    const falsyCheck = /if !this\.EditControl\.Value/.test(block);
+    if(!usesTrim || falsyCheck) throw new Error("bug #91 not fixed: usesTrim=" + usesTrim + " falsyCheck=" + falsyCheck);
+    return "InputWindow.validateInputAndHide treats only empty/whitespace as empty, so '0' is accepted";
   }
 });
 

@@ -37,7 +37,9 @@ class InputWindow {
     }
 
     validateInputAndHide(*) {
-        if !this.EditControl.Value {
+        ; Bug #91: "0" is a valid input - only empty/whitespace counts as empty
+        ; (AHK treats the numeric string "0" as falsy).
+        if Trim(this.EditControl.Value) = "" {
             MsgBox "Please enter a message or close the window.", "No text entered", "IconX"
             return false
         }
