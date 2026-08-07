@@ -440,4 +440,72 @@ class ChatSettingsTest {
             this._closeDb()
         }
     }
+
+    ; Regression (bug #41): a thread created outside the sidebar newChat path
+    ; (tray "New Chat", command-line spawn) must still start with the
+    ; configured "New Chats Start With" default. The sidebar applies it at
+    ; creation; LoadThreadIntoUI now applies it to fresh (message-less,
+    ; settings-less) threads via _applyNewChatDefaultToFreshThread.
+    test_freshThread_GetsNewChatDefault() {
+        global requestParams, activeThreadId, assistants, newChatStartsWith, responseWindowFontSize
+
+        this._openDb()
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        oldFont := responseWindowFontSize
+        oldActive := activeThreadId
+        assistants := [{ id: "asst-41", name: "Default Asst", baseModel: "deepseek/deepseek-v4-pro", systemMessage: "default sys", reasoning: "high", temperature: "0.3" }]
+        newChatStartsWith := "asst:asst-41"
+        responseWindowFontSize := "19"
+        activeThreadId := ""
+
+        try {
+            threadId := ChatDB.Thread_Create("Tray New Chat")
+            applied := _applyNewChatDefaultToFreshThread(threadId)
+            if !applied
+                throw Error("fresh thread should apply the new-chat default")
+            s := ChatDB.Thread_GetSettings(threadId)
+            if s.assistantId != "asst-41"
+                throw Error("fresh thread should start with the default assistant, got '" s.assistantId "'")
+            if s.fontSize != 19
+                throw Error("fresh thread should get the default font size, got '" s.fontSize "'")
+        } finally {
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            responseWindowFontSize := oldFont
+            activeThreadId := oldActive
+            this._closeDb()
+        }
+    }
+
+    ; Regression (bug #41): a thread that already has stored settings must NOT
+    ; be re-defaulted when it is loaded.
+    test_configuredThread_IsNotReDefaulted() {
+        global requestParams, assistants, newChatStartsWith
+
+        this._openDb()
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        assistants := [{ id: "asst-41", name: "Default Asst", baseModel: "deepseek/deepseek-v4-pro", systemMessage: "default sys", reasoning: "high", temperature: "0.3" }]
+        newChatStartsWith := "asst:asst-41"
+
+        try {
+            threadId := ChatDB.Thread_Create("Configured Thread")
+            ChatDB.Thread_UpdateSettings(threadId, { modelOverride: "openai/gpt-5-mini", fontSize: 21 })
+            applied := _applyNewChatDefaultToFreshThread(threadId)
+            if applied
+                throw Error("configured thread should not be re-defaulted")
+            s := ChatDB.Thread_GetSettings(threadId)
+            if s.modelOverride != "openai/gpt-5-mini" || s.fontSize != 21
+                throw Error("configured thread settings were overwritten")
+        } finally {
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            this._closeDb()
+        }
+    }
 }

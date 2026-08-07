@@ -36,6 +36,10 @@ OnTriggerLLM(wParam, lParam, msg, hWnd) {
 ; Unified thread loader — used by both IPC path (OnLoadThread) and
 ; command-line-arg path (ChatWindow startup). Eliminates duplication.
 LoadThreadIntoUI(threadId, autoFire := false) {
+    ; Bug #41: threads created outside the sidebar newChat action (tray "New
+    ; Chat", command-line spawn) have no settings yet; give them the configured
+    ; "New Chats Start With" default before the UI loads them.
+    _applyNewChatDefaultToFreshThread(threadId)
     _LoadThreadAndRefreshUI(threadId)
     ; Auto-trigger LLM when spawning fresh with a threadId (command-line-arg path).
     if autoFire {

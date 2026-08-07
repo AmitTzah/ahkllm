@@ -471,27 +471,30 @@ scenarios.push({
 
 scenarios.push({
   id: 41,
-  name: 'Tray "New Chat" ignores the "New Chats Start With" default (static check of the tray path)',
+  name: 'Tray "New Chat" applies the "New Chats Start With" default (static check of the tray path)',
+  regression: true, // FIXED bug kept as a regression check (tray-started chats must start with the configured default)
   mode: null,
   noApp: true,
   async body() {
     const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    const trayMenuSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayMenu.ahk'), 'utf8');
     const sidebarSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'callbacks', 'Sidebar.ahk'), 'utf8');
     const utilsSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatUtils.ahk'), 'utf8');
     const ipcSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
-    // Tray "New Chat" creates the thread directly and opens it...
-    const trayNewChat = /openChatWindow\(ChatDB\.Thread_Create\(\)\)/.test(mainSrc);
-    // ...while the sidebar newChat action DOES apply the start-with default.
+    const settingsSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatSettings.ahk'), 'utf8');
+    // Tray "New Chat" creates the thread directly and opens it (the tray menu
+    // build lives in app/TrayMenu.ahk since bug #37).
+    const trayNewChat = /openChatWindow\(ChatDB\.Thread_Create\(\)\)/.test(trayMenuSrc);
+    // FIXED (bug #41): the unified loader path now applies the new-chat
+    // default to fresh (message-less, settings-less) threads.
+    const loaderApplies = ipcSrc.includes('_applyNewChatDefaultToFreshThread(threadId)');
+    const helperExists = settingsSrc.includes('_applyNewChatDefaultToFreshThread(threadId)');
+    // The sidebar newChat action still applies the default at creation.
     const sidebarApplies = sidebarSrc.includes('_applyNewChatDefault()');
-    // The unified loader path (tray -> notifyLoadThread -> LoadThreadIntoUI ->
-    // _LoadThreadAndRefreshUI) never applies the default.
-    const loaderApplies = ipcSrc.includes('_applyNewChatDefault') || utilsSrc.includes('_applyNewChatDefault');
-    // BUG: tray-started chats skip _applyNewChatDefault (and the default font
-    // size that the sidebar newChat path writes), so they always start with the
-    // raw app default model instead of the configured "New Chats Start With".
-    if (!trayNewChat || !sidebarApplies || loaderApplies)
-      throw new Error('bug not reproduced: trayNewChat=' + trayNewChat + ' sidebarApplies=' + sidebarApplies + ' loaderApplies=' + loaderApplies);
-    return 'tray New Chat calls openChatWindow(ChatDB.Thread_Create()) directly; LoadThreadIntoUI/_LoadThreadAndRefreshUI never call _applyNewChatDefault, so tray-started chats ignore newChatStartsWith and the default font size';
+    if (!trayNewChat || !loaderApplies || !helperExists || !sidebarApplies)
+      throw new Error('tray new-chat default wiring missing: trayNewChat=' + trayNewChat +
+        ' loaderApplies=' + loaderApplies + ' helperExists=' + helperExists + ' sidebarApplies=' + sidebarApplies);
+    return 'LoadThreadIntoUI applies _applyNewChatDefaultToFreshThread to fresh threads, so tray "New Chat" starts with the configured default';
   }
 });
 
