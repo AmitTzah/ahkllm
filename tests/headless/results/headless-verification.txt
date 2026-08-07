@@ -1,5 +1,5 @@
-# 2026-08-07T22:33:29.611Z | run of 1 scenario(s)
-PASS | #94 | SettingsDefaults GetDefaults is stable after caching (UUID churn refuted) | SettingsDefaults caches the pristine defaults at startup and GetDefaults returns the cached snapshot, so assistant ids are stable after caching (UUID churn refuted) | 0.0s
+# 2026-08-07T22:35:06.109Z | run of 1 scenario(s)
+PASS | #95 | Usage dashboard model heading escapes the model id (XSS fixed) | usage-dashboard.js renderModelSections escapes the model heading (escHtml(model)), so model ids render as inert text | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

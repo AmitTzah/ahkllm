@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **15 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **14 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #94 REFUTED (overstated: UUIDs are generated once at cache time; GetDefaults returns the cached snapshot); next: bug #95 (usage dashboard model heading XSS).
+- **Where we left off:** 2026-08-07 — bug #95 FIXED in 53a5290; next: bug #96 (AttachmentRepo SQL injection via unescaped msgId/threadId).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 95. Usage dashboard model heading XSS — model id not escaped in section header
-
-**Scenario:** 95 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set a model id to `"><img src=x onerror=alert(1)>` via Settings → Models → Save, then open Usage Dashboard with data for that model.
-
-**Expected:** the model-section heading shows the id as inert text.
-
-**Actual:** `webui/js/usage-dashboard.js` `renderModelSections` does `div.innerHTML = ''<h6>''+model+''</h6>...'` with no `escHtml(model)`. The model string is parsed as HTML and handlers execute (same `chrome.webview.postMessage` access as #57/#82).
-
-**Evidence:** `webui/js/usage-dashboard.js:259` `div.innerHTML = ''<h6>''+model+''</h6>''`.
-
-**Verification:** headless scenario 95 (noApp) asserts raw `div.innerHTML = ''<h6>''+model` exists and no `escHtml(model)` in the section.
 
 ### 96. AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection
 
@@ -458,6 +442,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
