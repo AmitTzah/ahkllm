@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **44 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **43 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #58 FIXED in 6a0c98b; next: bug #61 (clearing the Suspend Banner text has no effect - stale global survives).
+- **Where we left off:** 2026-08-07 — bug #61 FIXED in 4b609f2; next: bug #62 (forking a chat with temperature 0 drops the override).
 ---
 
 ## Bug entry template
@@ -207,22 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 61. Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear] ï¿½ stale global survives
-
-**Scenario:** 61 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> UI -> Suspend Banner -> clear "Text" (or Input Window Background, or Response Font) -> Save -> observe banner / window / font.
-
-**Expected:** clearing the field resets to the default / empty state (banner shows no text, input window uses default background, font falls back).
-
-**Actual:** the banner still shows the old text, input window keeps the old background color, and Response Font keeps the old face. `SettingsApply._ApplySuspendBanner` (and `_ApplyInputWindow` / `_ApplyUI`) only assign the global when the saved value is non-empty (`!= ""`), so saving "" leaves the previous global value in place. Same root cause as bug #33 (icons).
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplySuspendBanner` `if sb.Has("text") && sb["text"] != ""`, `_ApplyInputWindow` `if iw.Has("background") && iw["background"] != ""`, `_ApplyUI` `if u.Has("responseFont") && u["responseFont"] != ""`.
-
-**Verification:** headless scenario 61 (noApp) statically checks SettingsApply.ahk — the three guards use != "" and no fallback assignment exists. Same pattern as #71 (`_ApplyThreadTitles`). Fix together by assigning the empty value (clear) instead of skipping.
 
 ### 62. Forking a chat with temperature 0 drops the override (reset to Default)
 
@@ -969,6 +953,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear]" - FIXED in 4b609f2: SettingsApply._ApplyUI/_ApplyInputWindow/_ApplySuspendBanner now assign the saved value whenever the key exists (empty string included) instead of skipping empties, so clearing a field resets the stale global; scenario 61 flipped to a regression static check + SettingsHandler unit test. (#71's _ApplyThreadTitles uses the same pattern and is fixed in its own cycle.)
 
 - 2026-08-07 - "Forking a chat drops the thread's folder (the copy lands in Unfiled)" - FIXED in 6a0c98b: TreeRepo._CopyThreadSettings now copies folder_id alongside the other thread-level settings, so forks stay in the source folder; scenario 58 flipped to a regression check + ChatDB fork unit test.
 
