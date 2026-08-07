@@ -1,5 +1,5 @@
-# 2026-08-07T21:05:19.405Z | run of 1 scenario(s)
-PASS | #57 | Chat message HTML is rendered as inert text (XSS fixed) | assistant message <img src="x" onerror=...> rendered inert (window.__xssPwned=0); msg HTML="<p>&lt;img src=“x” onerror=“window.__xssPwned = 1”&gt;</p>\n" | 5.1s
+# 2026-08-07T21:07:39.379Z | run of 1 scenario(s)
+PASS | #58 | Forking a chat keeps the thread's folder | source thread is in folder f-fork-58; fork id=104e0d5f-9027-dbd9-1b1f-0000525cee0b has folder_id="f-fork-58" (same folder) | 5.9s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

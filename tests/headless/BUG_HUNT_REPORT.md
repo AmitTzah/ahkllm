@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **45 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **44 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #57 FIXED in 05e2ccb; next: bug #58 (forking a chat drops the thread's folder).
+- **Where we left off:** 2026-08-07 — bug #58 FIXED in 6a0c98b; next: bug #61 (clearing the Suspend Banner text has no effect - stale global survives).
 ---
 
 ## Bug entry template
@@ -207,30 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 58. Forking a chat drops the thread's folder (the copy lands in Unfiled)
-
-**Scenario:** 58 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** put a chat in a folder, click Fork on a message, and look at the
-sidebar.
-
-**Expected:** the forked copy appears in the same folder as its source (like
-the other copied thread-level settings).
-
-**Actual:** the fork is created with `folder_id = NULL` and appears under
-Unfiled. `TreeRepo._CopyThreadSettings` copies model/system/reasoning/
-temperature/assistant but never `folder_id`.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` (no `folder_id`
-UPDATE); `ThreadRepo.Create()` inserts a thread without a folder.
-
-**Verification:** headless scenario 58 seeds a folder + a thread inside it,
-forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
-(Unfiled) instead of the source folder.
-
 
 ### 61. Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear] ï¿½ stale global survives
 
@@ -993,6 +969,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Forking a chat drops the thread's folder (the copy lands in Unfiled)" - FIXED in 6a0c98b: TreeRepo._CopyThreadSettings now copies folder_id alongside the other thread-level settings, so forks stay in the source folder; scenario 58 flipped to a regression check + ChatDB fork unit test.
 
 - 2026-08-07 - "Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)" - FIXED in 05e2ccb: markdown-it is now configured with html:false, so raw HTML in messages is escaped and rendered as inert text (was html:true, letting inline event handlers run with chrome.webview.postMessage access); scenario 57 flipped to a regression check + main.js unit test. (#86 is a duplicate of this bug and will be refuted when reached.)
 
