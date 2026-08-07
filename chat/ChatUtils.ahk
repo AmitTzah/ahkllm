@@ -145,6 +145,12 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
         _sendDropdownLabel()
     ; Push per-thread settings (model, assistant, font size, etc.) to WebView
     postCurrentSettingsToWebView()
+    ; Bug #38: keep the window title in sync with the active thread. Only
+    ; renameThread updated chatWindow.Title before, so switching threads left
+    ; the previously renamed thread's title in the title bar.
+    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
+    if threadInfo.count
+        chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
 }
 
 ; Refresh thread list and trash list in the sidebar WebView.

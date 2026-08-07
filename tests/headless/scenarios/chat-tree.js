@@ -264,7 +264,8 @@ scenarios.push({
 
 scenarios.push({
   id: 38,
-  name: 'Chat window title stays stale after renaming a thread and switching to another',
+  name: 'Chat window title follows the active thread after a rename + switch',
+  regression: true, // FIXED bug kept as a regression check (switching threads must update the window title)
   mode: null,
   settings: {},
   fixtures: {
@@ -320,14 +321,14 @@ scenarios.push({
     await sleep(800);
     const topbarTitle = await cdp.eval('document.querySelector(".title-text") ? document.querySelector(".title-text").textContent : ""');
     const info = runProbe('chat-info');
-    // BUG: _LoadThreadAndRefreshUI never updates chatWindow.Title; only
-    // renameThread does. After renaming A and switching to B the title bar still
-    // shows the renamed A title.
+    // FIXED (bug #38): _LoadThreadAndRefreshUI now updates chatWindow.Title
+    // from the active thread, so after renaming A and switching to B the title
+    // bar follows the newly active thread.
     if (topbarTitle.indexOf('Beta') < 0)
       throw new Error('thread B did not load (setup): topbar=' + JSON.stringify(topbarTitle));
-    if ((info.title || '').indexOf('Beta') >= 0)
-      throw new Error('window title followed the thread (bug not reproduced): ' + JSON.stringify(info.title));
-    return 'topbar shows "' + topbarTitle + '" but the window title is "' + info.title + '" (stale renamed-A title)';
+    if ((info.title || '').indexOf('Beta') < 0)
+      throw new Error('window title did not follow the thread switch: ' + JSON.stringify(info.title) + ' topbar=' + JSON.stringify(topbarTitle));
+    return 'window title follows the active thread: "' + info.title + '"';
   }
 });
 
