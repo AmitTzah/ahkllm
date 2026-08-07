@@ -1,5 +1,5 @@
-# 2026-08-07T21:50:46.754Z | run of 1 scenario(s)
-PASS | #75 | GoogleChatCompletions budget table matches the Gemini family | GoogleChatCompletions._BudgetTable matches the gemini-2.5-pro family (not any substring), so my2.5-pro falls back to generic | 0.0s
+# 2026-08-07T21:53:14.979Z | run of 1 scenario(s)
+PASS | #76 | initChatMode always updates activeThreadId on thread switch | initChatMode always updates activeThreadId from the loaded thread, so thread switches/search/sends target the right thread | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

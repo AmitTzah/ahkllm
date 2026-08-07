@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **30 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **29 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #75 FIXED in b1e1fc0; next: bug #76 (initChatMode guard prevents thread switch).
+- **Where we left off:** 2026-08-07 — bug #76 FIXED in f4cd45f; next: bug #77 (empty Send with existing chat history triggers an unexpected retry).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 76. initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread
-
-**Scenario:** 76 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open thread A, then via IPC or direct `initChatMode({messages:..., threadId:"B"})` where `activeThreadId` already equals `A` (e.g. rapid switch, fork, or programmatic load).
-
-**Expected:** `activeThreadId` should update to `B` so subsequent `updateScopedSearchState`, `onSearchCrossThreadLoaded`, and new-message sends target B.
-
-**Actual:** `webui/js/chat/chat-core.js` `initChatMode` does `if (data && data.threadId && !activeThreadId) { activeThreadId = data.threadId; }`. When `activeThreadId` is already truthy (`"A"`), the assignment is skipped, so the WebView stays on `A` while the message list shows `B`'s messages - `activeThreadId` is stale. Subsequent scoped search, token-bar updates, and `chatSend` will use the wrong thread id.
-
-**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` guard `!activeThreadId`.
-
-**Verification:** headless scenario 76 (noApp) asserts the `!activeThreadId` guard and `activeThreadId = data.threadId` assignment exist.
 
 ### 77. Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry
 
@@ -746,6 +730,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread" - FIXED in f4cd45f: initChatMode now assigns activeThreadId whenever a threadId is provided (the old !activeThreadId guard left it stale on switches, so sends/search targeted the wrong thread); scenario 76 flipped to a regression static check + chat-core unit test.
 
 - 2026-08-07 - "GoogleChatCompletions budget table matches via substring InStr, not exact family check" - FIXED in b1e1fc0: _BudgetTable now matches the Gemini family (gemini-2.5-pro / gemini-2.5-flash-lite / gemini-2.5-flash / gemini-2.0-flash) instead of any substring, so custom ids like my2.5-pro fall back to the generic table; scenario 75 flipped to a regression static check + LLMRequestBuilder unit test.
 
