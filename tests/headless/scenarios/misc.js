@@ -332,4 +332,35 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 72,
+  name: "SystemMessageResolver UNC path treated as relative � \\\\server\\share broken",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"shared","SystemMessageResolver.ahk"),"utf8");
+    const checksColon = /if !InStr\(filePath, ":"\)/.test(sr);
+    const handlesUNC = /\\\\/.test(sr) || /InStr\(filePath, "\\\\/.test(sr);
+    if(!checksColon || handlesUNC) throw new Error("bug not reproduced checksColon="+checksColon+" handlesUNC="+handlesUNC);
+    return "SystemMessageResolver.Resolve checks InStr(filePath, \":\") to detect absolute � UNC \\\\server\\share has no colon and is searched as relative";
+  }
+});
+
+scenarios.push({
+  id: 73,
+  name: "GoogleChatCompletions disabled config missing include_thoughts for 2.x",
+  mode: null,
+  noApp: true,
+  async body() {
+    const gc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","handlers","GoogleChatCompletions.ahk"),"utf8");
+    const disabledStart = gc.indexOf("static DisabledConfig");
+    const disabledEnd = gc.indexOf("static ThinkingConfig", disabledStart);
+    const disabled = gc.slice(disabledStart, disabledEnd);
+    const hasBudget0 = /thinking_budget: 0/.test(disabled);
+    const hasInclude = /include_thoughts/.test(disabled);
+    if(!hasBudget0 || hasInclude) throw new Error("bug not reproduced hasBudget0="+hasBudget0+" hasInclude="+hasInclude);
+    return "GoogleChatCompletions.DisabledConfig returns {thinking_budget:0} without include_thoughts";;
+  }
+});
+
 module.exports = scenarios;

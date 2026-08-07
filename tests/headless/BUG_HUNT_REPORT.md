@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **33 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **35 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 4 more verified bugs #68 (ProviderResolver substring prefix), #69 (Search LIKE wildcard not escaped), #70 (FTS5 special chars), #71 (Thread Title Generation stale on clear) � all headless PASS. Also kept token/header batch #61-66 and regression 67 (mock SSE). Sync OK 33 entries / 67 scenarios (34 regression). Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #72 (UNC path treated as relative), #73 (Google disabled thinking missing include_thoughts) � both headless PASS. Sync OK 35 entries / 69 scenarios (34 regression). Previous batch #68-71 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1004,6 +1004,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `app/settings/SettingsApply.ahk` `_ApplyThreadTitles` `if tt.Has("model") && tt["model"] != ""` etc.
 
 **Verification:** headless scenario 71 (noApp) asserts the two `!= ""` guards exist.
+
+### 72. SystemMessageResolver treats UNC \\server\share paths as relative � file not found
+
+**Scenario:** 72 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set an assistant or command `systemMessageFile` to a UNC path like `\\server\share\prompt.txt` that exists and is readable, then trigger the assistant/command.
+
+**Expected:** the file is read from the UNC path (absolute path used as-is, like `C:\` paths).
+
+**Actual:** the resolver only checks `InStr(filePath, ":")` to detect absolute paths. UNC paths have no colon, so they are treated as relative and searched in `A_ScriptDir\`, `..\`, `default-settings\system-messages\`, and `AppData\system-messages\` � none match, so `FileRead` fails and the resolver falls back to the inline `systemMessage` (or empty) with an error. The UNC file is never read.
+
+**Evidence:** `shared/SystemMessageResolver.ahk` `Resolve()` `if !InStr(filePath, ":")` � no `\\` check.
+
+**Verification:** headless scenario 72 (noApp) asserts `InStr(filePath, ":")` exists and no `\\` handling exists.
+
+### 73. GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)
+
+**Scenario:** 73 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** select a Gemini 2.x model (e.g. `google/gemini-2.0-flash`) and set Thinking Level to the disabled option (or to Model Default where `ApplyDefaults` is not used), then send a request and inspect the JSON payload (`requestFile`).
+
+**Expected:** disabled payload should be symmetric with enabled: `extra_body.google.thinking_config = {include_thoughts:false, thinking_budget:0}` or at least consistently include `include_thoughts`.
+
+**Actual:** `GoogleChatCompletions.ThinkingConfig` (enabled) always sets `include_thoughts:true` plus a budget/level, but `DisabledConfig` for 2.x returns only `{thinking_budget:0}` with no `include_thoughts` field. The API may therefore still return thoughts or behave inconsistently between enabled/disabled.
+
+**Evidence:** `api/handlers/GoogleChatCompletions.ahk` `DisabledConfig()` `return {thinking_budget:0}` vs `ThinkingConfig()` `tc := {include_thoughts:true}`.
+
+**Verification:** headless scenario 73 (noApp) slices `DisabledConfig` and asserts `thinking_budget:0` present and `include_thoughts` absent.
 
 ---
 
