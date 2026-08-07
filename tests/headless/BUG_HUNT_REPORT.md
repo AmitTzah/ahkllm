@@ -154,20 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **23 verified, 0 fix applied, 0 fix in progress** (2026-08-05). Scenario count is enforced by
+- **29 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** architecture branch `arch/robust-ipc-settings` steps 1-5 landed
-  (typed IPC contract 8df50b4, correlation ids/acks 0a0ab9c, SettingsService +
-  threadSettings/appSettings split 5c6a5f6, ThreadSettings consolidation 58bf6f3,
-  shared ModelResolver/SystemMessageResolver cc3db48). Bug #42 closed (fixed in
-  8df50b4); #43/#51 closed (fixed in cc3db48); entries moved to History with
-  scenarios 42/43/51 flipped to regression checks. All 56 e2e scenarios pass
-  (run in batches) plus the full AHK and JS suites. Next per the fix cycle:
-  bug #29, then the rest in rank order, one at a time, each with a flipped
-  scenario + code-level regression test. Harness cleanup is PID-targeted: use
-  `node tests/headless/e2e-suite.js --cleanup` after aborted runs and NEVER
-  blanket-kill `AutoHotkey64.exe` (see "Harness safety" above).
-
+- **Where we left off:** deep token-usage audit via mock LLM (sse-success: prompt 12/completion 9/cached 4/total 21) and static provider-format review (OpenAI completion_tokens_details.reasoning_tokens, DeepSeek prompt_cache_hit_tokens, Google total-prompt-completion fallback). Verified header "Context Used" = prompt+visible only � thinking tokens never counted (bug #64), HardDelete leaves cumulative counters inflated (bug #65), tooltip typo Culminative (bug #66), plus earlier #61-63 (stale UI globals, fork temp 0, pricingUnit cached fallback). All 6 new scenarios PASS headlessly; sync OK 29 entries / 63 scenarios (34 regression). Dynamic streaming check (scenario 67, regression) confirms mock usage is stored accurately when thinking=0. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -852,6 +841,105 @@ UPDATE); `ThreadRepo.Create()` inserts a thread without a folder.
 **Verification:** headless scenario 58 seeds a folder + a thread inside it,
 forks from the UI, and queries the new thread's `folder_id` — it is NULL
 (Unfiled) instead of the source folder.
+
+
+### 61. Clearing the Suspend Banner text (and other UI fields) has no effect � stale global survives
+
+**Scenario:** 61 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings -> UI -> Suspend Banner -> clear "Text" (or Input Window Background, or Response Font) -> Save -> observe banner / window / font.
+
+**Expected:** clearing the field resets to the default / empty state (banner shows no text, input window uses default background, font falls back).
+
+**Actual:** the banner still shows the old text, input window keeps the old background color, and Response Font keeps the old face. `SettingsApply._ApplySuspendBanner` (and `_ApplyInputWindow` / `_ApplyUI`) only assign the global when the saved value is non-empty (`!= ""`), so saving "" leaves the previous global value in place. Same root cause as bug #33 (icons).
+
+**Evidence:** `app/settings/SettingsApply.ahk` `_ApplySuspendBanner` `if sb.Has("text") && sb["text"] != ""`, `_ApplyInputWindow` `if iw.Has("background") && iw["background"] != ""`, `_ApplyUI` `if u.Has("responseFont") && u["responseFont"] != ""`.
+
+**Verification:** headless scenario 61 (noApp) statically checks SettingsApply.ahk � the three guards use != "" and no fallback assignment exists.
+
+### 62. Forking a chat with temperature 0 drops the override (reset to Default)
+
+**Scenario:** 62 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set per-thread temperature to 0 (right-rail slider), then click Fork on any message and inspect the forked thread.
+
+**Expected:** the fork inherits temperature 0.
+
+**Actual:** the fork shows Default (1.0). `TreeRepo._CopyThreadSettings` copies `temperature_override` only when `if settings.temperatureOverride` is truthy; in AHK 0 is falsy, so a 0 override is never copied. Same class of bug as #35 (restore path) and #44 (font size).
+
+**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` `if settings.temperatureOverride` guard; `ThreadRepo.GetSettings()` returns 0 for the source.
+
+**Verification:** headless scenario 62 (noApp) statically asserts the truthiness guard exists and that no `!= ""` check handles 0.
+
+### 63. Token-bar pricing unit shows 0 for cached input when the model stores "" instead of falling back to 10%
+
+**Scenario:** 63 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** add a model with Cached price left blank (stored as ""), send a message with cached tokens, and check the header token tooltip / cost and the Usage Dashboard pricing display.
+
+**Expected:** blank Cached should display and calculate as 10% of input price (as the Models hint promises).
+
+**Actual:** the header pricing unit and dashboard cached-cost show 0. `TreeRepo.GetThreadStats` builds `pricingUnit.cachedInput` as `pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (input*0.1)` � a present "" is taken as 0, not as missing. Same root cause as bug #29 (CostCalculator).
+
+**Evidence:** `chat/db/TreeRepo.ahk` `GetThreadStats` `cachedInput: pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : ...`; `api/CostCalculator.ahk` `_ResolvePricing` same pattern.
+
+**Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
+
+
+
+### 64. Header "Context Used" excludes thinking tokens � underreports context window usage
+
+**Scenario:** 64 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** use a reasoning-capable model (e.g. deepseek) with a prompt that triggers thinking (see mock sse-success which streams reasoning + 9 completion tokens). After the response, read the header "Context Used" and the per-message tooltip's Output/Thinking breakdown.
+
+**Expected:** "Context Used" equals prompt_tokens + visible_output + thinking_tokens (all tokens that occupy the context window). Tooltip should sum to the same total.
+
+**Actual:** header shows prompt + visible_output only. `chat/streaming/StreamCompletion.ahk` stores `token_count := Max(0, completion - thinking)` (visible only) and `chat/db/MessageRepo.ahk` sets `active_path_tokens := prompt + token_count`. `chat/db/TreeRepo.ahk` `GetThreadStats` reads that leaf value for "Context Used". Thinking tokens are stored separately and never added to the header, while the Usage Dashboard and per-message tooltip correctly count them � header is ~30-40% low for reasoning responses and disagrees with the tooltip's total.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk:96` `token_count: Max(0, completionTokens - thinkingTokens)`; `chat/db/MessageRepo.ahk` `activePathTokens := msgObj.prompt_tokens + tc`; `chat/db/TreeRepo.ahk` `activePathTokens := Integer(leafRow[1, "active_path_tokens"])`.
+
+**Verification:** headless scenario 64 (noApp) statically asserts the three patterns exist.
+
+### 65. Hard-deleting a message leaves cumulative token/cost counters stale � header stays inflated
+
+**Scenario:** 65 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** in a chat, note the header totals (e.g. ? 12 ? 9 $0.02), then delete any message (trash icon ? confirm). Re-read the header.
+
+**Expected:** cumulative Input/Output/Cost/ Cached counters decrement to reflect the remaining messages, consistent with the new Context Used.
+
+**Actual:** header totals stay inflated. `chat/db/MessageRepo.ahk` `HardDelete` re-parents children, clears the FTS row and calls `_RecomputeActivePath`, but never updates `chat_threads.cumulative_input_tokens / cumulative_output_tokens / cumulative_cached_tokens / cumulative_cost` (or the `chat_usage` aggregation). Cost and token totals from deleted branches remain counted forever.
+
+**Evidence:** `chat/db/MessageRepo.ahk` `static HardDelete` � no `cumulative_` UPDATE; `chat/db/TreeRepo.ahk` `_RecomputeActivePath` only rebuilds `active_path_tokens`.
+
+**Verification:** headless scenario 65 (noApp) slices HardDelete and asserts no `cumulative_` write exists.
+
+### 66. Header tooltip typo "Culminative" (should be "Cumulative") and mismatched semantics
+
+**Scenario:** 66 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** hover the middle header item (?/?).
+
+**Expected:** tooltip reads "Cumulative Input/output token usage across all conversation branches".
+
+**Actual:** tooltip reads "Culminative Input/output token usage across all conversation branches" (misspelled). Minor, but the string is also used as the spec for what the value should be � the typo has propagated to the report's assumptions.
+
+**Evidence:** `webui/js/chat/chat-format.js` `updateTokenUsage` `title="Culminative Input/output token usage across all conversation branches"`.
+
+**Verification:** headless scenario 66 (noApp) checks for /Culminative/ in chat-format.js.
 
 ---
 

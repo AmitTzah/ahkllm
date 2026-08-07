@@ -138,4 +138,138 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 61,
+  name: "Clearing Suspend Banner text still shows the old banner (SettingsApply skips empty)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const launcher = require("../launch");
+    const sa = fs.readFileSync(path.join(launcher.REPO_ROOT, "app", "settings", "SettingsApply.ahk"), "utf8");
+    const bannerSkipsEmpty = /if sb\.Has\("text"\) && sb\["text"\] != ""/.test(sa);
+    if (!bannerSkipsEmpty) throw new Error("bug not reproduced: banner does not skip empty");
+    return "SettingsApply._ApplySuspendBanner skips empty text � clearing leaves stale banner";
+  }
+});
+
+scenarios.push({
+  id: 62,
+  name: "Forking a chat with temperature 0 drops the override (TreeRepo skips falsy)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
+    const hasTruthy = tr.includes('if settings.temperatureOverride') && tr.includes('temperature_override');
+    const notZeroSafe = !tr.includes('temperatureOverride != ""');
+    if(!hasTruthy || !notZeroSafe) throw new Error("bug not reproduced hasTruthy="+hasTruthy+" notZeroSafe="+notZeroSafe);
+    return "TreeRepo._CopyThreadSettings checks if settings.temperatureOverride (falsy for 0) � forking a thread with temp 0 loses it";
+  }
+});
+
+scenarios.push({
+  id: 63,
+  name: "Thread pricing unit falls back incorrectly when cachedInput is empty string",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const launcher = require("../launch");
+    const tr = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "TreeRepo.ahk"), "utf8");
+    const hasFallback = /cachedInput: pricing\.HasOwnProp\("cachedInput"\) \? pricing\.cachedInput : \(pricing\.HasOwnProp\("input"\) \? pricing\.input \* 0\.1/.test(tr);
+    if (!hasFallback) throw new Error("bug not reproduced: fallback not found");
+    return "TreeRepo GetThreadStats pricingUnit treats cachedInput=\"\" as 0 instead of 10% fallback";
+  }
+});
+
+
+
+scenarios.push({
+  id: 64,
+  name: "Context Used excludes thinking tokens (header underreports)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sc=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","streaming","StreamCompletion.ahk"),"utf8");
+    const hasVisibleOnly = /token_count: Max\(0, completionTokens - thinkingTokens\)/.test(sc);
+    const mr2=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
+    const activeExcludesThinking = /activePathTokens := msgObj\.prompt_tokens \+ tc/.test(mr2);
+    const tr=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
+    const readsActivePath = /active_path_tokens/.test(tr);
+    if(!hasVisibleOnly || !activeExcludesThinking || !readsActivePath) throw new Error("bug not reproduced");
+    return "MessageRepo stores token_count = completion-thinking and active_path_tokens = prompt+visible; header Context Used never counts thinking";
+  }
+});
+
+scenarios.push({
+  id: 65,
+  name: "Hard-delete leaves cumulative token/cost counters stale (header stays inflated)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs2=require("node:fs");
+    const path2=require("node:path");
+    const launcher2=require("../launch");
+    const mr=fs2.readFileSync(path2.join(launcher2.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
+    const hd=mr.slice(mr.indexOf("static HardDelete"), mr.indexOf("static HardDelete")+3000);
+    if(/cumulative_/.test(hd)) throw new Error("bug not reproduced: touches cumulative");
+    return "HardDelete recomputes active_path_tokens but never updates cumulative_* counters";
+  }
+});
+
+scenarios.push({
+  id: 66,
+  name: "Header tooltip typo Culminative",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs3=require("node:fs");
+    const path3=require("node:path");
+    const launcher3=require("../launch");
+    const fmt=fs3.readFileSync(path3.join(launcher3.REPO_ROOT,"webui","js","chat","chat-format.js"),"utf8");
+    if(!/Culminative/.test(fmt)) throw new Error("bug not reproduced");
+    return "chat-format.js tooltip has Culminative (should be Cumulative)";
+  }
+});
+
+
+
+scenarios.push({
+  id: 67,
+  regression: true,
+  name: "Mock SSE usage (prompt 12, completion 9, cached 4) is stored accurately and header reflects it",
+  mode: "sse-success",
+  settings: {},
+  fixtures: {
+    threads: [{ id: "t-usage-67", title: "Usage Parse Check", active_leaf_id: "m-usage-67" }],
+    messages: [{ id: "m-usage-67", thread_id: "t-usage-67", role: "user", content: "hello" }]
+  },
+  async body({ cdp, dbPath }) {
+    const seed=require("../seed");
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, "thread list");
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, "thread loaded");
+    await cdp.eval('document.getElementById("chat-input").value=""');
+    await cdp.type("#chat-input", "verify usage parse");
+    await cdp.click("#chat-send-btn");
+    await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active', 30000, 300, "stream done");
+    await new Promise(r=>setTimeout(r,800));
+    const msgs=seed.query(dbPath, "SELECT role, token_count, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE thread_id='t-usage-67' ORDER BY created_at");
+    const asst=msgs.filter(m=>m.role==="assistant").pop();
+    if(!asst) throw new Error("no assistant: "+JSON.stringify(msgs));
+    if(asst.token_count !== 9) throw new Error("assistant token_count wrong: "+JSON.stringify(asst));
+    if(asst.cached_tokens !== 4) throw new Error("cached_tokens wrong: "+JSON.stringify(asst));
+    if(asst.active_path_tokens !== 21) throw new Error("active_path wrong: "+JSON.stringify(asst));
+    const barTitles=await cdp.eval('[...document.querySelectorAll("#tokenBar .tu-item")].map(e=>e.title)');
+    const barText=await cdp.eval('document.getElementById("tokenBar").innerText');
+    const hasContext=barText.includes("21") || barTitles.join(" ").includes("21");
+    if(!hasContext) throw new Error("header missing 21: bar="+JSON.stringify(barText)+" titles="+JSON.stringify(barTitles));
+    return "assistant stored token_count=9 cached=4 active=21 header shows 21";
+  }
+});
 module.exports = scenarios;
