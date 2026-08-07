@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **61 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **63 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS, code patterns confirmed; counts re-verified 64 entries = 61 verified + 3 reported, sync OK 98 scenarios (34 regression). Kept downgrades #86 (duplicate of #57), #93 (latent — no mutating caller), #94 (overstated — stable after CacheInitialDefaults); confirmed shared-root families #53/#87/#88 (UTC `date('now')` vs local `new Date()`), #61/#71/#33 (stale global on clear), #29/#63 (cachedInput empty-string fallback). Previously: added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS. Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** audit 2026-08-07 fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS, code patterns confirmed; counts re-verified 66 entries = 63 verified + 3 reported, sync OK 103 scenarios (37 regression). Kept downgrades #86 (duplicate of #57), #93 (latent — no mutating caller), #94 (overstated — stable after CacheInitialDefaults); confirmed shared-root families #53/#87/#88 (UTC `date('now')` vs local `new Date()`), #61/#71/#33 (stale global on clear), #29/#63 (cachedInput empty-string fallback). Previously: added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS. Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
@@ -1505,6 +1505,38 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 **Verification:** headless scenario 103 (noApp) asserts the `LIMIT 1` first-model query exists.
 
+
+### 107. TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants
+
+**Scenario:** 107 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** create a thread with an assistant message that has `prompt_tokens=100` + `token_count=20` (active_path=120), then delete a middle message and check the leaf''s `active_path_tokens`.
+
+**Expected:** after structural change the leaf should still reflect prompt+completion (or be recomputed from API ground truth).
+
+**Actual:** `_RecomputeActivePath` does `prev := 0; for msg in path { prev += token_count; UPDATE ... active_path_tokens=prev }` — it sums only `token_count` (visible tokens), ignoring `prompt_tokens`. After delete/edit the assistant''s 100 prompt tokens are lost, header “Context Used” drops from 120 to ~20.
+
+**Evidence:** `chat/db/TreeRepo.ahk` `static _RecomputeActivePath` — loop `prev += msg.HasProp("token_count") ? msg.token_count : 0` without `prompt_tokens`.
+
+**Verification:** headless scenario 107 (noApp) asserts the function contains `prev +=` with `token_count` and no `prompt_tokens` in its 600-char body.
+
+### 108. main.js IPC fallback calls arbitrary `window[target]` without allowlist
+
+**Scenario:** 108 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** from a compromised WebView (XSS via #57/#86), post a message with `target="eval"` and `data="alert(1)"` via `chrome.webview.postMessage`; or have AHK send an undeclared `target` to the WebView.
+
+**Expected:** only declared `IPCMessages` targets should be dispatched; unknown targets should be dropped after logging.
+
+**Actual:** `webui/js/main.js` `handleWebMessage` `default:` case does `if (typeof window[target] === "function") window[target](...data)` — any global (e.g. `eval`, `fetch`, `location`) is invocable. `IPCMessages.validate` only `console.error`s, it doesn''t block the dispatch, so the allowlist is bypassed.
+
+**Evidence:** `webui/js/main.js` `default:` → `window[target](...data)`.
+
+**Verification:** headless scenario 108 (noApp) asserts `window[target]` fallback exists.
 
 ## History (append-only)
 

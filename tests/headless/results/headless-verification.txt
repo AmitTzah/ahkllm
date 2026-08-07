@@ -1,8 +1,12 @@
-# 2026-08-07T10:43:37.641Z | run of 3 scenario(s)
-PASS | #104 | DB health: schema, indexes, FTS, foreign keys intact | schema OK, FTS OK, no orphans | 0.1s
-PASS | #105 | DB live: HardDelete re-parents, clears FTS, leaves cumulative (bug #65) | HardDelete OK: reparent, FTS cleared, cumulative stale 1.5, active_path 20 | 6.3s
-PASS | #106 | DB live: Fork copies messages, drops folder/cumulative | fork 0e12d438-2e34-c58a-3202-0000739db8fb msgs 1 folder dropped cumulative 0 | 5.6s
+# 2026-08-07T10:52:57.028Z | run of 7 scenario(s)
+PASS | #99 | MessageRepo.Insert parent_id/sibling_group SQL injection via unescaped interpolation | MessageRepo.Insert builds safeParent/safeSiblingGroup without SQLite.Escape | 0.0s
+PASS | #100 | LLMRequestBuilder._FixStreamBoolean naive StrReplace corrupts user content | LLMRequestBuilder._FixStreamBoolean does global StrReplace stream 1->true | 0.0s
+PASS | #101 | SettingsApply._ApplyCommands _SetIfTruthy drops false for stream/isFIM | SettingsApply uses _SetIfTruthy for stream/isFIM — false dropped | 0.0s
+PASS | #102 | UsageRepo provider LIKE uses SQLite.Escape but not wildcard-escape %_ | UsageRepo provider LIKE not escaping % _ | 0.0s
+PASS | #103 | TreeRepo.GetThreadStats pricingUnit picks first message model, not active model | TreeRepo.GetThreadStats pricingUnit LIMIT 1 first model | 0.0s
+PASS | #107 | TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants | _RecomputeActivePath does prev+=token_count only — assistant prompt_tokens lost after delete/edit | 0.0s
+PASS | #108 | main.js IPC fallback calls arbitrary window[target] without allowlist — XSS can invoke any global | main.js default: case calls window[target](...data) for any undeclared target — arbitrary global invocation | 0.0s
 
-Summary: 3/3 scenarios PASS
+Summary: 7/7 scenarios PASS
 Real profile restored: yes
 Report sync: OK

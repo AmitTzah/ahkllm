@@ -808,6 +808,46 @@ scenarios.push({
   }
 });
 
+
+
+
+
+scenarios.push({
+  id: 107,
+  name: "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
+    const defIdx=tr.indexOf("static _RecomputeActivePath");
+    const body=tr.slice(defIdx, defIdx+600);
+    const hasPrefix = body.includes('prev += msg.HasProp("token_count")');
+    const hasPrompt = body.includes("prompt_tokens");
+    if(!hasPrefix) throw new Error("bug not reproduced: no prev+= token_count");
+    if(hasPrompt) throw new Error("bug not reproduced: recompute handles prompt_tokens");
+    return "_RecomputeActivePath does prev+=token_count only — assistant prompt_tokens lost after delete/edit";
+  }
+});
+
+scenarios.push({
+  id: 108,
+  name: "main.js IPC fallback calls arbitrary window[target] without allowlist — XSS can invoke any global",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const main=fs.readFileSync(path.join(launcher.REPO_ROOT,"webui","js","main.js"),"utf8");
+    const hasFallback = /if \(typeof window\[target\] === .function.\)/.test(main) && /window\[target\]\(/.test(main);
+    if(!hasFallback) throw new Error("bug not reproduced: no window[target] fallback");
+    return "main.js default: case calls window[target](...data) for any undeclared target — arbitrary global invocation";
+  }
+});
+
 module.exports = scenarios;
 
 
