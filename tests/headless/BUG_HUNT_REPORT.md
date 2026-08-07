@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **41 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **40 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #63 FIXED in d7af83c; next: bug #64 (header "Context Used" excludes thinking tokens).
+- **Where we left off:** 2026-08-07 — bug #64 FIXED in f9769f7; next: bug #65 (hard-deleting a message leaves cumulative token/cost counters stale).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 64. Header "Context Used" excludes thinking tokens - underreports context window usage
-
-**Scenario:** 64 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** use a reasoning-capable model (e.g. deepseek) with a prompt that triggers thinking (see mock sse-success which streams reasoning + 9 completion tokens). After the response, read the header "Context Used" and the per-message tooltip's Output/Thinking breakdown.
-
-**Expected:** "Context Used" equals prompt_tokens + visible_output + thinking_tokens (all tokens that occupy the context window). Tooltip should sum to the same total.
-
-**Actual:** header shows prompt + visible_output only. `chat/streaming/StreamCompletion.ahk` stores `token_count := Max(0, completion - thinking)` (visible only) and `chat/db/MessageRepo.ahk` sets `active_path_tokens := prompt + token_count`. `chat/db/TreeRepo.ahk` `GetThreadStats` reads that leaf value for "Context Used". Thinking tokens are stored separately and never added to the header, while the Usage Dashboard and per-message tooltip correctly count them - header is ~30-40% low for reasoning responses and disagrees with the tooltip's total.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk:96` `token_count: Max(0, completionTokens - thinkingTokens)`; `chat/db/MessageRepo.ahk` `activePathTokens := msgObj.prompt_tokens + tc`; `chat/db/TreeRepo.ahk` `activePathTokens := Integer(leafRow[1, "active_path_tokens"])`.
-
-**Verification:** headless scenario 64 (noApp) statically asserts the three patterns exist.
 
 ### 65. Hard-deleting a message leaves cumulative token/cost counters stale - header stays inflated
 
@@ -922,6 +906,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Header \"Context Used\" excludes thinking tokens - underreports context window usage" - FIXED in f9769f7: MessageRepo now stores active_path_tokens = prompt + visible + thinking for assistants, and TreeRepo._RecomputeActivePath adds thinking_tokens to the prefix sums, so the header Context Used matches the tooltip/dashboard totals; scenario 64 flipped to a regression static check + ChatDB/UsageTracking unit tests (existing thinking-token expectations updated).
 
 - 2026-08-07 - "Token-bar pricing unit shows 0 for cached input when the model stores \"\" instead of falling back to 10%" - FIXED in d7af83c: TreeRepo.GetThreadStats now treats a stored cachedInput of \"\" as missing and falls back to 10% of the input price; scenario 63 flipped to a regression static check + ChatDB unit test.
 

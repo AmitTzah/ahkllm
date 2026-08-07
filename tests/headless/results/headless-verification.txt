@@ -1,5 +1,5 @@
-# 2026-08-07T21:15:56.533Z | run of 1 scenario(s)
-PASS | #63 | Thread pricing unit falls back to 10% when cachedInput is empty string | TreeRepo GetThreadStats pricingUnit treats cachedInput="" as missing and falls back to 10% of input | 0.0s
+# 2026-08-07T21:21:12.226Z | run of 1 scenario(s)
+PASS | #64 | Context Used includes thinking tokens (header reports full context) | MessageRepo active_path_tokens includes thinking (prompt + visible + thinking) and _RecomputeActivePath adds thinking to prefix sums, so the header Context Used counts reasoning tokens | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
