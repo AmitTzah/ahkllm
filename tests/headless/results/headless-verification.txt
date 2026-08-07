@@ -1,5 +1,5 @@
-# 2026-08-07T21:46:52.242Z | run of 1 scenario(s)
-PASS | #73 | GoogleChatCompletions disabled config includes include_thoughts:false for 2.x | GoogleChatCompletions.DisabledConfig returns {include_thoughts:false, thinking_budget:0} for Gemini 2.x | 0.0s
+# 2026-08-07T21:48:51.015Z | run of 1 scenario(s)
+PASS | #74 | SettingsApply clears providerMap when all prefixes are explicitly cleared | SettingsApply._ApplyProviders assigns providerMap whenever prefixes are explicitly defined (an empty set clears it) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **32 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **31 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #73 FIXED in d8c0096; next: bug #74 (SettingsApply leaves providerMap stale when all prefixes are cleared).
+- **Where we left off:** 2026-08-07 — bug #74 FIXED in bcd199a; next: bug #75 (GoogleChatCompletions budget table substring match).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 74. SettingsApply leaves providerMap stale when all prefixes are cleared
-
-**Scenario:** 74 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings ? Providers ? edit every provider to remove all `prefixes` entries (or set a provider to have an empty prefixes array) ? Save ? check provider resolution for a legacy short id like `deepseek-v4-flash`.
-
-**Expected:** clearing prefixes should clear `providerMap` (or rebuild it empty) so legacy short ids no longer resolve to that provider.
-
-**Actual:** `SettingsApply._ApplyProviders` builds `newProviderMap` from the saved providers' `prefixes`, then does `if newProviderMap.Count >0` `providerMap := newProviderMap`. When all prefixes are cleared, `Count` is 0, so the assignment is skipped and the old `providerMap` (from startup defaults or previous save) remains live. Legacy short ids continue to resolve to the old provider even though the settings show no prefixes.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyProviders` `if newProviderMap.Count >0` `providerMap := newProviderMap`.
-
-**Verification:** headless scenario 74 (noApp) asserts the `Count >0` guard exists and no `else` clear exists.
 
 ### 75. GoogleChatCompletions budget table matches via substring InStr, not exact family check
 
@@ -778,6 +762,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "SettingsApply leaves providerMap stale when all prefixes are cleared" - FIXED in bcd199a: _ApplyProviders now rebuilds providerMap whenever the saved providers define prefixes explicitly (an empty set clears the stale map), while providers without a prefixes key still keep the UserConfig mapping; scenario 74 flipped to a regression static check + SettingsHandler unit test.
 
 - 2026-08-07 - "GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)" - FIXED in d8c0096: DisabledConfig now returns {include_thoughts:false, thinking_budget:0} for Gemini 2.x, symmetric with the enabled config; scenario 73 flipped to a regression static check + LLMRequestBuilder unit test.
 
