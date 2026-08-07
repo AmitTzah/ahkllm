@@ -575,15 +575,18 @@ scenarios.push({
 
 scenarios.push({
   id: 86,
-  name: "FIM fallback renderMarkdown XSS ï¿½ md.render with html:true for non-chat content",
+  name: "FIM fallback renderMarkdown uses the html:false markdown renderer (XSS fixed)",
+  regression: true, // REFUTED as a duplicate of #57 (fixed in 05e2ccb); kept as a regression check for the FIM fallback path
   mode: null,
   noApp: true,
   async body() {
     const cc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-core.js"),"utf8");
     const hasMdRender = /contentElement\.innerHTML = result/.test(cc) && /md\.render\(contentToRender\)/.test(cc);
-    const hasHtmlTrue = /markdownit\(\{[^}]*html: true/.test(require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","main.js"),"utf8"));
-    if(!hasMdRender || !hasHtmlTrue) throw new Error("bug not reproduced");
-    return "chat-core.js renderMarkdown does md.render(content) with html:true and innerHTML ï¿½ FIM fallback XSS same as #57";
+    const main=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","main.js"),"utf8");
+    const htmlSafe = /html: false/.test(main);
+    const htmlTrue = /markdownit\(\{[^}]*html: true/.test(main);
+    if(!hasMdRender || !htmlSafe || htmlTrue) throw new Error("bug #86/#57 not fixed: hasMdRender=" + hasMdRender + " htmlSafe=" + htmlSafe + " htmlTrue=" + htmlTrue);
+    return "chat-core.js renderMarkdown renders via the html:false md instance (fixed by #57), so FIM fallback content is inert";
   }
 });
 

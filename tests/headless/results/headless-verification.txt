@@ -1,5 +1,5 @@
-# 2026-08-07T22:12:44.110Z | run of 1 scenario(s)
-PASS | #84 | ApiLogsViewer esc() escapes single quotes (title attribute safe) | webui/api-logs.html esc() escapes single quotes (&#39;), so title attributes cannot be broken | 0.0s
+# 2026-08-07T22:15:14.419Z | run of 1 scenario(s)
+PASS | #86 | FIM fallback renderMarkdown uses the html:false markdown renderer (XSS fixed) | chat-core.js renderMarkdown renders via the html:false md instance (fixed by #57), so FIM fallback content is inert | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

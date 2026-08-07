@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **21 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **21 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #84 FIXED in 2bb8435; next: bug #86 (FIM fallback renderMarkdown XSS - duplicate of #57, refute).
+- **Where we left off:** 2026-08-07 — bug #86 REFUTED (duplicate of #57, fixed in 05e2ccb); next: bug #87 (usage dashboard "Last Month" SQL uses UTC while chart labels use local).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 86. FIM fallback `renderMarkdown` XSS - `md.render` with `html:true` for non-chat content
-
-**Scenario:** 86 (scenario code in e2e-suite.js)
-
-**Status:** reported — duplicate of #57, static check only (same `html:true` root)
-
-**Repro:** trigger a Fill-In-the-Middle (FIM) request that returns HTML like `<img src=x onerror=...>` (e.g. via a FIM command with a mock LLM), then view the fallback rendering (`#content` when `isChatMode` is false).
-
-**Expected:** content is rendered as inert text, even in FIM fallback mode.
-
-**Actual:** `webui/js/chat/chat-core.js` `renderMarkdown` does `var result = md.render(contentToRender); var contentElement = document.getElementById('content'); if (contentElement) contentElement.innerHTML = result;` with `md` configured `html:true` in `webui/js/main.js`. No sanitization, same root as #57 but for the non-chat `content` path. **Duplicate of #57 — fix together; scenario kept as reported.**
-
-**Evidence:** `webui/js/chat/chat-core.js` `renderMarkdown` `md.render` + `innerHTML`; `webui/js/main.js` `markdownit({ html:true })`.
-
-**Verification:** headless scenario 86 (noApp) asserts `md.render` with `html:true` and `contentElement.innerHTML = result` exist.
 
 ### 87. Usage dashboard "Last Month" SQL uses UTC `date('now')` while chart labels use local `new Date()` - timezone drift
 
@@ -602,6 +586,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "FIM fallback `renderMarkdown` XSS - `md.render` with `html:true` for non-chat content" - REFUTED (duplicate of #57, which was FIXED in 05e2ccb: markdown-it html:false covers the FIM fallback path too); scenario 86 converted to a regression check for the non-chat renderMarkdown path.
 
 - 2026-08-07 - "API Logs Viewer `esc()` does not escape single quote - `title` attribute break and potential XSS" - FIXED in 2bb8435: esc() now escapes single quotes (&#39;) in addition to & < > \", so title attributes cannot be broken; scenario 84 flipped to a regression static check + api-logs-viewer unit test.
 
