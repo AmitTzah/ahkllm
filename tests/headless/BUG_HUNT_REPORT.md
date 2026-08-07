@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **57 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **56 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #38 FIXED in eb54326; next: bug #45 ("Response Font" setting is not applied to chat messages until Settings is opened).
+- **Where we left off:** 2026-08-07 — bug #45 FIXED in 13a4cec; next: bug #39 (system-message modal silently clears a custom system-message file on Save).
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 45. "Response Font" setting is not applied to chat messages until Settings is opened
-
-**Scenario:** 45 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings Ã¢â€ â€™ UI & Theme Ã¢â€ â€™ set Response Font to something other than
-Inter (e.g. Georgia) Ã¢â€ â€™ Save Ã¢â€ â€™ close Settings Ã¢â€ â€™ look at the message text.
-
-**Expected:** messages render in the configured font immediately, and keep it
-after every restart.
-
-**Actual:** messages keep the default font until the user opens Settings again.
-`ui-theme.js` applies `--chat-font-family` only inside `load()`, which runs when
-the Settings panel receives the full settings payload. At app start (and after a
-save until Settings is reopened) the WebView never receives the CSS var, so the
-saved Response Font is silently ignored.
-
-**Evidence:** `webui/js/settings/sections/ui-theme.js` sets
-`--chat-font-family` only in `load()`; `SettingsApply._ApplyUI` only updates the
-AHK global `responseWindowFontFace` Ã¢â‚¬â€ nothing applies it to the WebView.
-
-**Verification:** headless scenario 45 seeds `ui.responseFont: "Georgia"`,
-launches, loads a thread, and reads the computed font-family of a rendered
-message Ã¢â‚¬â€ it is the default Inter stack; after opening Settings it becomes
-Georgia.
 
 ### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
 
@@ -1341,6 +1314,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "\"Response Font\" setting is not applied to chat messages until Settings is opened" - FIXED in 13a4cec: Dispatch now re-pushes the merged appSettings on the webViewReady handshake and after every successful save, so ui-theme.js applies --chat-font-family (and other UI CSS vars) at startup and live; scenario 45 flipped to a regression check + ChatDispatch unit tests.
 
 - 2026-08-07 - "Chat window title stays stale after renaming a thread and switching to another" - FIXED in eb54326: _LoadThreadAndRefreshUI now sets chatWindow.Title from the active thread (was only renameThread), so the title bar follows thread switches; scenario 38 flipped to a regression check + ChatUtils unit test.
 
