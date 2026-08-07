@@ -71,6 +71,24 @@ class UsageTrackingTest {
     ; Single exchange — verify per-message token fields
     ; ----------------------------------------------------
 
+    ; Regression (bug #102): the provider LIKE must escape % _ \ so a provider
+    ; value containing wildcards is matched literally (and the SQL declares
+    ; ESCAPE '\', same pattern as SearchRepo).
+    ProviderFilter_LikeEscapesWildcards() {
+        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "_EscapeLike(SQLite.Escape(providerFilter))")
+            throw Error("provider LIKE must escape the provider filter (bug #102)")
+        if !InStr(src, "ESCAPE '\'")
+            throw Error("provider LIKE must declare ESCAPE '\' (bug #102)")
+        escapeIdx := InStr(src, "static _EscapeLike(value)")
+        if !escapeIdx
+            throw Error("_EscapeLike helper missing (bug #102)")
+        helper := SubStr(src, escapeIdx, 300)
+        if !InStr(helper, 'StrReplace(value, "\", "\\")') || !InStr(helper, 'StrReplace(value, "%", "\%")') || !InStr(helper, 'StrReplace(value, "_", "\_")')
+            throw Error("_EscapeLike must escape \ then % then _ (bug #102)")
+    }
+
     SingleExchange_AllTokenFields() {
         this._openDb()
         threadId := ChatDB.Thread_Create("Test")

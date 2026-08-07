@@ -881,7 +881,8 @@ scenarios.push({
 
 scenarios.push({
   id: 102,
-  name: "UsageRepo provider LIKE uses SQLite.Escape but not wildcard-escape %_",
+  name: "UsageRepo provider LIKE escapes % _ \\ wildcards (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (LIKE must match provider literally)
   mode: null,
   noApp: true,
   async body() {
@@ -889,11 +890,15 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const ur=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    const hasLike = /providerChatClause := providerFilter \? "AND model LIKE/.test(ur);
-    if (!hasLike) throw new Error("bug not reproduced");
-    const escapes = /StrReplace.*providerFilter.*%/.test(ur);
-    if (escapes) throw new Error("already escapes");
-    return "UsageRepo provider LIKE not escaping % _";
+    // FIXED (bug #102): the provider LIKE escapes \ % _ and declares ESCAPE '\'.
+    const usesEscapeLike = /_EscapeLike\(SQLite\.Escape\(providerFilter\)\)/.test(ur);
+    const hasEscapeClause = /providerChatClause := providerFilter \? "AND model LIKE '"/.test(ur) && ur.includes("ESCAPE '\\'");
+    const escapesBackslash = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "\\", "\\\\"\)/.test(ur);
+    const escapesPercent = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "%", "\\%"\)/.test(ur);
+    const escapesUnderscore = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "_", "\\_"\)/.test(ur);
+    if(!usesEscapeLike || !hasEscapeClause || !escapesBackslash || !escapesPercent || !escapesUnderscore)
+      throw new Error("bug #102 not fixed: usesEscapeLike="+usesEscapeLike+" hasEscapeClause="+hasEscapeClause+" escapesBackslash="+escapesBackslash+" escapesPercent="+escapesPercent+" escapesUnderscore="+escapesUnderscore);
+    return "UsageRepo provider LIKE escapes \\ % _ and declares ESCAPE '\\' so a provider value containing wildcards is matched literally";
   }
 });
 

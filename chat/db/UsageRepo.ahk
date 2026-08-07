@@ -48,7 +48,9 @@ class UsageRepo {
         modelFilter := filters.Has("model") ? filters["model"] : ""
         modelClause := modelFilter ? "AND model='" SQLite.Escape(modelFilter) "'" : ""
         providerFilter := filters.Has("provider") ? filters["provider"] : ""
-        providerChatClause := providerFilter ? "AND model LIKE '" SQLite.Escape(providerFilter) "/%'" : ""
+        ; Bug #102: escape LIKE wildcards (% _ \) so a provider value that
+        ; contains them is matched literally (SQL declares ESCAPE '\').
+        providerChatClause := providerFilter ? "AND model LIKE '" UsageRepo._EscapeLike(SQLite.Escape(providerFilter)) "/%' ESCAPE '\'" : ""
         typeFilter := filters.Has("type") ? filters["type"] : "all"
 
         ; Chat data — from chat_usage table
@@ -120,6 +122,15 @@ class UsageRepo {
 
         debugLog("[DASHBOARD] Query — chat=" result.chat.Length " rows, cmd=" result.commands.Length " rows, type=" typeFilter " time=" timeRange)
         return result
+    }
+
+    ; Escape SQL LIKE wildcards so provider values are matched literally
+    ; (bug #102; the LIKE clauses declare ESCAPE '\').
+    static _EscapeLike(value) {
+        value := StrReplace(value, "\", "\\")
+        value := StrReplace(value, "%", "\%")
+        value := StrReplace(value, "_", "\_")
+        return value
     }
 
     ; Command usage — daily aggregation UPSERT
