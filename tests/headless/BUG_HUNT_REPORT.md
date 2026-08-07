@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **65 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **65 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #30 fix applied (deleteMessage now honestly says permanent delete, scenario 30 PASS, suites green); awaiting user commit.
+- **Where we left off:** 2026-08-07 — bug #30 FIXED and committed in 6877a5e (deleteMessage honest permanent delete, scenario 30 flipped to regression); next: bug #31 per rank order.
 ---
 
 ## Bug entry template
@@ -207,31 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 30. Deleting a message confirms "data is preserved" but hard-deletes it
-
-**Scenario:** 30 (scenario code in e2e-suite.js)
-
-**Status:** awaiting user commit
-
-**Repro:** in a chat, click the trash icon on any message bubble; read the
-confirmation; click Delete.
-
-**Expected:** either the confirmation honestly says the deletion is permanent, or
-the delete preserves the message data.
-
-**Actual:** the confirmation says "This removes it from the current view but data
-is preserved", but confirming calls `ChatDB.Msg_HardDelete` â€” the message row,
-its attachments, and its FTS index entry are permanently removed. Users who
-believe the message is recoverable can lose content with no undo.
-
-**Evidence:** `webui/js/chat/chat-branching.js` `deleteMessage()` shows the
-"data is preserved" copy; `chat/callbacks/Edit.ahk` `handleDelete()` calls
-`ChatDB.Msg_HardDelete(msgId)` (permanent delete + re-parenting).
-
-**Verification:** headless scenario 30 seeds a two-message thread, clicks Delete
-on the user message, reads the dialog text (contains "data is preserved"), confirms,
-and queries the DB â€” the message row is gone.
 
 ### 31. Font-size +/- buttons use a stale 17px base after a thread with a custom size loads
 
@@ -1574,6 +1549,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Deleting a message confirms "data is preserved" but hard-deletes it" - FIXED in 6877a5e: webui/js/chat/chat-branching.js deleteMessage now says "This permanently deletes the message and cannot be undone." (was lie "data is preserved"); scenario 30 flipped to regression check (regression: true) + chat-branching unit test.
 
 - 2026-08-07 - "Blank cached-input price costs 0 instead of the advertised 10% fallback" - FIXED in d2c4d79: CostCalculator._ResolvePricing now falls back to inputPrice*0.1 for blank/zero/empty cachedInput (was only missing); scenario 29 flipped to regression check (regression: true) + CostCalculator unit tests.
 
