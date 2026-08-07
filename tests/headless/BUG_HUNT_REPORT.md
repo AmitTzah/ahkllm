@@ -156,7 +156,7 @@ How to run AHK safely:
 
 - **56 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS; also audit 2026-08-07 — downgraded #86 (FIM XSS — duplicate of #57), #93 (shallow copy latent), #94 (UUID churn overstated — stable after CacheInitialDefaults) to `reported`; grouped #53/#87/#88 (UTC vs local drift) and #61/#71 (clearing fields stale global) as shared-root families. Sync OK 59 entries / 93 scenarios (34 regression). Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** audit 2026-08-07 second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS, code patterns confirmed; counts re-verified 59 entries = 56 verified + 3 reported, sync OK 93 scenarios (34 regression). Kept downgrades #86 (duplicate of #57), #93 (latent — no mutating caller), #94 (overstated — stable after CacheInitialDefaults); confirmed shared-root families #53/#87/#88 (UTC `date('now')` vs local `new Date()`), #61/#71/#33 (stale global on clear), #29/#63 (cachedInput empty-string fallback). Previously: added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS. Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template

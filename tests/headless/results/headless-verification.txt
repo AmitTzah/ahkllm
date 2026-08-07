@@ -1,9 +1,15 @@
-# 2026-08-07T10:07:56.183Z | run of 4 scenario(s)
-PASS | #95 | Usage dashboard model heading XSS — model id not escaped in section header | usage-dashboard.js div.innerHTML = '<h6>'+model without escHtml — XSS | 0.0s
+# 2026-08-07T10:21:57.006Z | run of 10 scenario(s)
+PASS | #29 | Blank cached-input price costs 0 instead of the advertised 10% fallback | ﻿missingCachedInputCost=1.000000 | BUG29 missingFallback=OK | BUG29 throw=YES error=Expected a Number but got an empty string. | 0.0s
+PASS | #66 | Header tooltip typo Culminative | chat-format.js tooltip has Culminative (should be Cumulative) | 0.0s
+PASS | #86 | FIM fallback renderMarkdown XSS ï¿½ md.render with html:true for non-chat content | chat-core.js renderMarkdown does md.render(content) with html:true and innerHTML ï¿½ FIM fallback XSS same as #57 | 0.0s
+PASS | #87 | UsageRepo lastMonth SQL uses UTC date('now') while dashboard labels use local ï¿½ off by timezone | UsageRepo _WhereDate lastMonth uses UTC date('now') while getDateRangeLabels uses local new Date() ï¿½ timezone mismatch | 0.0s
+PASS | #88 | UsageRepo month (last 30 days) SQL uses UTC while dashboard uses local ï¿½ timezone mismatch | UsageRepo _WhereDate month uses UTC date('now','-30 days') while dashboard month uses local today minus 30 days | 0.0s
+PASS | #93 | SettingsDefaults GetDefaults shallow copies Map values ï¿½ mutating snapshot corrupts pristine defaults | SettingsDefaults.GetDefaults shallow copies _initialDefaults values ï¿½ nested Maps share reference | 0.0s
+PASS | #94 | SettingsDefaults _DefaultsAssistants generates new UUID each call ï¿½ defaults not stable | SettingsDefaults._DefaultsAssistants calls SettingsPersistence._UUID() for each assistant id on every GetDefaults ï¿½ defaults have non-deterministic ids | 0.0s
 PASS | #96 | AttachmentRepo SQL injection via unescaped msgId | AttachmentRepo Insert/GetByMessage interpolates msgId without Escape | 0.0s
 PASS | #97 | SettingsPersistence.Save non-atomic FileDelete then FileAppend | SettingsPersistence.Save FileDelete then FileAppend non-atomic | 0.0s
 PASS | #98 | StreamHandler cancel leaks state — no cleanup after wasCancelled | StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then return without _cleanupStreamState — leaks _stream* keys | 0.0s
 
-Summary: 4/4 scenarios PASS
+Summary: 10/10 scenarios PASS
 Real profile restored: yes
 Report sync: OK
