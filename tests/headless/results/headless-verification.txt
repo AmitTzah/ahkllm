@@ -1,6 +1,6 @@
-# 2026-08-07T11:03:38.321Z | run of 1 scenario(s)
-PASS | #112 | CurlBuilder does not validate empty endpoint — malformed cURL with no URL | CurlBuilder.Build concatenates providerInfo.endpoint without empty check — empty endpoint yields POST with no URL | 0.0s
+# 2026-08-07T17:11:35.558Z | run of 1 scenario(s)
+PASS | #34 | Tray icon changes apply live on settings updates (static check of the settings-update path) | Tray icon rebuild runs at startup, is registered as the trayIcon settings hook, honors suspend state, and the settings-update handler reloads via SettingsService | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
-Report sync: MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js
+Report sync: OK

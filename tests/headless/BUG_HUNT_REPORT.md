@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **62 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **61 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #33 FIXED and committed in 10549ec (clearing icon now correctly clears global, scenario 33 flipped to regression); next: bug #34 per rank order.
+- **Where we left off:** 2026-08-07 — bug #34 FIXED and committed in fb7fce8 (tray icon now re-applies live on settings updates via app/TrayIcon.ahk + settings hook; scenario 34 flipped to regression); next: bug #35 per rank order.
 ---
 
 ## Bug entry template
@@ -207,32 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 34. Tray icon changes don't apply until restart
-
-**Scenario:** 34 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Icons -> pick a different tray icon -> Save -> look at the
-system tray.
-
-**Expected:** the tray icon changes immediately (like the fixed Suspend-banner and
-Input-window settings that rebuild on every settings update).
-
-**Actual:** the tray keeps the old icon until the app is restarted. `TraySetIcon(iconOn)`
-runs once at Main startup (and again only when suspend is toggled); the
-`WM_SETTINGS_UPDATED` handler reloads globals, hotkeys, the suspend banner, and the
-input window, but never re-applies the tray icon.
-
-**Evidence:** `Main.ahk` startup `TraySetIcon(iconOn)`; the `WM_SETTINGS_UPDATED`
-OnMessage handler has no `TraySetIcon` call (visual â€” cannot be asserted by the
-headless harness, hence the static scenario).
-
-**Verification:** headless scenario 34 (noApp) statically scans `Main.ahk`:
-`TraySetIcon(iconOn)` exists at startup but not inside the `WM_SETTINGS_UPDATED`
-handler. Final visual confirmation requires a human looking at the tray after
-changing the icon.
 
 ### 35. Temperature override of 0 is dropped when the thread reloads (right rail shows Default)
 
@@ -1469,6 +1443,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Tray icon changes don't apply until restart" - FIXED in fb7fce8: new app/TrayIcon.ahk re-applies the tray icon from the current icons globals (honoring suspend state) at startup and via a SettingsService hook, so icon edits apply live; scenario 34 flipped to regression check (regression: true) + TrayIcon unit tests.
 
 - 2026-08-07 - "Clearing the chat-window icon setting still loads the default custom icon" - FIXED in 10549ec: SettingsApply._ApplyIcons now applies empty strings (was skipped, kept DefaultSettings); scenario 33 flipped to regression check (regression: true) + SettingsHandler unit test.
 
