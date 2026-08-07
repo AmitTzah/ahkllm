@@ -718,7 +718,8 @@ scenarios.push({
 
 scenarios.push({
   id: 95,
-  name: "Usage dashboard model heading XSS — model id not escaped in section header",
+  name: "Usage dashboard model heading escapes the model id (XSS fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: model headings must be escaped)
   mode: null,
   noApp: true,
   async body() {
@@ -726,11 +727,11 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const dash=fs.readFileSync(path.join(launcher.REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const hasRawInner = /div\.innerHTML = .<h6>.+model/.test(dash);
     const sec = dash.slice(dash.indexOf("model-section"), dash.indexOf("model-section")+3000);
     const hasEsc = /escHtml\(model\)/.test(sec);
-    if(!hasRawInner || hasEsc) throw new Error("bug not reproduced hasRawInner="+hasRawInner+" hasEsc="+hasEsc);
-    return "usage-dashboard.js div.innerHTML = '<h6>'+model without escHtml — XSS";
+    const hasRawInner = /div\.innerHTML = .<h6>.+model \+/.test(sec);
+    if(!hasEsc || hasRawInner) throw new Error("bug #95 not fixed: hasEsc=" + hasEsc + " hasRawInner=" + hasRawInner);
+    return "usage-dashboard.js renderModelSections escapes the model heading (escHtml(model)), so model ids render as inert text";
   }
 });
 

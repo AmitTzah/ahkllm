@@ -228,6 +228,29 @@ describe('populateFilters', () => {
     });
 });
 
+describe('renderModelSections XSS (bug #95)', () => {
+    it('escapes the model heading', () => {
+        const ctx = loadDashboardModule();
+        const container = ctx.document.getElementById('modelSections');
+        let appended = null;
+        container.appendChild = (child) => { appended = child; };
+        ctx.allData = {
+            chat: [{
+                date: '2026-08-07', model: '"><img src=x onerror=window.__h=1>',
+                provider: 'deepseek', output_tokens: 10, input_tokens: 5, message_count: 1,
+                total_cost: 0, cached_input_cost: 0, input_cost: 0, output_cost: 0,
+                total_response_time_ms: 0, total_ttft_ms: 0
+            }],
+            commands: [], models: [], providers: []
+        };
+        ctx.renderModelSections();
+        assert.ok(appended, 'model section should be appended');
+        const html = appended.innerHTML;
+        assert.ok(!html.includes('"><img'), 'model heading must be escaped, got ' + html);
+        assert.ok(html.includes('&lt;img'), 'model heading should render as escaped text');
+    });
+});
+
 describe('loadData', () => {
     it('calls host object with filters', async () => {
         const ctx = loadDashboardModule();

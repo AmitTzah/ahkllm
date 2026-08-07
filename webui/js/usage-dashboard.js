@@ -267,7 +267,8 @@ function renderModelSections() {
 
     var color = getColor(model, e);
     var div = document.createElement('div'); div.className = 'model-section chart-card';
-    div.innerHTML = '<h6>'+model+'</h6><div class="row"><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="req-'+e+'"></canvas></div></div><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="tok-'+e+'"></canvas></div></div></div>';
+    // Bug #95 (XSS): model ids are user-controlled - escape the heading.
+    div.innerHTML = '<h6>'+escHtml(model)+'</h6><div class="row"><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="req-'+e+'"></canvas></div></div><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="tok-'+e+'"></canvas></div></div></div>';
     container.appendChild(div);
 
     // Requests — smooth area chart
