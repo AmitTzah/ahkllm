@@ -1,5 +1,5 @@
-# 2026-08-07T20:54:49.977Z | run of 1 scenario(s)
-PASS | #53 | Dashboard "Last 24 Hours" summary matches the chart (local today only) | seeded yesterday + today rows (total $4.00): "Last 24 Hours" summary shows $2.00 (today only) while the chart has 1 label(s) - summary matches the chart | 4.8s
+# 2026-08-07T20:59:50.768Z | run of 1 scenario(s)
+PASS | #55 | Branch switch / search navigation land on the newest continuation (matching the tree modal) | branch-nav switch from a1 landed on leaf m-br-55-a2bx (context "95 / 1m") and the tree modal lands on m-br-55-a2bx (context "95 / 1m") - both newest | 7.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

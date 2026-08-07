@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **48 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **47 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #53 FIXED in 74c589d; next: bug #55 (branch switch / search navigation land on the oldest continuation of a message).
+- **Where we left off:** 2026-08-07 — bug #55 FIXED in 6e87641; next: bug #56 (stopping a stream before the first token shows an error banner instead of a clean cancel).
 ---
 
 ## Bug entry template
@@ -207,36 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 55. Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest (header shows the stale branch's context)
-
-**Scenario:** 55 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** in a chat, branch from the same assistant message twice (two
-different follow-ups created at different times), then use the branch-nav
-arrows (or a search result) to switch to that branch; compare the header's
-Context Used with what the tree modal shows for the same node.
-
-**Expected:** switching to a branch lands on its newest continuation (the same
-leaf the tree modal navigates to), so the header's Context Used reflects that
-branch's latest state.
-
-**Actual:** the branch switch (and search navigation) descend via
-`TreeRepo._WalkToLeaf`, which picks the FIRST child by `ORDER BY created_at
-LIMIT 1` â€” the OLDEST continuation â€” while the tree modal's `_findDefaultLeaf`
-picks `children[children.length - 1]` (the newest). The header then shows the
-stale branch's Context Used, disagreeing with the tree modal.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_WalkToLeaf()` (`ORDER BY created_at
-LIMIT 1`); `webui/js/chat/chat-tree-modal.js` `_findDefaultLeaf()`
-(`children[children.length - 1]`).
-
-**Verification:** headless scenario 55 seeds a message with an old and a new
-continuation (context 70 vs 95) plus a sibling branch, switches branches with
-the nav arrows, and observes Context Used shows 70 (oldest); clicking the same
-node in the tree modal navigates to 95 (newest).
 
 ### 56. Stopping a stream before the first token shows an error banner instead of a clean cancel
 
@@ -1077,6 +1047,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest" - FIXED in 6e87641: TreeRepo._WalkToLeaf now picks the same child the tree modal's _findDefaultLeaf chooses (ORDER BY sibling_index, rowid DESC = newest continuation) instead of the oldest by created_at; scenario 55 flipped to a regression check + ChatDB unit test.
 
 - 2026-08-07 - "Dashboard \"Last 24 Hours\" spans two calendar days" - FIXED in 74c589d: UsageRepo._WhereDate now takes the LOCAL today date (FormatTime) for the \"day\" range, so the summary counts the same local calendar day the chart plots (usage rows are stored with local dates); scenario 53 flipped to a regression check + UsageTracking unit test. (The month/lastMonth ranges still use UTC - tracked as #87/#88.)
 
