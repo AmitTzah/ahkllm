@@ -330,7 +330,8 @@ scenarios.push({
 
 scenarios.push({
   id: 57,
-  name: 'Chat message content is rendered as raw HTML with no sanitization (embedded HTML executes in the WebView)',
+  name: 'Chat message HTML is rendered as inert text (XSS fixed)',
+  regression: true, // FIXED bug kept as a regression check (raw HTML in messages must not execute)
   mode: null,
   settings: {},
   fixtures: {
@@ -344,13 +345,15 @@ scenarios.push({
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
     await sleep(700);
     const pwned = await cdp.eval('window.__xssPwned || 0');
-    // BUG: chat-render.js feeds msg.content straight into md.render() with
-    // markdown-it html:true (and linkify), so embedded HTML/event handlers are
-    // executed. The WebView page has chrome.webview.postMessage access, so a
-    // malicious model response (or pasted message) can drive the app.
-    if (pwned !== 1)
-      throw new Error('inline handler did not execute (bug not reproduced): pwned=' + pwned);
-    return 'assistant message <img src="x" onerror=...> executed in the WebView (window.__xssPwned=1) - message content is rendered unsanitized with markdown-it html:true';
+    // FIXED (bug #57): markdown-it is configured with html:false, so raw HTML
+    // in messages is escaped and rendered as inert text - the onerror handler
+    // must not run.
+    if (pwned !== 0)
+      throw new Error('inline handler still executed (bug #57 not fixed): pwned=' + pwned);
+    const renderedHtml = await cdp.eval('document.querySelector(".msg-content") ? document.querySelector(".msg-content").innerHTML : ""');
+    if (String(renderedHtml).indexOf('<img') >= 0)
+      throw new Error('raw <img> tag still present in rendered HTML (bug #57 not fixed): ' + JSON.stringify(renderedHtml));
+    return 'assistant message <img src="x" onerror=...> rendered inert (window.__xssPwned=0); msg HTML=' + JSON.stringify(renderedHtml);
   }
 });
 

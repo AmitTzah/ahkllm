@@ -71,6 +71,12 @@ function loadMainModule() {
 }
 
 describe('handleWebMessage routing', () => {
+    it('renders message HTML as inert text (markdown-it html:false, bug #57)', () => {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'main.js'), 'utf-8');
+        assert.ok(src.includes('html: false'), 'markdown-it must be configured with html:false (XSS regression)');
+        assert.ok(!/html:\s*true/.test(src), 'markdown-it must NOT enable raw HTML');
+    });
+
     it('routes initChatMode', () => {
         const ctx = loadMainModule();
         const testData = [{ id: '1', role: 'user', content: 'hi' }];

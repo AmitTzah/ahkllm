@@ -7,7 +7,10 @@ window.chrome.webview.addEventListener('message', handleWebMessage);
 
 // Initialize markdown-it with options
 var md = window.markdownit({
-  html: true,
+  // Bug #57 (XSS): raw HTML from model responses / pasted messages must not
+  // execute in the WebView (it has chrome.webview.postMessage access). With
+  // html:false markdown-it escapes inline HTML so it renders as inert text.
+  html: false,
   linkify: true,
   typographer: true,
   highlight: function (str, lang) {
