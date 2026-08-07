@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **62 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **62 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #33 fix applied (clearing icon now correctly clears global, scenario 33 PASS, suites green); awaiting user commit.
+- **Where we left off:** 2026-08-07 — bug #33 FIXED and committed in 10549ec (clearing icon now correctly clears global, scenario 33 flipped to regression); next: bug #34 per rank order.
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 33. Clearing the chat-window icon setting still loads the default custom icon
-
-**Scenario:** 33 (scenario code in e2e-suite.js)
-
-**Status:** awaiting user commit
-
-**Repro:** Settings -> Icons -> clear both icon paths -> Save -> look at the chat
-window title-bar/taskbar icon.
-
-**Expected:** with no icon configured, the chat window keeps the plain window icon
-(the app only loads an icon when `iconOn` is non-empty).
-
-**Actual:** the window still shows `icons\IconOn.ico`. `SettingsApply._ApplyIcons`
-only assigns the globals when the saved value is non-empty, so saving an empty
-`icons.iconOn` leaves the `DefaultSettings.ahk` value (`icons\IconOn.ico`) in the
-`iconOn` global and `ChatWindow.ahk` loads it â€” clearing the icon can never take
-effect, not even after a restart.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyIcons` skips `""` values;
-`DefaultSettings.ahk` `iconOn := "icons\IconOn.ico"`; `chat/ChatWindow.ahk`
-`if iconOn != "" hIcon := LoadPicture(ResolveIconPath(iconOn), ...)`.
-
-**Verification:** headless scenario 33 seeds `icons: {iconOn:'', iconOff:''}`,
-launches the app, and probes the chat window icon via `WM_GETICON` â€” the rendered
-pixels match IconOn.ico's fingerprint (`customApplied=1`), proving the cleared
-setting is ignored.
 
 ### 34. Tray icon changes don't apply until restart
 
@@ -1496,6 +1469,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Clearing the chat-window icon setting still loads the default custom icon" - FIXED in 10549ec: SettingsApply._ApplyIcons now applies empty strings (was skipped, kept DefaultSettings); scenario 33 flipped to regression check (regression: true) + SettingsHandler unit test.
 
 - 2026-08-07 - "Forking a chat drops the per-thread font size and Advanced toggles" - FIXED in 1dd7ee8: TreeRepo._CopyThreadSettings now copies font_size and advanced_toggles (was only model/system/reasoning/temperature/assistant); scenario 44 flipped to regression check (regression: true) + ChatDB fork unit test.
 
