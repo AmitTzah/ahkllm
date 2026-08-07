@@ -110,13 +110,17 @@ class ThreadRepo {
 
     ; Trash a thread (soft-delete).
     static SoftDelete(threadId) {
+        ; Bug #80 (security): escape the id - a crafted id with ' could inject SQL.
+        safeId := SQLite.Escape(threadId)
         debugLog("[THREAD] Deleted — id=" threadId)
-        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" threadId "';")
+        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" safeId "';")
     }
 
     ; Restore a trashed thread.
     static Restore(threadId) {
-        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id='" threadId "';")
+        ; Bug #80 (security): escape the id.
+        safeId := SQLite.Escape(threadId)
+        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id='" safeId "';")
     }
 
     ; Permanently delete expired trashed threads.
@@ -134,20 +138,24 @@ class ThreadRepo {
 
     ; Permanently delete a thread and all its messages.
     static Delete(threadId) {
+        ; Bug #80 (security): escape the id everywhere it is interpolated.
+        safeId := SQLite.Escape(threadId)
         debugLog("[THREAD] Deleted — id=" threadId)
-        AttachmentRepo.DeleteByThread(threadId)
-        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" threadId "';")
-        ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" threadId "';")
+        AttachmentRepo.DeleteByThread(safeId)
+        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" safeId "';")
+        ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" safeId "';")
     }
 
     ; Update thread title and timestamp.
     static Update(threadId, title, updateTimestamp := true) {
         if !threadId
             return
+        ; Bug #80 (security): escape the id.
+        safeId := SQLite.Escape(threadId)
         safeTitle := SQLite.Escape(title)
         if updateTimestamp
-            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "', updated_at=datetime('now') WHERE id='" threadId "';")
+            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "', updated_at=datetime('now') WHERE id='" safeId "';")
         else
-            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "' WHERE id='" threadId "';")
+            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "' WHERE id='" safeId "';")
     }
 }

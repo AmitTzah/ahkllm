@@ -494,7 +494,8 @@ scenarios.push({
 
 scenarios.push({
   id: 80,
-  name: "ThreadRepo SoftDelete/Restore/Delete/Update do not escape threadId ï¿½ SQL injection via crafted id",
+  name: "ThreadRepo escapes threadId in mutators (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must not inject SQL)
   mode: null,
   noApp: true,
   async body() {
@@ -504,9 +505,9 @@ scenarios.push({
     const hasDirectSoft = /WHERE id='" threadId "'/.test(soft);
     const upd = tr.slice(tr.indexOf("static Update(threadId"), tr.indexOf("static Update(threadId")+800);
     const hasEscapeUpd = /SQLite\.Escape\(threadId\)/.test(upd);
-    if(hasEscapeSoft || !hasDirectSoft) throw new Error("bug not reproduced soft hasEscape="+hasEscapeSoft);
-    if(hasEscapeUpd) throw new Error("bug not reproduced update hasEscape");
-    return "ThreadRepo SoftDelete/Restore/Delete/Update use WHERE id='\" threadId \"' without SQLite.Escape ï¿½ crafted threadId with ' could inject";
+    if(!hasEscapeSoft || hasDirectSoft) throw new Error("bug #80 not fixed: soft escapes=" + hasEscapeSoft + " direct=" + hasDirectSoft);
+    if(!hasEscapeUpd) throw new Error("bug #80 not fixed: update escapes=" + hasEscapeUpd);
+    return "ThreadRepo SoftDelete/Restore/Delete/Update escape threadId (SQLite.Escape), so crafted ids cannot inject SQL";
   }
 });
 

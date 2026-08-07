@@ -105,11 +105,12 @@ class AttachmentRepo {
     ; Delete all attachments for a thread — DB rows + disk files (reference-counted).
     ; MUST be called BEFORE raw DELETE FROM messages that triggers CASCADE.
     static DeleteByThread(threadId) {
-        table := ChatDB.db.Exec("SELECT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" threadId "';")
+        safeThreadId := SQLite.Escape(threadId)
+        table := ChatDB.db.Exec("SELECT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "';")
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
         }
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" threadId "');")
+        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" safeThreadId "');")
     }
 
     ; Delete a single attachment by ID — DB row + disk file (reference-counted).

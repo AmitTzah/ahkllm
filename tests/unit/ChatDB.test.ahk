@@ -441,6 +441,34 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #80, security): thread mutators must escape threadId - a
+    ; crafted id with a single quote must not break or inject SQL.
+    ThreadMutators_EscapeThreadId() {
+        threadId := this._setup()
+        crafted := "bad'id"
+        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('bad''id', 'Crafted');")
+        try {
+            ChatDB.Thread_SoftDelete(crafted)
+            row := ChatDB.db.Exec("SELECT is_deleted FROM chat_threads WHERE id='bad''id';")
+            if !row.count || Integer(row[1, "is_deleted"]) != 1
+                throw Error("SoftDelete should target the crafted id literally")
+            ChatDB.Thread_Restore(crafted)
+            row := ChatDB.db.Exec("SELECT is_deleted FROM chat_threads WHERE id='bad''id';")
+            if !row.count || Integer(row[1, "is_deleted"]) != 0
+                throw Error("Restore should target the crafted id literally")
+            ChatDB.Thread_Update(crafted, "Renamed")
+            row := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='bad''id';")
+            if row[1, "title"] != "Renamed"
+                throw Error("Update should target the crafted id literally")
+            ChatDB.Thread_Delete(crafted)
+            row := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM chat_threads WHERE id='bad''id';")
+            if Integer(row[1, "c"]) != 0
+                throw Error("Delete should target the crafted id literally")
+        } finally {
+            this._teardown()
+        }
+    }
+
     ; Regression (bug #70): FTS5 MATCH must quote terms so special characters
     ; (e.g. C++) do not produce a syntax error / empty results.
     SearchMessages_FTS5EscapesSpecialChars() {
