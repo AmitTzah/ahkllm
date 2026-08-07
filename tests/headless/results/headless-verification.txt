@@ -1,12 +1,6 @@
-# 2026-08-07T10:52:57.028Z | run of 7 scenario(s)
-PASS | #99 | MessageRepo.Insert parent_id/sibling_group SQL injection via unescaped interpolation | MessageRepo.Insert builds safeParent/safeSiblingGroup without SQLite.Escape | 0.0s
-PASS | #100 | LLMRequestBuilder._FixStreamBoolean naive StrReplace corrupts user content | LLMRequestBuilder._FixStreamBoolean does global StrReplace stream 1->true | 0.0s
-PASS | #101 | SettingsApply._ApplyCommands _SetIfTruthy drops false for stream/isFIM | SettingsApply uses _SetIfTruthy for stream/isFIM — false dropped | 0.0s
-PASS | #102 | UsageRepo provider LIKE uses SQLite.Escape but not wildcard-escape %_ | UsageRepo provider LIKE not escaping % _ | 0.0s
-PASS | #103 | TreeRepo.GetThreadStats pricingUnit picks first message model, not active model | TreeRepo.GetThreadStats pricingUnit LIMIT 1 first model | 0.0s
-PASS | #107 | TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants | _RecomputeActivePath does prev+=token_count only — assistant prompt_tokens lost after delete/edit | 0.0s
-PASS | #108 | main.js IPC fallback calls arbitrary window[target] without allowlist — XSS can invoke any global | main.js default: case calls window[target](...data) for any undeclared target — arbitrary global invocation | 0.0s
+# 2026-08-07T10:54:12.030Z | run of 1 scenario(s)
+PASS | #109 | Sidebar folderId and 15+ ChatDB call sites interpolate raw ids without SQLite.Escape | Sidebar folderId raw + MessageRepo 5 raw msgId WHERE id=''...'' — same class as #80/#99 | 0.0s
 
-Summary: 7/7 scenarios PASS
+Summary: 1/1 scenarios PASS
 Real profile restored: yes
-Report sync: OK
+Report sync: MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js

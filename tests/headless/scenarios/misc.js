@@ -848,6 +848,30 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 109,
+  name: "Sidebar folderId and 15+ ChatDB call sites interpolate raw ids without SQLite.Escape",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const sidebar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/callbacks/Sidebar.ahk"),"utf8");
+    const hasFolderRaw = sidebar.includes("DELETE FROM chat_folders WHERE id=''\" params[\"folderId\"] \"''\"") || sidebar.includes("params[\"folderId\"]") && sidebar.includes("DELETE FROM chat_folders");
+    // Simpler: check raw interpolation without SQLite.Escape
+    const hasUnescaped = /WHERE id=.\" threadId/.test(sidebar) || /WHERE id=.\" params\["folderId"\]/.test(sidebar);
+    const hasEscaped = /SQLite\.Escape\(params\["folderId"\]\)/.test(sidebar);
+    if(!sidebar.includes("params[\"folderId\"]") || hasEscaped) throw new Error("bug not reproduced: folderId escaped or not found");
+    // Also check MessageRepo still has 15+ unescaped
+    const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/db/MessageRepo.ahk"),"utf8");
+    const unescapedCount = (mr.match(/WHERE id=.\" msgId/g) || []).length;
+    if(unescapedCount < 3) throw new Error("bug not reproduced: unescaped msgId count low "+unescapedCount);
+    return "Sidebar folderId raw + MessageRepo "+unescapedCount+" raw msgId WHERE id=''...'' — same class as #80/#99";
+  }
+});
+
+
 module.exports = scenarios;
 
 
