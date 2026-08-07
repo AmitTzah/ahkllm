@@ -1,5 +1,5 @@
-# 2026-08-07T22:50:59.815Z | run of 1 scenario(s)
-PASS | #99 | MessageRepo.Insert escapes parent_id/sibling_group (SQL injection fixed) | MessageRepo.Insert escapes parent_id and sibling_group (and the active-path parent lookup), so crafted ids stay literal | 0.0s
+# 2026-08-07T22:54:45.345Z | run of 1 scenario(s)
+PASS | #100 | LLMRequestBuilder._FixStreamBoolean is quote-aware (user content safe) | LLMRequestBuilder._FixStreamBoolean scans outside JSON string literals (inString tracking), so user content containing stream/include_usage snippets can never be rewritten | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

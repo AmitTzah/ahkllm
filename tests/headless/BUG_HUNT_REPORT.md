@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #99 FIXED in 13be371; next: bug #100 (LLMRequestBuilder._FixStreamBoolean global StrReplace corrupts user content).
+- **Where we left off:** 2026-08-08 — bug #100 FIXED in 7cf0328; next: bug #101 (SettingsApply._ApplyCommands _SetIfTruthy drops `false`).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 100. LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted
-
-**Scenario:** 100 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a chat or command request where the user message contains the substring `"stream":1` (e.g. paste a JSON snippet), then check the request written to the temp file / sent to the API.
-
-**Expected:** JSON serialization should encode booleans correctly without string replacement on the whole payload.
-
-**Actual:** `LLMRequestBuilder._FixStreamBoolean` does global `StrReplace(jsonStr, ''"stream":1'', ''"stream":true'')` (and similarly for `0`/`include_usage`/`include_thoughts`). The replace runs on the entire JSON string, so any occurrence inside `content`, `systemMessage`, or other string fields is also rewritten, corrupting the payload (e.g. user JSON snippet `"stream":1` becomes `"stream":true` before it is sent).
-
-**Evidence:** `api/LLMRequestBuilder.ahk` `static _FixStreamBoolean(jsonStr)` — four `StrReplace` calls on the whole JSON string; also called from `LLMRequestBuilder.createJSONRequest` and `appendToChatHistory`.
-
-**Verification:** headless scenario 100 (noApp) asserts `_FixStreamBoolean` exists and contains `StrReplace(jsonStr, ...stream...`.
 
 ### 101. SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists
 
@@ -388,6 +372,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled" - FIXED in 8702a42 (hardening): _finalizeStreaming's wasCancelled branch now calls _cleanupStreamState() explicitly before returning (idempotent — _handleStreamCancelled already cleaned up internally), so every exit path guarantees the _stream* keys are cleared and no stale state can leak into the next send; scenario 98 flipped to a regression static check + StreamHandler unit test.
 
 - 2026-08-08 - "MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids" - FIXED in 13be371: Insert now escapes parent_id and sibling_group (and the active-path parent lookup inside Insert), so crafted ids stay literal; scenario 99 flipped to a regression static check + ChatDB unit test (crafted `bad'parent`/`sib'group` round-trip through Insert).
+
+- 2026-08-08 - "LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted" - FIXED in 7cf0328: _FixStreamBoolean is now quote-aware — it scans the JSON and rewrites only real stream/include_usage/include_thoughts key:value tokens outside string literals (no more global StrReplace over the whole payload); scenario 100 flipped to a regression static check + LLMRequestBuilder unit tests (user prompt with a `{"stream":1}` snippet survives verbatim while the real top-level stream still becomes true).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
