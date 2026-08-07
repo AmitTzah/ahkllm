@@ -580,6 +580,28 @@ class UsageTrackingTest {
         this._closeDb()
     }
 
+    ; Regression (bug #65): hard-deleting a message must update the thread's
+    ; cumulative counters so the header totals do not stay inflated.
+    HardDelete_UpdatesCumulativeCounters() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Test")
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hi", parent_id: ""})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hello", model: "deepseek/deepseek-v4-flash", parent_id: uId, token_count: 10, thinking_tokens: 5, cached_tokens: 2, prompt_tokens: 5})
+
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.cumulativeOutputTokens != 15
+            throw Error("expected cumulativeOutput=15 (10+5) before delete, got " stats.cumulativeOutputTokens)
+
+        ChatDB.Msg_HardDelete(aId)
+
+        stats2 := ChatDB.Msg_GetThreadStats(threadId)
+        if stats2.cumulativeOutputTokens != 5
+            throw Error("expected cumulativeOutput=5 after delete (user token_count), got " stats2.cumulativeOutputTokens)
+        if stats2.cumulativeInputTokens != 0
+            throw Error("expected cumulativeInput=0 after delete, got " stats2.cumulativeInputTokens)
+        this._closeDb()
+    }
+
     ; ----------------------------------------------------
     ; Cancelled assistant has active_path_tokens from parent
     ; ----------------------------------------------------

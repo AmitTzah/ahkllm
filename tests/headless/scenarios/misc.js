@@ -221,7 +221,8 @@ scenarios.push({
 
 scenarios.push({
   id: 65,
-  name: "Hard-delete leaves cumulative token/cost counters stale (header stays inflated)",
+  name: "Hard-delete recomputes cumulative token/cost counters",
+  regression: true, // FIXED bug kept as a regression check (hard delete must decrement the header totals)
   mode: null,
   noApp: true,
   async body() {
@@ -230,8 +231,10 @@ scenarios.push({
     const launcher2=require("../launch");
     const mr=fs2.readFileSync(path2.join(launcher2.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
     const hd=mr.slice(mr.indexOf("static HardDelete"), mr.indexOf("static HardDelete")+3000);
-    if(/cumulative_/.test(hd)) throw new Error("bug not reproduced: touches cumulative");
-    return "HardDelete recomputes active_path_tokens but never updates cumulative_* counters";
+    // FIXED (bug #65): HardDelete recomputes the cumulative counters.
+    const recomputes = hd.includes("_RecomputeCumulativeCounters(");
+    if(!recomputes) throw new Error("bug #65 not fixed: HardDelete does not recompute cumulative counters");
+    return "HardDelete recomputes cumulative_* counters (via _RecomputeCumulativeCounters) so the header totals drop with the deleted message";
   }
 });
 

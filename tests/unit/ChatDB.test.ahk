@@ -556,26 +556,28 @@ class ChatDBTest {
     ; Cumulative counter persistence
     ; --------------------
 
-    HardDelete_PreservesCumulativeCounters() {
+    ; Regression (bug #65): hard-deleting a message must decrement the thread's
+    ; cumulative counters (they used to stay stale and forever inflated).
+    HardDelete_DecrementsCumulativeCounters() {
         threadId := this._setup()
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello"})
         a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", token_count: 15, cached_tokens: 0})
-        ; Capture cumulative counters before delete
-        threadRow := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
-        beforeIn := Integer(threadRow[1, "cumulative_input_tokens"])
+        threadRow := ChatDB.db.Exec("SELECT cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
         beforeOut := Integer(threadRow[1, "cumulative_output_tokens"])
+        if beforeOut != 15
+            throw Error("Expected cumulative output 15 before delete, got " beforeOut)
 
         ChatDB.Msg_HardDelete(a1Id)
 
-        ; Verify cumulative counters unchanged
         threadRow := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
         afterIn := Integer(threadRow[1, "cumulative_input_tokens"])
         afterOut := Integer(threadRow[1, "cumulative_output_tokens"])
-        if afterIn != beforeIn
-            throw Error("Cumulative input_tokens changed after delete: " beforeIn " -> " afterIn)
-        if afterOut != beforeOut
-            throw Error("Cumulative output_tokens changed: " beforeOut " -> " afterOut)
+        afterCached := Integer(threadRow[1, "cumulative_cached_tokens"])
+        if afterOut != 0
+            throw Error("Cumulative output_tokens should drop to 0 after delete, got " afterOut)
+        if afterIn != 0 || afterCached != 0
+            throw Error("Cumulative input/cached should be 0 after delete, got in=" afterIn " cached=" afterCached)
         this._teardown()
     }
 

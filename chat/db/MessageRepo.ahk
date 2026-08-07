@@ -159,6 +159,43 @@ class MessageRepo {
         ChatDB.db.Exec("DELETE FROM messages WHERE id='" msgId "';")
 
         TreeRepo._RecomputeActivePath(threadId)
+        ; Bug #65: the deleted message's tokens/cost must drop out of the
+        ; header totals - recompute the cumulative counters from the remaining
+        ; messages (they were previously left stale and forever inflated).
+        MessageRepo._RecomputeCumulativeCounters(threadId)
+    }
+
+    ; Recompute a thread's cumulative counters from its remaining messages
+    ; (bug #65), mirroring the per-insert accumulation in Insert(). An
+    ; assistant's prompt contribution is reconstructed from the running sum of
+    ; prior messages' token_count - the backfill invariant is prompt = existing
+    ; sum + backfilled user input, and the backfilled input already sits in the
+    ; parent user message's token_count.
+    static _RecomputeCumulativeCounters(threadId) {
+        table := ChatDB.db.Exec("SELECT role, model, token_count, thinking_tokens, cached_tokens FROM messages WHERE thread_id='" threadId "' ORDER BY rowid;")
+        input := 0, output := 0, cached := 0, inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
+        runningSum := 0
+        for row in table.rows {
+            tc := row.token_count ? row.token_count : 0
+            tht := row.thinking_tokens ? row.thinking_tokens : 0
+            ckt := row.cached_tokens ? row.cached_tokens : 0
+            if row.role = "assistant" && row.model {
+                promptTotal := runningSum
+                usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
+                costs := CostCalculator.ComputeTokenCosts(row.model, usage)
+                if costs.inputCost != "" {
+                    inputCost += costs.inputCost
+                    cachedInputCost += costs.cachedInputCost != "" ? costs.cachedInputCost : 0
+                    outputCost += costs.outputCost != "" ? costs.outputCost : 0
+                    totalCost += costs.totalCost != "" ? costs.totalCost : 0
+                }
+                input += promptTotal
+            }
+            output += tc + tht
+            cached += ckt
+            runningSum += tc
+        }
+        ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=" input ", cumulative_output_tokens=" output ", cumulative_cached_tokens=" cached ", cumulative_cost=" totalCost ", cumulative_input_cost=" inputCost ", cumulative_cached_input_cost=" cachedInputCost ", cumulative_output_cost=" outputCost " WHERE id='" threadId "';")
     }
 
     static Edit(msgId, newContent) {
