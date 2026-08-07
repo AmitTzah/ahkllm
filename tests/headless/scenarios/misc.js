@@ -420,4 +420,34 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 78,
+  name: "Right-rail temperature 0 shows Default instead of 0.0 (falsy check)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const cfg=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","model-picker","model-picker-config.js"),"utf8");
+    const hasFalsy = /var hasTemp = settings\.temperature && settings\.temperature !==/.test(cfg);
+    const handlesZero = /settings\.temperature != "" && settings\.temperature !== undefined/.test(cfg) || /hasTemp =.*temperature.*!= ""/.test(cfg) && !/settings\.temperature &&/.test(cfg);
+    if(!hasFalsy) throw new Error("bug not reproduced hasFalsy false");
+    // hasFalsy true means 0 is treated as falsy -> shows Default
+    return "model-picker-config.js hasTemp = settings.temperature && ... � 0 is falsy, shows Default";
+  }
+});
+
+scenarios.push({
+  id: 79,
+  name: "SettingsPersistence.Load does not strip UTF-8 BOM before JSON parse � settings may be lost",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sp=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsPersistence.ahk"),"utf8");
+    const loadsRaw = /raw := FileRead\(path, "UTF-8"\)/.test(sp);
+    const stripsBOM = /Strip.*BOM|SubStr\(raw, 1, 1\) =/.test(sp) || /BOM/.test(sp);
+    const parsesDirect = /parsed := jsongo\.Parse\(raw\)/.test(sp);
+    if(!loadsRaw || !parsesDirect || stripsBOM) throw new Error("bug not reproduced loadsRaw="+loadsRaw+" parsesDirect="+parsesDirect+" stripsBOM="+stripsBOM);
+    return "SettingsPersistence.Load reads with FileRead UTF-8 and parses directly without stripping BOM � BOM would cause parse failure";
+  }
+});
+
 module.exports = scenarios;

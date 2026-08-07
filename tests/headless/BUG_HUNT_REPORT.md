@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **39 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **41 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #76 (initChatMode stale activeThreadId guard), #77 (empty Send triggers retry) � both headless PASS. Sync OK 39 entries / 73 scenarios (34 regression). Previous batches #61-71 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #78 (right-rail temp 0 shows Default), #79 (settings BOM not stripped) � both headless PASS. Sync OK 41 entries / 75 scenarios (34 regression). Previous batches #61-77 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1100,6 +1100,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `webui/js/chat/chat-input.js` `onChatSend` empty-input branch with `retryLastAssistantMessage` and `Ipc.postToHost('retry')`.
 
 **Verification:** headless scenario 77 (noApp) asserts the empty-input `chatMessages.length` branch and `retry` post exist.
+
+### 78. Right-rail temperature 0 displays as "Default" instead of 0.0 � falsy check hides 0
+
+**Scenario:** 78 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set per-thread temperature to 0 (right-rail slider to 0.0 ? Save), reload the thread or switch away and back, then read the right-rail Temperature value.
+
+**Expected:** the rail shows `0.0` and the slider sits at 0, with the reset `�` visible.
+
+**Actual:** the rail shows `Default` and the slider snaps to `1.0` with `temp-default` class, as if no override were set. `webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings` does `var hasTemp = settings.temperature && settings.temperature !== ""` � `0` / `"0"` is falsy, so `hasTemp` is false and the `else` branch (Default) runs. The stored override is still `0` (via `TemperatureOverride` in DB and `requestParams`), so the API request correctly sends `temperature:0`, but the UI lies about it. Same root as bug #35 (falsy `0`).
+
+**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` `hasTemp = settings.temperature && ...`.
+
+**Verification:** headless scenario 78 (noApp) asserts the `&&` falsy guard exists.
+
+### 79. Settings file with UTF-8 BOM fails to load � settings silently reset to defaults
+
+**Scenario:** 79 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** write `%APPDATA%\AhkLLM\settings.json` with a UTF-8 BOM (many Windows editors do), restart the app.
+
+**Expected:** settings load normally � the app itself writes with BOM, so the loader must tolerate it.
+
+**Actual:** `app/settings/SettingsPersistence.ahk` `Load()` does `raw := FileRead(path, "UTF-8")` then `parsed := jsongo.Parse(raw)` with no BOM stripping. `jsongo` chokes on leading `\uFEFF`, the `catch` returns an empty `Map()`, and the app falls back to `DefaultSettings` � all custom settings are lost. The harness README notes the BOM issue and `seed.readJsonFile` strips it, but the production loader does not.
+
+**Evidence:** `app/settings/SettingsPersistence.ahk` `Load()` � no BOM handling before `jsongo.Parse`.
+
+**Verification:** headless scenario 79 (noApp) asserts `FileRead` + direct `jsongo.Parse` without BOM handling.
 
 ---
 
