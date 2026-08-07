@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **22 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **21 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #83 FIXED in e5e45b6; next: bug #84 (API Logs Viewer esc() does not escape single quote).
+- **Where we left off:** 2026-08-07 — bug #84 FIXED in 2bb8435; next: bug #86 (FIM fallback renderMarkdown XSS - duplicate of #57, refute).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 84. API Logs Viewer `esc()` does not escape single quote - `title` attribute break and potential XSS
-
-**Scenario:** 84 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft an API log entry where `endpoint` contains a single quote (e.g. `https://example.com/'onmouseover='alert(1)` via a custom provider endpoint), then open API Logs Viewer and hover the Endpoint cell.
-
-**Expected:** the `title` attribute shows the endpoint as inert text.
-
-**Actual:** `webui/api-logs.html` `esc()` does `String(s).replace(/[&<>"]/g, ...)` - it escapes `& < > "` but not `'`. The log table builds `<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">'`. A `'` closes the `title='...'` attribute early, breaking the HTML and allowing an unescaped attribute injection. The cell text itself is inside `esc()`, but the attribute is not.
-
-**Evidence:** `webui/api-logs.html` `function esc(s)` regex `/[&<>"]/`.
-
-**Verification:** headless scenario 84 (noApp) asserts `esc` regex missing `'` and `&#39;` absent.
 
 ### 86. FIM fallback `renderMarkdown` XSS - `md.render` with `html:true` for non-chat content
 
@@ -618,6 +602,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "API Logs Viewer `esc()` does not escape single quote - `title` attribute break and potential XSS" - FIXED in 2bb8435: esc() now escapes single quotes (&#39;) in addition to & < > \", so title attributes cannot be broken; scenario 84 flipped to a regression static check + api-logs-viewer unit test.
 
 - 2026-08-07 - "Thread-map \"who\" label XSS - model name not escaped in right-panel nav list" - FIXED in e5e45b6: renderNavList now escapes the who label with escHtml(who) like the snippet; scenario 83 flipped to a regression static check + chat-sidebar unit test.
 
