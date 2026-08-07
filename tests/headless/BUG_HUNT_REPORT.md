@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #98 FIXED in 8702a42; next: bug #99 (MessageRepo.Insert parent_id/sibling_group SQL injection).
+- **Where we left off:** 2026-08-08 — bug #99 FIXED in 13be371; next: bug #100 (LLMRequestBuilder._FixStreamBoolean global StrReplace corrupts user content).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 99. MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids
-
-**Scenario:** 99 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** insert a message with crafted `parent_id` containing `''` (e.g. `bad''id` via IPC `parent_id` or hand-edited DB), or craft `sibling_group` similarly, then insert a child message.
-
-**Expected:** `parent_id` and `sibling_group` literals should be escaped with `SQLite.Escape`.
-
-**Actual:** `MessageRepo.Insert` does `safeParent := msgObj.HasProp("parent_id") && msgObj.parent_id ? "''" msgObj.parent_id "''" : "NULL"` and same for `sibling_group` — no `SQLite.Escape`. A `''` breaks the literal and can inject SQL (same class as #80/#81/#96, but this path was not yet covered — the INSERT that creates every user/assistant message).
-
-**Evidence:** `chat/db/MessageRepo.ahk:11` `safeParent := ... "'" msgObj.parent_id "'"` without `SQLite.Escape`; `chat/db/MessageRepo.ahk:12` `safeSiblingGroup` same.
-
-**Verification:** headless scenario 99 (noApp) asserts the two raw `"'\" msgObj.parent_id \"'\""` lines exist and no `SQLite.Escape(msgObj.parent_id)` / `sibling_group` escapes exist nearby.
 
 ### 100. LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted
 
@@ -402,6 +386,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure" - FIXED in 122ef51: Save now writes settings.json.tmp and renames it over the target (FileMove + file-state verification, since FileMove's return value is unreliable in this AHK build), so a crash/failure mid-write can no longer destroy the original settings.json; scenario 97 flipped to a regression static check + SettingsHandler unit tests (round-trip, replace-not-append, failure cleans temp and returns false).
 
 - 2026-08-08 - "StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled" - FIXED in 8702a42 (hardening): _finalizeStreaming's wasCancelled branch now calls _cleanupStreamState() explicitly before returning (idempotent — _handleStreamCancelled already cleaned up internally), so every exit path guarantees the _stream* keys are cleared and no stale state can leak into the next send; scenario 98 flipped to a regression static check + StreamHandler unit test.
+
+- 2026-08-08 - "MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids" - FIXED in 13be371: Insert now escapes parent_id and sibling_group (and the active-path parent lookup inside Insert), so crafted ids stay literal; scenario 99 flipped to a regression static check + ChatDB unit test (crafted `bad'parent`/`sib'group` round-trip through Insert).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 

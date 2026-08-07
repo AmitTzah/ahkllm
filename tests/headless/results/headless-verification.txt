@@ -1,5 +1,5 @@
-# 2026-08-07T22:47:41.059Z | run of 1 scenario(s)
-PASS | #98 | StreamHandler cancel branch cleans up _stream state (bug fixed) | StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then _cleanupStreamState before return - no _stream* keys leak into the next request | 0.0s
+# 2026-08-07T22:50:59.815Z | run of 1 scenario(s)
+PASS | #99 | MessageRepo.Insert escapes parent_id/sibling_group (SQL injection fixed) | MessageRepo.Insert escapes parent_id and sibling_group (and the active-path parent lookup), so crafted ids stay literal | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
