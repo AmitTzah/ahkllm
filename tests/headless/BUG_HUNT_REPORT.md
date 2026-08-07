@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **21 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **20 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #86 REFUTED (duplicate of #57, fixed in 05e2ccb); next: bug #87 (usage dashboard "Last Month" SQL uses UTC while chart labels use local).
+- **Where we left off:** 2026-08-07 — bug #87 FIXED in fad0f52; next: bug #88 (usage dashboard "Last 30 Days" SQL uses UTC - same drift).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 87. Usage dashboard "Last Month" SQL uses UTC `date('now')` while chart labels use local `new Date()` - timezone drift
-
-**Scenario:** 87 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set system timezone to UTC+9 (e.g. Asia/Tokyo), seed usage rows for last month's first day in local time, open Dashboard ? Last Month.
-
-**Expected:** chart labels and SQL summary cover the same local last-month window.
-
-**Actual:** `chat/db/UsageRepo.ahk` `_WhereDate("lastMonth")` returns `WHERE date >= date('now','start of month','-1 month') AND date < date('now','start of month')` - `date('now')` is UTC. `webui/js/usage-dashboard.js` `getDateRangeLabels("lastMonth")` builds labels from local `new Date()`. In UTC+9, local last month 01 00:00 is still previous UTC day, so the SQL window and chart labels are off by one day and the summary total mismatches the chart.
-
-**Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate` `date('now','start of month',...)`; `webui/js/usage-dashboard.js` `getDateRangeLabels` `new Date()` local.
-
-**Verification:** headless scenario 87 (noApp) asserts UTC `date('now')` in `UsageRepo` and local `new Date()` in dashboard exist.
 
 ### 88. Usage dashboard "Last 30 Days" SQL uses UTC while chart uses local - same timezone drift as Last Month
 
@@ -586,6 +570,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Usage dashboard \"Last Month\" SQL uses UTC `date('now')` while chart labels use local `new Date()` - timezone drift" - FIXED in fad0f52: _WhereDate now takes local month boundaries (monthStart/lastMonthStart/monthCutoff computed via FormatTime/DateAdd) for lastMonth/thisMonth/month, matching the local chart labels; scenario 87 flipped to a regression static check + UsageTracking unit test.
 
 - 2026-08-07 - "FIM fallback `renderMarkdown` XSS - `md.render` with `html:true` for non-chat content" - REFUTED (duplicate of #57, which was FIXED in 05e2ccb: markdown-it html:false covers the FIM fallback path too); scenario 86 converted to a regression check for the non-chat renderMarkdown path.
 
