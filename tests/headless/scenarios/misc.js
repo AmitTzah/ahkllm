@@ -240,7 +240,8 @@ scenarios.push({
 
 scenarios.push({
   id: 66,
-  name: "Header tooltip typo Culminative",
+  name: "Header tooltip says Cumulative (typo fixed)",
+  regression: true, // FIXED bug kept as a regression check (tooltip must not be misspelled)
   mode: null,
   noApp: true,
   async body() {
@@ -248,8 +249,10 @@ scenarios.push({
     const path3=require("node:path");
     const launcher3=require("../launch");
     const fmt=fs3.readFileSync(path3.join(launcher3.REPO_ROOT,"webui","js","chat","chat-format.js"),"utf8");
-    if(!/Culminative/.test(fmt)) throw new Error("bug not reproduced");
-    return "chat-format.js tooltip has Culminative (should be Cumulative)";
+    // FIXED (bug #66): the tooltip reads "Cumulative".
+    if(/Culminative/.test(fmt)) throw new Error("bug #66 not fixed: Culminative still present");
+    if(!/Cumulative Input\/output token usage/.test(fmt)) throw new Error("bug #66 not fixed: corrected label missing");
+    return "chat-format.js tooltip reads 'Cumulative Input/output token usage across all conversation branches'";
   }
 });
 

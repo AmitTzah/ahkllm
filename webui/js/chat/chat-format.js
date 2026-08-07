@@ -233,7 +233,8 @@ function updateTokenUsage(data) {
       '<i data-lucide="hash" class="tu-icon"></i>' +
       '<span class="tu-val">' + formatCompact(cu) + (cw ? ' / ' + formatCompact(cw) : '') + '</span>' +
     '</div>' +
-    '<div class="tu-item" title="Culminative Input/output token usage across all conversation branches">' +
+    // Bug #66: the tooltip label was misspelled; it now reads "Cumulative".
+    '<div class="tu-item" title="Cumulative Input/output token usage across all conversation branches">' +
       '<i data-lucide="activity" class="tu-icon"></i>' +
       '<span class="tu-val">\u2191 ' + formatCompact(pt) + ' &nbsp;\u2193 ' + formatCompact(ct) + '</span>' +
     '</div>' +
