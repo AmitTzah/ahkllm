@@ -608,16 +608,17 @@ scenarios.push({
 
 scenarios.push({
   id: 88,
-  name: "UsageRepo month (last 30 days) SQL uses UTC while dashboard uses local ï¿½ timezone mismatch",
+  name: "UsageRepo month (last 30 days) filter uses the local cutoff (matches dashboard)",
+  regression: true, // FIXED with bug #87 (local monthCutoff) - kept as a regression check
   mode: null,
   noApp: true,
   async body() {
     const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    const has30UTC = /date\('now', '-30 days'\)/.test(ur);
-    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const has30Local = /days = 30/.test(dash) && /new Date/.test(dash);
-    if(!has30UTC || !has30Local) throw new Error("bug not reproduced");
-    return "UsageRepo _WhereDate month uses UTC date('now','-30 days') while dashboard month uses local today minus 30 days";
+    const monthBlock = ur.slice(ur.indexOf('if range = "month"'), ur.indexOf('if range = "month"')+220);
+    const usesLocal = /monthCutoff \? "'" monthCutoff "'"/.test(monthBlock);
+    const queryPassesLocal = /monthCutoff := FormatTime\(DateAdd\(A_Now, -29/.test(ur);
+    if(!usesLocal || !queryPassesLocal) throw new Error("bug #88 not fixed: usesLocal=" + usesLocal + " queryPassesLocal=" + queryPassesLocal);
+    return "UsageRepo month (last 30 days) filter uses the local cutoff (FormatTime/DateAdd), matching the dashboard labels";
   }
 });
 

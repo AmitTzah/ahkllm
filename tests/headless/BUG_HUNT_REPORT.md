@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **20 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **19 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #87 FIXED in fad0f52; next: bug #88 (usage dashboard "Last 30 Days" SQL uses UTC - same drift).
+- **Where we left off:** 2026-08-07 — bug #88 FIXED with #87 (fad0f52); next: bug #89 (CurlBuilder interpolates API key with \" without escaping).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 88. Usage dashboard "Last 30 Days" SQL uses UTC while chart uses local - same timezone drift as Last Month
-
-**Scenario:** 88 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** same as #87 but select  - Last 30 Days -  (range `month`) in Dashboard.
-
-**Expected:** SQL and chart cover the same 30-day window in local time.
-
-**Actual:** `_WhereDate("month")` is `WHERE date >= date('now','-30 days')` (UTC), while `getDateRangeLabels("month")` does `days=30` from local `today`. Same UTC vs local drift as #87 and #53 (which was for `day`). The fix for #42 (chart labels `localDateKey`) did not fix the SQL side.
-
-**Evidence:** `chat/db/UsageRepo.ahk` `date('now','-30 days')`; `webui/js/usage-dashboard.js` `days=30` + `new Date()`.
-
-**Verification:** headless scenario 88 (noApp) asserts both UTC and local patterns exist.
 
 ### 89. CurlBuilder interpolates API key with `"` into `-H "Authorization: Bearer ..."` without escaping - header break / injection
 
@@ -570,6 +554,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Usage dashboard \"Last 30 Days\" SQL uses UTC while chart uses local - same timezone drift as Last Month" - FIXED with bug #87 (fad0f52): the month filter now uses a local monthCutoff (FormatTime(DateAdd(A_Now,-29))) instead of UTC date('now','-30 days'); scenario 88 flipped to a regression static check.
 
 - 2026-08-07 - "Usage dashboard \"Last Month\" SQL uses UTC `date('now')` while chart labels use local `new Date()` - timezone drift" - FIXED in fad0f52: _WhereDate now takes local month boundaries (monthStart/lastMonthStart/monthCutoff computed via FormatTime/DateAdd) for lastMonth/thisMonth/month, matching the local chart labels; scenario 87 flipped to a regression static check + UsageTracking unit test.
 
