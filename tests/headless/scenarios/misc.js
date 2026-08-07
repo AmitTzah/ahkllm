@@ -160,7 +160,8 @@ scenarios.push({
 
 scenarios.push({
   id: 62,
-  name: "Forking a chat with temperature 0 drops the override (TreeRepo skips falsy)",
+  name: "Forking a chat with temperature 0 keeps the override (TreeRepo zero-safe)",
+  regression: true, // FIXED bug kept as a regression check (fork must inherit a temperature 0 override)
   mode: null,
   noApp: true,
   async body() {
@@ -168,10 +169,12 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    const hasTruthy = tr.includes('if settings.temperatureOverride') && tr.includes('temperature_override');
-    const notZeroSafe = !tr.includes('temperatureOverride != ""');
-    if(!hasTruthy || !notZeroSafe) throw new Error("bug not reproduced hasTruthy="+hasTruthy+" notZeroSafe="+notZeroSafe);
-    return "TreeRepo._CopyThreadSettings checks if settings.temperatureOverride (falsy for 0) ï¿½ forking a thread with temp 0 loses it";
+    // FIXED (bug #62): _CopyThreadSettings treats 0 as a valid override.
+    const zeroSafe = tr.includes('if settings.temperatureOverride != ""');
+    const truthyOnly = tr.includes('if settings.temperatureOverride') && !zeroSafe;
+    if (!zeroSafe || truthyOnly)
+      throw new Error("fork temp-0 copy not fixed (bug #62): zeroSafe=" + zeroSafe + " truthyOnly=" + truthyOnly);
+    return "TreeRepo._CopyThreadSettings checks temperatureOverride != \"\" (0 is a valid override), so forking a thread with temp 0 keeps it";
   }
 });
 

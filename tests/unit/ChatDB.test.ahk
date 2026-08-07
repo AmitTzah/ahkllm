@@ -410,6 +410,23 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #62): a fork must inherit a temperature override of 0
+    ; (AHK treats 0 as falsy, so the old truthiness check dropped it).
+    ForkThread_CopiesTemperatureZero() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        ChatDB.Thread_UpdateSettings(threadId, { temperatureOverride: 0 })
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (temp 0)")
+        s := ChatDB.Thread_GetSettings(newId)
+        if s.temperatureOverride = "" || s.temperatureOverride != 0
+            throw Error("fork should inherit temperature override 0, got '" s.temperatureOverride "'")
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------

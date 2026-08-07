@@ -210,7 +210,9 @@ class TreeRepo {
             ChatDB.db.Exec("UPDATE chat_threads SET system_override='" SQLite.Escape(settings.systemOverride) "' WHERE id='" targetThreadId "';")
         if settings.reasoningOverride
             ChatDB.db.Exec("UPDATE chat_threads SET reasoning_override='" SQLite.Escape(settings.reasoningOverride) "' WHERE id='" targetThreadId "';")
-        if settings.temperatureOverride
+        ; Bug #62: temperature 0 is a valid override - AHK treats the numeric
+        ; 0 as falsy, so use an explicit empty check (same class as bug #35).
+        if settings.temperatureOverride != ""
             ChatDB.db.Exec("UPDATE chat_threads SET temperature_override=" settings.temperatureOverride " WHERE id='" targetThreadId "';")
         if settings.assistantId
             ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" targetThreadId "';")
