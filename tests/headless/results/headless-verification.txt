@@ -1,5 +1,5 @@
-# 2026-08-07T22:26:57.300Z | run of 1 scenario(s)
-PASS | #91 | InputWindow validateInputAndHide accepts '0' as valid input | InputWindow.validateInputAndHide treats only empty/whitespace as empty, so '0' is accepted | 0.0s
+# 2026-08-07T22:29:04.595Z | run of 1 scenario(s)
+PASS | #92 | Models ensureFullId rebuilds from the provider dropdown (prefix updated) | models.js ensureFullId rebuilds the full id from the provider dropdown (strips embedded prefix), so changing the provider updates the saved id | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

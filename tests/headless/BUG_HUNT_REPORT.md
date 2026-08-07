@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **16 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **15 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #91 FIXED in b7dfb20; next: bug #92 (Models ensureFullId ignores the provider dropdown when the id contains /).
+- **Where we left off:** 2026-08-07 — bug #92 FIXED in 3925a32; next: bug #93 (SettingsDefaults GetDefaults shallow-copies Map values - latent).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 92. Models `ensureFullId` ignores provider dropdown when id already contains `/` - stale provider prefix
-
-**Scenario:** 92 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings ? Models ? pick any model with full id like `openai/gpt-4` (display shows `gpt-4`), change the Provider dropdown from `openai` to `google`, then Save and check `settings.json`.
-
-**Expected:** the saved full id should be `google/gpt-4` (provider from dropdown + stripped id).
-
-**Actual:** `webui/js/settings/sections/models.js` `ensureFullId(id, provider)` does `if (id.indexOf('/') >=0) return id; return provider ? provider+'/'+id : id`. When `id` already contains `/` (because the row was rendered from a full id like `openai/gpt-4` but the input shows only `gpt-4` - wait, actually `_mainRowHtml` does `stripProvider(id)` for display, so the input value is `gpt-4` without prefix, but `_readRowValues` reads `id` as `tr.querySelector('[data-field="id"]').value` which is `gpt-4` (no slash), and `values.provider` is `google`, so `ensureFullId("gpt-4", "google")` would correctly return `google/gpt-4`. However, in the *refresh modal* (`_rightRowHtml`), the id input has `data-full-id="openai/gpt-4"` and the `saveRefresh` path does `var id = idEl.getAttribute('data-full-id') || idEl.value` - it prefers `data-full-id` (stale `openai/gpt-4`) over the current `value` (`gpt-4`), so changing the provider dropdown there does not update the saved id. The bug is in `saveRefresh`, not `ensureFullId` for the main table, but the `ensureFullId` early-return for `id` containing `/` is still a latent bug if a user types a full id manually.
-
-**Evidence:** `webui/js/settings/sections/models.js` `ensureFullId` `if (id.indexOf('/') >=0) return id`.
-
-**Verification:** headless scenario 92 (noApp) asserts `ensureFullId` early-return for `/` exists.
 
 ### 93. SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] - mutating snapshot corrupts pristine defaults
 
@@ -506,6 +490,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Models `ensureFullId` ignores provider dropdown when id already contains `/` - stale provider prefix" - FIXED in 3925a32: ensureFullId now strips any embedded prefix and rebuilds the full id from the selected provider (keeps the id as-is when no provider is chosen); the refresh-modal data-full-id precedence was already fixed by bug #40; scenario 92 flipped to a regression static check + models-pricing-refresh unit test.
 
 - 2026-08-07 - "InputWindow `validateInputAndHide` treats `\"0\"` as empty - `!value` falsy check" - FIXED in b7dfb20: validateInputAndHide now treats only empty/whitespace as empty (Trim(...) = \"\"), so a single \"0\" is accepted; scenario 91 flipped to a regression static check + InputWindow unit tests.
 
