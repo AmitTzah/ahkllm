@@ -1,5 +1,5 @@
-# 2026-08-07T22:24:38.751Z | run of 1 scenario(s)
-PASS | #90 | SettingsMerge.Override guards non-object incoming (settings safe) | SettingsMerge.Override guards non-object incoming payloads (IsObject), so a crafted empty-string payload cannot pollute settings | 0.0s
+# 2026-08-07T22:26:57.300Z | run of 1 scenario(s)
+PASS | #91 | InputWindow validateInputAndHide accepts '0' as valid input | InputWindow.validateInputAndHide treats only empty/whitespace as empty, so '0' is accepted | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

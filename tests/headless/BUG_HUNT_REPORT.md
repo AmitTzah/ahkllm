@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **17 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **16 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #90 FIXED in b20131d; next: bug #91 (InputWindow validateInputAndHide treats \"0\" as empty).
+- **Where we left off:** 2026-08-07 — bug #91 FIXED in b7dfb20; next: bug #92 (Models ensureFullId ignores the provider dropdown when the id contains /).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 91. InputWindow `validateInputAndHide` treats `"0"` as empty - `!value` falsy check
-
-**Scenario:** 91 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** trigger any command with `showInputBox: true` (e.g. Quick Ask), type `0` (single zero) in the popup, press Enter or click Send.
-
-**Expected:** the input `0` is accepted and sent as `{{input}}` (or as `inputText`).
-
-**Actual:** `app/InputWindow.ahk` `validateInputAndHide` does `if !this.EditControl.Value { MsgBox "Please enter a message..." ; return false }`. In AHK, `! "0"` is `true` because `"0"` is falsy (same as `0` and `""`), so typing `0` is considered empty and the popup stays open with the  - Please enter a message -  box. The same `!value` pattern appears in `CommandState.onCommandInputSend` via `validateInputAndHide`.
-
-**Evidence:** `app/InputWindow.ahk` `if !this.EditControl.Value`.
-
-**Verification:** headless scenario 91 (noApp) asserts `if !this.EditControl.Value` exists.
 
 ### 92. Models `ensureFullId` ignores provider dropdown when id already contains `/` - stale provider prefix
 
@@ -522,6 +506,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "InputWindow `validateInputAndHide` treats `\"0\"` as empty - `!value` falsy check" - FIXED in b7dfb20: validateInputAndHide now treats only empty/whitespace as empty (Trim(...) = \"\"), so a single \"0\" is accepted; scenario 91 flipped to a regression static check + InputWindow unit tests.
 
 - 2026-08-07 - "SettingsMerge.Override iterates over `incoming` without `IsObject` guard - empty string corrupts settings" - FIXED in b20131d: Override now normalizes non-object incoming payloads to an empty Map before merging; scenario 90 flipped to a regression static check + SettingsHandler unit test.
 
