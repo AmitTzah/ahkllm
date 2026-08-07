@@ -121,7 +121,10 @@ function renderSummary() {
   }
   for (var i=0; i<allData.commands.length; i++) {
     var c = allData.commands[i];
-    var cmdOutput = (c.completion_tokens||0) + (c.thinking_tokens||0);
+    // Bug #52: command_usage.completion_tokens already includes thinking
+    // (same as chat's output_tokens), so adding thinking_tokens would
+    // double-count it.
+    var cmdOutput = (c.completion_tokens||0);
     tokens += (c.prompt_tokens||0) + cmdOutput;
     outputTokens += cmdOutput;
     cost += (c.total_cost||0);
@@ -236,7 +239,8 @@ function renderModelSections() {
     models[m].requests[d] = (models[m].requests[d]||0) + (c.call_count||0);
     models[m].cacheHit[d] = (models[m].cacheHit[d]||0) + cmdCached;
     models[m].cacheMiss[d] = (models[m].cacheMiss[d]||0) + Math.max(0, cmdPrompt - cmdCached);
-    models[m].output[d] = (models[m].output[d]||0) + (c.completion_tokens||0) + (c.thinking_tokens||0);
+    // Bug #52: completion_tokens already includes thinking; do not add it again.
+    models[m].output[d] = (models[m].output[d]||0) + (c.completion_tokens||0);
   }
 
   var entries = Object.entries(models);

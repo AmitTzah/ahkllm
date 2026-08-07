@@ -181,6 +181,26 @@ describe('renderSummary', () => {
         assert.ok(ctx.document.getElementById('totalCalls').textContent !== undefined);
         assert.ok(ctx.document.getElementById('totalTokens').textContent !== undefined);
     });
+
+    it('counts command completion_tokens once (thinking already included, bug #52)', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [{
+                input_tokens: 10, output_tokens: 100, total_cost: 0, message_count: 1,
+                cached_input_cost: 0, input_cost: 0, output_cost: 0,
+                total_response_time_ms: 0, total_ttft_ms: 0
+            }],
+            commands: [{
+                prompt_tokens: 10, completion_tokens: 100, thinking_tokens: 40,
+                total_cost: 0, call_count: 1, cached_input_cost: 0, input_cost: 0,
+                output_cost: 0, total_response_time_ms: 0, total_ttft_ms: 0
+            }]
+        };
+        ctx.renderSummary();
+        // 110 (chat) + 110 (command, thinking already inside completion) = 220.
+        // Double-counting the command's thinking would yield 260.
+        assert.strictEqual(ctx.document.getElementById('totalTokens').textContent, '220');
+    });
 });
 
 describe('populateFilters', () => {
