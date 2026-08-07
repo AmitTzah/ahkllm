@@ -1147,6 +1147,26 @@ class ChatDBTest {
             throw Error("Expected path: [user, assistant], got: [" path[1].role ", " path[2].role "]")
 
         this._teardown()
+
+    ; Regression (bug #55): _WalkToLeaf must descend to the NEWEST continuation
+    ; (the leaf the tree modal's _findDefaultLeaf picks), not the oldest child.
+    WalkToLeaf_PicksNewestContinuation() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", parent_id: uId})
+        oldId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "old follow-up", parent_id: aId})
+        oldLeaf := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "old answer", parent_id: oldId})
+        newId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "new follow-up", parent_id: aId})
+        newLeaf := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "new answer", parent_id: newId})
+
+        leafId := TreeRepo._WalkToLeaf(aId)
+        if leafId != newLeaf
+            throw Error("Expected _WalkToLeaf to pick the NEWEST continuation (" newLeaf "), got " leafId)
+
+        ChatDB.Thread_Delete(threadId)
+        this._teardown()
+    }
+
         ; Verify FTS5 works independently (not just LIKE fallback).
         ; FTS5 finds whole-word matches; LIKE finds substrings.
         ; Test: search for a whole word → FTS5 should find it.

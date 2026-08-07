@@ -482,7 +482,8 @@ scenarios.push({
 
 scenarios.push({
   id: 55,
-  name: 'Branch switch / search navigation land on the OLDEST continuation while the tree modal lands on the newest (header context disagrees)',
+  name: 'Branch switch / search navigation land on the newest continuation (matching the tree modal)',
+  regression: true, // FIXED bug kept as a regression check (branch-nav/search must land on the same leaf the tree modal picks)
   mode: null,
   settings: {},
   fixtures: {
@@ -517,11 +518,11 @@ scenarios.push({
     await sleep(700);
     const contextSwitch = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
     const leafAfterSwitch = await cdp.eval('chatMessages[chatMessages.length - 1] ? chatMessages[chatMessages.length - 1].id : ""');
-    // BUG: _WalkToLeaf picks ORDER BY created_at LIMIT 1 -> the OLDEST child
-    // (a2b, context 70) instead of the newest continuation (a2bx, context 95)
-    // that the tree modal's _findDefaultLeaf would pick.
-    if (leafAfterSwitch === 'm-br-55-a2bx' && String(contextSwitch).indexOf('95') >= 0)
-      throw new Error('branch switch landed on the newest continuation (bug not reproduced): leaf=' + leafAfterSwitch + ' context=' + contextSwitch);
+    // FIXED (bug #55): _WalkToLeaf now picks the same leaf the tree modal's
+    // _findDefaultLeaf picks (the newest continuation), so branch-nav/search
+    // navigation lands on the newest continuation.
+    if (leafAfterSwitch !== 'm-br-55-a2bx' || String(contextSwitch).indexOf('95') < 0)
+      throw new Error('branch switch did not land on the newest continuation (bug #55 not fixed): leaf=' + leafAfterSwitch + ' context=' + contextSwitch);
     // Tree modal navigation to the SAME node must land on the newest leaf (95) -
     // proving the two navigation paths disagree.
     await cdp.click('#treeBtn');
@@ -531,8 +532,10 @@ scenarios.push({
     await cdp.waitFor('chatMessages[chatMessages.length - 1] && chatMessages[chatMessages.length - 1].id === "m-br-55-a2bx"', 15000, 300, 'tree navigated to newest');
     await sleep(700);
     const contextTree = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
+    if (String(contextTree).indexOf('95') < 0)
+      throw new Error('tree modal did not land on the newest continuation: ' + JSON.stringify(contextTree));
     return 'branch-nav switch from a1 landed on leaf ' + leafAfterSwitch + ' (context ' + JSON.stringify(contextSwitch) +
-      ', oldest) while the tree modal lands on m-br-55-a2bx (context ' + JSON.stringify(contextTree) + ', newest)';
+      ') and the tree modal lands on m-br-55-a2bx (context ' + JSON.stringify(contextTree) + ') - both newest';
   }
 });
 
