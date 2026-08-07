@@ -400,15 +400,17 @@ scenarios.push({
 
 scenarios.push({
   id: 74,
-  name: "SettingsApply providerMap stale when all prefixes cleared",
+  name: "SettingsApply clears providerMap when all prefixes are explicitly cleared",
+  regression: true, // FIXED bug kept as a regression check (empty prefix sets must clear the map)
   mode: null,
   noApp: true,
   async body() {
     const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    const hasGuard = /if newProviderMap\.Count > 0/.test(sa) && /providerMap := newProviderMap/.test(sa);
-    const hasElseClear = /else.*providerMap.*Map\(\)/.test(sa) || /providerMap := Map\(\)/.test(sa);
-    if(!hasGuard || hasElseClear) throw new Error("bug not reproduced hasGuard="+hasGuard+" hasElseClear="+hasElseClear);
-    return "SettingsApply._ApplyProviders only overwrites providerMap when Count>0 ï¿½ clearing all prefixes leaves old map";
+    // FIXED (bug #74): explicit prefixes (even empty) rebuild providerMap.
+    const hasExplicitCheck = /hasExplicitPrefixes/.test(sa);
+    const stillGuarded = /if newProviderMap\.Count > 0/.test(sa);
+    if(!hasExplicitCheck || stillGuarded) throw new Error("bug #74 not fixed: hasExplicitCheck=" + hasExplicitCheck + " stillGuarded=" + stillGuarded);
+    return "SettingsApply._ApplyProviders assigns providerMap whenever prefixes are explicitly defined (an empty set clears it)";
   }
 });
 

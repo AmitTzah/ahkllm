@@ -94,6 +94,27 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #74): explicitly clearing all provider prefixes must clear
+    ; providerMap (the old Count>0 guard kept the stale map).
+    ApplyProviders_ClearedPrefixesClearMap() {
+        global providers, providerMap
+        oldProviders := providers
+        oldMap := providerMap
+        try {
+            SettingsApply._ApplyProviders(Map(
+                "providers", Map(
+                    "openai", Map("displayName", "OpenAI", "endpoint", "https://x", "prefixes", []),
+                    "deepseek", Map("displayName", "DeepSeek", "endpoint", "https://y", "prefixes", [])
+                )
+            ))
+            if providerMap.Count != 0
+                throw Error("providerMap should be empty after all prefixes are cleared, got " providerMap.Count " entries")
+        } finally {
+            providers := oldProviders
+            providerMap := oldMap
+        }
+    }
+
     ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
     ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
     ; must return the pristine snapshot captured by CacheInitialDefaults().

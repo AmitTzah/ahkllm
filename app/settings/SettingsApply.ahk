@@ -53,9 +53,17 @@ class SettingsApply {
             }
         }
         providers := newProviders
-        ; Only overwrite providerMap when prefixes were actually defined,
-        ; otherwise keep the UserConfig mapping (e.g. older settings.json without prefixes)
-        if newProviderMap.Count > 0
+        ; Bug #74: assign the rebuilt map whenever the saved providers define
+        ; prefixes explicitly - an explicitly empty set must clear the old map.
+        ; Providers without a "prefixes" key keep the UserConfig mapping.
+        hasExplicitPrefixes := false
+        for k, p in settings["providers"] {
+            if p.Has("prefixes") {
+                hasExplicitPrefixes := true
+                break
+            }
+        }
+        if hasExplicitPrefixes
             providerMap := newProviderMap
     }
 
