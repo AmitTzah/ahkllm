@@ -1,4 +1,4 @@
-// scenarios/misc.js - Icons, model-id parsing, vision gating, API logs
+﻿// scenarios/misc.js - Icons, model-id parsing, vision gating, API logs
 //
 // Part of the headless E2E suite (entry: ../e2e-suite.js). Scenarios launch
 // the REAL app against an isolated profile and drive it via WebView2 CDP +
@@ -150,7 +150,7 @@ scenarios.push({
     const sa = fs.readFileSync(path.join(launcher.REPO_ROOT, "app", "settings", "SettingsApply.ahk"), "utf8");
     const bannerSkipsEmpty = /if sb\.Has\("text"\) && sb\["text"\] != ""/.test(sa);
     if (!bannerSkipsEmpty) throw new Error("bug not reproduced: banner does not skip empty");
-    return "SettingsApply._ApplySuspendBanner skips empty text � clearing leaves stale banner";
+    return "SettingsApply._ApplySuspendBanner skips empty text ï¿½ clearing leaves stale banner";
   }
 });
 
@@ -167,7 +167,7 @@ scenarios.push({
     const hasTruthy = tr.includes('if settings.temperatureOverride') && tr.includes('temperature_override');
     const notZeroSafe = !tr.includes('temperatureOverride != ""');
     if(!hasTruthy || !notZeroSafe) throw new Error("bug not reproduced hasTruthy="+hasTruthy+" notZeroSafe="+notZeroSafe);
-    return "TreeRepo._CopyThreadSettings checks if settings.temperatureOverride (falsy for 0) � forking a thread with temp 0 loses it";
+    return "TreeRepo._CopyThreadSettings checks if settings.temperatureOverride (falsy for 0) ï¿½ forking a thread with temp 0 loses it";
   }
 });
 
@@ -282,13 +282,13 @@ scenarios.push({
     const hasSubstring = /if InStr\(modelId, prefix\)/.test(pr);
     const hasPrefixCheck = /SubStr\(modelId, 1,/.test(pr) || /InStr\(modelId, prefix\) = 1/.test(pr);
     if(!hasSubstring || hasPrefixCheck) throw new Error("bug not reproduced hasSubstring="+hasSubstring+" hasPrefixCheck="+hasPrefixCheck);
-    return "ProviderResolver.Resolve uses InStr substring � mygpt-custom would match gpt incorrectly";
+    return "ProviderResolver.Resolve uses InStr substring ï¿½ mygpt-custom would match gpt incorrectly";
   }
 });
 
 scenarios.push({
   id: 69,
-  name: "Search LIKE does not escape % _ wildcard � searching for % returns everything",
+  name: "Search LIKE does not escape % _ wildcard ï¿½ searching for % returns everything",
   mode: null,
   noApp: true,
   async body() {
@@ -296,13 +296,13 @@ scenarios.push({
     const likeLine = sr.slice(sr.indexOf("static _Like"), sr.indexOf("static _Like")+1500);
     const escapesWildcards = /StrReplace.*%/.test(likeLine) && /StrReplace.*_/.test(likeLine);
     if(escapesWildcards) throw new Error("bug not reproduced: LIKE escapes wildcards");
-    return "SearchRepo._Like uses LIKE ESCAPE but safeQuery only doubles single quotes � % remains wildcard";
+    return "SearchRepo._Like uses LIKE ESCAPE but safeQuery only doubles single quotes ï¿½ % remains wildcard";
   }
 });
 
 scenarios.push({
   id: 70,
-  name: "Search FTS5 does not escape special characters � C++ breaks MATCH",
+  name: "Search FTS5 does not escape special characters ï¿½ C++ breaks MATCH",
   mode: null,
   noApp: true,
   async body() {
@@ -314,7 +314,7 @@ scenarios.push({
     const buildsRaw = /ftsExpr \.= trimmed/.test(fts);
     const escapesDouble = /StrReplace\(ftsExpr, "\""/.test(fts);
     if(!buildsRaw || escapesDouble) throw new Error("bug not reproduced buildsRaw="+buildsRaw+" escapesDouble="+escapesDouble);
-    return "SearchRepo._FTS5 builds from raw trimmed words and only escapes single quotes � C++ breaks MATCH";
+    return "SearchRepo._FTS5 builds from raw trimmed words and only escapes single quotes ï¿½ C++ breaks MATCH";
   }
 });
 
@@ -328,13 +328,13 @@ scenarios.push({
     const skipsModel = /if tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
     const skipsPrompt = /if tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
     if(!skipsModel || !skipsPrompt) throw new Error("bug not reproduced");
-    return "SettingsApply._ApplyThreadTitles only assigns when != empty � clearing leaves stale model/prompt";
+    return "SettingsApply._ApplyThreadTitles only assigns when != empty ï¿½ clearing leaves stale model/prompt";
   }
 });
 
 scenarios.push({
   id: 72,
-  name: "SystemMessageResolver UNC path treated as relative � \\\\server\\share broken",
+  name: "SystemMessageResolver UNC path treated as relative ï¿½ \\\\server\\share broken",
   mode: null,
   noApp: true,
   async body() {
@@ -342,7 +342,7 @@ scenarios.push({
     const checksColon = /if !InStr\(filePath, ":"\)/.test(sr);
     const handlesUNC = /\\\\/.test(sr) || /InStr\(filePath, "\\\\/.test(sr);
     if(!checksColon || handlesUNC) throw new Error("bug not reproduced checksColon="+checksColon+" handlesUNC="+handlesUNC);
-    return "SystemMessageResolver.Resolve checks InStr(filePath, \":\") to detect absolute � UNC \\\\server\\share has no colon and is searched as relative";
+    return "SystemMessageResolver.Resolve checks InStr(filePath, \":\") to detect absolute ï¿½ UNC \\\\server\\share has no colon and is searched as relative";
   }
 });
 
@@ -373,7 +373,7 @@ scenarios.push({
     const hasGuard = /if newProviderMap\.Count > 0/.test(sa) && /providerMap := newProviderMap/.test(sa);
     const hasElseClear = /else.*providerMap.*Map\(\)/.test(sa) || /providerMap := Map\(\)/.test(sa);
     if(!hasGuard || hasElseClear) throw new Error("bug not reproduced hasGuard="+hasGuard+" hasElseClear="+hasElseClear);
-    return "SettingsApply._ApplyProviders only overwrites providerMap when Count>0 � clearing all prefixes leaves old map";
+    return "SettingsApply._ApplyProviders only overwrites providerMap when Count>0 ï¿½ clearing all prefixes leaves old map";
   }
 });
 
@@ -387,13 +387,13 @@ scenarios.push({
     const hasSubstring = /if InStr\(modelId, "2\.5-pro"\)/.test(gc);
     const hasExact = /modelId = "2\.5-pro"/.test(gc);
     if(!hasSubstring) throw new Error("bug not reproduced");
-    return "GoogleChatCompletions._BudgetTable uses InStr substring � my2.5-pro would match 2.5-pro incorrectly";
+    return "GoogleChatCompletions._BudgetTable uses InStr substring ï¿½ my2.5-pro would match 2.5-pro incorrectly";
   }
 });
 
 scenarios.push({
   id: 76,
-  name: "initChatMode guard prevents activeThreadId update when already set � stale thread",
+  name: "initChatMode guard prevents activeThreadId update when already set ï¿½ stale thread",
   mode: null,
   noApp: true,
   async body() {
@@ -402,7 +402,7 @@ scenarios.push({
     const hasDirectAssign = /activeThreadId = data\.threadId/.test(cc);
     // Guard means if activeThreadId already holds old thread's id, new thread's id is ignored
     if(!hasGuard || !hasDirectAssign) throw new Error("bug not reproduced hasGuard="+hasGuard);
-    return "chat-core.js initChatMode only sets activeThreadId when !activeThreadId � stale if already set";
+    return "chat-core.js initChatMode only sets activeThreadId when !activeThreadId ï¿½ stale if already set";
   }
 });
 
@@ -416,7 +416,7 @@ scenarios.push({
     const hasEmptyRetry = /if \(chatMessages && chatMessages\.length > 0\)/.test(ci) && /retryLastAssistantMessage/.test(ci) && /Ipc\.postToHost\('retry'/.test(ci);
     const hasTrimCheck = /var message = input\.value\.trim\(\)/.test(ci);
     if(!hasEmptyRetry || !hasTrimCheck) throw new Error("bug not reproduced");
-    return "chat-input.js onChatSend: empty trimmed message + attachments 0 falls through to retry last assistant � empty Send unexpectedly re-fires";
+    return "chat-input.js onChatSend: empty trimmed message + attachments 0 falls through to retry last assistant ï¿½ empty Send unexpectedly re-fires";
   }
 });
 
@@ -431,13 +431,13 @@ scenarios.push({
     const handlesZero = /settings\.temperature != "" && settings\.temperature !== undefined/.test(cfg) || /hasTemp =.*temperature.*!= ""/.test(cfg) && !/settings\.temperature &&/.test(cfg);
     if(!hasFalsy) throw new Error("bug not reproduced hasFalsy false");
     // hasFalsy true means 0 is treated as falsy -> shows Default
-    return "model-picker-config.js hasTemp = settings.temperature && ... � 0 is falsy, shows Default";
+    return "model-picker-config.js hasTemp = settings.temperature && ... ï¿½ 0 is falsy, shows Default";
   }
 });
 
 scenarios.push({
   id: 79,
-  name: "SettingsPersistence.Load does not strip UTF-8 BOM before JSON parse � settings may be lost",
+  name: "SettingsPersistence.Load does not strip UTF-8 BOM before JSON parse ï¿½ settings may be lost",
   mode: null,
   noApp: true,
   async body() {
@@ -446,13 +446,13 @@ scenarios.push({
     const stripsBOM = /Strip.*BOM|SubStr\(raw, 1, 1\) =/.test(sp) || /BOM/.test(sp);
     const parsesDirect = /parsed := jsongo\.Parse\(raw\)/.test(sp);
     if(!loadsRaw || !parsesDirect || stripsBOM) throw new Error("bug not reproduced loadsRaw="+loadsRaw+" parsesDirect="+parsesDirect+" stripsBOM="+stripsBOM);
-    return "SettingsPersistence.Load reads with FileRead UTF-8 and parses directly without stripping BOM � BOM would cause parse failure";
+    return "SettingsPersistence.Load reads with FileRead UTF-8 and parses directly without stripping BOM ï¿½ BOM would cause parse failure";
   }
 });
 
 scenarios.push({
   id: 80,
-  name: "ThreadRepo SoftDelete/Restore/Delete/Update do not escape threadId � SQL injection via crafted id",
+  name: "ThreadRepo SoftDelete/Restore/Delete/Update do not escape threadId ï¿½ SQL injection via crafted id",
   mode: null,
   noApp: true,
   async body() {
@@ -464,13 +464,13 @@ scenarios.push({
     const hasEscapeUpd = /SQLite\.Escape\(threadId\)/.test(upd);
     if(hasEscapeSoft || !hasDirectSoft) throw new Error("bug not reproduced soft hasEscape="+hasEscapeSoft);
     if(hasEscapeUpd) throw new Error("bug not reproduced update hasEscape");
-    return "ThreadRepo SoftDelete/Restore/Delete/Update use WHERE id='\" threadId \"' without SQLite.Escape � crafted threadId with ' could inject";
+    return "ThreadRepo SoftDelete/Restore/Delete/Update use WHERE id='\" threadId \"' without SQLite.Escape ï¿½ crafted threadId with ' could inject";
   }
 });
 
 scenarios.push({
   id: 81,
-  name: "Branch _setupSiblingGroup UPDATE does not escape msg.id � SQL injection via crafted message id",
+  name: "Branch _setupSiblingGroup UPDATE does not escape msg.id ï¿½ SQL injection via crafted message id",
   mode: null,
   noApp: true,
   async body() {
@@ -485,7 +485,7 @@ scenarios.push({
 
 scenarios.push({
   id: 82,
-  name: "Usage dashboard provider/model filter XSS � option values not escaped",
+  name: "Usage dashboard provider/model filter XSS ï¿½ option values not escaped",
   mode: null,
   noApp: true,
   async body() {
@@ -493,13 +493,13 @@ scenarios.push({
     const hasEsc = /escHtml\(p\)/.test(dash) || /escHtml\(m\)/.test(dash);
     const hasRaw = /provSel\.innerHTML \+=.*\'<option value="\'\+p\+/.test(dash);
     if(hasEsc || !hasRaw) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRaw="+hasRaw);
-    return "usage-dashboard.js populateFilters does provSel.innerHTML += '<option value=\"'+p+'\">'+p without escHtml � XSS via provider/model name";
+    return "usage-dashboard.js populateFilters does provSel.innerHTML += '<option value=\"'+p+'\">'+p without escHtml ï¿½ XSS via provider/model name";
   }
 });
 
 scenarios.push({
   id: 83,
-  name: "Threadmap who XSS � model name not escaped in nav list",
+  name: "Threadmap who XSS ï¿½ model name not escaped in nav list",
   mode: null,
   noApp: true,
   async body() {
@@ -507,13 +507,13 @@ scenarios.push({
     const hasEsc = /escHtml\(who\)/.test(tm);
     const hasRawWho = /item\.innerHTML =.*\+ who \+/.test(tm);
     if(hasEsc || !hasRawWho) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRawWho="+hasRawWho);
-    return "chat-threadmap.js renderNavList does item.innerHTML = ... + who + ... without escHtml � model name XSS";
+    return "chat-threadmap.js renderNavList does item.innerHTML = ... + who + ... without escHtml ï¿½ model name XSS";
   }
 });
 
 scenarios.push({
   id: 84,
-  name: "ApiLogsViewer esc() does not escape single quote � title attribute break",
+  name: "ApiLogsViewer esc() does not escape single quote ï¿½ title attribute break",
   mode: null,
   noApp: true,
   async body() {
@@ -521,13 +521,13 @@ scenarios.push({
     const escBody = html.slice(html.indexOf("function esc(s)"), html.indexOf("function esc(s)")+500);
     const missingSingle = /\[&<>"]/.test(escBody) && escBody.indexOf("&#39;") < 0;
     if(!missingSingle) throw new Error("bug not reproduced");
-    return "webui/api-logs.html esc() missing single quote � title attribute breaks on '";
+    return "webui/api-logs.html esc() missing single quote ï¿½ title attribute breaks on '";
   }
 });
 
 scenarios.push({
   id: 86,
-  name: "FIM fallback renderMarkdown XSS � md.render with html:true for non-chat content",
+  name: "FIM fallback renderMarkdown XSS ï¿½ md.render with html:true for non-chat content",
   mode: null,
   noApp: true,
   async body() {
@@ -535,13 +535,13 @@ scenarios.push({
     const hasMdRender = /contentElement\.innerHTML = result/.test(cc) && /md\.render\(contentToRender\)/.test(cc);
     const hasHtmlTrue = /markdownit\(\{[^}]*html: true/.test(require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","main.js"),"utf8"));
     if(!hasMdRender || !hasHtmlTrue) throw new Error("bug not reproduced");
-    return "chat-core.js renderMarkdown does md.render(content) with html:true and innerHTML � FIM fallback XSS same as #57";
+    return "chat-core.js renderMarkdown does md.render(content) with html:true and innerHTML ï¿½ FIM fallback XSS same as #57";
   }
 });
 
 scenarios.push({
   id: 87,
-  name: "UsageRepo lastMonth SQL uses UTC date('now') while dashboard labels use local � off by timezone",
+  name: "UsageRepo lastMonth SQL uses UTC date('now') while dashboard labels use local ï¿½ off by timezone",
   mode: null,
   noApp: true,
   async body() {
@@ -550,13 +550,13 @@ scenarios.push({
     const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
     const hasLocal = /getDateRangeLabels/.test(dash) && /new Date\(/.test(dash);
     if(!hasUTC || !hasLocal) throw new Error("bug not reproduced");
-    return "UsageRepo _WhereDate lastMonth uses UTC date('now') while getDateRangeLabels uses local new Date() � timezone mismatch";
+    return "UsageRepo _WhereDate lastMonth uses UTC date('now') while getDateRangeLabels uses local new Date() ï¿½ timezone mismatch";
   }
 });
 
 scenarios.push({
   id: 88,
-  name: "UsageRepo month (last 30 days) SQL uses UTC while dashboard uses local � timezone mismatch",
+  name: "UsageRepo month (last 30 days) SQL uses UTC while dashboard uses local ï¿½ timezone mismatch",
   mode: null,
   noApp: true,
   async body() {
@@ -593,20 +593,20 @@ scenarios.push({
     const hasOverrideLoop = /for k, v in incoming/.test(sm);
     const checksIsMap = /if IsObject\(incoming\)/.test(sm);
     if(!hasOverrideLoop || checksIsMap) throw new Error("bug not reproduced");
-    return "SettingsMerge.Override iterates over incoming without IsObject check � empty string would iterate chars";
+    return "SettingsMerge.Override iterates over incoming without IsObject check ï¿½ empty string would iterate chars";
   }
 });
 
 scenarios.push({
   id: 91,
-  name: "InputWindow validateInputAndHide treats \"0\" as empty � !value falsy",
+  name: "InputWindow validateInputAndHide treats \"0\" as empty ï¿½ !value falsy",
   mode: null,
   noApp: true,
   async body() {
     const iw=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","InputWindow.ahk"),"utf8");
     const hasFalsy = /if !this\.EditControl\.Value/.test(iw);
     if(!hasFalsy) throw new Error("bug not reproduced");
-    return "InputWindow.validateInputAndHide does if !this.EditControl.Value � \"0\" is falsy";
+    return "InputWindow.validateInputAndHide does if !this.EditControl.Value ï¿½ \"0\" is falsy";
   }
 });
 
@@ -625,7 +625,7 @@ scenarios.push({
 
 scenarios.push({
   id: 93,
-  name: "SettingsDefaults GetDefaults shallow copies Map values � mutating snapshot corrupts pristine defaults",
+  name: "SettingsDefaults GetDefaults shallow copies Map values ï¿½ mutating snapshot corrupts pristine defaults",
   mode: null,
   noApp: true,
   async body() {
@@ -633,21 +633,97 @@ scenarios.push({
     const hasShallow = /snapshot\[k\] := v/.test(sd);
     const doesDeep = /snapshot\[k\] := .*Clone/.test(sd);
     if(!hasShallow || doesDeep) throw new Error("bug not reproduced hasShallow="+hasShallow+" doesDeep="+doesDeep);
-    return "SettingsDefaults.GetDefaults shallow copies _initialDefaults values � nested Maps share reference";
+    return "SettingsDefaults.GetDefaults shallow copies _initialDefaults values ï¿½ nested Maps share reference";
   }
 });
 
 scenarios.push({
   id: 94,
-  name: "SettingsDefaults _DefaultsAssistants generates new UUID each call � defaults not stable",
+  name: "SettingsDefaults _DefaultsAssistants generates new UUID each call ï¿½ defaults not stable",
   mode: null,
   noApp: true,
   async body() {
     const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
     const hasUUID = /SettingsPersistence\._UUID\(\)/.test(sd) && /_DefaultsAssistants/.test(sd);
     if(!hasUUID) throw new Error("bug not reproduced");
-    return "SettingsDefaults._DefaultsAssistants calls SettingsPersistence._UUID() for each assistant id on every GetDefaults � defaults have non-deterministic ids";
+    return "SettingsDefaults._DefaultsAssistants calls SettingsPersistence._UUID() for each assistant id on every GetDefaults ï¿½ defaults have non-deterministic ids";
   }
 });
 
+
+scenarios.push({
+  id: 95,
+  name: "Usage dashboard model heading XSS — model id not escaped in section header",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const dash=fs.readFileSync(path.join(launcher.REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
+    const hasRawInner = /div\.innerHTML = .<h6>.+model/.test(dash);
+    const sec = dash.slice(dash.indexOf("model-section"), dash.indexOf("model-section")+3000);
+    const hasEsc = /escHtml\(model\)/.test(sec);
+    if(!hasRawInner || hasEsc) throw new Error("bug not reproduced hasRawInner="+hasRawInner+" hasEsc="+hasEsc);
+    return "usage-dashboard.js div.innerHTML = '<h6>'+model without escHtml — XSS";
+  }
+});
+
+scenarios.push({
+  id: 96,
+  name: "AttachmentRepo SQL injection via unescaped msgId",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const ar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
+    const unsafe = /WHERE message_id='" msgId "'/.test(ar);
+    const hasEsc = /SQLite\.Escape\(msgId\)/.test(ar.slice(ar.indexOf("static Insert"), ar.indexOf("static Insert")+800));
+    if(!unsafe || hasEsc) throw new Error("bug not reproduced unsafe="+unsafe);
+    return "AttachmentRepo Insert/GetByMessage interpolates msgId without Escape";
+  }
+});
+
+scenarios.push({
+  id: 97,
+  name: "SettingsPersistence.Save non-atomic FileDelete then FileAppend",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const sp=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsPersistence.ahk"),"utf8");
+    const hasPattern = /FileDelete\(path\)/.test(sp) && /FileAppend\(jsonStr, path/.test(sp);
+    if(!hasPattern) throw new Error("bug not reproduced");
+    return "SettingsPersistence.Save FileDelete then FileAppend non-atomic";
+  }
+});
+
+scenarios.push({
+  id: 98,
+  name: "StreamHandler cancel leaks state — no cleanup after wasCancelled",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const sh=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamHandler.ahk"),"utf8");
+    const hasBug = /if wasCancelled\s*\{\s*\n?\s*_handleStreamCancelled\(\)\s*\n\s*return/.test(sh);
+    const hasCleanupBetween = /if wasCancelled[\s\S]*?_cleanupStreamState[\s\S]*?return/.test(sh.slice(sh.indexOf("if wasCancelled"), sh.indexOf("if wasCancelled")+500));
+    // More precise: block between wasCancelled and return should not contain cleanup
+    const idx = sh.indexOf("if wasCancelled");
+    const block = sh.slice(idx, sh.indexOf("return", idx)+20);
+    const hasCleanupInBlock = /_cleanupStreamState/.test(block);
+    if(!hasBug || hasCleanupInBlock) throw new Error("bug not reproduced hasBug="+hasBug+" hasCleanupInBlock="+hasCleanupInBlock);
+    return "StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then return without _cleanupStreamState — leaks _stream* keys";
+  }
+});
 module.exports = scenarios;
+
+
+
+

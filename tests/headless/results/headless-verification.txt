@@ -1,10 +1,9 @@
-# 2026-08-05T10:35:26.617Z | run of 5 scenario(s)
-PASS | #01 | New chat after deleting active chat starts clean (no leaked per-thread settings) | new thread 03be9026-b2cb-7c23-07ce-0000f806f364 starts clean (no assistant/system/reasoning/temp/font from deleted chat) | 3.6s
-PASS | #03 | Removing models/providers in Settings persists (removed entries stay removed) | after removing deepseek/deepseek-chat and provider deepseek, both stay removed in settings.json and after reopening settings | 7.8s
-PASS | #06 | Stream failure with no output file shows an error and re-enables the UI | connection failure shows error banner (Request failed. Check your API key and try again.×) and re-enables the UI without Stop | 5.2s
-PASS | #15 | Chat topbar Export button downloads the conversation | export button is wired (id=export-chat-btn, handler attached) and clicking it created a download blob | 3.7s
-PASS | #22 | Command thinking setting survives settings round-trip (Map/object forms) | ﻿Map-form thinking  -> type='enabled' level='none' | Object-form thinking -> type='enabled' level='none' | RESULT: BUG22 FIXED (Map-form and object-form thinking both survive) | 0.0s
+# 2026-08-07T10:07:56.183Z | run of 4 scenario(s)
+PASS | #95 | Usage dashboard model heading XSS — model id not escaped in section header | usage-dashboard.js div.innerHTML = '<h6>'+model without escHtml — XSS | 0.0s
+PASS | #96 | AttachmentRepo SQL injection via unescaped msgId | AttachmentRepo Insert/GetByMessage interpolates msgId without Escape | 0.0s
+PASS | #97 | SettingsPersistence.Save non-atomic FileDelete then FileAppend | SettingsPersistence.Save FileDelete then FileAppend non-atomic | 0.0s
+PASS | #98 | StreamHandler cancel leaks state — no cleanup after wasCancelled | StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then return without _cleanupStreamState — leaks _stream* keys | 0.0s
 
-Summary: 5/5 scenarios PASS
+Summary: 4/4 scenarios PASS
 Real profile restored: yes
 Report sync: OK

@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **52 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **56 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 — downgraded #86 (FIM XSS — duplicate of #57), #93 (shallow copy latent), #94 (UUID churn overstated — stable after CacheInitialDefaults) to eported; grouped #53/#87/#88 (UTC vs local drift) and #61/#71 (clearing fields stale global) as shared-root families. Sync OK 55 entries / 89 scenarios (34 regression). Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS; also audit 2026-08-07 — downgraded #86 (FIM XSS — duplicate of #57), #93 (shallow copy latent), #94 (UUID churn overstated — stable after CacheInitialDefaults) to `reported`; grouped #53/#87/#88 (UTC vs local drift) and #61/#71 (clearing fields stale global) as shared-root families. Sync OK 59 entries / 93 scenarios (34 regression). Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
@@ -1359,6 +1359,70 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 **Verification:** headless scenario 94 (noApp) asserts `SettingsPersistence._UUID()` inside `_DefaultsAssistants` exists — but this only proves the code *could* generate UUIDs, not that `GetDefaults()` churns after caching (it does not). Keep as low-priority hardening (stable ids).
 
+### 95. Usage dashboard model heading XSS — model id not escaped in section header
+
+**Scenario:** 95 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set a model id to `"><img src=x onerror=alert(1)>` via Settings → Models → Save, then open Usage Dashboard with data for that model.
+
+**Expected:** the model-section heading shows the id as inert text.
+
+**Actual:** `webui/js/usage-dashboard.js` `renderModelSections` does `div.innerHTML = ''<h6>''+model+''</h6>...'` with no `escHtml(model)`. The model string is parsed as HTML and handlers execute (same `chrome.webview.postMessage` access as #57/#82).
+
+**Evidence:** `webui/js/usage-dashboard.js:259` `div.innerHTML = ''<h6>''+model+''</h6>''`.
+
+**Verification:** headless scenario 95 (noApp) asserts raw `div.innerHTML = ''<h6>''+model` exists and no `escHtml(model)` in the section.
+
+### 96. AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection
+
+**Scenario:** 96 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** craft a message id containing `''` (e.g. `bad''id`) via hand-edited DB or malicious IPC `messageId`, then call any AttachmentRepo path (Insert, GetByMessage, DeleteByMessage, CopyForMessage) or ChatDB FTS_Sync.
+
+**Expected:** all statements should use `SQLite.Escape(msgId)` / `SQLite.Escape(threadId)`.
+
+**Actual:** `chat/db/AttachmentRepo.ahk` `Insert` does `VALUES(''id'', ''msgId''`, `GetByMessage`/`DeleteByMessage` do `WHERE message_id=''msgId''`, `GetByThread`/`DeleteByThread` do `WHERE m.thread_id=''threadId''`, and `chat/db/ChatDB.ahk` `FTS_Sync`/`FTS_Remove` do `WHERE msg_id=''msgId''` — none escape. A `'` breaks the literal and can inject SQL (same class as #80/#81).
+
+**Evidence:** `AttachmentRepo.ahk` `Insert`/`GetByMessage`/`DeleteByMessage`/`CopyForMessage` and `ChatDB.ahk` `FTS_Sync` — `''" msgId "''` without `SQLite.Escape`.
+
+**Verification:** headless scenario 96 (noApp) asserts `WHERE message_id=''msgId''` exists and no `SQLite.Escape(msgId)` in `Insert`.
+
+### 97. SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure
+
+**Scenario:** 97 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** save settings when disk is full / file locked (or kill the process between the two calls).
+
+**Expected:** save should be atomic (write to temp file then `FileMove`/`Rename`).
+
+**Actual:** `app/settings/SettingsPersistence.ahk` `Save` does `try FileDelete(path)` then `FileAppend(jsonStr, path, "UTF-8")` with no temp file. If `FileAppend` fails (disk full, permission, crash), the original `settings.json` is already deleted — settings are lost and next load falls back to defaults (same silent-reset as BOM bug #79).
+
+**Evidence:** `SettingsPersistence.ahk` `Save` — `FileDelete` + `FileAppend` without atomic rename.
+
+**Verification:** headless scenario 97 (noApp) asserts `FileDelete(path)` and `FileAppend(jsonStr, path` both exist and no temp-file rename exists.
+
+### 98. StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled
+
+**Scenario:** 98 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** start a stream, then press Stop/Cancel before completion and start another request without restarting the app.
+
+**Expected:** `_finalizeStreaming` should always clean up `requestParams _stream*` keys.
+
+**Actual:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming` does `wasCancelled := ...; if wasCancelled { _handleStreamCancelled(); return }` — returns without calling `_cleanupStreamState()`. The `_streamContent`/`_streamPID`/etc. keys remain in `requestParams`, polluting the next `sendStreamingRequest` (which overwrites most but not all) and leaving `IsSet` checks stale.
+
+**Evidence:** `StreamHandler.ahk` `_finalizeStreaming` — `wasCancelled` branch `return` without `_cleanupStreamState`; the non-cancel path does `_handleStreamComplete` + `_cleanupStreamState`.
+
+**Verification:** headless scenario 98 (noApp) asserts `wasCancelled` branch has `_handleStreamCancelled` + `return` but no `_cleanupStreamState` before `return`.
+
 ---
 
 ## History (append-only)
@@ -1406,4 +1470,5 @@ closure; never rewrite past entries.
 - 2026-08-04 - "Per-thread system prompt / temperature edits are discarded on reload when an assistant is active" - FIXED in a30ae19: `_restoreThreadSettings` now applies the assistant's system message / reasoning / temperature ONLY when the thread has no per-thread override for that field, so per-thread edits survive reloads and reach the API request; scenario 47 flipped to a regression check (`regression: true`) + ChatSettings AHK unit tests (overrides win; assistant defaults still apply when no override).
 - 2026-08-04 - "Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)" - FIXED in 50d4111: `#sysMsgMini` now has an input listener that updates `_currentSettings.systemMessage` and posts the debounced `updateModelSettings` (mirrors the modal Save path); scenario 60 flipped to a regression check (`regression: true`) + model-picker-config unit test.
 - 2026-08-04 - "Commands Advanced card collapses when you click inside it to edit a field" - FIXED in b31a6b9: the Advanced toggle listener moved from the whole `.cmd-advanced-wrap` to the `.cmd-advanced-toggle` header, so clicks inside fields no longer collapse the card; scenario 27 flipped to a regression check (`regression: true`) + commands-advanced-toggle unit test.
+
 
