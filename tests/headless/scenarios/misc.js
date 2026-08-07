@@ -382,7 +382,8 @@ scenarios.push({
 
 scenarios.push({
   id: 73,
-  name: "GoogleChatCompletions disabled config missing include_thoughts for 2.x",
+  name: "GoogleChatCompletions disabled config includes include_thoughts:false for 2.x",
+  regression: true, // FIXED bug kept as a regression check (disabled config must be symmetric with enabled)
   mode: null,
   noApp: true,
   async body() {
@@ -391,9 +392,9 @@ scenarios.push({
     const disabledEnd = gc.indexOf("static ThinkingConfig", disabledStart);
     const disabled = gc.slice(disabledStart, disabledEnd);
     const hasBudget0 = /thinking_budget: 0/.test(disabled);
-    const hasInclude = /include_thoughts/.test(disabled);
-    if(!hasBudget0 || hasInclude) throw new Error("bug not reproduced hasBudget0="+hasBudget0+" hasInclude="+hasInclude);
-    return "GoogleChatCompletions.DisabledConfig returns {thinking_budget:0} without include_thoughts";;
+    const hasIncludeFalse = /include_thoughts: false/.test(disabled);
+    if(!hasBudget0 || !hasIncludeFalse) throw new Error("bug #73 not fixed: hasBudget0=" + hasBudget0 + " hasIncludeFalse=" + hasIncludeFalse);
+    return "GoogleChatCompletions.DisabledConfig returns {include_thoughts:false, thinking_budget:0} for Gemini 2.x";
   }
 });
 

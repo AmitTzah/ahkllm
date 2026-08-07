@@ -625,4 +625,16 @@ class LLMRequestBuilderTest {
         if r2.providerKey != "deepseek"
             throw Error("mygpt-custom should fall back to deepseek, got '" r2.providerKey "'")
     }
+
+    ; Regression (bug #73): the Gemini 2.x disabled thinking config must
+    ; include include_thoughts:false (symmetric with the enabled config).
+    GoogleDisabledConfig_IncludesThoughtsFalse() {
+        cfg := GoogleChatCompletions.DisabledConfig("google/gemini-2.0-flash")
+        if !cfg.HasOwnProp("include_thoughts")
+            throw Error("Gemini 2.x disabled config must include include_thoughts")
+        if cfg.include_thoughts != false
+            throw Error("include_thoughts should be false, got '" cfg.include_thoughts "'")
+        if cfg.thinking_budget != 0
+            throw Error("thinking_budget should be 0, got '" cfg.thinking_budget "'")
+    }
 }

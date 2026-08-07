@@ -35,8 +35,9 @@ class GoogleChatCompletions {
             return { thinking_level: "MINIMAL" }
         if (GoogleChatCompletions._IsGemma4(modelId))
             return { thinking_level: "MINIMAL" }
-        ; Gemini 2.x: disable via budget 0
-        return { thinking_budget: 0 }
+        ; Gemini 2.x: disable via budget 0; include_thoughts:false keeps the
+        ; payload symmetric with the enabled config (bug #73).
+        return { include_thoughts: false, thinking_budget: 0 }
     }
 
     ; ----------------------------------------------------
