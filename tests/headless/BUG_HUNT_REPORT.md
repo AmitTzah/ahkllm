@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **63 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **63 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #44 fix applied (fork now inherits font_size + toggles, scenario 44 PASS, suites green); awaiting user commit.
+- **Where we left off:** 2026-08-07 — bug #44 FIXED and committed in 1dd7ee8 (fork now inherits font_size + toggles, scenario 44 flipped to regression); next: bug #33 per rank order.
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 44. Forking a chat drops the per-thread font size and Advanced toggles
-
-**Scenario:** 44 (scenario code in e2e-suite.js)
-
-**Status:** awaiting user commit
-
-**Repro:** set a custom chat font size (topbar +/Ã¢â‚¬â€œ) and/or Advanced toggles
-(Code Execution / Web Search) in a thread, then click Fork on any message.
-
-**Expected:** the forked thread inherits the per-thread settings â€” same font size
-and same toggle states.
-
-**Actual:** the fork starts at the defaults (17px, toggles off).
-`TreeRepo._CopyThreadSettings` copies model/system/reasoning/temperature/assistant
-but never `font_size` or `advanced_toggles`, even though both are per-thread
-columns that every other settings path reads and writes (`Thread_UpdateSettings`,
-`ThreadRepo.GetSettings`).
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` contains no
-`font_size` / `advanced_toggles` UPDATE; `chat/db/ThreadRepo.ahk` `GetSettings()`
-returns both fields.
-
-**Verification:** headless scenario 44 seeds a thread with `font_size=20` and
-`advanced_toggles` JSON, forks it from the UI, and queries the new thread:
-`font_size=17` and `advanced_toggles=''`, while the topbar font display shows
-17px instead of 20px.
 
 ### 33. Clearing the chat-window icon setting still loads the default custom icon
 
@@ -1523,6 +1496,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Forking a chat drops the per-thread font size and Advanced toggles" - FIXED in 1dd7ee8: TreeRepo._CopyThreadSettings now copies font_size and advanced_toggles (was only model/system/reasoning/temperature/assistant); scenario 44 flipped to regression check (regression: true) + ChatDB fork unit test.
 
 - 2026-08-07 - "Font-size +/- buttons use a stale 17px base after a thread with a custom size loads" - FIXED in bf7d0aa: UiControls now exposes syncFontSize() and model-picker-config calls it when applying per-thread font size; scenario 31 flipped to regression check (regression: true) + ui-controls unit test.
 
