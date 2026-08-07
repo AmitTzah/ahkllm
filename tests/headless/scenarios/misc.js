@@ -583,4 +583,32 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 89,
+  name: "CurlBuilder API key with double quote breaks cURL Authorization header",
+  mode: null,
+  noApp: true,
+  async body() {
+    const cb=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","CurlBuilder.ahk"),"utf8");
+    const hasBearer = /Authorization: Bearer.*providerInfo\.apiKey/.test(cb);
+    const escapes = /Escape.*apiKey/.test(cb) || /StrReplace.*apiKey.*"/.test(cb);
+    if(!hasBearer || escapes) throw new Error("bug not reproduced hasBearer="+hasBearer+" escapes="+escapes);
+    return "CurlBuilder interpolates apiKey into Authorization header without escaping double quote";
+  }
+});
+
+scenarios.push({
+  id: 90,
+  name: "SettingsService SaveFromWebView with empty data corrupts settings via string iteration",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sm=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsMerge.ahk"),"utf8");
+    const hasOverrideLoop = /for k, v in incoming/.test(sm);
+    const checksIsMap = /if IsObject\(incoming\)/.test(sm);
+    if(!hasOverrideLoop || checksIsMap) throw new Error("bug not reproduced");
+    return "SettingsMerge.Override iterates over incoming without IsObject check � empty string would iterate chars";
+  }
+});
+
 module.exports = scenarios;

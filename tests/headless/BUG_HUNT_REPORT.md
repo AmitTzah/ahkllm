@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **50 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **52 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #87 (Last Month UTC vs local), #88 (Last 30 Days UTC vs local) � both headless PASS. Sync OK 50 entries / 84 scenarios (34 regression). Previous batches up to #86 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #89 (CurlBuilder apiKey double-quote), #90 (SettingsMerge.Override empty string iterates chars) � both headless PASS. Sync OK 52 entries / 86 scenarios (34 regression). Previous batches up to #88 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1276,6 +1276,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `chat/db/UsageRepo.ahk` `date('now','-30 days')`; `webui/js/usage-dashboard.js` `days=30` + `new Date()`.
 
 **Verification:** headless scenario 88 (noApp) asserts both UTC and local patterns exist.
+
+### 89. CurlBuilder interpolates API key with `"` into `-H "Authorization: Bearer ..."` without escaping � header break / injection
+
+**Scenario:** 89 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** set any provider `apiKey` (direct mode) to contain a double quote, e.g. `sk-"test`, save, then trigger any LLM request (chat or command).
+
+**Expected:** the key is shell-escaped or the header is built via a safe API, not via string interpolation.
+
+**Actual:** `api/CurlBuilder.ahk` `Build`/`BuildStream`/`BuildFIM` do `'-H "Authorization: Bearer ' providerInfo.apiKey '" '` with no `StrReplace` or `SQLite.Escape` for `"`. A key containing `"` closes the `"` early, breaking the cURL command line (`Authorization: Bearer sk-` + `"` + `test` + `"` ? header is `sk-` and `test` becomes a stray argument). A key like `sk-" && echo pwned && "` could inject a second command when the `Run` goes through `cmd` (stream path does, via `2>`).
+
+**Evidence:** `api/CurlBuilder.ahk` three builders interpolate `providerInfo.apiKey` into `"`-quoted header with no escaping.
+
+**Verification:** headless scenario 89 (noApp) asserts `Authorization: Bearer` + `apiKey` exists and no `Escape`/`StrReplace` for `apiKey` exists.
+
+### 90. SettingsMerge.Override iterates over `incoming` without `IsObject` guard � empty string corrupts settings
+
+**Scenario:** 90 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** send a `saveSettings` IPC with `data: ""` (empty string) instead of an object � e.g. via a crafted `chrome.webview.postMessage` or a WebView bug.
+
+**Expected:** `Override` should guard `if !IsObject(incoming)` or check `incoming is Map`, and ignore non-Map payloads.
+
+**Actual:** `app/settings/SettingsMerge.ahk` `Override(incoming, base)` does `for k, v in incoming` with no `IsObject` check. In AHK, `for k, v in ""` iterates over the string�s characters (`k=1, v='"'`, `k=2, v='{'` �), so `result["1"] := '"'`, `result["2"] := '{'` etc. The merged settings Map gets polluted with numeric string keys and single-character values, then `SettingsPersistence.Save` writes a corrupted `settings.json`.
+
+**Evidence:** `app/settings/SettingsMerge.ahk` `Override` `for k, v in incoming` with no `IsObject` guard.
+
+**Verification:** headless scenario 90 (noApp) asserts `for k, v in incoming` exists and no `IsObject(incoming)` guard exists.
 
 ---
 
