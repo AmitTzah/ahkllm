@@ -441,6 +441,20 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #70): FTS5 MATCH must quote terms so special characters
+    ; (e.g. C++) do not produce a syntax error / empty results.
+    SearchMessages_FTS5EscapesSpecialChars() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "I code C++ daily"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "plain text"})
+        results := ChatDB.SearchMessages("C++", threadId)
+        if results.Length != 1
+            throw Error("searching for C++ should match only the C++ message, got " results.Length)
+        if !InStr(results[1].contentPreview, "C++")
+            throw Error("expected the C++ message, got '" results[1].contentPreview "'")
+        this._teardown()
+    }
+
     ; Regression (bug #63): a model with cachedInput="" must fall back to 10%
     ; of the input price instead of showing 0 in the token-bar pricing unit.
     GetThreadStats_CachedInputEmpty_FallsBackToTenPercent() {

@@ -328,7 +328,8 @@ scenarios.push({
 
 scenarios.push({
   id: 70,
-  name: "Search FTS5 does not escape special characters ï¿½ C++ breaks MATCH",
+  name: "Search FTS5 quotes terms so special characters do not break MATCH",
+  regression: true, // FIXED bug kept as a regression check (FTS5 must not choke on special chars)
   mode: null,
   noApp: true,
   async body() {
@@ -337,10 +338,11 @@ scenarios.push({
     const launcher=require("../launch");
     const sr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
     const fts=sr.slice(sr.indexOf("static _FTS5"), sr.indexOf("static _FTS5")+2500);
+    // FIXED (bug #70): terms are quoted for FTS5 MATCH.
+    const quotesTerms = /_FTS5QuoteTerm\(trimmed\)/.test(fts);
     const buildsRaw = /ftsExpr \.= trimmed/.test(fts);
-    const escapesDouble = /StrReplace\(ftsExpr, "\""/.test(fts);
-    if(!buildsRaw || escapesDouble) throw new Error("bug not reproduced buildsRaw="+buildsRaw+" escapesDouble="+escapesDouble);
-    return "SearchRepo._FTS5 builds from raw trimmed words and only escapes single quotes ï¿½ C++ breaks MATCH";
+    if(!quotesTerms || buildsRaw) throw new Error("bug #70 not fixed: quotesTerms=" + quotesTerms + " buildsRaw=" + buildsRaw);
+    return "SearchRepo._FTS5 quotes each term (_FTS5QuoteTerm), so C++ / quoted queries no longer break MATCH";
   }
 });
 

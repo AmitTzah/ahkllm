@@ -60,7 +60,10 @@ class SearchRepo {
                 firstWord := trimmed
             if StrLen(ftsExpr) > 0
                 ftsExpr .= " AND "
-            ftsExpr .= trimmed
+            ; Bug #70: FTS5 MATCH treats " + - : ( ) * etc. as operators, so
+            ; quote each term to match it literally (a trailing * still does
+            ; prefix matching on the quoted term).
+            ftsExpr .= SearchRepo._FTS5QuoteTerm(trimmed)
         }
         if !ftsExpr
             return []
@@ -116,6 +119,13 @@ class SearchRepo {
              . " LIMIT 20"
 
         return SearchRepo._BuildResults(sql)
+    }
+
+    ; Bug #70: wrap an FTS5 term in double quotes (quoted strings match
+    ; literally) and escape embedded quotes by doubling them.
+    static _FTS5QuoteTerm(term) {
+        term := StrReplace(term, '"', '""')
+        return '"' term '"'
     }
 
     ; LIKE '%term%' substring — case-insensitive for ASCII (SQLite LIKE default)
