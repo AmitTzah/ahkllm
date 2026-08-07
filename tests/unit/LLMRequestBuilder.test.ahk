@@ -650,4 +650,21 @@ class LLMRequestBuilderTest {
         if !t2.Has("high")
             throw Error("custom model should fall back to the generic table")
     }
+
+    ; Regression (bug #89, security): the API key must be sanitized before it
+    ; is embedded in the cURL Authorization header.
+    CurlBuilder_SanitizesApiKey() {
+        providerInfo := { endpoint: "https://api.test/v1", apiKey: 'sk-" && echo pwned && "', fimEndpoint: "" }
+        cmd := CurlBuilder.Build(providerInfo, "req.json", "out.json")
+        if InStr(cmd, 'sk-"')
+            throw Error("crafted key must not appear raw in the curl command: " cmd)
+        if !InStr(cmd, "Authorization: Bearer sk-")
+            throw Error("sanitized key should remain in the header: " cmd)
+        ; The quote break and command separators must be gone (the remaining
+        ; words are inert header text, not a second command).
+        if InStr(cmd, '&&')
+            throw Error("command separator survived in the curl command: " cmd)
+        if InStr(cmd, '" echo ')
+            throw Error("quote break survived in the curl command: " cmd)
+    }
 }

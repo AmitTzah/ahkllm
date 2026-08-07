@@ -624,15 +624,16 @@ scenarios.push({
 
 scenarios.push({
   id: 89,
-  name: "CurlBuilder API key with double quote breaks cURL Authorization header",
+  name: "CurlBuilder sanitizes the API key in the Authorization header (injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted keys must not break/inject the curl command)
   mode: null,
   noApp: true,
   async body() {
     const cb=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","CurlBuilder.ahk"),"utf8");
-    const hasBearer = /Authorization: Bearer.*providerInfo\.apiKey/.test(cb);
-    const escapes = /Escape.*apiKey/.test(cb) || /StrReplace.*apiKey.*"/.test(cb);
-    if(!hasBearer || escapes) throw new Error("bug not reproduced hasBearer="+hasBearer+" escapes="+escapes);
-    return "CurlBuilder interpolates apiKey into Authorization header without escaping double quote";
+    const hasSanitize = /_SafeApiKey/.test(cb);
+    const rawInterp = /Authorization: Bearer ' providerInfo\.apiKey '/.test(cb);
+    if(!hasSanitize || rawInterp) throw new Error("bug #89 not fixed: hasSanitize=" + hasSanitize + " rawInterp=" + rawInterp);
+    return "CurlBuilder sanitizes the API key (_SafeApiKey strips \\\" % & | < > ^) before embedding it in the Authorization header";
   }
 });
 

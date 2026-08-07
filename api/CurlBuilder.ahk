@@ -19,7 +19,7 @@ class CurlBuilder {
     static Build(providerInfo, requestFile, outputFile) {
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
-            . '-H "Authorization: Bearer ' providerInfo.apiKey '" '
+            . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '"'
@@ -30,7 +30,7 @@ class CurlBuilder {
     static BuildStream(providerInfo, requestFile, outputFile, errorFile) {
         return 'cURL.exe -s --no-buffer --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
-            . '-H "Authorization: Bearer ' providerInfo.apiKey '" '
+            . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '" '
@@ -45,10 +45,25 @@ class CurlBuilder {
         }
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . endpoint ' '
-            . '-H "Authorization: Bearer ' providerInfo.apiKey '" '
+            . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '"'
+    }
+
+    ; Bug #89 (security): the API key is embedded in a "..."-quoted header on
+    ; the cURL command line - remove characters that can break the quote or
+    ; inject commands when the command runs through cmd. Bearer tokens never
+    ; legitimately contain these.
+    static _SafeApiKey(key) {
+        key := StrReplace(key, '"', '')
+        key := StrReplace(key, '%', '')
+        key := StrReplace(key, '&', '')
+        key := StrReplace(key, '|', '')
+        key := StrReplace(key, '<', '')
+        key := StrReplace(key, '>', '')
+        key := StrReplace(key, '^', '')
+        return key
     }
 
 }
