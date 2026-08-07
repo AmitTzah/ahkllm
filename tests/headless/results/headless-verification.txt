@@ -1,5 +1,5 @@
-# 2026-08-07T21:36:06.170Z | run of 1 scenario(s)
-PASS | #69 | Search LIKE escapes % _ \ wildcards (literal search) | SearchRepo._EscapeLike escapes \ % _ (used by _Like and _Titles), so searching for % matches only literal percent | 0.0s
+# 2026-08-07T21:40:48.541Z | run of 1 scenario(s)
+PASS | #70 | Search FTS5 quotes terms so special characters do not break MATCH | SearchRepo._FTS5 quotes each term (_FTS5QuoteTerm), so C++ / quoted queries no longer break MATCH | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

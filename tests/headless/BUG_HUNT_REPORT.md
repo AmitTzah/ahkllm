@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **36 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **35 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #69 FIXED in e452650; next: bug #70 (search FTS5 MATCH does not escape special characters).
+- **Where we left off:** 2026-08-07 — bug #70 FIXED in ab3ef6b; next: bug #71 (clearing Thread Title Generation fields leaves stale globals).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 70. Search FTS5 MATCH does not escape special characters - C++ or "hello" breaks the query (empty results)
-
-**Scenario:** 70 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** seed messages containing `C++`, `hello:world`, or `foo-bar`, then search for `C++` (or a quoted phrase `"hello"`).
-
-**Expected:** FTS5 should treat the query as literal terms or return the LIKE fallback results.
-
-**Actual:** `SearchRepo._FTS5` builds `ftsExpr` as `trimmed` words joined by ` AND ` with a trailing `*`, then only does `safeFTS := StrReplace(ftsExpr, "'", "''")`. FTS5 special characters `"` `(` `)` `:` `-` `+` `*` etc. are not escaped/quoted. `C++` becomes `MATCH 'C++*'` (plus is a FTS5 operator) and throws `fts5: syntax error near "+"`, causing `_FTS5` to return `[]` and the search falls through to LIKE (which then may also mis-handle it). Quoted queries like `"hello"` become `MATCH '"hello"*'` (unbalanced) and also error.
-
-**Evidence:** `chat/db/SearchRepo.ahk` `static _FTS5` - `ftsExpr .= trimmed` raw, `safeFTS := StrReplace(ftsExpr, "'", "''")` only.
-
-**Verification:** headless scenario 70 (noApp) asserts `ftsExpr .= trimmed` exists and no `StrReplace` for `"` or `(` exists.
 
 ### 71. Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]
 
@@ -842,6 +826,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Search FTS5 MATCH does not escape special characters - C++ or \"hello\" breaks the query (empty results)" - FIXED in ab3ef6b: SearchRepo._FTS5 now quotes each term (_FTS5QuoteTerm, doubling embedded quotes) so FTS5 special characters match literally and the trailing * still does prefix matching; scenario 70 flipped to a regression static check + ChatDB unit test.
 
 - 2026-08-07 - "Search LIKE fallback does not escape % _ \\ - searching for % returns all messages" - FIXED in e452650: new SearchRepo._EscapeLike escapes \\ % _ (used by _Like and _Titles) so user input is matched literally; scenario 69 flipped to a regression static check + ChatDB unit test.
 
