@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **61 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **60 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #34 FIXED and committed in fb7fce8 (tray icon now re-applies live on settings updates via app/TrayIcon.ahk + settings hook; scenario 34 flipped to regression); next: bug #35 per rank order.
+- **Where we left off:** 2026-08-07 — bug #35 FIXED in b3a50f8; next: bug #36 (command temperature/reasoning are dropped when the command model equals the app default).
 ---
 
 ## Bug entry template
@@ -207,32 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 35. Temperature override of 0 is dropped when the thread reloads (right rail shows Default)
-
-**Scenario:** 35 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set the chat right-rail temperature slider to 0.0, then switch to
-another chat and back (or restart the app) and look at the temperature slider.
-
-**Expected:** the slider shows 0.0 and the next request uses temperature 0.
-
-**Actual:** the override is silently lost â€” the rail shows "Default" (slider 1.0)
-and requests use the model default. `_restoreThreadSettings` gates restoration
-with `if settings.temperatureOverride`, and AHK treats the numeric 0 as falsy, so
-the saved 0 override is never applied back to `requestParams`. A later right-rail
-save then overwrites `temperature_override` with NULL, wiping it permanently.
-
-**Evidence:** `chat/ChatSettings.ahk` `_restoreThreadSettings()`:
-`if settings.temperatureOverride requestParams["temperatureOverride"] := settings.temperatureOverride`;
-`chat/db/ThreadRepo.ahk` `GetSettings()` returns the raw numeric column
-(0 when set), and `_ClearRequestOverrides()` empties the override on every load.
-
-**Verification:** headless scenario 35 seeds a thread with
-`temperature_override = 0`, loads it in the real app, and observes the right-rail
-temperature shows "Default" / slider 1.0 instead of 0.0.
 
 ### 36. Command temperature/reasoning are dropped when the command model equals the app default
 
@@ -1443,6 +1417,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Temperature override of 0 is dropped when the thread reloads (right rail shows Default)" - FIXED in b3a50f8: ThreadSettings.ComputeEffective now tracks hasTemperatureOverride so a stored 0 is a valid override (assistant temperature only applies when there is no per-thread override); scenario 35 flipped to a live regression check (sse-success asserting temperature 0 in the request) + ChatSettings AHK unit tests (ComputeEffective and restore path).
 
 - 2026-08-07 - "Tray icon changes don't apply until restart" - FIXED in fb7fce8: new app/TrayIcon.ahk re-applies the tray icon from the current icons globals (honoring suspend state) at startup and via a SettingsService hook, so icon edits apply live; scenario 34 flipped to regression check (regression: true) + TrayIcon unit tests.
 

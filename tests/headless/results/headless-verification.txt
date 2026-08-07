@@ -1,5 +1,5 @@
-# 2026-08-07T17:11:35.558Z | run of 1 scenario(s)
-PASS | #34 | Tray icon changes apply live on settings updates (static check of the settings-update path) | Tray icon rebuild runs at startup, is registered as the trayIcon settings hook, honors suspend state, and the settings-update handler reloads via SettingsService | 0.0s
+# 2026-08-07T20:18:55.677Z | run of 1 scenario(s)
+PASS | #35 | Temperature override of 0 is restored when the thread reloads (request uses 0) | thread with temperature_override=0 sent a request with temperature=0 (0) | 6.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
