@@ -283,18 +283,18 @@ scenarios.push({
   id: 33,
   name: 'Clearing the chat-window icon setting still loads the default custom icon',
   mode: null,
+  regression: true, // FIXED: clearing icon now correctly clears global (was skipped and kept default)
   settings: { icons: { iconOn: '', iconOff: '' } },
   async body() {
     const defaultIco = path.join(launcher.REPO_ROOT, 'icons', 'IconOn.ico');
     const info = runIconCheck(defaultIco);
     if (info.hwnd === 0) throw new Error('chat window not found; probe=' + JSON.stringify(info));
     if (info.renderFailed === 1) throw new Error('icon render failed 3x; probe=' + JSON.stringify(info));
-    // BUG: with icons.iconOn="" the window still shows the default IconOn.ico
-    // because SettingsApply._ApplyIcons skips empty values, so the global keeps
-    // default-settings/DefaultSettings.ahk's icons\IconOn.ico and ChatWindow loads it.
-    if (info.customApplied !== 1)
-      throw new Error('cleared icon was honored (bug not reproduced): ' + JSON.stringify(info));
-    return 'window shows the default IconOn.ico fingerprint even though icons.iconOn was cleared (' + JSON.stringify(info) + ')';
+    // FIXED: with icons.iconOn="" the window now correctly shows no custom icon
+    // because SettingsApply._ApplyIcons now applies empty values (was skipped).
+    if (info.customApplied !== 0)
+      throw new Error('cleared icon was NOT honored (fix broken): ' + JSON.stringify(info));
+    return 'window correctly shows no custom IconOn.ico fingerprint when icons.iconOn is cleared (' + JSON.stringify(info) + ')';
   }
 });
 

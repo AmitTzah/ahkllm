@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **63 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **62 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #44 FIXED and committed in 1dd7ee8 (fork now inherits font_size + toggles, scenario 44 flipped to regression); next: bug #33 per rank order.
+- **Where we left off:** 2026-08-07 — bug #33 fix applied (clearing icon now correctly clears global, scenario 33 PASS, suites green); awaiting user commit.
 ---
 
 ## Bug entry template
@@ -212,7 +212,7 @@ one at a time, in rank order.
 
 **Scenario:** 33 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** awaiting user commit
 
 **Repro:** Settings -> Icons -> clear both icon paths -> Save -> look at the chat
 window title-bar/taskbar icon.

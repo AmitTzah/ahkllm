@@ -249,9 +249,9 @@ class SettingsApply {
         if !settings.Has("icons")
             return
         ic := settings["icons"]
-        if ic.Has("iconOn") && ic["iconOn"] != ""
+        if ic.Has("iconOn")
             iconOn := ic["iconOn"]
-        if ic.Has("iconOff") && ic["iconOff"] != ""
+        if ic.Has("iconOff")
             iconOff := ic["iconOff"]
     }
 

@@ -252,4 +252,24 @@ class SettingsHandlerTest {
         closeWindowsHotkey := oldClose
         suspendHotkey := oldSuspend
     }
+    ; Regression: clearing an icon field saves "" and must clear the global,
+    ; not keep the previous custom/default icon (bug #33).
+    ApplyToGlobals_EmptyIconClearsGlobal() {
+        global iconOn, iconOff
+        oldOn := iconOn
+        oldOff := iconOff
+        iconOn := "icons\\IconOn.ico"
+        iconOff := "icons\\IconOff.ico"
+        settings := Map()
+        ic := Map("iconOn", "", "iconOff", "")
+        settings["icons"] := ic
+        SettingsHandler.ApplyToGlobals(settings)
+        if iconOn != ""
+            throw Error("Expected iconOn='' after clearing, got: " iconOn)
+        if iconOff != ""
+            throw Error("Expected iconOff='' after clearing, got: " iconOff)
+        iconOn := oldOn
+        iconOff := oldOff
+    }
+
 }
