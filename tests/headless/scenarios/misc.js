@@ -431,16 +431,16 @@ scenarios.push({
 
 scenarios.push({
   id: 76,
-  name: "initChatMode guard prevents activeThreadId update when already set ï¿½ stale thread",
+  name: "initChatMode always updates activeThreadId on thread switch",
+  regression: true, // FIXED bug kept as a regression check (loaded thread must become active even when one was already set)
   mode: null,
   noApp: true,
   async body() {
     const cc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-core.js"),"utf8");
     const hasGuard = /if \(data && data\.threadId && !activeThreadId\)/.test(cc);
-    const hasDirectAssign = /activeThreadId = data\.threadId/.test(cc);
-    // Guard means if activeThreadId already holds old thread's id, new thread's id is ignored
-    if(!hasGuard || !hasDirectAssign) throw new Error("bug not reproduced hasGuard="+hasGuard);
-    return "chat-core.js initChatMode only sets activeThreadId when !activeThreadId ï¿½ stale if already set";
+    const assigns = /if \(data && data\.threadId\)\s*\{\s*activeThreadId = data\.threadId/.test(cc);
+    if(hasGuard || !assigns) throw new Error("bug #76 not fixed: hasGuard=" + hasGuard + " assigns=" + assigns);
+    return "initChatMode always updates activeThreadId from the loaded thread, so thread switches/search/sends target the right thread";
   }
 });
 
