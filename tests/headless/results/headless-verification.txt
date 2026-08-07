@@ -1,5 +1,5 @@
-# 2026-08-07T20:46:36.940Z | run of 1 scenario(s)
-PASS | #49 | Canceling a message edit rolls back deferred attachment removals | Edit -> remove attachment -> Cancel: wrapper display=none -> , DB rows during=1 after=1, _editingMessageId=null (cancel rolls back the deferred removal) | 5.8s
+# 2026-08-07T20:50:12.469Z | run of 1 scenario(s)
+PASS | #48 | Forking a chat keeps the token/cost stats (active_path_tokens and cumulative counters are copied) | source token bar: "40 / 1m↑ 10  ↓ 202$0.50"; fork token bar: "10 / 1m↑ 10  ↓ 202$0.50" (cumulative_cost=0.5, leaf active_path_tokens=10) | 6.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

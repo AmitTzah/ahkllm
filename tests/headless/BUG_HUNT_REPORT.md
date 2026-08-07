@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **51 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **50 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #49 FIXED in 5597ff1; next: bug #48 (forking a chat resets the token/cost stats).
+- **Where we left off:** 2026-08-07 — bug #48 FIXED in 4bdfc51; next: bug #52 (usage dashboard double-counts thinking tokens for command usage).
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 48. Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)
-
-**Scenario:** 48 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open a chat with some token/cost history (token bar shows context
-used and a running cost), click Fork on a message, and look at the forked
-chat's token bar.
-
-**Expected:** the fork reflects the copied conversation â€” at least the active
-path's context tokens, and ideally the totals.
-
-**Actual:** the fork's token bar resets to 0 / $0.00. `TreeRepo.ForkThread`
-copies message rows but neither the thread's `cumulative_*` counters nor the
-leaf's `active_path_tokens`, and it never calls `_RecomputeActivePath` on the
-new thread â€” so `GetThreadStats` reads zeros.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread()`/`_InsertForkMessage()` â€”
-no `active_path_tokens` column in the INSERT and no `_RecomputeActivePath`
-call; `ThreadRepo.Create()` starts cumulative counters at 0.
-
-**Verification:** headless scenario 48 seeds a thread with token stats
-(`active_path_tokens` + cumulative counters), confirms the source token bar
-shows them, forks from the UI, and observes the fork's token bar shows $0.00
-and the new thread's leaf `active_path_tokens` is 0.
 
 ### 52. Usage dashboard double-counts thinking tokens for command usage
 
@@ -1166,6 +1139,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)" - FIXED in 4bdfc51: TreeRepo.GetActivePath now selects active_path_tokens, _InsertForkMessage/_CopyOffPathSiblings copy it per message, and ForkThread carries the source thread's cumulative counters to the fork, so the token bar keeps context + cost; scenario 48 flipped to a regression check + ChatDB fork unit test.
 
 - 2026-08-07 - "Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)" - FIXED in 5597ff1: the edit Cancel handler now restores wrappers of deferred-removed attachments, clears _removedAttachmentIds, and resets _editingMessageId, so cancel is a clean rollback; scenario 49 flipped to a regression check + chat-branching unit test.
 
