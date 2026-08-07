@@ -1,4 +1,4 @@
-# Bug Hunt Report (living document)
+﻿# Bug Hunt Report (living document)
 
 > **READ THIS FIRST.** This file is the single source of truth for open bugs. The harness
 > manual is `README.md` in this folder. Start here; resume from "Where we left off".
@@ -12,7 +12,7 @@
 
 | File | Touched when |
 |---|---|
-| `BUG_HUNT_REPORT.md` (this file) | every step — statuses, entries, history, "Where we left off" |
+| `BUG_HUNT_REPORT.md` (this file) | every step â€” statuses, entries, history, "Where we left off" |
 | `e2e-suite.js` + `scenarios/*.js` | intake: add a scenario; fix cycle: flip an assertion |
 | `tests/unit/*` + `tests/run_ahk_tests.ahk` | fix cycle: regression tests |
 | production source (`app/`, `chat/`, `webui/`, `api/`, `shared/`) | fix cycle step 2 only |
@@ -22,20 +22,20 @@
 | Status | Meaning | Set when |
 |---|---|---|
 | `reported` | Suspected bug written up; not yet reproduced | Phase 1, when the entry is written |
-| `verified` | Scenario PASSED — bug reproduced headlessly | Phase 1, after the scenario passes |
+| `verified` | Scenario PASSED â€” bug reproduced headlessly | Phase 1, after the scenario passes |
 | `fix in progress` | Agent is implementing the fix | Phase 2, before editing any code |
 | `fix applied` | Code + tests green; waiting for user to verify | Phase 2, before asking the user |
 | `awaiting user commit` | User verified; waiting for the commit | Phase 2, before suggesting the commit |
-| *(removed)* | User committed → entry deleted, moved to History | Phase 2, after the commit |
+| *(removed)* | User committed â†’ entry deleted, moved to History | Phase 2, after the commit |
 
 Only `verified` bugs are fixed, one at a time, in rank order.
 
-**Scenario line:** every entry references its verifying scenario by id — the scenario
+**Scenario line:** every entry references its verifying scenario by id â€” the scenario
 *code* lives in `scenarios/*.js` (runner: `e2e-suite.js`), not in this file. Run it with
 `node tests/headless/e2e-suite.js --scenarios=<id>`. `--check-sync` verifies every
 entry's id exists (and that every non-regression scenario has an entry).
 
-**Phase 1 — Intake** (a bug enters and gets verified here):
+**Phase 1 â€” Intake** (a bug enters and gets verified here):
 
 1. Write the entry in this file (Repro / Expected / Actual / Evidence + scenario id) with
    `Status: reported`. **[file: this file]**
@@ -43,27 +43,27 @@ entry's id exists (and that every non-regression scenario has an entry).
    **[file: `tests/headless/scenarios/`]**
 3. Run `node tests/headless/e2e-suite.js --check-sync` (must say OK), then
    `--scenarios=<id>` (must PASS = bug reproduced). **[no file edits]**
-4. PASS → set `Status: verified`, rank the entry, and update "Current state" (open count).
-   FAIL → the bug is not reproducible — delete the entry and add a one-line note to History.
+4. PASS â†’ set `Status: verified`, rank the entry, and update "Current state" (open count).
+   FAIL â†’ the bug is not reproducible â€” delete the entry and add a one-line note to History.
    **But:** if the FAIL message starts with `setup ->`, it is a harness/infrastructure
-   failure (app didn't launch, timeout connecting, element missing while preparing) — re-run
+   failure (app didn't launch, timeout connecting, element missing while preparing) â€” re-run
    or fix the scenario first; do NOT delete the entry. **[file: this file]**
-5. If the bug can't be automated (visual / environment-limited — see README), verify by
+5. If the bug can't be automated (visual / environment-limited â€” see README), verify by
    unit/static check or manually and say exactly how in the entry.
 
-**Phase 2 — Fix cycle** (one verified bug at a time; the scenario is re-run only to
+**Phase 2 â€” Fix cycle** (one verified bug at a time; the scenario is re-run only to
 confirm the fix, never to re-verify the bug):
 
 1. Pick the entry: normally the highest-ranked `verified` one, unless the user named a
-   specific bug ("fix bug #14") — that overrides rank order. Set `Status: fix in progress`
+   specific bug ("fix bug #14") â€” that overrides rank order. Set `Status: fix in progress`
    **before** editing any code. **[file: this file]**
 2. Fix the bug in production source. **[files: `app/`, `chat/`, `webui/`, `api/`, `shared/`]**
-3. Add/extend regression tests that assert the **fixed** behavior (unit/AHK as appropriate— the flipped scenario is the end-to-end check, but the fix also needs a code-level regression test when feasible; never delete or loosen an existing assertion to make it pass). **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
+3. Add/extend regression tests that assert the **fixed** behavior (unit/AHK as appropriateâ€” the flipped scenario is the end-to-end check, but the fix also needs a code-level regression test when feasible; never delete or loosen an existing assertion to make it pass). **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
    if you added an AHK test]**
 4. Flip the scenario assertion in `scenarios/*.js` to expect the **fixed** behavior
    (otherwise it fails forever). **[file: `tests/headless/scenarios/`]**
 5. Run `--scenarios=<id>` (must PASS = fix works) and the full AHK + JS suites. If it
-   FAILs, the fix is incomplete — go back to step 2. **[no file edits]**
+   FAILs, the fix is incomplete â€” go back to step 2. **[no file edits]**
 6. **Gate:** only after step 5 passes (scenario PASS + suites green) set
    `Status: fix applied`, then ask the user to verify manually using the repro steps.
    **[file: this file]**
@@ -79,26 +79,26 @@ confirm the fix, never to re-verify the bug):
 - Update "Where we left off" after **every step** (one line: what was done, what's next).
   That is the resume point if a task is closed midway.
 - Write each status change **before** the work it describes (interruption guard).
-- **Never trust a Status without re-running the scenario first** — re-verify before
+- **Never trust a Status without re-running the scenario first** â€” re-verify before
   assuming a bug is still open or already fixed.
 - **Never ask the user to verify or commit until the fix has PASSED its scenario
-  (flipped assertion) and the full AHK + JS suites** — the headless check always comes
+  (flipped assertion) and the full AHK + JS suites** â€” the headless check always comes
   first, the user's manual check is the final confirmation.
 - **A FAIL with `setup ->` in the message is a harness/infrastructure failure, not a
-  refutation** — investigate or re-run; never delete an entry because of it.
+  refutation** â€” investigate or re-run; never delete an entry because of it.
 - **Only one fix may be uncommitted at a time**: wait for the user's commit before
 - **Every fix ships with a regression test**: the flipped scenario is the end-to-end
   check, but the fix also needs a unit/AHK test in `tests/unit/*` asserting the fixed
-  behavior (unless the bug is visual/environment-limited— then say so in the entry).
+  behavior (unless the bug is visual/environment-limitedâ€” then say so in the entry).
   Never delete or loosen an existing assertion to make it pass.
   starting the next bug (the worktree must be clean of the previous fix).
 - Only one agent edits this document at a time.
 - Never delete an entry until the user has actually committed.
 - **Doc-set rule:** if you change the harness itself (new probe command, new helper, new
   mock mode), update `README.md`; if you change the workflow itself, update `ARCHITECTURE.md`.
-  Never hard-code drift-prone numbers (e.g. test totals) in docs — point at the runner
+  Never hard-code drift-prone numbers (e.g. test totals) in docs â€” point at the runner
   instead.
-- Only two files must stay in sync: this file and `e2e-suite.js` — `--check-sync`
+- Only two files must stay in sync: this file and `e2e-suite.js` â€” `--check-sync`
   enforces it after every edit.
 
 ## Harness safety: avoid the hanging-command trap
@@ -112,7 +112,7 @@ Why it hangs (verified 2026-08-01):
 
 - AHK v2 shows a **modal error dialog** (window class `#32770`, titled with the
   script name) for any unhandled runtime error. Headless, nothing can dismiss it
-  — the process hangs indefinitely. Example: plain `Object` has no `Has` method (only
+  â€” the process hangs indefinitely. Example: plain `Object` has no `Has` method (only
   `Map` does), so `o.Has("type")` on `o := {type:"enabled"}` throws; bracket-indexing
   a plain object (`o[k]`) throws too. Marker-file evidence: the script writes a
   marker before the throwing line and never after; the hung process shows the
@@ -133,8 +133,8 @@ How to run AHK safely:
    handler that writes diagnostics and `ExitApp(1)` (this converts a hang into a
    fast, logged failure), a watchdog `SetTimer(Exit, -15000)` for load-time hangs,
    and `try FileAppend` for results.
-3. **Always launch with a hard bound** — e.g. .NET `Process.Start` + `WaitForExit(ms)` +
-   `Kill()`, or `spawnSync` with `timeout` — never bare `&`.
+3. **Always launch with a hard bound** â€” e.g. .NET `Process.Start` + `WaitForExit(ms)` +
+   `Kill()`, or `spawnSync` with `timeout` â€” never bare `&`.
 4. **Never blanket-kill `AutoHotkey64.exe` processes.** No
    `Stop-Process -Name AutoHotkey64 -Force`, no `taskkill /IM AutoHotkey64.exe`.
    The user runs their own AHK scripts on this machine, and a blanket kill closes
@@ -154,15 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **52 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **52 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #93 (SettingsDefaults shallow copy), #94 (assistants UUID churn) � both headless PASS. Sync OK 55 entries / 89 scenarios (34 regression). Previous batches up to #92 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** audit 2026-08-07 — downgraded #86 (FIM XSS — duplicate of #57), #93 (shallow copy latent), #94 (UUID churn overstated — stable after CacheInitialDefaults) to eported; grouped #53/#87/#88 (UTC vs local drift) and #61/#71 (clearing fields stale global) as shared-root families. Sync OK 55 entries / 89 scenarios (34 regression). Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
-a bug is fixed and committed, its entry moves to History (one line) — this template
+a bug is fixed and committed, its entry moves to History (one line) â€” this template
 stays so future entries always have the same fields. `--check-sync` enforces that
 every entry's scenario id exists in `scenarios/*.js`, assembled by `e2e-suite.js` (and that every
 non-regression scenario has an entry).
@@ -181,7 +181,7 @@ non-regression scenario has an entry).
 
     **Evidence:** <file/line references or a one-line explanation of the cause>
 
-    **Verification:** <how the headless scenario proves it — what was clicked/driven
+    **Verification:** <how the headless scenario proves it â€” what was clicked/driven
     and what was observed; for non-automatable bugs, the unit/static/manual check
     and exactly how it was done>
 
@@ -191,17 +191,17 @@ Example (shape only, not a real bug):
 
     **Scenario:** 99 (scenario code in e2e-suite.js)
 
-    **Status:** verified — open
+    **Status:** verified â€” open
 
-    **Repro:** Settings → Hotkeys → set X → Save → press X.
+    **Repro:** Settings â†’ Hotkeys â†’ set X â†’ Save â†’ press X.
 
     **Expected:** the action runs.
 
-    **Actual:** nothing happens — `_ApplyHotkeys` never reads the setting.
+    **Actual:** nothing happens â€” `_ApplyHotkeys` never reads the setting.
 
     **Evidence:** `Main.ahk:12` wires the hotkey from a hardcoded value.
 
-    **Verification:** headless — pressed X via probe, observed no postMessage.
+    **Verification:** headless â€” pressed X via probe, observed no postMessage.
 
 Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fixed,
 one at a time, in rank order.
@@ -253,7 +253,7 @@ confirmation; click Delete.
 the delete preserves the message data.
 
 **Actual:** the confirmation says "This removes it from the current view but data
-is preserved", but confirming calls `ChatDB.Msg_HardDelete` — the message row,
+is preserved", but confirming calls `ChatDB.Msg_HardDelete` â€” the message row,
 its attachments, and its FTS index entry are permanently removed. Users who
 believe the message is recoverable can lose content with no undo.
 
@@ -263,7 +263,7 @@ believe the message is recoverable can lose content with no undo.
 
 **Verification:** headless scenario 30 seeds a two-message thread, clicks Delete
 on the user message, reads the dialog text (contains "data is preserved"), confirms,
-and queries the DB — the message row is gone.
+and queries the DB â€” the message row is gone.
 
 ### 31. Font-size +/- buttons use a stale 17px base after a thread with a custom size loads
 
@@ -279,7 +279,7 @@ switch to that thread from another chat, then click the topbar + button again.
 **Actual:** clicking + jumps the display to 18px. `UiControls.initFontControls()`
 reads `--chat-font-size` once at page load and caches 17; `populateCurrentSettings`
 later applies the thread's stored size (20px) to the CSS var and the display, but
-never resyncs the cached base — every +/- click counts from 17, so the font can
+never resyncs the cached base â€” every +/- click counts from 17, so the font can
 jump downward while the user is trying to increase it.
 
 **Evidence:** `webui/js/ui-controls.js` `initFontControls()` caches
@@ -297,10 +297,10 @@ instead of 21px.
 
 **Status:** verified
 
-**Repro:** set a custom chat font size (topbar +/â€“) and/or Advanced toggles
+**Repro:** set a custom chat font size (topbar +/Ã¢â‚¬â€œ) and/or Advanced toggles
 (Code Execution / Web Search) in a thread, then click Fork on any message.
 
-**Expected:** the forked thread inherits the per-thread settings — same font size
+**Expected:** the forked thread inherits the per-thread settings â€” same font size
 and same toggle states.
 
 **Actual:** the fork starts at the defaults (17px, toggles off).
@@ -333,7 +333,7 @@ window title-bar/taskbar icon.
 **Actual:** the window still shows `icons\IconOn.ico`. `SettingsApply._ApplyIcons`
 only assigns the globals when the saved value is non-empty, so saving an empty
 `icons.iconOn` leaves the `DefaultSettings.ahk` value (`icons\IconOn.ico`) in the
-`iconOn` global and `ChatWindow.ahk` loads it — clearing the icon can never take
+`iconOn` global and `ChatWindow.ahk` loads it â€” clearing the icon can never take
 effect, not even after a restart.
 
 **Evidence:** `app/settings/SettingsApply.ahk` `_ApplyIcons` skips `""` values;
@@ -341,7 +341,7 @@ effect, not even after a restart.
 `if iconOn != "" hIcon := LoadPicture(ResolveIconPath(iconOn), ...)`.
 
 **Verification:** headless scenario 33 seeds `icons: {iconOn:'', iconOff:''}`,
-launches the app, and probes the chat window icon via `WM_GETICON` — the rendered
+launches the app, and probes the chat window icon via `WM_GETICON` â€” the rendered
 pixels match IconOn.ico's fingerprint (`customApplied=1`), proving the cleared
 setting is ignored.
 
@@ -363,7 +363,7 @@ runs once at Main startup (and again only when suspend is toggled); the
 input window, but never re-applies the tray icon.
 
 **Evidence:** `Main.ahk` startup `TraySetIcon(iconOn)`; the `WM_SETTINGS_UPDATED`
-OnMessage handler has no `TraySetIcon` call (visual — cannot be asserted by the
+OnMessage handler has no `TraySetIcon` call (visual â€” cannot be asserted by the
 headless harness, hence the static scenario).
 
 **Verification:** headless scenario 34 (noApp) statically scans `Main.ahk`:
@@ -382,7 +382,7 @@ another chat and back (or restart the app) and look at the temperature slider.
 
 **Expected:** the slider shows 0.0 and the next request uses temperature 0.
 
-**Actual:** the override is silently lost — the rail shows "Default" (slider 1.0)
+**Actual:** the override is silently lost â€” the rail shows "Default" (slider 1.0)
 and requests use the model default. `_restoreThreadSettings` gates restoration
 with `if settings.temperatureOverride`, and AHK treats the numeric 0 as falsy, so
 the saved 0 override is never applied back to `requestParams`. A later right-rail
@@ -412,17 +412,17 @@ save, then trigger the command and watch the request.
 **Actual:** they are silently dropped. `processInitialRequest` persists
 per-thread settings (`temperatureOverride`, `reasoningOverride`, ...) only inside
 `if fullAPIModelName != appDefaultModel`, so a command using the default model
-never writes those overrides — the thread loads with defaults and the fired
+never writes those overrides â€” the thread loads with defaults and the fired
 request uses the model default temperature and no thinking config. (The system
 message survives because it is stored as a system message row, not an override.)
 
-**Evidence:** `app/RequestProcessor.ahk` — `ChatDB.Thread_UpdateSettings(threadId,
+**Evidence:** `app/RequestProcessor.ahk` â€” `ChatDB.Thread_UpdateSettings(threadId,
 { ... temperatureOverride: temperature, reasoningOverride: ... })` is nested in
 `if fullAPIModelName != appDefaultModel`.
 
 **Verification:** headless scenario 36 (noApp) statically scans
 `app/RequestProcessor.ahk` and asserts the temperature/reasoning overrides live
-inside the `!= appDefaultModel` gate — proving default-model commands skip them.
+inside the `!= appDefaultModel` gate â€” proving default-model commands skip them.
 
 ### 37. Tray menu item changes don't apply until restart
 
@@ -479,8 +479,8 @@ the renamed first thread's title.
 
 **Status:** verified
 
-**Repro:** Settings â†’ UI & Theme â†’ set Response Font to something other than
-Inter (e.g. Georgia) â†’ Save â†’ close Settings â†’ look at the message text.
+**Repro:** Settings Ã¢â€ â€™ UI & Theme Ã¢â€ â€™ set Response Font to something other than
+Inter (e.g. Georgia) Ã¢â€ â€™ Save Ã¢â€ â€™ close Settings Ã¢â€ â€™ look at the message text.
 
 **Expected:** messages render in the configured font immediately, and keep it
 after every restart.
@@ -493,11 +493,11 @@ saved Response Font is silently ignored.
 
 **Evidence:** `webui/js/settings/sections/ui-theme.js` sets
 `--chat-font-family` only in `load()`; `SettingsApply._ApplyUI` only updates the
-AHK global `responseWindowFontFace` â€” nothing applies it to the WebView.
+AHK global `responseWindowFontFace` Ã¢â‚¬â€ nothing applies it to the WebView.
 
 **Verification:** headless scenario 45 seeds `ui.responseFont: "Georgia"`,
 launches, loads a thread, and reads the computed font-family of a rendered
-message â€” it is the default Inter stack; after opening Settings it becomes
+message Ã¢â‚¬â€ it is the default Inter stack; after opening Settings it becomes
 Georgia.
 
 ### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
@@ -551,7 +551,7 @@ directly; the loaded-thread path (`notifyLoadThread` -> `LoadThreadIntoUI` ->
 `_LoadThreadAndRefreshUI`) never calls `_applyNewChatDefault()` nor writes the
 default font size. Only `_HandleThreadAction`'s `newChat` case applies them.
 
-**Evidence:** `Main.ahk` `A_TrayMenu.Add("📝 New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))`;
+**Evidence:** `Main.ahk` `A_TrayMenu.Add("ðŸ“ New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))`;
 `chat/ChatIPC.ahk` `LoadThreadIntoUI` / `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`
 contain no `_applyNewChatDefault` call; `chat/callbacks/Sidebar.ahk` `newChat`
 does.
@@ -605,14 +605,14 @@ streaming API answers with SSE (`data:` lines), which cannot be parsed as one JS
 document, so `success=false` and the response is silently discarded (only a debug
 log line is written).
 
-**Evidence:** `api/LLMRequestBuilder.ahk` `createJSONRequest()` â€”
+**Evidence:** `api/LLMRequestBuilder.ahk` `createJSONRequest()` Ã¢â‚¬â€
 `if stream { requestObj.stream := true }` with no pasteMode check;
 `app/InlineRequestRunner.ahk` `_BuildAndWriteRequest()` / `_ExecuteCurlAndParse()`
 use `CurlBuilder.Build` + `jsongo.Parse` with no SSE handling.
 
 **Verification:** headless scenario 46 (noApp) statically scans the three files
 and asserts the stream flag is added to the body for any pasteMode while the
-inline runner uses the non-streaming single-shot parse path (no SSEParser) â€”
+inline runner uses the non-streaming single-shot parse path (no SSEParser) Ã¢â‚¬â€
 proving a replace/append + stream command sends an SSE-mode request it cannot
 read back.
 
@@ -623,18 +623,18 @@ read back.
 **Status:** verified
 
 **Repro:** in a chat with an attachment, click Edit on the message, click the
-attachment's Ã— (it hides), then click Cancel instead of Save/Branch.
+attachment's Ãƒâ€” (it hides), then click Cancel instead of Save/Branch.
 
 **Expected:** canceling an edit restores the attachment (or at least the removal
-is consistently applied or not — never half-applied).
+is consistently applied or not â€” never half-applied).
 
 **Actual:** the attachment stays hidden in the UI while its DB row survives, so
 the next request still sends it to the API. `editMessage` sets
-`_editingMessageId` and starts `_removedAttachmentIds = []`; the attachment Ã—
+`_editingMessageId` and starts `_removedAttachmentIds = []`; the attachment Ãƒâ€”
 handler defers deletion to the next Save (`_removedAttachmentIds.push(attId)` +
 `wrapper.style.display = 'none'`), but the Cancel handler only removes the
-`.editing` class — it neither applies the deferred deletion nor restores the
-hidden wrapper, and it leaves `_editingMessageId` truthy, so subsequent Ã—
+`.editing` class â€” it neither applies the deferred deletion nor restores the
+hidden wrapper, and it leaves `_editingMessageId` truthy, so subsequent Ãƒâ€”
 clicks on any attachment also defer (hide) instead of deleting.
 
 **Evidence:** `webui/js/chat/chat-branching.js` `editMessage()` /
@@ -644,7 +644,7 @@ only); `webui/js/chat/attachments/chat-attachments-setup.js`
 truthy.
 
 **Verification:** headless scenario 49 seeds a user message with an attachment,
-clicks Edit â†’ Ã— (wrapper hides, DB row still present) â†’ Cancel, and observes
+clicks Edit Ã¢â€ â€™ Ãƒâ€” (wrapper hides, DB row still present) Ã¢â€ â€™ Cancel, and observes
 the wrapper stays hidden, the DB row is still there, and `_editingMessageId`
 remains set.
 
@@ -658,15 +658,15 @@ remains set.
 used and a running cost), click Fork on a message, and look at the forked
 chat's token bar.
 
-**Expected:** the fork reflects the copied conversation — at least the active
+**Expected:** the fork reflects the copied conversation â€” at least the active
 path's context tokens, and ideally the totals.
 
 **Actual:** the fork's token bar resets to 0 / $0.00. `TreeRepo.ForkThread`
 copies message rows but neither the thread's `cumulative_*` counters nor the
 leaf's `active_path_tokens`, and it never calls `_RecomputeActivePath` on the
-new thread — so `GetThreadStats` reads zeros.
+new thread â€” so `GetThreadStats` reads zeros.
 
-**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread()`/`_InsertForkMessage()` —
+**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread()`/`_InsertForkMessage()` â€”
 no `active_path_tokens` column in the INSERT and no `_RecomputeActivePath`
 call; `ThreadRepo.Create()` starts cumulative counters at 0.
 
@@ -695,7 +695,7 @@ tokens for OpenAI-style models, or the Gemini-inflated `total - prompt`) plus a
 separate `thinking_tokens` column; `renderSummary` then computes
 `cmdOutput = completion_tokens + thinking_tokens` and `renderModelSections`
 does the same, so thinking tokens are added twice. Chat rows are stored as
-`output_tokens` (already full, incl. thinking) and counted once — the same
+`output_tokens` (already full, incl. thinking) and counted once â€” the same
 100-token response with 40 thinking tokens is counted as 100 for chat and 140
 for commands.
 
@@ -709,7 +709,7 @@ full); `app/InlineRequestRunner.ahk` `_PasteAndLogResponse()` /
 with identical usage (prompt 10, completion 100, thinking 40) and opens the
 dashboard: Total Tokens shows 260 (command counted as 140) instead of 220.
 
-### 53. Dashboard "Last 24 Hours" spans two calendar days — the summary counts yesterday while the chart only plots today
+### 53. Dashboard "Last 24 Hours" spans two calendar days â€” the summary counts yesterday while the chart only plots today
 
 **Scenario:** 53 (scenario code in e2e-suite.js)
 
@@ -720,20 +720,22 @@ summary with the chart when there was usage both yesterday and today.
 
 **Expected:** the chart and summary cover the same window.
 
-**Actual:** the SQL filter is `date >= date('now', '-1 day')` — yesterday's
-00:00 UTC through now, i.e. up to ~48 hours — so the summary sums BOTH
+**Actual:** the SQL filter is `date >= date('now', '-1 day')` â€” yesterday's
+00:00 UTC through now, i.e. up to ~48 hours â€” so the summary sums BOTH
 yesterday's and today's rows, while `getDateRangeLabels('day')` produces a
 single "today" label and the chart only plots today's rows. The summary
 therefore always over-reports vs the chart for this range.
 
 **Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate()` (`"day"` returns
 `date >= date('now', '-1 day')`); `webui/js/usage-dashboard.js`
-`getDateRangeLabels()` (`day` â†’ 1 label) and `renderMainChart()` /
+`getDateRangeLabels()` (`day` Ã¢â€ â€™ 1 label) and `renderMainChart()` /
 `renderSummary()`.
 
 **Verification:** headless scenario 53 seeds usage rows for yesterday and
 today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
 (both days) while the chart has exactly 1 label (today only).
+
+**Note:** same UTC-vs-local root as #87 (Last Month) and #88 (Last 30 Days) — `_WhereDate` uses UTC `date('now')` while `getDateRangeLabels` uses local `new Date()`. Fix all three together.
 
 ### 55. Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest (header shows the stale branch's context)
 
@@ -752,7 +754,7 @@ branch's latest state.
 
 **Actual:** the branch switch (and search navigation) descend via
 `TreeRepo._WalkToLeaf`, which picks the FIRST child by `ORDER BY created_at
-LIMIT 1` — the OLDEST continuation — while the tree modal's `_findDefaultLeaf`
+LIMIT 1` â€” the OLDEST continuation â€” while the tree modal's `_findDefaultLeaf`
 picks `children[children.length - 1]` (the newest). The header then shows the
 stale branch's Context Used, disagreeing with the tree modal.
 
@@ -774,7 +776,7 @@ node in the tree modal navigates to 95 (newest).
 **Repro:** send a message to a slow model and press Stop (or Esc) before any
 content or reasoning token has arrived.
 
-**Expected:** a user-initiated cancellation is reported as cancelled — no error
+**Expected:** a user-initiated cancellation is reported as cancelled â€” no error
 banner.
 
 **Actual:** the UI shows the generic failure banner "Request failed. Check your
@@ -783,7 +785,7 @@ reasoning" FIRST and routes that case to `_handleStreamError`; the
 `_streamCancelled` flag is only consulted after that check. A Stop that lands
 before the first token therefore looks exactly like a connection failure.
 
-**Evidence:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming()` — the
+**Evidence:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming()` â€” the
 empty-content branch (`_handleStreamError()`) precedes the `wasCancelled`
 check; `chat/streaming/StreamError.ahk` `_handleStreamError()` falls back to
 the generic API-key message when stderr is empty.
@@ -817,7 +819,7 @@ or pasted message can drive app actions (send messages, change settings, etc.).
 
 **Verification:** headless scenario 57 seeds an assistant message containing
 `<img src="x" onerror="window.__xssPwned = 1">`, loads the thread, and observes
-`window.__xssPwned === 1` — the handler executed.
+`window.__xssPwned === 1` â€” the handler executed.
 
 ### 58. Forking a chat drops the thread's folder (the copy lands in Unfiled)
 
@@ -839,11 +841,11 @@ temperature/assistant but never `folder_id`.
 UPDATE); `ThreadRepo.Create()` inserts a thread without a folder.
 
 **Verification:** headless scenario 58 seeds a folder + a thread inside it,
-forks from the UI, and queries the new thread's `folder_id` — it is NULL
+forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 (Unfiled) instead of the source folder.
 
 
-### 61. Clearing the Suspend Banner text (and other UI fields) has no effect � stale global survives
+### 61. Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear] ï¿½ stale global survives
 
 **Scenario:** 61 (scenario code in e2e-suite.js)
 
@@ -857,7 +859,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Evidence:** `app/settings/SettingsApply.ahk` `_ApplySuspendBanner` `if sb.Has("text") && sb["text"] != ""`, `_ApplyInputWindow` `if iw.Has("background") && iw["background"] != ""`, `_ApplyUI` `if u.Has("responseFont") && u["responseFont"] != ""`.
 
-**Verification:** headless scenario 61 (noApp) statically checks SettingsApply.ahk � the three guards use != "" and no fallback assignment exists.
+**Verification:** headless scenario 61 (noApp) statically checks SettingsApply.ahk — the three guards use != "" and no fallback assignment exists. Same pattern as #71 (`_ApplyThreadTitles`). Fix together by assigning the empty value (clear) instead of skipping.
 
 ### 62. Forking a chat with temperature 0 drops the override (reset to Default)
 
@@ -885,7 +887,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** blank Cached should display and calculate as 10% of input price (as the Models hint promises).
 
-**Actual:** the header pricing unit and dashboard cached-cost show 0. `TreeRepo.GetThreadStats` builds `pricingUnit.cachedInput` as `pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (input*0.1)` � a present "" is taken as 0, not as missing. Same root cause as bug #29 (CostCalculator).
+**Actual:** the header pricing unit and dashboard cached-cost show 0. `TreeRepo.GetThreadStats` builds `pricingUnit.cachedInput` as `pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (input*0.1)` ï¿½ a present "" is taken as 0, not as missing. Same root cause as bug #29 (CostCalculator).
 
 **Evidence:** `chat/db/TreeRepo.ahk` `GetThreadStats` `cachedInput: pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : ...`; `api/CostCalculator.ahk` `_ResolvePricing` same pattern.
 
@@ -893,7 +895,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 
 
-### 64. Header "Context Used" excludes thinking tokens � underreports context window usage
+### 64. Header "Context Used" excludes thinking tokens ï¿½ underreports context window usage
 
 **Scenario:** 64 (scenario code in e2e-suite.js)
 
@@ -903,13 +905,13 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** "Context Used" equals prompt_tokens + visible_output + thinking_tokens (all tokens that occupy the context window). Tooltip should sum to the same total.
 
-**Actual:** header shows prompt + visible_output only. `chat/streaming/StreamCompletion.ahk` stores `token_count := Max(0, completion - thinking)` (visible only) and `chat/db/MessageRepo.ahk` sets `active_path_tokens := prompt + token_count`. `chat/db/TreeRepo.ahk` `GetThreadStats` reads that leaf value for "Context Used". Thinking tokens are stored separately and never added to the header, while the Usage Dashboard and per-message tooltip correctly count them � header is ~30-40% low for reasoning responses and disagrees with the tooltip's total.
+**Actual:** header shows prompt + visible_output only. `chat/streaming/StreamCompletion.ahk` stores `token_count := Max(0, completion - thinking)` (visible only) and `chat/db/MessageRepo.ahk` sets `active_path_tokens := prompt + token_count`. `chat/db/TreeRepo.ahk` `GetThreadStats` reads that leaf value for "Context Used". Thinking tokens are stored separately and never added to the header, while the Usage Dashboard and per-message tooltip correctly count them ï¿½ header is ~30-40% low for reasoning responses and disagrees with the tooltip's total.
 
 **Evidence:** `chat/streaming/StreamCompletion.ahk:96` `token_count: Max(0, completionTokens - thinkingTokens)`; `chat/db/MessageRepo.ahk` `activePathTokens := msgObj.prompt_tokens + tc`; `chat/db/TreeRepo.ahk` `activePathTokens := Integer(leafRow[1, "active_path_tokens"])`.
 
 **Verification:** headless scenario 64 (noApp) statically asserts the three patterns exist.
 
-### 65. Hard-deleting a message leaves cumulative token/cost counters stale � header stays inflated
+### 65. Hard-deleting a message leaves cumulative token/cost counters stale ï¿½ header stays inflated
 
 **Scenario:** 65 (scenario code in e2e-suite.js)
 
@@ -921,7 +923,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Actual:** header totals stay inflated. `chat/db/MessageRepo.ahk` `HardDelete` re-parents children, clears the FTS row and calls `_RecomputeActivePath`, but never updates `chat_threads.cumulative_input_tokens / cumulative_output_tokens / cumulative_cached_tokens / cumulative_cost` (or the `chat_usage` aggregation). Cost and token totals from deleted branches remain counted forever.
 
-**Evidence:** `chat/db/MessageRepo.ahk` `static HardDelete` � no `cumulative_` UPDATE; `chat/db/TreeRepo.ahk` `_RecomputeActivePath` only rebuilds `active_path_tokens`.
+**Evidence:** `chat/db/MessageRepo.ahk` `static HardDelete` ï¿½ no `cumulative_` UPDATE; `chat/db/TreeRepo.ahk` `_RecomputeActivePath` only rebuilds `active_path_tokens`.
 
 **Verification:** headless scenario 65 (noApp) slices HardDelete and asserts no `cumulative_` write exists.
 
@@ -935,13 +937,13 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** tooltip reads "Cumulative Input/output token usage across all conversation branches".
 
-**Actual:** tooltip reads "Culminative Input/output token usage across all conversation branches" (misspelled). Minor, but the string is also used as the spec for what the value should be � the typo has propagated to the report's assumptions.
+**Actual:** tooltip reads "Culminative Input/output token usage across all conversation branches" (misspelled). Minor, but the string is also used as the spec for what the value should be ï¿½ the typo has propagated to the report's assumptions.
 
 **Evidence:** `webui/js/chat/chat-format.js` `updateTokenUsage` `title="Culminative Input/output token usage across all conversation branches"`.
 
 **Verification:** headless scenario 66 (noApp) checks for /Culminative/ in chat-format.js.
 
-### 68. ProviderResolver legacy prefix match uses substring InStr, not prefix check � mygpt matches gpt
+### 68. ProviderResolver legacy prefix match uses substring InStr, not prefix check ï¿½ mygpt matches gpt
 
 **Scenario:** 68 (scenario code in e2e-suite.js)
 
@@ -949,15 +951,15 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Repro:** configure a custom providerMap prefix `gpt` (default) and use a short-form model id that merely *contains* the substring, e.g. `mygpt-custom` or `agpt-model` (no `provider/` prefix).
 
-**Expected:** legacy short ids should resolve by *prefix* (starts-with) � `mygpt-custom` should fall back to `deepseek` (or remain unmatched), not to the `gpt` provider.
+**Expected:** legacy short ids should resolve by *prefix* (starts-with) ï¿½ `mygpt-custom` should fall back to `deepseek` (or remain unmatched), not to the `gpt` provider.
 
-**Actual:** `ProviderResolver.Resolve` loops `for prefix, prov in providerMap` and does `if InStr(modelId, prefix)` � substring anywhere. `mygpt-custom` therefore resolves to the `gpt` ? `openai` provider and is sent to `openai`'s endpoint with the wrong model name, while a legitimate `gpt-4o` and a bogus `mygpt` both hit the same provider.
+**Actual:** `ProviderResolver.Resolve` loops `for prefix, prov in providerMap` and does `if InStr(modelId, prefix)` ï¿½ substring anywhere. `mygpt-custom` therefore resolves to the `gpt` ? `openai` provider and is sent to `openai`'s endpoint with the wrong model name, while a legitimate `gpt-4o` and a bogus `mygpt` both hit the same provider.
 
 **Evidence:** `api/ProviderResolver.ahk` `Resolve()` `if InStr(modelId, prefix)` (no `=1` or `SubStr` prefix check).
 
 **Verification:** headless scenario 68 (noApp) asserts `InStr(modelId, prefix)` exists and no `SubStr(...,1,)` or `InStr(...)=1` prefix check exists.
 
-### 69. Search LIKE fallback does not escape % _ \ � searching for % returns all messages
+### 69. Search LIKE fallback does not escape % _ \ ï¿½ searching for % returns all messages
 
 **Scenario:** 69 (scenario code in e2e-suite.js)
 
@@ -967,13 +969,13 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** searching for a literal `%` should return only messages that contain `%` (or no results if none do).
 
-**Actual:** the LIKE phase does `m.content LIKE '%' || 'safeQuery' || '%' ESCAPE '\'` where `safeQuery` is only `SQLite.Escape(query)` (doubles `'` ? `''`). `%` and `_` are LIKE wildcards and `\` is the ESCAPE char � none are escaped. `safeQuery = "%"` becomes `LIKE '%%% '`, which matches every row (and `_` matches any single char). The same bug exists in `_Titles` for title search.
+**Actual:** the LIKE phase does `m.content LIKE '%' || 'safeQuery' || '%' ESCAPE '\'` where `safeQuery` is only `SQLite.Escape(query)` (doubles `'` ? `''`). `%` and `_` are LIKE wildcards and `\` is the ESCAPE char ï¿½ none are escaped. `safeQuery = "%"` becomes `LIKE '%%% '`, which matches every row (and `_` matches any single char). The same bug exists in `_Titles` for title search.
 
-**Evidence:** `chat/db/SearchRepo.ahk` `static _Like` and `static _Titles` � `safeQuery := SQLite.Escape(query)` then `LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'` with no `%`/`_`/`\` escaping.
+**Evidence:** `chat/db/SearchRepo.ahk` `static _Like` and `static _Titles` ï¿½ `safeQuery := SQLite.Escape(query)` then `LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'` with no `%`/`_`/`\` escaping.
 
 **Verification:** headless scenario 69 (noApp) slices `_Like` and asserts no `StrReplace` for `%`/`_` exists while `ESCAPE '\'` is present.
 
-### 70. Search FTS5 MATCH does not escape special characters � C++ or "hello" breaks the query (empty results)
+### 70. Search FTS5 MATCH does not escape special characters ï¿½ C++ or "hello" breaks the query (empty results)
 
 **Scenario:** 70 (scenario code in e2e-suite.js)
 
@@ -985,11 +987,11 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Actual:** `SearchRepo._FTS5` builds `ftsExpr` as `trimmed` words joined by ` AND ` with a trailing `*`, then only does `safeFTS := StrReplace(ftsExpr, "'", "''")`. FTS5 special characters `"` `(` `)` `:` `-` `+` `*` etc. are not escaped/quoted. `C++` becomes `MATCH 'C++*'` (plus is a FTS5 operator) and throws `fts5: syntax error near "+"`, causing `_FTS5` to return `[]` and the search falls through to LIKE (which then may also mis-handle it). Quoted queries like `"hello"` become `MATCH '"hello"*'` (unbalanced) and also error.
 
-**Evidence:** `chat/db/SearchRepo.ahk` `static _FTS5` � `ftsExpr .= trimmed` raw, `safeFTS := StrReplace(ftsExpr, "'", "''")` only.
+**Evidence:** `chat/db/SearchRepo.ahk` `static _FTS5` ï¿½ `ftsExpr .= trimmed` raw, `safeFTS := StrReplace(ftsExpr, "'", "''")` only.
 
 **Verification:** headless scenario 70 (noApp) asserts `ftsExpr .= trimmed` exists and no `StrReplace` for `"` or `(` exists.
 
-### 71. Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals
+### 71. Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]
 
 **Scenario:** 71 (scenario code in e2e-suite.js)
 
@@ -1005,7 +1007,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 71 (noApp) asserts the two `!= ""` guards exist.
 
-### 72. SystemMessageResolver treats UNC \\server\share paths as relative � file not found
+### 72. SystemMessageResolver treats UNC \\server\share paths as relative ï¿½ file not found
 
 **Scenario:** 72 (scenario code in e2e-suite.js)
 
@@ -1015,9 +1017,9 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** the file is read from the UNC path (absolute path used as-is, like `C:\` paths).
 
-**Actual:** the resolver only checks `InStr(filePath, ":")` to detect absolute paths. UNC paths have no colon, so they are treated as relative and searched in `A_ScriptDir\`, `..\`, `default-settings\system-messages\`, and `AppData\system-messages\` � none match, so `FileRead` fails and the resolver falls back to the inline `systemMessage` (or empty) with an error. The UNC file is never read.
+**Actual:** the resolver only checks `InStr(filePath, ":")` to detect absolute paths. UNC paths have no colon, so they are treated as relative and searched in `A_ScriptDir\`, `..\`, `default-settings\system-messages\`, and `AppData\system-messages\` ï¿½ none match, so `FileRead` fails and the resolver falls back to the inline `systemMessage` (or empty) with an error. The UNC file is never read.
 
-**Evidence:** `shared/SystemMessageResolver.ahk` `Resolve()` `if !InStr(filePath, ":")` � no `\\` check.
+**Evidence:** `shared/SystemMessageResolver.ahk` `Resolve()` `if !InStr(filePath, ":")` ï¿½ no `\\` check.
 
 **Verification:** headless scenario 72 (noApp) asserts `InStr(filePath, ":")` exists and no `\\` handling exists.
 
@@ -1063,7 +1065,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** `_BudgetTable` should match only the intended Gemini family (e.g. `2.5-pro` family), or fall back to generic.
 
-**Actual:** `_BudgetTable` uses `if InStr(modelId, "2.5-pro")` substring checks. Any model id containing that substring � even `my2.5-pro` or `foo2.5-pro-bar` � will match the first table (`minimal 128 � high 32768`) even though it is not a Gemini 2.5-pro model, giving a wrong thinking budget.
+**Actual:** `_BudgetTable` uses `if InStr(modelId, "2.5-pro")` substring checks. Any model id containing that substring ï¿½ even `my2.5-pro` or `foo2.5-pro-bar` ï¿½ will match the first table (`minimal 128 ï¿½ high 32768`) even though it is not a Gemini 2.5-pro model, giving a wrong thinking budget.
 
 **Evidence:** `api/handlers/GoogleChatCompletions.ahk` `_BudgetTable` `if InStr(modelId, "2.5-pro")` etc.
 
@@ -1079,7 +1081,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** `activeThreadId` should update to `B` so subsequent `updateScopedSearchState`, `onSearchCrossThreadLoaded`, and new-message sends target B.
 
-**Actual:** `webui/js/chat/chat-core.js` `initChatMode` does `if (data && data.threadId && !activeThreadId) { activeThreadId = data.threadId; }`. When `activeThreadId` is already truthy (`"A"`), the assignment is skipped, so the WebView stays on `A` while the message list shows `B`'s messages � `activeThreadId` is stale. Subsequent scoped search, token-bar updates, and `chatSend` will use the wrong thread id.
+**Actual:** `webui/js/chat/chat-core.js` `initChatMode` does `if (data && data.threadId && !activeThreadId) { activeThreadId = data.threadId; }`. When `activeThreadId` is already truthy (`"A"`), the assignment is skipped, so the WebView stays on `A` while the message list shows `B`'s messages ï¿½ `activeThreadId` is stale. Subsequent scoped search, token-bar updates, and `chatSend` will use the wrong thread id.
 
 **Evidence:** `webui/js/chat/chat-core.js` `initChatMode` guard `!activeThreadId`.
 
@@ -1093,15 +1095,15 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Repro:** open a chat that already has messages (e.g. last message is an assistant response), clear the input (`input.value = ""`), click Send (or press Enter).
 
-**Expected:** no action � empty input should be a no-op (like most chat UIs) or show a hint.
+**Expected:** no action ï¿½ empty input should be a no-op (like most chat UIs) or show a hint.
 
-**Actual:** `webui/js/chat/chat-input.js` `onChatSend` trims input to `""`, finds `message` falsy and `attachments` empty, then falls through to `if (chatMessages && chatMessages.length>0) { var lastMsg = chatMessages[chatMessages.length-1]; if (lastMsg.role==="assistant") retryLastAssistantMessage(...) ; else if (lastMsg.role==="user") Ipc.postToHost('retry') }`. An empty Send therefore re-fires the last assistant message (or resends the last user message) instead of doing nothing � a single accidental click/Enter duplicates a request and burns tokens/cost.
+**Actual:** `webui/js/chat/chat-input.js` `onChatSend` trims input to `""`, finds `message` falsy and `attachments` empty, then falls through to `if (chatMessages && chatMessages.length>0) { var lastMsg = chatMessages[chatMessages.length-1]; if (lastMsg.role==="assistant") retryLastAssistantMessage(...) ; else if (lastMsg.role==="user") Ipc.postToHost('retry') }`. An empty Send therefore re-fires the last assistant message (or resends the last user message) instead of doing nothing ï¿½ a single accidental click/Enter duplicates a request and burns tokens/cost.
 
 **Evidence:** `webui/js/chat/chat-input.js` `onChatSend` empty-input branch with `retryLastAssistantMessage` and `Ipc.postToHost('retry')`.
 
 **Verification:** headless scenario 77 (noApp) asserts the empty-input `chatMessages.length` branch and `retry` post exist.
 
-### 78. Right-rail temperature 0 displays as "Default" instead of 0.0 � falsy check hides 0
+### 78. Right-rail temperature 0 displays as "Default" instead of 0.0 ï¿½ falsy check hides 0
 
 **Scenario:** 78 (scenario code in e2e-suite.js)
 
@@ -1109,15 +1111,15 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Repro:** set per-thread temperature to 0 (right-rail slider to 0.0 ? Save), reload the thread or switch away and back, then read the right-rail Temperature value.
 
-**Expected:** the rail shows `0.0` and the slider sits at 0, with the reset `�` visible.
+**Expected:** the rail shows `0.0` and the slider sits at 0, with the reset `ï¿½` visible.
 
-**Actual:** the rail shows `Default` and the slider snaps to `1.0` with `temp-default` class, as if no override were set. `webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings` does `var hasTemp = settings.temperature && settings.temperature !== ""` � `0` / `"0"` is falsy, so `hasTemp` is false and the `else` branch (Default) runs. The stored override is still `0` (via `TemperatureOverride` in DB and `requestParams`), so the API request correctly sends `temperature:0`, but the UI lies about it. Same root as bug #35 (falsy `0`).
+**Actual:** the rail shows `Default` and the slider snaps to `1.0` with `temp-default` class, as if no override were set. `webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings` does `var hasTemp = settings.temperature && settings.temperature !== ""` ï¿½ `0` / `"0"` is falsy, so `hasTemp` is false and the `else` branch (Default) runs. The stored override is still `0` (via `TemperatureOverride` in DB and `requestParams`), so the API request correctly sends `temperature:0`, but the UI lies about it. Same root as bug #35 (falsy `0`).
 
 **Evidence:** `webui/js/chat/model-picker/model-picker-config.js` `hasTemp = settings.temperature && ...`.
 
 **Verification:** headless scenario 78 (noApp) asserts the `&&` falsy guard exists.
 
-### 79. Settings file with UTF-8 BOM fails to load � settings silently reset to defaults
+### 79. Settings file with UTF-8 BOM fails to load ï¿½ settings silently reset to defaults
 
 **Scenario:** 79 (scenario code in e2e-suite.js)
 
@@ -1125,21 +1127,21 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Repro:** write `%APPDATA%\AhkLLM\settings.json` with a UTF-8 BOM (many Windows editors do), restart the app.
 
-**Expected:** settings load normally � the app itself writes with BOM, so the loader must tolerate it.
+**Expected:** settings load normally ï¿½ the app itself writes with BOM, so the loader must tolerate it.
 
-**Actual:** `app/settings/SettingsPersistence.ahk` `Load()` does `raw := FileRead(path, "UTF-8")` then `parsed := jsongo.Parse(raw)` with no BOM stripping. `jsongo` chokes on leading `\uFEFF`, the `catch` returns an empty `Map()`, and the app falls back to `DefaultSettings` � all custom settings are lost. The harness README notes the BOM issue and `seed.readJsonFile` strips it, but the production loader does not.
+**Actual:** `app/settings/SettingsPersistence.ahk` `Load()` does `raw := FileRead(path, "UTF-8")` then `parsed := jsongo.Parse(raw)` with no BOM stripping. `jsongo` chokes on leading `\uFEFF`, the `catch` returns an empty `Map()`, and the app falls back to `DefaultSettings` ï¿½ all custom settings are lost. The harness README notes the BOM issue and `seed.readJsonFile` strips it, but the production loader does not.
 
-**Evidence:** `app/settings/SettingsPersistence.ahk` `Load()` � no BOM handling before `jsongo.Parse`.
+**Evidence:** `app/settings/SettingsPersistence.ahk` `Load()` ï¿½ no BOM handling before `jsongo.Parse`.
 
 **Verification:** headless scenario 79 (noApp) asserts `FileRead` + direct `jsongo.Parse` without BOM handling.
 
-### 80. ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape � SQL injection via crafted id
+### 80. ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape ï¿½ SQL injection via crafted id
 
 **Scenario:** 80 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
-**Repro:** craft a thread id containing a single quote (e.g. `bad'id`) and call any thread mutator that interpolates it � `SoftDelete`, `Restore`, `Delete`, or `Update` (e.g. via a malicious `threadId` posted over IPC or a hand-edited DB).
+**Repro:** craft a thread id containing a single quote (e.g. `bad'id`) and call any thread mutator that interpolates it ï¿½ `SoftDelete`, `Restore`, `Delete`, or `Update` (e.g. via a malicious `threadId` posted over IPC or a hand-edited DB).
 
 **Expected:** all SQL statements should use `SQLite.Escape(threadId)` like `UpdateSettings`/`GetSettings` do.
 
@@ -1149,7 +1151,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 80 (noApp) asserts `SQLite.Escape(threadId)` absent in `SoftDelete` and `WHERE id='" threadId "'` present.
 
-### 81. Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping � SQL injection via crafted message id
+### 81. Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping ï¿½ SQL injection via crafted message id
 
 **Scenario:** 81 (scenario code in e2e-suite.js)
 
@@ -1165,7 +1167,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 81 (noApp) asserts `SQLite.Escape(msg.id)` absent and `WHERE id='" msg.id "'` present.
 
-### 82. Usage dashboard provider/model filter dropdown XSS � option values not escaped
+### 82. Usage dashboard provider/model filter dropdown XSS ï¿½ option values not escaped
 
 **Scenario:** 82 (scenario code in e2e-suite.js)
 
@@ -1181,7 +1183,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 82 (noApp) asserts raw `innerHTML` with `p`/`m` and no `escHtml(p)` exists.
 
-### 83. Thread-map "who" label XSS � model name not escaped in right-panel nav list
+### 83. Thread-map "who" label XSS ï¿½ model name not escaped in right-panel nav list
 
 **Scenario:** 83 (scenario code in e2e-suite.js)
 
@@ -1197,7 +1199,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 83 (noApp) asserts `+ who +` raw and no `escHtml(who)` exists.
 
-### 84. API Logs Viewer `esc()` does not escape single quote � `title` attribute break and potential XSS
+### 84. API Logs Viewer `esc()` does not escape single quote ï¿½ `title` attribute break and potential XSS
 
 **Scenario:** 84 (scenario code in e2e-suite.js)
 
@@ -1207,29 +1209,29 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** the `title` attribute shows the endpoint as inert text.
 
-**Actual:** `webui/api-logs.html` `esc()` does `String(s).replace(/[&<>"]/g, ...)` � it escapes `& < > "` but not `'`. The log table builds `<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">'`. A `'` closes the `title='...'` attribute early, breaking the HTML and allowing an unescaped attribute injection. The cell text itself is inside `esc()`, but the attribute is not.
+**Actual:** `webui/api-logs.html` `esc()` does `String(s).replace(/[&<>"]/g, ...)` ï¿½ it escapes `& < > "` but not `'`. The log table builds `<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">'`. A `'` closes the `title='...'` attribute early, breaking the HTML and allowing an unescaped attribute injection. The cell text itself is inside `esc()`, but the attribute is not.
 
 **Evidence:** `webui/api-logs.html` `function esc(s)` regex `/[&<>"]/`.
 
 **Verification:** headless scenario 84 (noApp) asserts `esc` regex missing `'` and `&#39;` absent.
 
-### 86. FIM fallback `renderMarkdown` XSS � `md.render` with `html:true` for non-chat content
+### 86. FIM fallback `renderMarkdown` XSS ï¿½ `md.render` with `html:true` for non-chat content
 
 **Scenario:** 86 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** reported — duplicate of #57, static check only (same `html:true` root)
 
 **Repro:** trigger a Fill-In-the-Middle (FIM) request that returns HTML like `<img src=x onerror=...>` (e.g. via a FIM command with a mock LLM), then view the fallback rendering (`#content` when `isChatMode` is false).
 
 **Expected:** content is rendered as inert text, even in FIM fallback mode.
 
-**Actual:** `webui/js/chat/chat-core.js` `renderMarkdown` does `var result = md.render(contentToRender); var contentElement = document.getElementById('content'); if (contentElement) contentElement.innerHTML = result;` with `md` configured `html:true` in `webui/js/main.js`. No sanitization, same root as #57 but for the non-chat `content` path.
+**Actual:** `webui/js/chat/chat-core.js` `renderMarkdown` does `var result = md.render(contentToRender); var contentElement = document.getElementById('content'); if (contentElement) contentElement.innerHTML = result;` with `md` configured `html:true` in `webui/js/main.js`. No sanitization, same root as #57 but for the non-chat `content` path. **Duplicate of #57 — fix together; scenario kept as reported.**
 
 **Evidence:** `webui/js/chat/chat-core.js` `renderMarkdown` `md.render` + `innerHTML`; `webui/js/main.js` `markdownit({ html:true })`.
 
 **Verification:** headless scenario 86 (noApp) asserts `md.render` with `html:true` and `contentElement.innerHTML = result` exist.
 
-### 87. Usage dashboard "Last Month" SQL uses UTC `date('now')` while chart labels use local `new Date()` � timezone drift
+### 87. Usage dashboard "Last Month" SQL uses UTC `date('now')` while chart labels use local `new Date()` ï¿½ timezone drift
 
 **Scenario:** 87 (scenario code in e2e-suite.js)
 
@@ -1239,19 +1241,19 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** chart labels and SQL summary cover the same local last-month window.
 
-**Actual:** `chat/db/UsageRepo.ahk` `_WhereDate("lastMonth")` returns `WHERE date >= date('now','start of month','-1 month') AND date < date('now','start of month')` � `date('now')` is UTC. `webui/js/usage-dashboard.js` `getDateRangeLabels("lastMonth")` builds labels from local `new Date()`. In UTC+9, local last month 01 00:00 is still previous UTC day, so the SQL window and chart labels are off by one day and the summary total mismatches the chart.
+**Actual:** `chat/db/UsageRepo.ahk` `_WhereDate("lastMonth")` returns `WHERE date >= date('now','start of month','-1 month') AND date < date('now','start of month')` ï¿½ `date('now')` is UTC. `webui/js/usage-dashboard.js` `getDateRangeLabels("lastMonth")` builds labels from local `new Date()`. In UTC+9, local last month 01 00:00 is still previous UTC day, so the SQL window and chart labels are off by one day and the summary total mismatches the chart.
 
 **Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate` `date('now','start of month',...)`; `webui/js/usage-dashboard.js` `getDateRangeLabels` `new Date()` local.
 
 **Verification:** headless scenario 87 (noApp) asserts UTC `date('now')` in `UsageRepo` and local `new Date()` in dashboard exist.
 
-### 88. Usage dashboard "Last 30 Days" SQL uses UTC while chart uses local � same timezone drift as Last Month
+### 88. Usage dashboard "Last 30 Days" SQL uses UTC while chart uses local ï¿½ same timezone drift as Last Month
 
 **Scenario:** 88 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
-**Repro:** same as #87 but select �Last 30 Days� (range `month`) in Dashboard.
+**Repro:** same as #87 but select ï¿½Last 30 Daysï¿½ (range `month`) in Dashboard.
 
 **Expected:** SQL and chart cover the same 30-day window in local time.
 
@@ -1261,7 +1263,7 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 88 (noApp) asserts both UTC and local patterns exist.
 
-### 89. CurlBuilder interpolates API key with `"` into `-H "Authorization: Bearer ..."` without escaping � header break / injection
+### 89. CurlBuilder interpolates API key with `"` into `-H "Authorization: Bearer ..."` without escaping ï¿½ header break / injection
 
 **Scenario:** 89 (scenario code in e2e-suite.js)
 
@@ -1277,23 +1279,23 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Verification:** headless scenario 89 (noApp) asserts `Authorization: Bearer` + `apiKey` exists and no `Escape`/`StrReplace` for `apiKey` exists.
 
-### 90. SettingsMerge.Override iterates over `incoming` without `IsObject` guard � empty string corrupts settings
+### 90. SettingsMerge.Override iterates over `incoming` without `IsObject` guard ï¿½ empty string corrupts settings
 
 **Scenario:** 90 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
-**Repro:** send a `saveSettings` IPC with `data: ""` (empty string) instead of an object � e.g. via a crafted `chrome.webview.postMessage` or a WebView bug.
+**Repro:** send a `saveSettings` IPC with `data: ""` (empty string) instead of an object ï¿½ e.g. via a crafted `chrome.webview.postMessage` or a WebView bug.
 
 **Expected:** `Override` should guard `if !IsObject(incoming)` or check `incoming is Map`, and ignore non-Map payloads.
 
-**Actual:** `app/settings/SettingsMerge.ahk` `Override(incoming, base)` does `for k, v in incoming` with no `IsObject` check. In AHK, `for k, v in ""` iterates over the string�s characters (`k=1, v='"'`, `k=2, v='{'` �), so `result["1"] := '"'`, `result["2"] := '{'` etc. The merged settings Map gets polluted with numeric string keys and single-character values, then `SettingsPersistence.Save` writes a corrupted `settings.json`.
+**Actual:** `app/settings/SettingsMerge.ahk` `Override(incoming, base)` does `for k, v in incoming` with no `IsObject` check. In AHK, `for k, v in ""` iterates over the stringï¿½s characters (`k=1, v='"'`, `k=2, v='{'` ï¿½), so `result["1"] := '"'`, `result["2"] := '{'` etc. The merged settings Map gets polluted with numeric string keys and single-character values, then `SettingsPersistence.Save` writes a corrupted `settings.json`.
 
 **Evidence:** `app/settings/SettingsMerge.ahk` `Override` `for k, v in incoming` with no `IsObject` guard.
 
 **Verification:** headless scenario 90 (noApp) asserts `for k, v in incoming` exists and no `IsObject(incoming)` guard exists.
 
-### 91. InputWindow `validateInputAndHide` treats `"0"` as empty � `!value` falsy check
+### 91. InputWindow `validateInputAndHide` treats `"0"` as empty ï¿½ `!value` falsy check
 
 **Scenario:** 91 (scenario code in e2e-suite.js)
 
@@ -1303,13 +1305,13 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** the input `0` is accepted and sent as `{{input}}` (or as `inputText`).
 
-**Actual:** `app/InputWindow.ahk` `validateInputAndHide` does `if !this.EditControl.Value { MsgBox "Please enter a message..." ; return false }`. In AHK, `! "0"` is `true` because `"0"` is falsy (same as `0` and `""`), so typing `0` is considered empty and the popup stays open with the �Please enter a message� box. The same `!value` pattern appears in `CommandState.onCommandInputSend` via `validateInputAndHide`.
+**Actual:** `app/InputWindow.ahk` `validateInputAndHide` does `if !this.EditControl.Value { MsgBox "Please enter a message..." ; return false }`. In AHK, `! "0"` is `true` because `"0"` is falsy (same as `0` and `""`), so typing `0` is considered empty and the popup stays open with the ï¿½Please enter a messageï¿½ box. The same `!value` pattern appears in `CommandState.onCommandInputSend` via `validateInputAndHide`.
 
 **Evidence:** `app/InputWindow.ahk` `if !this.EditControl.Value`.
 
 **Verification:** headless scenario 91 (noApp) asserts `if !this.EditControl.Value` exists.
 
-### 92. Models `ensureFullId` ignores provider dropdown when id already contains `/` � stale provider prefix
+### 92. Models `ensureFullId` ignores provider dropdown when id already contains `/` ï¿½ stale provider prefix
 
 **Scenario:** 92 (scenario code in e2e-suite.js)
 
@@ -1319,43 +1321,43 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 
 **Expected:** the saved full id should be `google/gpt-4` (provider from dropdown + stripped id).
 
-**Actual:** `webui/js/settings/sections/models.js` `ensureFullId(id, provider)` does `if (id.indexOf('/') >=0) return id; return provider ? provider+'/'+id : id`. When `id` already contains `/` (because the row was rendered from a full id like `openai/gpt-4` but the input shows only `gpt-4` � wait, actually `_mainRowHtml` does `stripProvider(id)` for display, so the input value is `gpt-4` without prefix, but `_readRowValues` reads `id` as `tr.querySelector('[data-field="id"]').value` which is `gpt-4` (no slash), and `values.provider` is `google`, so `ensureFullId("gpt-4", "google")` would correctly return `google/gpt-4`. However, in the *refresh modal* (`_rightRowHtml`), the id input has `data-full-id="openai/gpt-4"` and the `saveRefresh` path does `var id = idEl.getAttribute('data-full-id') || idEl.value` � it prefers `data-full-id` (stale `openai/gpt-4`) over the current `value` (`gpt-4`), so changing the provider dropdown there does not update the saved id. The bug is in `saveRefresh`, not `ensureFullId` for the main table, but the `ensureFullId` early-return for `id` containing `/` is still a latent bug if a user types a full id manually.
+**Actual:** `webui/js/settings/sections/models.js` `ensureFullId(id, provider)` does `if (id.indexOf('/') >=0) return id; return provider ? provider+'/'+id : id`. When `id` already contains `/` (because the row was rendered from a full id like `openai/gpt-4` but the input shows only `gpt-4` ï¿½ wait, actually `_mainRowHtml` does `stripProvider(id)` for display, so the input value is `gpt-4` without prefix, but `_readRowValues` reads `id` as `tr.querySelector('[data-field="id"]').value` which is `gpt-4` (no slash), and `values.provider` is `google`, so `ensureFullId("gpt-4", "google")` would correctly return `google/gpt-4`. However, in the *refresh modal* (`_rightRowHtml`), the id input has `data-full-id="openai/gpt-4"` and the `saveRefresh` path does `var id = idEl.getAttribute('data-full-id') || idEl.value` ï¿½ it prefers `data-full-id` (stale `openai/gpt-4`) over the current `value` (`gpt-4`), so changing the provider dropdown there does not update the saved id. The bug is in `saveRefresh`, not `ensureFullId` for the main table, but the `ensureFullId` early-return for `id` containing `/` is still a latent bug if a user types a full id manually.
 
 **Evidence:** `webui/js/settings/sections/models.js` `ensureFullId` `if (id.indexOf('/') >=0) return id`.
 
 **Verification:** headless scenario 92 (noApp) asserts `ensureFullId` early-return for `/` exists.
 
-### 93. SettingsDefaults `GetDefaults` shallow-copies `Map` values � mutating snapshot corrupts pristine defaults
+### 93. SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] ï¿½ mutating snapshot corrupts pristine defaults
 
 **Scenario:** 93 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** reported — latent design flaw (no active caller mutates the snapshot in place)
 
-**Repro:** call `SettingsDefaults.GetDefaults()` twice, mutate the first result�s `models` Map (e.g. `m1["models"]["openai/gpt-4"] := deleted`), then call `GetDefaults()` again and read `models`.
+**Repro:** call `SettingsDefaults.GetDefaults()` twice, mutate the first resultï¿½s `models` Map (e.g. `m1["models"]["openai/gpt-4"] := deleted`), then call `GetDefaults()` again and read `models`.
 
 **Expected:** each `GetDefaults()` returns an independent deep copy of the pristine defaults, so mutating one does not affect the next.
 
-**Actual:** `GetDefaults` when captured does `snapshot := Map(); for k, v in _initialDefaults snapshot[k] := v` � `v` is a `Map` (e.g. `models` Map), so `snapshot["models"]` shares the *same* Map object as `_initialDefaults["models"]`. Mutating `snapshot["models"]` mutates the cached pristine copy, corrupting future `GetDefaults()` and `Reset to Defaults`.
+**Actual:** `GetDefaults` when captured does `snapshot := Map(); for k, v in _initialDefaults snapshot[k] := v` ï¿½ `v` is a `Map` (e.g. `models` Map), so `snapshot["models"]` shares the *same* Map object as `_initialDefaults["models"]`. Mutating `snapshot["models"]` mutates the cached pristine copy, corrupting future `GetDefaults()` and `Reset to Defaults`.
 
 **Evidence:** `app/settings/SettingsDefaults.ahk` `GetDefaults` `snapshot[k] := v` without `CloneMap`.
 
-**Verification:** headless scenario 93 (noApp) asserts `snapshot[k] := v` shallow copy exists and no `Clone` for that line.
+**Verification:** headless scenario 93 (noApp) asserts `snapshot[k] := v` shallow copy exists. Latent: no production caller currently mutates `GetDefaults()["models"]` in place, so not user-visible today; keep as hardening. Fix by deep-cloning Map values (`_CloneMap`).
 
-### 94. SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` � defaults not stable
+### 94. SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` ï¿½ defaults not stable
 
 **Scenario:** 94 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** reported — overstated (UUID churn does not occur after CacheInitialDefaults; shallow copy preserves same array)
 
 **Repro:** call `SettingsDefaults.GetDefaults()` twice and compare `assistants[1].id` (or `commands` via `_CommandToMap` which also uses `UUID` for missing ids, but assistants always does).
 
 **Expected:** the default `assistants` list should have stable ids (e.g. from `DefaultSettings.ahk` or a fixed seed), so `Reset to Defaults` and diffing are deterministic.
 
-**Actual:** `_DefaultsAssistants` does `asstList.Push(Map("id", SettingsPersistence._UUID(), "name", a.name, ...))` for every assistant on *every* `GetDefaults()` call. Each call generates fresh random UUIDs, so the default assistants� ids change every time the settings are reloaded, breaking stable diffing and �Reset� idempotency.
+**Actual:** `_DefaultsAssistants` does `asstList.Push(Map("id", SettingsPersistence._UUID(), "name", a.name, ...))` for every assistant on *every* `GetDefaults()` call. Before `CacheInitialDefaults` each call would generate fresh UUIDs; after caching, `GetDefaults()` shallow-copies the cached array — no churn in normal runtime, so the bug is overstated. Keep as low-priority hardening for stable ids.
 
 **Evidence:** `app/settings/SettingsDefaults.ahk` `_DefaultsAssistants` `SettingsPersistence._UUID()` inside the loop.
 
-**Verification:** headless scenario 94 (noApp) asserts `SettingsPersistence._UUID()` inside `_DefaultsAssistants` exists.
+**Verification:** headless scenario 94 (noApp) asserts `SettingsPersistence._UUID()` inside `_DefaultsAssistants` exists — but this only proves the code *could* generate UUIDs, not that `GetDefaults()` churns after caching (it does not). Keep as low-priority hardening (stable ids).
 
 ---
 
@@ -1375,32 +1377,33 @@ closure; never rewrite past entries.
 - 2026-08-03 - "Sidebar inline rename saves on Escape instead of canceling" - REFUTED: WebView2 does not dispatch blur when the focused input is removed from the DOM, so Escape cancels the rename and no renameThread is posted. Scenario 28 kept as a regression check (regression: true).
 - 2026-08-03 - "Reasoning-only responses get no action buttons until reload" - FIXED in ff6a6c3: onStreamDone now persists the assistant message and adds action buttons when thinking was streamed with empty final content (mirrors the existing cancelStreaming guard); scenario 21 flipped to a regression check (regression: true) + stream-state unit test.
 - 2026-08-03 - "Right-panel Advanced toggles (Code Execution / Web Search) do nothing" - FIXED in aafa4ed (+247d6c5): Structured Outputs removed entirely; Code Execution / Web Search are persisted stubs (state round-trips through updateModelSettings/requestParams/thread DB, no response_format/tools sent); scenario 20 flipped to a regression check (regression: true) + ChatSettings/request-builder AHK + JS unit tests.
-- 2026-08-02 — "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" — FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.
-- 2026-08-02 — "Custom icon picked outside the repo never applies to the chat window" — FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
-- 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
-- 2026-08-02 — "Chat request failure with no output file shows no error and leaves the UI stuck" — FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
-- 2026-08-02 — "Trash retention never auto-purges" — FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.
-- 2026-08-02 — "Close Windows hotkey setting is ignored by the chat window" — FIXED in 0660294: new `chat/ChatHotkeys.ahk` registers the configured `closeWindowsHotkey` in the chat process at startup and after settings saves (empty = disabled), replacing the hardcoded `~^w::`; the stale "restart required" Hotkeys banner was removed (hotkey changes are live on both processes); scenario 8 flipped to a regression check (`regression: true`) + ChatHotkeys unit tests.
-- 2026-08-02 — "Suspend banner edits don't take effect until restart" — FIXED in 5957786: new `app/SuspendBanner.ahk` exposes `_rebuildSuspendBanner()`, which Main now calls at startup and on settings updates (destroying the old GUI, rebuilding from current settings, re-showing when already suspended); scenario 12 flipped to a regression check (`regression: true`) + SuspendBanner unit tests.
-- 2026-08-02 — "Command Input Window settings are dead (colors never apply; size/font need restart)" — FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
-- 2026-08-02 — "Title generation makes sidebar folder groups disappear until re-entry" — FIXED in a5bd97c: `ThreadTitleGen.ahk` now posts `threadList` as `{ threads, folders }` (reusing `_GetFolders()`) so folder sections stay rendered, and posts the thread's real folder name in `updateTopbarTitle` instead of hardcoded "Unfiled"; scenario 14 flipped to a regression check (`regression: true`) + extended unit test.
-- 2026-08-02 — "Chat topbar 'Export' button does nothing" — FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
-- 2026-08-02 — "API Logs viewer latency column always shows '–'" — FIXED in b1f0386: the viewer now renders `responseTimeMs` (the field every logger writes) instead of the never-written `latencyMs`; scenario 16 flipped to a regression check (`regression: true`) + inline-viewer unit tests.
-- 2026-08-02 — "Input window text invisible: Edit field stays white against the dark background" — FIXED in c13d15c: the Edit control now gets its own `Background` option (it doesn't inherit `Gui.BackColor`), and the default design is light (white field + black text) to match the app theme; scenarios 24 + 25 flipped to regression checks (`regression: true`) + a rendered-pixel probe.
-- 2026-08-02 — "System-prompt modal '0 chars' counter never updates" — FIXED in 6d81eaa: the chat right-rail system prompt modal now updates `#charCount` on input and when opened; scenario 17 flipped to a regression check (`regression: true`) + unit test.
-- 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
+- 2026-08-02 â€” "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" â€” FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.
+- 2026-08-02 â€” "Custom icon picked outside the repo never applies to the chat window" â€” FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
+- 2026-08-02 â€” "New models added in Settings lose reasoning/thinking metadata" â€” FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
+- 2026-08-02 â€” "Chat request failure with no output file shows no error and leaves the UI stuck" â€” FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
+- 2026-08-02 â€” "Trash retention never auto-purges" â€” FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.
+- 2026-08-02 â€” "Close Windows hotkey setting is ignored by the chat window" â€” FIXED in 0660294: new `chat/ChatHotkeys.ahk` registers the configured `closeWindowsHotkey` in the chat process at startup and after settings saves (empty = disabled), replacing the hardcoded `~^w::`; the stale "restart required" Hotkeys banner was removed (hotkey changes are live on both processes); scenario 8 flipped to a regression check (`regression: true`) + ChatHotkeys unit tests.
+- 2026-08-02 â€” "Suspend banner edits don't take effect until restart" â€” FIXED in 5957786: new `app/SuspendBanner.ahk` exposes `_rebuildSuspendBanner()`, which Main now calls at startup and on settings updates (destroying the old GUI, rebuilding from current settings, re-showing when already suspended); scenario 12 flipped to a regression check (`regression: true`) + SuspendBanner unit tests.
+- 2026-08-02 â€” "Command Input Window settings are dead (colors never apply; size/font need restart)" â€” FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
+- 2026-08-02 â€” "Title generation makes sidebar folder groups disappear until re-entry" â€” FIXED in a5bd97c: `ThreadTitleGen.ahk` now posts `threadList` as `{ threads, folders }` (reusing `_GetFolders()`) so folder sections stay rendered, and posts the thread's real folder name in `updateTopbarTitle` instead of hardcoded "Unfiled"; scenario 14 flipped to a regression check (`regression: true`) + extended unit test.
+- 2026-08-02 â€” "Chat topbar 'Export' button does nothing" â€” FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
+- 2026-08-02 â€” "API Logs viewer latency column always shows 'â€“'" â€” FIXED in b1f0386: the viewer now renders `responseTimeMs` (the field every logger writes) instead of the never-written `latencyMs`; scenario 16 flipped to a regression check (`regression: true`) + inline-viewer unit tests.
+- 2026-08-02 â€” "Input window text invisible: Edit field stays white against the dark background" â€” FIXED in c13d15c: the Edit control now gets its own `Background` option (it doesn't inherit `Gui.BackColor`), and the default design is light (white field + black text) to match the app theme; scenarios 24 + 25 flipped to regression checks (`regression: true`) + a rendered-pixel probe.
+- 2026-08-02 â€” "System-prompt modal '0 chars' counter never updates" â€” FIXED in 6d81eaa: the chat right-rail system prompt modal now updates `#charCount` on input and when opened; scenario 17 flipped to a regression check (`regression: true`) + unit test.
+- 2026-08-01 â€” "Quick Access â†’ Usage Dashboard does nothing on prewarmed window" â€” REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check
   (`regression: true`).
-- 2026-08-01 — "Chat delete confirmations are broken — the confirm button is a no-op" — FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.
-- 2026-08-01 — "Command `thinking` settings are dropped after any settings round-trip" — FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.
-- 2026-08-01 — "Deleting the active chat leaks its per-thread settings into the next chat" — FIXED in 76be0ba: deleteThread/deleteThreadForever/emptyTrash now reset requestParams and refresh the UI when the active thread is removed; scenario 1 flipped + dispatch regression tests for active vs inactive deletion.
-- 2026-08-01 — "New chats ignore the configured `New Chats Start With` default" — FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` — `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
-- 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
-- 2026-08-02 — "Clearing a hotkey field does nothing — hotkeys can't be disabled" — FIXED in 00bb503: empty hotkey now means disabled — `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
+- 2026-08-01 â€” "Chat delete confirmations are broken â€” the confirm button is a no-op" â€” FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.
+- 2026-08-01 â€” "Command `thinking` settings are dropped after any settings round-trip" â€” FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.
+- 2026-08-01 â€” "Deleting the active chat leaks its per-thread settings into the next chat" â€” FIXED in 76be0ba: deleteThread/deleteThreadForever/emptyTrash now reset requestParams and refresh the UI when the active thread is removed; scenario 1 flipped + dispatch regression tests for active vs inactive deletion.
+- 2026-08-01 â€” "New chats ignore the configured `New Chats Start With` default" â€” FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` â€” `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
+- 2026-08-02 â€” "Removing models/providers in Settings doesn't persist" â€” FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
+- 2026-08-02 â€” "Clearing a hotkey field does nothing â€” hotkeys can't be disabled" â€” FIXED in 00bb503: empty hotkey now means disabled â€” `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
 - 2026-08-04 - "Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path" - FIXED in 6f7ae77: CommandMenu._resolveSystemMessage now searches default-settings/system-messages/ + AppData like the assistant path; scenario 50 flipped to a regression check (`regression: true`) + UserConfig AHK unit test.
 - 2026-08-04 - "Opening Settings wipes the right-rail per-thread settings" - FIXED in f64a59d: main.js routes only the chat-sidebar partial `currentSettings` payload through `populateCurrentSettings`; the full merged settings object goes only to `SettingsPanel.onSettingsReceived` (discriminator: `Array.isArray(data.commands)`); scenario 26 flipped to a regression check (`regression: true`) + main.js routing unit test.
 - 2026-08-04 - "System-message files referenced by their legacy `system-messages/` path are never resolved" - CLOSED as won't-fix (single-user, no migration): the path only exists in profiles saved before commit 0229368 moved the files into default-settings/; the user corrected their one profile manually. Scenario 59 removed (no regression check kept).
 - 2026-08-04 - "Per-thread system prompt / temperature edits are discarded on reload when an assistant is active" - FIXED in a30ae19: `_restoreThreadSettings` now applies the assistant's system message / reasoning / temperature ONLY when the thread has no per-thread override for that field, so per-thread edits survive reloads and reach the API request; scenario 47 flipped to a regression check (`regression: true`) + ChatSettings AHK unit tests (overrides win; assistant defaults still apply when no override).
 - 2026-08-04 - "Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)" - FIXED in 50d4111: `#sysMsgMini` now has an input listener that updates `_currentSettings.systemMessage` and posts the debounced `updateModelSettings` (mirrors the modal Save path); scenario 60 flipped to a regression check (`regression: true`) + model-picker-config unit test.
 - 2026-08-04 - "Commands Advanced card collapses when you click inside it to edit a field" - FIXED in b31a6b9: the Advanced toggle listener moved from the whole `.cmd-advanced-wrap` to the `.cmd-advanced-toggle` header, so clicks inside fields no longer collapse the card; scenario 27 flipped to a regression check (`regression: true`) + commands-advanced-toggle unit test.
+
