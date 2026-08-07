@@ -1,5 +1,5 @@
-# 2026-08-07T21:02:57.962Z | run of 1 scenario(s)
-PASS | #56 | Stopping a stream before the first token is a clean cancel (static check) | _finalizeStreaming checks _streamCancelled before the empty-content branch, so pressing Stop before the first token is a clean cancellation (no API-key banner) | 0.0s
+# 2026-08-07T21:05:19.405Z | run of 1 scenario(s)
+PASS | #57 | Chat message HTML is rendered as inert text (XSS fixed) | assistant message <img src="x" onerror=...> rendered inert (window.__xssPwned=0); msg HTML="<p>&lt;img src=“x” onerror=“window.__xssPwned = 1”&gt;</p>\n" | 5.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

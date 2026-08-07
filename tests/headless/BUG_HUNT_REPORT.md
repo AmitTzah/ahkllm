@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **46 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **45 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #56 FIXED in 4fe5245; next: bug #57 (chat message content rendered as raw HTML - XSS).
+- **Where we left off:** 2026-08-07 — bug #57 FIXED in 05e2ccb; next: bug #58 (forking a chat drops the thread's folder).
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 57. Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)
-
-**Scenario:** 57 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** have a model respond with (or paste into a message) HTML such as
-`<img src="x" onerror="...">` and view the message.
-
-**Expected:** message content is displayed as inert text; HTML from the model
-or pasted input must not execute.
-
-**Actual:** `markdown-it` is configured with `html: true` and every message /
-streamed chunk is fed straight into `md.render()` without escaping or
-sanitizing, so inline event handlers execute in the WebView. Because the page
-has access to `window.chrome.webview.postMessage`, a malicious model response
-or pasted message can drive app actions (send messages, change settings, etc.).
-
-**Evidence:** `webui/js/main.js` `markdownit({ html: true, ... })`;
-`webui/js/chat/chat-render.js` `createMessageBubble()` (`md.render(msg.content
-|| '')`); `webui/js/chat/stream.js` `onStreamContent()` /
-`_finalizeStreamContent()`; no CSP or sanitizer anywhere in `webui/`.
-
-**Verification:** headless scenario 57 seeds an assistant message containing
-`<img src="x" onerror="window.__xssPwned = 1">`, loads the thread, and observes
-`window.__xssPwned === 1` â€” the handler executed.
 
 ### 58. Forking a chat drops the thread's folder (the copy lands in Unfiled)
 
@@ -1020,6 +993,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)" - FIXED in 05e2ccb: markdown-it is now configured with html:false, so raw HTML in messages is escaped and rendered as inert text (was html:true, letting inline event handlers run with chrome.webview.postMessage access); scenario 57 flipped to a regression check + main.js unit test. (#86 is a duplicate of this bug and will be refuted when reached.)
 
 - 2026-08-07 - "Stopping a stream before the first token shows an error banner instead of a clean cancel" - FIXED in 4fe5245: _finalizeStreaming now checks _streamCancelled BEFORE the empty-content branch, so a user Stop before the first token finalizes as a clean cancellation (_handleStreamCancelled posts streamCancelled) instead of the misleading API-key error banner; scenario 56 flipped to a regression static check + StreamHandler unit test.
 
