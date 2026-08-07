@@ -249,7 +249,8 @@ scenarios.push({
 
 scenarios.push({
   id: 49,
-  name: 'Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)',
+  name: 'Canceling a message edit rolls back deferred attachment removals',
+  regression: true, // FIXED bug kept as a regression check (cancel must not leave attachments half-removed)
   mode: null,
   settings: {},
   fixtures: {
@@ -288,14 +289,17 @@ scenarios.push({
     })()`);
     const editingId = await cdp.eval('typeof _editingMessageId !== "undefined" ? _editingMessageId : "undef"');
     const rowAfter = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE id='att-49'")[0].c;
-    // BUG: cancel neither applies nor rolls back the deferred removal - the
-    // wrapper stays hidden while the DB row survives, and _editingMessageId is
-    // left truthy so later attachment clicks also defer instead of deleting.
-    if (hiddenAfterCancel !== 'none' || rowAfter === 0)
-      throw new Error('cancel restored/removed the attachment (bug not reproduced): hidden=' + hiddenAfterCancel + ' rows=' + rowAfter);
+    // FIXED (bug #49): canceling rolls back the deferred removal (wrapper is
+    // restored), clears the edit state, and leaves the DB row untouched.
+    if (hiddenAfterCancel === 'none')
+      throw new Error('cancel left the attachment hidden (bug #49 not fixed): hidden=' + hiddenAfterCancel);
+    if (rowAfter === 0)
+      throw new Error('cancel deleted the attachment instead of rolling back: rows=' + rowAfter);
+    if (editingId !== null && editingId !== 'undef' && editingId !== '')
+      throw new Error('cancel left a stale _editingMessageId=' + JSON.stringify(editingId));
     return 'Edit -> remove attachment -> Cancel: wrapper display=' + hiddenDuringEdit + ' -> ' + hiddenAfterCancel +
-      ', DB rows during=' + rowDuring + ' after=' + rowAfter + ', stale _editingMessageId=' + editingId +
-      ' (attachment stays hidden but is still in the DB and will be sent)';
+      ', DB rows during=' + rowDuring + ' after=' + rowAfter + ', _editingMessageId=' + JSON.stringify(editingId) +
+      ' (cancel rolls back the deferred removal)';
   }
 });
 

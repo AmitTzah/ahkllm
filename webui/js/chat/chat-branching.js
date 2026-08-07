@@ -22,7 +22,22 @@ function editMessage(index) {
 
   // Wire buttons (use onclick to replace any previous handler)
   var cancelBtn = bubble.querySelector('.cancel-edit');
-  if (cancelBtn) cancelBtn.onclick = function() { bubble.classList.remove('editing'); };
+  if (cancelBtn) cancelBtn.onclick = function() {
+    // Bug #49: canceling an edit must roll back deferred attachment removals
+    // and clear the edit state - otherwise attachments stay hidden in the UI
+    // while their DB rows survive (and get sent anyway), and later attachment
+    // delete clicks keep deferring instead of deleting.
+    bubble.classList.remove('editing');
+    _removedAttachmentIds.forEach(function(attId) {
+      var delBtn = bubble.querySelector('[data-attachment-id="' + attId + '"]');
+      if (delBtn) {
+        var wrapper = delBtn.closest('.msg-attachment-image, .msg-attachment-file');
+        if (wrapper) wrapper.style.display = '';
+      }
+    });
+    _removedAttachmentIds = [];
+    _editingMessageId = null;
+  };
 
   var overwriteBtn = bubble.querySelector('.save-overwrite');
   if (overwriteBtn) overwriteBtn.onclick = function() {

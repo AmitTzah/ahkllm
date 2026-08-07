@@ -313,3 +313,36 @@ describe('deleteMessage confirmation', () => {
         assert.ok(src.includes('cannot be undone'), 'deleteMessage should warn that deletion cannot be undone');
     });
 });
+
+describe('cancel edit rolls back attachment removals (bug #49)', () => {
+    it('cancel restores hidden wrappers and clears the edit state', () => {
+        const ctx = loadBranchingModule();
+        ctx.chatMessages = [{ id: 'm1', role: 'user', content: 'hi' }];
+        const wrapper = { style: {} };
+        const textarea = { value: 'hi', focus: () => {} };
+        const cancelBtn = { onclick: null };
+        const saveOverwrite = { onclick: null };
+        const saveBranch = { onclick: null };
+        const deleteBtn = { closest: () => wrapper };
+        const bubble = {
+            classList: { add: () => {}, remove: () => {} },
+            querySelector: (sel) => {
+                if (sel === '.msg-edit-textarea') return textarea;
+                if (sel === '.cancel-edit') return cancelBtn;
+                if (sel === '.save-overwrite') return saveOverwrite;
+                if (sel === '.save-branch') return saveBranch;
+                if (sel === '[data-attachment-id="att-1"]') return deleteBtn;
+                return null;
+            }
+        };
+        ctx.document.querySelectorAll = (sel) => (sel === '.msg' ? [bubble] : []);
+        ctx.editMessage(0);
+        // Simulate the deferred removal while editing (attachment delete click).
+        ctx._removedAttachmentIds.push('att-1');
+        wrapper.style.display = 'none';
+        cancelBtn.onclick();
+        assert.strictEqual(wrapper.style.display, '', 'cancel must restore the hidden attachment wrapper');
+        assert.strictEqual(ctx._removedAttachmentIds.length, 0, 'cancel must clear deferred removals');
+        assert.strictEqual(ctx._editingMessageId, null, 'cancel must clear the editing state');
+    });
+});
