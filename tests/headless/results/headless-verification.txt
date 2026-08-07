@@ -1,5 +1,5 @@
-# 2026-08-07T22:58:31.346Z | run of 1 scenario(s)
-PASS | #101 | SettingsApply._ApplyCommands persists false/0/empty command values (bug fixed) | SettingsApply copy helpers assign whenever the key exists - stream/isFIM/showInputBox false, maxContextWords 0 and empty tags all survive the save round-trip | 0.0s
+# 2026-08-07T23:01:28.185Z | run of 1 scenario(s)
+PASS | #102 | UsageRepo provider LIKE escapes % _ \ wildcards (bug fixed) | UsageRepo provider LIKE escapes \ % _ and declares ESCAPE '\' so a provider value containing wildcards is matched literally | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

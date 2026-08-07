@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #101 FIXED in 0f42fdc; next: bug #102 (UsageRepo provider LIKE does not escape `%` `_` `\`).
+- **Where we left off:** 2026-08-08 — bug #102 FIXED in 8533a7a; next: bug #103 (TreeRepo.GetThreadStats pricingUnit picks the first message's model, not the thread's active model).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 102. UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models
-
-**Scenario:** 102 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open Usage Dashboard, select a provider filter value containing `%` (crafted via hand-edited `settings.json` or direct `UsageRepo.Query` call with `provider="%"`), query dashboard.
-
-**Expected:** `providerFilter` should be wildcard-escaped before `LIKE`.
-
-**Actual:** `UsageRepo.Query` does `providerChatClause := providerFilter ? "AND model LIKE ''" SQLite.Escape(providerFilter) "/%''" : ""` — `SQLite.Escape` only doubles `'`, it does not escape `%`/`_`/`\` for `LIKE ESCAPE`. The dashboard also uses `LIKE` without `ESCAPE` handling for provider, so `%` becomes a wildcard and returns all rows (same class as #69, but provider path was not yet reported).
-
-**Evidence:** `chat/db/UsageRepo.ahk` `providerChatClause` line with `LIKE` and `SQLite.Escape(providerFilter)` but no `StrReplace` for `%`.
-
-**Verification:** headless scenario 102 (noApp) asserts `providerChatClause := providerFilter ? "AND model LIKE` exists and no wildcard escape exists.
 
 ### 103. TreeRepo.GetThreadStats pricingUnit picks the first message''s model, not the thread''s active model
 
@@ -360,6 +344,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted" - FIXED in 7cf0328: _FixStreamBoolean is now quote-aware — it scans the JSON and rewrites only real stream/include_usage/include_thoughts key:value tokens outside string literals (no more global StrReplace over the whole payload); scenario 100 flipped to a regression static check + LLMRequestBuilder unit tests (user prompt with a `{"stream":1}` snippet survives verbatim while the real top-level stream still becomes true).
 
 - 2026-08-08 - "SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists" - FIXED in 0f42fdc: the command copy helpers (_SetIfTruthy/_SetIfNonZero/_SetIfNonEmptyTags) now assign whenever the key exists, so false toggles, maxContextWords 0 and explicitly empty tags survive the save round-trip; scenario 101 flipped to a regression static check + SettingsHandler unit test (ApplyToGlobals keeps stream/isFIM/showInputBox/expandNewlines/includeImageContext=false, maxContextWords=0, tags=[]).
+
+- 2026-08-08 - "UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models" - FIXED in 8533a7a (hardening): the latent providerChatClause LIKE now escapes `\` `%` `_` via a new UsageRepo._EscapeLike and declares ESCAPE '\' (same pattern as SearchRepo #69); scenario 102 flipped to a regression static check + UsageTracking unit test. (The executed chat/command queries already matched provider exactly, so the wildcard LIKE was latent.)
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
