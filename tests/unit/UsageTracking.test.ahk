@@ -50,6 +50,23 @@ class UsageTrackingTest {
             throw Error("UsageRepo.Query must pass the local today into both filters")
     }
 
+    ; Regression (bug #87/#88): lastMonth/month filters must use LOCAL calendar
+    ; boundaries (matching the local dashboard labels), not SQLite UTC.
+    MonthFilters_UseLocalBoundaries() {
+        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "lastMonthStart := FormatTime(DateAdd(A_Now, -1")
+            throw Error("Query must compute the local last-month start")
+        if !InStr(src, "monthCutoff := FormatTime(DateAdd(A_Now, -29")
+            throw Error("Query must compute the local 30-day cutoff")
+        where := UsageRepo._WhereDate("lastMonth", "date", "2026-08-07", "", "2026-07-01", "2026-08-01")
+        if !InStr(where, "date >= '2026-07-01'") || !InStr(where, "date < '2026-08-01'")
+            throw Error("lastMonth filter must use local month boundaries, got: " where)
+        where2 := UsageRepo._WhereDate("month", "date", "2026-08-07", "2026-07-09", "", "")
+        if !InStr(where2, "date >= '2026-07-09'")
+            throw Error("month filter must use the local cutoff, got: " where2)
+    }
+
     ; ----------------------------------------------------
     ; Single exchange — verify per-message token fields
     ; ----------------------------------------------------

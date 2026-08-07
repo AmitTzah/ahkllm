@@ -592,16 +592,17 @@ scenarios.push({
 
 scenarios.push({
   id: 87,
-  name: "UsageRepo lastMonth SQL uses UTC date('now') while dashboard labels use local ï¿½ off by timezone",
+  name: "UsageRepo lastMonth filter uses local boundaries (matches local labels)",
+  regression: true, // FIXED bug kept as a regression check (lastMonth must use local calendar dates)
   mode: null,
   noApp: true,
   async body() {
     const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    const hasUTC = /date\('now', 'start of month'/.test(ur);
-    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const hasLocal = /getDateRangeLabels/.test(dash) && /new Date\(/.test(dash);
-    if(!hasUTC || !hasLocal) throw new Error("bug not reproduced");
-    return "UsageRepo _WhereDate lastMonth uses UTC date('now') while getDateRangeLabels uses local new Date() ï¿½ timezone mismatch";
+    const urBlock = ur.slice(ur.indexOf("static _WhereDate"), ur.indexOf("static _WhereDate")+1400);
+    const lastMonthUsesLocal = /dateColumn " >= '" lastMonthStart "' AND " dateColumn " < '" monthStart "'"/.test(urBlock);
+    const queryPassesLocal = /lastMonthStart := FormatTime\(DateAdd\(A_Now, -1/.test(ur);
+    if(!lastMonthUsesLocal || !queryPassesLocal) throw new Error("bug #87 not fixed: lastMonthUsesLocal=" + lastMonthUsesLocal + " queryPassesLocal=" + queryPassesLocal);
+    return "UsageRepo lastMonth filter uses local month boundaries (FormatTime/DateAdd), matching the dashboard labels";
   }
 });
 

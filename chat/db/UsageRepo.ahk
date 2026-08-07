@@ -12,17 +12,27 @@ class UsageRepo {
     ; dashboard's day chart plots a single local "today" label), so the "day"
     ; filter must use it instead of SQLite's UTC date('now', '-1 day') which
     ; pulled in yesterday and over-reported vs the chart (bug #53).
-    static _WhereDate(range, dateColumn := "date", localToday := "") {
+    static _WhereDate(range, dateColumn := "date", localToday := "", monthCutoff := "", lastMonthStart := "", monthStart := "") {
         if range = "day" {
             cutoff := localToday ? "'" localToday "'" : "date('now')"
             return "WHERE " dateColumn " >= " cutoff
         }
-        if range = "month"
-            return "WHERE " dateColumn " >= date('now', '-30 days')"
-        if range = "thisMonth"
-            return "WHERE " dateColumn " >= date('now', 'start of month')"
-        if range = "lastMonth"
+        ; Bug #87/#88: month/lastMonth/thisMonth must use LOCAL calendar dates
+        ; (rows are stored with local dates and the chart labels are local) -
+        ; SQLite's date('now') is UTC and drifts by a day in non-UTC zones.
+        if range = "month" {
+            cutoff := monthCutoff ? "'" monthCutoff "'" : "date('now', '-30 days')"
+            return "WHERE " dateColumn " >= " cutoff
+        }
+        if range = "thisMonth" {
+            cutoff := monthStart ? "'" monthStart "'" : "date('now', 'start of month')"
+            return "WHERE " dateColumn " >= " cutoff
+        }
+        if range = "lastMonth" {
+            if lastMonthStart && monthStart
+                return "WHERE " dateColumn " >= '" lastMonthStart "' AND " dateColumn " < '" monthStart "'"
             return "WHERE " dateColumn " >= date('now', 'start of month', '-1 month') AND " dateColumn " < date('now', 'start of month')"
+        }
         return ""
     }
 
@@ -30,6 +40,9 @@ class UsageRepo {
     static Query(filters) {
         result := { chat: [], commands: [], models: [], providers: [] }
         localToday := FormatTime(, "yyyy-MM-dd")
+        monthStart := FormatTime(A_Now, "yyyy-MM") "-01"
+        lastMonthStart := FormatTime(DateAdd(A_Now, -1, "Months"), "yyyy-MM") "-01"
+        monthCutoff := FormatTime(DateAdd(A_Now, -29, "Days"), "yyyy-MM-dd")
 
         timeRange := filters.Has("timeRange") ? filters["timeRange"] : "all"
         modelFilter := filters.Has("model") ? filters["model"] : ""
@@ -40,7 +53,7 @@ class UsageRepo {
 
         ; Chat data — from chat_usage table
         if typeFilter != "command" {
-            chatWhere := UsageRepo._WhereDate(timeRange, "date", localToday)
+            chatWhere := UsageRepo._WhereDate(timeRange, "date", localToday, monthCutoff, lastMonthStart, monthStart)
             if modelFilter
                 chatWhere .= (chatWhere ? " AND" : "WHERE") " model='" SQLite.Escape(modelFilter) "'"
             if providerFilter
@@ -68,7 +81,7 @@ class UsageRepo {
 
         ; Command data — only if type includes commands
         if typeFilter != "chat" {
-            cmdWhere := UsageRepo._WhereDate(timeRange, "date", localToday)
+            cmdWhere := UsageRepo._WhereDate(timeRange, "date", localToday, monthCutoff, lastMonthStart, monthStart)
             if modelFilter
                 cmdWhere .= (cmdWhere ? " AND" : "WHERE") " model='" SQLite.Escape(modelFilter) "'"
             if providerFilter
