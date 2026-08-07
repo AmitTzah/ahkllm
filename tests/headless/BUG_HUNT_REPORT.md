@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **64 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **65 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 fifth pass — added 1 verified bug #109 (Sidebar folderId + 15+ raw ids) — headless PASS; fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS, code patterns confirmed; counts re-verified 67 entries = 64 verified + 3 reported, sync OK 104 scenarios (37 regression). Kept downgrades #86 (duplicate of #57), #93 (latent — no mutating caller), #94 (overstated — stable after CacheInitialDefaults); confirmed shared-root families #53/#87/#88 (UTC `date('now')` vs local `new Date()`), #61/#71/#33 (stale global on clear), #29/#63 (cachedInput empty-string fallback). Previously: added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS. Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** audit 2026-08-07 fifth pass — added 2 verified bugs #109 (Sidebar folderId + 15+ raw ids), #110 (cURL temp leak) — headless PASS (2/2); fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS; counts re-verified 68 entries = 65 verified + 3 reported, sync OK 105 scenarios (37 regression). Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
@@ -1553,6 +1553,22 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 **Evidence:** `chat/callbacks/Sidebar.ahk:143` without `SQLite.Escape`; `chat/db/MessageRepo.ahk:131,157,163,167,181` etc. raw `msgId`.
 
 **Verification:** headless scenario 109 (noApp) asserts `Sidebar.ahk` contains `params["folderId"]` in `DELETE FROM chat_folders` without `SQLite.Escape`, and `MessageRepo.ahk` has ≥3 raw `WHERE id="''" msgId` occurrences.
+
+### 110. Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`
+
+**Scenario:** 110 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** send any chat request (streaming), then check `%TEMP%` for `ChatWindow_cURL_*.txt` and `ChatWindow_Req_*.json`.
+
+**Expected:** temp files should be deleted after the request completes (like the cancel path does via `deleteTempFiles()`).
+
+**Actual:** `ChatRequestBuilder._WriteRequestFiles` writes `ChatWindow_Req_*.json` + `ChatWindow_cURL_*.txt` (containing `Authorization: Bearer <apiKey>`) to `A_Temp`, and `StreamHandler.sendStreamingRequest` writes the cURL command file. On success `StreamCompletion._handleStreamComplete` never calls `deleteTempFiles()` — only `_handleStreamCancelled` (in `StreamError.ahk`) does. Successful streams leave Bearer tokens on disk indefinitely; error path also leaks.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` `_handleStreamComplete` has no `deleteTempFiles`; `chat/streaming/StreamError.ahk` `_handleStreamCancelled` does; `api/CurlBuilder.ahk` `Build`/`BuildStream` embed `providerInfo.apiKey`.
+
+**Verification:** headless scenario 110 (noApp) asserts `StreamCompletion.ahk` has no `deleteTempFiles` in `_handleStreamComplete`, `StreamError.ahk` does in cancel, and `CurlBuilder.ahk` contains `providerInfo.apiKey`.
 
 ## History (append-only)
 

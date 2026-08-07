@@ -872,6 +872,27 @@ scenarios.push({
 });
 
 
+scenarios.push({
+  id: 110,
+  name: "Chat streaming temp files with API keys not deleted after success — credential leak in %TEMP%",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const sc=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamCompletion.ahk"),"utf8");
+    const sh=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamHandler.ahk"),"utf8");
+    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,800}deleteTempFiles/.test(sc);
+    const hasDeleteOnCancel = /_handleStreamCancelled[\s\S]{0,400}deleteTempFiles/.test(fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamError.ahk"),"utf8"));
+    const buildsCurlWithKey = /providerInfo\.apiKey/.test(fs.readFileSync(path.join(launcher.REPO_ROOT,"api","CurlBuilder.ahk"),"utf8"));
+    if(hasDeleteOnSuccess) throw new Error("bug not reproduced: success deletes temp files");
+    if(!hasDeleteOnCancel) throw new Error("cancel should delete but missing");
+    if(!buildsCurlWithKey) throw new Error("CurlBuilder not building with apiKey");
+    return "StreamCompletion._handleStreamComplete does not call deleteTempFiles — cURL files with Bearer apiKey remain in TEMP after success";
+  }
+});
+
 module.exports = scenarios;
 
 

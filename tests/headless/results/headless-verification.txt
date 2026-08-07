@@ -1,6 +1,9 @@
-# 2026-08-07T10:54:12.030Z | run of 1 scenario(s)
+# 2026-08-07T10:58:26.580Z | run of 4 scenario(s)
+PASS | #107 | TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants | _RecomputeActivePath does prev+=token_count only — assistant prompt_tokens lost after delete/edit | 0.0s
+PASS | #108 | main.js IPC fallback calls arbitrary window[target] without allowlist — XSS can invoke any global | main.js default: case calls window[target](...data) for any undeclared target — arbitrary global invocation | 0.0s
 PASS | #109 | Sidebar folderId and 15+ ChatDB call sites interpolate raw ids without SQLite.Escape | Sidebar folderId raw + MessageRepo 5 raw msgId WHERE id=''...'' — same class as #80/#99 | 0.0s
+PASS | #110 | Chat streaming temp files with API keys not deleted after success — credential leak in %TEMP% | StreamCompletion._handleStreamComplete does not call deleteTempFiles — cURL files with Bearer apiKey remain in TEMP after success | 0.0s
 
-Summary: 1/1 scenarios PASS
+Summary: 4/4 scenarios PASS
 Real profile restored: yes
-Report sync: MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js
+Report sync: OK
