@@ -7,10 +7,16 @@
 
 class UsageRepo {
 
-    ; Build WHERE clause for date-based time range filters.
-    static _WhereDate(range, dateColumn := "date") {
-        if range = "day"
-            return "WHERE " dateColumn " >= date('now', '-1 day')"
+    ; Build WHERE clause for date-based time range filters. localToday is the
+    ; LOCAL calendar date (usage rows are stored with local dates, and the
+    ; dashboard's day chart plots a single local "today" label), so the "day"
+    ; filter must use it instead of SQLite's UTC date('now', '-1 day') which
+    ; pulled in yesterday and over-reported vs the chart (bug #53).
+    static _WhereDate(range, dateColumn := "date", localToday := "") {
+        if range = "day" {
+            cutoff := localToday ? "'" localToday "'" : "date('now')"
+            return "WHERE " dateColumn " >= " cutoff
+        }
         if range = "month"
             return "WHERE " dateColumn " >= date('now', '-30 days')"
         if range = "thisMonth"
@@ -23,6 +29,7 @@ class UsageRepo {
     ; Usage dashboard — query aggregated data
     static Query(filters) {
         result := { chat: [], commands: [], models: [], providers: [] }
+        localToday := FormatTime(, "yyyy-MM-dd")
 
         timeRange := filters.Has("timeRange") ? filters["timeRange"] : "all"
         modelFilter := filters.Has("model") ? filters["model"] : ""
@@ -33,7 +40,7 @@ class UsageRepo {
 
         ; Chat data — from chat_usage table
         if typeFilter != "command" {
-            chatWhere := UsageRepo._WhereDate(timeRange)
+            chatWhere := UsageRepo._WhereDate(timeRange, "date", localToday)
             if modelFilter
                 chatWhere .= (chatWhere ? " AND" : "WHERE") " model='" SQLite.Escape(modelFilter) "'"
             if providerFilter
@@ -61,7 +68,7 @@ class UsageRepo {
 
         ; Command data — only if type includes commands
         if typeFilter != "chat" {
-            cmdWhere := UsageRepo._WhereDate(timeRange)
+            cmdWhere := UsageRepo._WhereDate(timeRange, "date", localToday)
             if modelFilter
                 cmdWhere .= (cmdWhere ? " AND" : "WHERE") " model='" SQLite.Escape(modelFilter) "'"
             if providerFilter

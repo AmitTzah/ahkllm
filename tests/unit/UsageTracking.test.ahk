@@ -30,6 +30,26 @@ class UsageTrackingTest {
         }
     }
 
+    ; Regression (bug #53): the "day" usage filter must use the LOCAL calendar
+    ; date (the chart plots a single local "today" label and usage rows are
+    ; stored with local dates), not SQLite's UTC date('now', '-1 day') which
+    ; pulls in yesterday and over-reports vs the chart.
+    DayFilter_UsesLocalToday() {
+        where := UsageRepo._WhereDate("day", "date", "2026-08-07")
+        if !InStr(where, "date >= '2026-08-07'")
+            throw Error("day filter must use the local today cutoff, got: " where)
+        if InStr(where, "date('now'")
+            throw Error("day filter must not use SQLite's UTC now, got: " where)
+
+        ; Query wires the local date into both the chat and command filters.
+        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "localToday := FormatTime(")
+            throw Error("UsageRepo.Query must compute the local today date")
+        if !InStr(src, "_WhereDate(timeRange, ")
+            throw Error("UsageRepo.Query must pass the local today into both filters")
+    }
+
     ; ----------------------------------------------------
     ; Single exchange — verify per-message token fields
     ; ----------------------------------------------------
