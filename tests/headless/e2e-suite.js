@@ -1,4 +1,4 @@
-// e2e-suite.js - Growing headless E2E suite for AhkLLM.
+﻿// e2e-suite.js - Growing headless E2E suite for AhkLLM.
 //
 // Usage:
 //   node e2e-suite.js --all               # every scenario against the real app
@@ -97,7 +97,8 @@ const scenarios = [].concat(
   require('./scenarios/settings'),
   require('./scenarios/usage-tokens'),
   require('./scenarios/chat-ui'),
-  require('./scenarios/misc')
+  require('./scenarios/misc'),
+  require('./scenarios/db-verify')
 ).sort((a, b) => a.id - b.id);
 // ---------- Runner ----------
 
