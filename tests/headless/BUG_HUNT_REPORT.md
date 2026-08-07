@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #97 FIXED in 122ef51; next: bug #98 (StreamHandler _finalizeStreaming cancel leaks state).
+- **Where we left off:** 2026-08-08 — bug #98 FIXED in 8702a42; next: bug #99 (MessageRepo.Insert parent_id/sibling_group SQL injection).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 98. StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled
-
-**Scenario:** 98 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** start a stream, then press Stop/Cancel before completion and start another request without restarting the app.
-
-**Expected:** `_finalizeStreaming` should always clean up `requestParams _stream*` keys.
-
-**Actual:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming` does `wasCancelled := ...; if wasCancelled { _handleStreamCancelled(); return }` — returns without calling `_cleanupStreamState()`. The `_streamContent`/`_streamPID`/etc. keys remain in `requestParams`, polluting the next `sendStreamingRequest` (which overwrites most but not all) and leaving `IsSet` checks stale.
-
-**Evidence:** `StreamHandler.ahk` `_finalizeStreaming` — `wasCancelled` branch `return` without `_cleanupStreamState`; the non-cancel path does `_handleStreamComplete` + `_cleanupStreamState`.
-
-**Verification:** headless scenario 98 (noApp) asserts `wasCancelled` branch has `_handleStreamCancelled` + `return` but no `_cleanupStreamState` before `return`.
 
 ---
 
@@ -416,6 +400,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection" - FIXED in 0bb1d2f: AttachmentRepo now escapes msgId/threadId in Insert/GetByMessage/GetByThread/DeleteByMessage/DeleteOne/CopyForMessage and ChatDB FTS_Sync/FTS_Remove, so crafted ids stay literal (same class as #80/#81); scenario 96 flipped to a regression static check + ChatDB unit test (crafted `bad'id` round-trips through attachment CRUD and FTS).
 
 - 2026-08-08 - "SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure" - FIXED in 122ef51: Save now writes settings.json.tmp and renames it over the target (FileMove + file-state verification, since FileMove's return value is unreliable in this AHK build), so a crash/failure mid-write can no longer destroy the original settings.json; scenario 97 flipped to a regression static check + SettingsHandler unit tests (round-trip, replace-not-append, failure cleans temp and returns false).
+
+- 2026-08-08 - "StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled" - FIXED in 8702a42 (hardening): _finalizeStreaming's wasCancelled branch now calls _cleanupStreamState() explicitly before returning (idempotent — _handleStreamCancelled already cleaned up internally), so every exit path guarantees the _stream* keys are cleared and no stale state can leak into the next send; scenario 98 flipped to a regression static check + StreamHandler unit test.
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 

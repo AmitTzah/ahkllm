@@ -1,5 +1,5 @@
-# 2026-08-07T22:44:51.552Z | run of 1 scenario(s)
-PASS | #97 | SettingsPersistence.Save writes temp file then renames atomically (bug fixed) | SettingsPersistence.Save writes settings.json.tmp then FileMove(tmpPath, path, 1) - a mid-write failure can no longer destroy the original settings.json | 0.0s
+# 2026-08-07T22:47:41.059Z | run of 1 scenario(s)
+PASS | #98 | StreamHandler cancel branch cleans up _stream state (bug fixed) | StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then _cleanupStreamState before return - no _stream* keys leak into the next request | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
