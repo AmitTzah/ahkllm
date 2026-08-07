@@ -73,3 +73,15 @@ describe('API Logs viewer latency column', () => {
     assert.ok(els.logBody.innerHTML.indexOf('>-</td>') >= 0, 'missing duration should render "-"');
   });
 });
+
+describe('esc', () => {
+  it('escapes single quotes (bug #84)', () => {
+    const { sandbox } = loadViewer([]);
+    assert.strictEqual(sandbox.esc("a'b"), 'a&#39;b');
+  });
+
+  it('escapes angle brackets, ampersands and double quotes', () => {
+    const { sandbox } = loadViewer([]);
+    assert.strictEqual(sandbox.esc('<b title="x">a&b</b>'), '&#60;b title=&#34;x&#34;&#62;a&#38;b&#60;/b&#62;');
+  });
+});

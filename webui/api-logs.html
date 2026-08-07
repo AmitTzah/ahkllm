@@ -258,11 +258,14 @@ function fj(data) {
 
 function esc(s) {
     if (!s) return '';
-    return String(s).replace(/[&<>"]/g, function(m) {
+    // Bug #84 (XSS): escape single quotes too - a ' can break title='...'
+    // style attributes and inject HTML.
+    return String(s).replace(/[&<>"']/g, function(m) {
         if (m === '&') return '&#38;';
         if (m === '<') return '&#60;';
         if (m === '>') return '&#62;';
-        return '&#34;';
+        if (m === '"') return '&#34;';
+        return '&#39;';
     });
 }
 

@@ -559,15 +559,17 @@ scenarios.push({
 
 scenarios.push({
   id: 84,
-  name: "ApiLogsViewer esc() does not escape single quote ï¿½ title attribute break",
+  name: "ApiLogsViewer esc() escapes single quotes (title attribute safe)",
+  regression: true, // FIXED bug kept as a regression check (security: esc must handle ')
   mode: null,
   noApp: true,
   async body() {
     const html=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","api-logs.html"),"utf8");
     const escBody = html.slice(html.indexOf("function esc(s)"), html.indexOf("function esc(s)")+500);
-    const missingSingle = /\[&<>"]/.test(escBody) && escBody.indexOf("&#39;") < 0;
-    if(!missingSingle) throw new Error("bug not reproduced");
-    return "webui/api-logs.html esc() missing single quote ï¿½ title attribute breaks on '";
+    const escapesQuote = /&#39;/.test(escBody);
+    const hasQuoteInRegex = /\[&<>"']/.test(escBody);
+    if(!escapesQuote || !hasQuoteInRegex) throw new Error("bug #84 not fixed: escapesQuote=" + escapesQuote + " hasQuoteInRegex=" + hasQuoteInRegex);
+    return "webui/api-logs.html esc() escapes single quotes (&#39;), so title attributes cannot be broken";
   }
 });
 
