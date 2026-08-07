@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **60 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **59 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #35 FIXED in b3a50f8; next: bug #36 (command temperature/reasoning are dropped when the command model equals the app default).
+- **Where we left off:** 2026-08-07 — bug #36 FIXED in a1e086e; next: bug #37 (tray menu item changes don't apply until restart).
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 36. Command temperature/reasoning are dropped when the command model equals the app default
-
-**Scenario:** 36 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a chat-mode command whose API Model is the app default
-(`deepseek/deepseek-v4-flash`), set a Temperature (e.g. 0) or a Thinking level,
-save, then trigger the command and watch the request.
-
-**Expected:** the command's temperature and thinking level are sent to the API.
-
-**Actual:** they are silently dropped. `processInitialRequest` persists
-per-thread settings (`temperatureOverride`, `reasoningOverride`, ...) only inside
-`if fullAPIModelName != appDefaultModel`, so a command using the default model
-never writes those overrides â€” the thread loads with defaults and the fired
-request uses the model default temperature and no thinking config. (The system
-message survives because it is stored as a system message row, not an override.)
-
-**Evidence:** `app/RequestProcessor.ahk` â€” `ChatDB.Thread_UpdateSettings(threadId,
-{ ... temperatureOverride: temperature, reasoningOverride: ... })` is nested in
-`if fullAPIModelName != appDefaultModel`.
-
-**Verification:** headless scenario 36 (noApp) statically scans
-`app/RequestProcessor.ahk` and asserts the temperature/reasoning overrides live
-inside the `!= appDefaultModel` gate â€” proving default-model commands skip them.
 
 ### 37. Tray menu item changes don't apply until restart
 
@@ -1417,6 +1390,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Command temperature/reasoning are dropped when the command model equals the app default" - FIXED in a1e086e: processInitialRequest now persists temperature/reasoning/system overrides unconditionally (only modelOverride is gated by `fullAPIModelName != appDefaultModel`); scenario 36 flipped to a regression static check + RequestProcessor AHK unit test.
 
 - 2026-08-07 - "Temperature override of 0 is dropped when the thread reloads (right rail shows Default)" - FIXED in b3a50f8: ThreadSettings.ComputeEffective now tracks hasTemperatureOverride so a stored 0 is a valid override (assistant temperature only applies when there is no per-thread override); scenario 35 flipped to a live regression check (sse-success asserting temperature 0 in the request) + ChatSettings AHK unit tests (ComputeEffective and restore path).
 

@@ -1,5 +1,5 @@
-# 2026-08-07T20:18:55.677Z | run of 1 scenario(s)
-PASS | #35 | Temperature override of 0 is restored when the thread reloads (request uses 0) | thread with temperature_override=0 sent a request with temperature=0 (0) | 6.1s
+# 2026-08-07T20:23:28.803Z | run of 1 scenario(s)
+PASS | #36 | Command temperature/reasoning persist when the command model equals the app default (static check) | temperature/reasoning overrides persist outside the model-default gate; only modelOverride is gated | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
