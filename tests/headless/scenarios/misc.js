@@ -367,15 +367,16 @@ scenarios.push({
 
 scenarios.push({
   id: 72,
-  name: "SystemMessageResolver UNC path treated as relative ï¿½ \\\\server\\share broken",
+  name: "SystemMessageResolver treats UNC paths as absolute",
+  regression: true, // FIXED bug kept as a regression check (UNC paths must be read as-is)
   mode: null,
   noApp: true,
   async body() {
     const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"shared","SystemMessageResolver.ahk"),"utf8");
     const checksColon = /if !InStr\(filePath, ":"\)/.test(sr);
-    const handlesUNC = /\\\\/.test(sr) || /InStr\(filePath, "\\\\/.test(sr);
-    if(!checksColon || handlesUNC) throw new Error("bug not reproduced checksColon="+checksColon+" handlesUNC="+handlesUNC);
-    return "SystemMessageResolver.Resolve checks InStr(filePath, \":\") to detect absolute ï¿½ UNC \\\\server\\share has no colon and is searched as relative";
+    const handlesUnc = /SubStr\(filePath, 1, 1\) = "\\"/.test(sr);
+    if(!checksColon || !handlesUnc) throw new Error("bug #72 not fixed: checksColon=" + checksColon + " handlesUnc=" + handlesUnc);
+    return "SystemMessageResolver.Resolve treats \\\\server\\share (UNC) and rooted paths as absolute and reads them as-is";
   }
 });
 
