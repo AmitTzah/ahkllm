@@ -438,6 +438,9 @@ class TreeRepo {
         prev := 0
         for msg in path {
             prev += msg.HasProp("token_count") ? msg.token_count : 0
+            ; Bug #64: thinking tokens occupy context - include them in the
+            ; prefix sums so recomputed active_path_tokens match the header.
+            prev += msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
             ChatDB.db.Exec("UPDATE messages SET active_path_tokens=" prev " WHERE id='" msg.id "';")
         }
     }

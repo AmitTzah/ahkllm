@@ -101,8 +101,9 @@ class UsageTrackingTest {
 
         ; Verify thread counters
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 38
-            throw Error("Expected activePathTokens=38 (5+33), got " stats.activePathTokens)
+        ; Bug #64: thinking tokens occupy the context window.
+        if stats.activePathTokens != 131
+            throw Error("Expected activePathTokens=131 (5+33+93), got " stats.activePathTokens)
         if stats.cumulativeInputTokens != 5
             throw Error("Expected cumulativeInputTokens=5, got " stats.cumulativeInputTokens)
         if stats.cumulativeOutputTokens != 126
@@ -134,8 +135,9 @@ class UsageTrackingTest {
         stats1 := ChatDB.Msg_GetThreadStats(threadId)
         if stats1.cumulativeInputTokens != 5
             throw Error("T1: Expected cumulativeInput=5, got " stats1.cumulativeInputTokens)
-        if stats1.activePathTokens != 35
-            throw Error("T1: Expected activePathTokens=35 (5+30), got " stats1.activePathTokens)
+        ; Bug #64: thinking tokens occupy the context window.
+        if stats1.activePathTokens != 105
+            throw Error("T1: Expected activePathTokens=105 (5+30+70), got " stats1.activePathTokens)
 
         ; Turn 2: "How are you?" -> assistant
         user2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "How are you?", parent_id: asst1Id})
@@ -288,7 +290,7 @@ class UsageTrackingTest {
     ; Thinking tokens — stored and excluded from context
     ; ----------------------------------------------------
 
-    ThinkingTokens_StoredAndExcludedFromContext() {
+    ThinkingTokens_StoredAndIncludedInContext() {
         this._openDb()
         threadId := ChatDB.Thread_Create("Test")
 
@@ -302,10 +304,10 @@ class UsageTrackingTest {
             response_time_ms: 2500, prompt_tokens: 5
         })
 
-        ; active_path_tokens should exclude thinking (only token_count)
+        ; Bug #64: active_path_tokens includes thinking (prompt + visible + thinking).
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 45
-            throw Error("Expected activePathTokens=45 (5+40, excludes thinking), got " stats.activePathTokens)
+        if stats.activePathTokens != 205
+            throw Error("Expected activePathTokens=205 (5+40+160), got " stats.activePathTokens)
         if stats.cumulativeOutputTokens != 200
             throw Error("Expected cumulativeOutput=200 (40+160), got " stats.cumulativeOutputTokens)
 

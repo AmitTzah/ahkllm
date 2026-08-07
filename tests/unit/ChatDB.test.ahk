@@ -451,6 +451,18 @@ class ChatDBTest {
         }
     }
 
+    ; Regression (bug #64): active_path_tokens must include thinking tokens so
+    ; the header "Context Used" reflects the full context-window usage.
+    ActivePathTokens_IncludesThinkingTokens() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello", token_count: 10})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer", parent_id: uId, prompt_tokens: 20, token_count: 5, thinking_tokens: 7})
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" aId "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 32
+            throw Error("expected active_path_tokens = prompt(20) + visible(5) + thinking(7) = 32, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------

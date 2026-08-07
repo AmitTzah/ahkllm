@@ -200,18 +200,22 @@ scenarios.push({
 
 scenarios.push({
   id: 64,
-  name: "Context Used excludes thinking tokens (header underreports)",
+  name: "Context Used includes thinking tokens (header reports full context)",
+  regression: true, // FIXED bug kept as a regression check (active_path_tokens must include thinking)
   mode: null,
   noApp: true,
   async body() {
     const sc=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","streaming","StreamCompletion.ahk"),"utf8");
+    // token_count stays visible-only (that is the message body output).
     const hasVisibleOnly = /token_count: Max\(0, completionTokens - thinkingTokens\)/.test(sc);
     const mr2=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
-    const activeExcludesThinking = /activePathTokens := msgObj\.prompt_tokens \+ tc/.test(mr2);
+    // FIXED (bug #64): active_path_tokens = prompt + visible + thinking.
+    const activeIncludesThinking = /activePathTokens := msgObj\.prompt_tokens \+ tc \+ tht/.test(mr2);
     const tr=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    const readsActivePath = /active_path_tokens/.test(tr);
-    if(!hasVisibleOnly || !activeExcludesThinking || !readsActivePath) throw new Error("bug not reproduced");
-    return "MessageRepo stores token_count = completion-thinking and active_path_tokens = prompt+visible; header Context Used never counts thinking";
+    // _RecomputeActivePath adds thinking to the prefix sums too.
+    const recomputeIncludesThinking = /prev \+= msg\.HasProp\("thinking_tokens"\) \? msg\.thinking_tokens : 0/.test(tr);
+    if(!hasVisibleOnly || !activeIncludesThinking || !recomputeIncludesThinking) throw new Error("bug #64 not fixed: visibleOnly=" + hasVisibleOnly + " activeIncludesThinking=" + activeIncludesThinking + " recomputeIncludesThinking=" + recomputeIncludesThinking);
+    return "MessageRepo active_path_tokens includes thinking (prompt + visible + thinking) and _RecomputeActivePath adds thinking to prefix sums, so the header Context Used counts reasoning tokens";
   }
 });
 

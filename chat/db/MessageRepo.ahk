@@ -33,7 +33,9 @@ class MessageRepo {
         ; This column is read by GetThreadStats() for the UI token bar ("Context Used").
         activePathTokens := tc
         if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") {
-            activePathTokens := msgObj.prompt_tokens + tc
+            ; Bug #64: thinking tokens occupy the context window too - the
+            ; header "Context Used" must be prompt + visible output + thinking.
+            activePathTokens := msgObj.prompt_tokens + tc + tht
         } else if msgObj.HasProp("parent_id") && msgObj.parent_id {
             parentRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" msgObj.parent_id "';")
             if parentRow.count
