@@ -8,6 +8,13 @@ var allData = null, mainChart = null;
 const MODEL_COLORS = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
 var modelColors = {};
 
+// Bug #82 (XSS): provider/model names are user-controlled - escape them when
+// injecting into HTML (filter dropdown options).
+function escHtml(s) {
+  if (s === undefined || s === null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Generate array of date strings (YYYY-MM-DD) for the selected time range
 function getDateRangeLabels() {
   var range = document.getElementById('timeRange').value;
@@ -320,7 +327,7 @@ function extractProvider(model) {
 function populateFilters() {
   var provSel = document.getElementById('providerFilter'), curP = provSel.value;
   provSel.innerHTML = '<option value="">All Providers</option>';
-  (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+p+'">'+p+'</option>'; });
+  (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+escHtml(p)+'">'+escHtml(p)+'</option>'; });
   provSel.value = curP;
 
   // Build model→provider map from data (backend lists don't include provider info)
@@ -337,7 +344,7 @@ function populateFilters() {
   (allData.models||[]).forEach(function(m){
     // Filter by selected provider if one is chosen
     if (!curP || modelProv[m] === curP)
-      modSel.innerHTML += '<option value="'+m+'">'+m+'</option>';
+      modSel.innerHTML += '<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>';
   });
   modSel.value = curM;
 }

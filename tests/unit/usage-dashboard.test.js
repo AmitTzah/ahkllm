@@ -210,6 +210,22 @@ describe('populateFilters', () => {
         ctx.populateFilters();
         assert.ok(true);  // Doesn't throw
     });
+
+    it('escapes provider/model option values and labels (bug #82)', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [], commands: [],
+            providers: ['deepseek', '"><img src=x onerror=window.__x=1>'],
+            models: ['deepseek-v4-flash', '"><svg onload=window.__y=1>']
+        };
+        ctx.populateFilters();
+        const provHTML = ctx.document.getElementById('providerFilter').innerHTML;
+        const modHTML = ctx.document.getElementById('modelFilter').innerHTML;
+        assert.ok(!provHTML.includes('"><img'), 'provider option must be escaped, got ' + provHTML);
+        assert.ok(!modHTML.includes('"><svg'), 'model option must be escaped, got ' + modHTML);
+        assert.ok(provHTML.includes('&lt;img'), 'escaped provider label should render as text');
+        assert.ok(modHTML.includes('&lt;svg'), 'escaped model label should render as text');
+    });
 });
 
 describe('loadData', () => {

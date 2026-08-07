@@ -529,15 +529,16 @@ scenarios.push({
 
 scenarios.push({
   id: 82,
-  name: "Usage dashboard provider/model filter XSS ï¿½ option values not escaped",
+  name: "Usage dashboard filter dropdowns escape provider/model names (XSS fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: option values/labels must be escaped)
   mode: null,
   noApp: true,
   async body() {
     const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const hasEsc = /escHtml\(p\)/.test(dash) || /escHtml\(m\)/.test(dash);
-    const hasRaw = /provSel\.innerHTML \+=.*\'<option value="\'\+p\+/.test(dash);
-    if(hasEsc || !hasRaw) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRaw="+hasRaw);
-    return "usage-dashboard.js populateFilters does provSel.innerHTML += '<option value=\"'+p+'\">'+p without escHtml ï¿½ XSS via provider/model name";
+    const hasEsc = /escHtml\(p\)/.test(dash) && /escHtml\(m\)/.test(dash);
+    const hasRaw = /provSel\.innerHTML \+=.*'<option value="'\+p\+/.test(dash);
+    if(!hasEsc || hasRaw) throw new Error("bug #82 not fixed: hasEsc=" + hasEsc + " hasRaw=" + hasRaw);
+    return "usage-dashboard.js populateFilters escapes provider/model option values and labels (escHtml), so names render as inert text";
   }
 });
 
