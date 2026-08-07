@@ -211,6 +211,45 @@ class SettingsHandlerTest {
             throw Error("base values should survive a non-object incoming")
     }
 
+    ; Regression (bug #101): clearing a command toggle must persist - the copy
+    ; helpers must assign false/0/empty values, not skip them.
+    ApplyCommands_FalseAndZeroValuesPersist() {
+        global commands
+        oldCommands := commands
+        try {
+            cmdSettings := Map(
+                "commands", [
+                    Map(
+                        "commandName", "Test", "menuText", "Test",
+                        "stream", false, "isFIM", false, "showInputBox", false,
+                        "expandNewlines", false, "includeImageContext", false,
+                        "maxContextWords", 0, "tags", []
+                    )
+                ]
+            )
+            SettingsHandler.ApplyToGlobals(cmdSettings)
+            if commands.Length != 1
+                throw Error("expected 1 command, got " commands.Length)
+            cmd := commands[1]
+            if !cmd.HasOwnProp("stream") || cmd.stream != false
+                throw Error("stream=false should persist, got " (cmd.HasOwnProp("stream") ? cmd.stream : "(absent)"))
+            if !cmd.HasOwnProp("isFIM") || cmd.isFIM != false
+                throw Error("isFIM=false should persist, got " (cmd.HasOwnProp("isFIM") ? cmd.isFIM : "(absent)"))
+            if !cmd.HasOwnProp("showInputBox") || cmd.showInputBox != false
+                throw Error("showInputBox=false should persist, got " (cmd.HasOwnProp("showInputBox") ? cmd.showInputBox : "(absent)"))
+            if !cmd.HasOwnProp("expandNewlines") || cmd.expandNewlines != false
+                throw Error("expandNewlines=false should persist, got " (cmd.HasOwnProp("expandNewlines") ? cmd.expandNewlines : "(absent)"))
+            if !cmd.HasOwnProp("includeImageContext") || cmd.includeImageContext != false
+                throw Error("includeImageContext=false should persist, got " (cmd.HasOwnProp("includeImageContext") ? cmd.includeImageContext : "(absent)"))
+            if !cmd.HasOwnProp("maxContextWords") || cmd.maxContextWords != 0
+                throw Error("maxContextWords=0 should persist, got " (cmd.HasOwnProp("maxContextWords") ? cmd.maxContextWords : "(absent)"))
+            if !cmd.HasOwnProp("tags") || !IsObject(cmd.tags) || cmd.tags.Length != 0
+                throw Error("empty tags should persist, got " (cmd.HasOwnProp("tags") ? "non-empty/array" : "(absent)"))
+        } finally {
+            commands := oldCommands
+        }
+    }
+
     ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
     ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
     ; must return the pristine snapshot captured by CacheInitialDefaults().

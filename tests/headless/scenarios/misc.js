@@ -857,7 +857,8 @@ scenarios.push({
 
 scenarios.push({
   id: 101,
-  name: "SettingsApply._ApplyCommands _SetIfTruthy drops false for stream/isFIM",
+  name: "SettingsApply._ApplyCommands persists false/0/empty command values (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (clearing a command toggle must persist)
   mode: null,
   noApp: true,
   async body() {
@@ -865,10 +866,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sa=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    const hasHelper = /static _SetIfTruthy\(cmd, c, key\)/.test(sa) && /if c\.Has\(key\) && c\[key\]/.test(sa);
+    // FIXED (bug #101): the copy helpers assign whenever the key exists, so
+    // false/0/empty values survive the round-trip.
+    const truthyAssignsFalse = /static _SetIfTruthy\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
+    const truthyGuard = /static _SetIfTruthy\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\) && c\[key\]/.test(sa);
+    const nonZeroKeepsZero = /static _SetIfNonZero\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
+    const tagsKeepsEmpty = /static _SetIfNonEmptyTags\(cmd, c\)[\s\S]{0,400}if c\.Has\("tags"\) && IsObject\(c\["tags"\]\)\s*\n\s*cmd\.tags := c\["tags"\]/.test(sa);
     const callsTruthy = /_SetIfTruthy\(cmd, c, "stream"\)/.test(sa);
-    if (!hasHelper || !callsTruthy) throw new Error("bug not reproduced");
-    return "SettingsApply uses _SetIfTruthy for stream/isFIM — false dropped";
+    if(!truthyAssignsFalse || truthyGuard || !nonZeroKeepsZero || !tagsKeepsEmpty || !callsTruthy)
+      throw new Error("bug #101 not fixed: truthyAssignsFalse="+truthyAssignsFalse+" truthyGuard="+truthyGuard+" nonZeroKeepsZero="+nonZeroKeepsZero+" tagsKeepsEmpty="+tagsKeepsEmpty+" callsTruthy="+callsTruthy);
+    return "SettingsApply copy helpers assign whenever the key exists - stream/isFIM/showInputBox false, maxContextWords 0 and empty tags all survive the save round-trip";
   }
 });
 

@@ -159,17 +159,24 @@ class SettingsApply {
     }
 
     static _SetIfTruthy(cmd, c, key) {
-        if c.Has(key) && c[key]
+        ; Bug #101: assign whenever the key exists - false (0) is a valid
+        ; value and must persist, or clearing a command toggle silently
+        ; reverts on the next settings round-trip.
+        if c.Has(key)
             cmd.%key% := c[key]
     }
 
     static _SetIfNonZero(cmd, c, key) {
-        if c.Has(key) && c[key] != 0
+        ; Bug #101: 0 is a valid value (cleared maxContextWords) and must
+        ; persist, not be dropped.
+        if c.Has(key)
             cmd.%key% := c[key]
     }
 
     static _SetIfNonEmptyTags(cmd, c) {
-        if c.Has("tags") && IsObject(c["tags"]) && c["tags"].Length > 0
+        ; Bug #101: an explicitly empty tags array must persist (clearing all
+        ; tags should survive the save round-trip).
+        if c.Has("tags") && IsObject(c["tags"])
             cmd.tags := c["tags"]
     }
 
