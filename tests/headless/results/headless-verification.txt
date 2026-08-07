@@ -1,5 +1,5 @@
-# 2026-08-07T22:35:06.109Z | run of 1 scenario(s)
-PASS | #95 | Usage dashboard model heading escapes the model id (XSS fixed) | usage-dashboard.js renderModelSections escapes the model heading (escHtml(model)), so model ids render as inert text | 0.0s
+# 2026-08-07T22:38:59.187Z | run of 1 scenario(s)
+PASS | #96 | AttachmentRepo escapes msgId/threadId in every statement (SQL injection fixed) | AttachmentRepo/ChatDB escape msgId/threadId in Insert, GetByMessage, GetByThread, DeleteByMessage, CopyForMessage, FTS_Sync, FTS_Remove - crafted ids stay literal | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

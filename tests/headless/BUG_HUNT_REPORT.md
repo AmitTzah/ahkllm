@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **14 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #95 FIXED in 53a5290; next: bug #96 (AttachmentRepo SQL injection via unescaped msgId/threadId).
+- **Where we left off:** 2026-08-08 — bug #96 FIXED in 0bb1d2f; next: bug #97 (SettingsPersistence.Save non-atomic FileDelete then FileAppend).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 96. AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection
-
-**Scenario:** 96 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft a message id containing `''` (e.g. `bad''id`) via hand-edited DB or malicious IPC `messageId`, then call any AttachmentRepo path (Insert, GetByMessage, DeleteByMessage, CopyForMessage) or ChatDB FTS_Sync.
-
-**Expected:** all statements should use `SQLite.Escape(msgId)` / `SQLite.Escape(threadId)`.
-
-**Actual:** `chat/db/AttachmentRepo.ahk` `Insert` does `VALUES(''id'', ''msgId''`, `GetByMessage`/`DeleteByMessage` do `WHERE message_id=''msgId''`, `GetByThread`/`DeleteByThread` do `WHERE m.thread_id=''threadId''`, and `chat/db/ChatDB.ahk` `FTS_Sync`/`FTS_Remove` do `WHERE msg_id=''msgId''` — none escape. A `'` breaks the literal and can inject SQL (same class as #80/#81).
-
-**Evidence:** `AttachmentRepo.ahk` `Insert`/`GetByMessage`/`DeleteByMessage`/`CopyForMessage` and `ChatDB.ahk` `FTS_Sync` — `''" msgId "''` without `SQLite.Escape`.
-
-**Verification:** headless scenario 96 (noApp) asserts `WHERE message_id=''msgId''` exists and no `SQLite.Escape(msgId)` in `Insert`.
 
 ### 97. SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure
 
@@ -444,6 +428,8 @@ Entries move here when a bug is closed (user committed) or refuted. Add one line
 closure; never rewrite past entries.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
+
+- 2026-08-08 - "AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection" - FIXED in 0bb1d2f: AttachmentRepo now escapes msgId/threadId in Insert/GetByMessage/GetByThread/DeleteByMessage/DeleteOne/CopyForMessage and ChatDB FTS_Sync/FTS_Remove, so crafted ids stay literal (same class as #80/#81); scenario 96 flipped to a regression static check + ChatDB unit test (crafted `bad'id` round-trips through attachment CRUD and FTS).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
