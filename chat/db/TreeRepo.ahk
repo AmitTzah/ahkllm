@@ -17,7 +17,7 @@ class TreeRepo {
         if !leafId
             return []
 
-        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, created_at FROM messages WHERE thread_id='" threadId "';")
+        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id='" threadId "';")
 
         msgMap := Map()
         for row in allTable.rows {
@@ -33,6 +33,7 @@ class TreeRepo {
                 cached_tokens: row.Has("cached_tokens") && row.cached_tokens ? Integer(row.cached_tokens) : 0,
                 response_time_ms: row.Has("response_time_ms") && row.response_time_ms ? Integer(row.response_time_ms) : 0,
                 ttft_ms: row.Has("ttft_ms") && row.ttft_ms ? Integer(row.ttft_ms) : 0,
+                active_path_tokens: row.Has("active_path_tokens") && row["active_path_tokens"] ? Integer(row["active_path_tokens"]) : 0,
                 created_at: row.created_at
             }
         }
@@ -177,6 +178,14 @@ class TreeRepo {
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
 
+        ; Bug #48: carry the source thread's token/cost counters to the fork so
+        ; the token bar does not reset to zero (the per-message
+        ; active_path_tokens are copied by _InsertForkMessage).
+        srcStats := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" threadId "';")
+        if srcStats.count {
+            ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=" Integer(srcStats[1, "cumulative_input_tokens"]) ", cumulative_output_tokens=" Integer(srcStats[1, "cumulative_output_tokens"]) ", cumulative_cached_tokens=" Integer(srcStats[1, "cumulative_cached_tokens"]) ", cumulative_cost=" srcStats[1, "cumulative_cost"] ", cumulative_input_cost=" srcStats[1, "cumulative_input_cost"] ", cumulative_cached_input_cost=" srcStats[1, "cumulative_cached_input_cost"] ", cumulative_output_cost=" srcStats[1, "cumulative_output_cost"] " WHERE id='" newThreadId "';")
+        }
+
         ; Bulk FTS sync for all copied messages in the forked thread
         ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id='" newThreadId "';")
 
@@ -241,8 +250,11 @@ class TreeRepo {
         ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
         lat := msg.HasProp("response_time_ms") ? msg.response_time_ms : 0
         ttft := msg.HasProp("ttft_ms") ? msg.ttft_ms : 0
+        ; Bug #48: keep the per-message context-token prefix sum so the fork's
+        ; token bar ("Context Used") matches the copied conversation.
+        apt := msg.HasProp("active_path_tokens") && msg.active_path_tokens != "" ? Integer(msg.active_path_tokens) : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ");")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ", " apt ");")
     }
 
     ; Copy sibling messages that are NOT on the active path (so branch navigation works in forks).
@@ -268,8 +280,9 @@ class TreeRepo {
                 sCkt := sibRow.cached_tokens ? sibRow.cached_tokens : 0
                 sLat := sibRow.response_time_ms ? sibRow.response_time_ms : 0
                 sTtft := sibRow.ttft_ms ? sibRow.ttft_ms : 0
+                sApt := sibRow.active_path_tokens ? Integer(sibRow.active_path_tokens) : 0
 
-                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", '" safeR "', " sTc ", " sTht ", " sCkt ", " sLat ", " sTtft ");")
+                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", '" safeR "', " sTc ", " sTht ", " sCkt ", " sLat ", " sTtft ", " sApt ");")
                 AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
             }
         }

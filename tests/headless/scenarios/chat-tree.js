@@ -378,7 +378,8 @@ scenarios.push({
 
 scenarios.push({
   id: 48,
-  name: 'Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)',
+  name: 'Forking a chat keeps the token/cost stats (active_path_tokens and cumulative counters are copied)',
+  regression: true, // FIXED bug kept as a regression check (forks must inherit context tokens and cumulative cost)
   mode: null,
   settings: {},
   fixtures: {
@@ -414,11 +415,15 @@ scenarios.push({
     const leafStats = forkRow.active_leaf_id
       ? seed.query(dbPath, 'SELECT active_path_tokens FROM messages WHERE id = ?', [forkRow.active_leaf_id])[0] || {}
       : {};
-    // BUG: TreeRepo.ForkThread copies messages but neither the thread's
-    // cumulative_* counters nor the leaf's active_path_tokens (and never calls
-    // _RecomputeActivePath), so the fork's token bar and cost reset to zero.
-    if (String(forkBar).indexOf('$0.50') >= 0)
-      throw new Error('fork kept the cost stats (bug not reproduced): ' + JSON.stringify(forkBar));
+    // FIXED (bug #48): TreeRepo.ForkThread copies each message's
+    // active_path_tokens and carries the source thread's cumulative counters,
+    // so the fork's token bar keeps the context + cost stats.
+    if (String(forkBar).indexOf('$0.50') < 0)
+      throw new Error('fork lost the cost stats (bug #48 not fixed): ' + JSON.stringify(forkBar));
+    if (forkRow.cumulative_cost !== 0.5)
+      throw new Error('fork did not inherit cumulative_cost: ' + forkRow.cumulative_cost);
+    if (leafStats.active_path_tokens !== 10)
+      throw new Error('fork leaf active_path_tokens was not copied: ' + leafStats.active_path_tokens);
     return 'source token bar: ' + JSON.stringify(sourceBar) + '; fork token bar: ' + JSON.stringify(forkBar) +
       ' (cumulative_cost=' + forkRow.cumulative_cost + ', leaf active_path_tokens=' + leafStats.active_path_tokens + ')';
   }

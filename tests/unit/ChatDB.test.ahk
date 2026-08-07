@@ -369,6 +369,31 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #48): a fork must carry the token/cost stats - the
+    ; per-message active_path_tokens (context used) and the thread's
+    ; cumulative counters - so the fork's token bar does not reset to zero.
+    ForkThread_CopiesTokenStats() {
+        threadId := this._setup()
+        ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=10, cumulative_output_tokens=20, cumulative_cached_tokens=2, cumulative_cost=0.5, cumulative_input_cost=0.3, cumulative_cached_input_cost=0.01, cumulative_output_cost=0.2 WHERE id='" threadId "';")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", token_count: 10})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, token_count: 20})
+        newId := ChatDB.Msg_ForkThread(threadId, u1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (token stats)")
+        row := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cost, active_leaf_id FROM chat_threads WHERE id='" newId "';")
+        if !row.count
+            throw Error("fork thread row missing")
+        if Integer(row[1, "cumulative_input_tokens"]) != 10
+            throw Error("fork should inherit cumulative_input_tokens=10, got " row[1, "cumulative_input_tokens"])
+        if Number(row[1, "cumulative_cost"]) != 0.5
+            throw Error("fork should inherit cumulative_cost=0.5, got " row[1, "cumulative_cost"])
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" row[1, "active_leaf_id"] "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 10
+            throw Error("fork leaf should keep active_path_tokens=10, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------
