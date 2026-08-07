@@ -623,4 +623,31 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 93,
+  name: "SettingsDefaults GetDefaults shallow copies Map values � mutating snapshot corrupts pristine defaults",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
+    const hasShallow = /snapshot\[k\] := v/.test(sd);
+    const doesDeep = /snapshot\[k\] := .*Clone/.test(sd);
+    if(!hasShallow || doesDeep) throw new Error("bug not reproduced hasShallow="+hasShallow+" doesDeep="+doesDeep);
+    return "SettingsDefaults.GetDefaults shallow copies _initialDefaults values � nested Maps share reference";
+  }
+});
+
+scenarios.push({
+  id: 94,
+  name: "SettingsDefaults _DefaultsAssistants generates new UUID each call � defaults not stable",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
+    const hasUUID = /SettingsPersistence\._UUID\(\)/.test(sd) && /_DefaultsAssistants/.test(sd);
+    if(!hasUUID) throw new Error("bug not reproduced");
+    return "SettingsDefaults._DefaultsAssistants calls SettingsPersistence._UUID() for each assistant id on every GetDefaults � defaults have non-deterministic ids";
+  }
+});
+
 module.exports = scenarios;

@@ -156,7 +156,7 @@ How to run AHK safely:
 
 - **52 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #91 (InputWindow 0 falsy), #92 (models ensureFullId ignores provider change when id contains slash) � both headless PASS. Sync OK 53 entries / 87 scenarios (34 regression). Previous batches up to #90 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #93 (SettingsDefaults shallow copy), #94 (assistants UUID churn) � both headless PASS. Sync OK 55 entries / 89 scenarios (34 regression). Previous batches up to #92 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1324,6 +1324,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `webui/js/settings/sections/models.js` `ensureFullId` `if (id.indexOf('/') >=0) return id`.
 
 **Verification:** headless scenario 92 (noApp) asserts `ensureFullId` early-return for `/` exists.
+
+### 93. SettingsDefaults `GetDefaults` shallow-copies `Map` values � mutating snapshot corrupts pristine defaults
+
+**Scenario:** 93 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** call `SettingsDefaults.GetDefaults()` twice, mutate the first result�s `models` Map (e.g. `m1["models"]["openai/gpt-4"] := deleted`), then call `GetDefaults()` again and read `models`.
+
+**Expected:** each `GetDefaults()` returns an independent deep copy of the pristine defaults, so mutating one does not affect the next.
+
+**Actual:** `GetDefaults` when captured does `snapshot := Map(); for k, v in _initialDefaults snapshot[k] := v` � `v` is a `Map` (e.g. `models` Map), so `snapshot["models"]` shares the *same* Map object as `_initialDefaults["models"]`. Mutating `snapshot["models"]` mutates the cached pristine copy, corrupting future `GetDefaults()` and `Reset to Defaults`.
+
+**Evidence:** `app/settings/SettingsDefaults.ahk` `GetDefaults` `snapshot[k] := v` without `CloneMap`.
+
+**Verification:** headless scenario 93 (noApp) asserts `snapshot[k] := v` shallow copy exists and no `Clone` for that line.
+
+### 94. SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` � defaults not stable
+
+**Scenario:** 94 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** call `SettingsDefaults.GetDefaults()` twice and compare `assistants[1].id` (or `commands` via `_CommandToMap` which also uses `UUID` for missing ids, but assistants always does).
+
+**Expected:** the default `assistants` list should have stable ids (e.g. from `DefaultSettings.ahk` or a fixed seed), so `Reset to Defaults` and diffing are deterministic.
+
+**Actual:** `_DefaultsAssistants` does `asstList.Push(Map("id", SettingsPersistence._UUID(), "name", a.name, ...))` for every assistant on *every* `GetDefaults()` call. Each call generates fresh random UUIDs, so the default assistants� ids change every time the settings are reloaded, breaking stable diffing and �Reset� idempotency.
+
+**Evidence:** `app/settings/SettingsDefaults.ahk` `_DefaultsAssistants` `SettingsPersistence._UUID()` inside the loop.
+
+**Verification:** headless scenario 94 (noApp) asserts `SettingsPersistence._UUID()` inside `_DefaultsAssistants` exists.
 
 ---
 
