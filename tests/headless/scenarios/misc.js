@@ -293,15 +293,17 @@ scenarios.push({
 });
 scenarios.push({
   id: 68,
-  name: "ProviderResolver legacy prefix uses substring InStr, not prefix check",
+  name: "ProviderResolver legacy prefix match is prefix-only",
+  regression: true, // FIXED bug kept as a regression check (substring matches must not resolve to the wrong provider)
   mode: null,
   noApp: true,
   async body() {
     const pr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","ProviderResolver.ahk"),"utf8");
+    // FIXED (bug #68): legacy short ids match by prefix only.
+    const hasPrefixCheck = /SubStr\(modelId, 1, StrLen\(prefix\)\) = prefix/.test(pr);
     const hasSubstring = /if InStr\(modelId, prefix\)/.test(pr);
-    const hasPrefixCheck = /SubStr\(modelId, 1,/.test(pr) || /InStr\(modelId, prefix\) = 1/.test(pr);
-    if(!hasSubstring || hasPrefixCheck) throw new Error("bug not reproduced hasSubstring="+hasSubstring+" hasPrefixCheck="+hasPrefixCheck);
-    return "ProviderResolver.Resolve uses InStr substring ï¿½ mygpt-custom would match gpt incorrectly";
+    if(!hasPrefixCheck || hasSubstring) throw new Error("bug #68 not fixed: hasPrefixCheck=" + hasPrefixCheck + " hasSubstring=" + hasSubstring);
+    return "ProviderResolver.Resolve matches legacy short ids by prefix only, so mygpt-custom no longer resolves to the gpt provider";
   }
 });
 

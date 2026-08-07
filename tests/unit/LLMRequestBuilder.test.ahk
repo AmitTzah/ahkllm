@@ -611,4 +611,18 @@ class LLMRequestBuilderTest {
         if requestObj.reasoning_effort != "low"
             throw Error("Default format should set reasoning_effort='low', got: " requestObj.reasoning_effort)
     }
+
+    ; Regression (bug #68): legacy short ids resolve by PREFIX - a model whose
+    ; name merely CONTAINS the provider prefix (e.g. mygpt-custom) must not
+    ; match the gpt provider.
+    ProviderResolver_LegacyPrefixIsPrefixOnly() {
+        r1 := ProviderResolver.Resolve("gpt-4o")
+        if r1.providerKey != "openai"
+            throw Error("gpt-4o should resolve to openai, got '" r1.providerKey "'")
+        r2 := ProviderResolver.Resolve("mygpt-custom")
+        if r2.providerKey = "openai"
+            throw Error("mygpt-custom must NOT match the gpt prefix (bug #68), got '" r2.providerKey "'")
+        if r2.providerKey != "deepseek"
+            throw Error("mygpt-custom should fall back to deepseek, got '" r2.providerKey "'")
+    }
 }
