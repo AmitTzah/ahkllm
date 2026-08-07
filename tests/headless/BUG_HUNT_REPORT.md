@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **47 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **48 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #84 (api-logs esc missing single quote), #85 (AttachmentRepo file_path not escaped) � both headless PASS. Sync OK 47 entries / 81 scenarios (34 regression). Previous batches #61-83 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added verified bug #86 (FIM fallback renderMarkdown XSS) � headless PASS, removed non-bug #87. Sync OK 48 entries / 82 scenarios (34 regression). Previous batches up to #85 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1228,6 +1228,22 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `chat/db/AttachmentRepo.ahk` `INSERT INTO message_attachments` snippet � no `SQLite.Escape(file_path)`.
 
 **Verification:** headless scenario 85 (noApp) asserts `INSERT` snippet lacks `SQLite.Escape` for `file_path`.
+
+### 86. FIM fallback `renderMarkdown` XSS � `md.render` with `html:true` for non-chat content
+
+**Scenario:** 86 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** trigger a Fill-In-the-Middle (FIM) request that returns HTML like `<img src=x onerror=...>` (e.g. via a FIM command with a mock LLM), then view the fallback rendering (`#content` when `isChatMode` is false).
+
+**Expected:** content is rendered as inert text, even in FIM fallback mode.
+
+**Actual:** `webui/js/chat/chat-core.js` `renderMarkdown` does `var result = md.render(contentToRender); var contentElement = document.getElementById('content'); if (contentElement) contentElement.innerHTML = result;` with `md` configured `html:true` in `webui/js/main.js`. No sanitization, same root as #57 but for the non-chat `content` path.
+
+**Evidence:** `webui/js/chat/chat-core.js` `renderMarkdown` `md.render` + `innerHTML`; `webui/js/main.js` `markdownit({ html:true })`.
+
+**Verification:** headless scenario 86 (noApp) asserts `md.render` with `html:true` and `contentElement.innerHTML = result` exist.
 
 ---
 

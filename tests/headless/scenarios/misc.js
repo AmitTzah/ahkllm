@@ -539,4 +539,18 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 86,
+  name: "FIM fallback renderMarkdown XSS � md.render with html:true for non-chat content",
+  mode: null,
+  noApp: true,
+  async body() {
+    const cc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-core.js"),"utf8");
+    const hasMdRender = /contentElement\.innerHTML = result/.test(cc) && /md\.render\(contentToRender\)/.test(cc);
+    const hasHtmlTrue = /markdownit\(\{[^}]*html: true/.test(require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","main.js"),"utf8"));
+    if(!hasMdRender || !hasHtmlTrue) throw new Error("bug not reproduced");
+    return "chat-core.js renderMarkdown does md.render(content) with html:true and innerHTML � FIM fallback XSS same as #57";
+  }
+});
+
 module.exports = scenarios;
