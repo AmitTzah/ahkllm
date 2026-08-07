@@ -1,5 +1,5 @@
-# 2026-08-07T21:55:31.476Z | run of 1 scenario(s)
-PASS | #77 | onChatSend empty input is a no-op (no accidental retry) | chat-input.js onChatSend returns early for empty input, so an empty Send no longer retries the last message | 0.0s
+# 2026-08-07T21:57:45.759Z | run of 1 scenario(s)
+PASS | #78 | Right-rail temperature 0 shows 0.0 (falsy check fixed) | model-picker-config.js hasTemp uses explicit empty checks, so a 0 override shows 0.0 instead of Default | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

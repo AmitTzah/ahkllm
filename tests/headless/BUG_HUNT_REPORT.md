@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **28 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **27 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #77 FIXED in 8c651dd; next: bug #78 (right-rail temperature 0 displays as "Default").
+- **Where we left off:** 2026-08-07 — bug #78 FIXED in 5389f74; next: bug #79 (settings file with UTF-8 BOM fails to load).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 78. Right-rail temperature 0 displays as "Default" instead of 0.0 - falsy check hides 0
-
-**Scenario:** 78 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set per-thread temperature to 0 (right-rail slider to 0.0 ? Save), reload the thread or switch away and back, then read the right-rail Temperature value.
-
-**Expected:** the rail shows `0.0` and the slider sits at 0, with the reset ` - ` visible.
-
-**Actual:** the rail shows `Default` and the slider snaps to `1.0` with `temp-default` class, as if no override were set. `webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings` does `var hasTemp = settings.temperature && settings.temperature !== ""` - `0` / `"0"` is falsy, so `hasTemp` is false and the `else` branch (Default) runs. The stored override is still `0` (via `TemperatureOverride` in DB and `requestParams`), so the API request correctly sends `temperature:0`, but the UI lies about it. Same root as bug #35 (falsy `0`).
-
-**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` `hasTemp = settings.temperature && ...`.
-
-**Verification:** headless scenario 78 (noApp) asserts the `&&` falsy guard exists.
 
 ### 79. Settings file with UTF-8 BOM fails to load - settings silently reset to defaults
 
@@ -714,6 +698,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Right-rail temperature 0 displays as \"Default\" instead of 0.0 - falsy check hides 0" - FIXED in 5389f74: populateCurrentSettings now keeps a stored 0 and uses explicit empty checks (temperature !== '' && !== undefined && !== null) instead of a truthiness check, so the rail shows 0.0; scenario 78 flipped to a regression static check + model-picker unit test.
 
 - 2026-08-07 - "Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry" - FIXED in 8c651dd: onChatSend now returns early when the input is empty and there are no attachments, so an accidental click/Enter no longer retries the last assistant/user message and burns tokens; scenario 77 flipped to a regression static check + chat-input unit test.
 
