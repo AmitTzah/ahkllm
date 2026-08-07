@@ -544,15 +544,16 @@ scenarios.push({
 
 scenarios.push({
   id: 83,
-  name: "Threadmap who XSS ï¿½ model name not escaped in nav list",
+  name: "Threadmap who label escapes the model name (XSS fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: model names in the nav list must be escaped)
   mode: null,
   noApp: true,
   async body() {
     const tm=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-threadmap.js"),"utf8");
     const hasEsc = /escHtml\(who\)/.test(tm);
     const hasRawWho = /item\.innerHTML =.*\+ who \+/.test(tm);
-    if(hasEsc || !hasRawWho) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRawWho="+hasRawWho);
-    return "chat-threadmap.js renderNavList does item.innerHTML = ... + who + ... without escHtml ï¿½ model name XSS";
+    if(!hasEsc || hasRawWho) throw new Error("bug #83 not fixed: hasEsc=" + hasEsc + " hasRawWho=" + hasRawWho);
+    return "chat-threadmap.js renderNavList escapes the who label (escHtml(who)), so model names render as inert text";
   }
 });
 

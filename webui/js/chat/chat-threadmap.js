@@ -17,7 +17,8 @@ function renderNavList() {
     var who = msg.role === 'user' ? 'You' : (msg.model || 'Assistant');
     var snippet = (msg.content || '').substring(0, 60).replace(/\n/g, ' ');
 
-    item.innerHTML = '<span class="who">' + who + '</span><span class="snippet">' + escHtml(snippet) + '</span>';
+    // Bug #83 (XSS): the who label is a model name - escape it like the snippet.
+    item.innerHTML = '<span class="who">' + escHtml(who) + '</span><span class="snippet">' + escHtml(snippet) + '</span>';
 
     item.addEventListener('click', function(targetIdx) {
       return function() {

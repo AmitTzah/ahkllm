@@ -158,6 +158,22 @@ describe('renderNavList', () => {
         const navList = ctx.document.getElementById('nav-message-list');
         assert.strictEqual(navList.children.length, 2);
     });
+
+    it('escapes the who label (model name) in nav items (bug #83)', () => {
+        const ctx = loadModules();
+        ctx.escHtml = function(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        };
+        ctx.chatMessages = [
+            { role: 'assistant', content: 'Hi!', model: '"><img src=x onerror=window.__x=1>' }
+        ];
+        ctx.renderNavList();
+        const navList = ctx.document.getElementById('nav-message-list');
+        assert.strictEqual(navList.children.length, 1);
+        const html = navList.children[0].innerHTML;
+        assert.ok(!html.includes('"><img'), 'who label must be escaped, got ' + html);
+        assert.ok(html.includes('&lt;img'), 'who label should render as escaped text');
+    });
 });
 
 describe('_providerIconHtml', () => {
