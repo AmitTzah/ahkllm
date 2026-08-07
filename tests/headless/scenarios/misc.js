@@ -416,15 +416,16 @@ scenarios.push({
 
 scenarios.push({
   id: 75,
-  name: "GoogleChatCompletions budget table uses substring InStr, not prefix/contains check",
+  name: "GoogleChatCompletions budget table matches the Gemini family",
+  regression: true, // FIXED bug kept as a regression check (budget table must not match arbitrary substrings)
   mode: null,
   noApp: true,
   async body() {
     const gc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","handlers","GoogleChatCompletions.ahk"),"utf8");
     const hasSubstring = /if InStr\(modelId, "2\.5-pro"\)/.test(gc);
-    const hasExact = /modelId = "2\.5-pro"/.test(gc);
-    if(!hasSubstring) throw new Error("bug not reproduced");
-    return "GoogleChatCompletions._BudgetTable uses InStr substring ï¿½ my2.5-pro would match 2.5-pro incorrectly";
+    const hasFamily = /if InStr\(modelId, "gemini-2\.5-pro"\)/.test(gc);
+    if(hasSubstring || !hasFamily) throw new Error("bug #75 not fixed: hasSubstring=" + hasSubstring + " hasFamily=" + hasFamily);
+    return "GoogleChatCompletions._BudgetTable matches the gemini-2.5-pro family (not any substring), so my2.5-pro falls back to generic";
   }
 });
 

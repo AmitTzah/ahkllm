@@ -637,4 +637,17 @@ class LLMRequestBuilderTest {
         if cfg.thinking_budget != 0
             throw Error("thinking_budget should be 0, got '" cfg.thinking_budget "'")
     }
+
+    ; Regression (bug #75): the budget table must match the Gemini family
+    ; (gemini-2.5-pro), not any model whose name merely contains "2.5-pro".
+    GoogleBudgetTable_FamilyCheckOnly() {
+        t1 := GoogleChatCompletions._BudgetTable("google/gemini-2.5-pro-preview-09-13")
+        if t1["high"] != 32768
+            throw Error("gemini-2.5-pro should use its own budget table, got high=" t1["high"])
+        t2 := GoogleChatCompletions._BudgetTable("custom/my2.5-pro-custom")
+        if t2["high"] = 32768
+            throw Error("my2.5-pro must NOT match the 2.5-pro table (bug #75)")
+        if !t2.Has("high")
+            throw Error("custom model should fall back to the generic table")
+    }
 }

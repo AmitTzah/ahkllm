@@ -85,13 +85,15 @@ class GoogleChatCompletions {
     ; Budget tables per Gemini 2.x model family.
     ; ----------------------------------------------------
     static _BudgetTable(modelId) {
-        if InStr(modelId, "2.5-pro")
+        ; Bug #75: match the Gemini FAMILY (gemini-2.5-pro), not any model whose
+        ; name merely contains "2.5-pro" (e.g. my2.5-pro-custom).
+        if InStr(modelId, "gemini-2.5-pro")
             return Map("minimal", 128, "low", 2048, "medium", 8192, "high", 32768)
-        if InStr(modelId, "2.5-flash-lite")
+        if InStr(modelId, "gemini-2.5-flash-lite")
             return Map("minimal", 512, "low", 2048, "medium", 8192, "high", 16384)
-        if InStr(modelId, "2.5-flash")
+        if InStr(modelId, "gemini-2.5-flash")
             return Map("minimal", 1024, "low", 4096, "medium", 16384, "high", 65536)
-        if InStr(modelId, "2.0-flash")
+        if InStr(modelId, "gemini-2.0-flash")
             return Map("minimal", 1024, "low", 4096, "medium", 8192, "high", 16384)
         ; Generic Gemini 2.x fallback
         return Map("minimal", 1024, "low", 4096, "medium", 8192, "high", 16384)
