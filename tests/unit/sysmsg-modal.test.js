@@ -147,6 +147,41 @@ describe('System message modal', () => {
         assert.ok(fileSelect.value === 'plain.txt');
     });
 
+    it('save preserves a custom unlisted system-message file (bug #39)', () => {
+        const saveBtn = makeEl();
+        const fileSelect = makeEl();
+        fileSelect.selectedIndex = -1; // no option matches the custom file
+        const card = makeEl();
+        card._label = makeEl();
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn, smFileSelect: fileSelect },
+            target: { type: 'assistant', card },
+        });
+        ctx.populate({ systemMessageFile: 'default-settings/system-messages/my-custom-prompt.txt' });
+        ctx.fireDomReady();
+        saveBtn.fire('click');
+        assert.ok(card.dataset.systemMessageFile === 'default-settings/system-messages/my-custom-prompt.txt',
+            'custom file must survive the modal save, got ' + JSON.stringify(card.dataset.systemMessageFile));
+    });
+
+    it('save clears the file when the user explicitly picks "(none)"', () => {
+        const saveBtn = makeEl();
+        const fileSelect = makeEl();
+        fileSelect.selectedIndex = 0; // "(none)" option selected
+        const card = makeEl();
+        card._label = makeEl();
+        const ctx = loadSection({
+            els: { sysMsgEditSave: saveBtn, smFileSelect: fileSelect },
+            target: { type: 'assistant', card },
+        });
+        ctx.populate({ systemMessageFile: 'refine.txt' });
+        ctx.fireDomReady();
+        fileSelect.value = '';
+        saveBtn.fire('click');
+        assert.ok(card.dataset.systemMessageFile === '',
+            'explicit "(none)" must clear the file, got ' + JSON.stringify(card.dataset.systemMessageFile));
+    });
+
     it('populate opens inline mode and sets the inline text', () => {
         const fileRadio = makeEl({ checked: true });
         const inlineRadio = makeEl();

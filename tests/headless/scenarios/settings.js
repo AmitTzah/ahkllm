@@ -392,7 +392,8 @@ scenarios.push({
 
 scenarios.push({
   id: 39,
-  name: 'System-message modal silently clears a custom (unlisted) system-message file on Save',
+  name: 'System-message modal preserves a custom (unlisted) system-message file on Save',
+  regression: true, // FIXED bug kept as a regression check (opening + saving the modal must not clear a custom system-message file)
   mode: null,
   settings: {
     commands: [{
@@ -424,12 +425,13 @@ scenarios.push({
       return c && c[0] ? { systemMessageFile: c[0].systemMessageFile, systemMessage: c[0].systemMessage } : null;
     })()`);
     const label = await cdp.eval('document.getElementById("cmdSysMsgLabel") ? document.getElementById("cmdSysMsgLabel").textContent : ""');
-    // BUG: sysmsg-modal.js saves fileSelect.value (""), so the command's
-    // systemMessageFile is silently cleared even though the user changed nothing.
-    if (after && after.systemMessageFile === 'default-settings/system-messages/my-custom-prompt.txt')
-      throw new Error('custom file survived the modal save (bug not reproduced): ' + JSON.stringify(after));
-    return 'modal select selectedIndex=' + selState.selectedIndex + ' value=' + JSON.stringify(selState.value) +
-      '; after Save systemMessageFile=' + JSON.stringify(after && after.systemMessageFile) + ' label="' + label + '"';
+    // FIXED (bug #39): the modal remembers the stored file and falls back to it
+    // when the select has no matching option, so the custom file survives.
+    if (!after || after.systemMessageFile !== 'default-settings/system-messages/my-custom-prompt.txt')
+      throw new Error('custom system-message file was not preserved through the modal save: ' +
+        JSON.stringify(after) + ' label="' + label + '"');
+    return 'custom file survived the modal save: systemMessageFile=' +
+      JSON.stringify(after.systemMessageFile) + ' label="' + label + '"';
   }
 });
 

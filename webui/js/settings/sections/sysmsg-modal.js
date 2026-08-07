@@ -6,6 +6,9 @@
   window.populateSysMsgModal = function(opts) {
     var modal = document.getElementById('sysMsgEditModal');
     if (!modal) return;
+    // Bug #39: remember the stored file so a custom (unlisted) file survives
+    // opening + saving the modal even though the select cannot display it.
+    modal.dataset.sysMsgFile = opts.systemMessageFile || '';
     var fileRadio = modal.querySelector('input[name="sysMsgMode"][value="file"]');
     var inlineRadio = modal.querySelector('input[name="sysMsgMode"][value="inline"]');
     var fileSection = document.getElementById('smFileSection');
@@ -68,6 +71,11 @@
         } else {
           var fileSelect = document.getElementById('smFileSelect');
           sysMsgFile = fileSelect ? fileSelect.value : '';
+          // Bug #39: a custom file not in the hardcoded list leaves
+          // selectedIndex = -1 / value = "" - fall back to the stored value so
+          // the Save handler does not silently clear systemMessageFile.
+          if (fileSelect && fileSelect.selectedIndex === -1 && modal && modal.dataset && modal.dataset.sysMsgFile)
+            sysMsgFile = modal.dataset.sysMsgFile;
         }
         if (t.type === 'assistant') {
           t.card.dataset.systemMessage = sysMsg;
