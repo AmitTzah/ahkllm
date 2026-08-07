@@ -1,5 +1,5 @@
-# 2026-08-07T21:57:45.759Z | run of 1 scenario(s)
-PASS | #78 | Right-rail temperature 0 shows 0.0 (falsy check fixed) | model-picker-config.js hasTemp uses explicit empty checks, so a 0 override shows 0.0 instead of Default | 0.0s
+# 2026-08-07T22:00:56.293Z | run of 1 scenario(s)
+PASS | #79 | SettingsPersistence.Load strips a UTF-8 BOM before parsing | SettingsPersistence.Load strips a leading UTF-8 BOM (Chr(0xFEFF)) before jsongo.Parse, so BOM'd settings files load normally | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

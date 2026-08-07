@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **27 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **26 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #78 FIXED in 5389f74; next: bug #79 (settings file with UTF-8 BOM fails to load).
+- **Where we left off:** 2026-08-07 — bug #79 FIXED in 608a7a7; next: bug #80 (ThreadRepo SQL injection via crafted thread id).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 79. Settings file with UTF-8 BOM fails to load - settings silently reset to defaults
-
-**Scenario:** 79 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** write `%APPDATA%\AhkLLM\settings.json` with a UTF-8 BOM (many Windows editors do), restart the app.
-
-**Expected:** settings load normally - the app itself writes with BOM, so the loader must tolerate it.
-
-**Actual:** `app/settings/SettingsPersistence.ahk` `Load()` does `raw := FileRead(path, "UTF-8")` then `parsed := jsongo.Parse(raw)` with no BOM stripping. `jsongo` chokes on leading `\uFEFF`, the `catch` returns an empty `Map()`, and the app falls back to `DefaultSettings` - all custom settings are lost. The harness README notes the BOM issue and `seed.readJsonFile` strips it, but the production loader does not.
-
-**Evidence:** `app/settings/SettingsPersistence.ahk` `Load()` - no BOM handling before `jsongo.Parse`.
-
-**Verification:** headless scenario 79 (noApp) asserts `FileRead` + direct `jsongo.Parse` without BOM handling.
 
 ### 80. ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape - SQL injection via crafted id
 
@@ -698,6 +682,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Settings file with UTF-8 BOM fails to load - settings silently reset to defaults" - FIXED in 608a7a7: SettingsPersistence.Load now strips a leading UTF-8 BOM (Chr(0xFEFF)) before jsongo.Parse, so BOM'd settings files load instead of silently resetting; scenario 79 flipped to a regression static check + SettingsHandler unit test.
 
 - 2026-08-07 - "Right-rail temperature 0 displays as \"Default\" instead of 0.0 - falsy check hides 0" - FIXED in 5389f74: populateCurrentSettings now keeps a stored 0 and uses explicit empty checks (temperature !== '' && !== undefined && !== null) instead of a truthiness check, so the rail shows 0.0; scenario 78 flipped to a regression static check + model-picker unit test.
 
