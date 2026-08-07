@@ -469,6 +469,15 @@ class ChatDBTest {
         }
     }
 
+    ; Regression (bug #81, security): _setupSiblingGroup must escape msg.id.
+    Branch_SetupSiblingGroup_EscapesMsgId() {
+        srcPath := A_ScriptDir "\..\chat\callbacks\Branch.ahk"
+        src := FileRead(srcPath)
+        block := SubStr(src, InStr(src, "_setupSiblingGroup(msg) {"), 500)
+        if !InStr(block, "SQLite.Escape(msg.id)")
+            throw Error("_setupSiblingGroup must escape msg.id (bug #81)")
+    }
+
     ; Regression (bug #70): FTS5 MATCH must quote terms so special characters
     ; (e.g. C++) do not produce a syntax error / empty results.
     SearchMessages_FTS5EscapesSpecialChars() {

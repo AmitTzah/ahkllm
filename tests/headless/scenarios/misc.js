@@ -513,16 +513,17 @@ scenarios.push({
 
 scenarios.push({
   id: 81,
-  name: "Branch _setupSiblingGroup UPDATE does not escape msg.id ï¿½ SQL injection via crafted message id",
+  name: "Branch _setupSiblingGroup escapes msg.id (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted message ids must not inject SQL)
   mode: null,
   noApp: true,
   async body() {
     const br=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","callbacks","Branch.ahk"),"utf8");
     const snippet = br.slice(br.indexOf("_setupSiblingGroup"), br.indexOf("_setupSiblingGroup")+800);
-    const hasEscape = /SQLite\.Escape(msg.id)/.test(snippet);
-    const hasDirect = /WHERE id='" msg.id "'/.test(snippet);
-    if(hasEscape || !hasDirect) throw new Error("bug not reproduced hasEscape="+hasEscape);
-    return 'Branch._setupSiblingGroup does UPDATE ... WHERE id=' + "'msg.id' without SQLite.Escape";
+    const hasEscape = /SQLite\.Escape\(msg\.id\)/.test(snippet);
+    const hasDirect = /WHERE id='" msg\.id "'/.test(snippet);
+    if(!hasEscape || hasDirect) throw new Error("bug #81 not fixed: hasEscape=" + hasEscape + " hasDirect=" + hasDirect);
+    return "Branch._setupSiblingGroup escapes msg.id (SQLite.Escape), so crafted message ids cannot inject SQL";
   }
 });
 
