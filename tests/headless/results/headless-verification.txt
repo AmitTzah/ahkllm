@@ -1,5 +1,5 @@
-# 2026-08-07T22:20:21.442Z | run of 1 scenario(s)
-PASS | #88 | UsageRepo month (last 30 days) filter uses the local cutoff (matches dashboard) | UsageRepo month (last 30 days) filter uses the local cutoff (FormatTime/DateAdd), matching the dashboard labels | 0.0s
+# 2026-08-07T22:22:12.145Z | run of 1 scenario(s)
+PASS | #89 | CurlBuilder sanitizes the API key in the Authorization header (injection fixed) | CurlBuilder sanitizes the API key (_SafeApiKey strips \" % & | < > ^) before embedding it in the Authorization header | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

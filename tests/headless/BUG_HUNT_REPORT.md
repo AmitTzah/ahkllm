@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **19 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **18 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #88 FIXED with #87 (fad0f52); next: bug #89 (CurlBuilder interpolates API key with \" without escaping).
+- **Where we left off:** 2026-08-07 — bug #89 FIXED in 0a72a67; next: bug #90 (SettingsMerge.Override iterates without an IsObject guard).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 89. CurlBuilder interpolates API key with `"` into `-H "Authorization: Bearer ..."` without escaping - header break / injection
-
-**Scenario:** 89 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set any provider `apiKey` (direct mode) to contain a double quote, e.g. `sk-"test`, save, then trigger any LLM request (chat or command).
-
-**Expected:** the key is shell-escaped or the header is built via a safe API, not via string interpolation.
-
-**Actual:** `api/CurlBuilder.ahk` `Build`/`BuildStream`/`BuildFIM` do `'-H "Authorization: Bearer ' providerInfo.apiKey '" '` with no `StrReplace` or `SQLite.Escape` for `"`. A key containing `"` closes the `"` early, breaking the cURL command line (`Authorization: Bearer sk-` + `"` + `test` + `"` ? header is `sk-` and `test` becomes a stray argument). A key like `sk-" && echo pwned && "` could inject a second command when the `Run` goes through `cmd` (stream path does, via `2>`).
-
-**Evidence:** `api/CurlBuilder.ahk` three builders interpolate `providerInfo.apiKey` into `"`-quoted header with no escaping.
-
-**Verification:** headless scenario 89 (noApp) asserts `Authorization: Bearer` + `apiKey` exists and no `Escape`/`StrReplace` for `apiKey` exists.
 
 ### 90. SettingsMerge.Override iterates over `incoming` without `IsObject` guard - empty string corrupts settings
 
@@ -554,6 +538,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "CurlBuilder interpolates API key with `\"` into `-H \"Authorization: Bearer ...\"` without escaping - header break / injection" - FIXED in 0a72a67: Build/BuildStream/BuildFIM now pass the key through CurlBuilder._SafeApiKey (strips \" % & | < > ^) before embedding it in the header; scenario 89 flipped to a regression static check + LLMRequestBuilder unit test.
 
 - 2026-08-07 - "Usage dashboard \"Last 30 Days\" SQL uses UTC while chart uses local - same timezone drift as Last Month" - FIXED with bug #87 (fad0f52): the month filter now uses a local monthCutoff (FormatTime(DateAdd(A_Now,-29))) instead of UTC date('now','-30 days'); scenario 88 flipped to a regression static check.
 
