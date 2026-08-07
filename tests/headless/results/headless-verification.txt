@@ -1,5 +1,5 @@
-# 2026-08-07T20:59:50.768Z | run of 1 scenario(s)
-PASS | #55 | Branch switch / search navigation land on the newest continuation (matching the tree modal) | branch-nav switch from a1 landed on leaf m-br-55-a2bx (context "95 / 1m") and the tree modal lands on m-br-55-a2bx (context "95 / 1m") - both newest | 7.0s
+# 2026-08-07T21:02:57.962Z | run of 1 scenario(s)
+PASS | #56 | Stopping a stream before the first token is a clean cancel (static check) | _finalizeStreaming checks _streamCancelled before the empty-content branch, so pressing Stop before the first token is a clean cancellation (no API-key banner) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

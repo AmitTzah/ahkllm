@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **47 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **46 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #55 FIXED in 6e87641; next: bug #56 (stopping a stream before the first token shows an error banner instead of a clean cancel).
+- **Where we left off:** 2026-08-07 — bug #56 FIXED in 4fe5245; next: bug #57 (chat message content rendered as raw HTML - XSS).
 ---
 
 ## Bug entry template
@@ -207,33 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 56. Stopping a stream before the first token shows an error banner instead of a clean cancel
-
-**Scenario:** 56 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a message to a slow model and press Stop (or Esc) before any
-content or reasoning token has arrived.
-
-**Expected:** a user-initiated cancellation is reported as cancelled â€” no error
-banner.
-
-**Actual:** the UI shows the generic failure banner "Request failed. Check your
-API key and try again." `_finalizeStreaming` checks "no content AND no
-reasoning" FIRST and routes that case to `_handleStreamError`; the
-`_streamCancelled` flag is only consulted after that check. A Stop that lands
-before the first token therefore looks exactly like a connection failure.
-
-**Evidence:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming()` â€” the
-empty-content branch (`_handleStreamError()`) precedes the `wasCancelled`
-check; `chat/streaming/StreamError.ahk` `_handleStreamError()` falls back to
-the generic API-key message when stderr is empty.
-
-**Verification:** headless scenario 56 (noApp) statically scans
-`StreamHandler.ahk` and asserts the empty-content error branch runs before the
-`_streamCancelled` branch and that the fallback error text blames the API key.
 
 ### 57. Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)
 
@@ -1047,6 +1020,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Stopping a stream before the first token shows an error banner instead of a clean cancel" - FIXED in 4fe5245: _finalizeStreaming now checks _streamCancelled BEFORE the empty-content branch, so a user Stop before the first token finalizes as a clean cancellation (_handleStreamCancelled posts streamCancelled) instead of the misleading API-key error banner; scenario 56 flipped to a regression static check + StreamHandler unit test.
 
 - 2026-08-07 - "Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest" - FIXED in 6e87641: TreeRepo._WalkToLeaf now picks the same child the tree modal's _findDefaultLeaf chooses (ORDER BY sibling_index, rowid DESC = newest continuation) instead of the oldest by created_at; scenario 55 flipped to a regression check + ChatDB unit test.
 
