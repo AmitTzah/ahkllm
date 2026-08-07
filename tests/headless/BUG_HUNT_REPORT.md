@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **40 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **39 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #64 FIXED in f9769f7; next: bug #65 (hard-deleting a message leaves cumulative token/cost counters stale).
+- **Where we left off:** 2026-08-07 — bug #65 FIXED in 12f3a8a; next: bug #66 (header tooltip typo "Culminative").
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 65. Hard-deleting a message leaves cumulative token/cost counters stale - header stays inflated
-
-**Scenario:** 65 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** in a chat, note the header totals (e.g. ? 12 ? 9 $0.02), then delete any message (trash icon ? confirm). Re-read the header.
-
-**Expected:** cumulative Input/Output/Cost/ Cached counters decrement to reflect the remaining messages, consistent with the new Context Used.
-
-**Actual:** header totals stay inflated. `chat/db/MessageRepo.ahk` `HardDelete` re-parents children, clears the FTS row and calls `_RecomputeActivePath`, but never updates `chat_threads.cumulative_input_tokens / cumulative_output_tokens / cumulative_cached_tokens / cumulative_cost` (or the `chat_usage` aggregation). Cost and token totals from deleted branches remain counted forever.
-
-**Evidence:** `chat/db/MessageRepo.ahk` `static HardDelete` - no `cumulative_` UPDATE; `chat/db/TreeRepo.ahk` `_RecomputeActivePath` only rebuilds `active_path_tokens`.
-
-**Verification:** headless scenario 65 (noApp) slices HardDelete and asserts no `cumulative_` write exists.
 
 ### 66. Header tooltip typo "Culminative" (should be "Cumulative") and mismatched semantics
 
@@ -906,6 +890,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Hard-deleting a message leaves cumulative token/cost counters stale - header stays inflated" - FIXED in 12f3a8a: MessageRepo._RecomputeCumulativeCounters rebuilds the thread's cumulative input/output/cached/cost counters from the remaining messages (mirroring Insert's per-message accumulation) and HardDelete calls it, so the header totals drop with the deleted message; scenario 65 flipped to a regression static check + UsageTracking/ChatDB unit tests (old preserve-counters test updated to the fixed semantics).
 
 - 2026-08-07 - "Header \"Context Used\" excludes thinking tokens - underreports context window usage" - FIXED in f9769f7: MessageRepo now stores active_path_tokens = prompt + visible + thinking for assistants, and TreeRepo._RecomputeActivePath adds thinking_tokens to the prefix sums, so the header Context Used matches the tooltip/dashboard totals; scenario 64 flipped to a regression static check + ChatDB/UsageTracking unit tests (existing thinking-token expectations updated).
 

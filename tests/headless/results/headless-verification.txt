@@ -1,5 +1,5 @@
-# 2026-08-07T21:21:12.226Z | run of 1 scenario(s)
-PASS | #64 | Context Used includes thinking tokens (header reports full context) | MessageRepo active_path_tokens includes thinking (prompt + visible + thinking) and _RecomputeActivePath adds thinking to prefix sums, so the header Context Used counts reasoning tokens | 0.0s
+# 2026-08-07T21:26:11.831Z | run of 1 scenario(s)
+PASS | #65 | Hard-delete recomputes cumulative token/cost counters | HardDelete recomputes cumulative_* counters (via _RecomputeCumulativeCounters) so the header totals drop with the deleted message | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
