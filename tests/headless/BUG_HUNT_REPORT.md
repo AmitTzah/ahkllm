@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **45 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **47 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #82 (dashboard filter XSS), #83 (threadmap who XSS) � both headless PASS (noApp static). Sync OK 45 entries / 79 scenarios (34 regression). Previous batches up to #81 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #84 (api-logs esc missing single quote), #85 (AttachmentRepo file_path not escaped) � both headless PASS. Sync OK 47 entries / 81 scenarios (34 regression). Previous batches #61-83 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1196,6 +1196,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `webui/js/chat/chat-threadmap.js` `renderNavList` `+ who +` without `escHtml`.
 
 **Verification:** headless scenario 83 (noApp) asserts `+ who +` raw and no `escHtml(who)` exists.
+
+### 84. API Logs Viewer `esc()` does not escape single quote � `title` attribute break and potential XSS
+
+**Scenario:** 84 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** craft an API log entry where `endpoint` contains a single quote (e.g. `https://example.com/'onmouseover='alert(1)` via a custom provider endpoint), then open API Logs Viewer and hover the Endpoint cell.
+
+**Expected:** the `title` attribute shows the endpoint as inert text.
+
+**Actual:** `webui/api-logs.html` `esc()` does `String(s).replace(/[&<>"]/g, ...)` � it escapes `& < > "` but not `'`. The log table builds `<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">'`. A `'` closes the `title='...'` attribute early, breaking the HTML and allowing an unescaped attribute injection. The cell text itself is inside `esc()`, but the attribute is not.
+
+**Evidence:** `webui/api-logs.html` `function esc(s)` regex `/[&<>"]/`.
+
+**Verification:** headless scenario 84 (noApp) asserts `esc` regex missing `'` and `&#39;` absent.
+
+### 85. AttachmentRepo file_path interpolated without SQLite.Escape � crafted filename SQL injection
+
+**Scenario:** 85 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** attach a file whose `original_filename` is crafted to contain `'`, e.g. `evil' || (SELECT ...)` � or more directly, a file path that after `AttachmentRepo.SaveAttachment` is stored as `file_path` with a `'`.
+
+**Expected:** all SQL literals use `SQLite.Escape`.
+
+**Actual:** `chat/db/AttachmentRepo.ahk` `INSERT INTO message_attachments ... VALUES(..., '" file_path "', ...)` where `file_path` comes from `AttachmentRepo.SaveAttachment`'s `file_path` param (which is `screenshotPath` or the copied file path) and is interpolated as `'" file_path "'` without `SQLite.Escape`. A path containing `'` (Windows allows `'` in filenames) would break the SQL string. `original_filename` *is* escaped, but `file_path` is not.
+
+**Evidence:** `chat/db/AttachmentRepo.ahk` `INSERT INTO message_attachments` snippet � no `SQLite.Escape(file_path)`.
+
+**Verification:** headless scenario 85 (noApp) asserts `INSERT` snippet lacks `SQLite.Escape` for `file_path`.
 
 ---
 

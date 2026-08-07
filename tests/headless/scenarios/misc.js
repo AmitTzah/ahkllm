@@ -511,4 +511,32 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 84,
+  name: "ApiLogsViewer esc() does not escape single quote � title attribute break",
+  mode: null,
+  noApp: true,
+  async body() {
+    const html=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","api-logs.html"),"utf8");
+    const escBody = html.slice(html.indexOf("function esc(s)"), html.indexOf("function esc(s)")+500);
+    const missingSingle = /\[&<>"]/.test(escBody) && escBody.indexOf("&#39;") < 0;
+    if(!missingSingle) throw new Error("bug not reproduced");
+    return "webui/api-logs.html esc() missing single quote � title attribute breaks on '";
+  }
+});
+
+scenarios.push({
+  id: 85,
+  name: "AttachmentRepo file_path not escaped in SQL",
+  mode: null,
+  noApp: true,
+  async body() {
+    const ar=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
+    const snippet = ar.slice(ar.indexOf("INSERT INTO message_attachments"), ar.indexOf("INSERT INTO message_attachments")+800);
+    const escapes = snippet.indexOf("SQLite.Escape") >= 0 && snippet.indexOf("file_path") >= 0 && /SQLite\.Escape\([^)]*file_path/.test(snippet);
+    if(escapes) throw new Error("bug not reproduced escapes");
+    return "AttachmentRepo.Insert file_path without SQLite.Escape � crafted filename with quote could inject";
+  }
+});
+
 module.exports = scenarios;
