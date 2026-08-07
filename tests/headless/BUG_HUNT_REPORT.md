@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #96 FIXED in 0bb1d2f; next: bug #97 (SettingsPersistence.Save non-atomic FileDelete then FileAppend).
+- **Where we left off:** 2026-08-08 — bug #97 FIXED in 122ef51; next: bug #98 (StreamHandler _finalizeStreaming cancel leaks state).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 97. SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure
-
-**Scenario:** 97 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** save settings when disk is full / file locked (or kill the process between the two calls).
-
-**Expected:** save should be atomic (write to temp file then `FileMove`/`Rename`).
-
-**Actual:** `app/settings/SettingsPersistence.ahk` `Save` does `try FileDelete(path)` then `FileAppend(jsonStr, path, "UTF-8")` with no temp file. If `FileAppend` fails (disk full, permission, crash), the original `settings.json` is already deleted — settings are lost and next load falls back to defaults (same silent-reset as BOM bug #79).
-
-**Evidence:** `SettingsPersistence.ahk` `Save` — `FileDelete` + `FileAppend` without atomic rename.
-
-**Verification:** headless scenario 97 (noApp) asserts `FileDelete(path)` and `FileAppend(jsonStr, path` both exist and no temp-file rename exists.
 
 ### 98. StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled
 
@@ -430,6 +414,8 @@ closure; never rewrite past entries.
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
 - 2026-08-08 - "AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection" - FIXED in 0bb1d2f: AttachmentRepo now escapes msgId/threadId in Insert/GetByMessage/GetByThread/DeleteByMessage/DeleteOne/CopyForMessage and ChatDB FTS_Sync/FTS_Remove, so crafted ids stay literal (same class as #80/#81); scenario 96 flipped to a regression static check + ChatDB unit test (crafted `bad'id` round-trips through attachment CRUD and FTS).
+
+- 2026-08-08 - "SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure" - FIXED in 122ef51: Save now writes settings.json.tmp and renames it over the target (FileMove + file-state verification, since FileMove's return value is unreliable in this AHK build), so a crash/failure mid-write can no longer destroy the original settings.json; scenario 97 flipped to a regression static check + SettingsHandler unit tests (round-trip, replace-not-append, failure cleans temp and returns false).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 

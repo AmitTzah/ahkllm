@@ -1,5 +1,5 @@
-# 2026-08-07T22:38:59.187Z | run of 1 scenario(s)
-PASS | #96 | AttachmentRepo escapes msgId/threadId in every statement (SQL injection fixed) | AttachmentRepo/ChatDB escape msgId/threadId in Insert, GetByMessage, GetByThread, DeleteByMessage, CopyForMessage, FTS_Sync, FTS_Remove - crafted ids stay literal | 0.0s
+# 2026-08-07T22:44:51.552Z | run of 1 scenario(s)
+PASS | #97 | SettingsPersistence.Save writes temp file then renames atomically (bug fixed) | SettingsPersistence.Save writes settings.json.tmp then FileMove(tmpPath, path, 1) - a mid-write failure can no longer destroy the original settings.json | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
