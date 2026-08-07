@@ -394,7 +394,9 @@ class TreeRepo {
             if pricing {
                 result.pricingUnit := {
                     input: pricing.HasOwnProp("input") ? pricing.input : 0,
-                    cachedInput: pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
+                    ; Bug #63: a stored "" means "not set" - fall back to 10% of
+                    ; the input price (a present "" was previously taken as 0).
+                    cachedInput: pricing.HasOwnProp("cachedInput") && pricing.cachedInput != "" ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
                     output: pricing.HasOwnProp("output") ? pricing.output : 0
                 }
             }

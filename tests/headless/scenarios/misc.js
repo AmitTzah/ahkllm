@@ -180,7 +180,8 @@ scenarios.push({
 
 scenarios.push({
   id: 63,
-  name: "Thread pricing unit falls back incorrectly when cachedInput is empty string",
+  name: "Thread pricing unit falls back to 10% when cachedInput is empty string",
+  regression: true, // FIXED bug kept as a regression check (empty cachedInput must fall back to 10% of input)
   mode: null,
   noApp: true,
   async body() {
@@ -188,9 +189,10 @@ scenarios.push({
     const path = require("node:path");
     const launcher = require("../launch");
     const tr = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "TreeRepo.ahk"), "utf8");
-    const hasFallback = /cachedInput: pricing\.HasOwnProp\("cachedInput"\) \? pricing\.cachedInput : \(pricing\.HasOwnProp\("input"\) \? pricing\.input \* 0\.1/.test(tr);
-    if (!hasFallback) throw new Error("bug not reproduced: fallback not found");
-    return "TreeRepo GetThreadStats pricingUnit treats cachedInput=\"\" as 0 instead of 10% fallback";
+    // FIXED (bug #63): a stored "" is treated as missing.
+    const emptySafe = /cachedInput: pricing\.HasOwnProp\("cachedInput"\) && pricing\.cachedInput != ""/.test(tr);
+    if (!emptySafe) throw new Error("cachedInput empty fallback not fixed (bug #63): emptySafe=" + emptySafe);
+    return "TreeRepo GetThreadStats pricingUnit treats cachedInput=\"\" as missing and falls back to 10% of input";
   }
 });
 
