@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **37 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **39 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #74 (providerMap stale when prefixes cleared), #75 (Google budget table substring match) � both headless PASS. Sync OK 37 entries / 71 scenarios (34 regression). Previous batches #61-66 token/header and #68-71 provider/search/title also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #76 (initChatMode stale activeThreadId guard), #77 (empty Send triggers retry) � both headless PASS. Sync OK 39 entries / 73 scenarios (34 regression). Previous batches #61-71 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1068,6 +1068,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `api/handlers/GoogleChatCompletions.ahk` `_BudgetTable` `if InStr(modelId, "2.5-pro")` etc.
 
 **Verification:** headless scenario 75 (noApp) asserts `InStr(modelId, "2.5-pro")` exists.
+
+### 76. initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread
+
+**Scenario:** 76 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** open thread A, then via IPC or direct `initChatMode({messages:..., threadId:"B"})` where `activeThreadId` already equals `A` (e.g. rapid switch, fork, or programmatic load).
+
+**Expected:** `activeThreadId` should update to `B` so subsequent `updateScopedSearchState`, `onSearchCrossThreadLoaded`, and new-message sends target B.
+
+**Actual:** `webui/js/chat/chat-core.js` `initChatMode` does `if (data && data.threadId && !activeThreadId) { activeThreadId = data.threadId; }`. When `activeThreadId` is already truthy (`"A"`), the assignment is skipped, so the WebView stays on `A` while the message list shows `B`'s messages � `activeThreadId` is stale. Subsequent scoped search, token-bar updates, and `chatSend` will use the wrong thread id.
+
+**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` guard `!activeThreadId`.
+
+**Verification:** headless scenario 76 (noApp) asserts the `!activeThreadId` guard and `activeThreadId = data.threadId` assignment exist.
+
+### 77. Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry
+
+**Scenario:** 77 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** open a chat that already has messages (e.g. last message is an assistant response), clear the input (`input.value = ""`), click Send (or press Enter).
+
+**Expected:** no action � empty input should be a no-op (like most chat UIs) or show a hint.
+
+**Actual:** `webui/js/chat/chat-input.js` `onChatSend` trims input to `""`, finds `message` falsy and `attachments` empty, then falls through to `if (chatMessages && chatMessages.length>0) { var lastMsg = chatMessages[chatMessages.length-1]; if (lastMsg.role==="assistant") retryLastAssistantMessage(...) ; else if (lastMsg.role==="user") Ipc.postToHost('retry') }`. An empty Send therefore re-fires the last assistant message (or resends the last user message) instead of doing nothing � a single accidental click/Enter duplicates a request and burns tokens/cost.
+
+**Evidence:** `webui/js/chat/chat-input.js` `onChatSend` empty-input branch with `retryLastAssistantMessage` and `Ipc.postToHost('retry')`.
+
+**Verification:** headless scenario 77 (noApp) asserts the empty-input `chatMessages.length` branch and `retry` post exist.
 
 ---
 

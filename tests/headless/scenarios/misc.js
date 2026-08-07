@@ -391,4 +391,33 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 76,
+  name: "initChatMode guard prevents activeThreadId update when already set � stale thread",
+  mode: null,
+  noApp: true,
+  async body() {
+    const cc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-core.js"),"utf8");
+    const hasGuard = /if \(data && data\.threadId && !activeThreadId\)/.test(cc);
+    const hasDirectAssign = /activeThreadId = data\.threadId/.test(cc);
+    // Guard means if activeThreadId already holds old thread's id, new thread's id is ignored
+    if(!hasGuard || !hasDirectAssign) throw new Error("bug not reproduced hasGuard="+hasGuard);
+    return "chat-core.js initChatMode only sets activeThreadId when !activeThreadId � stale if already set";
+  }
+});
+
+scenarios.push({
+  id: 77,
+  name: "onChatSend empty input with existing messages triggers retry instead of no-op",
+  mode: null,
+  noApp: true,
+  async body() {
+    const ci=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-input.js"),"utf8");
+    const hasEmptyRetry = /if \(chatMessages && chatMessages\.length > 0\)/.test(ci) && /retryLastAssistantMessage/.test(ci) && /Ipc\.postToHost\('retry'/.test(ci);
+    const hasTrimCheck = /var message = input\.value\.trim\(\)/.test(ci);
+    if(!hasEmptyRetry || !hasTrimCheck) throw new Error("bug not reproduced");
+    return "chat-input.js onChatSend: empty trimmed message + attachments 0 falls through to retry last assistant � empty Send unexpectedly re-fires";
+  }
+});
+
 module.exports = scenarios;
