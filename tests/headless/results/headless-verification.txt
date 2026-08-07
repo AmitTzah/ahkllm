@@ -1,5 +1,5 @@
-# 2026-08-07T21:40:48.541Z | run of 1 scenario(s)
-PASS | #70 | Search FTS5 quotes terms so special characters do not break MATCH | SearchRepo._FTS5 quotes each term (_FTS5QuoteTerm), so C++ / quoted queries no longer break MATCH | 0.0s
+# 2026-08-07T21:42:36.562Z | run of 1 scenario(s)
+PASS | #71 | Clearing Thread Title Generation fields resets the globals | SettingsApply._ApplyThreadTitles assigns cleared values, so title-gen fields reset instead of keeping stale globals | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

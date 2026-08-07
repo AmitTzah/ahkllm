@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **35 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **34 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #70 FIXED in ab3ef6b; next: bug #71 (clearing Thread Title Generation fields leaves stale globals).
+- **Where we left off:** 2026-08-07 — bug #71 FIXED in 0f06b9a; next: bug #72 (SystemMessageResolver treats UNC paths as relative).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 71. Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]
-
-**Scenario:** 71 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings ? General ? Thread Title Generation ? clear Model (or Prompt / Max Tokens) ? Save ? trigger title generation (send a new chat exchange).
-
-**Expected:** clearing the field should reset to the default (or empty) and title generation should use the default model/prompt or be disabled for that field.
-
-**Actual:** the previous `titleGenModel` / `titleGenSystemPrompt` / `titleGenMaxTokens` value survives. `SettingsApply._ApplyThreadTitles` only assigns when `tt["model"] != ""` (and same for `prompt`, `maxTokens`), so saving `""` leaves the old global. Same root as bugs #33 and #61.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyThreadTitles` `if tt.Has("model") && tt["model"] != ""` etc.
-
-**Verification:** headless scenario 71 (noApp) asserts the two `!= ""` guards exist.
 
 ### 72. SystemMessageResolver treats UNC \\server\share paths as relative - file not found
 
@@ -826,6 +810,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]" - FIXED in 0f06b9a: SettingsApply._ApplyThreadTitles now assigns the saved value whenever the key exists (empty string included), so clearing title-gen fields resets the stale globals; scenario 71 flipped to a regression static check + SettingsHandler unit test.
 
 - 2026-08-07 - "Search FTS5 MATCH does not escape special characters - C++ or \"hello\" breaks the query (empty results)" - FIXED in ab3ef6b: SearchRepo._FTS5 now quotes each term (_FTS5QuoteTerm, doubling embedded quotes) so FTS5 special characters match literally and the trailing * still does prefix matching; scenario 70 flipped to a regression static check + ChatDB unit test.
 
