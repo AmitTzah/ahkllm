@@ -250,6 +250,23 @@ describe('added-state id normalization', () => {
   });
 });
 
+describe('ensureFullId provider precedence (bug #92)', () => {
+  it('rebuilds the full id from the provider dropdown even when the id contains /', () => {
+    const row = makeMainRow('openai/gpt-4', 'google');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models.length, 1);
+    assert.strictEqual(models[0].id, 'google/gpt-4');
+  });
+
+  it('keeps the id as-is when no provider is selected', () => {
+    const row = makeMainRow('openai/gpt-4', '');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models[0].id, 'openai/gpt-4');
+  });
+});
+
 describe('new model metadata survives a settings save round-trip', () => {
   const meta = {
     api: 'openai-completions',

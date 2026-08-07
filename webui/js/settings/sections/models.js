@@ -12,8 +12,14 @@
   }
 
   function ensureFullId(id, provider) {
-    if (id.indexOf('/') >= 0) return id;
-    return provider ? provider + '/' + id : id;
+    // Bug #92: when a provider is selected it is authoritative - strip any
+    // embedded prefix from the id and rebuild with the selected provider.
+    if (provider) {
+      var slash = id.indexOf('/');
+      if (slash >= 0) id = id.slice(slash + 1);
+      return provider + '/' + id;
+    }
+    return id;
   }
 
   // --- Pricing / context formatting and parsing ---

@@ -671,14 +671,17 @@ scenarios.push({
 
 scenarios.push({
   id: 92,
-  name: "Models save ensureFullId ignores provider dropdown change when id already contains slash",
+  name: "Models ensureFullId rebuilds from the provider dropdown (prefix updated)",
+  regression: true, // FIXED bug kept as a regression check (selected provider must win over an embedded prefix)
   mode: null,
   noApp: true,
   async body() {
     const m=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","settings","sections","models.js"),"utf8");
-    const hasEnsure = /function ensureFullId\(id, provider\)/.test(m) && /if \(id\.indexOf\('\/'\) >= 0\) return id/.test(m);
-    if(!hasEnsure) throw new Error("bug not reproduced");
-    return "models.js ensureFullId returns id as-is when it contains '/', so changing provider dropdown does not update fullId";
+    const block = m.slice(m.indexOf("function ensureFullId"), m.indexOf("function ensureFullId")+300);
+    const stripsPrefix = /id = id\.slice\(slash \+ 1\)/.test(block);
+    const earlyReturn = /if \(id\.indexOf\('\/'\) >= 0\) return id/.test(block);
+    if(!stripsPrefix || earlyReturn) throw new Error("bug #92 not fixed: stripsPrefix=" + stripsPrefix + " earlyReturn=" + earlyReturn);
+    return "models.js ensureFullId rebuilds the full id from the provider dropdown (strips embedded prefix), so changing the provider updates the saved id";
   }
 });
 
