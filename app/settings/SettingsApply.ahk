@@ -183,11 +183,13 @@ class SettingsApply {
             return
         tt := settings["threadTitles"]
         autoTitleGenerationEnabled := tt.Has("enabled") ? tt["enabled"] : true
-        if tt.Has("model") && tt["model"] != ""
+        ; Bug #71 (family #61): clearing a field (empty string) must reset the
+        ; global instead of leaving the stale value in place.
+        if tt.Has("model")
             titleGenModel := tt["model"]
-        if tt.Has("prompt") && tt["prompt"] != ""
+        if tt.Has("prompt")
             titleGenSystemPrompt := tt["prompt"]
-        if tt.Has("maxTokens") && tt["maxTokens"] != ""
+        if tt.Has("maxTokens")
             titleGenMaxTokens := tt["maxTokens"]
     }
 

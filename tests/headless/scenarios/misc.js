@@ -348,15 +348,20 @@ scenarios.push({
 
 scenarios.push({
   id: 71,
-  name: "Clearing Thread Title Generation model/prompt leaves stale global",
+  name: "Clearing Thread Title Generation fields resets the globals",
+  regression: true, // FIXED bug kept as a regression check (family #61: cleared fields must reset globals)
   mode: null,
   noApp: true,
   async body() {
     const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    const skipsModel = /if tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
-    const skipsPrompt = /if tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
-    if(!skipsModel || !skipsPrompt) throw new Error("bug not reproduced");
-    return "SettingsApply._ApplyThreadTitles only assigns when != empty ï¿½ clearing leaves stale model/prompt";
+    // FIXED (bug #71): _ApplyThreadTitles assigns even when empty.
+    const assignsModel = /if tt\.Has\("model"\)\s*\n\s*titleGenModel := tt\["model"\]/.test(sa);
+    const assignsPrompt = /if tt\.Has\("prompt"\)\s*\n\s*titleGenSystemPrompt := tt\["prompt"\]/.test(sa);
+    const skipsModel = /tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
+    const skipsPrompt = /tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
+    if(!assignsModel || !assignsPrompt || skipsModel || skipsPrompt)
+      throw new Error("bug #71 not fixed: assignsModel=" + assignsModel + " assignsPrompt=" + assignsPrompt + " skipsModel=" + skipsModel + " skipsPrompt=" + skipsPrompt);
+    return "SettingsApply._ApplyThreadTitles assigns cleared values, so title-gen fields reset instead of keeping stale globals";
   }
 });
 

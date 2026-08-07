@@ -70,6 +70,30 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #71, family #61): clearing Thread Title Generation fields
+    ; must reset the stale globals.
+    ApplyThreadTitles_ClearedFieldsResetGlobals() {
+        global titleGenModel, titleGenSystemPrompt, titleGenMaxTokens
+        oldModel := titleGenModel
+        oldPrompt := titleGenSystemPrompt
+        oldMax := titleGenMaxTokens
+        try {
+            SettingsApply._ApplyThreadTitles(Map(
+                "threadTitles", Map("model", "", "prompt", "", "maxTokens", "")
+            ))
+            if titleGenModel != ""
+                throw Error("clearing title-gen model should empty the global, got '" titleGenModel "'")
+            if titleGenSystemPrompt != ""
+                throw Error("clearing title-gen prompt should empty the global, got '" titleGenSystemPrompt "'")
+            if titleGenMaxTokens != ""
+                throw Error("clearing title-gen maxTokens should empty the global, got '" titleGenMaxTokens "'")
+        } finally {
+            titleGenModel := oldModel
+            titleGenSystemPrompt := oldPrompt
+            titleGenMaxTokens := oldMax
+        }
+    }
+
     ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
     ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
     ; must return the pristine snapshot captured by CacheInitialDefaults().
