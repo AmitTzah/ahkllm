@@ -214,6 +214,24 @@ class ChatDispatchTest {
             throw Error("_OnWebViewReady must re-push the assistant list on every page load (startup 500ms timer races slow loads)")
     }
 
+    ; Regression (bug #45): the WebView must receive the full merged settings
+    ; on the ready handshake so ui-theme.js applies the response font (and
+    ; other UI CSS vars) at startup, not only when Settings is opened.
+    OnWebViewReady_PostsAppSettings() {
+        global activeThreadId
+        web := this._captureWebView()
+        oldActive := IsSet(activeThreadId) ? activeThreadId : ""
+        try {
+            activeThreadId := ""
+            _OnWebViewReady()
+        } finally {
+            activeThreadId := oldActive
+            web.restore()
+        }
+        if !this._findCaptured(web.captured, "appSettings")
+            throw Error("_OnWebViewReady must post appSettings so the response font applies at startup (bug #45)")
+    }
+
     Dispatch_RequestAllSettings_PostsMerged() {
         sp := this._withTempSettingsPath()
         web := this._captureWebView()
@@ -302,6 +320,23 @@ class ChatDispatchTest {
             throw Error("saveSettings success should post settingsSaved success:true")
         if !FileExist(sp.tempPath)
             throw Error("saveSettings should write the settings file")
+        sp.restore()
+        try FileDelete(sp.tempPath)
+    }
+
+    ; Regression (bug #45): after a successful save the merged settings are
+    ; re-pushed so the response font (and other UI CSS vars) apply immediately,
+    ; without reopening Settings.
+    Dispatch_SaveSettings_PostsAppSettingsAfterSuccess() {
+        sp := this._withTempSettingsPath()
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"saveSettings","data":{"ui":{"responseFont":"Georgia"}}}'))
+        } finally {
+            web.restore()
+        }
+        if !this._findCaptured(web.captured, "appSettings")
+            throw Error("saveSettings success should re-push appSettings so the response font applies immediately (bug #45)")
         sp.restore()
         try FileDelete(sp.tempPath)
     }

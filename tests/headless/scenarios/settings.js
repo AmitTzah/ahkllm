@@ -495,7 +495,8 @@ scenarios.push({
 
 scenarios.push({
   id: 45,
-  name: '"Response Font" setting is not applied to chat messages until Settings is opened',
+  name: '"Response Font" is applied to chat messages at startup and after saves',
+  regression: true, // FIXED bug kept as a regression check (response font must apply without opening Settings)
   mode: null,
   settings: { ui: { responseFont: 'Georgia' } },
   fixtures: {
@@ -510,16 +511,13 @@ scenarios.push({
     await sleep(500);
     const familyBefore = await cdp.eval(`getComputedStyle(document.querySelector('.msg-content')).fontFamily`);
     const varBefore = await cdp.eval(`getComputedStyle(document.documentElement).getPropertyValue('--chat-font-family').trim()`);
-    // BUG: ui-theme.js only sets --chat-font-family inside load(), which runs
-    // when the Settings panel receives the full settings payload. At startup the
-    // CSS var keeps the default, so the configured Response Font is not applied.
-    if (String(familyBefore).indexOf('Georgia') >= 0)
-      throw new Error('response font was applied before opening settings (bug not reproduced): ' + familyBefore);
-    await openSettings(cdp);
-    await sleep(400);
-    const familyAfter = await cdp.eval(`getComputedStyle(document.querySelector('.msg-content')).fontFamily`);
-    return 'configured ui.responseFont=Georgia; before opening Settings msg font=' + JSON.stringify(familyBefore) +
-      ' (var=' + JSON.stringify(varBefore) + '); after opening Settings it becomes ' + JSON.stringify(familyAfter);
+    // FIXED (bug #45): appSettings is re-pushed on webViewReady and after
+    // saves, so ui-theme.js applies --chat-font-family at startup.
+    if (String(familyBefore).indexOf('Georgia') < 0)
+      throw new Error('response font was not applied at startup: ' + JSON.stringify(familyBefore) + ' var=' + JSON.stringify(varBefore));
+    if (String(varBefore).indexOf('Georgia') < 0)
+      throw new Error('--chat-font-family not set at startup: ' + JSON.stringify(varBefore));
+    return 'configured ui.responseFont=Georgia applied at startup: msg font=' + JSON.stringify(familyBefore) + ' (var=' + JSON.stringify(varBefore) + ')';
   }
 });
 
