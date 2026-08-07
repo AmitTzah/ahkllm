@@ -893,6 +893,24 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 111,
+  name: "ApiLogger LogRequest non-atomic overwrite — crash mid-write corrupts log file",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const al=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","ApiLogger.ahk"),"utf8");
+    const hasOverwrite = /FileOpen\(this\.logFilePath, "w"/.test(al) && /Write\(jsongo\.Stringify\(logs\)\)/.test(al);
+    const hasAtomic = /FileMove|FileAppend.*tmp|atomic/.test(al);
+    if(!hasOverwrite) throw new Error("bug not reproduced: no overwrite");
+    if(hasAtomic) throw new Error("already atomic");
+    return "ApiLogger.LogRequest does FileOpen w + Write without temp rename — crash corrupts log";
+  }
+});
+
 module.exports = scenarios;
 
 

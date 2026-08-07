@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **65 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **66 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 fifth pass — added 2 verified bugs #109 (Sidebar folderId + 15+ raw ids), #110 (cURL temp leak) — headless PASS (2/2); fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS; counts re-verified 68 entries = 65 verified + 3 reported, sync OK 105 scenarios (37 regression). Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** audit 2026-08-07 sixth pass — added 1 verified bug #111 (ApiLogger non-atomic) — headless PASS; fifth pass — added 2 verified bugs #109 (Sidebar folderId + 15+ raw ids), #110 (cURL temp leak) — headless PASS (2/2); fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS; counts re-verified 69 entries = 66 verified + 3 reported, sync OK 106 scenarios (37 regression). Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
@@ -1569,6 +1569,22 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 **Evidence:** `chat/streaming/StreamCompletion.ahk` `_handleStreamComplete` has no `deleteTempFiles`; `chat/streaming/StreamError.ahk` `_handleStreamCancelled` does; `api/CurlBuilder.ahk` `Build`/`BuildStream` embed `providerInfo.apiKey`.
 
 **Verification:** headless scenario 110 (noApp) asserts `StreamCompletion.ahk` has no `deleteTempFiles` in `_handleStreamComplete`, `StreamError.ahk` does in cancel, and `CurlBuilder.ahk` contains `providerInfo.apiKey`.
+
+### 111. ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`
+
+**Scenario:** 111 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** send a chat/command request that triggers `ApiLogger.LogRequest`, then kill the app mid-write (or have disk full).
+
+**Expected:** log write should be atomic (write to temp then rename), like settings should be.
+
+**Actual:** `ApiLogger.LogRequest` does `FileOpen(this.logFilePath, "w", "UTF-8-RAW").Write(jsongo.Stringify(logs))` — direct overwrite without temp file. Crash or power loss mid-write leaves truncated JSON, next `ReadLogs` fails to parse and returns `[]`, losing all history. Same class as #97 but for API logs.
+
+**Evidence:** `api/ApiLogger.ahk` `LogRequest` — `FileOpen(..., "w").Write` without `FileMove` temp.
+
+**Verification:** headless scenario 111 (noApp) asserts `FileOpen(this.logFilePath, "w"` exists and no atomic rename exists.
 
 ## History (append-only)
 
