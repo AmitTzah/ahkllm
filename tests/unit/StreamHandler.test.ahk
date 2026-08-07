@@ -334,4 +334,24 @@ class StreamHandlerTest {
         if !cancelPos || !errorPos || cancelPos > errorPos
             throw Error("_finalizeStreaming must check _streamCancelled before the empty-content error branch (bug #56): cancelPos=" cancelPos " errorPos=" errorPos)
     }
+
+    ; Regression (bug #98): the wasCancelled branch of _finalizeStreaming must
+    ; clean up the _stream* keys before returning, so a cancelled request can
+    ; never leak stale stream state into the next send.
+    FinalizeStreaming_CancelBranchCleansUpStreamState() {
+        srcPath := A_ScriptDir "\..\chat\streaming\StreamHandler.ahk"
+        src := FileRead(srcPath)
+        finalizePos := InStr(src, "_finalizeStreaming() {")
+        if !finalizePos
+            throw Error("_finalizeStreaming not found in StreamHandler.ahk")
+        block := SubStr(src, finalizePos, 1200)
+        cancelPos := InStr(block, "if wasCancelled {")
+        if !cancelPos
+            throw Error("wasCancelled branch not found")
+        branch := SubStr(block, cancelPos, 500)
+        cleanupPos := InStr(branch, "_cleanupStreamState()")
+        retPos := InStr(branch, "return")
+        if !InStr(branch, "_handleStreamCancelled()") || !cleanupPos || !retPos || cleanupPos > retPos
+            throw Error("_finalizeStreaming wasCancelled branch must call _cleanupStreamState before return (bug #98): cleanupPos=" cleanupPos " retPos=" retPos)
+    }
 }

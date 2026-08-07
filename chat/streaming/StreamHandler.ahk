@@ -206,6 +206,12 @@ _finalizeStreaming() {
         ; the misleading API-key banner.
         if wasCancelled {
             _handleStreamCancelled()
+            ; Bug #98: every exit path must clean up the _stream* keys so a
+            ; cancelled request can never leak stale stream state into the
+            ; next send. The call is idempotent (_handleStreamCancelled also
+            ; cleans up internally), but _finalizeStreaming must not rely on
+            ; that transitive cleanup.
+            _cleanupStreamState()
             return
         }
 

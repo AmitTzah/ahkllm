@@ -788,7 +788,8 @@ scenarios.push({
 
 scenarios.push({
   id: 98,
-  name: "StreamHandler cancel leaks state — no cleanup after wasCancelled",
+  name: "StreamHandler cancel branch cleans up _stream state (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (cancel must not leak _stream* keys)
   mode: null,
   noApp: true,
   async body() {
@@ -796,14 +797,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sh=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamHandler.ahk"),"utf8");
-    const hasBug = /if wasCancelled\s*\{\s*\n?\s*_handleStreamCancelled\(\)\s*\n\s*return/.test(sh);
-    const hasCleanupBetween = /if wasCancelled[\s\S]*?_cleanupStreamState[\s\S]*?return/.test(sh.slice(sh.indexOf("if wasCancelled"), sh.indexOf("if wasCancelled")+500));
-    // More precise: block between wasCancelled and return should not contain cleanup
     const idx = sh.indexOf("if wasCancelled");
-    const block = sh.slice(idx, sh.indexOf("return", idx)+20);
-    const hasCleanupInBlock = /_cleanupStreamState/.test(block);
-    if(!hasBug || hasCleanupInBlock) throw new Error("bug not reproduced hasBug="+hasBug+" hasCleanupInBlock="+hasCleanupInBlock);
-    return "StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then return without _cleanupStreamState — leaks _stream* keys";
+    if (idx < 0) throw new Error("bug #98 regression: wasCancelled branch not found");
+    const branch = sh.slice(idx, sh.indexOf("return", idx)+20);
+    // FIXED (bug #98): the cancel branch must clean up _stream state before return.
+    const hasCancelHandler = /_handleStreamCancelled\(\)/.test(branch);
+    const hasCleanup = /_cleanupStreamState\(\)/.test(branch);
+    const cleanupBeforeReturn = branch.indexOf("_cleanupStreamState()") > 0 && branch.indexOf("_cleanupStreamState()") < branch.indexOf("return");
+    if(!hasCancelHandler || !hasCleanup || !cleanupBeforeReturn)
+      throw new Error("bug #98 not fixed: hasCancelHandler="+hasCancelHandler+" hasCleanup="+hasCleanup+" cleanupBeforeReturn="+cleanupBeforeReturn);
+    return "StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then _cleanupStreamState before return - no _stream* keys leak into the next request";
   }
 });
 scenarios.push({
