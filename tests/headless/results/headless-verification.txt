@@ -1,5 +1,5 @@
-# 2026-08-07T22:05:52.181Z | run of 1 scenario(s)
-PASS | #81 | Branch _setupSiblingGroup escapes msg.id (SQL injection fixed) | Branch._setupSiblingGroup escapes msg.id (SQLite.Escape), so crafted message ids cannot inject SQL | 0.0s
+# 2026-08-07T22:08:39.491Z | run of 1 scenario(s)
+PASS | #82 | Usage dashboard filter dropdowns escape provider/model names (XSS fixed) | usage-dashboard.js populateFilters escapes provider/model option values and labels (escHtml), so names render as inert text | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

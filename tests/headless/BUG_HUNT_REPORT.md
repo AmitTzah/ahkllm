@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **24 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **23 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #81 FIXED in 21b5cd1; next: bug #82 (usage dashboard provider/model filter dropdown XSS).
+- **Where we left off:** 2026-08-07 — bug #82 FIXED in fceb5a1; next: bug #83 (thread-map "who" label XSS).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 82. Usage dashboard provider/model filter dropdown XSS - option values not escaped
-
-**Scenario:** 82 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set a provider `displayName` or model id to `"><img src=x onerror=alert(1)>` via Settings ? Providers/Models ? Save, then open Usage Dashboard.
-
-**Expected:** the filter dropdowns show the name as inert text.
-
-**Actual:** `webui/js/usage-dashboard.js` `populateFilters` does `provSel.innerHTML += '<option value="'+p+'">'+p+'</option>'` and `modSel.innerHTML += '<option value="'+m+'">'+m+'</option>'` with no `escHtml`. A provider/model name containing HTML is parsed as HTML and its event handlers execute in the WebView (same `chrome.webview.postMessage` access as #57).
-
-**Evidence:** `webui/js/usage-dashboard.js` `populateFilters` raw `innerHTML` for `p` and `m`.
-
-**Verification:** headless scenario 82 (noApp) asserts raw `innerHTML` with `p`/`m` and no `escHtml(p)` exists.
 
 ### 83. Thread-map "who" label XSS - model name not escaped in right-panel nav list
 
@@ -650,6 +634,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Usage dashboard provider/model filter dropdown XSS - option values not escaped" - FIXED in fceb5a1: populateFilters now escapes provider/model option values and labels with a local escHtml helper; scenario 82 flipped to a regression static check + usage-dashboard unit test.
 
 - 2026-08-07 - "Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping - SQL injection via crafted message id" - FIXED in 21b5cd1: _setupSiblingGroup now escapes msg.id with SQLite.Escape before the UPDATE; scenario 81 flipped to a regression static check + ChatDB unit test.
 
