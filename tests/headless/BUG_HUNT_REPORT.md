@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **53 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **52 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #40 FIXED in fa86b1c; next: bug #46 (command "Stream Response" + pasteMode replace/append silently produces no output).
+- **Where we left off:** 2026-08-07 — bug #46 FIXED in 1979523; next: bug #49 (canceling a message edit leaves removed attachments hidden in the UI but still in the DB).
 ---
 
 ## Bug entry template
@@ -207,37 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 46. Command "Stream Response" + pasteMode replace/append silently produces no output
-
-**Scenario:** 46 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a command with Paste Mode replace (or append) and Stream
-Response ON, then trigger it with a text selection.
-
-**Expected:** the response is pasted, or at least a clear error is shown.
-
-**Actual:** nothing is pasted and no error is shown. `LLMRequestBuilder.
-createJSONRequest` writes `"stream": true` into the request body whenever the
-command's stream flag is set, but `InlineRequestRunner` always executes the
-request with the single-shot `CurlBuilder.Build` and parses the whole output file
-as one JSON document (`jsongo.Parse` + `ResponseParser.ParseChatResponse`). A
-streaming API answers with SSE (`data:` lines), which cannot be parsed as one JSON
-document, so `success=false` and the response is silently discarded (only a debug
-log line is written).
-
-**Evidence:** `api/LLMRequestBuilder.ahk` `createJSONRequest()` Ã¢â‚¬â€
-`if stream { requestObj.stream := true }` with no pasteMode check;
-`app/InlineRequestRunner.ahk` `_BuildAndWriteRequest()` / `_ExecuteCurlAndParse()`
-use `CurlBuilder.Build` + `jsongo.Parse` with no SSE handling.
-
-**Verification:** headless scenario 46 (noApp) statically scans the three files
-and asserts the stream flag is added to the body for any pasteMode while the
-inline runner uses the non-streaming single-shot parse path (no SSEParser) Ã¢â‚¬â€
-proving a replace/append + stream command sends an SSE-mode request it cannot
-read back.
 
 ### 49. Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)
 
@@ -1229,6 +1198,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Command \"Stream Response\" + pasteMode replace/append silently produces no output" - FIXED in 1979523: InlineRequestRunner now builds its non-FIM request with stream=false (was passing the command's stream flag, so the API answered SSE the single-shot parser could not read); scenario 46 flipped to a regression static check + InlineRequestRunner unit test.
 
 - 2026-08-07 - "Refresh-models modal discards edits to a model id (stale data-full-id wins on Save)" - FIXED in fa86b1c: saveRefresh and _rightPanelIds now prefer the live input value over the stale data-full-id attribute (the provider column still supplies the prefix), so renames in the refresh modal survive; scenario 40 flipped to a regression check + models-pricing-refresh unit tests.
 

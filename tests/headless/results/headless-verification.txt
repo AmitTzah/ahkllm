@@ -1,5 +1,5 @@
-# 2026-08-07T20:42:27.860Z | run of 1 scenario(s)
-PASS | #40 | Refresh-models modal keeps edits to a model id on Save | edited the first model id to "renamed-model-id" in the refresh modal; after Save the table shows "renamed-model-id" | 5.3s
+# 2026-08-07T20:44:36.719Z | run of 1 scenario(s)
+PASS | #46 | Command "Stream Response" + pasteMode replace/append builds a non-streaming request (static check) | InlineRequestRunner builds its request with stream=false (single-shot CurlBuilder.Build + JSON parse), so a replace/append command with Stream Response ON pastes its response instead of silently dropping SSE | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
