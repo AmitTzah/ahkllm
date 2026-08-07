@@ -1,5 +1,5 @@
-# 2026-08-07T22:08:39.491Z | run of 1 scenario(s)
-PASS | #82 | Usage dashboard filter dropdowns escape provider/model names (XSS fixed) | usage-dashboard.js populateFilters escapes provider/model option values and labels (escHtml), so names render as inert text | 0.0s
+# 2026-08-07T22:10:39.104Z | run of 1 scenario(s)
+PASS | #83 | Threadmap who label escapes the model name (XSS fixed) | chat-threadmap.js renderNavList escapes the who label (escHtml(who)), so model names render as inert text | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

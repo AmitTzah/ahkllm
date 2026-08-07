@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **23 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **22 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #82 FIXED in fceb5a1; next: bug #83 (thread-map "who" label XSS).
+- **Where we left off:** 2026-08-07 — bug #83 FIXED in e5e45b6; next: bug #84 (API Logs Viewer esc() does not escape single quote).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 83. Thread-map "who" label XSS - model name not escaped in right-panel nav list
-
-**Scenario:** 83 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set a custom model id to `"><img src=x onerror=...>` (or have an assistant with such a model), send a message with that model, then look at the right-panel Thread Map.
-
-**Expected:** the `who` label shows the model name as text.
-
-**Actual:** `webui/js/chat/chat-threadmap.js` `renderNavList` does `var who = msg.model || 'Assistant'; item.innerHTML = '<span class="who">' + who + '</span>...' ` with no `escHtml(who)`. The model string is interpreted as HTML. `createMessageBubble` correctly uses `escHtml` for the model in the header, but the thread map does not.
-
-**Evidence:** `webui/js/chat/chat-threadmap.js` `renderNavList` `+ who +` without `escHtml`.
-
-**Verification:** headless scenario 83 (noApp) asserts `+ who +` raw and no `escHtml(who)` exists.
 
 ### 84. API Logs Viewer `esc()` does not escape single quote - `title` attribute break and potential XSS
 
@@ -634,6 +618,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Thread-map \"who\" label XSS - model name not escaped in right-panel nav list" - FIXED in e5e45b6: renderNavList now escapes the who label with escHtml(who) like the snippet; scenario 83 flipped to a regression static check + chat-sidebar unit test.
 
 - 2026-08-07 - "Usage dashboard provider/model filter dropdown XSS - option values not escaped" - FIXED in fceb5a1: populateFilters now escapes provider/model option values and labels with a local escHtml helper; scenario 82 flipped to a regression static check + usage-dashboard unit test.
 
