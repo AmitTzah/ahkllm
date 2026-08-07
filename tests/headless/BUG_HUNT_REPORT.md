@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **41 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **43 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #78 (right-rail temp 0 shows Default), #79 (settings BOM not stripped) � both headless PASS. Sync OK 41 entries / 75 scenarios (34 regression). Previous batches #61-77 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #80 (ThreadRepo SQL injection via threadId), #81 (Branch sibling_group SQL injection) � both headless PASS. Sync OK 43 entries / 77 scenarios (34 regression). Previous batches #61-79 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1132,6 +1132,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `app/settings/SettingsPersistence.ahk` `Load()` � no BOM handling before `jsongo.Parse`.
 
 **Verification:** headless scenario 79 (noApp) asserts `FileRead` + direct `jsongo.Parse` without BOM handling.
+
+### 80. ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape � SQL injection via crafted id
+
+**Scenario:** 80 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** craft a thread id containing a single quote (e.g. `bad'id`) and call any thread mutator that interpolates it � `SoftDelete`, `Restore`, `Delete`, or `Update` (e.g. via a malicious `threadId` posted over IPC or a hand-edited DB).
+
+**Expected:** all SQL statements should use `SQLite.Escape(threadId)` like `UpdateSettings`/`GetSettings` do.
+
+**Actual:** `ThreadRepo.SoftDelete`, `Restore`, `Delete`, and `Update` do `WHERE id='" threadId "'` with no escaping. A `threadId` containing `'` breaks the string literal and can inject arbitrary SQL (e.g. `bad'id'; DROP TABLE chat_threads; --` would terminate the `UPDATE` and execute a second statement, depending on the SQLite wrapper's multi-statement handling). `UpdateSettings` and `GetSettings` correctly use `safeId := SQLite.Escape(threadId)`.
+
+**Evidence:** `chat/db/ThreadRepo.ahk` `SoftDelete` `WHERE id='" threadId "'` (no `SQLite.Escape`); same for `Restore`, `Delete`, `Update`.
+
+**Verification:** headless scenario 80 (noApp) asserts `SQLite.Escape(threadId)` absent in `SoftDelete` and `WHERE id='" threadId "'` present.
+
+### 81. Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping � SQL injection via crafted message id
+
+**Scenario:** 81 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** craft a message id containing `'` (e.g. via a hand-edited DB or a malicious `retry` payload that references `messageId`) and trigger a retry that needs a new sibling group (assistant without `sibling_group`).
+
+**Expected:** the `UPDATE messages SET sibling_group=... WHERE id='...'` should use `SQLite.Escape(msg.id)`.
+
+**Actual:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` does `WHERE id='" msg.id "'` with no escaping. Same injection class as #80.
+
+**Evidence:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` `WHERE id='" msg.id "'`.
+
+**Verification:** headless scenario 81 (noApp) asserts `SQLite.Escape(msg.id)` absent and `WHERE id='" msg.id "'` present.
 
 ---
 

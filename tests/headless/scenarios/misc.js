@@ -450,4 +450,37 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 80,
+  name: "ThreadRepo SoftDelete/Restore/Delete/Update do not escape threadId � SQL injection via crafted id",
+  mode: null,
+  noApp: true,
+  async body() {
+    const tr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","ThreadRepo.ahk"),"utf8");
+    const soft = tr.slice(tr.indexOf("static SoftDelete"), tr.indexOf("static SoftDelete")+800);
+    const hasEscapeSoft = /SQLite\.Escape\(threadId\)/.test(soft);
+    const hasDirectSoft = /WHERE id='" threadId "'/.test(soft);
+    const upd = tr.slice(tr.indexOf("static Update(threadId"), tr.indexOf("static Update(threadId")+800);
+    const hasEscapeUpd = /SQLite\.Escape\(threadId\)/.test(upd);
+    if(hasEscapeSoft || !hasDirectSoft) throw new Error("bug not reproduced soft hasEscape="+hasEscapeSoft);
+    if(hasEscapeUpd) throw new Error("bug not reproduced update hasEscape");
+    return "ThreadRepo SoftDelete/Restore/Delete/Update use WHERE id='\" threadId \"' without SQLite.Escape � crafted threadId with ' could inject";
+  }
+});
+
+scenarios.push({
+  id: 81,
+  name: "Branch _setupSiblingGroup UPDATE does not escape msg.id � SQL injection via crafted message id",
+  mode: null,
+  noApp: true,
+  async body() {
+    const br=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","callbacks","Branch.ahk"),"utf8");
+    const snippet = br.slice(br.indexOf("_setupSiblingGroup"), br.indexOf("_setupSiblingGroup")+800);
+    const hasEscape = /SQLite\.Escape(msg.id)/.test(snippet);
+    const hasDirect = /WHERE id='" msg.id "'/.test(snippet);
+    if(hasEscape || !hasDirect) throw new Error("bug not reproduced hasEscape="+hasEscape);
+    return 'Branch._setupSiblingGroup does UPDATE ... WHERE id=' + "'msg.id' without SQLite.Escape";
+  }
+});
+
 module.exports = scenarios;
