@@ -1,5 +1,5 @@
-# 2026-08-07T20:33:36.132Z | run of 1 scenario(s)
-PASS | #45 | "Response Font" is applied to chat messages at startup and after saves | configured ui.responseFont=Georgia applied at startup: msg font="Georgia, sans-serif" (var="Georgia, sans-serif") | 4.8s
+# 2026-08-07T20:35:49.665Z | run of 1 scenario(s)
+PASS | #39 | System-message modal preserves a custom (unlisted) system-message file on Save | custom file survived the modal save: systemMessageFile="default-settings/system-messages/my-custom-prompt.txt" label="📄 default-settings/system-messages/my-custom-prompt.txt" | 5.6s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

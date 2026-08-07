@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **56 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **55 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #45 FIXED in 13a4cec; next: bug #39 (system-message modal silently clears a custom system-message file on Save).
+- **Where we left off:** 2026-08-07 — bug #39 FIXED in 0218d75; next: bug #41 (tray "New Chat" ignores the "New Chats Start With" default).
 ---
 
 ## Bug entry template
@@ -207,38 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
-
-**Scenario:** 39 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Commands -> select a command whose System Message uses a
-file NOT in the hardcoded App Defaults list (e.g. `default-settings/system-messages/my-prompt.txt`
-created in AppData per the UI hint) -> click Edit next to System Message -> click
-Save without changing anything -> look at the command's System Message label.
-
-**Expected:** the file reference is preserved (opening and saving a modal should
-never silently change the value).
-
-**Actual:** the file reference is cleared to empty and the label becomes
-"(none)". `populateSysMsgModal` sets `#smFileSelect` from the stored value, and
-the fallback only strips the directory prefix; the select's options are a
-hardcoded list of 7 app-default files (the "Your Files" optgroup is never
-populated), so any other file leaves `selectedIndex = -1` / `value = ""`. The
-Save handler writes `fileSelect.value` back, wiping `systemMessageFile`. The
-command then runs without its system prompt (falls back to empty inline).
-
-**Evidence:** `webui/js/settings/sections/sysmsg-modal.js` `populateSysMsgModal()`
-sets `fileSelect.value = opts.systemMessageFile` with a prefix-strip fallback and
-the Save handler does `sysMsgFile = fileSelect ? fileSelect.value : ''`;
-`webui/index.html` `#smFileSelect` contains only the app-default filenames.
-
-**Verification:** headless scenario 39 seeds a command with
-`systemMessageFile: "default-settings/system-messages/my-custom-prompt.txt"`, opens the modal
-(select ends with `selectedIndex=-1`), clicks Save, and observes the command's
-`systemMessageFile` becomes `""` and the label "(none)".
 
 ### 41. Tray "New Chat" ignores the "New Chats Start With" default
 
@@ -1314,6 +1282,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "System-message modal silently clears a custom (unlisted) system-message file on Save" - FIXED in 0218d75: populateSysMsgModal records the stored file on the modal and the Save handler falls back to it when the select has no matching option (selectedIndex=-1), so a custom file survives opening + saving; scenario 39 flipped to a regression check + sysmsg-modal unit tests (preserve custom file, explicit \"(none)\" still clears).
 
 - 2026-08-07 - "\"Response Font\" setting is not applied to chat messages until Settings is opened" - FIXED in 13a4cec: Dispatch now re-pushes the merged appSettings on the webViewReady handshake and after every successful save, so ui-theme.js applies --chat-font-family (and other UI CSS vars) at startup and live; scenario 45 flipped to a regression check + ChatDispatch unit tests.
 
