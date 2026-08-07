@@ -1,5 +1,5 @@
-# 2026-08-07T21:26:11.831Z | run of 1 scenario(s)
-PASS | #65 | Hard-delete recomputes cumulative token/cost counters | HardDelete recomputes cumulative_* counters (via _RecomputeCumulativeCounters) so the header totals drop with the deleted message | 0.0s
+# 2026-08-07T21:30:09.419Z | run of 1 scenario(s)
+PASS | #66 | Header tooltip says Cumulative (typo fixed) | chat-format.js tooltip reads 'Cumulative Input/output token usage across all conversation branches' | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

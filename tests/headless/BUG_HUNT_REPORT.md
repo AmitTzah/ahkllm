@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **39 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **38 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #65 FIXED in 12f3a8a; next: bug #66 (header tooltip typo "Culminative").
+- **Where we left off:** 2026-08-07 — bug #66 FIXED in d72b4f5; next: bug #68 (ProviderResolver legacy prefix match uses substring InStr).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 66. Header tooltip typo "Culminative" (should be "Cumulative") and mismatched semantics
-
-**Scenario:** 66 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** hover the middle header item (?/?).
-
-**Expected:** tooltip reads "Cumulative Input/output token usage across all conversation branches".
-
-**Actual:** tooltip reads "Culminative Input/output token usage across all conversation branches" (misspelled). Minor, but the string is also used as the spec for what the value should be - the typo has propagated to the report's assumptions.
-
-**Evidence:** `webui/js/chat/chat-format.js` `updateTokenUsage` `title="Culminative Input/output token usage across all conversation branches"`.
-
-**Verification:** headless scenario 66 (noApp) checks for /Culminative/ in chat-format.js.
 
 ### 68. ProviderResolver legacy prefix match uses substring InStr, not prefix check - mygpt matches gpt
 
@@ -890,6 +874,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Header tooltip typo \"Culminative\" (should be \"Cumulative\") and mismatched semantics" - FIXED in d72b4f5: the updateTokenUsage tooltip now reads \"Cumulative Input/output token usage across all conversation branches\"; scenario 66 flipped to a regression static check + chat-format unit test.
 
 - 2026-08-07 - "Hard-deleting a message leaves cumulative token/cost counters stale - header stays inflated" - FIXED in 12f3a8a: MessageRepo._RecomputeCumulativeCounters rebuilds the thread's cumulative input/output/cached/cost counters from the remaining messages (mirroring Insert's per-message accumulation) and HardDelete calls it, so the header totals drop with the deleted message; scenario 65 flipped to a regression static check + UsageTracking/ChatDB unit tests (old preserve-counters test updated to the fixed semantics).
 
