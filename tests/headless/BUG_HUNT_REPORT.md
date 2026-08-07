@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **55 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **54 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #39 FIXED in 0218d75; next: bug #41 (tray "New Chat" ignores the "New Chats Start With" default).
+- **Where we left off:** 2026-08-07 — bug #41 FIXED in 4d9228b; next: bug #40 (refresh-models modal discards edits to a model id).
 ---
 
 ## Bug entry template
@@ -207,34 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 41. Tray "New Chat" ignores the "New Chats Start With" default
-
-**Scenario:** 41 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set General -> New Chats Start With to an assistant (or model), then
-right-click the tray icon -> New Chat, and look at the chat's model/assistant.
-
-**Expected:** the new chat starts with the configured default (same as the
-sidebar "+ New Chat" button, which applies `_applyNewChatDefault()` and the
-default font size).
-
-**Actual:** the tray-created chat starts with the raw app-default model and no
-assistant. `Main.ahk`'s tray item calls `openChatWindow(ChatDB.Thread_Create())`
-directly; the loaded-thread path (`notifyLoadThread` -> `LoadThreadIntoUI` ->
-`_LoadThreadAndRefreshUI`) never calls `_applyNewChatDefault()` nor writes the
-default font size. Only `_HandleThreadAction`'s `newChat` case applies them.
-
-**Evidence:** `Main.ahk` `A_TrayMenu.Add("ðŸ“ New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))`;
-`chat/ChatIPC.ahk` `LoadThreadIntoUI` / `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`
-contain no `_applyNewChatDefault` call; `chat/callbacks/Sidebar.ahk` `newChat`
-does.
-
-**Verification:** headless scenario 41 (noApp) statically scans `Main.ahk`,
-`Sidebar.ahk`, `ChatIPC.ahk`, and `ChatUtils.ahk`: the tray lambda creates the
-thread directly while the loader path never applies the start-with default.
 
 ### 40. Refresh-models modal discards edits to a model id (stale `data-full-id` wins on Save)
 
@@ -1282,6 +1254,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Tray \"New Chat\" ignores the \"New Chats Start With\" default" - FIXED in 4d9228b: new _applyNewChatDefaultToFreshThread applies the configured assistant/model + default font size to fresh (message-less, settings-less) threads; LoadThreadIntoUI now calls it, so tray/command-line-spawned chats start with the configured default; scenario 41 flipped to a regression static check + ChatSettings unit tests (fresh thread gets default, configured thread untouched).
 
 - 2026-08-07 - "System-message modal silently clears a custom (unlisted) system-message file on Save" - FIXED in 0218d75: populateSysMsgModal records the stored file on the modal and the Save handler falls back to it when the select has no matching option (selectedIndex=-1), so a custom file survives opening + saving; scenario 39 flipped to a regression check + sysmsg-modal unit tests (preserve custom file, explicit \"(none)\" still clears).
 

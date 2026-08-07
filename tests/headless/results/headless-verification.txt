@@ -1,5 +1,5 @@
-# 2026-08-07T20:35:49.665Z | run of 1 scenario(s)
-PASS | #39 | System-message modal preserves a custom (unlisted) system-message file on Save | custom file survived the modal save: systemMessageFile="default-settings/system-messages/my-custom-prompt.txt" label="📄 default-settings/system-messages/my-custom-prompt.txt" | 5.6s
+# 2026-08-07T20:39:41.142Z | run of 1 scenario(s)
+PASS | #41 | Tray "New Chat" applies the "New Chats Start With" default (static check of the tray path) | LoadThreadIntoUI applies _applyNewChatDefaultToFreshThread to fresh threads, so tray "New Chat" starts with the configured default | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
