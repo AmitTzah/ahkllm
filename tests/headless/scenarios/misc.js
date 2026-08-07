@@ -140,7 +140,8 @@ scenarios.push({
 
 scenarios.push({
   id: 61,
-  name: "Clearing Suspend Banner text still shows the old banner (SettingsApply skips empty)",
+  name: "Clearing Suspend Banner text resets the banner (SettingsApply assigns empty)",
+  regression: true, // FIXED bug kept as a regression check (clearing a UI field must replace the stale global)
   mode: null,
   noApp: true,
   async body() {
@@ -148,9 +149,12 @@ scenarios.push({
     const path = require("node:path");
     const launcher = require("../launch");
     const sa = fs.readFileSync(path.join(launcher.REPO_ROOT, "app", "settings", "SettingsApply.ahk"), "utf8");
-    const bannerSkipsEmpty = /if sb\.Has\("text"\) && sb\["text"\] != ""/.test(sa);
-    if (!bannerSkipsEmpty) throw new Error("bug not reproduced: banner does not skip empty");
-    return "SettingsApply._ApplySuspendBanner skips empty text ï¿½ clearing leaves stale banner";
+    // FIXED (bug #61): _ApplySuspendBanner assigns the text even when empty.
+    const assignsEmptyText = /if sb\.Has\("text"\)\s*\n\s*suspendBannerText := sb\["text"\]/.test(sa);
+    const skipsEmpty = /sb\.Has\("text"\) && sb\["text"\] != ""/.test(sa);
+    if (!assignsEmptyText || skipsEmpty)
+      throw new Error("clearing suspend banner text still skipped (bug #61 not fixed): assignsEmptyText=" + assignsEmptyText + " skipsEmpty=" + skipsEmpty);
+    return "SettingsApply._ApplySuspendBanner assigns the text even when empty, so clearing the field resets the banner";
   }
 });
 

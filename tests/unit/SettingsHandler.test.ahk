@@ -38,6 +38,38 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #61): clearing a UI field (empty string) must replace the
+    ; global instead of being skipped - otherwise the stale value survives
+    ; (banner text, input window background, response font).
+    ApplyUI_ClearedFieldsResetGlobals() {
+        global suspendBannerText, inputWindowBackground, responseWindowFontFace
+
+        oldSbText := suspendBannerText
+        oldIwBg := inputWindowBackground
+        oldFont := responseWindowFontFace
+
+        try {
+            SettingsApply._ApplyUI(Map(
+                "ui", Map(
+                    "responseFont", "",
+                    "responseFontSize", "",
+                    "inputWindow", Map("background", ""),
+                    "suspendBanner", Map("text", "")
+                )
+            ))
+            if suspendBannerText != ""
+                throw Error("clearing suspend banner text should empty the global, got '" suspendBannerText "'")
+            if inputWindowBackground != ""
+                throw Error("clearing input window background should empty the global, got '" inputWindowBackground "'")
+            if responseWindowFontFace != ""
+                throw Error("clearing response font should empty the global, got '" responseWindowFontFace "'")
+        } finally {
+            suspendBannerText := oldSbText
+            inputWindowBackground := oldIwBg
+            responseWindowFontFace := oldFont
+        }
+    }
+
     ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
     ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
     ; must return the pristine snapshot captured by CacheInitialDefaults().

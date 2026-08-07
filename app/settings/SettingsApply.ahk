@@ -197,9 +197,11 @@ class SettingsApply {
         if !settings.Has("ui")
             return
         u := settings["ui"]
-        if u.Has("responseFont") && u["responseFont"] != ""
+        ; Bug #61: clearing a UI field (empty string) must replace the global -
+        ; skipping empty values left the stale value in place.
+        if u.Has("responseFont")
             responseWindowFontFace := u["responseFont"]
-        if u.Has("responseFontSize") && u["responseFontSize"] != ""
+        if u.Has("responseFontSize")
             responseWindowFontSize := u["responseFontSize"]
         SettingsApply._ApplyInputWindow(u)
         SettingsApply._ApplySuspendBanner(u)
@@ -211,17 +213,17 @@ class SettingsApply {
         if !u.Has("inputWindow")
             return
         iw := u["inputWindow"]
-        if iw.Has("background") && iw["background"] != ""
+        if iw.Has("background")
             inputWindowBackground := iw["background"]
-        if iw.Has("fontSize") && iw["fontSize"] != ""
+        if iw.Has("fontSize")
             inputWindowFontSize := iw["fontSize"]
-        if iw.Has("fontColor") && iw["fontColor"] != ""
+        if iw.Has("fontColor")
             inputWindowFontColor := iw["fontColor"]
-        if iw.Has("fontFace") && iw["fontFace"] != ""
+        if iw.Has("fontFace")
             inputWindowFontFace := iw["fontFace"]
-        if iw.Has("width") && iw["width"] != ""
+        if iw.Has("width")
             inputWindowWidth := iw["width"]
-        if iw.Has("height") && iw["height"] != ""
+        if iw.Has("height")
             inputWindowHeight := iw["height"]
     }
 
@@ -231,15 +233,15 @@ class SettingsApply {
         if !u.Has("suspendBanner")
             return
         sb := u["suspendBanner"]
-        if sb.Has("text") && sb["text"] != ""
+        if sb.Has("text")
             suspendBannerText := sb["text"]
-        if sb.Has("fontSize") && sb["fontSize"] != ""
+        if sb.Has("fontSize")
             suspendBannerFontSize := sb["fontSize"]
-        if sb.Has("fontFace") && sb["fontFace"] != ""
+        if sb.Has("fontFace")
             suspendBannerFontFace := sb["fontFace"]
-        if sb.Has("textColor") && sb["textColor"] != ""
+        if sb.Has("textColor")
             suspendBannerTextColor := sb["textColor"]
-        if sb.Has("background") && sb["background"] != ""
+        if sb.Has("background")
             suspendBannerBackground := sb["background"]
     }
 
