@@ -363,4 +363,32 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 74,
+  name: "SettingsApply providerMap stale when all prefixes cleared",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
+    const hasGuard = /if newProviderMap\.Count > 0/.test(sa) && /providerMap := newProviderMap/.test(sa);
+    const hasElseClear = /else.*providerMap.*Map\(\)/.test(sa) || /providerMap := Map\(\)/.test(sa);
+    if(!hasGuard || hasElseClear) throw new Error("bug not reproduced hasGuard="+hasGuard+" hasElseClear="+hasElseClear);
+    return "SettingsApply._ApplyProviders only overwrites providerMap when Count>0 � clearing all prefixes leaves old map";
+  }
+});
+
+scenarios.push({
+  id: 75,
+  name: "GoogleChatCompletions budget table uses substring InStr, not prefix/contains check",
+  mode: null,
+  noApp: true,
+  async body() {
+    const gc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","handlers","GoogleChatCompletions.ahk"),"utf8");
+    const hasSubstring = /if InStr\(modelId, "2\.5-pro"\)/.test(gc);
+    const hasExact = /modelId = "2\.5-pro"/.test(gc);
+    if(!hasSubstring) throw new Error("bug not reproduced");
+    return "GoogleChatCompletions._BudgetTable uses InStr substring � my2.5-pro would match 2.5-pro incorrectly";
+  }
+});
+
 module.exports = scenarios;

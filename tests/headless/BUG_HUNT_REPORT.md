@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **35 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **37 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** added 2 more verified bugs #72 (UNC path treated as relative), #73 (Google disabled thinking missing include_thoughts) � both headless PASS. Sync OK 35 entries / 69 scenarios (34 regression). Previous batch #68-71 also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 2 more verified bugs #74 (providerMap stale when prefixes cleared), #75 (Google budget table substring match) � both headless PASS. Sync OK 37 entries / 71 scenarios (34 regression). Previous batches #61-66 token/header and #68-71 provider/search/title also committed. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -1036,6 +1036,38 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `api/handlers/GoogleChatCompletions.ahk` `DisabledConfig()` `return {thinking_budget:0}` vs `ThinkingConfig()` `tc := {include_thoughts:true}`.
 
 **Verification:** headless scenario 73 (noApp) slices `DisabledConfig` and asserts `thinking_budget:0` present and `include_thoughts` absent.
+
+### 74. SettingsApply leaves providerMap stale when all prefixes are cleared
+
+**Scenario:** 74 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings ? Providers ? edit every provider to remove all `prefixes` entries (or set a provider to have an empty prefixes array) ? Save ? check provider resolution for a legacy short id like `deepseek-v4-flash`.
+
+**Expected:** clearing prefixes should clear `providerMap` (or rebuild it empty) so legacy short ids no longer resolve to that provider.
+
+**Actual:** `SettingsApply._ApplyProviders` builds `newProviderMap` from the saved providers' `prefixes`, then does `if newProviderMap.Count >0` `providerMap := newProviderMap`. When all prefixes are cleared, `Count` is 0, so the assignment is skipped and the old `providerMap` (from startup defaults or previous save) remains live. Legacy short ids continue to resolve to the old provider even though the settings show no prefixes.
+
+**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyProviders` `if newProviderMap.Count >0` `providerMap := newProviderMap`.
+
+**Verification:** headless scenario 74 (noApp) asserts the `Count >0` guard exists and no `else` clear exists.
+
+### 75. GoogleChatCompletions budget table matches via substring InStr, not exact family check
+
+**Scenario:** 75 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** use a custom model id that merely *contains* a budget-table substring, e.g. `my2.5-pro-custom` or `test2.5-flash-lite`, with thinking Level `high`.
+
+**Expected:** `_BudgetTable` should match only the intended Gemini family (e.g. `2.5-pro` family), or fall back to generic.
+
+**Actual:** `_BudgetTable` uses `if InStr(modelId, "2.5-pro")` substring checks. Any model id containing that substring � even `my2.5-pro` or `foo2.5-pro-bar` � will match the first table (`minimal 128 � high 32768`) even though it is not a Gemini 2.5-pro model, giving a wrong thinking budget.
+
+**Evidence:** `api/handlers/GoogleChatCompletions.ahk` `_BudgetTable` `if InStr(modelId, "2.5-pro")` etc.
+
+**Verification:** headless scenario 75 (noApp) asserts `InStr(modelId, "2.5-pro")` exists.
 
 ---
 
