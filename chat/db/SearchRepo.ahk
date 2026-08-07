@@ -120,7 +120,8 @@ class SearchRepo {
 
     ; LIKE '%term%' substring — case-insensitive for ASCII (SQLite LIKE default)
     static _Like(safeQuery, threadId := "") {
-        whereClause := "t.is_deleted=0 AND m.content LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'"
+        likeQuery := SearchRepo._EscapeLike(safeQuery)
+        whereClause := "t.is_deleted=0 AND m.content LIKE '%' || '" likeQuery "' || '%' ESCAPE '\'"
         if threadId
             whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
 
@@ -148,16 +149,26 @@ class SearchRepo {
 
     ; Title search: find threads whose title matches (LIKE, case-insensitive)
     static _Titles(safeQuery) {
+        likeQuery := SearchRepo._EscapeLike(safeQuery)
         sql := "SELECT NULL AS messageId, t.id AS threadId, 'system' AS role,"
              . " '' AS contentPreview, '' AS model, t.created_at AS createdAt,"
              . " t.title AS threadTitle"
              . " FROM chat_threads t"
              . " WHERE t.is_deleted=0"
-             . " AND t.title LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'"
+             . " AND t.title LIKE '%' || '" likeQuery "' || '%' ESCAPE '\'"
              . " ORDER BY t.updated_at DESC"
              . " LIMIT 10"
 
         return SearchRepo._BuildResults(sql)
+    }
+
+    ; Bug #69: escape SQL LIKE wildcards so user input is matched literally
+    ; (the SQL uses ESCAPE '\', so escape \ first, then % and _).
+    static _EscapeLike(value) {
+        value := StrReplace(value, "\", "\\")
+        value := StrReplace(value, "%", "\%")
+        value := StrReplace(value, "_", "\_")
+        return value
     }
 
     ; Convert SQL result rows to search result objects

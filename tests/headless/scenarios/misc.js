@@ -309,15 +309,20 @@ scenarios.push({
 
 scenarios.push({
   id: 69,
-  name: "Search LIKE does not escape % _ wildcard ï¿½ searching for % returns everything",
+  name: "Search LIKE escapes % _ \\ wildcards (literal search)",
+  regression: true, // FIXED bug kept as a regression check (LIKE must match user input literally)
   mode: null,
   noApp: true,
   async body() {
     const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
-    const likeLine = sr.slice(sr.indexOf("static _Like"), sr.indexOf("static _Like")+1500);
-    const escapesWildcards = /StrReplace.*%/.test(likeLine) && /StrReplace.*_/.test(likeLine);
-    if(escapesWildcards) throw new Error("bug not reproduced: LIKE escapes wildcards");
-    return "SearchRepo._Like uses LIKE ESCAPE but safeQuery only doubles single quotes ï¿½ % remains wildcard";
+    // FIXED (bug #69): _EscapeLike escapes \ % _ before building the LIKE.
+    const escapesBackslash = /StrReplace\(value, "\\", "\\\\"\)/.test(sr);
+    const escapesPercent = /StrReplace\(value, "%", "\\%"\)/.test(sr);
+    const escapesUnderscore = /StrReplace\(value, "_", "\\_"\)/.test(sr);
+    const usesEscaped = sr.includes("_EscapeLike(safeQuery)");
+    if(!escapesBackslash || !escapesPercent || !escapesUnderscore || !usesEscaped)
+      throw new Error("bug #69 not fixed: backslash=" + escapesBackslash + " percent=" + escapesPercent + " underscore=" + escapesUnderscore + " usesEscaped=" + usesEscaped);
+    return "SearchRepo._EscapeLike escapes \\ % _ (used by _Like and _Titles), so searching for % matches only literal percent";
   }
 });
 

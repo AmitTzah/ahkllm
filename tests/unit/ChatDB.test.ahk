@@ -427,6 +427,20 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #69): the LIKE fallback must escape %/_/\\ so searching for
+    ; a literal % does not match every message.
+    SearchMessages_LikeEscapesWildcards() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "50% done"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "plain text here"})
+        results := ChatDB.SearchMessages("%", threadId)
+        if results.Length != 1
+            throw Error("searching for % should match only the message containing it, got " results.Length)
+        if !InStr(results[1].contentPreview, "50% done")
+            throw Error("expected the %-containing message, got '" results[1].contentPreview "'")
+        this._teardown()
+    }
+
     ; Regression (bug #63): a model with cachedInput="" must fall back to 10%
     ; of the input price instead of showing 0 in the token-bar pricing unit.
     GetThreadStats_CachedInputEmpty_FallsBackToTenPercent() {
@@ -1242,7 +1256,7 @@ class ChatDBTest {
         ; FTS5 finds whole-word matches; LIKE finds substrings.
         ; Test: search for a whole word → FTS5 should find it.
         ; Then search for a substring → LIKE fallback should find it.
-        SearchMessages_FTS5_DirectMatch() {
+    SearchMessages_FTS5_DirectMatch() {
             threadId := this._setup()
             ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "the zebra crossed the road"})
     
@@ -1256,9 +1270,9 @@ class ChatDBTest {
             if results2.Length != 1
                 throw Error("Expected 1 LIKE fallback match for substring 'oss', got " results2.Length)
     
-            this._teardown()
-        }
-    
+        this._teardown()
+    }
+
         ; Regression: FTS5 MATCH must use proper quoting ('term' not bare term).
         ; SQLite.Escape escapes internal quotes but does NOT wrap in quotes.
         ; If we used SQLite.Escape directly, MATCH would see bare words as column names.
