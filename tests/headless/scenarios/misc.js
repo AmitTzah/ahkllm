@@ -702,14 +702,16 @@ scenarios.push({
 
 scenarios.push({
   id: 94,
-  name: "SettingsDefaults _DefaultsAssistants generates new UUID each call ï¿½ defaults not stable",
+  name: "SettingsDefaults GetDefaults is stable after caching (UUID churn refuted)",
+  regression: true, // REFUTED: UUIDs are generated only when building defaults; after CacheInitialDefaults the cached snapshot is returned
   mode: null,
   noApp: true,
   async body() {
     const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
-    const hasUUID = /SettingsPersistence\._UUID\(\)/.test(sd) && /_DefaultsAssistants/.test(sd);
-    if(!hasUUID) throw new Error("bug not reproduced");
-    return "SettingsDefaults._DefaultsAssistants calls SettingsPersistence._UUID() for each assistant id on every GetDefaults ï¿½ defaults have non-deterministic ids";
+    const caches = /CacheInitialDefaults\(\)/.test(sd) && /_initialDefaultsCaptured/.test(sd);
+    const cachedReturn = /snapshot := Map\(\)/.test(sd) && /_initialDefaults/.test(sd);
+    if(!caches || !cachedReturn) throw new Error("bug #94 not fixed: caches=" + caches + " cachedReturn=" + cachedReturn);
+    return "SettingsDefaults caches the pristine defaults at startup and GetDefaults returns the cached snapshot, so assistant ids are stable after caching (UUID churn refuted)";
   }
 });
 

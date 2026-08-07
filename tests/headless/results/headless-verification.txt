@@ -1,5 +1,5 @@
-# 2026-08-07T22:31:34.601Z | run of 1 scenario(s)
-PASS | #93 | SettingsDefaults GetDefaults deep-clones snapshots (hardening) | SettingsDefaults.GetDefaults deep-clones nested Maps/Arrays, so mutating a snapshot cannot corrupt the pristine defaults | 0.0s
+# 2026-08-07T22:33:29.611Z | run of 1 scenario(s)
+PASS | #94 | SettingsDefaults GetDefaults is stable after caching (UUID churn refuted) | SettingsDefaults caches the pristine defaults at startup and GetDefaults returns the cached snapshot, so assistant ids are stable after caching (UUID churn refuted) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

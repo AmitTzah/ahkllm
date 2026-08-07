@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **15 verified, 1 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **15 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #93 FIXED in 182c6ce; next: bug #94 (SettingsDefaults _DefaultsAssistants UUID churn - overstated).
+- **Where we left off:** 2026-08-07 — bug #94 REFUTED (overstated: UUIDs are generated once at cache time; GetDefaults returns the cached snapshot); next: bug #95 (usage dashboard model heading XSS).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 94. SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable
-
-**Scenario:** 94 (scenario code in e2e-suite.js)
-
-**Status:** reported — overstated (UUID churn does not occur after CacheInitialDefaults; shallow copy preserves same array)
-
-**Repro:** call `SettingsDefaults.GetDefaults()` twice and compare `assistants[1].id` (or `commands` via `_CommandToMap` which also uses `UUID` for missing ids, but assistants always does).
-
-**Expected:** the default `assistants` list should have stable ids (e.g. from `DefaultSettings.ahk` or a fixed seed), so `Reset to Defaults` and diffing are deterministic.
-
-**Actual:** `_DefaultsAssistants` does `asstList.Push(Map("id", SettingsPersistence._UUID(), "name", a.name, ...))` for every assistant on *every* `GetDefaults()` call. Before `CacheInitialDefaults` each call would generate fresh UUIDs; after caching, `GetDefaults()` shallow-copies the cached array — no churn in normal runtime, so the bug is overstated. Keep as low-priority hardening for stable ids.
-
-**Evidence:** `app/settings/SettingsDefaults.ahk` `_DefaultsAssistants` `SettingsPersistence._UUID()` inside the loop.
-
-**Verification:** headless scenario 94 (noApp) asserts `SettingsPersistence._UUID()` inside `_DefaultsAssistants` exists — but this only proves the code *could* generate UUIDs, not that `GetDefaults()` churns after caching (it does not). Keep as low-priority hardening (stable ids).
 
 ### 95. Usage dashboard model heading XSS — model id not escaped in section header
 
@@ -474,6 +458,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
 - 2026-08-07 - "SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] - mutating snapshot corrupts pristine defaults" - FIXED in 182c6ce (hardening): GetDefaults now deep-clones nested Maps/Arrays via a new _DeepClone helper, so callers cannot corrupt the cached pristine defaults by mutating a snapshot; scenario 93 flipped to a regression static check + SettingsHandler unit test.
 
