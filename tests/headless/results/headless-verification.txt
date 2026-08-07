@@ -1,5 +1,5 @@
-# 2026-08-07T20:27:14.662Z | run of 1 scenario(s)
-PASS | #37 | Tray menu item changes apply live via the settings hook (static check of the settings-update path) | A_TrayMenu is rebuilt from trayMenuItems by _rebuildTrayMenu (app/TrayMenu.ahk), registered as the trayMenu settings hook in Main.ahk - menu edits apply without restart | 0.0s
+# 2026-08-07T20:29:39.715Z | run of 1 scenario(s)
+PASS | #38 | Chat window title follows the active thread after a rename + switch | window title follows the active thread: "AhkLLM - Beta Thread" | 6.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

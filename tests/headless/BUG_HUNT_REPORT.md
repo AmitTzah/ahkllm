@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **58 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **57 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #37 FIXED in 5701466; next: bug #38 (chat window title stays stale after renaming a thread and switching to another).
+- **Where we left off:** 2026-08-07 — bug #38 FIXED in eb54326; next: bug #45 ("Response Font" setting is not applied to chat messages until Settings is opened).
 ---
 
 ## Bug entry template
@@ -207,32 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 38. Chat window title stays stale after renaming a thread and switching to another
-
-**Scenario:** 38 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open a chat, rename it from the sidebar (or the topbar rename button),
-then click a different chat in the sidebar and look at the window title bar.
-
-**Expected:** the title bar shows the active thread ("AhkLLM - <current title>").
-
-**Actual:** the title bar keeps the previously renamed thread's title.
-`chatWindow.Title` is only set at startup and in the `renameThread` handler
-(`chat/callbacks/Sidebar.ahk`); `_LoadThreadAndRefreshUI` never updates it, so
-switching threads leaves the stale title (and before any rename it just shows
-the generic app title).
-
-**Evidence:** `chat/ChatWindow.ahk` `responseWindow.Title := AppInfo.Name`;
-`chat/callbacks/Sidebar.ahk` `renameThread` sets `chatWindow.Title := AppInfo.Name " - " title`;
-`chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI()` never touches the window title.
-
-**Verification:** headless scenario 38 seeds two threads, renames the first via
-the sidebar, switches to the second, and probes the window title (WinGetTitle):
-the topbar shows the second thread's title while the window title still contains
-the renamed first thread's title.
 
 ### 45. "Response Font" setting is not applied to chat messages until Settings is opened
 
@@ -1367,6 +1341,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Chat window title stays stale after renaming a thread and switching to another" - FIXED in eb54326: _LoadThreadAndRefreshUI now sets chatWindow.Title from the active thread (was only renameThread), so the title bar follows thread switches; scenario 38 flipped to a regression check + ChatUtils unit test.
 
 - 2026-08-07 - "Tray menu item changes don't apply until restart" - FIXED in 5701466: new app/TrayMenu.ahk rebuilds A_TrayMenu from the current trayMenuItems global at startup and via a SettingsService trayMenu hook, so Menu Items edits apply live; scenario 37 flipped to a regression static check + TrayMenu unit tests.
 
