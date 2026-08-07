@@ -305,23 +305,26 @@ scenarios.push({
 
 scenarios.push({
   id: 56,
-  name: 'Stopping a stream before the first token shows an error banner instead of a clean cancel (static check)',
+  name: 'Stopping a stream before the first token is a clean cancel (static check)',
+  regression: true, // FIXED bug kept as a regression check (cancel must be checked before the empty-content error branch)
   mode: null,
   noApp: true,
   async body() {
     const sh = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamHandler.ahk'), 'utf8');
     const se = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamError.ahk'), 'utf8');
-    // _finalizeStreaming handles the empty-content case BEFORE checking
-    // _streamCancelled...
-    const emptyCheckBeforeCancel = /_streamContent"\] = "" && requestParams\["_streamReasoning"\] = ""[\s\S]{0,400}?_streamCancelled/.test(sh);
-    // ...and that empty branch calls _handleStreamError.
-    const emptyPathCallsError = /if \(requestParams\["_streamContent"\] = "" && requestParams\["_streamReasoning"\] = ""\) \{[\s\S]*?_handleStreamError\(\)/.test(sh);
-    // _handleStreamError falls back to a message that blames the API key.
-    const genericError = /Request failed\. Check your API key and try again\./.test(se);
-    if (!emptyCheckBeforeCancel || !emptyPathCallsError || !genericError)
-      throw new Error('bug not reproduced: emptyCheckBeforeCancel=' + emptyCheckBeforeCancel +
-        ' emptyPathCallsError=' + emptyPathCallsError + ' genericError=' + genericError);
-    return '_finalizeStreaming routes the empty-content case (-> _handleStreamError, "Request failed. Check your API key") BEFORE checking _streamCancelled, so pressing Stop before the first token surfaces a misleading API error instead of a clean cancellation';
+    const finalizePos = sh.indexOf('_finalizeStreaming() {');
+    const block = sh.slice(finalizePos, finalizePos + 1200);
+    const cancelPos = block.indexOf('_handleStreamCancelled()');
+    const errorPos = block.indexOf('_handleStreamError()');
+    // FIXED (bug #56): the cancelled branch runs BEFORE the empty-content
+    // error branch, so a Stop before the first token is a clean cancel.
+    if (cancelPos < 0 || errorPos < 0 || cancelPos > errorPos)
+      throw new Error('cancel branch not before the empty-content error branch (bug #56 not fixed): cancelPos=' + cancelPos + ' errorPos=' + errorPos);
+    // _handleStreamCancelled posts a clean cancellation for empty content.
+    const cleanCancel = /postWebMessage\("streamCancelled", true\)/.test(se);
+    if (!cleanCancel)
+      throw new Error('_handleStreamCancelled must post a clean streamCancelled for empty content');
+    return '_finalizeStreaming checks _streamCancelled before the empty-content branch, so pressing Stop before the first token is a clean cancellation (no API-key banner)';
   }
 });
 

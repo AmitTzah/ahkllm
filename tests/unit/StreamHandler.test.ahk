@@ -317,4 +317,21 @@ class StreamHandlerTest {
         if errMsg != ""
             throw Error("Expected empty errMsg after parse failure, got '" errMsg "'")
     }
+
+    ; Regression (bug #56): a user-initiated Stop before the first token must
+    ; finalize as a clean cancellation. _finalizeStreaming must check
+    ; _streamCancelled BEFORE the empty-content branch (which routes to
+    ; _handleStreamError and shows the misleading API-key banner).
+    FinalizeStreaming_ChecksCancelBeforeEmptyContent() {
+        srcPath := A_ScriptDir "\..\chat\streaming\StreamHandler.ahk"
+        src := FileRead(srcPath)
+        finalizePos := InStr(src, "_finalizeStreaming() {")
+        if !finalizePos
+            throw Error("_finalizeStreaming not found in StreamHandler.ahk")
+        block := SubStr(src, finalizePos, 1500)
+        cancelPos := InStr(block, "_handleStreamCancelled()")
+        errorPos := InStr(block, "_handleStreamError()")
+        if !cancelPos || !errorPos || cancelPos > errorPos
+            throw Error("_finalizeStreaming must check _streamCancelled before the empty-content error branch (bug #56): cancelPos=" cancelPos " errorPos=" errorPos)
+    }
 }

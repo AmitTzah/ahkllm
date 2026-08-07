@@ -198,16 +198,20 @@ _finalizeStreaming() {
         reasoningLen := StrLen(requestParams["_streamReasoning"])
         debugLog("[STREAM] Done — content=" contentLen "chars reasoning=" reasoningLen "chars polls=" requestParams["_streamPollCount"])
 
-        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
-            _handleStreamError()
-            _cleanupStreamState()
+        wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
+
+        ; Bug #56: a user-initiated Stop before the first token must finalize
+        ; as a clean cancellation - check the flag BEFORE the empty-content
+        ; branch, which would otherwise look like a connection failure and show
+        ; the misleading API-key banner.
+        if wasCancelled {
+            _handleStreamCancelled()
             return
         }
 
-        wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
-
-        if wasCancelled {
-            _handleStreamCancelled()
+        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
+            _handleStreamError()
+            _cleanupStreamState()
             return
         }
 
