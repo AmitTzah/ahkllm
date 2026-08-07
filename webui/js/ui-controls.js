@@ -3,10 +3,15 @@
 
 window.UiControls = (function() {
   var exports = {};
+  var currentFontSize = 17;
+
+  exports.syncFontSize = function(size) {
+    var n = parseInt(size, 10);
+    if (!isNaN(n)) currentFontSize = n;
+  };
 
   // Font Size Controls
   exports.initFontControls = function() {
-    var currentFontSize = 17;
     if (typeof getComputedStyle !== 'undefined') {
       var cssVal = getComputedStyle(document.documentElement).getPropertyValue('--chat-font-size').trim();
       if (cssVal) currentFontSize = parseInt(cssVal) || 17;

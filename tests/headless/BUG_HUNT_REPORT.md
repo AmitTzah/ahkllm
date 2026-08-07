@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **65 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **64 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #30 FIXED and committed in 6877a5e (deleteMessage honest permanent delete, scenario 30 flipped to regression); next: bug #31 per rank order.
+- **Where we left off:** 2026-08-07 — bug #31 fix applied (font-size +/- syncs cached base, scenario 31 PASS, suites green); awaiting user commit.
 ---
 
 ## Bug entry template
@@ -212,7 +212,7 @@ one at a time, in rank order.
 
 **Scenario:** 31 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** awaiting user commit
 
 **Repro:** set a per-thread font size (e.g. 20px via the topbar + button) and
 switch to that thread from another chat, then click the topbar + button again.

@@ -1,4 +1,4 @@
-// ui-controls.test.js — Unit tests for ui-controls.js: panel resize, font controls, composer resize
+﻿// ui-controls.test.js — Unit tests for ui-controls.js: panel resize, font controls, composer resize
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -113,5 +113,14 @@ describe('initAutoCollapse', () => {
     it('does not throw', () => {
         const ctx = loadModule();
         assert.doesNotThrow(() => ctx.window.UiControls.initAutoCollapse());
+    });
+});
+
+describe('font-size +/- stale base (bug #31)', () => {
+    it('syncFontSize updates the cached base so +/- after a thread load increments from the thread size', () => {
+        const srcControls = fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'webui', 'js', 'ui-controls.js'), 'utf-8');
+        const srcConfig = fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
+        assert.ok(srcControls.includes('syncFontSize'), 'ui-controls.js should expose syncFontSize');
+        assert.ok(srcConfig.includes('syncFontSize'), 'model-picker-config.js should call syncFontSize when applying per-chat font size');
     });
 });

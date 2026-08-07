@@ -33,6 +33,7 @@ function populateCurrentSettings(settings) {
     document.documentElement.style.setProperty('--chat-font-size', settings.fontSize + 'px');
     var fontDisp = document.getElementById('font-size-display');
     if (fontDisp) fontDisp.textContent = settings.fontSize + 'px';
+    if (window.UiControls && window.UiControls.syncFontSize) window.UiControls.syncFontSize(settings.fontSize);
   }
 
   // Update model card

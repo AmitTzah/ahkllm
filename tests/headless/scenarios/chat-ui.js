@@ -222,6 +222,7 @@ scenarios.push({
   id: 31,
   name: 'Font-size +/- buttons use a stale 17px base after a thread with a custom size loads',
   mode: null,
+  regression: true, // FIXED: font-size +/- now syncs cached base after thread load (was 18px)
   settings: {},
   fixtures: {
     threads: [{ id: 't-font-31', title: 'Font Thread', active_leaf_id: 'm-font-31', font_size: 20 }],
@@ -232,18 +233,17 @@ scenarios.push({
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
     await cdp.click('#thread-list .chat-item');
     // The thread's per-thread font size (20) arrives via currentSettings and is
-    // applied to the CSS var + display. UiControls.initFontControls cached the
-    // CSS default (17) at page load and is never resynced.
+    // applied to the CSS var + display, and UiControls.syncFontSize updates the cached base.
+
     await cdp.waitFor('document.getElementById("font-size-display") && document.getElementById("font-size-display").textContent === "20px"', 15000, 300, 'thread font size applied');
     const before = await cdp.eval('document.getElementById("font-size-display").textContent');
     await cdp.click('#btn-font-inc');
     await sleep(300);
     const after = await cdp.eval('document.getElementById("font-size-display").textContent');
-    // BUG: the + button bumps the stale 17px base to 18px instead of the
-    // thread's 20px -> 21px.
-    if (after === '21px')
-      throw new Error('font-size increment used the thread size (bug not reproduced): ' + before + ' -> ' + after);
-    return 'after loading a 20px thread, clicking + changed the display from ' + before + ' to ' + after + ' instead of 21px';
+    // FIXED: the + button now correctly bumps 20px -> 21px (was 17px -> 18px stale)
+    if (after !== '21px')
+      throw new Error('font-size increment did not use thread size: ' + before + ' -> ' + after + ' (expected 21px)');
+    return 'after loading a 20px thread, clicking + correctly changed the display from ' + before + ' to ' + after;
   }
 });
 
