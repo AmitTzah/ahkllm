@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **59 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **58 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #36 FIXED in a1e086e; next: bug #37 (tray menu item changes don't apply until restart).
+- **Where we left off:** 2026-08-07 — bug #37 FIXED in 5701466; next: bug #38 (chat window title stays stale after renaming a thread and switching to another).
 ---
 
 ## Bug entry template
@@ -207,29 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 37. Tray menu item changes don't apply until restart
-
-**Scenario:** 37 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Menu Items -> add/remove/rename a Tray item -> Save -> open
-the tray menu.
-
-**Expected:** the tray menu shows the new items immediately (the Quick Access
-submenu is rebuilt on every open).
-
-**Actual:** the tray keeps the startup entries until the app restarts. `Main.ahk`
-populates `A_TrayMenu` once at startup from `trayMenuItems`; the
-`WM_SETTINGS_UPDATED` handler reloads the globals but never rebuilds the tray menu.
-
-**Evidence:** `Main.ahk` `A_TrayMenu.Delete()` / `A_TrayMenu.Add(...)` at startup
-only; the `WM_SETTINGS_UPDATED` handler has no `A_TrayMenu` call.
-
-**Verification:** headless scenario 37 (noApp) statically scans `Main.ahk`:
-`A_TrayMenu.Add` exists at startup but not in the `WM_SETTINGS_UPDATED` handler.
-Final visual confirmation requires a human opening the tray after saving.
 
 ### 38. Chat window title stays stale after renaming a thread and switching to another
 
@@ -1390,6 +1367,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Tray menu item changes don't apply until restart" - FIXED in 5701466: new app/TrayMenu.ahk rebuilds A_TrayMenu from the current trayMenuItems global at startup and via a SettingsService trayMenu hook, so Menu Items edits apply live; scenario 37 flipped to a regression static check + TrayMenu unit tests.
 
 - 2026-08-07 - "Command temperature/reasoning are dropped when the command model equals the app default" - FIXED in a1e086e: processInitialRequest now persists temperature/reasoning/system overrides unconditionally (only modelOverride is gated by `fullAPIModelName != appDefaultModel`); scenario 36 flipped to a regression static check + RequestProcessor AHK unit test.
 
