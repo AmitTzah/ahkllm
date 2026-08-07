@@ -1,4 +1,4 @@
-// ======================================================
+﻿// ======================================================
 // chat-branching.js — D1 Edit, D2 Delete, D3 Branch Nav
 // ======================================================
 
@@ -62,7 +62,7 @@ function deleteMessage(index) {
   var msg = chatMessages[index];
   if (!msg || isLoading) return;
 
-  _showChatConfirm('Delete this message? This removes it from the current view but data is preserved.', function() {
+  _showChatConfirm('Delete this message? This permanently deletes the message and cannot be undone.', function() {
     Ipc.postToHost('deleteMessage', { id: msg.id });
   });
 }

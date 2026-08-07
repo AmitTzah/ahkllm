@@ -1,4 +1,4 @@
-// chat-branching.test.js — Unit tests for chat-branching.js: renderChatTree, renderTreeNode, updateBranchInfo, forkChat
+﻿// chat-branching.test.js — Unit tests for chat-branching.js: renderChatTree, renderTreeNode, updateBranchInfo, forkChat
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -302,5 +302,14 @@ describe('forkChat', () => {
         ctx.chatMessages = [];
         ctx.forkChat(0);
         assert.strictEqual(ctx._postedMessages.length, 0);
+    });
+});
+
+describe('deleteMessage confirmation', () => {
+    it('shows honest permanent-delete text, not "data is preserved"', () => {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-branching.js'), 'utf-8');
+        assert.ok(!src.includes('data is preserved'), 'deleteMessage still claims data is preserved (lie) — should say permanently deletes');
+        assert.ok(src.includes('permanently deletes'), 'deleteMessage should warn that deletion is permanent');
+        assert.ok(src.includes('cannot be undone'), 'deleteMessage should warn that deletion cannot be undone');
     });
 });

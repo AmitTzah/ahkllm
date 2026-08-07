@@ -1,4 +1,4 @@
-// scenarios/chat-tree.js - Threads, fork, branch, rename, delete, trash
+﻿// scenarios/chat-tree.js - Threads, fork, branch, rename, delete, trash
 //
 // Part of the headless E2E suite (entry: ../e2e-suite.js). Scenarios launch
 // the REAL app against an isolated profile and drive it via WebView2 CDP +
@@ -226,6 +226,7 @@ scenarios.push({
   id: 30,
   name: 'Deleting a message confirms "data is preserved" but hard-deletes it',
   mode: null,
+  regression: true, // FIXED: confirmation now honestly says permanent delete (was "data is preserved" lie),
   settings: {},
   fixtures: {
     threads: [{ id: 't-del-30', title: 'Delete Copy Thread', active_leaf_id: 'm-del-30b' }],
@@ -240,7 +241,7 @@ scenarios.push({
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
     await cdp.click('#thread-list .chat-item');
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'messages rendered');
-    // Delete the user message: the confirm dialog must claim the data survives.
+    // Delete the user message: the confirm dialog must now honestly warn permanent deletion.
     await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Delete"]');
     await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm overlay');
     const confirmText = await cdp.eval('document.getElementById("customConfirmOverlay").textContent');
@@ -249,11 +250,15 @@ scenarios.push({
     await sleep(900); // IPC round trip + DB delete + re-render
     const rows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-del-30a'");
     const deletedForever = rows[0].c === 0;
-    // BUG: the dialog promises the data is preserved, but handleDelete calls
-    // Msg_HardDelete (permanent row + attachment + FTS removal).
-    if (!saysPreserved || !deletedForever)
-      throw new Error('bug not reproduced: saysPreserved=' + saysPreserved + ' deletedForever=' + deletedForever + ' text=' + JSON.stringify(confirmText.trim()));
-    return 'confirm dialog said "' + confirmText.trim() + '" but the message row is permanently gone from the DB';
+    // FIXED: dialog now honestly warns permanent deletion, not data preserved.
+    const saysPermanent = confirmText.indexOf('permanently') >= 0 || confirmText.indexOf('cannot be undone') >= 0;
+    if (saysPreserved)
+      throw new Error('confirmation still claims data is preserved (lie not fixed): ' + JSON.stringify(confirmText.trim()));
+    if (!saysPermanent)
+      throw new Error('confirmation should warn permanent deletion: ' + JSON.stringify(confirmText.trim()));
+    if (!deletedForever)
+      throw new Error('message should still be hard-deleted (row gone) but survived: deletedForever=' + deletedForever + ' text=' + JSON.stringify(confirmText.trim()));
+    return 'confirm dialog honestly says "' + confirmText.trim() + '" and the message row is permanently gone';
   }
 });
 

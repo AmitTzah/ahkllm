@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **66 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **65 verified, 3 reported, 1 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #29 FIXED and committed in ec5d00c (CostCalculator blank cachedInput -> 10% fallback, scenario 29 flipped to regression); next: bug #30 per rank order.
+- **Where we left off:** 2026-08-07 — bug #30 fix applied (deleteMessage now honestly says permanent delete, scenario 30 PASS, suites green); awaiting user commit.
 ---
 
 ## Bug entry template
@@ -212,7 +212,7 @@ one at a time, in rank order.
 
 **Scenario:** 30 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** awaiting user commit
 
 **Repro:** in a chat, click the trash icon on any message bubble; read the
 confirmation; click Delete.
