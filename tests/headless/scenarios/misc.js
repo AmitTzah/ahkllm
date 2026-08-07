@@ -639,15 +639,17 @@ scenarios.push({
 
 scenarios.push({
   id: 90,
-  name: "SettingsService SaveFromWebView with empty data corrupts settings via string iteration",
+  name: "SettingsMerge.Override guards non-object incoming (settings safe)",
+  regression: true, // FIXED bug kept as a regression check (non-object payloads must not pollute settings)
   mode: null,
   noApp: true,
   async body() {
     const sm=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsMerge.ahk"),"utf8");
-    const hasOverrideLoop = /for k, v in incoming/.test(sm);
-    const checksIsMap = /if IsObject\(incoming\)/.test(sm);
-    if(!hasOverrideLoop || checksIsMap) throw new Error("bug not reproduced");
-    return "SettingsMerge.Override iterates over incoming without IsObject check ï¿½ empty string would iterate chars";
+    const overrideBlock = sm.slice(sm.indexOf("static Override"), sm.indexOf("static Override")+300);
+    const hasGuard = /if !IsObject\(incoming\)/.test(overrideBlock);
+    const rawIter = /for k, v in incoming/.test(overrideBlock) && !hasGuard;
+    if(!hasGuard || rawIter) throw new Error("bug #90 not fixed: hasGuard=" + hasGuard + " rawIter=" + rawIter);
+    return "SettingsMerge.Override guards non-object incoming payloads (IsObject), so a crafted empty-string payload cannot pollute settings";
   }
 });
 

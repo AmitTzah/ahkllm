@@ -132,6 +132,15 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #90): Override must ignore non-object incoming payloads.
+    Override_NonObjectIncoming_Ignored() {
+        result := SettingsMerge.Override("", Map("version", 1, "trash", Map("retentionDays", 30)))
+        if result.Has("1") || result.Has("2")
+            throw Error("non-object incoming must not iterate characters into the result")
+        if !result.Has("trash") || result["trash"]["retentionDays"] != 30
+            throw Error("base values should survive a non-object incoming")
+    }
+
     ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
     ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
     ; must return the pristine snapshot captured by CacheInitialDefaults().
