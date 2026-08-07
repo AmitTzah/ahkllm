@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **37 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **36 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #68 FIXED in a368b2a; next: bug #69 (search LIKE fallback does not escape % _ \\).
+- **Where we left off:** 2026-08-07 — bug #69 FIXED in e452650; next: bug #70 (search FTS5 MATCH does not escape special characters).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 69. Search LIKE fallback does not escape % _ \ - searching for % returns all messages
-
-**Scenario:** 69 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** seed a chat with messages, then use Search (global or scoped) and type `%` (or `_`).
-
-**Expected:** searching for a literal `%` should return only messages that contain `%` (or no results if none do).
-
-**Actual:** the LIKE phase does `m.content LIKE '%' || 'safeQuery' || '%' ESCAPE '\'` where `safeQuery` is only `SQLite.Escape(query)` (doubles `'` ? `''`). `%` and `_` are LIKE wildcards and `\` is the ESCAPE char - none are escaped. `safeQuery = "%"` becomes `LIKE '%%% '`, which matches every row (and `_` matches any single char). The same bug exists in `_Titles` for title search.
-
-**Evidence:** `chat/db/SearchRepo.ahk` `static _Like` and `static _Titles` - `safeQuery := SQLite.Escape(query)` then `LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'` with no `%`/`_`/`\` escaping.
-
-**Verification:** headless scenario 69 (noApp) slices `_Like` and asserts no `StrReplace` for `%`/`_` exists while `ESCAPE '\'` is present.
 
 ### 70. Search FTS5 MATCH does not escape special characters - C++ or "hello" breaks the query (empty results)
 
@@ -858,6 +842,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Search LIKE fallback does not escape % _ \\ - searching for % returns all messages" - FIXED in e452650: new SearchRepo._EscapeLike escapes \\ % _ (used by _Like and _Titles) so user input is matched literally; scenario 69 flipped to a regression static check + ChatDB unit test.
 
 - 2026-08-07 - "ProviderResolver legacy prefix match uses substring InStr, not prefix check - mygpt matches gpt" - FIXED in a368b2a: Resolve now matches legacy short ids by PREFIX (SubStr(...) = prefix) instead of substring InStr, so mygpt-custom no longer resolves to the gpt provider; scenario 68 flipped to a regression static check + LLMRequestBuilder unit test.
 

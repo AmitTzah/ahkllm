@@ -1,5 +1,5 @@
-# 2026-08-07T21:33:21.416Z | run of 1 scenario(s)
-PASS | #68 | ProviderResolver legacy prefix match is prefix-only | ProviderResolver.Resolve matches legacy short ids by prefix only, so mygpt-custom no longer resolves to the gpt provider | 0.0s
+# 2026-08-07T21:36:06.170Z | run of 1 scenario(s)
+PASS | #69 | Search LIKE escapes % _ \ wildcards (literal search) | SearchRepo._EscapeLike escapes \ % _ (used by _Like and _Titles), so searching for % matches only literal percent | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
