@@ -1,5 +1,5 @@
-# 2026-08-07T21:30:09.419Z | run of 1 scenario(s)
-PASS | #66 | Header tooltip says Cumulative (typo fixed) | chat-format.js tooltip reads 'Cumulative Input/output token usage across all conversation branches' | 0.0s
+# 2026-08-07T21:33:21.416Z | run of 1 scenario(s)
+PASS | #68 | ProviderResolver legacy prefix match is prefix-only | ProviderResolver.Resolve matches legacy short ids by prefix only, so mygpt-custom no longer resolves to the gpt provider | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

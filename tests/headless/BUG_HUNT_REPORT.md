@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **38 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **37 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #66 FIXED in d72b4f5; next: bug #68 (ProviderResolver legacy prefix match uses substring InStr).
+- **Where we left off:** 2026-08-07 — bug #68 FIXED in a368b2a; next: bug #69 (search LIKE fallback does not escape % _ \\).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 68. ProviderResolver legacy prefix match uses substring InStr, not prefix check - mygpt matches gpt
-
-**Scenario:** 68 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** configure a custom providerMap prefix `gpt` (default) and use a short-form model id that merely *contains* the substring, e.g. `mygpt-custom` or `agpt-model` (no `provider/` prefix).
-
-**Expected:** legacy short ids should resolve by *prefix* (starts-with) - `mygpt-custom` should fall back to `deepseek` (or remain unmatched), not to the `gpt` provider.
-
-**Actual:** `ProviderResolver.Resolve` loops `for prefix, prov in providerMap` and does `if InStr(modelId, prefix)` - substring anywhere. `mygpt-custom` therefore resolves to the `gpt` ? `openai` provider and is sent to `openai`'s endpoint with the wrong model name, while a legitimate `gpt-4o` and a bogus `mygpt` both hit the same provider.
-
-**Evidence:** `api/ProviderResolver.ahk` `Resolve()` `if InStr(modelId, prefix)` (no `=1` or `SubStr` prefix check).
-
-**Verification:** headless scenario 68 (noApp) asserts `InStr(modelId, prefix)` exists and no `SubStr(...,1,)` or `InStr(...)=1` prefix check exists.
 
 ### 69. Search LIKE fallback does not escape % _ \ - searching for % returns all messages
 
@@ -874,6 +858,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "ProviderResolver legacy prefix match uses substring InStr, not prefix check - mygpt matches gpt" - FIXED in a368b2a: Resolve now matches legacy short ids by PREFIX (SubStr(...) = prefix) instead of substring InStr, so mygpt-custom no longer resolves to the gpt provider; scenario 68 flipped to a regression static check + LLMRequestBuilder unit test.
 
 - 2026-08-07 - "Header tooltip typo \"Culminative\" (should be \"Cumulative\") and mismatched semantics" - FIXED in d72b4f5: the updateTokenUsage tooltip now reads \"Cumulative Input/output token usage across all conversation branches\"; scenario 66 flipped to a regression static check + chat-format unit test.
 
