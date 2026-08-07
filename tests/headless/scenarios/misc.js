@@ -911,6 +911,24 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 112,
+  name: "CurlBuilder does not validate empty endpoint — malformed cURL with no URL",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const cb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","CurlBuilder.ahk"),"utf8");
+    const hasEndpointCheck = /if !providerInfo\.endpoint/.test(cb) || /if providerInfo\.endpoint = ""/.test(cb);
+    const buildsWithEndpoint = /providerInfo\.endpoint/.test(cb);
+    if(hasEndpointCheck) throw new Error("already validates endpoint");
+    if(!buildsWithEndpoint) throw new Error("no endpoint usage");
+    return "CurlBuilder.Build concatenates providerInfo.endpoint without empty check — empty endpoint yields POST with no URL";
+  }
+});
+
 module.exports = scenarios;
 
 

@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **66 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **67 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 sixth pass — added 1 verified bug #111 (ApiLogger non-atomic) — headless PASS; fifth pass — added 2 verified bugs #109 (Sidebar folderId + 15+ raw ids), #110 (cURL temp leak) — headless PASS (2/2); fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS; counts re-verified 69 entries = 66 verified + 3 reported, sync OK 106 scenarios (37 regression). Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** audit 2026-08-07 seventh pass — added 1 verified bug #112 (CurlBuilder empty endpoint) — headless PASS; sixth pass — added 1 verified bug #111 (ApiLogger non-atomic) — headless PASS; fifth pass — added 2 verified bugs #109 (Sidebar folderId + 15+ raw ids), #110 (cURL temp leak) — headless PASS (2/2); fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS; counts re-verified 70 entries = 67 verified + 3 reported, sync OK 107 scenarios (37 regression). Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
@@ -1585,6 +1585,22 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 **Evidence:** `api/ApiLogger.ahk` `LogRequest` — `FileOpen(..., "w").Write` without `FileMove` temp.
 
 **Verification:** headless scenario 111 (noApp) asserts `FileOpen(this.logFilePath, "w"` exists and no atomic rename exists.
+
+### 112. CurlBuilder does not validate empty endpoint — malformed cURL with no URL
+
+**Scenario:** 112 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** configure a provider with empty `endpoint` (e.g. add provider via Settings → Providers → leave Chat Endpoint blank → Save), then send a chat request with that provider''s model.
+
+**Expected:** request builder should return early with “No endpoint configured” error (like missing API key does via `_ShowApiKeyError`).
+
+**Actual:** `CurlBuilder.Build` does `return ''cURL.exe ... -X POST '' . providerInfo.endpoint . '' '' . ''-H ...''` without checking `endpoint`. Empty endpoint yields `cURL.exe -s ... -X POST  -H "Authorization: …"` with double-space and no URL — cURL exits with “no URL specified” (stderr), but the error is not surfaced as a user-friendly “endpoint missing” banner; the UI appears stuck or shows raw cURL stderr.
+
+**Evidence:** `api/CurlBuilder.ahk` `Build`/`BuildStream`/`BuildFIM` all concatenate `providerInfo.endpoint` without `if !endpoint` guard.
+
+**Verification:** headless scenario 112 (noApp) asserts `providerInfo.endpoint` is used without empty check.
 
 ## History (append-only)
 

@@ -1,6 +1,6 @@
-# 2026-08-07T10:59:40.730Z | run of 1 scenario(s)
-PASS | #111 | ApiLogger LogRequest non-atomic overwrite — crash mid-write corrupts log file | ApiLogger.LogRequest does FileOpen w + Write without temp rename — crash corrupts log | 0.0s
+# 2026-08-07T11:03:38.321Z | run of 1 scenario(s)
+PASS | #112 | CurlBuilder does not validate empty endpoint — malformed cURL with no URL | CurlBuilder.Build concatenates providerInfo.endpoint without empty check — empty endpoint yields POST with no URL | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
-Report sync: OK
+Report sync: MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js
