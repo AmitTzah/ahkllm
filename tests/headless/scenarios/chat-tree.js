@@ -335,6 +335,7 @@ scenarios.push({
   id: 44,
   name: 'Forking a chat drops the per-thread font size and Advanced toggles',
   mode: null,
+  regression: true, // FIXED: fork now inherits font_size and advanced_toggles (was dropped),
   settings: {},
   fixtures: {
     threads: [{ id: 't-fork-44', title: 'Fork Source', active_leaf_id: 'm-fork-44', font_size: 20 }],
@@ -365,14 +366,12 @@ scenarios.push({
     const rows = seed.query(dbPath, 'SELECT font_size, advanced_toggles FROM chat_threads WHERE id = ?', [newId]);
     const s = rows[0] || {};
     const fontAfter = await cdp.eval('document.getElementById("font-size-display").textContent');
-    // BUG: TreeRepo._CopyThreadSettings copies model/system/reasoning/temperature/
-    // assistant but NOT font_size or advanced_toggles, so the fork starts at the
-    // defaults (17px, toggles off) instead of inheriting the source thread.
-    if (Number(s.font_size) === 20 && String(s.advanced_toggles || '').indexOf('codeExecution') >= 0 && fontAfter === '20px')
-      throw new Error('fork kept the source settings (bug not reproduced): ' + JSON.stringify(s) + ' font=' + fontAfter);
+    // FIXED: TreeRepo._CopyThreadSettings now copies font_size and advanced_toggles
+    if (Number(s.font_size) !== 20 || String(s.advanced_toggles || '').indexOf('codeExecution') < 0 || fontAfter !== '20px')
+      throw new Error('fork did not keep source settings (fix broken): ' + JSON.stringify(s) + ' font=' + fontAfter);
     return 'source thread font_size=20 + advanced_toggles set; fork id=' + newId +
-      ' has font_size=' + s.font_size + ' advanced_toggles=' + JSON.stringify(s.advanced_toggles) +
-      ' and the UI shows ' + fontAfter + ' instead of 20px';
+      ' correctly has font_size=' + s.font_size + ' advanced_toggles=' + JSON.stringify(s.advanced_toggles) +
+      ' and the UI shows ' + fontAfter;
   }
 });
 

@@ -205,6 +205,16 @@ class TreeRepo {
             ChatDB.db.Exec("UPDATE chat_threads SET temperature_override=" settings.temperatureOverride " WHERE id='" targetThreadId "';")
         if settings.assistantId
             ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" targetThreadId "';")
+        ; Also copy per-thread font size and Advanced toggles (Code Execution / Web Search)
+        try {
+            srcRow := ChatDB.db.Exec("SELECT font_size, advanced_toggles FROM chat_threads WHERE id='" SQLite.Escape(sourceThreadId) "';")
+            if srcRow.count {
+                if srcRow[1, "font_size"] != ""
+                    ChatDB.db.Exec("UPDATE chat_threads SET font_size=" Integer(srcRow[1, "font_size"]) " WHERE id='" targetThreadId "';")
+                if srcRow[1, "advanced_toggles"] != ""
+                    ChatDB.db.Exec("UPDATE chat_threads SET advanced_toggles='" SQLite.Escape(srcRow[1, "advanced_toggles"]) "' WHERE id='" targetThreadId "';")
+            }
+        }
     }
 
     ; Map an old sibling_group to a fresh UUID, creating one if needed.

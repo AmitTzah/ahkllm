@@ -348,6 +348,27 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression: Fork copies per-thread font_size and Advanced toggles (bug #44)
+    ForkThread_CopiesPerThreadSettings() {
+        threadId := this._setup()
+        togglesJson := jsongo.Stringify(Map("codeExecution", true, "webSearch", true))
+        ChatDB.db.Exec("UPDATE chat_threads SET font_size=20, advanced_toggles='" SQLite.Escape(togglesJson) "' WHERE id='" threadId "';")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (per-thread settings)")
+        row := ChatDB.db.Exec("SELECT font_size, advanced_toggles FROM chat_threads WHERE id='" newId "';")
+        if !row.count || Integer(row[1, "font_size"]) != 20
+            throw Error("Expected forked thread font_size=20, got " (row.count ? row[1, "font_size"] : "none"))
+        if !InStr(row[1, "advanced_toggles"], "codeExecution")
+            throw Error("Expected forked thread advanced_toggles to contain codeExecution, got " row[1, "advanced_toggles"])
+        if !InStr(row[1, "advanced_toggles"], "webSearch")
+            throw Error("Expected forked thread advanced_toggles to contain webSearch")
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------
