@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **31 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **30 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #74 FIXED in bcd199a; next: bug #75 (GoogleChatCompletions budget table substring match).
+- **Where we left off:** 2026-08-07 — bug #75 FIXED in b1e1fc0; next: bug #76 (initChatMode guard prevents thread switch).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 75. GoogleChatCompletions budget table matches via substring InStr, not exact family check
-
-**Scenario:** 75 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** use a custom model id that merely *contains* a budget-table substring, e.g. `my2.5-pro-custom` or `test2.5-flash-lite`, with thinking Level `high`.
-
-**Expected:** `_BudgetTable` should match only the intended Gemini family (e.g. `2.5-pro` family), or fall back to generic.
-
-**Actual:** `_BudgetTable` uses `if InStr(modelId, "2.5-pro")` substring checks. Any model id containing that substring - even `my2.5-pro` or `foo2.5-pro-bar` - will match the first table (`minimal 128 - high 32768`) even though it is not a Gemini 2.5-pro model, giving a wrong thinking budget.
-
-**Evidence:** `api/handlers/GoogleChatCompletions.ahk` `_BudgetTable` `if InStr(modelId, "2.5-pro")` etc.
-
-**Verification:** headless scenario 75 (noApp) asserts `InStr(modelId, "2.5-pro")` exists.
 
 ### 76. initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread
 
@@ -762,6 +746,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "GoogleChatCompletions budget table matches via substring InStr, not exact family check" - FIXED in b1e1fc0: _BudgetTable now matches the Gemini family (gemini-2.5-pro / gemini-2.5-flash-lite / gemini-2.5-flash / gemini-2.0-flash) instead of any substring, so custom ids like my2.5-pro fall back to the generic table; scenario 75 flipped to a regression static check + LLMRequestBuilder unit test.
 
 - 2026-08-07 - "SettingsApply leaves providerMap stale when all prefixes are cleared" - FIXED in bcd199a: _ApplyProviders now rebuilds providerMap whenever the saved providers define prefixes explicitly (an empty set clears the stale map), while providers without a prefixes key still keep the UserConfig mapping; scenario 74 flipped to a regression static check + SettingsHandler unit test.
 
