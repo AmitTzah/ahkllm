@@ -95,18 +95,20 @@ class ChatDB {
     ;   WRONG: VALUES(..., SQLite.Escape(val))     → VALUES(..., Hi)
     ;   RIGHT: VALUES(..., '" SQLite.Escape(val) "') → VALUES(..., 'Hi')
     static FTS_Sync(msgId, content) {
-        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" msgId "';")
+        safeMsgId := SQLite.Escape(msgId)
+        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" safeMsgId "';")
         safeContent := SQLite.Escape(content)
         try {
             ; Wrapping quotes around safeContent: '" safeContent "'
-            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) VALUES('" msgId "', '" safeContent "');")
+            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) VALUES('" safeMsgId "', '" safeContent "');")
         } catch Error as e {
             debugLog("[FTS] Sync ERROR: " e.Message, "FTS")
         }
     }
 
     static FTS_Remove(msgId) {
-        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" msgId "';")
+        safeMsgId := SQLite.Escape(msgId)
+        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" safeMsgId "';")
     }
 
     static _UUID() {

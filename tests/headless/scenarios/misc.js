@@ -737,7 +737,8 @@ scenarios.push({
 
 scenarios.push({
   id: 96,
-  name: "AttachmentRepo SQL injection via unescaped msgId",
+  name: "AttachmentRepo escapes msgId/threadId in every statement (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must stay literal)
   mode: null,
   noApp: true,
   async body() {
@@ -745,10 +746,20 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const ar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
-    const unsafe = /WHERE message_id='" msgId "'/.test(ar);
-    const hasEsc = /SQLite\.Escape\(msgId\)/.test(ar.slice(ar.indexOf("static Insert"), ar.indexOf("static Insert")+800));
-    if(!unsafe || hasEsc) throw new Error("bug not reproduced unsafe="+unsafe);
-    return "AttachmentRepo Insert/GetByMessage interpolates msgId without Escape";
+    const cd=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","ChatDB.ahk"),"utf8");
+    // FIXED (bug #96): every msgId/threadId literal is escaped.
+    const insertEsc = /static Insert\(msgId, attObj\)[\s\S]{0,900}SQLite\.Escape\(msgId\)/.test(ar);
+    const rawInsert = /VALUES\('" id "', '" msgId "'/.test(ar);
+    const getEsc = /static GetByMessage\(msgId\)[\s\S]{0,300}SQLite\.Escape\(msgId\)/.test(ar);
+    const getThreadEsc = /static GetByThread\(threadId\)[\s\S]{0,300}SQLite\.Escape\(threadId\)/.test(ar);
+    const delEsc = /static DeleteByMessage\(msgId\)[\s\S]{0,500}SQLite\.Escape\(msgId\)/.test(ar);
+    const copyEsc = /static CopyForMessage\(sourceMsgId, targetMsgId\)[\s\S]{0,400}SQLite\.Escape\(sourceMsgId\)[\s\S]{0,700}SQLite\.Escape\(targetMsgId\)/.test(ar);
+    const ftsSyncEsc = /static FTS_Sync\(msgId, content\)[\s\S]{0,400}SQLite\.Escape\(msgId\)/.test(cd);
+    const ftsRemoveEsc = /static FTS_Remove\(msgId\)[\s\S]{0,200}SQLite\.Escape\(msgId\)/.test(cd);
+    const rawWhere = /WHERE message_id='" msgId "'/.test(ar);
+    if(!insertEsc || rawInsert || !getEsc || !getThreadEsc || !delEsc || !copyEsc || !ftsSyncEsc || !ftsRemoveEsc || rawWhere)
+      throw new Error("bug #96 not fixed: insertEsc="+insertEsc+" rawInsert="+rawInsert+" getEsc="+getEsc+" getThreadEsc="+getThreadEsc+" delEsc="+delEsc+" copyEsc="+copyEsc+" ftsSyncEsc="+ftsSyncEsc+" ftsRemoveEsc="+ftsRemoveEsc+" rawWhere="+rawWhere);
+    return "AttachmentRepo/ChatDB escape msgId/threadId in Insert, GetByMessage, GetByThread, DeleteByMessage, CopyForMessage, FTS_Sync, FTS_Remove - crafted ids stay literal";
   }
 });
 

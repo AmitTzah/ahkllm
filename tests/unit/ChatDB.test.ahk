@@ -469,6 +469,46 @@ class ChatDBTest {
         }
     }
 
+    ; Regression (bug #96, security): AttachmentRepo must escape msgId/threadId
+    ; and ChatDB FTS_Sync/FTS_Remove the same way - a crafted id with a single
+    ; quote must not break or inject SQL.
+    AttachmentRepo_EscapesMsgId() {
+        threadId := this._setup()
+        craftedMsgId := "bad'id"
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content) VALUES('bad''id', '" threadId "', 'user', 'attached content');")
+        try {
+            attId := ChatDB.Attachment_Insert(craftedMsgId, {
+                attachment_type: "text_file",
+                file_path: "tmp/nonexistent.bin",
+                mime_type: "text/plain",
+                original_filename: "note.txt",
+                file_size: 12,
+                extracted_text: "hello"
+            })
+            if !attId
+                throw Error("Attachment_Insert should return an id for a crafted msgId")
+            rows := ChatDB.Attachment_GetByMessage(craftedMsgId)
+            if rows.Length != 1 || rows[1].original_filename != "note.txt"
+                throw Error("GetByMessage should find the crafted-id attachment, got " rows.Length " rows")
+            ChatDB.Attachment_DeleteByMessage(craftedMsgId)
+            rows := ChatDB.Attachment_GetByMessage(craftedMsgId)
+            if rows.Length != 0
+                throw Error("DeleteByMessage should remove the crafted-id attachment, got " rows.Length " rows")
+
+            ; FTS sync/remove must also escape msgId (bug #96).
+            ChatDB.FTS_Sync(craftedMsgId, "content with a quote ' here")
+            ftsRow := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id='bad''id';")
+            if !ftsRow.count || Integer(ftsRow[1, "c"]) != 1
+                throw Error("FTS_Sync should index the crafted-id message, got " (ftsRow.count ? ftsRow[1, "c"] : "none"))
+            ChatDB.FTS_Remove(craftedMsgId)
+            ftsRow := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id='bad''id';")
+            if !ftsRow.count || Integer(ftsRow[1, "c"]) != 0
+                throw Error("FTS_Remove should remove the crafted-id message, got " (ftsRow.count ? ftsRow[1, "c"] : "none"))
+        } finally {
+            this._teardown()
+        }
+    }
+
     ; Regression (bug #81, security): _setupSiblingGroup must escape msg.id.
     Branch_SetupSiblingGroup_EscapesMsgId() {
         srcPath := A_ScriptDir "\..\chat\callbacks\Branch.ahk"
