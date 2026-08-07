@@ -13,9 +13,19 @@ class CostCalculator {
     ; Extract pricing from a model object into the provided output variables
     static _ResolvePricing(m, &inputPrice, &cachedInputPrice, &outputPrice, &contextWin) {
         inputPrice       := m.HasOwnProp("input")       ? m.input       : 0
-        cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)
         outputPrice      := m.HasOwnProp("output")      ? m.output      : 0
         contextWin       := m.HasOwnProp("context")     ? m.context     : ""
+        ; Cached input defaults to 10% of input when missing, blank, zero, or non-numeric.
+        ; The settings round-trip always writes cachedInput ("" for missing legacy entries,
+        ; 0 for UI-blank via focus/blur), so a HasOwnProp check alone never falls back.
+        cachedInputPrice := inputPrice * 0.1
+        if m.HasOwnProp("cachedInput") {
+            try {
+                val := m.cachedInput
+                if IsNumber(val) && val != 0
+                    cachedInputPrice := val + 0
+            }
+        }
     }
 
     static ComputeTokenCosts(model, usage) {

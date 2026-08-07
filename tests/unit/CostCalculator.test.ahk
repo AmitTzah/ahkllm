@@ -101,4 +101,73 @@ class CostCalculatorTest {
             throw Error("Expected contextWindow=262144 for gemma, got " costs.contextWindow)
     }
 
+
+    ; --- Bug #29: blank/zero/missing cachedInput falls back to 10% of input ---
+
+    CachedInput_BlankString_Fallback() {
+        m := { input: 10, cachedInput: "", output: 2, context: 1000 }
+        CostCalculator._ResolvePricing(m, &inp, &cached, &outp, &ctx)
+        if cached != 1
+            throw Error("Expected cachedInputPrice=1 (10% of 10) for blank string, got " cached)
+    }
+
+    CachedInput_Zero_Fallback() {
+        m := { input: 10, cachedInput: 0, output: 2, context: 1000 }
+        CostCalculator._ResolvePricing(m, &inp, &cached, &outp, &ctx)
+        if cached != 1
+            throw Error("Expected cachedInputPrice=1 (10% of 10) for cachedInput=0, got " cached)
+    }
+
+    CachedInput_Missing_Fallback() {
+        m := { input: 10, output: 2, context: 1000 }
+        CostCalculator._ResolvePricing(m, &inp, &cached, &outp, &ctx)
+        if cached != 1
+            throw Error("Expected cachedInputPrice=1 (10% of 10) for missing cachedInput, got " cached)
+    }
+
+    CachedInput_ExplicitValue_Preserved() {
+        m := { input: 10, cachedInput: 2.5, output: 2, context: 1000 }
+        CostCalculator._ResolvePricing(m, &inp, &cached, &outp, &ctx)
+        if cached != 2.5
+            throw Error("Expected cachedInputPrice=2.5 for explicit value, got " cached)
+    }
+
+    CachedInput_BlankString_ComputeDoesNotThrow() {
+        global models
+        hadKey := models.Has("test/blank-cached-regression")
+        saved := hadKey ? models["test/blank-cached-regression"] : ""
+        models["test/blank-cached-regression"] := { provider: "test", input: 10, cachedInput: "", output: 20, context: 1000000 }
+        try {
+            usage := { promptTokens: 1000000, completionTokens: 0, cachedTokens: 1000000 }
+            costs := CostCalculator.ComputeTokenCosts("test/blank-cached-regression", usage)
+            if costs.cachedInputCost != 1
+                throw Error("Expected cachedInputCost=1 for blank cachedInput fallback, got " costs.cachedInputCost)
+            if costs.inputCost != 1
+                throw Error("Expected inputCost=1 for blank cachedInput fallback, got " costs.inputCost)
+        } finally {
+            if hadKey
+                models["test/blank-cached-regression"] := saved
+            else
+                models.Delete("test/blank-cached-regression")
+        }
+    }
+
+    CachedInput_Zero_ComputeDoesNotThrow() {
+        global models
+        hadKey := models.Has("test/zero-cached-regression")
+        saved := hadKey ? models["test/zero-cached-regression"] : ""
+        models["test/zero-cached-regression"] := { provider: "test", input: 10, cachedInput: 0, output: 20, context: 1000000 }
+        try {
+            usage := { promptTokens: 1000000, completionTokens: 0, cachedTokens: 1000000 }
+            costs := CostCalculator.ComputeTokenCosts("test/zero-cached-regression", usage)
+            if costs.cachedInputCost != 1
+                throw Error("Expected cachedInputCost=1 for zero cachedInput fallback, got " costs.cachedInputCost)
+        } finally {
+            if hadKey
+                models["test/zero-cached-regression"] := saved
+            else
+                models.Delete("test/zero-cached-regression")
+        }
+    }
+
 }

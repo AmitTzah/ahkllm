@@ -1,4 +1,4 @@
-// scenarios/usage-tokens.js - Usage dashboards and token/cost accounting
+﻿// scenarios/usage-tokens.js - Usage dashboards and token/cost accounting
 //
 // Part of the headless E2E suite (entry: ../e2e-suite.js). Scenarios launch
 // the REAL app against an isolated profile and drive it via WebView2 CDP +
@@ -73,6 +73,7 @@ scenarios.push({
   name: 'Blank cached-input price costs 0 instead of the advertised 10% fallback',
   mode: null,
   noApp: true,
+  regression: true, // FIXED: blank cachedInput now falls back to 10% (was throw)
   async body() {
     const outFile = path.join(os.tmpdir(), 'llm-cost-probe-' + process.pid + '.json');
     try { fs.unlinkSync(outFile); } catch {}
@@ -81,10 +82,10 @@ scenarios.push({
     if (res.error) throw new Error('cost probe spawn failed/timed out: ' + res.error.message);
     if (res.stderr) process.stderr.write('[probe-cost stderr] ' + res.stderr);
     const text = fs.readFileSync(outFile, 'utf-8');
-    // BUG: a blank cachedInput ("" stored by the settings round-trip) makes
-    // ComputeTokenCosts THROW ("Expected a Number but got an empty string"),
-    // while the missing-property control correctly falls back to 10% (1.0).
-    if (!text.includes('BUG29 throw=YES')) throw new Error('probe output: ' + text);
+    // FIXED: blank cachedInput ("" stored by the settings round-trip) now falls back to 10% (1.0) like the missing-property control, no throw.
+    if (!text.includes('BUG29 throw=NO')) throw new Error('blank cachedInput should not throw after fix: ' + text);
+    if (!text.includes('BUG29 missingFallback=OK')) throw new Error('missing cachedInput fallback broken: ' + text);
+    if (!text.includes('blankCost=1')) throw new Error('blank cachedInput should fallback to 1 (10% of 10): ' + text);
     return text.split('\n').filter((l) => l.includes('Cost=') || l.includes('BUG29')).join(' | ');
   }
 });

@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **67 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **66 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 seventh pass — added 1 verified bug #112 (CurlBuilder empty endpoint) — headless PASS; sixth pass — added 1 verified bug #111 (ApiLogger non-atomic) — headless PASS; fifth pass — added 2 verified bugs #109 (Sidebar folderId + 15+ raw ids), #110 (cURL temp leak) — headless PASS (2/2); fourth pass — added 2 verified bugs #107 (_RecomputeActivePath loses prompt_tokens), #108 (IPC window[target] fallback) — headless PASS (2/2); third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS; counts re-verified 70 entries = 67 verified + 3 reported, sync OK 107 scenarios (37 regression). Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** 2026-08-07 — bug #29 FIXED and committed in ec5d00c (CostCalculator blank cachedInput -> 10% fallback, scenario 29 flipped to regression); next: bug #30 per rank order.
 ---
 
 ## Bug entry template
@@ -207,38 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 29. Blank cached-input price costs 0 instead of the advertised 10% fallback
-
-**Scenario:** 29 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Models -> add a model (or edit one) -> leave "Cached" blank
--> Save -> send a request with cached-token usage and check the cost.
-
-**Expected:** the Models table hint says "Cached input defaults to 10% of input if
-blank", so a blank Cached price should cost 10% of the input price.
-
-**Actual:** the advertised fallback never applies. `CostCalculator._ResolvePricing`
-only falls back to `inputPrice * 0.1` when the property is entirely MISSING; the
-settings round-trip always writes a `cachedInput` key. Two failure modes, same root
-cause:
-- UI-blank (saved as `0` by the pricing input's focus/blur): cached tokens cost $0
-  instead of 10% of input (usage bar / dashboard under-report cached cost).
-- Legacy/hand-edited entry with `cachedInput: ""`: `cachedTokens * "" / 1000000`
-  THROWS AHK's "Expected a Number but got an empty string". In the chat flow that
-  exception propagates out of `MessageRepo.Insert`, so the streamed assistant
-  message is never persisted and `streamDone` never posts (UI stuck in Stop state).
-
-**Evidence:** `api/CostCalculator.ahk` `_ResolvePricing`:
-`cachedInputPrice := m.HasOwnProp("cachedInput") ? m.cachedInput : (inputPrice * 0.1)`;
-`app/settings/SettingsApply.ahk` `_ApplyModels` always sets `cachedInput` (to `""`
-when the saved entry lacks it).
-
-**Verification:** headless scenario 29 (noApp) runs `probe-cost.ahk`, which computes
-token costs for a model missing `cachedInput` (control = 1.0 fallback works) and for
-a model with `cachedInput: ""` (throws "Expected a Number but got an empty string").
 
 ### 30. Deleting a message confirms "data is preserved" but hard-deletes it
 
@@ -1606,6 +1574,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Blank cached-input price costs 0 instead of the advertised 10% fallback" - FIXED in ec5d00c: CostCalculator._ResolvePricing now falls back to inputPrice*0.1 for blank/zero/empty cachedInput (was only missing); scenario 29 flipped to regression check (regression: true) + CostCalculator unit tests.
 
 - 2026-08-05 - "Usage dashboard chart date labels shift a day in UTC+x timezones (toISOString on local dates)" - FIXED in 8df50b4: getDateRangeLabels() keys labels by the LOCAL date (localDateKey) instead of toISOString(); scenario 42 flipped to a regression check (regression: true).
 - 2026-08-05 - "Thinking config is silently dropped for short-form model ids (no provider prefix)" - FIXED in cc3db48: ChatRequestBuilder/ThreadSettings resolve model metadata through ModelResolver.Lookup (short ids now match, thinking kept); scenario 43 flipped to a regression check (regression: true) + unit tests.
