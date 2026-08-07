@@ -216,12 +216,15 @@ class TreeRepo {
             ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" targetThreadId "';")
         ; Also copy per-thread font size and Advanced toggles (Code Execution / Web Search)
         try {
-            srcRow := ChatDB.db.Exec("SELECT font_size, advanced_toggles FROM chat_threads WHERE id='" SQLite.Escape(sourceThreadId) "';")
+            srcRow := ChatDB.db.Exec("SELECT font_size, advanced_toggles, folder_id FROM chat_threads WHERE id='" SQLite.Escape(sourceThreadId) "';")
             if srcRow.count {
                 if srcRow[1, "font_size"] != ""
                     ChatDB.db.Exec("UPDATE chat_threads SET font_size=" Integer(srcRow[1, "font_size"]) " WHERE id='" targetThreadId "';")
                 if srcRow[1, "advanced_toggles"] != ""
                     ChatDB.db.Exec("UPDATE chat_threads SET advanced_toggles='" SQLite.Escape(srcRow[1, "advanced_toggles"]) "' WHERE id='" targetThreadId "';")
+                ; Bug #58: the fork belongs in the source thread's folder.
+                if srcRow[1, "folder_id"] != ""
+                    ChatDB.db.Exec("UPDATE chat_threads SET folder_id='" SQLite.Escape(srcRow[1, "folder_id"]) "' WHERE id='" targetThreadId "';")
             }
         }
     }

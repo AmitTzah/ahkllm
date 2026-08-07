@@ -394,6 +394,22 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #58): a fork must land in the source thread's folder.
+    ForkThread_CopiesFolder() {
+        threadId := this._setup()
+        ChatDB.db.Exec("UPDATE chat_threads SET folder_id='f-58' WHERE id='" threadId "';")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (folder)")
+        row := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" newId "';")
+        if !row.count || row[1, "folder_id"] != "f-58"
+            throw Error("Expected forked thread folder_id=f-58, got " (row.count ? row[1, "folder_id"] : "none"))
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------

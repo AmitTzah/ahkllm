@@ -541,7 +541,8 @@ scenarios.push({
 
 scenarios.push({
   id: 58,
-  name: 'Forking a chat drops the thread\'s folder (the copy lands in Unfiled)',
+  name: 'Forking a chat keeps the thread\'s folder',
+  regression: true, // FIXED bug kept as a regression check (forks must stay in the source folder)
   mode: null,
   settings: {},
   fixtures: {
@@ -561,11 +562,11 @@ scenarios.push({
     await sleep(500);
     const rows = seed.query(dbPath, 'SELECT folder_id FROM chat_threads WHERE id = ?', [newId]);
     const folder = rows[0] && rows[0].folder_id;
-    // BUG: TreeRepo._CopyThreadSettings copies settings but never folder_id, so
-    // the forked thread appears in Unfiled instead of the source's folder.
-    if (folder === 'f-fork-58')
-      throw new Error('fork kept the folder (bug not reproduced): folder=' + folder);
-    return 'source thread is in folder f-fork-58; fork id=' + newId + ' has folder_id=' + JSON.stringify(folder) + ' (Unfiled)';
+    // FIXED (bug #58): _CopyThreadSettings now copies folder_id, so the fork
+    // appears in the source thread's folder.
+    if (folder !== 'f-fork-58')
+      throw new Error('fork did not keep the source folder (bug #58 not fixed): folder=' + JSON.stringify(folder));
+    return 'source thread is in folder f-fork-58; fork id=' + newId + ' has folder_id=' + JSON.stringify(folder) + ' (same folder)';
   }
 });
 
