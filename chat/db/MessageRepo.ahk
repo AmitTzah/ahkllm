@@ -8,8 +8,8 @@ class MessageRepo {
         id := ChatDB._UUID()
         safeContent := SQLite.Escape(msgObj.content)
         safeModel := msgObj.HasProp("model") && msgObj.model ? SQLite.Escape(msgObj.model) : ""
-        safeParent := msgObj.HasProp("parent_id") && msgObj.parent_id ? "'" msgObj.parent_id "'" : "NULL"
-        safeSiblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? "'" msgObj.sibling_group "'" : "NULL"
+        safeParent := msgObj.HasProp("parent_id") && msgObj.parent_id ? "'" SQLite.Escape(msgObj.parent_id) "'" : "NULL"
+        safeSiblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? "'" SQLite.Escape(msgObj.sibling_group) "'" : "NULL"
         siblingIdx := msgObj.HasProp("sibling_index") ? msgObj.sibling_index : 0
         safeReasoning := msgObj.HasProp("reasoning") && msgObj.reasoning ? SQLite.Escape(msgObj.reasoning) : ""
 
@@ -37,7 +37,7 @@ class MessageRepo {
             ; header "Context Used" must be prompt + visible output + thinking.
             activePathTokens := msgObj.prompt_tokens + tc + tht
         } else if msgObj.HasProp("parent_id") && msgObj.parent_id {
-            parentRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" msgObj.parent_id "';")
+            parentRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" SQLite.Escape(msgObj.parent_id) "';")
             if parentRow.count
                 activePathTokens := Integer(parentRow[1, "active_path_tokens"]) + tc
         }

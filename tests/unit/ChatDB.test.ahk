@@ -509,6 +509,32 @@ class ChatDBTest {
         }
     }
 
+    ; Regression (bug #99, security): MessageRepo.Insert must escape parent_id
+    ; and sibling_group - a crafted id with a single quote must not break or
+    ; inject SQL (same class as #80/#81/#96).
+    Insert_EscapesParentIdAndSiblingGroup() {
+        threadId := this._setup()
+        craftedParent := "bad'parent"
+        craftedGroup := "sib'group"
+        try {
+            parentId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "parent", parent_id: craftedParent, sibling_group: craftedGroup})
+            if !parentId
+                throw Error("Msg_Insert should accept a crafted parent_id/sibling_group")
+            row := ChatDB.db.Exec("SELECT parent_id, sibling_group FROM messages WHERE id='" parentId "';")
+            if !row.count || row[1, "parent_id"] != craftedParent || row[1, "sibling_group"] != craftedGroup
+                throw Error("crafted parent_id/sibling_group should round-trip literally, got " (row.count ? row[1, "parent_id"] " / " row[1, "sibling_group"] : "none"))
+            ; A child with a crafted parent hits the active-path lookup too.
+            childId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "child", parent_id: craftedParent})
+            if !childId
+                throw Error("Msg_Insert child with crafted parent_id should succeed")
+            childRow := ChatDB.db.Exec("SELECT parent_id FROM messages WHERE id='" childId "';")
+            if !childRow.count || childRow[1, "parent_id"] != craftedParent
+                throw Error("child parent_id should round-trip literally")
+        } finally {
+            this._teardown()
+        }
+    }
+
     ; Regression (bug #81, security): _setupSiblingGroup must escape msg.id.
     Branch_SetupSiblingGroup_EscapesMsgId() {
         srcPath := A_ScriptDir "\..\chat\callbacks\Branch.ahk"

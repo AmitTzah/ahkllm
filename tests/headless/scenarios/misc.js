@@ -811,7 +811,8 @@ scenarios.push({
 });
 scenarios.push({
   id: 99,
-  name: "MessageRepo.Insert parent_id/sibling_group SQL injection via unescaped interpolation",
+  name: "MessageRepo.Insert escapes parent_id/sibling_group (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must stay literal)
   mode: null,
   noApp: true,
   async body() {
@@ -819,12 +820,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
+    // FIXED (bug #99): parent_id and sibling_group are escaped, including the
+    // active-path parent lookup inside Insert.
+    const parentEsc = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" SQLite\.Escape\(msgObj\.parent_id\) "'" : "NULL"/.test(mr);
+    const siblingEsc = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" SQLite\.Escape\(msgObj\.sibling_group\) "'" : "NULL"/.test(mr);
+    const parentLookupEsc = /SELECT active_path_tokens FROM messages WHERE id='" SQLite\.Escape\(msgObj\.parent_id\) "'/.test(mr);
     const parentRaw = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" msgObj\.parent_id "'"/.test(mr);
     const siblingRaw = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" msgObj\.sibling_group "'"/.test(mr);
-    if (!parentRaw || !siblingRaw) throw new Error("bug not reproduced parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
-    const hasEsc = /SQLite\.Escape\(msgObj\.parent_id\)/.test(mr) || /SQLite\.Escape\(msgObj\.sibling_group\)/.test(mr);
-    if (hasEsc) throw new Error("already fixed");
-    return "MessageRepo.Insert builds safeParent/safeSiblingGroup without SQLite.Escape";
+    if(!parentEsc || !siblingEsc || !parentLookupEsc || parentRaw || siblingRaw)
+      throw new Error("bug #99 not fixed: parentEsc="+parentEsc+" siblingEsc="+siblingEsc+" parentLookupEsc="+parentLookupEsc+" parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
+    return "MessageRepo.Insert escapes parent_id and sibling_group (and the active-path parent lookup), so crafted ids stay literal";
   }
 });
 
