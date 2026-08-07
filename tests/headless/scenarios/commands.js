@@ -67,23 +67,26 @@ scenarios.push({
 
 scenarios.push({
   id: 36,
-  name: 'Command temperature/reasoning are dropped when the command model equals the app default (static check)',
+  name: 'Command temperature/reasoning persist when the command model equals the app default (static check)',
+  regression: true, // FIXED bug kept as a regression check (default-model commands must keep their temperature/reasoning overrides)
   mode: null,
   noApp: true,
   async body() {
     const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
     const gatePos = src.indexOf('if fullAPIModelName != appDefaultModel');
     if (gatePos < 0) throw new Error('model-default gate not found in RequestProcessor.ahk');
-    const block = src.slice(gatePos, gatePos + 1200);
-    const hasTemp = block.indexOf('temperatureOverride') >= 0;
-    const hasReasoning = block.indexOf('reasoningOverride') >= 0;
-    // BUG: Thread_UpdateSettings (with temperatureOverride/reasoningOverride) is
-    // nested inside the "model != appDefaultModel" branch, so a chat-mode command
-    // whose model IS the app default never persists its temperature/thinking and
-    // the fired request silently uses defaults.
-    if (!hasTemp || !hasReasoning)
-      throw new Error('overrides not inside the gated block (bug not reproduced): hasTemp=' + hasTemp + ' hasReasoning=' + hasReasoning);
-    return 'Thread_UpdateSettings with temperatureOverride/reasoningOverride sits inside `if fullAPIModelName != appDefaultModel`; default-model commands drop them';
+    const gateBlock = src.slice(gatePos, gatePos + 500);
+    // FIXED (bug #36): the gate now wraps ONLY modelOverride; temperature,
+    // reasoning, and system overrides are persisted unconditionally, so a
+    // chat-mode command whose model IS the app default keeps its overrides.
+    if (gateBlock.indexOf('temperatureOverride') >= 0 || gateBlock.indexOf('reasoningOverride') >= 0 || gateBlock.indexOf('systemOverride') >= 0)
+      throw new Error('overrides still inside the model-default gate (bug #36 not fixed)');
+    const objPos = src.indexOf('commandThreadSettings := {');
+    if (objPos < 0) throw new Error('unconditional command settings object not found in RequestProcessor.ahk');
+    const objBlock = src.slice(objPos, objPos + 500);
+    if (objBlock.indexOf('temperatureOverride') < 0 || objBlock.indexOf('reasoningOverride') < 0)
+      throw new Error('temperature/reasoning overrides missing from the unconditional command settings object');
+    return 'temperature/reasoning overrides persist outside the model-default gate; only modelOverride is gated';
   }
 });
 
