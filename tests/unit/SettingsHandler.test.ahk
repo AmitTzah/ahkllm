@@ -55,6 +55,19 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #93, hardening): GetDefaults must return an independent
+    ; copy - mutating the returned models Map must not corrupt future calls.
+    GetDefaults_ReturnsIndependentCopy() {
+        first := SettingsHandler.GetDefaults()
+        second := SettingsHandler.GetDefaults()
+        first["models"]["__test_poison__"] := Map("input", 1)
+        third := SettingsHandler.GetDefaults()
+        if third["models"].Has("__test_poison__")
+            throw Error("mutating a GetDefaults() snapshot corrupted the pristine defaults (bug #93)")
+        if second["models"].Has("__test_poison__")
+            throw Error("second snapshot shares the mutated map (bug #93)")
+    }
+
     ; Regression (bug #61): clearing a UI field (empty string) must replace the
     ; global instead of being skipped - otherwise the stale value survives
     ; (banner text, input window background, response font).

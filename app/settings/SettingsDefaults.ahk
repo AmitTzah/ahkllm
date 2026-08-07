@@ -28,7 +28,9 @@ class SettingsDefaults {
         if SettingsDefaults._initialDefaultsCaptured {
             snapshot := Map()
             for k, v in SettingsDefaults._initialDefaults
-                snapshot[k] := v
+                ; Bug #93 (hardening): deep-clone so a caller mutating the
+                ; returned snapshot cannot corrupt the cached pristine defaults.
+                snapshot[k] := SettingsDefaults._DeepClone(v)
             return snapshot
         }
         d := Map()
@@ -130,6 +132,24 @@ class SettingsDefaults {
         for k, v in src
             result[k] := v
         return result
+    }
+
+    ; Bug #93 (hardening): recursively copy Maps/Arrays so GetDefaults()
+    ; snapshots are fully independent of the cached pristine defaults.
+    static _DeepClone(value) {
+        if value is Map {
+            result := Map()
+            for k, v in value
+                result[k] := SettingsDefaults._DeepClone(v)
+            return result
+        }
+        if value is Array {
+            result := []
+            for item in value
+                result.Push(SettingsDefaults._DeepClone(item))
+            return result
+        }
+        return value
     }
 
     static _DefaultsAssistants() {

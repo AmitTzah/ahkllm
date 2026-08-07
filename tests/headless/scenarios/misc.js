@@ -687,15 +687,16 @@ scenarios.push({
 
 scenarios.push({
   id: 93,
-  name: "SettingsDefaults GetDefaults shallow copies Map values ï¿½ mutating snapshot corrupts pristine defaults",
+  name: "SettingsDefaults GetDefaults deep-clones snapshots (hardening)",
+  regression: true, // FIXED bug kept as a regression check (snapshot mutations must not corrupt pristine defaults)
   mode: null,
   noApp: true,
   async body() {
     const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
+    const doesDeep = /snapshot\[k\] := SettingsDefaults\._DeepClone\(v\)/.test(sd);
     const hasShallow = /snapshot\[k\] := v/.test(sd);
-    const doesDeep = /snapshot\[k\] := .*Clone/.test(sd);
-    if(!hasShallow || doesDeep) throw new Error("bug not reproduced hasShallow="+hasShallow+" doesDeep="+doesDeep);
-    return "SettingsDefaults.GetDefaults shallow copies _initialDefaults values ï¿½ nested Maps share reference";
+    if(!doesDeep || hasShallow) throw new Error("bug #93 not fixed: doesDeep=" + doesDeep + " hasShallow=" + hasShallow);
+    return "SettingsDefaults.GetDefaults deep-clones nested Maps/Arrays, so mutating a snapshot cannot corrupt the pristine defaults";
   }
 });
 
