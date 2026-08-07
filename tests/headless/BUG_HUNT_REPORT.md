@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **25 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **24 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #80 FIXED in f499225; next: bug #81 (Branch _setupSiblingGroup SQL injection via crafted message id).
+- **Where we left off:** 2026-08-07 — bug #81 FIXED in 21b5cd1; next: bug #82 (usage dashboard provider/model filter dropdown XSS).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 81. Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping - SQL injection via crafted message id
-
-**Scenario:** 81 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft a message id containing `'` (e.g. via a hand-edited DB or a malicious `retry` payload that references `messageId`) and trigger a retry that needs a new sibling group (assistant without `sibling_group`).
-
-**Expected:** the `UPDATE messages SET sibling_group=... WHERE id='...'` should use `SQLite.Escape(msg.id)`.
-
-**Actual:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` does `WHERE id='" msg.id "'` with no escaping. Same injection class as #80.
-
-**Evidence:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` `WHERE id='" msg.id "'`.
-
-**Verification:** headless scenario 81 (noApp) asserts `SQLite.Escape(msg.id)` absent and `WHERE id='" msg.id "'` present.
 
 ### 82. Usage dashboard provider/model filter dropdown XSS - option values not escaped
 
@@ -666,6 +650,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping - SQL injection via crafted message id" - FIXED in 21b5cd1: _setupSiblingGroup now escapes msg.id with SQLite.Escape before the UPDATE; scenario 81 flipped to a regression static check + ChatDB unit test.
 
 - 2026-08-07 - "ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape - SQL injection via crafted id" - FIXED in f499225: SoftDelete/Restore/Delete/Update now escape threadId with SQLite.Escape (and AttachmentRepo.DeleteByThread too), so crafted ids cannot inject SQL; scenario 80 flipped to a regression static check + ChatDB unit test.
 

@@ -1,5 +1,5 @@
-# 2026-08-07T22:03:43.400Z | run of 1 scenario(s)
-PASS | #80 | ThreadRepo escapes threadId in mutators (SQL injection fixed) | ThreadRepo SoftDelete/Restore/Delete/Update escape threadId (SQLite.Escape), so crafted ids cannot inject SQL | 0.0s
+# 2026-08-07T22:05:52.181Z | run of 1 scenario(s)
+PASS | #81 | Branch _setupSiblingGroup escapes msg.id (SQL injection fixed) | Branch._setupSiblingGroup escapes msg.id (SQLite.Escape), so crafted message ids cannot inject SQL | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
