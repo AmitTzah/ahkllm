@@ -1,5 +1,5 @@
-# 2026-08-07T20:39:41.142Z | run of 1 scenario(s)
-PASS | #41 | Tray "New Chat" applies the "New Chats Start With" default (static check of the tray path) | LoadThreadIntoUI applies _applyNewChatDefaultToFreshThread to fresh threads, so tray "New Chat" starts with the configured default | 0.0s
+# 2026-08-07T20:42:27.860Z | run of 1 scenario(s)
+PASS | #40 | Refresh-models modal keeps edits to a model id on Save | edited the first model id to "renamed-model-id" in the refresh modal; after Save the table shows "renamed-model-id" | 5.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

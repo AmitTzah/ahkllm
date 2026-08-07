@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **54 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **53 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #41 FIXED in 4d9228b; next: bug #40 (refresh-models modal discards edits to a model id).
+- **Where we left off:** 2026-08-07 — bug #40 FIXED in fa86b1c; next: bug #46 (command "Stream Response" + pasteMode replace/append silently produces no output).
 ---
 
 ## Bug entry template
@@ -207,31 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 40. Refresh-models modal discards edits to a model id (stale `data-full-id` wins on Save)
-
-**Scenario:** 40 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Models -> Fetch Latest Models -> in the "Your Models"
-panel edit a model's id field -> Save.
-
-**Expected:** the edited id is saved to the models table.
-
-**Actual:** the edit is silently discarded. `saveRefresh()` reads
-`idEl.getAttribute('data-full-id') || idEl.value`; the `data-full-id` attribute
-was stamped when the row was built and is never updated as the user types, so it
-always wins over the visible (edited) value. Renames in the refresh modal are
-impossible.
-
-**Evidence:** `webui/js/settings/sections/models.js` `_rightRowHtml()` writes
-`data-full-id`; `saveRefresh()` reads `data-full-id` first; no input listener
-updates it.
-
-**Verification:** headless scenario 40 opens the refresh modal, changes the first
-row's id to "renamed-model-id", clicks Save, and observes the models table still
-shows the original id.
 
 ### 46. Command "Stream Response" + pasteMode replace/append silently produces no output
 
@@ -1254,6 +1229,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Refresh-models modal discards edits to a model id (stale data-full-id wins on Save)" - FIXED in fa86b1c: saveRefresh and _rightPanelIds now prefer the live input value over the stale data-full-id attribute (the provider column still supplies the prefix), so renames in the refresh modal survive; scenario 40 flipped to a regression check + models-pricing-refresh unit tests.
 
 - 2026-08-07 - "Tray \"New Chat\" ignores the \"New Chats Start With\" default" - FIXED in 4d9228b: new _applyNewChatDefaultToFreshThread applies the configured assistant/model + default font size to fresh (message-less, settings-less) threads; LoadThreadIntoUI now calls it, so tray/command-line-spawned chats start with the configured default; scenario 41 flipped to a regression static check + ChatSettings unit tests (fresh thread gets default, configured thread untouched).
 
