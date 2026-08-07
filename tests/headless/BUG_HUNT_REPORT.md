@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **29 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **33 verified, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** deep token-usage audit via mock LLM (sse-success: prompt 12/completion 9/cached 4/total 21) and static provider-format review (OpenAI completion_tokens_details.reasoning_tokens, DeepSeek prompt_cache_hit_tokens, Google total-prompt-completion fallback). Verified header "Context Used" = prompt+visible only � thinking tokens never counted (bug #64), HardDelete leaves cumulative counters inflated (bug #65), tooltip typo Culminative (bug #66), plus earlier #61-63 (stale UI globals, fork temp 0, pricingUnit cached fallback). All 6 new scenarios PASS headlessly; sync OK 29 entries / 63 scenarios (34 regression). Dynamic streaming check (scenario 67, regression) confirms mock usage is stored accurately when thinking=0. Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
+- **Where we left off:** added 4 more verified bugs #68 (ProviderResolver substring prefix), #69 (Search LIKE wildcard not escaped), #70 (FTS5 special chars), #71 (Thread Title Generation stale on clear) � all headless PASS. Also kept token/header batch #61-66 and regression 67 (mock SSE). Sync OK 33 entries / 67 scenarios (34 regression). Next per fix cycle: bug #29, then rank order. Harness cleanup PID-targeted.
 ---
 
 ## Bug entry template
@@ -940,6 +940,70 @@ forks from the UI, and queries the new thread's `folder_id` — it is NULL
 **Evidence:** `webui/js/chat/chat-format.js` `updateTokenUsage` `title="Culminative Input/output token usage across all conversation branches"`.
 
 **Verification:** headless scenario 66 (noApp) checks for /Culminative/ in chat-format.js.
+
+### 68. ProviderResolver legacy prefix match uses substring InStr, not prefix check � mygpt matches gpt
+
+**Scenario:** 68 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** configure a custom providerMap prefix `gpt` (default) and use a short-form model id that merely *contains* the substring, e.g. `mygpt-custom` or `agpt-model` (no `provider/` prefix).
+
+**Expected:** legacy short ids should resolve by *prefix* (starts-with) � `mygpt-custom` should fall back to `deepseek` (or remain unmatched), not to the `gpt` provider.
+
+**Actual:** `ProviderResolver.Resolve` loops `for prefix, prov in providerMap` and does `if InStr(modelId, prefix)` � substring anywhere. `mygpt-custom` therefore resolves to the `gpt` ? `openai` provider and is sent to `openai`'s endpoint with the wrong model name, while a legitimate `gpt-4o` and a bogus `mygpt` both hit the same provider.
+
+**Evidence:** `api/ProviderResolver.ahk` `Resolve()` `if InStr(modelId, prefix)` (no `=1` or `SubStr` prefix check).
+
+**Verification:** headless scenario 68 (noApp) asserts `InStr(modelId, prefix)` exists and no `SubStr(...,1,)` or `InStr(...)=1` prefix check exists.
+
+### 69. Search LIKE fallback does not escape % _ \ � searching for % returns all messages
+
+**Scenario:** 69 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** seed a chat with messages, then use Search (global or scoped) and type `%` (or `_`).
+
+**Expected:** searching for a literal `%` should return only messages that contain `%` (or no results if none do).
+
+**Actual:** the LIKE phase does `m.content LIKE '%' || 'safeQuery' || '%' ESCAPE '\'` where `safeQuery` is only `SQLite.Escape(query)` (doubles `'` ? `''`). `%` and `_` are LIKE wildcards and `\` is the ESCAPE char � none are escaped. `safeQuery = "%"` becomes `LIKE '%%% '`, which matches every row (and `_` matches any single char). The same bug exists in `_Titles` for title search.
+
+**Evidence:** `chat/db/SearchRepo.ahk` `static _Like` and `static _Titles` � `safeQuery := SQLite.Escape(query)` then `LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'` with no `%`/`_`/`\` escaping.
+
+**Verification:** headless scenario 69 (noApp) slices `_Like` and asserts no `StrReplace` for `%`/`_` exists while `ESCAPE '\'` is present.
+
+### 70. Search FTS5 MATCH does not escape special characters � C++ or "hello" breaks the query (empty results)
+
+**Scenario:** 70 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** seed messages containing `C++`, `hello:world`, or `foo-bar`, then search for `C++` (or a quoted phrase `"hello"`).
+
+**Expected:** FTS5 should treat the query as literal terms or return the LIKE fallback results.
+
+**Actual:** `SearchRepo._FTS5` builds `ftsExpr` as `trimmed` words joined by ` AND ` with a trailing `*`, then only does `safeFTS := StrReplace(ftsExpr, "'", "''")`. FTS5 special characters `"` `(` `)` `:` `-` `+` `*` etc. are not escaped/quoted. `C++` becomes `MATCH 'C++*'` (plus is a FTS5 operator) and throws `fts5: syntax error near "+"`, causing `_FTS5` to return `[]` and the search falls through to LIKE (which then may also mis-handle it). Quoted queries like `"hello"` become `MATCH '"hello"*'` (unbalanced) and also error.
+
+**Evidence:** `chat/db/SearchRepo.ahk` `static _FTS5` � `ftsExpr .= trimmed` raw, `safeFTS := StrReplace(ftsExpr, "'", "''")` only.
+
+**Verification:** headless scenario 70 (noApp) asserts `ftsExpr .= trimmed` exists and no `StrReplace` for `"` or `(` exists.
+
+### 71. Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals
+
+**Scenario:** 71 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings ? General ? Thread Title Generation ? clear Model (or Prompt / Max Tokens) ? Save ? trigger title generation (send a new chat exchange).
+
+**Expected:** clearing the field should reset to the default (or empty) and title generation should use the default model/prompt or be disabled for that field.
+
+**Actual:** the previous `titleGenModel` / `titleGenSystemPrompt` / `titleGenMaxTokens` value survives. `SettingsApply._ApplyThreadTitles` only assigns when `tt["model"] != ""` (and same for `prompt`, `maxTokens`), so saving `""` leaves the old global. Same root as bugs #33 and #61.
+
+**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyThreadTitles` `if tt.Has("model") && tt["model"] != ""` etc.
+
+**Verification:** headless scenario 71 (noApp) asserts the two `!= ""` guards exist.
 
 ---
 

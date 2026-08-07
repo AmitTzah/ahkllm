@@ -272,4 +272,64 @@ scenarios.push({
     return "assistant stored token_count=9 cached=4 active=21 header shows 21";
   }
 });
+scenarios.push({
+  id: 68,
+  name: "ProviderResolver legacy prefix uses substring InStr, not prefix check",
+  mode: null,
+  noApp: true,
+  async body() {
+    const pr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","ProviderResolver.ahk"),"utf8");
+    const hasSubstring = /if InStr\(modelId, prefix\)/.test(pr);
+    const hasPrefixCheck = /SubStr\(modelId, 1,/.test(pr) || /InStr\(modelId, prefix\) = 1/.test(pr);
+    if(!hasSubstring || hasPrefixCheck) throw new Error("bug not reproduced hasSubstring="+hasSubstring+" hasPrefixCheck="+hasPrefixCheck);
+    return "ProviderResolver.Resolve uses InStr substring � mygpt-custom would match gpt incorrectly";
+  }
+});
+
+scenarios.push({
+  id: 69,
+  name: "Search LIKE does not escape % _ wildcard � searching for % returns everything",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
+    const likeLine = sr.slice(sr.indexOf("static _Like"), sr.indexOf("static _Like")+1500);
+    const escapesWildcards = /StrReplace.*%/.test(likeLine) && /StrReplace.*_/.test(likeLine);
+    if(escapesWildcards) throw new Error("bug not reproduced: LIKE escapes wildcards");
+    return "SearchRepo._Like uses LIKE ESCAPE but safeQuery only doubles single quotes � % remains wildcard";
+  }
+});
+
+scenarios.push({
+  id: 70,
+  name: "Search FTS5 does not escape special characters � C++ breaks MATCH",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const sr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
+    const fts=sr.slice(sr.indexOf("static _FTS5"), sr.indexOf("static _FTS5")+2500);
+    const buildsRaw = /ftsExpr \.= trimmed/.test(fts);
+    const escapesDouble = /StrReplace\(ftsExpr, "\""/.test(fts);
+    if(!buildsRaw || escapesDouble) throw new Error("bug not reproduced buildsRaw="+buildsRaw+" escapesDouble="+escapesDouble);
+    return "SearchRepo._FTS5 builds from raw trimmed words and only escapes single quotes � C++ breaks MATCH";
+  }
+});
+
+scenarios.push({
+  id: 71,
+  name: "Clearing Thread Title Generation model/prompt leaves stale global",
+  mode: null,
+  noApp: true,
+  async body() {
+    const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
+    const skipsModel = /if tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
+    const skipsPrompt = /if tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
+    if(!skipsModel || !skipsPrompt) throw new Error("bug not reproduced");
+    return "SettingsApply._ApplyThreadTitles only assigns when != empty � clearing leaves stale model/prompt";
+  }
+});
+
 module.exports = scenarios;
