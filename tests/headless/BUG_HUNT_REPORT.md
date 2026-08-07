@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **56 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **61 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** audit 2026-08-07 second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS, code patterns confirmed; counts re-verified 59 entries = 56 verified + 3 reported, sync OK 93 scenarios (34 regression). Kept downgrades #86 (duplicate of #57), #93 (latent — no mutating caller), #94 (overstated — stable after CacheInitialDefaults); confirmed shared-root families #53/#87/#88 (UTC `date('now')` vs local `new Date()`), #61/#71/#33 (stale global on clear), #29/#63 (cachedInput empty-string fallback). Previously: added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS. Next per fix cycle: bug #29, then rank order.
+- **Where we left off:** audit 2026-08-07 third pass — added 5 verified bugs #99 (MessageRepo parent_id SQLi), #100 (_FixStreamBoolean global replace), #101 (_SetIfTruthy drops false), #102 (provider LIKE wildcard), #103 (pricingUnit first model) — headless PASS (5/5); second pass — re-ran 30 static scenarios (29, 61-66, 68-75, 79-81, 86-98) — all PASS, code patterns confirmed; counts re-verified 64 entries = 61 verified + 3 reported, sync OK 98 scenarios (34 regression). Kept downgrades #86 (duplicate of #57), #93 (latent — no mutating caller), #94 (overstated — stable after CacheInitialDefaults); confirmed shared-root families #53/#87/#88 (UTC `date('now')` vs local `new Date()`), #61/#71/#33 (stale global on clear), #29/#63 (cachedInput empty-string fallback). Previously: added 4 verified bugs #95 (dashboard XSS), #96 (AttachmentRepo SQLi), #97 (non-atomic save), #98 (stream cancel leak) — headless PASS. Next per fix cycle: bug #29, then rank order.
 ---
 
 ## Bug entry template
@@ -1424,6 +1424,87 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 **Verification:** headless scenario 98 (noApp) asserts `wasCancelled` branch has `_handleStreamCancelled` + `return` but no `_cleanupStreamState` before `return`.
 
 ---
+
+### 99. MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids
+
+**Scenario:** 99 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** insert a message with crafted `parent_id` containing `''` (e.g. `bad''id` via IPC `parent_id` or hand-edited DB), or craft `sibling_group` similarly, then insert a child message.
+
+**Expected:** `parent_id` and `sibling_group` literals should be escaped with `SQLite.Escape`.
+
+**Actual:** `MessageRepo.Insert` does `safeParent := msgObj.HasProp("parent_id") && msgObj.parent_id ? "''" msgObj.parent_id "''" : "NULL"` and same for `sibling_group` — no `SQLite.Escape`. A `''` breaks the literal and can inject SQL (same class as #80/#81/#96, but this path was not yet covered — the INSERT that creates every user/assistant message).
+
+**Evidence:** `chat/db/MessageRepo.ahk:11` `safeParent := ... "'" msgObj.parent_id "'"` without `SQLite.Escape`; `chat/db/MessageRepo.ahk:12` `safeSiblingGroup` same.
+
+**Verification:** headless scenario 99 (noApp) asserts the two raw `"'\" msgObj.parent_id \"'\""` lines exist and no `SQLite.Escape(msgObj.parent_id)` / `sibling_group` escapes exist nearby.
+
+### 100. LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted
+
+**Scenario:** 100 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** send a chat or command request where the user message contains the substring `"stream":1` (e.g. paste a JSON snippet), then check the request written to the temp file / sent to the API.
+
+**Expected:** JSON serialization should encode booleans correctly without string replacement on the whole payload.
+
+**Actual:** `LLMRequestBuilder._FixStreamBoolean` does global `StrReplace(jsonStr, ''"stream":1'', ''"stream":true'')` (and similarly for `0`/`include_usage`/`include_thoughts`). The replace runs on the entire JSON string, so any occurrence inside `content`, `systemMessage`, or other string fields is also rewritten, corrupting the payload (e.g. user JSON snippet `"stream":1` becomes `"stream":true` before it is sent).
+
+**Evidence:** `api/LLMRequestBuilder.ahk` `static _FixStreamBoolean(jsonStr)` — four `StrReplace` calls on the whole JSON string; also called from `LLMRequestBuilder.createJSONRequest` and `appendToChatHistory`.
+
+**Verification:** headless scenario 100 (noApp) asserts `_FixStreamBoolean` exists and contains `StrReplace(jsonStr, ...stream...`.
+
+### 101. SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists
+
+**Scenario:** 101 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings → Commands → edit a command that has `stream` enabled, uncheck `Stream Response` (set to `false`) → Save → reopen Settings → the toggle is back on.
+
+**Expected:** saving `false` should persist as `false` (the command should run non-streaming).
+
+**Actual:** `SettingsApply._ApplyCommands` builds each command with `SettingsApply._SetIfTruthy(cmd, c, "stream")` (and `isFIM`, `showInputBox`, `expandNewlines`, `includeImageContext`), where `_SetIfTruthy` is `if c.Has(key) && c[key] cmd.%key% := c[key]`. A `false` value is falsy, so the assignment is skipped and the key is omitted from the new `commands` global; the next save round-trip loses the `false`. Same for `maxContextWords` via `_SetIfNonZero` (0 dropped) and `tags` via `Length>0`.
+
+**Evidence:** `app/settings/SettingsApply.ahk` `_SetIfTruthy` `if c.Has(key) && c[key]` and calls for `"stream"`, `"isFIM"`, `"showInputBox"`; `_SetIfNonZero` for `maxContextWords`.
+
+**Verification:** headless scenario 101 (noApp) asserts `_SetIfTruthy` helper exists with `c.Has(key) && c[key]` and is called for `"stream"`.
+
+### 102. UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models
+
+**Scenario:** 102 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** open Usage Dashboard, select a provider filter value containing `%` (crafted via hand-edited `settings.json` or direct `UsageRepo.Query` call with `provider="%"`), query dashboard.
+
+**Expected:** `providerFilter` should be wildcard-escaped before `LIKE`.
+
+**Actual:** `UsageRepo.Query` does `providerChatClause := providerFilter ? "AND model LIKE ''" SQLite.Escape(providerFilter) "/%''" : ""` — `SQLite.Escape` only doubles `'`, it does not escape `%`/`_`/`\` for `LIKE ESCAPE`. The dashboard also uses `LIKE` without `ESCAPE` handling for provider, so `%` becomes a wildcard and returns all rows (same class as #69, but provider path was not yet reported).
+
+**Evidence:** `chat/db/UsageRepo.ahk` `providerChatClause` line with `LIKE` and `SQLite.Escape(providerFilter)` but no `StrReplace` for `%`.
+
+**Verification:** headless scenario 102 (noApp) asserts `providerChatClause := providerFilter ? "AND model LIKE` exists and no wildcard escape exists.
+
+### 103. TreeRepo.GetThreadStats pricingUnit picks the first message''s model, not the thread''s active model
+
+**Scenario:** 103 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** create a thread with mixed models (e.g. assistant message from `openai/gpt-4` then later assistant from `anthropic/claude-3`), then check the token-bar `pricingUnit` (input/cached/output per 1M) shown in the header.
+
+**Expected:** pricing should reflect the thread''s effective model (active leaf or `model_override`), not an arbitrary earlier message.
+
+**Actual:** `TreeRepo.GetThreadStats` does `allTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id=''" threadId "'' AND model IS NOT NULL AND model != '''' LIMIT 1;")` — picks the *first* message with a model (by insertion order), regardless of which model is active. A thread that switched models will report the wrong per-token prices and cost estimates until all early messages are deleted.
+
+**Evidence:** `chat/db/TreeRepo.ahk:363` `SELECT model ... LIMIT 1`.
+
+**Verification:** headless scenario 103 (noApp) asserts the `LIMIT 1` first-model query exists.
+
 
 ## History (append-only)
 

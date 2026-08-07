@@ -722,6 +722,92 @@ scenarios.push({
     return "StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then return without _cleanupStreamState — leaks _stream* keys";
   }
 });
+scenarios.push({
+  id: 99,
+  name: "MessageRepo.Insert parent_id/sibling_group SQL injection via unescaped interpolation",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
+    const parentRaw = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" msgObj\.parent_id "'"/.test(mr);
+    const siblingRaw = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" msgObj\.sibling_group "'"/.test(mr);
+    if (!parentRaw || !siblingRaw) throw new Error("bug not reproduced parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
+    const hasEsc = /SQLite\.Escape\(msgObj\.parent_id\)/.test(mr) || /SQLite\.Escape\(msgObj\.sibling_group\)/.test(mr);
+    if (hasEsc) throw new Error("already fixed");
+    return "MessageRepo.Insert builds safeParent/safeSiblingGroup without SQLite.Escape";
+  }
+});
+
+scenarios.push({
+  id: 100,
+  name: "LLMRequestBuilder._FixStreamBoolean naive StrReplace corrupts user content",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const lb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","LLMRequestBuilder.ahk"),"utf8");
+    const hasFix = /static _FixStreamBoolean\(jsonStr\)/.test(lb) && /StrReplace\(jsonStr,.*stream/.test(lb);
+    if (!hasFix) throw new Error("bug not reproduced");
+    return "LLMRequestBuilder._FixStreamBoolean does global StrReplace stream 1->true";
+  }
+});
+
+scenarios.push({
+  id: 101,
+  name: "SettingsApply._ApplyCommands _SetIfTruthy drops false for stream/isFIM",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const sa=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
+    const hasHelper = /static _SetIfTruthy\(cmd, c, key\)/.test(sa) && /if c\.Has\(key\) && c\[key\]/.test(sa);
+    const callsTruthy = /_SetIfTruthy\(cmd, c, "stream"\)/.test(sa);
+    if (!hasHelper || !callsTruthy) throw new Error("bug not reproduced");
+    return "SettingsApply uses _SetIfTruthy for stream/isFIM — false dropped";
+  }
+});
+
+scenarios.push({
+  id: 102,
+  name: "UsageRepo provider LIKE uses SQLite.Escape but not wildcard-escape %_",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const ur=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
+    const hasLike = /providerChatClause := providerFilter \? "AND model LIKE/.test(ur);
+    if (!hasLike) throw new Error("bug not reproduced");
+    const escapes = /StrReplace.*providerFilter.*%/.test(ur);
+    if (escapes) throw new Error("already escapes");
+    return "UsageRepo provider LIKE not escaping % _";
+  }
+});
+
+scenarios.push({
+  id: 103,
+  name: "TreeRepo.GetThreadStats pricingUnit picks first message model, not active model",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const launcher=require("../launch");
+    const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
+    const hasFirst = /SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL.*LIMIT 1/.test(tr);
+    if (!hasFirst) throw new Error("bug not reproduced");
+    return "TreeRepo.GetThreadStats pricingUnit LIMIT 1 first model";
+  }
+});
+
 module.exports = scenarios;
 
 
