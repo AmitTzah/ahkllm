@@ -1,5 +1,5 @@
-# 2026-08-07T20:52:33.689Z | run of 1 scenario(s)
-PASS | #52 | Usage dashboard counts command thinking tokens once (completion_tokens already includes thinking) | chat row (prompt 10 + completion 100) + command row (prompt 10 + completion 100 + thinking 40): dashboard Total Tokens = 220 (220 = counted once; 260 = thinking double-counted for the command) | 4.9s
+# 2026-08-07T20:54:49.977Z | run of 1 scenario(s)
+PASS | #53 | Dashboard "Last 24 Hours" summary matches the chart (local today only) | seeded yesterday + today rows (total $4.00): "Last 24 Hours" summary shows $2.00 (today only) while the chart has 1 label(s) - summary matches the chart | 4.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

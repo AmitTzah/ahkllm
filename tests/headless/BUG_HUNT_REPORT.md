@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **49 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **48 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #52 FIXED in f9f34ea; next: bug #53 (dashboard "Last 24 Hours" spans two calendar days).
+- **Where we left off:** 2026-08-07 — bug #53 FIXED in 74c589d; next: bug #55 (branch switch / search navigation land on the oldest continuation of a message).
 ---
 
 ## Bug entry template
@@ -207,34 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 53. Dashboard "Last 24 Hours" spans two calendar days â€” the summary counts yesterday while the chart only plots today
-
-**Scenario:** 53 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open Usage Dashboard, select "Last 24 Hours", and compare the
-summary with the chart when there was usage both yesterday and today.
-
-**Expected:** the chart and summary cover the same window.
-
-**Actual:** the SQL filter is `date >= date('now', '-1 day')` â€” yesterday's
-00:00 UTC through now, i.e. up to ~48 hours â€” so the summary sums BOTH
-yesterday's and today's rows, while `getDateRangeLabels('day')` produces a
-single "today" label and the chart only plots today's rows. The summary
-therefore always over-reports vs the chart for this range.
-
-**Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate()` (`"day"` returns
-`date >= date('now', '-1 day')`); `webui/js/usage-dashboard.js`
-`getDateRangeLabels()` (`day` Ã¢â€ â€™ 1 label) and `renderMainChart()` /
-`renderSummary()`.
-
-**Verification:** headless scenario 53 seeds usage rows for yesterday and
-today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
-(both days) while the chart has exactly 1 label (today only).
-
-**Note:** same UTC-vs-local root as #87 (Last Month) and #88 (Last 30 Days) — `_WhereDate` uses UTC `date('now')` while `getDateRangeLabels` uses local `new Date()`. Fix all three together.
 
 ### 55. Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest (header shows the stale branch's context)
 
@@ -1105,6 +1077,8 @@ forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Dashboard \"Last 24 Hours\" spans two calendar days" - FIXED in 74c589d: UsageRepo._WhereDate now takes the LOCAL today date (FormatTime) for the \"day\" range, so the summary counts the same local calendar day the chart plots (usage rows are stored with local dates); scenario 53 flipped to a regression check + UsageTracking unit test. (The month/lastMonth ranges still use UTC - tracked as #87/#88.)
 
 - 2026-08-07 - "Usage dashboard double-counts thinking tokens for command usage" - FIXED in f9f34ea: renderSummary and renderModelSections now count command_usage.completion_tokens once (it already includes thinking, matching chat's output_tokens) instead of adding thinking_tokens again; scenario 52 flipped to a regression check + usage-dashboard unit test.
 
