@@ -1,5 +1,5 @@
-# 2026-08-07T21:42:36.562Z | run of 1 scenario(s)
-PASS | #71 | Clearing Thread Title Generation fields resets the globals | SettingsApply._ApplyThreadTitles assigns cleared values, so title-gen fields reset instead of keeping stale globals | 0.0s
+# 2026-08-07T21:44:51.499Z | run of 1 scenario(s)
+PASS | #72 | SystemMessageResolver treats UNC paths as absolute | SystemMessageResolver.Resolve treats \\server\share (UNC) and rooted paths as absolute and reads them as-is | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

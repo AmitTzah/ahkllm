@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **34 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **33 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #71 FIXED in 0f06b9a; next: bug #72 (SystemMessageResolver treats UNC paths as relative).
+- **Where we left off:** 2026-08-07 — bug #72 FIXED in d58d2bf; next: bug #73 (GoogleChatCompletions disabled thinking config omits include_thoughts).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 72. SystemMessageResolver treats UNC \\server\share paths as relative - file not found
-
-**Scenario:** 72 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set an assistant or command `systemMessageFile` to a UNC path like `\\server\share\prompt.txt` that exists and is readable, then trigger the assistant/command.
-
-**Expected:** the file is read from the UNC path (absolute path used as-is, like `C:\` paths).
-
-**Actual:** the resolver only checks `InStr(filePath, ":")` to detect absolute paths. UNC paths have no colon, so they are treated as relative and searched in `A_ScriptDir\`, `..\`, `default-settings\system-messages\`, and `AppData\system-messages\` - none match, so `FileRead` fails and the resolver falls back to the inline `systemMessage` (or empty) with an error. The UNC file is never read.
-
-**Evidence:** `shared/SystemMessageResolver.ahk` `Resolve()` `if !InStr(filePath, ":")` - no `\\` check.
-
-**Verification:** headless scenario 72 (noApp) asserts `InStr(filePath, ":")` exists and no `\\` handling exists.
 
 ### 73. GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)
 
@@ -810,6 +794,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "SystemMessageResolver treats UNC \\server\\share paths as relative - file not found" - FIXED in d58d2bf: Resolve now treats paths starting with \\ or / as absolute (no drive-letter colon required), so UNC/rooted system-message files are read as-is; scenario 72 flipped to a regression static check + UserConfig unit test.
 
 - 2026-08-07 - "Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]" - FIXED in 0f06b9a: SettingsApply._ApplyThreadTitles now assigns the saved value whenever the key exists (empty string included), so clearing title-gen fields resets the stale globals; scenario 71 flipped to a regression static check + SettingsHandler unit test.
 
