@@ -412,7 +412,9 @@
     tbody.querySelectorAll('tr').forEach(function(tr) {
       var idEl = tr.querySelector('[data-field="id"]');
       if (!idEl) return;
-      var id = idEl.getAttribute('data-full-id') || idEl.value;
+      // Bug #40: prefer the live (possibly edited) input value over the stale
+      // data-full-id attribute, which is only stamped when the row is built.
+      var id = idEl.value || idEl.getAttribute('data-full-id');
       if (!id) return;
       // Rows copied from the settings table only hold the display id; fall
       // back to the provider column so they match fetched full ids like
@@ -533,7 +535,9 @@
       refreshTbody.querySelectorAll('tr').forEach(function(tr) {
         var idEl = tr.querySelector('[data-field="id"]');
         if (!idEl) return;
-        var id = idEl.getAttribute('data-full-id') || idEl.value || '';
+        // Bug #40: the user may have edited the model id; the live value must
+        // win over the stale data-full-id attribute.
+        var id = idEl.value || idEl.getAttribute('data-full-id') || '';
         if (!id) return;
         var values = _readRowValues(tr);
         var newTr = document.createElement('tr');

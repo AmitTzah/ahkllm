@@ -437,7 +437,8 @@ scenarios.push({
 
 scenarios.push({
   id: 40,
-  name: 'Refresh-models modal discards edits to a model id (stale data-full-id wins on Save)',
+  name: 'Refresh-models modal keeps edits to a model id on Save',
+  regression: true, // FIXED bug kept as a regression check (edited model ids must survive the refresh-modal save)
   mode: null,
   settings: {},
   async body({ cdp }) {
@@ -460,12 +461,11 @@ scenarios.push({
       const inp = document.querySelector('#modelsTableBody tr [data-field=id]');
       return inp ? inp.value : null;
     })()`);
-    // BUG: saveRefresh reads data-full-id (the ORIGINAL id) instead of the
-    // edited input value, so the rename is silently discarded.
-    if (after === 'renamed-model-id')
-      throw new Error('model id edit was kept (bug not reproduced): before=' + JSON.stringify(before) + ' after=' + after);
-    return 'edited the first model id to "renamed-model-id" in the refresh modal; after Save the table still shows "' + after +
-      '" (stale data-full-id=' + JSON.stringify(before && before.fullId) + ')';
+    // FIXED (bug #40): saveRefresh and _rightPanelIds now prefer the live
+    // input value over the stale data-full-id attribute.
+    if (after !== 'renamed-model-id')
+      throw new Error('model id edit was discarded on Save: before=' + JSON.stringify(before) + ' after=' + JSON.stringify(after));
+    return 'edited the first model id to "renamed-model-id" in the refresh modal; after Save the table shows "' + after + '"';
   }
 });
 
