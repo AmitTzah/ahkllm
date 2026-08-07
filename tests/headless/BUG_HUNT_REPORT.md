@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **18 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **17 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #89 FIXED in 0a72a67; next: bug #90 (SettingsMerge.Override iterates without an IsObject guard).
+- **Where we left off:** 2026-08-07 — bug #90 FIXED in b20131d; next: bug #91 (InputWindow validateInputAndHide treats \"0\" as empty).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 90. SettingsMerge.Override iterates over `incoming` without `IsObject` guard - empty string corrupts settings
-
-**Scenario:** 90 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a `saveSettings` IPC with `data: ""` (empty string) instead of an object - e.g. via a crafted `chrome.webview.postMessage` or a WebView bug.
-
-**Expected:** `Override` should guard `if !IsObject(incoming)` or check `incoming is Map`, and ignore non-Map payloads.
-
-**Actual:** `app/settings/SettingsMerge.ahk` `Override(incoming, base)` does `for k, v in incoming` with no `IsObject` check. In AHK, `for k, v in ""` iterates over the string - s characters (`k=1, v='"'`, `k=2, v='{'`  - ), so `result["1"] := '"'`, `result["2"] := '{'` etc. The merged settings Map gets polluted with numeric string keys and single-character values, then `SettingsPersistence.Save` writes a corrupted `settings.json`.
-
-**Evidence:** `app/settings/SettingsMerge.ahk` `Override` `for k, v in incoming` with no `IsObject` guard.
-
-**Verification:** headless scenario 90 (noApp) asserts `for k, v in incoming` exists and no `IsObject(incoming)` guard exists.
 
 ### 91. InputWindow `validateInputAndHide` treats `"0"` as empty - `!value` falsy check
 
@@ -538,6 +522,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "SettingsMerge.Override iterates over `incoming` without `IsObject` guard - empty string corrupts settings" - FIXED in b20131d: Override now normalizes non-object incoming payloads to an empty Map before merging; scenario 90 flipped to a regression static check + SettingsHandler unit test.
 
 - 2026-08-07 - "CurlBuilder interpolates API key with `\"` into `-H \"Authorization: Bearer ...\"` without escaping - header break / injection" - FIXED in 0a72a67: Build/BuildStream/BuildFIM now pass the key through CurlBuilder._SafeApiKey (strips \" % & | < > ^) before embedding it in the header; scenario 89 flipped to a regression static check + LLMRequestBuilder unit test.
 

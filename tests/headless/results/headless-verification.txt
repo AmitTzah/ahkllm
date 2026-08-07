@@ -1,5 +1,5 @@
-# 2026-08-07T22:22:12.145Z | run of 1 scenario(s)
-PASS | #89 | CurlBuilder sanitizes the API key in the Authorization header (injection fixed) | CurlBuilder sanitizes the API key (_SafeApiKey strips \" % & | < > ^) before embedding it in the Authorization header | 0.0s
+# 2026-08-07T22:24:38.751Z | run of 1 scenario(s)
+PASS | #90 | SettingsMerge.Override guards non-object incoming (settings safe) | SettingsMerge.Override guards non-object incoming payloads (IsObject), so a crafted empty-string payload cannot pollute settings | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
