@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **43 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **42 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #61 FIXED in 4b609f2; next: bug #62 (forking a chat with temperature 0 drops the override).
+- **Where we left off:** 2026-08-07 — bug #62 FIXED in 2110b67; next: bug #63 (token-bar pricing unit shows 0 for cached input when the model stores an empty string).
 ---
 
 ## Bug entry template
@@ -207,22 +207,6 @@ Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fi
 one at a time, in rank order.
 
 ## Open bugs (ranked)
-
-### 62. Forking a chat with temperature 0 drops the override (reset to Default)
-
-**Scenario:** 62 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set per-thread temperature to 0 (right-rail slider), then click Fork on any message and inspect the forked thread.
-
-**Expected:** the fork inherits temperature 0.
-
-**Actual:** the fork shows Default (1.0). `TreeRepo._CopyThreadSettings` copies `temperature_override` only when `if settings.temperatureOverride` is truthy; in AHK 0 is falsy, so a 0 override is never copied. Same class of bug as #35 (restore path) and #44 (font size).
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` `if settings.temperatureOverride` guard; `ThreadRepo.GetSettings()` returns 0 for the source.
-
-**Verification:** headless scenario 62 (noApp) statically asserts the truthiness guard exists and that no `!= ""` check handles 0.
 
 ### 63. Token-bar pricing unit shows 0 for cached input when the model stores "" instead of falling back to 10%
 
@@ -953,6 +937,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Forking a chat with temperature 0 drops the override (reset to Default)" - FIXED in 2110b67: TreeRepo._CopyThreadSettings now uses an explicit empty check (temperatureOverride != "") so a stored 0 is copied to the fork; scenario 62 flipped to a regression static check + ChatDB fork unit test.
 
 - 2026-08-07 - "Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear]" - FIXED in 4b609f2: SettingsApply._ApplyUI/_ApplyInputWindow/_ApplySuspendBanner now assign the saved value whenever the key exists (empty string included) instead of skipping empties, so clearing a field resets the stale global; scenario 61 flipped to a regression static check + SettingsHandler unit test. (#71's _ApplyThreadTitles uses the same pattern and is fixed in its own cycle.)
 
