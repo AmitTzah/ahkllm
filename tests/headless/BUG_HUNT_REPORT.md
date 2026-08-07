@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #100 FIXED in 7cf0328; next: bug #101 (SettingsApply._ApplyCommands _SetIfTruthy drops `false`).
+- **Where we left off:** 2026-08-08 — bug #101 FIXED in 0f42fdc; next: bug #102 (UsageRepo provider LIKE does not escape `%` `_` `\`).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 101. SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists
-
-**Scenario:** 101 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings → Commands → edit a command that has `stream` enabled, uncheck `Stream Response` (set to `false`) → Save → reopen Settings → the toggle is back on.
-
-**Expected:** saving `false` should persist as `false` (the command should run non-streaming).
-
-**Actual:** `SettingsApply._ApplyCommands` builds each command with `SettingsApply._SetIfTruthy(cmd, c, "stream")` (and `isFIM`, `showInputBox`, `expandNewlines`, `includeImageContext`), where `_SetIfTruthy` is `if c.Has(key) && c[key] cmd.%key% := c[key]`. A `false` value is falsy, so the assignment is skipped and the key is omitted from the new `commands` global; the next save round-trip loses the `false`. Same for `maxContextWords` via `_SetIfNonZero` (0 dropped) and `tags` via `Length>0`.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_SetIfTruthy` `if c.Has(key) && c[key]` and calls for `"stream"`, `"isFIM"`, `"showInputBox"`; `_SetIfNonZero` for `maxContextWords`.
-
-**Verification:** headless scenario 101 (noApp) asserts `_SetIfTruthy` helper exists with `c.Has(key) && c[key]` and is called for `"stream"`.
 
 ### 102. UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models
 
@@ -374,6 +358,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids" - FIXED in 13be371: Insert now escapes parent_id and sibling_group (and the active-path parent lookup inside Insert), so crafted ids stay literal; scenario 99 flipped to a regression static check + ChatDB unit test (crafted `bad'parent`/`sib'group` round-trip through Insert).
 
 - 2026-08-08 - "LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted" - FIXED in 7cf0328: _FixStreamBoolean is now quote-aware — it scans the JSON and rewrites only real stream/include_usage/include_thoughts key:value tokens outside string literals (no more global StrReplace over the whole payload); scenario 100 flipped to a regression static check + LLMRequestBuilder unit tests (user prompt with a `{"stream":1}` snippet survives verbatim while the real top-level stream still becomes true).
+
+- 2026-08-08 - "SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists" - FIXED in 0f42fdc: the command copy helpers (_SetIfTruthy/_SetIfNonZero/_SetIfNonEmptyTags) now assign whenever the key exists, so false toggles, maxContextWords 0 and explicitly empty tags survive the save round-trip; scenario 101 flipped to a regression static check + SettingsHandler unit test (ApplyToGlobals keeps stream/isFIM/showInputBox/expandNewlines/includeImageContext=false, maxContextWords=0, tags=[]).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
