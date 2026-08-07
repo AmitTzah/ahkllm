@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **15 verified, 2 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **15 verified, 1 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #92 FIXED in 3925a32; next: bug #93 (SettingsDefaults GetDefaults shallow-copies Map values - latent).
+- **Where we left off:** 2026-08-07 — bug #93 FIXED in 182c6ce; next: bug #94 (SettingsDefaults _DefaultsAssistants UUID churn - overstated).
 ---
 
 ## Bug entry template
@@ -210,22 +210,6 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
-
-### 93. SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] - mutating snapshot corrupts pristine defaults
-
-**Scenario:** 93 (scenario code in e2e-suite.js)
-
-**Status:** reported — latent design flaw (no active caller mutates the snapshot in place)
-
-**Repro:** call `SettingsDefaults.GetDefaults()` twice, mutate the first result - s `models` Map (e.g. `m1["models"]["openai/gpt-4"] := deleted`), then call `GetDefaults()` again and read `models`.
-
-**Expected:** each `GetDefaults()` returns an independent deep copy of the pristine defaults, so mutating one does not affect the next.
-
-**Actual:** `GetDefaults` when captured does `snapshot := Map(); for k, v in _initialDefaults snapshot[k] := v` - `v` is a `Map` (e.g. `models` Map), so `snapshot["models"]` shares the *same* Map object as `_initialDefaults["models"]`. Mutating `snapshot["models"]` mutates the cached pristine copy, corrupting future `GetDefaults()` and `Reset to Defaults`.
-
-**Evidence:** `app/settings/SettingsDefaults.ahk` `GetDefaults` `snapshot[k] := v` without `CloneMap`.
-
-**Verification:** headless scenario 93 (noApp) asserts `snapshot[k] := v` shallow copy exists. Latent: no production caller currently mutates `GetDefaults()["models"]` in place, so not user-visible today; keep as hardening. Fix by deep-cloning Map values (`_CloneMap`).
 
 ### 94. SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable
 
@@ -490,6 +474,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] - mutating snapshot corrupts pristine defaults" - FIXED in 182c6ce (hardening): GetDefaults now deep-clones nested Maps/Arrays via a new _DeepClone helper, so callers cannot corrupt the cached pristine defaults by mutating a snapshot; scenario 93 flipped to a regression static check + SettingsHandler unit test.
 
 - 2026-08-07 - "Models `ensureFullId` ignores provider dropdown when id already contains `/` - stale provider prefix" - FIXED in 3925a32: ensureFullId now strips any embedded prefix and rebuilds the full id from the selected provider (keeps the id as-is when no provider is chosen); the refresh-modal data-full-id precedence was already fixed by bug #40; scenario 92 flipped to a regression static check + models-pricing-refresh unit test.
 
