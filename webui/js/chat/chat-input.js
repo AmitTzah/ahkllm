@@ -43,27 +43,10 @@ function onChatSend() {
     return;
   }
 
-  // No input typed — try to act on existing chat context
-  if (chatMessages && chatMessages.length > 0) {
-    var lastMsg = chatMessages[chatMessages.length - 1];
-    if (lastMsg.role === 'assistant' && lastMsg.id) {
-      // Regenerate the last assistant response
-      retryLastAssistantMessage(lastMsg.id);
-      return;
-    }
-    if (lastMsg.role === 'user') {
-      // Chat ends with user (assistant was deleted) — resend current chat
-      // without inserting a duplicate message. Goes through retry which
-      // just builds the request from the current path.
-      isLoading = true;
-      showLoadingIndicator();
-      var btn = document.getElementById('chat-send-btn');
-      if (btn) btn.disabled = true;
-      input.disabled = true;
-      Ipc.postToHost('retry');
-      return;
-    }
-  }
+  // Bug #77: an empty Send (no text, no attachments) must be a no-op - the
+  // old fall-through retried the last assistant/user message, so an
+  // accidental click/Enter duplicated a request and burned tokens/cost.
+  return;
 }
 
 // Show the loading dots indicator

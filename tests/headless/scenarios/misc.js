@@ -446,15 +446,17 @@ scenarios.push({
 
 scenarios.push({
   id: 77,
-  name: "onChatSend empty input with existing messages triggers retry instead of no-op",
+  name: "onChatSend empty input is a no-op (no accidental retry)",
+  regression: true, // FIXED bug kept as a regression check (empty Send must not re-fire the last message)
   mode: null,
   noApp: true,
   async body() {
     const ci=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-input.js"),"utf8");
-    const hasEmptyRetry = /if \(chatMessages && chatMessages\.length > 0\)/.test(ci) && /retryLastAssistantMessage/.test(ci) && /Ipc\.postToHost\('retry'/.test(ci);
-    const hasTrimCheck = /var message = input\.value\.trim\(\)/.test(ci);
-    if(!hasEmptyRetry || !hasTrimCheck) throw new Error("bug not reproduced");
-    return "chat-input.js onChatSend: empty trimmed message + attachments 0 falls through to retry last assistant ï¿½ empty Send unexpectedly re-fires";
+    // FIXED (bug #77): empty Send returns early.
+    const hasNoOp = ci.includes("Bug #77");
+    const stillRetries = ci.includes("retryLastAssistantMessage(lastMsg.id)") || ci.includes("Ipc.postToHost('retry')");
+    if(!hasNoOp || stillRetries) throw new Error("bug #77 not fixed: hasNoOp=" + hasNoOp + " stillRetries=" + stillRetries);
+    return "chat-input.js onChatSend returns early for empty input, so an empty Send no longer retries the last message";
   }
 });
 
