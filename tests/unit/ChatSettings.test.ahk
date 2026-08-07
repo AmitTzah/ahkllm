@@ -379,4 +379,65 @@ class ChatSettingsTest {
             assistants := oldAsst
         }
     }
+
+    ; Regression (bug #35): a per-thread temperature override of 0 is valid.
+    ; ComputeEffective used a truthiness check and AHK treats numeric 0 as
+    ; falsy, so the 0 override was dropped and the assistant's temperature
+    ; (or nothing) was applied instead.
+    test_ThreadSettings_temperatureZeroOverrideWins() {
+        global assistants
+        oldAsst := assistants
+        assistants := [{
+            id: "asst-35a", name: "Eff Asst", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+        try {
+            row := {
+                assistantId: "asst-35a",
+                temperatureOverride: 0
+            }
+            eff := ThreadSettings.ComputeEffective(row, assistants[1])
+            if eff.temperature = "" || eff.temperature != 0
+                throw Error("temperature 0 override was dropped: '" eff.temperature "'")
+        } finally {
+            assistants := oldAsst
+        }
+    }
+
+    ; Regression (bug #35) end-to-end: restoring a thread whose
+    ; temperature_override column is 0 must put 0 back into requestParams
+    ; (the previous truthiness check dropped it, so the next request used the
+    ; model default).
+    test_restoreThreadSettings_temperatureZeroRestored() {
+        global requestParams, activeThreadId, assistants
+
+        this._openDb()
+
+        oldAsst := assistants
+        oldHasAsst := requestParams.Has("activeAssistantId")
+        oldAsstId := oldHasAsst ? requestParams["activeAssistantId"] : ""
+        assistants := [{ id: "asst-35b", name: "Asst", baseModel: "deepseek/test", systemMessage: "", systemMessageFile: "", reasoning: "", temperature: "" }]
+        threadId := ChatDB.Thread_Create("Temp Zero Thread")
+        ChatDB.Thread_UpdateSettings(threadId, { temperatureOverride: 0 })
+
+        try {
+            _restoreThreadSettings(threadId)
+
+            if !requestParams.Has("temperatureOverride") || requestParams["temperatureOverride"] = ""
+                throw Error("temperature 0 override was not restored: '" requestParams["temperatureOverride"] "'")
+            if requestParams["temperatureOverride"] != 0
+                throw Error("restored temperature is not 0: " requestParams["temperatureOverride"])
+        } finally {
+            ; Restore the state this test disturbed (restoring a thread with no
+            ; assistant deletes the activeAssistantId key, which other tests
+            ; assume exists).
+            assistants := oldAsst
+            if oldHasAsst
+                requestParams["activeAssistantId"] := oldAsstId
+            else if requestParams.Has("activeAssistantId")
+                requestParams.Delete("activeAssistantId")
+            this._closeDb()
+        }
+    }
 }

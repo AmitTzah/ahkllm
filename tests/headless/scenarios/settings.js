@@ -331,29 +331,35 @@ scenarios.push({
 
 scenarios.push({
   id: 35,
-  name: 'Temperature override of 0 is dropped when the thread reloads (right rail shows Default)',
-  mode: null,
+  name: 'Temperature override of 0 is restored when the thread reloads (request uses 0)',
+  regression: true, // FIXED bug kept as a regression check (temperature 0 override must survive thread reload)
+  mode: 'sse-success',
   settings: {},
   fixtures: {
     threads: [{ id: 't-temp0-35', title: 'Temp Zero Thread', active_leaf_id: 'm-temp0-35', temperature_override: 0 }],
     messages: [{ id: 'm-temp0-35', thread_id: 't-temp0-35', role: 'user', content: 'hello' }]
   },
-  async body({ cdp }) {
+  async body({ cdp, mockLog }) {
     await showChat();
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
     await cdp.click('#thread-list .chat-item');
-    // Wait until the thread actually loads (messages render), then read the
-    // right-rail temperature state.
+    // Wait until the thread actually loads (messages render), then let the
+    // currentSettings round trip finish.
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
     await sleep(500); // currentSettings round trip for the right rail
-    const tempVal = await cdp.eval('document.getElementById("tempVal") ? document.getElementById("tempVal").textContent : "(missing)"');
-    const slider = await cdp.eval('document.getElementById("tempSlider") ? document.getElementById("tempSlider").value : "(missing)"');
-    // BUG: ChatSettings._restoreThreadSettings uses a truthiness check
-    // (`if settings.temperatureOverride`), and AHK treats 0 as falsy, so a
-    // saved 0 override is never restored - the rail falls back to Default/1.0.
-    if (tempVal === '0.0' || slider === '0')
-      throw new Error('temperature 0 override was restored (bug not reproduced): tempVal=' + JSON.stringify(tempVal) + ' slider=' + JSON.stringify(slider));
-    return 'thread with temperature_override=0 shows tempVal=' + JSON.stringify(tempVal) + ' slider=' + JSON.stringify(slider) + ' instead of 0.0';
+    // FIXED (bug #35): the 0 override is restored into requestParams, so the
+    // next request must carry temperature 0. (The right-rail DISPLAY of 0 is
+    // a separate bug, #78, tracked in its own cycle.)
+    await sendChatMessage(cdp, 'second message');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean);
+    const chatReq = lines.map((l) => JSON.parse(l)).find((e) => e.body && e.body.stream === true);
+    if (!chatReq) throw new Error('no streaming chat request was logged; lines=' + lines.length);
+    const temp = chatReq.body.temperature;
+    if (temp !== 0)
+      throw new Error('temperature 0 override was dropped from the request: ' + JSON.stringify(temp));
+    return 'thread with temperature_override=0 sent a request with temperature=0 (' + temp + ')';
   }
 });
 
