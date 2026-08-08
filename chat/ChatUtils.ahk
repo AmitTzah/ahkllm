@@ -41,10 +41,10 @@ postWebMessage(target, data := unset, reqId := "") {
 ; ----------------------------------------------------
 
 deleteTempFiles() {
-    safeDelete(requestParams["chatHistoryJSONRequestFile"])
-    safeDelete(requestParams["cURLCommandFile"])
-    safeDelete(requestParams["cURLOutputFile"])
-    safeDelete(requestParams["cURLErrorFile"])
+    safeDelete(requestParams.Has("chatHistoryJSONRequestFile") ? requestParams["chatHistoryJSONRequestFile"] : "")
+    safeDelete(requestParams.Has("cURLCommandFile") ? requestParams["cURLCommandFile"] : "")
+    safeDelete(requestParams.Has("cURLOutputFile") ? requestParams["cURLOutputFile"] : "")
+    safeDelete(requestParams.Has("cURLErrorFile") ? requestParams["cURLErrorFile"] : "")
 }
 
 ; ----------------------------------------------------

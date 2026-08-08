@@ -68,11 +68,16 @@ _handleStreamError() {
         responseTimeMs: responseTimeMs
     })
 
+    ; Bug #110: the error path must also delete the temp request/cURL files
+    ; (they contain the Bearer token) once the diagnostics have been read.
+    deleteTempFiles()
+
     } catch Error as e {
         debugLog("_handleStreamError crashed: " e.Message "`n" e.Stack, "ErrorHandler")
         postWebMessage("showError", { message: "Request failed: " e.Message })
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
+        deleteTempFiles()
     }
 }
 

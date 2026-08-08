@@ -354,4 +354,26 @@ class StreamHandlerTest {
         if !InStr(branch, "_handleStreamCancelled()") || !cleanupPos || !retPos || cleanupPos > retPos
             throw Error("_finalizeStreaming wasCancelled branch must call _cleanupStreamState before return (bug #98): cleanupPos=" cleanupPos " retPos=" retPos)
     }
+
+    ; Regression (bug #110, security): every terminal stream path must delete
+    ; the temp request/cURL files (they contain the Authorization Bearer
+    ; token) - success, error, and cancel.
+    StreamPaths_DeleteTempFiles() {
+        scPath := A_ScriptDir "\..\chat\streaming\StreamCompletion.ahk"
+        sc := FileRead(scPath)
+        completeIdx := InStr(sc, "_handleStreamComplete() {")
+        completeBlock := SubStr(sc, completeIdx, 2000)
+        if !InStr(completeBlock, "deleteTempFiles()")
+            throw Error("_handleStreamComplete must delete temp files (bug #110)")
+        sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"
+        se := FileRead(sePath)
+        errorIdx := InStr(se, "_handleStreamError() {")
+        errorBlock := SubStr(se, errorIdx, 2600)
+        if !InStr(errorBlock, "deleteTempFiles()")
+            throw Error("_handleStreamError must delete temp files (bug #110)")
+        cancelIdx := InStr(se, "_handleStreamCancelled() {")
+        cancelBlock := SubStr(se, cancelIdx, 2000)
+        if !InStr(cancelBlock, "deleteTempFiles()")
+            throw Error("_handleStreamCancelled must keep deleting temp files")
+    }
 }

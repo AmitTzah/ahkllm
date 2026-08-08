@@ -1001,7 +1001,8 @@ scenarios.push({
 
 scenarios.push({
   id: 110,
-  name: "Chat streaming temp files with API keys not deleted after success — credential leak in %TEMP%",
+  name: "Streaming deletes temp files on success and error (credential leak fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: Bearer tokens must not linger in %TEMP%)
   mode: null,
   noApp: true,
   async body() {
@@ -1009,14 +1010,15 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sc=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamCompletion.ahk"),"utf8");
-    const sh=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamHandler.ahk"),"utf8");
-    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,800}deleteTempFiles/.test(sc);
-    const hasDeleteOnCancel = /_handleStreamCancelled[\s\S]{0,400}deleteTempFiles/.test(fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamError.ahk"),"utf8"));
-    const buildsCurlWithKey = /providerInfo\.apiKey/.test(fs.readFileSync(path.join(launcher.REPO_ROOT,"api","CurlBuilder.ahk"),"utf8"));
-    if(hasDeleteOnSuccess) throw new Error("bug not reproduced: success deletes temp files");
-    if(!hasDeleteOnCancel) throw new Error("cancel should delete but missing");
-    if(!buildsCurlWithKey) throw new Error("CurlBuilder not building with apiKey");
-    return "StreamCompletion._handleStreamComplete does not call deleteTempFiles — cURL files with Bearer apiKey remain in TEMP after success";
+    const se=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamError.ahk"),"utf8");
+    // FIXED (bug #110): every terminal path deletes the temp files (which
+    // contain the Bearer token): success, error, and cancel.
+    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,2000}deleteTempFiles/.test(sc);
+    const hasDeleteOnError = /_handleStreamError[\s\S]{0,1200}deleteTempFiles/.test(se);
+    const hasDeleteOnCancel = /_handleStreamCancelled[\s\S]{0,400}deleteTempFiles/.test(se);
+    if(!hasDeleteOnSuccess || !hasDeleteOnError || !hasDeleteOnCancel)
+      throw new Error("bug #110 not fixed: hasDeleteOnSuccess="+hasDeleteOnSuccess+" hasDeleteOnError="+hasDeleteOnError+" hasDeleteOnCancel="+hasDeleteOnCancel);
+    return "StreamCompletion._handleStreamComplete and StreamError._handleStreamError now call deleteTempFiles (like the cancel path), so request/cURL files with the Bearer token never linger in %TEMP%";
   }
 });
 
