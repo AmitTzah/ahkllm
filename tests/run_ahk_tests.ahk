@@ -89,6 +89,7 @@ global responseWindow := {PostWebMessageAsJSON: (*) => ""}
 #Include ..\app\TrayMenu.ahk
 #Include ..\chat\ChatHotkeys.ahk
 #Include ..\chat\ChatIconResolver.ahk
+#Include ..\chat\ChatWindowIcon.ahk
 #Include ..\chat\callbacks\Dispatch.ahk
 
 ; -----------------------------------------------------------
@@ -136,6 +137,7 @@ RegisterTestClass(className) {
 #Include unit\TrayMenu.test.ahk
 #Include unit\ChatHotkeys.test.ahk
 #Include unit\ChatIconResolver.test.ahk
+#Include unit\ChatWindowIcon.test.ahk
 #Include unit\InputWindow.test.ahk
 #Include unit\ThreadTitleGen.test.ahk
 #Include unit\ChatDispatch.test.ahk

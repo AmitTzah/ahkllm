@@ -32,6 +32,7 @@ OnError((err, mode) => (
 
 #Include ChatHotkeys.ahk
 #Include ChatIconResolver.ahk
+#Include ChatWindowIcon.ahk
 
 ; ----------------------------------------------------
 ; Initialize DB and request params
@@ -112,13 +113,12 @@ global chatWindow := responseWindow
 ; Resolve the configured path first — absolute paths (e.g. an icon picked
 ; outside the repo) are used as-is; repo-relative paths resolve against the
 ; repo root. An empty value means no icon.
-hIcon := 0
-if iconOn != ""
-    hIcon := LoadPicture(ResolveIconPath(iconOn), "Icon1 w32 h32", &imgType)
-if hIcon {
-    SendMessage(0x80, 0, hIcon, , "ahk_id " chatWindow.hWnd)  ; WM_SETICON, ICON_BIG (Alt+Tab)
-    SendMessage(0x80, 1, hIcon, , "ahk_id " chatWindow.hWnd)  ; WM_SETICON, ICON_SMALL (title bar / taskbar)
-}
+; Set the window icon (title bar / taskbar) and re-apply it on every settings
+; update, so "Active Icon" (iconOn) edits take effect live (bug #138) instead
+; of only at startup. The hook is registered AFTER the window exists: the
+; initial SettingsService.Apply above ran before chatWindow was created.
+_applyChatWindowIcon()
+SettingsService.RegisterHook("chatWindowIcon", _applyChatWindowIcon)
 
 ; Set up WebMessageReceived handler for JS→AHK communication via postMessage
 responseWindow.WebMessageReceived(OnWebMessageReceived)

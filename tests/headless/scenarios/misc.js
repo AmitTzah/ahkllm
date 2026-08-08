@@ -68,6 +68,7 @@ scenarios.push({
 
 scenarios.push({
   id: 138,
+  regression: true, // FIXED bug kept as a regression check (chat window icon follows iconOn live)
   name: 'Changing the Active Icon (iconOn) in Settings does not re-apply to the already-open chat window (only the tray updates until restart)',
   mode: null,
   settings: {},
@@ -98,12 +99,13 @@ scenarios.push({
     // applied live (the tray icon does via the TrayIcon hook).
     const after = runIconCheck(offIco);
     if (after.renderFailed === 1) throw new Error('post-save icon render failed (measurement): ' + JSON.stringify(after));
-    // BUG (repro): ChatWindow.ahk only sets the window icon at startup - no
-    // settings hook re-applies it, so the open window keeps IconOn.
-    if (after.customApplied !== 0)
-      throw new Error('window icon unexpectedly updated (bug not reproduced): ' + JSON.stringify(after));
+    // FIXED (bug #138): ChatWindow registers a chatWindowIcon settings hook
+    // that re-applies WM_SETICON from the current iconOn, so the open window
+    // follows the saved Active Icon immediately (like the tray icon).
+    if (after.customApplied !== 1)
+      throw new Error('chat window icon still stale after saving iconOn (bug #138 not fixed): ' + JSON.stringify(after));
     return 'baseline window icon=IconOn (customApplied=1); after saving iconOn=' + path.basename(offIco) +
-      ' the open chat window still shows the OLD icon (customApplied=' + after.customApplied + ' - stale until restart)';
+      ' the open chat window shows the NEW icon (customApplied=' + after.customApplied + ' - applied live)';
   }
 });
 

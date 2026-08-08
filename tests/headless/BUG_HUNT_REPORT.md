@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix applied, 1 fix in progress** (2026-08-08). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #133 (8875847) and #142 (4fe0eba). #140 in progress: per-thread
-  title-gen guard added (ThreadTitleGen + _maybeGenerateTitle). Next: flip scenario 140 + verify + commit.
+- **Where we left off:** 2026-08-08 - ALL 4 OPEN BUGS FIXED AND COMMITTED: #133 (8875847), #142 (6a2b5fc),
+  #140 (dd9a765), #138 (this commit - chat window icon follows iconOn live). No open bugs remain.
 ---
 
 ## Bug entry template
@@ -211,29 +211,6 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Changing the "Active Icon" (iconOn) in Settings is not re-applied to the already-open chat window (stale until restart)
-
-**Scenario:** 138 (scenario code in scenarios/misc.js)
-
-**Status:** verified — open
-
-**Repro:** Open Settings → Icons, change the "Active Icon (iconOn)" path to a different .ico, Save. Look at the
-chat window's title-bar/taskbar icon (the tray icon does update).
-
-**Expected:** The chat window icon follows the saved iconOn setting immediately (like the tray icon does via the
-TrayIcon settings hook).
-
-**Actual:** The chat window keeps the OLD icon until the ChatWindow process restarts. `ChatWindow.ahk` applies the
-window icon (WM_SETICON) only at startup; no settings-update hook re-applies it (the only ChatWindow hook is
-`chatHotkeys`). Verified live with the pixel-fingerprint probe: baseline window icon = IconOn (customApplied=1);
-after saving iconOn=IconOff.ico the open chat window still renders IconOn (customApplied=0).
-
-**Evidence:** `chat/ChatWindow.ahk:116-120` (WM_SETICON at startup only) vs `app/TrayIcon.ahk` + the
-`SettingsService.RegisterHook("trayIcon", ...)` chain in `Main.ahk` (tray re-applies live).
-
-**Verification:** headless — scenario 138 drives Settings → Icons → sets `#iconOnPath` to IconOff.ico → Save, then
-`runIconCheck(IconOff.ico)` on the open chat window returns `customApplied=0` (PASS = stale icon, 2/2 stable runs).
-
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
@@ -244,6 +221,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)" - FIXED: ChatRequestBuilder._ProcessAttachmentsForPath now attaches EVERY user message's attachments (images + file contexts) to its API content part, so follow-up requests keep the earlier image context (the old _ProcessAttachmentsForLastUser only processed the last user message); scenario 142 flipped to a regression check + ChatRequestBuilder unit test.
 
 - 2026-08-08 - "Retrying the first exchange fires a second title-generation request (duplicate API call while the title is still 'New Chat')" - FIXED: ThreadTitleGen keeps a per-thread dispatched-request guard (_titleGenRequestedThreads) and _maybeGenerateTitle skips re-triggering, so a retry of the first exchange no longer fires a second title request; scenario 140 flipped to a regression check + ThreadTitleGen unit tests.
+
+- 2026-08-08 - "Changing the 'Active Icon' (iconOn) in Settings is not re-applied to the already-open chat window (stale until restart)" - FIXED: new chat/ChatWindowIcon.ahk re-applies the window icon (WM_SETICON) from the current iconOn global at startup AND via a SettingsService chatWindowIcon hook, so Active Icon edits apply to the open chat window live (mirrors the tray-icon pattern); scenario 138 flipped to a regression check + ChatWindowIcon unit tests.
 
 - 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in f0490c7: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
 
