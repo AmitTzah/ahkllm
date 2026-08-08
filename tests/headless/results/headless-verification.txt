@@ -1,6 +1,8 @@
-# 2026-08-08T11:31:38.830Z | run of 1 scenario(s)
-PASS | #125 | Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches | labels before delete: A=1/3, C=3/3; after deleting A: B=1/2 (1/2), C=2/2 (2/2) | 8.9s
+# 2026-08-08T11:36:54.854Z | run of 3 scenario(s)
+PASS | #48 | Forking a chat keeps token stats (context copied per message; cumulative counters recomputed from the fork's own messages) | source token bar: "40 / 1m↑ 10  ↓ 202$0.50"; fork token bar: "40 / 1m↑ 10  ↓ 200$0.00" (recomputed counters=10/20, leaf active_path_tokens=40) | 6.4s
+PASS | #113 | Forking at a message drops the deeper branches below off-path siblings (tree copy is one level deep) | fork id=1369fa54-1415-c146-7b1b-0000bbd55431 has 7 messages (1369fa54-0414-7dfc-4cf4-0000893671d9,1369fa54-0e5b-0826-f2d6-0000e89230b5,1369fa54-17a3-ae50-7eb7-0000b17f8a0c,1369fa54-73fe-4c33-2b66-000084dca665,1369fa64-4c7c-6f41-6bbb-0000b3efa3c1,1369fa64-551d-bc32-efa9-00005e2cc9d6,1369fa64-bf36-580f-2fc4-0000bb0ab622) - deep branches below the off-path sibling a1b are copied; branch switch walks into the subtree (a1b children=2) | 6.3s
+PASS | #126 | Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix | fork id=136a13a9-04f9-55fd-6744-0000cd373ffa has 2 messages but copied counters {"cumulative_input_tokens":10,"cumulative_output_tokens":20} (its own calls: 10 input / 20 output); header shows "↑ 10  ↓ 20" | 6.4s
 
-Summary: 1/1 scenarios PASS
+Summary: 3/3 scenarios PASS
 Real profile restored: yes
 Report sync: OK

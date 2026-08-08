@@ -183,13 +183,13 @@ class TreeRepo {
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
 
-        ; Bug #48: carry the source thread's token/cost counters to the fork so
-        ; the token bar does not reset to zero (the per-message
-        ; active_path_tokens are copied by _InsertForkMessage).
-        srcStats := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
-        if srcStats.count {
-            ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=" Integer(srcStats[1, "cumulative_input_tokens"]) ", cumulative_output_tokens=" Integer(srcStats[1, "cumulative_output_tokens"]) ", cumulative_cached_tokens=" Integer(srcStats[1, "cumulative_cached_tokens"]) ", cumulative_cost=" srcStats[1, "cumulative_cost"] ", cumulative_input_cost=" srcStats[1, "cumulative_input_cost"] ", cumulative_cached_input_cost=" srcStats[1, "cumulative_cached_input_cost"] ", cumulative_output_cost=" srcStats[1, "cumulative_output_cost"] " WHERE id='" newThreadId "';")
-        }
+        ; Bug #126: do NOT copy the source thread's cumulative counters - the
+        ; fork contains only the prefix (+ off-path branches), so its counters
+        ; are recomputed from the fork's own messages (the per-message token
+        ; fields are copied by _InsertForkMessage/_CopyOffPathSiblings). This
+        ; replaced bug #48's verbatim copy, which over-reported a mid-conversation
+        ; fork's totals until the next structural change.
+        MessageRepo._RecomputeCumulativeCounters(newThreadId)
 
         ; Bulk FTS sync for all copied messages in the forked thread
         ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id='" newThreadId "';")

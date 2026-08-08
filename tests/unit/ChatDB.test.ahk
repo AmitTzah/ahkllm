@@ -436,27 +436,36 @@ class ChatDBTest {
         this._teardown()
     }
 
-    ; Regression (bug #48): a fork must carry the token/cost stats - the
-    ; per-message active_path_tokens (context used) and the thread's
-    ; cumulative counters - so the fork's token bar does not reset to zero.
-    ForkThread_CopiesTokenStats() {
+    ; Regression (bug #126): a mid-conversation fork must NOT inherit the source
+    ; thread's FULL cumulative counters - it recomputes them from the fork's own
+    ; messages (only the prefix's API calls). The per-message active_path_tokens
+    ; (context used) are still copied, keeping bug #48's context part.
+    ForkThread_RecomputesCountersFromForkMessages() {
         threadId := this._setup()
-        ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=10, cumulative_output_tokens=20, cumulative_cached_tokens=2, cumulative_cost=0.5, cumulative_input_cost=0.3, cumulative_cached_input_cost=0.01, cumulative_output_cost=0.2 WHERE id='" threadId "';")
-        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", token_count: 10})
-        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, token_count: 20})
-        newId := ChatDB.Msg_ForkThread(threadId, u1Id)
+        ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=25, cumulative_output_tokens=50, cumulative_cached_tokens=5 WHERE id='" threadId "';")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", token_count: 10, active_path_tokens: 10})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 20, active_path_tokens: 30})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1Id, token_count: 5, active_path_tokens: 35})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, token_count: 30, active_path_tokens: 65})
+
+        ; Fork mid-conversation at a1: the fork contains only u1 + a1.
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
         if !newId
-            throw Error("Expected new thread id from fork (token stats)")
-        row := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cost, active_leaf_id FROM chat_threads WHERE id='" newId "';")
+            throw Error("Expected new thread id from fork (recomputed counters)")
+        forkMsgs := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages WHERE thread_id='" newId "';")
+        if Integer(forkMsgs[1, "c"]) != 2
+            throw Error("fork should contain 2 messages (u1 + a1), got " forkMsgs[1, "c"])
+        row := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, active_leaf_id FROM chat_threads WHERE id='" newId "';")
         if !row.count
             throw Error("fork thread row missing")
+        ; The fork's own calls: a1's single API call consumed 10 input / 20 output.
         if Integer(row[1, "cumulative_input_tokens"]) != 10
-            throw Error("fork should inherit cumulative_input_tokens=10, got " row[1, "cumulative_input_tokens"])
-        if Number(row[1, "cumulative_cost"]) != 0.5
-            throw Error("fork should inherit cumulative_cost=0.5, got " row[1, "cumulative_cost"])
+            throw Error("fork should recompute input=10 (not inherit 25), got " row[1, "cumulative_input_tokens"])
+        if Integer(row[1, "cumulative_output_tokens"]) != 20
+            throw Error("fork should recompute output=20 (not inherit 50), got " row[1, "cumulative_output_tokens"])
         leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" row[1, "active_leaf_id"] "';")
-        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 10
-            throw Error("fork leaf should keep active_path_tokens=10, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 30
+            throw Error("fork leaf should keep active_path_tokens=30 (context still copied), got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
         ChatDB.Thread_Delete(newId)
         this._teardown()
     }

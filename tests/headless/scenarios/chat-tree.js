@@ -378,8 +378,8 @@ scenarios.push({
 
 scenarios.push({
   id: 48,
-  name: 'Forking a chat keeps the token/cost stats (active_path_tokens and cumulative counters are copied)',
-  regression: true, // FIXED bug kept as a regression check (forks must inherit context tokens and cumulative cost)
+  name: 'Forking a chat keeps token stats (context copied per message; cumulative counters recomputed from the fork\'s own messages)',
+  regression: true, // FIXED bug kept as a regression check (bug #48 context part + bug #126 recompute semantics)
   mode: null,
   settings: {},
   fixtures: {
@@ -405,27 +405,30 @@ scenarios.push({
     const sourceBar = await cdp.eval('document.getElementById("tokenBar").textContent');
     if (String(sourceBar).indexOf('$0.50') < 0)
       throw new Error('source token bar missing $0.50 (setup): ' + JSON.stringify(sourceBar));
-    // Fork the chat from the user message.
-    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Fork"]');
+    // Fork the chat from the ASSISTANT message (a1): the fork contains u1 + a1.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Fork"]');
     await cdp.waitFor('window.activeThreadId !== "t-stats-48"', 15000, 300, 'fork created');
     const newId = await cdp.eval('window.activeThreadId');
     await sleep(800);
     const forkBar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    const forkMsgs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id = ?', [newId])[0].c;
     const forkRow = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cost, active_leaf_id FROM chat_threads WHERE id = ?', [newId])[0] || {};
     const leafStats = forkRow.active_leaf_id
       ? seed.query(dbPath, 'SELECT active_path_tokens FROM messages WHERE id = ?', [forkRow.active_leaf_id])[0] || {}
       : {};
-    // FIXED (bug #48): TreeRepo.ForkThread copies each message's
-    // active_path_tokens and carries the source thread's cumulative counters,
-    // so the fork's token bar keeps the context + cost stats.
-    if (String(forkBar).indexOf('$0.50') < 0)
-      throw new Error('fork lost the cost stats (bug #48 not fixed): ' + JSON.stringify(forkBar));
-    if (forkRow.cumulative_cost !== 0.5)
-      throw new Error('fork did not inherit cumulative_cost: ' + forkRow.cumulative_cost);
-    if (leafStats.active_path_tokens !== 10)
+    // FIXED (bug #48 + #126): TreeRepo.ForkThread copies each message's
+    // active_path_tokens (context used) but RECOMPUTES the cumulative counters
+    // from the fork's own messages - only a1's API call (10 input / 20 output),
+    // not the source thread's full ledger (which over-reported mid-conversation
+    // forks).
+    if (forkMsgs !== 2)
+      throw new Error('fork should contain 2 messages (u1 + a1), got ' + forkMsgs);
+    if (forkRow.cumulative_input_tokens !== 10 || forkRow.cumulative_output_tokens !== 20)
+      throw new Error('fork counters were not recomputed from its own messages: ' + JSON.stringify(forkRow));
+    if (leafStats.active_path_tokens !== 40)
       throw new Error('fork leaf active_path_tokens was not copied: ' + leafStats.active_path_tokens);
     return 'source token bar: ' + JSON.stringify(sourceBar) + '; fork token bar: ' + JSON.stringify(forkBar) +
-      ' (cumulative_cost=' + forkRow.cumulative_cost + ', leaf active_path_tokens=' + leafStats.active_path_tokens + ')';
+      ' (recomputed counters=' + forkRow.cumulative_input_tokens + '/' + forkRow.cumulative_output_tokens + ', leaf active_path_tokens=' + leafStats.active_path_tokens + ')';
   }
 });
 
@@ -793,6 +796,7 @@ scenarios.push({
 scenarios.push({
   id: 126,
   name: 'Forking mid-conversation copies the source thread\'s FULL cumulative token/cost counters even though the fork only contains the prefix',
+  regression: true, // FIXED bug kept as a regression check (fork counters reflect only the prefix's API calls)
   mode: null,
   settings: {},
   fixtures: {
@@ -825,17 +829,16 @@ scenarios.push({
     if (forkMsgs !== 2)
       throw new Error('fork should contain exactly 2 messages, has ' + forkMsgs);
     const forkThread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id = ?', [newId])[0];
-    // BUG: ForkThread copies the source thread's cumulative counters verbatim
-    // (25/50), but the fork's own messages only account for the first API call
-    // (10/20). The fork's header over-reports the conversation's totals until
-    // the next structural change (a delete then recalibrates them).
-    if (Number(forkThread.cumulative_input_tokens) !== 25 || Number(forkThread.cumulative_output_tokens) !== 50)
-      throw new Error('fork counters = ' + JSON.stringify(forkThread) + ' (expected the buggy copied 25/50)');
+    // FIXED (bug #126): ForkThread recomputes the fork's counters from its own
+    // messages - the fork contains only u1 + a1, whose single API call consumed
+    // 10 input / 20 output tokens (NOT the source's full 25/50).
+    if (Number(forkThread.cumulative_input_tokens) !== 10 || Number(forkThread.cumulative_output_tokens) !== 20)
+      throw new Error('fork counters = ' + JSON.stringify(forkThread) + ' (expected the fork\'s own 10/20, not the copied 25/50)');
     const bar = await cdp.text('#tokenBar .tu-item:nth-child(2) .tu-val');
-    if (String(bar).indexOf('\u2191 25') < 0 || String(bar).indexOf('\u2193 50') < 0)
-      throw new Error('fork header does not show the copied totals: ' + JSON.stringify(bar));
-    return 'fork id=' + newId + ' has ' + forkMsgs + ' messages but copied counters ' +
-      JSON.stringify(forkThread) + ' (its own calls are only 10 input / 20 output); header shows ' + JSON.stringify(bar);
+    if (String(bar).indexOf('\u2191 10') < 0 || String(bar).indexOf('\u2193 20') < 0)
+      throw new Error('fork header does not show the fork\'s own totals: ' + JSON.stringify(bar));
+    return 'fork id=' + newId + ' has ' + forkMsgs + ' messages with recomputed counters ' +
+      JSON.stringify(forkThread) + ' (its own calls: 10 input / 20 output); header shows ' + JSON.stringify(bar);
   }
 });
 
