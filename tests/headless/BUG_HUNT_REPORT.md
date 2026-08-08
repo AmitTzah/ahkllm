@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #125 (branch labels are now 1-based POSITIONS among the remaining siblings - buildStructuredMessagesFromPath finds the message's slot in the siblings array instead of using raw sibling_index+1 - and the updateBranchInfo IPC now has a WebView implementation; scenario 125 flipped + ChatUtils/chat-branching unit tests). Next up per the lifecycle is #126.
+- **Where we left off:** 2026-08-08 - FIXED #126 (ForkThread now recomputes the fork's cumulative counters from its own messages instead of copying the source thread's full ledger - scenario 48's regression updated to the same semantics; scenario 126 flipped + ChatDB fork unit test). Next up per the lifecycle is #128.
 ---
 
 ## Bug entry template
@@ -208,42 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 12. Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix
-
-**Scenario:** 126 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** Build a 2-exchange thread (u1 -> a1 -> u2 -> a2, cumulative input
-25 / output 50), then click Fork on a1 (the second message).
-
-**Expected:** the fork's cumulative counters reflect the API calls whose
-messages are actually in the fork - a1's single call, 10 input / 20 output
-tokens (a2's call is not part of the copy).
-
-**Actual:** `TreeRepo.ForkThread` copies the source thread's `cumulative_*`
-columns verbatim, so the fork (which contains only u1 + a1) starts with the
-full conversation totals (25/50) and the header shows "↑25 ↓50" even though
-u2/a2 and their API calls are not in the fork. The totals only recalibrate
-after the first structural change (a delete calls
-`_RecomputeCumulativeCounters` and the counters suddenly drop to the fork's
-own calls), so the header is wrong both before and after.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread` copies the source's
-cumulative counters unconditionally after copying only the active-path
-prefix (+ off-path siblings); `MessageRepo.Insert`/`_RecomputeCumulativeCounters`
-are the only other writers of those columns.
-
-**Verification:** headless scenario 126 - forked at a1 via the UI, confirmed
-the fork has exactly 2 messages, then read the fork thread's counters from
-the DB (25/50 - the buggy copied values, not the fork's own 10/20) and the
-header token bar ("↑25 ↓50").
-
-
----
 
 ### 13. Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output)
 
@@ -377,6 +343,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)" - FIXED in c1c6387: renderChatTree now labels the subtitle with _countActivePathNodes (the highlighted path) instead of _countTreeNodes (the whole tree); scenario 124 flipped to a regression check + chat-branching unit test.
 
 - 2026-08-08 - "Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches" - FIXED in 5cee451: buildStructuredMessagesFromPath now labels each branch by its 1-based POSITION in the siblings array (raw sibling_index+1 went stale after a delete and grew with every retry), and the updateBranchInfo IPC got a real WebView implementation; scenario 125 flipped to a regression check + ChatUtils/chat-branching unit tests.
+
+- 2026-08-08 - "Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix" - FIXED in be76b6e: ForkThread now recomputes the fork's cumulative counters from its own messages (MessageRepo._RecomputeCumulativeCounters) instead of copying the source thread's ledger verbatim - the per-message active_path_tokens are still copied, preserving bug #48's context part; scenario 126 flipped to a regression check, scenario 48 updated to the same semantics + ChatDB fork unit test.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
