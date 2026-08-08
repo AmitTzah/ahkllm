@@ -92,7 +92,7 @@ class ThreadRepo {
         threads := []
         for row in table.rows {
             model := ""
-            modelTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" row.id "' AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;")
+            modelTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" SQLite.Escape(row.id) "' AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;")
             if modelTable.count
                 model := modelTable[1, "model"]
             threads.Push({
@@ -127,13 +127,15 @@ class ThreadRepo {
     static PurgeExpired() {
         if (IsSet(trashRetentionDays) && trashRetentionDays <= 0) || (!IsSet(trashRetentionDays))
             return
+        ; Coerce to a number so a crafted setting value cannot break the SQL.
+        retention := Integer(trashRetentionDays)
         ; Clean up attachment files on disk BEFORE the raw SQL DELETEs.
         ; The CASCADE FK would auto-delete message_attachments rows but leave orphan files.
-        expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
+        expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
         for row in expiredTable.rows
             AttachmentRepo.DeleteByThread(row.id)
-        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days'));")
-        ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
+        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days'));")
+        ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
     }
 
     ; Permanently delete a thread and all its messages.

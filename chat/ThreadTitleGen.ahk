@@ -58,7 +58,7 @@ generateThreadTitle(threadId) {
         }
         ; Diagnostic: dump what the DB actually holds for this thread at
         ; title-gen time so a stale/missing folder is visible in the log.
-        folderRow := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" threadId "';")
+        folderRow := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
         dbFolderId := folderRow.count ? folderRow[1, "folder_id"] : ""
         debugLog("[TITLEGEN] title='" title "' thread=" threadId
             . " dbFolderId='" dbFolderId "' resolvedFolderName='" folderName "'")

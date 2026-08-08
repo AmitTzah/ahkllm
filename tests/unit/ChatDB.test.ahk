@@ -624,6 +624,30 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #109, security): the remaining repo paths must escape
+    ; crafted ids - SetActiveLeaf and HardDelete round-trip a crafted id with
+    ; a single quote instead of breaking the SQL.
+    RepoPaths_EscapeCraftedIds() {
+        this._setup()
+        craftedThread := "bad'thread"
+        craftedMsg := "bad'msg"
+        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('bad''thread', 'Crafted');")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content) VALUES('bad''msg', 'bad''thread', 'user', 'hi');")
+        try {
+            ChatDB.Msg_SetActiveLeaf(craftedThread, craftedMsg)
+            row := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='bad''thread';")
+            if !row.count || row[1, "active_leaf_id"] != craftedMsg
+                throw Error("SetActiveLeaf should target the crafted ids literally")
+            ; Hard delete the crafted message.
+            ChatDB.Msg_HardDelete(craftedMsg)
+            row := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages WHERE id='bad''msg';")
+            if !row.count || Integer(row[1, "c"]) != 0
+                throw Error("HardDelete should delete the crafted message literally")
+        } finally {
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------

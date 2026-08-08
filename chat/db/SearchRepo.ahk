@@ -91,7 +91,7 @@ class SearchRepo {
         for rowData in ftsResults.rows {
             if StrLen(msgIdList) > 0
                 msgIdList .= ", "
-            msgIdList .= "'" rowData.msg_id "'"
+            msgIdList .= "'" SQLite.Escape(rowData.msg_id) "'"
         }
 
         whereClause := "t.is_deleted=0 AND m.id IN (" msgIdList ")"

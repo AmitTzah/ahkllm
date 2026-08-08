@@ -148,7 +148,7 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     ; Bug #38: keep the window title in sync with the active thread. Only
     ; renameThread updated chatWindow.Title before, so switching threads left
     ; the previously renamed thread's title in the title bar.
-    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
+        threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(activeThreadId) "';")
     if threadInfo.count
         chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
 }

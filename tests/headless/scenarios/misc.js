@@ -977,7 +977,8 @@ scenarios.push({
 
 scenarios.push({
   id: 109,
-  name: "Sidebar folderId and 15+ ChatDB call sites interpolate raw ids without SQLite.Escape",
+  name: "Sidebar and ChatDB escape remaining raw ids (SQL injection sweep complete)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must stay literal everywhere)
   mode: null,
   noApp: true,
   async body() {
@@ -985,16 +986,15 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sidebar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/callbacks/Sidebar.ahk"),"utf8");
-    const hasFolderRaw = sidebar.includes("DELETE FROM chat_folders WHERE id=''\" params[\"folderId\"] \"''\"") || sidebar.includes("params[\"folderId\"]") && sidebar.includes("DELETE FROM chat_folders");
-    // Simpler: check raw interpolation without SQLite.Escape
-    const hasUnescaped = /WHERE id=.\" threadId/.test(sidebar) || /WHERE id=.\" params\["folderId"\]/.test(sidebar);
-    const hasEscaped = /SQLite\.Escape\(params\["folderId"\]\)/.test(sidebar);
-    if(!sidebar.includes("params[\"folderId\"]") || hasEscaped) throw new Error("bug not reproduced: folderId escaped or not found");
-    // Also check MessageRepo still has 15+ unescaped
+    // FIXED (bug #109): every id interpolation is escaped.
+    const folderEsc = /DELETE FROM chat_folders WHERE id='" SQLite\.Escape\(params\["folderId"\]\) "'/.test(sidebar);
+    const threadEsc = /WHERE id='" SQLite\.Escape\(params\["threadId"\]\) "'/.test(sidebar);
     const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/db/MessageRepo.ahk"),"utf8");
-    const unescapedCount = (mr.match(/WHERE id=.\" msgId/g) || []).length;
-    if(unescapedCount < 3) throw new Error("bug not reproduced: unescaped msgId count low "+unescapedCount);
-    return "Sidebar folderId raw + MessageRepo "+unescapedCount+" raw msgId WHERE id=''...'' — same class as #80/#99";
+    const rawMsgId = (mr.match(/WHERE id='" msgId "'/g) || []).length;
+    const escapedMsgId = (mr.match(/WHERE id='" SQLite\.Escape\(msgId\) "'/g) || []).length;
+    if(!folderEsc || !threadEsc || rawMsgId > 0 || escapedMsgId < 5)
+      throw new Error("bug #109 not fixed: folderEsc="+folderEsc+" threadEsc="+threadEsc+" rawMsgId="+rawMsgId+" escapedMsgId="+escapedMsgId);
+    return "Sidebar folderId/threadId and MessageRepo msgId sites all use SQLite.Escape - no raw id interpolation remains";
   }
 });
 
