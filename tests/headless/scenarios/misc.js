@@ -150,6 +150,49 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 141,
+  name: 'Vision gate blocks an image attachment on a non-vision model BEFORE any API request is sent (live audit)',
+  regression: true, // audit: _ProcessAttachmentsForLastUser must reject images for non-vision models pre-flight
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-vis-141', title: 'Vision Gate' }]
+  },
+  async body({ cdp, mockLog }) {
+    const fs = require('node:fs');
+    await showChat();
+    // Drive a REAL chatSend with an image attachment (the same payload the UI
+    // posts after a paste/drop). deepseek-v4-flash has vision:false - the
+    // vision gate must fail the request BEFORE any API call.
+    await cdp.eval(`(() => {
+      Ipc.postToHost('chatSend', {
+        message: 'look at this image',
+        attachments: [{ type: 'image', filename: 'img.png', mimeType: 'image/png', base64: 'aGVsbG8=', size: 4, extractedText: '', contentHash: 'vis141' }]
+      });
+      return true;
+    })()`);
+    try {
+      await cdp.waitFor('document.querySelectorAll(".error-banner").length >= 1', 15000, 300, 'vision error banner');
+    } catch (e) {
+      const diag = await cdp.eval('({ banners: [...document.querySelectorAll(".error-banner")].map((b) => b.textContent), msgs: chatMessages.length, loading: isLoading, posted: (window.__posted || []).slice(-8) })');
+      const logLines = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
+      throw new Error('no vision error banner: ' + JSON.stringify(diag) + ' mockLog=' + JSON.stringify(logLines));
+    }
+    const banner = await cdp.text('.error-banner');
+    if (String(banner).indexOf('does not support vision') < 0)
+      throw new Error('vision error banner text wrong: ' + JSON.stringify(banner));
+    // No chat request may reach the mock endpoint.
+    await sleep(1200);
+    const logLines = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
+    const chatReqs = logLines.filter((l) => l.indexOf('"messages"') >= 0 && l.indexOf('"max_tokens":50') < 0);
+    if (chatReqs.length !== 0)
+      throw new Error('vision gate let a request through: ' + JSON.stringify(chatReqs));
+    return 'image attachment on deepseek-v4-flash: error banner "' + String(banner).trim() +
+      '" shown and 0 chat requests reached the API (vision gate blocks pre-flight)';
+  }
+});
+
+scenarios.push({
   id: 43,
   name: 'Short-form model ids keep thinking metadata (provider prefix not required)',
   regression: true, // FIXED by the ModelId consolidation (step 5)
