@@ -307,6 +307,32 @@ class LLMRequestBuilderTest {
             FileMove(backupPath, logPath, 1)
     }
 
+    ; Regression (bug #111): the API log must be written atomically (temp file
+    ; + rename), so a crash mid-write cannot leave truncated JSON.
+    LogRequest_IsAtomic() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath
+        oldLimit := apiLogMaxEntries
+        target := A_Temp "\test_api_log_" A_TickCount ".json"
+        ApiLogger.logFilePath := target
+        apiLogMaxEntries := 10
+        try {
+            try FileDelete(target)
+            ApiLogger.LogRequest({ promptName: "one", request: "{}", response: "{}", status: "success" })
+            ApiLogger.LogRequest({ promptName: "two", request: "{}", response: "{}", status: "success" })
+            if FileExist(target ".tmp")
+                throw Error("temp file should be renamed away after a successful log write")
+            logs := ApiLogger.ReadLogs()
+            if logs.Length != 2 || logs[1]["promptName"] != "two"
+                throw Error("log should contain both entries newest-first")
+        } finally {
+            ApiLogger.logFilePath := oldPath
+            apiLogMaxEntries := oldLimit
+            try FileDelete(target)
+            try FileDelete(target ".tmp")
+        }
+    }
+
     ; ----------------------------------------------------
     ; ResolveProvider tests
     ; ----------------------------------------------------

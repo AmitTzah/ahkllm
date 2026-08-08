@@ -1024,7 +1024,8 @@ scenarios.push({
 
 scenarios.push({
   id: 111,
-  name: "ApiLogger LogRequest non-atomic overwrite — crash mid-write corrupts log file",
+  name: "ApiLogger writes the log atomically via temp + rename (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (crash mid-write must not corrupt the log)
   mode: null,
   noApp: true,
   async body() {
@@ -1032,11 +1033,13 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const al=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","ApiLogger.ahk"),"utf8");
-    const hasOverwrite = /FileOpen\(this\.logFilePath, "w"/.test(al) && /Write\(jsongo\.Stringify\(logs\)\)/.test(al);
-    const hasAtomic = /FileMove|FileAppend.*tmp|atomic/.test(al);
-    if(!hasOverwrite) throw new Error("bug not reproduced: no overwrite");
-    if(hasAtomic) throw new Error("already atomic");
-    return "ApiLogger.LogRequest does FileOpen w + Write without temp rename — crash corrupts log";
+    // FIXED (bug #111): writes go through a temp file + rename helper.
+    const hasAtomicHelper = /static _WriteLogs\(logs\)[\s\S]{0,600}FileMove\(tmpPath, this\.logFilePath, 1\)/.test(al);
+    const usesHelper = /this\._WriteLogs\(logs\)/.test(al);
+    const directOverwrite = /FileOpen\(this\.logFilePath, "w"[\s\S]{0,120}jsongo\.Stringify\(logs\)/.test(al);
+    if(!hasAtomicHelper || !usesHelper || directOverwrite)
+      throw new Error("bug #111 not fixed: hasAtomicHelper="+hasAtomicHelper+" usesHelper="+usesHelper+" directOverwrite="+directOverwrite);
+    return "ApiLogger.LogRequest/TrimToLimit write via temp file + FileMove (atomic), so a crash mid-write cannot corrupt LLM_API_Log.json";
   }
 });
 
