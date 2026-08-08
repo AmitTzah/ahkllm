@@ -1,5 +1,5 @@
-# 2026-08-08T07:59:26.474Z | run of 1 scenario(s)
-PASS | #109 | Sidebar and ChatDB escape remaining raw ids (SQL injection sweep complete) | Sidebar folderId/threadId and MessageRepo msgId sites all use SQLite.Escape - no raw id interpolation remains | 0.0s
+# 2026-08-08T08:03:43.819Z | run of 1 scenario(s)
+PASS | #110 | Streaming deletes temp files on success and error (credential leak fixed) | StreamCompletion._handleStreamComplete and StreamError._handleStreamError now call deleteTempFiles (like the cancel path), so request/cURL files with the Bearer token never linger in %TEMP% | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

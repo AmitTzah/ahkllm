@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #109 FIXED in 6aa4798; next: bug #110 (Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`).
+- **Where we left off:** 2026-08-08 — bug #110 FIXED in ef41e48; next: bug #111 (ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 110. Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`
-
-**Scenario:** 110 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send any chat request (streaming), then check `%TEMP%` for `ChatWindow_cURL_*.txt` and `ChatWindow_Req_*.json`.
-
-**Expected:** temp files should be deleted after the request completes (like the cancel path does via `deleteTempFiles()`).
-
-**Actual:** `ChatRequestBuilder._WriteRequestFiles` writes `ChatWindow_Req_*.json` + `ChatWindow_cURL_*.txt` (containing `Authorization: Bearer <apiKey>`) to `A_Temp`, and `StreamHandler.sendStreamingRequest` writes the cURL command file. On success `StreamCompletion._handleStreamComplete` never calls `deleteTempFiles()` — only `_handleStreamCancelled` (in `StreamError.ahk`) does. Successful streams leave Bearer tokens on disk indefinitely; error path also leaks.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk` `_handleStreamComplete` has no `deleteTempFiles`; `chat/streaming/StreamError.ahk` `_handleStreamCancelled` does; `api/CurlBuilder.ahk` `Build`/`BuildStream` embed `providerInfo.apiKey`.
-
-**Verification:** headless scenario 110 (noApp) asserts `StreamCompletion.ahk` has no `deleteTempFiles` in `_handleStreamComplete`, `StreamError.ahk` does in cancel, and `CurlBuilder.ahk` contains `providerInfo.apiKey`.
 
 ### 111. ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`
 
@@ -289,6 +273,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "main.js IPC fallback calls arbitrary `window[target]` without allowlist" - FIXED in 38d8292: handleWebMessage now routes the two legacy targets (updateTopbarTitle/updateBranchInfo) via explicit cases and the default case only logs unknown targets — the dynamic window[target](...data) invocation is gone, so a crafted IPC target can no longer invoke arbitrary globals; scenario 108 flipped to a regression static check + main.js unit tests (legacy targets route explicitly; a decoy global is never invoked for an unknown target).
 
 - 2026-08-08 - "Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`" - FIXED in 6aa4798: every remaining raw id interpolation now uses SQLite.Escape — Sidebar (rename/delete/move folder + renameThread), Edit.ahk, MessageRepo (Insert thread_id/role, HardDelete, Edit, GetMaxSiblingIndex, _TouchThreadByMsg, backfill), TreeRepo (GetActivePath, GetSiblings, SetActiveLeaf, SwitchBranch, GetThreadStats, _ResolvePricing, _WalkToLeaf, forks), ThreadRepo (thread listing, PurgeExpired coerces retention to Integer), SearchRepo FTS id list, ChatUtils/ThreadTitleGen/StreamCompletion; scenario 109 flipped to a regression static check + ChatDB unit test (crafted `bad'thread`/`bad'msg` round-trip SetActiveLeaf + HardDelete).
+
+- 2026-08-08 - "Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`" - FIXED in ef41e48: _handleStreamComplete (success) and _handleStreamError (error) now call deleteTempFiles() after their reads, matching the cancel path, and deleteTempFiles is defensive about missing requestParams keys; scenario 110 flipped to a regression static check + StreamHandler unit test (success/error/cancel all delete temp files).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
