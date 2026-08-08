@@ -42,8 +42,11 @@ buildRequest() {
     ; Build messages array from DB path
     apiMessages := _BuildApiMessagesFromPath(path)
 
-    ; Process last user message's attachments
-    if !_ProcessAttachmentsForLastUser(&apiMessages, requestParams["singleAPIModelName"])
+    ; Attach every user message's own attachments to its API content part
+    ; (bug #142: the old last-user-only pass silently dropped earlier attached
+    ; images/files from follow-up requests, so multi-turn vision lost the
+    ; image after the first exchange).
+    if !_ProcessAttachmentsForPath(&apiMessages, requestParams["singleAPIModelName"])
         return ""
 
     ; Clean up internal _msgId fields
@@ -93,52 +96,52 @@ _CleanApiMessages(apiMessages) {
             msg.DeleteProp("_msgId")
 }
 
-; Process attachments for the last user message in apiMessages.
-; Returns false if vision gate fails (model doesn't support images).
-_ProcessAttachmentsForLastUser(&apiMessages, modelName) {
-    ; Find last user message
-    lastUserMsgId := ""
-    lastUserIdx := 0
-    Loop apiMessages.Length {
-        i := apiMessages.Length - A_Index + 1
-        if apiMessages[i].role = "user" {
-            lastUserMsgId := apiMessages[i]._msgId
-            lastUserIdx := i
-            break
+; Attach attachments for EVERY user message in apiMessages (bug #142: the
+; follow-up API request must keep the earlier messages' image/file content
+; parts, exactly like it keeps their text). Returns false if the vision gate
+; fails (any image in the conversation on a model without vision support).
+_ProcessAttachmentsForPath(&apiMessages, modelName) {
+    ; Vision gate across the whole conversation: every image that would be
+    ; sent counts, not just the last user message's.
+    for msg in apiMessages {
+        if msg.role != "user" || !msg.HasProp("_msgId") || !msg._msgId
+            continue
+        attachments := ChatDB.Attachment_GetByMessage(msg._msgId)
+        if attachments.Length && _HasImageAttachments(attachments) && !AttachmentUtils.HasVision(modelName) {
+            errorMsg := "Model '" modelName "' does not support vision. Remove images or switch models."
+            postWebMessage("showError", { message: errorMsg })
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+            return false
         }
     }
-    if !lastUserMsgId || !lastUserIdx
-        return true
 
-    attachments := ChatDB.Attachment_GetByMessage(lastUserMsgId)
-    if !attachments.Length
-        return true
+    ; Then turn each user message with attachments into a content array
+    ; (images + file contexts + the message text). Keep _msgId so the later
+    ; cleanup pass can strip it from the serialized request.
+    for i, msg in apiMessages {
+        if msg.role != "user" || !msg.HasProp("_msgId") || !msg._msgId
+            continue
+        attachments := ChatDB.Attachment_GetByMessage(msg._msgId)
+        if !attachments.Length
+            continue
 
-    ; Vision gating: check for images
-    if _HasImageAttachments(attachments) && !AttachmentUtils.HasVision(modelName) {
-        errorMsg := "Model '" modelName "' does not support vision. Remove images or switch models."
-        postWebMessage("showError", { message: errorMsg })
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
-        return false
+        contentArray := _BuildImageContentParts(attachments)
+        fileContexts := _BuildFileContexts(attachments)
+        userMsg := apiMessages[i].content
+
+        if contentArray.Length || fileContexts {
+            if fileContexts
+                contentArray.InsertAt(1, { type: "text", text: RTrim(fileContexts, "`n`n") })
+            if userMsg
+                contentArray.Push({ type: "text", text: userMsg })
+        }
+
+        if contentArray.Length > 0 {
+            apiMessages[i] := { role: "user", content: contentArray, _msgId: msg._msgId }
+        }
+        ; else: keep original string content (no attachable content at all)
     }
-
-    contentArray := _BuildImageContentParts(attachments)
-
-    userMsg := apiMessages[lastUserIdx].content
-    fileContexts := _BuildFileContexts(attachments)
-
-    if contentArray.Length || fileContexts {
-        if fileContexts
-            contentArray.InsertAt(1, { type: "text", text: RTrim(fileContexts, "`n`n") })
-        if userMsg
-            contentArray.Push({ type: "text", text: userMsg })
-    }
-
-    if contentArray.Length > 0 {
-        apiMessages[lastUserIdx] := { role: "user", content: contentArray }
-    }
-    ; else: keep original string content (no attachments at all)
 
     return true
 }

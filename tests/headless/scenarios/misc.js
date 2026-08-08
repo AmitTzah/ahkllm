@@ -109,6 +109,7 @@ scenarios.push({
 
 scenarios.push({
   id: 142,
+  regression: true, // FIXED bug kept as a regression check (follow-ups keep the earlier image context)
   name: 'Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)',
   mode: 'sse-success',
   settings: { newChatStartsWith: 'openai/gpt-5-mini' },
@@ -139,13 +140,13 @@ scenarios.push({
     const req2 = chatReqs[1].body;
     const hasImage = (req) => JSON.stringify(req.messages).indexOf('image_url') >= 0;
     if (!hasImage(req1)) throw new Error('setup: exchange 1 did not carry the image: ' + JSON.stringify(req1));
-    // BUG (repro): the second request must still include the first message's
-    // image content part so the model can answer follow-ups about it; today
-    // _ProcessAttachmentsForLastUser only attaches the LAST user message.
-    if (hasImage(req2))
-      throw new Error('exchange 2 unexpectedly still carries the image (bug not reproduced)');
+    // FIXED (bug #142): the second request must keep the first message's
+    // image content part so the model can answer follow-ups about it;
+    // _ProcessAttachmentsForPath now attaches every user message's images.
+    if (!hasImage(req2))
+      throw new Error('follow-up request dropped the earlier image context: ' + JSON.stringify(req2));
     return 'exchange 1 request carries image_url=' + hasImage(req1) + '; exchange 2 request carries image_url=' +
-      hasImage(req2) + ' (earlier image context is dropped from follow-up API calls)';
+      hasImage(req2) + ' (follow-up API call keeps the earlier image context)';
   }
 });
 
@@ -250,7 +251,7 @@ scenarios.push({
     const hasShortFormFallback = /static HasVision\(modelName\) \{[\s\S]*?ModelResolver\.Lookup\(models, modelName\)/.test(au);
     // Both the chat attachment gate and the command screenshot gate pass the
     // raw model name straight through.
-    const chatGateUsesRawName = /_ProcessAttachmentsForLastUser\(&apiMessages, modelName\)[\s\S]*?AttachmentUtils\.HasVision\(modelName\)/.test(crb);
+    const chatGateUsesRawName = /_ProcessAttachmentsForPath\(&apiMessages, modelName\)[\s\S]*?AttachmentUtils\.HasVision\(modelName\)/.test(crb);
     const commandGateUsesRawName = /AttachmentUtils\.HasVision\(APIModelsArr\[1\]\)/.test(rp);
     // A vision-capable model exists, keyed ONLY by its full "provider/model" id.
     const m = dm.match(/"openai\/gpt-4\.1-mini", \{([\s\S]*?)\n    \},/);

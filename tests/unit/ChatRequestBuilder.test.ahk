@@ -353,4 +353,104 @@ class ChatRequestBuilderTest {
         if parsed["reasoning_effort"] != "high"
             throw Error("Expected reasoning_effort='high', got '" parsed["reasoning_effort"] "'")
     }
+
+    ; ----------------------------------------------------
+    ; Bug #142 regression: a follow-up request must keep the EARLIER user
+    ; message's image content part (multi-turn vision). The old code only
+    ; processed the LAST user message's attachments, so from exchange 2 on the
+    ; API payload was pure text and the model could not answer follow-up
+    ; questions about an attached image.
+    ; ----------------------------------------------------
+    FollowUpRequest_KeepsEarlierImageContext() {
+        global activeThreadId, requestParams
+
+        EnvSet("OPENAI_API_KEY", "sk-test-openai-key")
+
+        this._setupDb()
+        ChatDB.Thread_Create("Vision Follow-up")
+        threads := ChatDB.Thread_List()
+        activeThreadId := threads[threads.Length].id
+
+        ; A real image file in a temp data dir (the request builder base64-
+        ; encodes it into the API payload; content bytes do not need to be a
+        ; valid image).
+        oldDataDir := AppInfo.DataDir
+        testDataDir := A_Temp "\llm_attach_test_" A_TickCount
+        AppInfo.DataDir := testDataDir
+        DirCreate(testDataDir "\attachments")
+        imgPath := testDataDir "\attachments\img.png"
+        FileAppend("fake-png-bytes", imgPath)
+
+        try {
+            ; Exchange 1: user message with an image attachment + assistant reply.
+            u1Id := ChatDB.Msg_Insert({
+                thread_id: activeThreadId, role: "user", content: "what is this?",
+                parent_id: "", sibling_group: "", sibling_index: 0
+            })
+            ChatDB.Attachment_Insert(u1Id, {
+                attachment_type: "image", file_path: "attachments\img.png",
+                mime_type: "image/png", original_filename: "img.png",
+                file_size: 14, extracted_text: ""
+            })
+            a1Id := ChatDB.Msg_Insert({
+                thread_id: activeThreadId, role: "assistant", content: "a dog",
+                model: "openai/gpt-5-mini", parent_id: u1Id
+            })
+            ; Exchange 2: plain-text follow-up about the same image.
+            u2Id := ChatDB.Msg_Insert({
+                thread_id: activeThreadId, role: "user", content: "and what about the colors?",
+                parent_id: a1Id
+            })
+
+            requestParams := Map(
+                "singleAPIModelName", "openai/gpt-5-mini",
+                "stream", true,
+                "pasteMode", "chat",
+                "windowTitle", "test",
+                "providerName", "",
+                "uniqueID", A_TickCount
+            )
+
+            result := buildRequest()
+            if result = ""
+                throw Error("buildRequest returned empty for a vision follow-up")
+            parsed := jsongo.Parse(result)
+            msgs := parsed["messages"]
+
+            ; The FIRST user message must keep its image content part in the
+            ; follow-up request (bug #142 fixed), plus its original text.
+            first := msgs[1]
+            if first["role"] != "user" || Type(first["content"]) != "Array"
+                throw Error("exchange-1 user message lost its content array: " jsongo.Stringify(first))
+            hasImage := false
+            hasText := false
+            for part in first["content"] {
+                if part.Has("type") && part["type"] = "image_url" && InStr(part["image_url"]["url"], "data:image/png;base64,")
+                    hasImage := true
+                if part.Has("type") && part["type"] = "text" && part["text"] = "what is this?"
+                    hasText := true
+            }
+            if !hasImage
+                throw Error("follow-up request dropped the earlier image part: " jsongo.Stringify(first))
+            if !hasText
+                throw Error("follow-up request dropped the earlier message text: " jsongo.Stringify(first))
+
+            ; The follow-up user message itself has no attachments and stays text.
+            last := msgs[msgs.Length]
+            if last["role"] != "user" || Type(last["content"]) != "String"
+                throw Error("follow-up message should stay plain text: " jsongo.Stringify(last))
+        } finally {
+            AppInfo.DataDir := oldDataDir
+            try DirDelete(testDataDir, true)
+            if requestParams.Has("chatHistoryJSONRequestFile")
+                try FileDelete(requestParams["chatHistoryJSONRequestFile"])
+            if requestParams.Has("cURLCommandFile")
+                try FileDelete(requestParams["cURLCommandFile"])
+            if requestParams.Has("cURLOutputFile")
+                try FileDelete(requestParams["cURLOutputFile"])
+            if requestParams.Has("cURLErrorFile")
+                try FileDelete(requestParams["cURLErrorFile"])
+            this._teardownDb()
+        }
+    }
 }

@@ -1,5 +1,5 @@
-# 2026-08-08T17:44:26.746Z | run of 1 scenario(s)
-PASS | #133 | Cancelling a stream mid-response records a fake 0-token API request in chat_usage and inflates the thread cumulative input by the un-billed parent context (header vs dashboard disagree) | cancelled mid-stream: partial row={"role":"assistant","content":"Hello from the mock LLM. ","token_count":0,"prompt_tokens":0,"active_path_tokens":21,"model":"deepseek-v4-flash"}, chat_usage={"call_count":1,"prompt_tokens":12,"completion_tokens":9} (1 completed call only), thread counters={"cumulative_input_tokens":12,"cumulative_output_tokens":9,"cumulative_cached_tokens":4} (12/9/4 - un-billed context never charged), header="21 / 1m↑ 12  ↓ 94$0.00" | 7.6s
+# 2026-08-08T17:54:22.357Z | run of 1 scenario(s)
+PASS | #141 | Vision gate blocks an image attachment on a non-vision model BEFORE any API request is sent (live audit) | image attachment on deepseek-v4-flash: error banner "Model 'deepseek/deepseek-v4-flash' does not support vision. Remove images or switch models.×" shown and 0 chat requests reached the API (vision gate blocks pre-flight) | 5.5s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

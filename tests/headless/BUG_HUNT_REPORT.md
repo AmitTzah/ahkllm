@@ -154,11 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #133 (cancelled partial is now inserted as local_copy, so no fake
-  chat_usage request and no un-billed cumulative charge; scenario 133 flipped + StreamError unit tests green).
-  Next: #142.
+- **Where we left off:** 2026-08-08 - FIXED #133 (committed 8875847) and #142 (ChatRequestBuilder now attaches
+  every user message's images/files; scenario 142 flipped + ChatRequestBuilder unit test). Next: #140.
 ---
 
 ## Bug entry template
@@ -259,38 +258,14 @@ re-checks `currentTitle`; `chat/ThreadTitleGen.ahk` `generateThreadTitle` has no
 **Verification:** headless — scenario 140 sends one exchange, waits, retries the first assistant, and asserts the
 mock log contains 2 title requests (`max_tokens === 50`) — PASS = duplicate fired.
 
-### 3. Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)
-
-**Scenario:** 142 (scenario code in scenarios/misc.js)
-
-**Status:** verified — open
-
-**Repro:** On a vision-capable model, attach an image to a message and send it ("what is this?"). Wait for the
-answer, then send a plain-text follow-up about the same image ("and what about the colors?").
-
-**Expected:** The follow-up API request keeps the earlier message's image content part (like the message text
-context does), so the model can answer follow-up questions about the image.
-
-**Actual:** `_BuildApiMessagesFromPath` only carries message text and `_ProcessAttachmentsForLastUser` attaches
-content only for the LAST user message, so from exchange 2 onward the API payload is pure text — the earlier
-image silently disappears from the conversation context and the model cannot answer follow-ups about it.
-Verified live: exchange 1's mock request contains `image_url=true`; exchange 2's request contains `image_url=false`
-(2/2 stable runs).
-
-**Evidence:** `chat/ChatRequestBuilder.ahk` `_ProcessAttachmentsForLastUser` (only the last user message's
-attachments) + `_BuildApiMessagesFromPath` (content-only messages).
-
-**Verification:** headless — scenario 142 posts a real chatSend with an image attachment on openai/gpt-5-mini
-(vision:true), then sends a text follow-up, and asserts the mock log's second request has no `image_url` part —
-PASS = context dropped.
-
-
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
 - 2026-08-08 - "Cancelling a stream mid-response records a fake API request and inflates the thread's cumulative input tokens (header and usage dashboard disagree)" - FIXED: _handleStreamCancelled now inserts the cancelled partial as local_copy, so MessageRepo.Insert never upserts chat_usage (no fake API request) and never recomputes the cumulative counters from the un-billed parent context; scenario 133 flipped to a regression check + StreamError unit tests.
+
+- 2026-08-08 - "Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)" - FIXED: ChatRequestBuilder._ProcessAttachmentsForPath now attaches EVERY user message's attachments (images + file contexts) to its API content part, so follow-up requests keep the earlier image context (the old _ProcessAttachmentsForLastUser only processed the last user message); scenario 142 flipped to a regression check + ChatRequestBuilder unit test.
 
 - 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in f0490c7: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
 
