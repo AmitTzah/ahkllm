@@ -17,7 +17,7 @@ class TreeRepo {
         if !leafId
             return []
 
-        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id='" threadId "';")
+        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id='" threadId "';")
 
         msgMap := Map()
         for row in allTable.rows {
@@ -29,6 +29,7 @@ class TreeRepo {
                 sibling_index: row.sibling_index,
                 reasoning: row.Has("reasoning") && row["reasoning"] ? row["reasoning"] : "",
                 token_count: row.Has("token_count") && row.token_count ? Integer(row.token_count) : 0,
+                prompt_tokens: row.Has("prompt_tokens") && row["prompt_tokens"] ? Integer(row["prompt_tokens"]) : 0,
                 thinking_tokens: row.Has("thinking_tokens") && row.thinking_tokens ? Integer(row.thinking_tokens) : 0,
                 cached_tokens: row.Has("cached_tokens") && row.cached_tokens ? Integer(row.cached_tokens) : 0,
                 response_time_ms: row.Has("response_time_ms") && row.response_time_ms ? Integer(row.response_time_ms) : 0,
@@ -258,8 +259,11 @@ class TreeRepo {
         ; Bug #48: keep the per-message context-token prefix sum so the fork's
         ; token bar ("Context Used") matches the copied conversation.
         apt := msg.HasProp("active_path_tokens") && msg.active_path_tokens != "" ? Integer(msg.active_path_tokens) : 0
+        ; Bug #107: carry the assistant's API ground truth into the fork so a
+        ; later recompute can restore prompt+completion.
+        spt := msg.HasProp("prompt_tokens") && msg.prompt_tokens != "" ? Integer(msg.prompt_tokens) : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ", " apt ");")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " spt ", " tht ", " ckt ", " lat ", " ttft ", " apt ");")
     }
 
     ; Copy sibling messages that are NOT on the active path (so branch navigation works in forks).
@@ -281,13 +285,14 @@ class TreeRepo {
                 safeM := sibRow.model ? SQLite.Escape(sibRow.model) : ""
                 safeR := sibRow.Has("reasoning") && sibRow.reasoning ? SQLite.Escape(sibRow.reasoning) : ""
                 sTc := sibRow.token_count ? sibRow.token_count : 0
+                sPt := sibRow.Has("prompt_tokens") ? sibRow.prompt_tokens : 0
                 sTht := sibRow.thinking_tokens ? sibRow.thinking_tokens : 0
                 sCkt := sibRow.cached_tokens ? sibRow.cached_tokens : 0
                 sLat := sibRow.response_time_ms ? sibRow.response_time_ms : 0
                 sTtft := sibRow.ttft_ms ? sibRow.ttft_ms : 0
                 sApt := sibRow.active_path_tokens ? Integer(sibRow.active_path_tokens) : 0
 
-                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", '" safeR "', " sTc ", " sTht ", " sCkt ", " sLat ", " sTtft ", " sApt ");")
+                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", '" safeR "', " sTc ", " sPt ", " sTht ", " sCkt ", " sLat ", " sTtft ", " sApt ");")
                 AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
             }
         }
@@ -436,10 +441,18 @@ class TreeRepo {
         path := TreeRepo.GetActivePath(threadId)
         prev := 0
         for msg in path {
-            prev += msg.HasProp("token_count") ? msg.token_count : 0
-            ; Bug #64: thinking tokens occupy context - include them in the
-            ; prefix sums so recomputed active_path_tokens match the header.
-            prev += msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
+            if msg.role = "assistant" && msg.prompt_tokens {
+                ; Bug #107: assistants carry API ground truth - prompt_tokens
+                ; already covers the whole context up to this message, so keep
+                ; prompt + visible + thinking (matching Insert) instead of
+                ; reducing to a pure prefix sum that loses the prompt tokens.
+                prev := msg.prompt_tokens + msg.token_count + msg.thinking_tokens
+            } else {
+                prev += msg.token_count
+                ; Bug #64: thinking tokens occupy context - include them in the
+                ; prefix sums so recomputed active_path_tokens match the header.
+                prev += msg.thinking_tokens
+            }
             ChatDB.db.Exec("UPDATE messages SET active_path_tokens=" prev " WHERE id='" msg.id "';")
         }
     }

@@ -932,7 +932,8 @@ scenarios.push({
 
 scenarios.push({
   id: 107,
-  name: "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants",
+  name: "TreeRepo._RecomputeActivePath keeps assistant prompt_tokens ground truth (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (recompute must not drop assistant prompt tokens)
   mode: null,
   noApp: true,
   async body() {
@@ -941,12 +942,15 @@ scenarios.push({
     const launcher=require("../launch");
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
     const defIdx=tr.indexOf("static _RecomputeActivePath");
-    const body=tr.slice(defIdx, defIdx+600);
-    const hasPrefix = body.includes('prev += msg.HasProp("token_count")');
-    const hasPrompt = body.includes("prompt_tokens");
-    if(!hasPrefix) throw new Error("bug not reproduced: no prev+= token_count");
-    if(hasPrompt) throw new Error("bug not reproduced: recompute handles prompt_tokens");
-    return "_RecomputeActivePath does prev+=token_count only — assistant prompt_tokens lost after delete/edit";
+    const body=tr.slice(defIdx, defIdx+700);
+    // FIXED (bug #107): assistants keep API ground truth (prompt + visible +
+    // thinking); other messages still prefix-sum.
+    const keepsPrompt = /msg\.role = "assistant" && msg\.prompt_tokens/.test(body);
+    const usesGroundTruth = /prev := msg\.prompt_tokens \+ msg\.token_count \+ msg\.thinking_tokens/.test(body);
+    const stillPrefixSums = /prev \+= msg\.token_count/.test(body);
+    if(!keepsPrompt || !usesGroundTruth || !stillPrefixSums)
+      throw new Error("bug #107 not fixed: keepsPrompt="+keepsPrompt+" usesGroundTruth="+usesGroundTruth+" stillPrefixSums="+stillPrefixSums);
+    return "_RecomputeActivePath keeps assistant prompt_tokens (+ visible + thinking) as ground truth and prefix-sums the rest, so Context Used no longer drops after delete/edit";
   }
 });
 

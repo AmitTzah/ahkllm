@@ -604,6 +604,26 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #107): _RecomputeActivePath must keep an assistant's API
+    ; ground truth (prompt + visible + thinking) instead of reducing it to a
+    ; pure prefix sum of visible tokens.
+    RecomputeActivePath_PreservesAssistantPromptTokens() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello", token_count: 10})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer", parent_id: uId, prompt_tokens: 100, token_count: 20})
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens, prompt_tokens FROM messages WHERE id='" aId "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 120
+            throw Error("setup: assistant active_path should be prompt(100)+visible(20)=120, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        if !leaf.count || Integer(leaf[1, "prompt_tokens"]) != 100
+            throw Error("setup: assistant prompt_tokens should be persisted (bug #107), got " (leaf.count ? leaf[1, "prompt_tokens"] : "none"))
+        ; Simulate the structural-change recompute (delete/edit path).
+        TreeRepo._RecomputeActivePath(threadId)
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" aId "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 120
+            throw Error("recompute must keep prompt+visible (120), got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------

@@ -42,13 +42,16 @@ class MessageRepo {
                 activePathTokens := Integer(parentRow[1, "active_path_tokens"]) + tc
         }
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
+        ; Bug #107: persist prompt_tokens (API ground truth for assistants) so
+        ; _RecomputeActivePath can restore prompt+completion after structural
+        ; changes instead of reducing to a visible-token prefix sum.
+        promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" msgObj.thread_id "', '" msgObj.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " promptTotal ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
 
         ; Sync FTS5 index
         ChatDB.FTS_Sync(id, msgObj.content)
 
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
-        promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
         if msgObj.HasProp("model") && msgObj.model {
             usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
             costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
