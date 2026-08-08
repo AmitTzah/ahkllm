@@ -235,6 +235,36 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #116): ThreadRepo.Delete must pass the RAW thread id to
+    ; AttachmentRepo.DeleteByThread (which escapes it internally) - passing the
+    ; already-escaped safeId double-escaped it ('x'' became 'x''''), so crafted-id
+    ; threads deleted their messages but orphaned their attachment rows.
+    Thread_Delete_CraftedId_CleansAttachments() {
+        this._setup()
+        crafted := "x'"
+        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('x''', 'Crafted');")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content) VALUES('m1', 'x''', 'user', 'hi');")
+        ChatDB.Attachment_Insert("m1", {
+            attachment_type: "text_file",
+            file_path: "attachments/x.txt",
+            mime_type: "text/plain",
+            original_filename: "x.txt",
+            file_size: 1,
+            extracted_text: ""
+        })
+        ChatDB.Thread_Delete(crafted)
+        msgCount := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages WHERE thread_id='x''';")
+        attCount := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM message_attachments WHERE message_id='m1';")
+        thrCount := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM chat_threads WHERE id='x''';")
+        if Integer(msgCount[1, "c"]) != 0
+            throw Error("crafted thread's messages should be deleted, got " msgCount[1, "c"])
+        if Integer(attCount[1, "c"]) != 0
+            throw Error("crafted thread's attachment rows should be deleted, got " attCount[1, "c"])
+        if Integer(thrCount[1, "c"]) != 0
+            throw Error("crafted thread should be deleted, got " thrCount[1, "c"])
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_SetActiveLeaf
     ; --------------------

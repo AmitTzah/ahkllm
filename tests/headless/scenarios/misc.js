@@ -1124,6 +1124,7 @@ scenarios.push({
 scenarios.push({
   id: 116,
   name: "ThreadRepo.Delete double-escapes the thread id into AttachmentRepo.DeleteByThread - crafted ids orphan attachments",
+  regression: true, // FIXED bug kept as a regression check (raw id must reach DeleteByThread, which escapes internally)
   mode: null,
   noApp: true,
   async body() {
@@ -1134,15 +1135,17 @@ scenarios.push({
     const launcher = require("../launch");
     const seed = require("../seed");
 
-    // 1. Source-level: ThreadRepo.Delete escapes threadId into safeId, then
-    //    passes the ALREADY-escaped value to AttachmentRepo.DeleteByThread,
-    //    which escapes AGAIN (double '' doubling).
+    // 1. Source-level: ThreadRepo.Delete must pass the RAW threadId to
+    //    AttachmentRepo.DeleteByThread (which escapes it internally) - the old
+    //    code passed the already-escaped safeId, double-escaping quotes ('' -> ''''),
+    //    so crafted-id threads orphaned their attachment rows/files.
     const tr = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "ThreadRepo.ahk"), "utf8");
     const ar = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "AttachmentRepo.ahk"), "utf8");
-    const doubleEscape = /safeId := SQLite\.Escape\(threadId\)[\s\S]{0,220}AttachmentRepo\.DeleteByThread\(safeId\)/.test(tr);
+    const noDoubleEscape = !/AttachmentRepo\.DeleteByThread\(safeId\)/.test(tr);
+    const passesRawId = /AttachmentRepo\.DeleteByThread\(threadId\)/.test(tr);
     const reEscape = /static DeleteByThread\(threadId\)[\s\S]{0,120}safeThreadId := SQLite\.Escape\(threadId\)/.test(ar);
-    if (!doubleEscape || !reEscape)
-      throw new Error("double-escape pattern not found (bug not reproduced): doubleEscape=" + doubleEscape + " reEscape=" + reEscape);
+    if (!passesRawId || !reEscape || !noDoubleEscape)
+      throw new Error("double-escape still present (bug #116 not fixed): passesRawId=" + passesRawId + " reEscape=" + reEscape + " noDoubleEscape=" + noDoubleEscape);
 
     // 2. Semantics: SQLite.Escape doubles every internal quote. So for
     //    threadId "x'" the delete path builds:
@@ -1163,7 +1166,7 @@ scenarios.push({
     db.close();
     if (msgDel.changes !== 1 || attQuery !== 0 || orphanRows !== 1)
       throw new Error("crafted-id delete semantics not reproduced: msgDeleted=" + msgDel.changes + " attJoined=" + attQuery + " orphanRows=" + orphanRows);
-    return "ThreadRepo.Delete passes the already-escaped safeId into AttachmentRepo.DeleteByThread; for thread id 'x'' the messages are deleted but the attachment rows/files are never touched (orphaned)";
+    return "ThreadRepo.Delete now passes the raw threadId into AttachmentRepo.DeleteByThread (escaped once, internally); for thread id 'x'' the messages AND attachment rows are deleted";
   }
 });
 

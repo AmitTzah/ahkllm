@@ -143,7 +143,10 @@ class ThreadRepo {
         ; Bug #80 (security): escape the id everywhere it is interpolated.
         safeId := SQLite.Escape(threadId)
         debugLog("[THREAD] Deleted — id=" threadId)
-        AttachmentRepo.DeleteByThread(safeId)
+        ; Bug #116: pass the RAW id - DeleteByThread escapes it internally.
+        ; Passing safeId (already escaped) double-escaped it, so crafted-id
+        ; threads deleted their messages but orphaned their attachment rows.
+        AttachmentRepo.DeleteByThread(threadId)
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" safeId "';")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" safeId "';")
     }

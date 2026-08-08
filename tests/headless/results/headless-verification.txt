@@ -1,5 +1,5 @@
-# 2026-08-08T11:04:46.957Z | run of 1 scenario(s)
-PASS | #115 | TreeRepo.GetActivePath/GetTree and MessageRepo._RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape) | GetActivePath/GetTree/_RecomputeCumulativeCounters interpolate raw thread_id; crafted id 'x' OR '1'='1' returns 2 rows raw vs 0 escaped (SQL injection / wrong-thread reads for crafted ids) | 0.1s
+# 2026-08-08T11:07:15.590Z | run of 1 scenario(s)
+PASS | #116 | ThreadRepo.Delete double-escapes the thread id into AttachmentRepo.DeleteByThread - crafted ids orphan attachments | ThreadRepo.Delete now passes the raw threadId into AttachmentRepo.DeleteByThread (escaped once, internally); for thread id 'x'' the messages AND attachment rows are deleted | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
