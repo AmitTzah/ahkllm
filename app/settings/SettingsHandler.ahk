@@ -16,6 +16,12 @@ class SettingsHandler {
         set => SettingsPersistence.settingsPath := value
     }
 
+    ; Hardening item 4: registry of every top-level settings key. A key must be
+    ; added here AND produced by SettingsDefaults, so the round-trip tests can
+    ; guarantee no settings section silently drops values on save (the
+    ; #39/#61/#71/#122/#130 family).
+    static KNOWN_TOP_LEVEL_KEYS := ["version", "providers", "models", "assistants", "commands", "submenuOrder", "threadTitles", "ui", "icons", "hotkeys", "apiLogs", "trash", "menuItems", "chatShortcut", "newChatStartsWith"]
+
     static Load() => SettingsPersistence.Load()
     static Save(settingsMap) => SettingsPersistence.Save(settingsMap)
     static _ToMap(obj) => SettingsPersistence._ToMap(obj)

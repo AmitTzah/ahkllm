@@ -501,6 +501,83 @@ class SettingsHandlerTest {
         SettingsService._hooks := oldHooks
     }
 
+    ; Hardening item 4: every top-level settings key must be registered in
+    ; SettingsHandler.KNOWN_TOP_LEVEL_KEYS (and vice versa), so new keys cannot
+    ; be added without the round-trip guard noticing.
+    Defaults_AllTopLevelKeysRegistered() {
+        defaults := SettingsHandler.GetDefaults()
+        known := SettingsHandler.KNOWN_TOP_LEVEL_KEYS
+        for k in defaults {
+            found := false
+            for key in known {
+                if key = k
+                    found := true
+            }
+            if !found
+                throw Error("defaults key '" k "' is not registered in KNOWN_TOP_LEVEL_KEYS (hardening item 4)")
+        }
+        for key in known {
+            if !defaults.Has(key)
+                throw Error("registered key '" key "' is missing from GetDefaults()")
+        }
+    }
+
+    ; Hardening item 4: the full defaults map must survive Save -> Load without
+    ; dropping or corrupting any value (the persistence half of the
+    ; #39/#61/#71/#122/#130 settings round-trip family).
+    SaveLoad_RoundTripPreservesAllKeys() {
+        defaults := SettingsHandler.GetDefaults()
+        oldPath := SettingsHandler.settingsPath
+        SettingsHandler.settingsPath := this._tempPath()
+        try {
+            try FileDelete(SettingsHandler.settingsPath)
+            if !SettingsHandler.Save(defaults)
+                throw Error("Save failed")
+            loaded := SettingsHandler.Load()
+            err := this._DeepEqual(defaults, loaded, "$")
+            if err
+                throw Error("settings Save->Load round-trip changed: " err)
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(SettingsHandler.settingsPath)
+        }
+    }
+
+    _DeepEqual(a, b, path) {
+        if IsNumber(a) && IsNumber(b) {
+            if Number(a) != Number(b)
+                return path " '" a "' vs '" b "'"
+            return ""
+        }
+        if Type(a) != Type(b)
+            return path " type " Type(a) " vs " Type(b)
+        if a is Map {
+            if a.Count != b.Count
+                return path " map count " a.Count " vs " b.Count
+            for k, v in a {
+                if !b.Has(k)
+                    return path "." k " missing"
+                err := this._DeepEqual(v, b[k], path "." k)
+                if err
+                    return err
+            }
+            return ""
+        }
+        if a is Array {
+            if a.Length != b.Length
+                return path " array length " a.Length " vs " b.Length
+            for i, v in a {
+                err := this._DeepEqual(v, b[i], path "[" i "]")
+                if err
+                    return err
+            }
+            return ""
+        }
+        if a != b
+            return path " '" a "' vs '" b "'"
+        return ""
+    }
+
     ; Regression (bug #122): _ApplyAssistants must carry temperature and
     ; isDefault through the runtime globals so a Settings save round-trip does
     ; not reset assistant temperature to Model Default or drop the default flag.
