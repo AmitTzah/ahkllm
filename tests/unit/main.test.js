@@ -48,6 +48,7 @@ function loadMainModule() {
         loadTrashList: function(data) { receivedCalls.loadTrashList = data; },
         loadThread: function(data) { receivedCalls.loadThread = data; },
         threadForked: function(data) { receivedCalls.threadForked = data; },
+        updateTopbarTitle: function(data) { receivedCalls.updateTopbarTitle = data; },
         populateAssistantDropdown: function(data) { receivedCalls.populateAssistantDropdown = data; },
         populateCurrentSettings: function(data) { receivedCalls.populateCurrentSettings = data; },
         updateDropdownLabel: function(data) { receivedCalls.updateDropdownLabel = data; },
@@ -184,5 +185,27 @@ describe('handleWebMessage routing', () => {
     it('does not throw for unknown target', () => {
         const ctx = loadMainModule();
         assert.doesNotThrow(() => ctx.handleWebMessage({ data: JSON.stringify({ target: 'unknownTarget', data: {} }) }));
+    });
+
+    it('routes updateTopbarTitle (legacy target via explicit case)', () => {
+        const ctx = loadMainModule();
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'updateTopbarTitle', data: { text: 'Renamed', folder: 'Work' } }) });
+        const got = ctx._receivedCalls.updateTopbarTitle;
+        assert.ok(got && got.text === 'Renamed' && got.folder === 'Work', 'updateTopbarTitle should receive the title payload');
+    });
+
+    it('routes updateBranchInfo (legacy target via explicit case)', () => {
+        const ctx = loadMainModule();
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'updateBranchInfo', data: { msgId: 'm1', siblingInfo: { index: 1, total: 2 } } }) });
+        const got = ctx._receivedCalls.updateBranchInfo;
+        assert.ok(got && got.msgId === 'm1' && got.siblingInfo && got.siblingInfo.index === 1 && got.siblingInfo.total === 2, 'updateBranchInfo should receive the branch payload');
+    });
+
+    it('does NOT invoke arbitrary window globals for unknown targets (bug #108)', () => {
+        // A decoy global that the old window[target] fallback would have called.
+        const ctx = loadMainModule();
+        ctx.window.dangerousGlobal = function() { ctx._receivedCalls.dangerousGlobal = true; };
+        ctx.handleWebMessage({ data: JSON.stringify({ target: 'dangerousGlobal', data: {} }) });
+        assert.strictEqual(ctx._receivedCalls.dangerousGlobal, undefined, 'unknown targets must never be dispatched dynamically');
     });
 });
