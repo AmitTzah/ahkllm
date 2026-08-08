@@ -1,6 +1,7 @@
-# 2026-08-08T11:07:15.590Z | run of 1 scenario(s)
-PASS | #116 | ThreadRepo.Delete double-escapes the thread id into AttachmentRepo.DeleteByThread - crafted ids orphan attachments | ThreadRepo.Delete now passes the raw threadId into AttachmentRepo.DeleteByThread (escaped once, internally); for thread id 'x'' the messages AND attachment rows are deleted | 0.1s
+# 2026-08-08T11:12:30.976Z | run of 2 scenario(s)
+PASS | #117 | Deleting a message that holds the same attachment file twice orphans the file on disk (ref-count sees 2 rows) | message deleted, 0 attachment rows left, and the physical file at attachments/dupfile-117.txt was removed with them | 6.4s
+PASS | #131 | Attachment files stay reference-counted across forks, thread trash and cross-thread sharing (audit) | shared attachment file survived fork + both thread deletions (refcount held), then was removed when the last referencing message was deleted (refs=0, fileGone=true) | 13.6s
 
-Summary: 1/1 scenarios PASS
+Summary: 2/2 scenarios PASS
 Real profile restored: yes
 Report sync: OK

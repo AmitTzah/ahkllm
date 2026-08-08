@@ -99,32 +99,38 @@ class AttachmentRepo {
     ; MUST be called BEFORE DELETE FROM messages to read file_path before CASCADE.
     static DeleteByMessage(msgId) {
         safeMsgId := SQLite.Escape(msgId)
-        table := ChatDB.db.Exec("SELECT file_path FROM message_attachments WHERE message_id='" safeMsgId "';")
+        table := ChatDB.db.Exec("SELECT DISTINCT file_path FROM message_attachments WHERE message_id='" safeMsgId "';")
+        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id='" safeMsgId "';")
+        ; Bug #117: check the refcount AFTER the batch delete. Checking per-row
+        ; before the delete left a file held by 2 rows on the same message (or
+        ; by rows about to be deleted) looking referenced, so it was never
+        ; removed even though no rows survive.
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
         }
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id='" safeMsgId "';")
     }
 
     ; Delete all attachments for a thread — DB rows + disk files (reference-counted).
     ; MUST be called BEFORE raw DELETE FROM messages that triggers CASCADE.
     static DeleteByThread(threadId) {
         safeThreadId := SQLite.Escape(threadId)
-        table := ChatDB.db.Exec("SELECT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "';")
+        table := ChatDB.db.Exec("SELECT DISTINCT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "';")
+        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" safeThreadId "');")
+        ; Bug #117: refcount check runs AFTER the batch delete (see DeleteByMessage).
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
         }
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" safeThreadId "');")
     }
 
     ; Delete a single attachment by ID — DB row + disk file (reference-counted).
     static DeleteOne(attachmentId) {
         safeAttachmentId := SQLite.Escape(attachmentId)
-        table := ChatDB.db.Exec("SELECT file_path FROM message_attachments WHERE id='" safeAttachmentId "';")
-        if table.count {
-            AttachmentRepo._DeleteFileIfOrphaned(table[1, "file_path"])
-        }
+        table := ChatDB.db.Exec("SELECT DISTINCT file_path FROM message_attachments WHERE id='" safeAttachmentId "';")
         ChatDB.db.Exec("DELETE FROM message_attachments WHERE id='" safeAttachmentId "';")
+        ; Bug #117: refcount check runs AFTER the row delete (see DeleteByMessage).
+        for row in table.rows {
+            AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+        }
     }
 
     ; Copy all attachments from one message to another.
@@ -146,12 +152,15 @@ class AttachmentRepo {
         }
     }
 
-    ; Delete physical file only if no other DB rows reference it (reference counting)
+    ; Delete physical file only if no DB rows reference it (reference counting).
+    ; Callers invoke this AFTER the batch row delete (bug #117), so refs counts
+    ; SURVIVING rows: delete the file only when refs = 0. (The old pre-delete
+    ; pattern used refs <= 1, counting the row about to be deleted.)
     static _DeleteFileIfOrphaned(filePath) {
         safePath := SQLite.Escape(filePath)
         count := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM message_attachments WHERE file_path='" safePath "';")
         refs := count.count ? count[1, "cnt"] : 0
-        if refs <= 1 {
+        if refs = 0 {
             fullPath := AppInfo.DataDir "\" filePath
             try FileDelete(fullPath)
         }

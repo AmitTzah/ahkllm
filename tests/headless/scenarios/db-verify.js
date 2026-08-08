@@ -110,6 +110,7 @@ scenarios.push({
 scenarios.push({
   id: 117,
   name: "Deleting a message that holds the same attachment file twice orphans the file on disk (ref-count sees 2 rows)",
+  regression: true, // FIXED bug kept as a regression check (duplicate attachment rows must not orphan the file)
   mode: null,
   settings: {},
   fixtures: {
@@ -146,12 +147,12 @@ scenarios.push({
     const rows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE message_id='m-117-u1'")[0].c;
     const msgGone = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-117-u1'")[0].c === 0;
     const fileStillThere = fs.existsSync(path.join(dataDir, filePath));
-    // BUG: _DeleteFileIfOrphaned counts rows BEFORE the batch delete - with 2
-    // rows for the same path the refs stay 2 for both rows, so neither triggers
-    // the file delete, and the rows are then all removed -> orphaned file.
-    if (rows !== 0 || !msgGone || !fileStillThere)
-      throw new Error('orphan state not reproduced: rows=' + rows + ' msgGone=' + msgGone + ' fileStillThere=' + fileStillThere);
-    return 'message deleted, 0 attachment rows left, but the physical file still exists at ' + filePath + ' (orphaned by the double-row ref count)';
+    // FIXED (bug #117): _DeleteFileIfOrphaned now runs AFTER the batch row
+    // delete - with 2 rows for the same path the file is removed once both
+    // rows are gone, instead of both rows seeing refs=2 and orphaning the file.
+    if (rows !== 0 || !msgGone || fileStillThere)
+      throw new Error('orphan state not cleaned: rows=' + rows + ' msgGone=' + msgGone + ' fileStillThere=' + fileStillThere + ' (file should be removed with the rows)');
+    return 'message deleted, 0 attachment rows left, and the physical file at ' + filePath + ' was removed with them';
   }
 });
 scenarios.push({

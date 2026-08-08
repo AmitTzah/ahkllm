@@ -299,4 +299,87 @@ class AttachmentRepoTest {
         this._teardown()
     }
 
+    ; Regression (bug #117): deleting a message whose TWO attachment rows share
+    ; the same physical file must remove the file once both rows are gone. The
+    ; old code checked the refcount BEFORE the batch delete, so each row saw
+    ; refs=2 and the file was never removed (orphan on disk).
+    DeleteByMessage_RemovesFileWhenDuplicateRowGone() {
+        threadId := this._setup()
+        msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "dup"})
+        oldDataDir := AppInfo.DataDir
+        AppInfo.DataDir := A_Temp "\llm_att_test_" A_TickCount
+        try {
+            filePath := "attachments\dupfile.png"
+            fullPath := AppInfo.DataDir "\" filePath
+            DirCreate(SubStr(fullPath, 1, InStr(fullPath, "\", , -1) - 1))
+            FileAppend("dup", fullPath)
+            ChatDB.Attachment_Insert(msgId, { attachment_type: "image", file_path: filePath, mime_type: "image/png", original_filename: "dup.png", file_size: 3, extracted_text: "" })
+            ChatDB.Attachment_Insert(msgId, { attachment_type: "image", file_path: filePath, mime_type: "image/png", original_filename: "dup.png", file_size: 3, extracted_text: "" })
+            ChatDB.Attachment_DeleteByMessage(msgId)
+            if FileExist(fullPath)
+                throw Error("physical file should be removed when the last row referencing it is deleted (bug #117)")
+            atts := ChatDB.Attachment_GetByMessage(msgId)
+            if atts.Length != 0
+                throw Error("attachment rows should be deleted, got " atts.Length)
+        } finally {
+            AppInfo.DataDir := oldDataDir
+            this._teardown()
+        }
+    }
+
+    ; Regression (bug #117, thread path): DeleteByThread must also remove the
+    ; physical file after the batch delete when no other row references it.
+    DeleteByThread_RemovesFileWhenLastReferenceGone() {
+        threadId := this._setup()
+        msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "dup"})
+        oldDataDir := AppInfo.DataDir
+        AppInfo.DataDir := A_Temp "\llm_att_test_" A_TickCount
+        try {
+            filePath := "attachments\dupthread.png"
+            fullPath := AppInfo.DataDir "\" filePath
+            DirCreate(SubStr(fullPath, 1, InStr(fullPath, "\", , -1) - 1))
+            FileAppend("dup", fullPath)
+            ChatDB.Attachment_Insert(msgId, { attachment_type: "image", file_path: filePath, mime_type: "image/png", original_filename: "dup.png", file_size: 3, extracted_text: "" })
+            ChatDB.Attachment_Insert(msgId, { attachment_type: "image", file_path: filePath, mime_type: "image/png", original_filename: "dup.png", file_size: 3, extracted_text: "" })
+            ChatDB.Attachment_DeleteByThread(threadId)
+            if FileExist(fullPath)
+                throw Error("physical file should be removed after DeleteByThread when no rows survive (bug #117)")
+            atts := ChatDB.Attachment_GetByMessage(msgId)
+            if atts.Length != 0
+                throw Error("attachment rows should be deleted, got " atts.Length)
+        } finally {
+            AppInfo.DataDir := oldDataDir
+            this._teardown()
+        }
+    }
+
+    ; Regression guard (scenario 131 semantics): deleting ONE thread's rows must
+    ; keep the physical file while another thread still references it (refs=1
+    ; survives - the old post-delete check with refs <= 1 deleted it).
+    DeleteByThread_KeepsFileWhenOtherRowSurvives() {
+        threadId := this._setup()
+        msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "src"})
+        otherId := ChatDB.Thread_Create("Other")
+        otherMsgId := ChatDB.Msg_Insert({thread_id: otherId, role: "user", content: "other"})
+        oldDataDir := AppInfo.DataDir
+        AppInfo.DataDir := A_Temp "\llm_att_test_" A_TickCount
+        try {
+            filePath := "attachments\shared.png"
+            fullPath := AppInfo.DataDir "\" filePath
+            DirCreate(SubStr(fullPath, 1, InStr(fullPath, "\", , -1) - 1))
+            FileAppend("shared", fullPath)
+            ChatDB.Attachment_Insert(msgId, { attachment_type: "image", file_path: filePath, mime_type: "image/png", original_filename: "s.png", file_size: 6, extracted_text: "" })
+            ChatDB.Attachment_Insert(otherMsgId, { attachment_type: "image", file_path: filePath, mime_type: "image/png", original_filename: "s.png", file_size: 6, extracted_text: "" })
+            ChatDB.Attachment_DeleteByThread(threadId)
+            if !FileExist(fullPath)
+                throw Error("file must survive while the other thread's row still references it (refs=1)")
+            atts := ChatDB.Attachment_GetByMessage(otherMsgId)
+            if atts.Length != 1
+                throw Error("other thread's attachment should survive, got " atts.Length)
+        } finally {
+            AppInfo.DataDir := oldDataDir
+            this._teardown()
+        }
+    }
+
 }
