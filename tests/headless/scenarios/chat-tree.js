@@ -938,4 +938,51 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 139,
+  name: 'Search navigation lands on the newest continuation of an off-path branch and keeps the DB active leaf consistent (audit)',
+  regression: true, // audit: FTS search -> navigateToMessage -> _WalkToLeaf must land on the branch leaf
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-srch-139', title: 'Search Tree', active_leaf_id: 'm-139-a1' }],
+    messages: [
+      { id: 'm-139-u1', thread_id: 't-srch-139', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-139-a1', thread_id: 't-srch-139', role: 'assistant', content: 'answer A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-139-u1', sibling_group: 'sg-139', sibling_index: 0, token_count: 20, prompt_tokens: 10, active_path_tokens: 30 },
+      { id: 'm-139-a1b', thread_id: 't-srch-139', role: 'assistant', content: 'answer B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-139-u1', sibling_group: 'sg-139', sibling_index: 1, token_count: 20, prompt_tokens: 10, active_path_tokens: 30 },
+      { id: 'm-139-u2b', thread_id: 't-srch-139', role: 'user', content: 'needle in the haystack', parent_id: 'm-139-a1b', token_count: 5, active_path_tokens: 35 },
+      { id: 'm-139-a2b', thread_id: 't-srch-139', role: 'assistant', content: 'answer B2', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-139-u2b', token_count: 30, prompt_tokens: 15, active_path_tokens: 45 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-139-a1"', 15000, 300, 'branch A loaded');
+    await sleep(700);
+
+    // Type in the GLOBAL search box; the off-path message "needle in the haystack"
+    // lives in branch B (u2b) and is indexed by FTS5.
+    await cdp.type('.search-wrap:not(.in-panel) .search-input', 'needle');
+    await cdp.waitFor('document.querySelectorAll(".search-result-item").length >= 1', 15000, 300, 'search results');
+    const preview = await cdp.text('.search-result-item:first-child .search-result-preview');
+    if (String(preview).indexOf('needle') < 0)
+      throw new Error('search result does not match needle: ' + JSON.stringify(preview));
+    await cdp.click('.search-result-item:first-child');
+
+    // Navigation must land on the NEWEST continuation of branch B (a2b) and the
+    // DB active leaf must match.
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[3] && chatMessages[3].id === "m-139-a2b"', 15000, 300, 'navigated to branch B leaf');
+    await sleep(700);
+    const leaf = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id=?', ['t-srch-139'])[0];
+    if (leaf.active_leaf_id !== 'm-139-a2b')
+      throw new Error('DB active leaf after search nav wrong: ' + JSON.stringify(leaf));
+    const ctx = await cdp.text('#tokenBar .tu-item:first-child .tu-val');
+    if (String(ctx).indexOf('45') !== 0)
+      throw new Error('header context after search nav wrong: ' + JSON.stringify(ctx));
+    return 'searched "needle": result preview=' + JSON.stringify(preview) + ' -> navigated to leaf m-139-a2b ' +
+      '(context ' + JSON.stringify(ctx) + '), DB active_leaf=' + leaf.active_leaf_id + ' (consistent)';
+  }
+});
+
 module.exports = scenarios;
