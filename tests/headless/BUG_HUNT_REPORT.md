@@ -154,9 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - ALL 15 open bugs (#113-#130) are FIXED and committed on `fix/bug-hunt-113-130`. Full verification green: 126/126 E2E scenarios, 519/519 AHK tests, 512/512 JS tests, contract + load checks pass, `--check-sync` OK (0 open entries). No open bugs remain.
+- **Where we left off:** 2026-08-08 - NEW bug #133 verified headlessly (cancelled mid-stream responses are
+  counted as billed API requests and inflate the thread's cumulative input tokens). Added audits #134-#137
+  (General/UI/Menu settings round-trips, dashboard filters, complex-tree + attachment lifecycle) - all PASS.
+  Next: fix #133 (rank 1), then re-run `--check-sync` + full suites.
 ---
 
 ## Bug entry template
@@ -208,7 +211,37 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** none - all verified bugs are fixed.
+**Ranked (1 = highest):**
+
+### 1. Cancelling a stream mid-response records a fake API request and inflates the thread's cumulative input tokens (header and usage dashboard disagree)
+
+**Scenario:** 133 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified — open
+
+**Repro:** Send a message and let the response complete. Send a second message and click Stop (the send button
+becomes Stop) while the stream is still producing content/reasoning. Open the usage dashboard and look at the
+chat header token bar.
+
+**Expected:** A cancelled stream never reported usage, so it must not create a billed API request row (the
+dashboard keeps "API Requests" = completed calls) and the thread's cumulative input/output/cached tokens must
+only reflect completed API calls (the header and the dashboard must agree, as in the #119 pipeline).
+
+**Actual:** The cancelled partial assistant is persisted through `_handleStreamCancelled` → `ChatDB.Msg_Insert`
+WITHOUT `local_copy: true`/`prompt_tokens`, so `MessageRepo.Insert` (a) upserts a `chat_usage` row with 0 tokens
+(`call_count` +1, "API Requests" inflated by a request that never billed) and (b) `_RecomputeCumulativeCounters`
+falls back to the parent message's `active_path_tokens` as the prompt total, charging the un-billed context.
+Verified live: after exchange 1 (mock prompt 12 / completion 9 / cached 4) and a mid-stream cancel on exchange 2,
+the DB shows `chat_usage call_count=2 (prompt 12)` while the thread's `cumulative_input_tokens=33` (12 real + 21
+un-billed parent context); the header token bar shows `↑ 33` while the dashboard records only 12 prompt tokens.
+
+**Evidence:** `chat/streaming/StreamError.ahk` `_handleStreamCancelled` inserts the partial row with no
+`local_copy`/`prompt_tokens`; `chat/db/MessageRepo.ahk` `Insert` (chat_usage upsert + `_RecomputeCumulativeCounters`
+legacy fallback to `rowMap[parent].active_path_tokens`) turns it into a billed request.
+
+**Verification:** headless — scenario 133 sends two messages with the mock SSE server, presses Stop mid-stream
+(partial row has `token_count=0, prompt_tokens=0`), then asserts `chat_usage.call_count=2` and
+`cumulative_input_tokens=33` (both PASS = bug reproduced, 3/3 stable runs).
 
 
 ## History (append-only)

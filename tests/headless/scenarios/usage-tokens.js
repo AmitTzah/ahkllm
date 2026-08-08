@@ -460,4 +460,56 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 133,
+  name: 'Cancelling a stream mid-response records a fake 0-token API request in chat_usage and inflates the thread cumulative input by the un-billed parent context (header vs dashboard disagree)',
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await showChat();
+    // Exchange 1 completes: u1 + a1 (mock usage prompt 12 / completion 9 / cached 4).
+    await sendChatMessage(cdp, 'first question');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1000);
+
+    // Exchange 2 starts; cancel it AFTER at least one SSE chunk has been
+    // read into the stream state (partial content), but BEFORE the usage
+    // chunk / [DONE] arrives. The mock streams reasoning at ~60ms intervals
+    // and finishes at ~320ms, so wait for streaming to become active and then
+    // give it ~250ms before pressing Stop (the send button becomes Stop).
+    await sendChatMessage(cdp, 'second question');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    await cdp.click('#chat-send-btn');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1200);
+
+    const msgs = seed.query(dbPath, "SELECT role, content, token_count, prompt_tokens, active_path_tokens, model FROM messages ORDER BY created_at");
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads')[0];
+    const usage = seed.query(dbPath, 'SELECT call_count, prompt_tokens, completion_tokens FROM chat_usage')[0];
+    const partial = msgs[msgs.length - 1];
+
+    // The cancelled partial assistant is persisted (by design). Confirm we
+    // actually hit the cancel path: the last row must be an assistant with NO
+    // API usage (token_count/prompt_tokens 0) - if it carries full usage the
+    // mock finished before Stop landed and this run did not exercise the bug.
+    if (!partial || partial.role !== 'assistant')
+      throw new Error('setup: last row is not an assistant after cancel: ' + JSON.stringify(msgs));
+    if (Number(partial.prompt_tokens) > 0 || Number(partial.token_count) > 0)
+      throw new Error('setup: stream finished before Stop landed (last assistant has usage) - re-run: ' + JSON.stringify(partial));
+    // BUG (repro): the cancelled insert lacks local_copy/prompt_tokens, so
+    // MessageRepo.Insert upserts a fake chat_usage request (call_count 2 with
+    // 0 tokens) and _RecomputeCumulativeCounters charges the parent's
+    // active_path_tokens (21) as input, inflating cumulative input to 33 while
+    // the dashboard records only 12 prompt tokens.
+    if (usage.call_count !== 2) throw new Error('expected buggy chat_usage call_count 2 (fake cancelled request), got ' + JSON.stringify(usage) + ' msgs=' + JSON.stringify(msgs));
+    if (Number(thread.cumulative_input_tokens) !== 33)
+      throw new Error('expected buggy cumulative input 33 (12 real + 21 un-billed parent context), got ' + JSON.stringify(thread) + ' msgs=' + JSON.stringify(msgs) + ' usage=' + JSON.stringify(usage));
+    const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    return 'cancelled mid-stream: partial row=' + JSON.stringify(partial) +
+      ', chat_usage=' + JSON.stringify(usage) + ' (fake 2nd request, 0 tokens), thread counters=' +
+      JSON.stringify(thread) + ' (input inflated to 33 = 12 real + 21 un-billed parent context), header=' + JSON.stringify(bar);
+  }
+});
+
 module.exports = scenarios;
