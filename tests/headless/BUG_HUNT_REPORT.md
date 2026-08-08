@@ -154,12 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-08 - Bugs #133 (cancelled-stream usage over-count), #138 (Active Icon change
-  is not re-applied to the open chat window) and #140 (retrying the first exchange re-fires title generation)
-  verified headlessly and committed. Audits #134-#137, #139 all PASS.
-  Next: fix #133 (rank 1), then #140, then #138; re-run `--check-sync` + full suites after each.
+  is not re-applied to the open chat window), #140 (retrying the first exchange re-fires title generation) and
+  #142 (follow-up messages drop earlier image context from API requests) verified headlessly and committed.
+  Audits #134-#137, #139, #141 all PASS.
+  Next: fix #133 (rank 1), then #142, then #140, then #138; re-run `--check-sync` + full suites after each.
 ---
 
 ## Bug entry template
@@ -289,6 +290,31 @@ re-checks `currentTitle`; `chat/ThreadTitleGen.ahk` `generateThreadTitle` has no
 
 **Verification:** headless — scenario 140 sends one exchange, waits, retries the first assistant, and asserts the
 mock log contains 2 title requests (`max_tokens === 50`) — PASS = duplicate fired.
+
+### 4. Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)
+
+**Scenario:** 142 (scenario code in scenarios/misc.js)
+
+**Status:** verified — open
+
+**Repro:** On a vision-capable model, attach an image to a message and send it ("what is this?"). Wait for the
+answer, then send a plain-text follow-up about the same image ("and what about the colors?").
+
+**Expected:** The follow-up API request keeps the earlier message's image content part (like the message text
+context does), so the model can answer follow-up questions about the image.
+
+**Actual:** `_BuildApiMessagesFromPath` only carries message text and `_ProcessAttachmentsForLastUser` attaches
+content only for the LAST user message, so from exchange 2 onward the API payload is pure text — the earlier
+image silently disappears from the conversation context and the model cannot answer follow-ups about it.
+Verified live: exchange 1's mock request contains `image_url=true`; exchange 2's request contains `image_url=false`
+(2/2 stable runs).
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` `_ProcessAttachmentsForLastUser` (only the last user message's
+attachments) + `_BuildApiMessagesFromPath` (content-only messages).
+
+**Verification:** headless — scenario 142 posts a real chatSend with an image attachment on openai/gpt-5-mini
+(vision:true), then sends a text follow-up, and asserts the mock log's second request has no `image_url` part —
+PASS = context dropped.
 
 
 ## History (append-only)

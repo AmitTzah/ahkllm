@@ -108,6 +108,48 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 142,
+  name: 'Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)',
+  mode: 'sse-success',
+  settings: { newChatStartsWith: 'openai/gpt-5-mini' },
+  async body({ cdp, mockLog }) {
+    const fs = require('node:fs');
+    await showChat();
+    // Exchange 1: a REAL chatSend with an image attachment (vision-capable
+    // model would receive image_url; the mock accepts anything).
+    await cdp.eval(`(() => {
+      Ipc.postToHost('chatSend', {
+        message: 'what is this?',
+        attachments: [{ type: 'image', filename: 'img.png', mimeType: 'image/png', base64: 'aGVsbG8=', size: 4, extractedText: '', contentHash: 'followup142' }]
+      });
+      return true;
+    })()`);
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+    // Exchange 2: plain text follow-up about the same image.
+    await sendChatMessage(cdp, 'and what about the colors?');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const logLines = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
+    const chatReqs = logLines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
+      .filter((r) => r.body && r.body.messages && !r.body.prompt && r.body.max_tokens !== 50);
+    if (chatReqs.length !== 2) throw new Error('expected 2 chat requests, got ' + chatReqs.length + ': ' + JSON.stringify(logLines));
+    const req1 = chatReqs[0].body;
+    const req2 = chatReqs[1].body;
+    const hasImage = (req) => JSON.stringify(req.messages).indexOf('image_url') >= 0;
+    if (!hasImage(req1)) throw new Error('setup: exchange 1 did not carry the image: ' + JSON.stringify(req1));
+    // BUG (repro): the second request must still include the first message's
+    // image content part so the model can answer follow-ups about it; today
+    // _ProcessAttachmentsForLastUser only attaches the LAST user message.
+    if (hasImage(req2))
+      throw new Error('exchange 2 unexpectedly still carries the image (bug not reproduced)');
+    return 'exchange 1 request carries image_url=' + hasImage(req1) + '; exchange 2 request carries image_url=' +
+      hasImage(req2) + ' (earlier image context is dropped from follow-up API calls)';
+  }
+});
+
+scenarios.push({
   id: 43,
   name: 'Short-form model ids keep thinking metadata (provider prefix not required)',
   regression: true, // FIXED by the ModelId consolidation (step 5)
