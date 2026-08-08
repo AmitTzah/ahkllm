@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #129 (ThreadRepo.Delete/PurgeExpired now call FTS_Remove for every deleted message before the raw DELETEs, so the FTS index stays in sync in-session instead of drifting until the next startup rebuild; scenario 129 flipped + ChatDB unit tests). Next up per the lifecycle is #130 (the last open bug).
+- **Where we left off:** 2026-08-08 - ALL 15 open bugs (#113-#130) are FIXED and committed on `fix/bug-hunt-113-130`. Full verification green: 126/126 E2E scenarios, 519/519 AHK tests, 512/512 JS tests, contract + load checks pass, `--check-sync` OK (0 open entries). No open bugs remain.
 ---
 
 ## Bug entry template
@@ -208,42 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #130 - each entry keeps its stable scenario id.
-
-
-### 15. Saving Settings wipes a custom (unlisted) "Response Font" - the select has no matching option so save() emits an empty value
-
-**Scenario:** 130 (scenario code in `scenarios/settings.js`)
-
-**Status:** verified
-
-**Repro:** Configure `ui.responseFont` in `settings.json` (or
-`DefaultSettings.ahk`) with a font that is NOT one of the five UI options
-(Arial / Inter / Segoe UI / Georgia / JetBrains Mono), e.g. `"Courier New"`.
-Open Settings, change any field, and click Save.
-
-**Expected:** the custom font survives the save round-trip like every other
-configured value (the pattern bug #39 established for the custom
-system-message file: preserve the stored value when the select has no matching
-option).
-
-**Actual:** `ui-theme.js` `load()` assigns the raw value to the fixed-option
-`#responseFont` select (`S.setVal`), so a font outside the option list leaves
-the select with an EMPTY selection. `save()` then writes
-`responseFont: S.getVal('responseFont')` = `""` into `settings.json`, so the
-custom font is permanently wiped on the first Settings save and the app falls
-back to the default font. The same pattern applies to the Command Input
-Window / Suspend Banner font-face selects.
-
-**Evidence:** `webui/js/settings/sections/ui-theme.js` - `load()` uses
-`S.setVal('responseFont', fontName)` on the select (no "keep unknown value"
-fallback, unlike `SettingsShared.fillSelect`), and `save()` returns
-`S.getVal('responseFont')` directly.
-
-**Verification:** headless scenario 130 - seeded `ui.responseFont =
-"Courier New"`, opened Settings (select value reads ""), changed an unrelated
-UI field, saved, then read `settings.json`: `responseFont` is now "" and the
-value is gone.
+**Ranked (1 = highest):** none - all verified bugs are fixed.
 
 
 ## History (append-only)
@@ -278,6 +243,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output)" - FIXED in 664f960 (with #114): _RecomputeCumulativeCounters counts output/cached only on assistant rows, so user token_counts (backfilled INPUT contributions) never inflate cumulative output after a hard delete; scenario 128 flipped to a regression check + ChatDB unit test (UsageTracking regression updated at #114, closed by 7ab4282).
 
 - 2026-08-08 - "Empty Trash / deleteThreadForever leaves stale messages_fts rows (thread-level delete skips FTS cleanup, unlike HardDelete)" - FIXED in 5af8b5d: ThreadRepo.Delete/PurgeExpired now call ChatDB.FTS_Remove for every deleted message before the raw DELETEs, so the FTS index stays in sync in-session (same guarantee as HardDelete, bug #65); scenario 129 flipped to a regression check + ChatDB unit tests.
+
+- 2026-08-08 - "Saving Settings wipes a custom (unlisted) "Response Font" - the select has no matching option so save() emits an empty value" - FIXED in 2e8c4f4: ui-theme.js now records the stored font on each fixed-option select at load() and save() falls back to it when the select has no matching option (the #39 pattern), so custom Response Font / Input Window / Suspend Banner font faces survive a Settings save; scenario 130 flipped to a regression check + ui-theme unit tests.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
