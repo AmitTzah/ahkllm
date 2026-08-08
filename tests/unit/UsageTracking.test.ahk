@@ -89,6 +89,43 @@ class UsageTrackingTest {
             throw Error("_EscapeLike must escape \ then % then _ (bug #102)")
     }
 
+    ; Regression (bug #103): pricingUnit must follow the ACTIVE model (request
+    ; model -> thread override -> last assistant on the active path), never the
+    ; thread's first (oldest) message.
+    ThreadStats_PricingUnit_FollowsActiveModel() {
+        global requestParams
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Pricing")
+        oldParams := IsSet(requestParams) ? requestParams : ""
+        try {
+            ; Clear the request model so the thread's own models drive pricing.
+            requestParams := Map("singleAPIModelName", "")
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hi"})
+            a1 := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "first", model: "deepseek/deepseek-v4-flash"})
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.14
+                throw Error("pricing should follow the active assistant model (deepseek-v4-flash 0.14), got " stats.pricingUnit.input)
+            ; A newer assistant message becomes the leaf - pricing must follow it.
+            ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "second", model: "openai/gpt-5-mini", parent_id: a1})
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.25
+                throw Error("pricing should follow the newest assistant model (gpt-5-mini 0.25), got " stats.pricingUnit.input)
+            ; Thread override wins over message models.
+            ChatDB.db.Exec("UPDATE chat_threads SET model_override='deepseek/deepseek-v4-flash' WHERE id='" threadId "';")
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.14
+                throw Error("thread override should win over message models, got " stats.pricingUnit.input)
+            ; Current request model wins over everything.
+            requestParams := Map("singleAPIModelName", "openai/gpt-5-mini")
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.25
+                throw Error("request model should win, got " stats.pricingUnit.input)
+        } finally {
+            requestParams := oldParams
+            this._closeDb()
+        }
+    }
+
     SingleExchange_AllTokenFields() {
         this._openDb()
         threadId := ChatDB.Thread_Create("Test")

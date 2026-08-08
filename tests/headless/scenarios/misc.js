@@ -904,7 +904,8 @@ scenarios.push({
 
 scenarios.push({
   id: 103,
-  name: "TreeRepo.GetThreadStats pricingUnit picks first message model, not active model",
+  name: "TreeRepo.GetThreadStats resolves pricing from the active model (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (pricing must follow the active model, not the first message)
   mode: null,
   noApp: true,
   async body() {
@@ -912,9 +913,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    const hasFirst = /SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL.*LIMIT 1/.test(tr);
-    if (!hasFirst) throw new Error("bug not reproduced");
-    return "TreeRepo.GetThreadStats pricingUnit LIMIT 1 first model";
+    // FIXED (bug #103): pricing resolves from the active model (request ->
+    // thread override -> last assistant), never the first message.
+    const hasResolver = /_ResolvePricing\(threadId\)/.test(tr);
+    const resolvesRequest = /static _ResolvePricing\(threadId\)[\s\S]{0,300}requestParams\["singleAPIModelName"\]/.test(tr);
+    const resolvesOverride = /static _ResolvePricing\(threadId\)[\s\S]{0,600}model_override/.test(tr);
+    const resolvesLastAssistant = /static _ResolvePricing\(threadId\)[\s\S]{0,1200}role = "assistant"/.test(tr);
+    const firstModelQuery = /SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL.*LIMIT 1/.test(tr);
+    if(!hasResolver || !resolvesRequest || !resolvesOverride || !resolvesLastAssistant || firstModelQuery)
+      throw new Error("bug #103 not fixed: hasResolver="+hasResolver+" resolvesRequest="+resolvesRequest+" resolvesOverride="+resolvesOverride+" resolvesLastAssistant="+resolvesLastAssistant+" firstModelQuery="+firstModelQuery);
+    return "TreeRepo.GetThreadStats pricingUnit uses _ResolvePricing (request model -> thread override -> last assistant on the active path) instead of the thread's first message";
   }
 });
 

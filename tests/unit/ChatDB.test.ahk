@@ -566,7 +566,7 @@ class ChatDBTest {
     ; Regression (bug #63): a model with cachedInput="" must fall back to 10%
     ; of the input price instead of showing 0 in the token-bar pricing unit.
     GetThreadStats_CachedInputEmpty_FallsBackToTenPercent() {
-        global models
+        global models, requestParams
         threadId := this._setup()
         testModel := "deepseek/test-empty-cached"
         models[testModel] := {
@@ -576,12 +576,17 @@ class ChatDBTest {
             thinkingOff: "disabled",
             input: 1, cachedInput: "", output: 2, context: 1000000, reasoning: true, vision: false
         }
+        ; Bug #103: pricing resolves from the ACTIVE model (request model
+        ; first) - make the test model active so its pricing drives the unit.
+        oldModel := requestParams["singleAPIModelName"]
         try {
+            requestParams["singleAPIModelName"] := testModel
             ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "hi", model: testModel})
             stats := ChatDB.Msg_GetThreadStats(threadId)
             if Number(stats.pricingUnit.cachedInput) != 0.1
                 throw Error("cachedInput fallback should be 10% of input (0.1), got " stats.pricingUnit.cachedInput)
         } finally {
+            requestParams["singleAPIModelName"] := oldModel
             models.Delete(testModel)
             this._teardown()
         }

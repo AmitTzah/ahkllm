@@ -343,38 +343,13 @@ class TreeRepo {
         }
 
         threadTable := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" threadId "';")
-        ; Determine context window from current model
-        contextWin := 1048576
-        ; Priority 1: current request model (what user selected)
-        if IsSet(requestParams) && requestParams.Has("singleAPIModelName") && requestParams["singleAPIModelName"] {
-            pricing := TreeRepo._LookupPricing(requestParams["singleAPIModelName"])
-            if pricing && pricing.HasOwnProp("context")
-                contextWin := pricing.context
-        }
-        ; Priority 2: thread model override from DB
-        if contextWin = 1048576 {
-            threadRow := ChatDB.db.Exec("SELECT model_override FROM chat_threads WHERE id='" threadId "';")
-            if threadRow.count && threadRow[1, "model_override"] {
-                pricing := TreeRepo._LookupPricing(threadRow[1, "model_override"])
-                if pricing && pricing.HasOwnProp("context")
-                    contextWin := pricing.context
-            }
-        }
-        ; Priority 3: last assistant message model
-        if contextWin = 1048576 {
-            path := TreeRepo.GetActivePath(threadId)
-            i := path.Length
-            while i >= 1 {
-                if path[i].role = "assistant" && path[i].model {
-                    pricing := TreeRepo._LookupPricing(path[i].model)
-                    if pricing && pricing.HasOwnProp("context") {
-                        contextWin := pricing.context
-                        break
-                    }
-                }
-                i--
-            }
-        }
+        ; Determine context window and pricing unit from the SAME model
+        ; resolution order (bug #103): current request model, then thread
+        ; model override, then the last assistant message on the active path.
+        ; The old pricingUnit query took the thread's FIRST message (LIMIT 1),
+        ; so the token bar used the oldest model's prices after switching.
+        pricing := TreeRepo._ResolvePricing(threadId)
+        contextWin := pricing && pricing.HasOwnProp("context") ? pricing.context : 1048576
 
         result := {
             activePathTokens: activePathTokens, contextWindow: contextWin,
@@ -388,17 +363,13 @@ class TreeRepo {
             pricingUnit: { input: 0, cachedInput: 0, output: 0 }
         }
 
-        allTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL AND model != '' LIMIT 1;")
-        if allTable.count && allTable[1, "model"] {
-            pricing := TreeRepo._LookupPricing(allTable[1, "model"])
-            if pricing {
-                result.pricingUnit := {
-                    input: pricing.HasOwnProp("input") ? pricing.input : 0,
-                    ; Bug #63: a stored "" means "not set" - fall back to 10% of
-                    ; the input price (a present "" was previously taken as 0).
-                    cachedInput: pricing.HasOwnProp("cachedInput") && pricing.cachedInput != "" ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
-                    output: pricing.HasOwnProp("output") ? pricing.output : 0
-                }
+        if pricing {
+            result.pricingUnit := {
+                input: pricing.HasOwnProp("input") ? pricing.input : 0,
+                ; Bug #63: a stored "" means "not set" - fall back to 10% of
+                ; the input price (a present "" was previously taken as 0).
+                cachedInput: pricing.HasOwnProp("cachedInput") && pricing.cachedInput != "" ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
+                output: pricing.HasOwnProp("output") ? pricing.output : 0
             }
         }
 
@@ -408,6 +379,34 @@ class TreeRepo {
     static _LookupPricing(modelName) {
         ; Single lookup accepting full or short model ids.
         return ModelResolver.Lookup(models, modelName)
+    }
+
+    ; Resolve the model pricing used for the token bar, in priority order
+    ; (bug #103): 1) the current request model, 2) the thread's model_override,
+    ; 3) the last assistant message on the active path.
+    static _ResolvePricing(threadId) {
+        if IsSet(requestParams) && requestParams.Has("singleAPIModelName") && requestParams["singleAPIModelName"] {
+            pricing := TreeRepo._LookupPricing(requestParams["singleAPIModelName"])
+            if pricing
+                return pricing
+        }
+        threadRow := ChatDB.db.Exec("SELECT model_override FROM chat_threads WHERE id='" threadId "';")
+        if threadRow.count && threadRow[1, "model_override"] {
+            pricing := TreeRepo._LookupPricing(threadRow[1, "model_override"])
+            if pricing
+                return pricing
+        }
+        path := TreeRepo.GetActivePath(threadId)
+        i := path.Length
+        while i >= 1 {
+            if path[i].role = "assistant" && path[i].model {
+                pricing := TreeRepo._LookupPricing(path[i].model)
+                if pricing
+                    return pricing
+            }
+            i--
+        }
+        return ""
     }
 
     static _WalkToLeaf(msgId) {
