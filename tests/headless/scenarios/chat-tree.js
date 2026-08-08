@@ -722,6 +722,7 @@ scenarios.push({
 scenarios.push({
   id: 125,
   name: 'Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches',
+  regression: true, // FIXED bug kept as a regression check (labels are positions among remaining siblings)
   mode: null,
   settings: {},
   fixtures: {
@@ -772,21 +773,20 @@ scenarios.push({
     await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer B"', 15000, 300, 'navigated to branch B');
     await sleep(500);
     const labelB = await cdp.text('#chat-messages .msg:nth-child(2) .branch-label-inline');
-    // BUG: buildStructuredMessagesFromPath labels the message with the RAW
-    // sibling_index + 1 (2) even though it is now the FIRST of 2 remaining
-    // branches. Expected 1/2.
-    if (labelB !== '2/2')
-      throw new Error('branch B label after deleting branch A = ' + JSON.stringify(labelB) + ' (expected the buggy 2/2)');
-    // And branch C now shows 3/2 (expected 2/2).
+    // FIXED (bug #125): buildStructuredMessagesFromPath labels the message by
+    // its POSITION among the remaining siblings - B is now the first of 2.
+    if (labelB !== '1/2')
+      throw new Error('branch B label after deleting branch A = ' + JSON.stringify(labelB) + ' (expected 1/2)');
+    // Branch C is now the second of 2.
     await cdp.click('#treeBtn');
     await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open")', 15000, 300, 'tree open again');
     await cdp.click('.tree-node[data-target="m-125-a1c"]');
     await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer C"', 15000, 300, 'navigated to branch C');
     await sleep(500);
     const labelC = await cdp.text('#chat-messages .msg:nth-child(2) .branch-label-inline');
-    if (labelC !== '3/2')
-      throw new Error('branch C label after deleting branch A = ' + JSON.stringify(labelC) + ' (expected the buggy 3/2)');
-    return 'labels before delete: A=' + labelA + ', C=' + labelBefore + '; after deleting A: B=' + labelB + ' (should be 1/2), C=' + labelC + ' (should be 2/2)';
+    if (labelC !== '2/2')
+      throw new Error('branch C label after deleting branch A = ' + JSON.stringify(labelC) + ' (expected 2/2)');
+    return 'labels before delete: A=' + labelA + ', C=' + labelBefore + '; after deleting A: B=' + labelB + ' (1/2), C=' + labelC + ' (2/2)';
   }
 });
 

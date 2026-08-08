@@ -202,6 +202,22 @@ describe('_findDefaultLeaf', () => {
     });
 });
 
+describe('updateBranchInfo', () => {
+    it('updates siblingInfo on the matching message (bug #125)', () => {
+        const ctx = loadBranchingModule();
+        ctx.chatMessages = [
+            { id: 'm1', role: 'user' },
+            { id: 'm2', role: 'assistant', siblingInfo: { index: 1, total: 1 } }
+        ];
+        ctx.updateBranchInfo({ msgId: 'm2', siblingInfo: { index: 2, total: 3 } });
+        assert.strictEqual(ctx.chatMessages[1].siblingInfo.index, 2);
+        assert.strictEqual(ctx.chatMessages[1].siblingInfo.total, 3);
+        // Non-matching ids leave the array untouched.
+        ctx.updateBranchInfo({ msgId: 'nope', siblingInfo: { index: 9, total: 9 } });
+        assert.strictEqual(ctx.chatMessages[1].siblingInfo.index, 2);
+    });
+});
+
 describe('_inheritModels', () => {
     it('fills missing model from parent', () => {
         const ctx = loadBranchingModule();

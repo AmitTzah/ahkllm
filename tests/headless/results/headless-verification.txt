@@ -1,5 +1,5 @@
-# 2026-08-08T11:28:14.350Z | run of 1 scenario(s)
-PASS | #124 | Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included) | tree modal label: "Viewing active path · 2 nodes" - counts the 2 active-path nodes, not all 5 tree nodes | 5.1s
+# 2026-08-08T11:31:38.830Z | run of 1 scenario(s)
+PASS | #125 | Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches | labels before delete: A=1/3, C=3/3; after deleting A: B=1/2 (1/2), C=2/2 (2/2) | 8.9s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

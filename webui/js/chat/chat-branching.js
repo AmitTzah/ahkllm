@@ -87,3 +87,17 @@ function switchBranch(msgId, direction) {
   Ipc.postToHost('switchBranch', { id: msgId, direction: direction });
 }
 
+// D3b: AHK pushes position-based branch info after a branch switch (bug #125).
+// Keep chatMessages in sync; the following updateChatView rebuild re-renders
+// the labels from buildStructuredMessagesFromPath anyway, but the posted
+// message should not be a silent no-op.
+function updateBranchInfo(data) {
+  if (!data || !data.msgId || !data.siblingInfo) return;
+  for (var i = 0; i < chatMessages.length; i++) {
+    if (chatMessages[i].id === data.msgId) {
+      chatMessages[i].siblingInfo = data.siblingInfo;
+      break;
+    }
+  }
+}
+

@@ -179,4 +179,36 @@ class ChatUtilsTest {
         }
     }
 
+    ; Regression (bug #125): branch position labels must be 1-based positions
+    ; among the REMAINING siblings, not the raw sibling_index+1 (which goes
+    ; stale after a sibling is deleted and grows with every retry).
+    StructuredMessages_BranchLabelsArePositions() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Branch Labels")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A", parent_id: u1Id, sibling_group: "sg-125", sibling_index: 0})
+        a1bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "B", parent_id: u1Id, sibling_group: "sg-125", sibling_index: 1})
+        a1cId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "C", parent_id: u1Id, sibling_group: "sg-125", sibling_index: 2})
+
+        ; Before any delete: branch C shows 3/3.
+        path := ChatDB.Msg_GetActivePath(threadId)
+        structured := buildStructuredMessagesFromPath(path, threadId)
+        if structured[2].siblingInfo.index != 3 || structured[2].siblingInfo.total != 3
+            throw Error("expected 3/3 before delete, got " structured[2].siblingInfo.index "/" structured[2].siblingInfo.total)
+
+        ; Delete branch A (index 0): B and C must become 1/2 and 2/2.
+        ChatDB.Msg_HardDelete(a1Id)
+        ChatDB.Msg_SetActiveLeaf(threadId, a1bId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        structured := buildStructuredMessagesFromPath(path, threadId)
+        if structured[2].siblingInfo.index != 1 || structured[2].siblingInfo.total != 2
+            throw Error("branch B label after deleting A should be 1/2, got " structured[2].siblingInfo.index "/" structured[2].siblingInfo.total)
+        ChatDB.Msg_SetActiveLeaf(threadId, a1cId)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        structured := buildStructuredMessagesFromPath(path, threadId)
+        if structured[2].siblingInfo.index != 2 || structured[2].siblingInfo.total != 2
+            throw Error("branch C label after deleting A should be 2/2, got " structured[2].siblingInfo.index "/" structured[2].siblingInfo.total)
+        this._closeDb()
+    }
+
 }

@@ -120,7 +120,18 @@ buildStructuredMessagesFromPath(path, threadId := "") {
             msgObj.model := msg.model
         if msg.sibling_group {
             siblings := ChatDB.Msg_GetSiblings(msg.id)
-            msgObj.siblingInfo := { index: msg.sibling_index + 1, total: siblings.Length }
+            ; Bug #125: the branch label is the 1-based POSITION of this message
+            ; among the REMAINING siblings - the raw sibling_index+1 goes stale
+            ; after a sibling is deleted (B kept showing 2/2 after A vanished)
+            ; and grows with every retry.
+            pos := 0
+            for i, sib in siblings {
+                if sib.id = msg.id {
+                    pos := i
+                    break
+                }
+            }
+            msgObj.siblingInfo := { index: pos ? pos : 1, total: siblings.Length }
         }
         if msg.HasProp("reasoning") && msg.reasoning
             msgObj.reasoning := msg.reasoning
