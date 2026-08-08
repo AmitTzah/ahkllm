@@ -173,8 +173,9 @@ class TreeRepo {
             AttachmentRepo.CopyForMessage(msg.id, newId)
         }
 
-        ; Second pass: copy any siblings NOT on the active path so branch nav works
-        TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap)
+        ; Second pass: copy any siblings NOT on the active path so branch nav works,
+        ; plus their full descendant subtrees (bug #113).
+        TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, path[cutoff].id)
 
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
@@ -266,8 +267,13 @@ class TreeRepo {
         ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " spt ", " tht ", " ckt ", " lat ", " ttft ", " apt ");")
     }
 
-    ; Copy sibling messages that are NOT on the active path (so branch navigation works in forks).
-    static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap) {
+    ; Copy sibling messages that are NOT on the active path (so branch navigation
+    ; works in forks), plus their full descendant subtrees (bug #113 - the fork
+    ; must be a faithful copy of the conversation tree so far). Children of the
+    ; fork point itself are excluded: they are the source thread's continuation
+    ; beyond the fork (scenario 126), not part of the fork's prefix.
+    static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, cutoffMsgId := "") {
+        ; First pass: direct siblings of messages already copied from the active path.
         for oldSg, newSg in sgMap {
             siblings := ChatDB.db.Exec("SELECT * FROM messages WHERE sibling_group='" SQLite.Escape(oldSg) "' AND thread_id='" SQLite.Escape(threadId) "' ORDER BY sibling_index;")
             for sibRow in siblings.rows {
@@ -276,26 +282,52 @@ class TreeRepo {
                 ; Only copy if parent was also copied (within fork range)
                 if sibRow.parent_id && !idMap.Has(sibRow.parent_id)
                     continue
-
-                newSibId := ChatDB._UUID()
-                idMap[sibRow.id] := newSibId
-                mappedParent := sibRow.parent_id && idMap.Has(sibRow.parent_id) ? "'" idMap[sibRow.parent_id] "'" : "NULL"
-
-                safeC := SQLite.Escape(sibRow.content)
-                safeM := sibRow.model ? SQLite.Escape(sibRow.model) : ""
-                safeR := sibRow.Has("reasoning") && sibRow.reasoning ? SQLite.Escape(sibRow.reasoning) : ""
-                sTc := sibRow.token_count ? sibRow.token_count : 0
-                sPt := sibRow.Has("prompt_tokens") ? sibRow.prompt_tokens : 0
-                sTht := sibRow.thinking_tokens ? sibRow.thinking_tokens : 0
-                sCkt := sibRow.cached_tokens ? sibRow.cached_tokens : 0
-                sLat := sibRow.response_time_ms ? sibRow.response_time_ms : 0
-                sTtft := sibRow.ttft_ms ? sibRow.ttft_ms : 0
-                sApt := sibRow.active_path_tokens ? Integer(sibRow.active_path_tokens) : 0
-
-                ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newSibId "', '" newThreadId "', '" sibRow.role "', '" safeC "', '" safeM "', " mappedParent ", '" newSg "', " sibRow.sibling_index ", '" safeR "', " sTc ", " sPt ", " sTht ", " sCkt ", " sLat ", " sTtft ", " sApt ");")
-                AttachmentRepo.CopyForMessage(sibRow.id, newSibId)
+                TreeRepo._InsertCopiedOffPathMessage(sibRow, newThreadId, &idMap, &sgMap)
             }
         }
+
+        ; Second pass (bug #113): walk descendants of every copied message until
+        ; no more can be added (the fork's tree copy was previously one level
+        ; deep - everything below off-path siblings was silently dropped).
+        loop {
+            copiedAny := false
+            all := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" SQLite.Escape(threadId) "' ORDER BY sibling_index, rowid;")
+            for row in all.rows {
+                if idMap.Has(row.id)
+                    continue  ; already copied
+                if !row.parent_id || !idMap.Has(row.parent_id)
+                    continue  ; parent not in the fork yet (or not forkable)
+                if cutoffMsgId && row.parent_id = cutoffMsgId
+                    continue  ; the active path's continuation beyond the fork point
+                TreeRepo._InsertCopiedOffPathMessage(row, newThreadId, &idMap, &sgMap)
+                copiedAny := true
+            }
+            if !copiedAny
+                break
+        }
+    }
+
+    ; Insert one off-path message (direct sibling or descendant) into the fork
+    ; thread, remapping its parent and sibling group through the fork's idMap/sgMap.
+    static _InsertCopiedOffPathMessage(row, newThreadId, &idMap, &sgMap) {
+        newId := ChatDB._UUID()
+        idMap[row.id] := newId
+        mappedParent := row.parent_id && idMap.Has(row.parent_id) ? "'" idMap[row.parent_id] "'" : "NULL"
+        newSg := row.sibling_group ? TreeRepo._MapSiblingGroup(row, &sgMap) : "NULL"
+
+        safeC := SQLite.Escape(row.content)
+        safeM := row.model ? SQLite.Escape(row.model) : ""
+        safeR := row.Has("reasoning") && row.reasoning ? SQLite.Escape(row.reasoning) : ""
+        sTc := row.token_count ? row.token_count : 0
+        sPt := row.Has("prompt_tokens") ? row.prompt_tokens : 0
+        sTht := row.thinking_tokens ? row.thinking_tokens : 0
+        sCkt := row.cached_tokens ? row.cached_tokens : 0
+        sLat := row.response_time_ms ? row.response_time_ms : 0
+        sTtft := row.ttft_ms ? row.ttft_ms : 0
+        sApt := row.Has("active_path_tokens") && row.active_path_tokens ? Integer(row.active_path_tokens) : 0
+
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" newThreadId "', '" row.role "', '" safeC "', '" safeM "', " mappedParent ", " newSg ", " row.sibling_index ", '" safeR "', " sTc ", " sPt ", " sTht ", " sCkt ", " sLat ", " sTtft ", " sApt ");")
+        AttachmentRepo.CopyForMessage(row.id, newId)
     }
 
     static SetActiveLeaf(threadId, msgId) {

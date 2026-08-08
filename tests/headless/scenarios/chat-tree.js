@@ -573,6 +573,7 @@ scenarios.push({
 scenarios.push({
   id: 113,
   name: 'Forking at a message drops the deeper branches below off-path siblings (tree copy is one level deep)',
+  regression: true, // FIXED bug kept as a regression check (forks must copy full off-path subtrees)
   mode: null,
   settings: {},
   fixtures: {
@@ -602,29 +603,31 @@ scenarios.push({
     await cdp.waitFor('window.activeThreadId !== "t-fork-113"', 15000, 300, 'fork created');
     const newId = await cdp.eval('window.activeThreadId');
     await sleep(700);
-    const forkMsgs = seed.query(dbPath, "SELECT id, parent_id, sibling_group FROM messages WHERE thread_id = ? ORDER BY created_at", [newId]);
+    const forkMsgs = seed.query(dbPath, "SELECT id, parent_id, sibling_group, content FROM messages WHERE thread_id = ? ORDER BY created_at", [newId]);
     const ids = forkMsgs.map((m) => m.id).sort();
-    // BUG: _CopyOffPathSiblings only copies the messages that share a sibling
-    // group with the ACTIVE PATH. It copies a1b but never its descendants, so
-    // the fork is missing the continuation subtree (u2b/a2b/u2b2/a2b2) that
-    // branch navigation would walk into in the original thread.
-    if (ids.length !== 3)
-      throw new Error('fork message count changed: ' + ids.length + ' -> ' + ids.join(',') + ' (bug may have been fixed)');
-    const missing = ['m-113-u2b', 'm-113-a2b', 'm-113-u2b2', 'm-113-a2b2'].filter((id) => !ids.includes(id));
-    if (missing.length !== 4)
-      throw new Error('fork kept some deep branches: missing=' + JSON.stringify(missing) + ' ids=' + JSON.stringify(ids));
-    // The visible symptom: switching branch in the fork lands on the a1b copy
-    // with NO continuation (dead leaf), while the original thread continues to
-    // u2b under it. Assert against the fork's own (fresh) message ids.
+    // FIXED (bug #113): _CopyOffPathSiblings now walks descendants of the
+    // copied off-path siblings, so the fork is a faithful copy of the whole
+    // conversation tree (u1, a1, a1b + the u2b/a2b and u2b2/a2b2 subtrees).
+    if (ids.length !== 7)
+      throw new Error('fork message count changed: ' + ids.length + ' -> ' + ids.join(','));
+    const deepMissing = ['follow B', 'ans B', 'follow B retry', 'ans B2'].filter((c) => !forkMsgs.some((m) => m.content === c));
+    if (deepMissing.length !== 0)
+      throw new Error('fork still drops deep branches: missing=' + JSON.stringify(deepMissing) + ' ids=' + JSON.stringify(ids));
+    // The visible symptom: switching branch in the fork walks INTO the a1b
+    // subtree (path u1 -> a1b -> u2b2 -> a2b2, 4 messages) instead of landing
+    // on a dead a1b leaf with no continuation.
     await cdp.click('#chat-messages .msg .msg-action-btn[title="Next branch"]');
-    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].siblingInfo && chatMessages[1].siblingInfo.total === 2', 15000, 300, 'fork switched to a1b copy');
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[1] && chatMessages[1].siblingInfo && chatMessages[1].siblingInfo.total === 2', 15000, 300, 'fork switched into the a1b subtree');
     const forkThread = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id = ?', [newId])[0];
-    const leafChildren = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE parent_id = ?', [forkThread.active_leaf_id])[0].c;
-    if (leafChildren !== 0)
-      throw new Error('fork leaf has continuations (bug may have been fixed): ' + forkThread.active_leaf_id + ' children=' + leafChildren);
+    const a1bFork = seed.query(dbPath, "SELECT id FROM messages WHERE thread_id = ? AND content = 'reply B'", [newId])[0];
+    const a1bChildren = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE parent_id = ?', [a1bFork.id])[0].c;
+    if (a1bChildren !== 2)
+      throw new Error('a1b copy lost its continuations: children=' + a1bChildren);
+    if (forkThread.active_leaf_id === a1bFork.id)
+      throw new Error('branch switch still lands on the dead a1b leaf');
     const forkCount = forkMsgs.length;
     return 'fork id=' + newId + ' has ' + forkCount + ' messages (' + ids.join(',') +
-      ') - deep branches below the off-path sibling a1b were dropped; branch switch lands on a dead leaf (children=' + leafChildren + ')';
+      ') - deep branches below the off-path sibling a1b are copied; branch switch walks into the subtree (a1b children=' + a1bChildren + ')';
   }
 });
 

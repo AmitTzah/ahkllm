@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **15 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **14 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - intake of 3 NEW verified bugs on top of the previous 12 (delete inflates cumulative output tokens, thread-level delete leaves stale FTS rows, Settings save wipes a custom Response Font) verified headlessly with scenarios 128-130, plus 2 new DB audits (131 attachment refcount lifecycle, 132 mid-path retry invariants); full AHK suite (503 tests) + JS suite (496 tests) + full E2E suite (126 scenarios) green. Next step per the lifecycle is the fix cycle (pick #113 first).
+- **Where we left off:** 2026-08-08 - FIXED #113 (fork now copies full descendant subtrees of off-path siblings; scenario 113 flipped to a regression check + ChatDB unit test). Next up per the lifecycle is #114.
 ---
 
 ## Bug entry template
@@ -208,39 +208,10 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #114, #120, #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
 
-### 1. Forking a chat drops the deeper branches below off-path siblings
-
-**Scenario:** 113 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** Build a branched conversation where the active path is `u1 -> a1`,
-`a1` has an off-path sibling `a1b` (same sibling_group), and `a1b` has its own
-continuations (`u2b -> a2b` plus a retry pair `u2b2 -> a2b2`). Click Fork on
-`a1`, then in the fork switch to branch `a1b` and continue chatting.
-
-**Expected:** the fork is a faithful copy of the conversation tree so far -
-switching to `a1b` in the fork still shows its continuations and lets the user
-continue from them, exactly like the source thread.
-
-**Actual:** the fork contains only `u1`, `a1`, `a1b`. Everything below the
-off-path sibling (the `u2b`/`a2b` and `u2b2`/`a2b2` subtrees) is silently
-missing, so branch navigation in the fork lands on a dead `a1b` leaf with no
-continuation. Root cause: `TreeRepo._CopyOffPathSiblings` only copies the
-messages that share a sibling_group with the ACTIVE PATH - it never walks
-descendants of the copied off-path siblings.
-
-**Evidence:** `chat/db/TreeRepo.ahk` - `_CopyOffPathSiblings` iterates only the
-`sgMap` sibling groups and inserts only the matching rows; children of those
-rows are never copied.
-
-**Verification:** headless scenario 113 - clicked Fork on the last active-path
-message, then read the fork thread's messages from the DB: only 3 rows
-(`u1`,`a1`,`a1b`) exist and the 4 deep-branch messages are missing; a branch
-switch in the fork lands on a leaf with no continuation.
+### 2. Hard-deleting a message in a branched tree miscalculates cumulative token counters
 
 ### 2. Hard-deleting a message in a branched tree miscalculates cumulative token counters
 
@@ -691,6 +662,8 @@ value is gone.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in bb7d3a8: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 

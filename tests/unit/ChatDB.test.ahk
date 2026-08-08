@@ -427,6 +427,49 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #113): a fork must copy the FULL descendant subtrees of
+    ; off-path siblings - previously only the direct siblings were copied, so
+    ; branch navigation in the fork landed on a dead leaf. Children of the fork
+    ; point itself (the source thread's continuation) must NOT be copied.
+    ForkThread_CopiesDeepOffPathSubtrees() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "reply A", parent_id: u1Id, sibling_group: "sg-113", sibling_index: 0})
+        a1bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "reply B", parent_id: u1Id, sibling_group: "sg-113", sibling_index: 1})
+        u2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow B", parent_id: a1bId})
+        a2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans B", parent_id: u2bId})
+        u2b2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow B retry", parent_id: a1bId, sibling_group: "sg-113b", sibling_index: 1})
+        a2b2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans B2", parent_id: u2b2Id})
+        ; Continuation beyond the fork point - must NOT be copied.
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow A", parent_id: a1Id})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans A", parent_id: u2Id})
+
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (deep branches)")
+
+        forkMsgs := ChatDB.db.Exec("SELECT id, parent_id, sibling_group FROM messages WHERE thread_id='" newId "';")
+        if forkMsgs.count != 7
+            throw Error("fork should copy the off-path sibling subtree (7 messages), got " forkMsgs.count)
+        ; The active path's continuation below the fork point must not be in the fork.
+        cont := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages WHERE thread_id='" newId "' AND content IN ('follow A','ans A');")
+        if Integer(cont[1, "c"]) != 0
+            throw Error("fork must not include the continuation beyond the fork point")
+        ; Every fork message's parent must resolve inside the fork.
+        bad := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages m LEFT JOIN messages p ON p.id = m.parent_id WHERE m.thread_id='" newId "' AND m.parent_id IS NOT NULL AND p.id IS NULL;")
+        if Integer(bad[1, "c"]) != 0
+            throw Error("fork has dangling parents")
+        ; The off-path sibling's copy must keep its continuations (a1b -> u2b/u2b2).
+        a1bFork := ChatDB.db.Exec("SELECT id FROM messages WHERE thread_id='" newId "' AND content='reply B';")
+        if !a1bFork.count
+            throw Error("off-path sibling a1b not copied to the fork")
+        childrenB := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages WHERE parent_id='" a1bFork[1, "id"] "';")
+        if Integer(childrenB[1, "c"]) != 2
+            throw Error("a1b copy should keep its 2 continuations (u2b + u2b2), got " childrenB[1, "c"])
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; Regression (bug #69): the LIKE fallback must escape %/_/\\ so searching for
     ; a literal % does not match every message.
     SearchMessages_LikeEscapesWildcards() {
