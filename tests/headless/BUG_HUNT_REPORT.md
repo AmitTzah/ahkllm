@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #118 (branch-edit copies are now inserted with local_copy: true, so MessageRepo.Insert never upserts chat_usage or re-charges the cumulative counters for them - the dashboard shows no fake API request; scenario 118 flipped + ChatDB unit test, live audits 119/127 stay green). Next up per the lifecycle is #122.
+- **Where we left off:** 2026-08-08 - FIXED #122 (assistants.js save() re-emits the preserved temperature/isDefault from the card dataset and SettingsApply._ApplyAssistants carries isDefault into the runtime globals, so a Settings save no longer resets assistant temperature to Model Default; scenario 122 flipped + assistants-settings JS + SettingsHandler AHK unit tests). Next up per the lifecycle is #123.
 ---
 
 ## Bug entry template
@@ -208,45 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 8. Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)
-
-**Scenario:** 122 (scenario code in `scenarios/settings.js`)
-
-**Status:** verified
-
-**Repro:** Configure an assistant with a temperature (e.g. `temperature: "0.7"`
-in `DefaultSettings.ahk` or `settings.json`), open Settings, change any field
-(or nothing), and click Save.
-
-**Expected:** the assistant's `temperature` and `isDefault` survive the save
-round-trip like every other configured field.
-
-**Actual:** they are silently dropped. `assistants.js` `save()` builds each
-assistant object from the card fields (`name`, `baseModel`, `reasoning`,
-`description`, `systemMessage`, `systemMessageFile`) and never reads back
-`temperature` or `isDefault`. The settings panel sends the whole `assistants`
-array as an authoritative top-level key, `SettingsMerge.Override` replaces the
-base list wholesale, and `SettingsMerge.Merge` treats arrays as opaque - so
-the stripped entries are written to `settings.json` and applied to the runtime
-`assistants` globals (`SettingsApply._ApplyAssistants` fills missing values
-with `""`). The UI has no temperature field for assistants, so the value can
-never be restored: every assistant silently falls back to "Model Default"
-temperature after the first Settings save.
-
-**Evidence:** `webui/js/settings/sections/assistants.js` `save()` (no
-temperature/isDefault); `app/settings/SettingsMerge.ahk` `Override` replaces
-the array wholesale; `app/settings/SettingsApply.ahk` `_ApplyAssistants`
-defaults missing temperature to `""`; `DefaultSettings.ahk` documents
-`temperature` as a per-assistant field.
-
-**Verification:** headless scenario 122 - seeded an assistant with
-temperature 0.7 / isDefault true, opened Settings, changed the chat shortcut,
-saved, then read `settings.json` (temperature/isDefault keys gone) and the
-re-pushed `window.assistantList` (temperature reset to ""): the configured
-value is permanently lost while the rest of the assistant survives.
 
 ### 9. "Save as Branch" on an assistant message drops the copy's token metadata (header Context Used falls back to the parent, token popover is blank)
 
@@ -496,6 +459,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Deleting a message that holds the same attachment file twice orphans the file on disk" - FIXED in 32ad2c2: AttachmentRepo.DeleteByMessage/DeleteByThread/DeleteOne now batch-delete the rows first and check the file refcount AFTER (refs=0 removes the file, refs>=1 keeps it), so duplicate rows on one message no longer orphan the file while cross-thread/forks sharing still holds (audit #131 green); scenarios 117 + 131 pass + AttachmentRepo unit tests.
 
 - 2026-08-08 - ""Save as Branch" on an assistant message records a fake API request in the usage dashboard" - FIXED in 77ae619: branch-edit copies are inserted with local_copy: true, so MessageRepo.Insert never upserts chat_usage or re-charges the cumulative counters/costs for them (no API call happened); scenario 118 flipped to a regression check + ChatDB unit test (live audits 119/127 stay green).
+
+- 2026-08-08 - "Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)" - FIXED in 994eb5a: assistants.js save() re-emits the preserved temperature/isDefault from the card dataset and SettingsApply._ApplyAssistants carries isDefault into the runtime globals, so the save round-trip no longer resets assistant temperature to Model Default; scenario 122 flipped to a regression check + assistants-settings JS + SettingsHandler AHK unit tests.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
