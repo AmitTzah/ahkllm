@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #114 (branched-delete recompute is tree-accurate: assistant prompt_tokens ground truth with parent active_path_tokens fallback; user token_counts no longer count as output - the same fix that will close #128; scenario 114 flipped + ChatDB/UsageTracking unit tests). Next up per the lifecycle is #120.
+- **Where we left off:** 2026-08-08 - FIXED #120 (the purgeExpired settings hook now registers the plain zero-arg TrashRetentionPurge wrapper instead of a bare static-method reference, which AHK cannot invoke via fn.Call(); lowering Trash Retention purges expired trash immediately; scenario 120 flipped + SettingsHandler unit test). Next up per the lifecycle is #115.
 ---
 
 ## Bug entry template
@@ -208,7 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #120, #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
 
 ### 4. GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)
@@ -318,43 +318,6 @@ branch mode only fires a request when `role = "user"`.
 **Verification:** headless scenario 118 - edited the seeded assistant message
 and saved it as a branch via the UI, then read `chat_usage`: exactly one row
 with `call_count=1` and zero tokens, while no API call was made.
-
-### 3. Lowering Trash Retention in Settings does not purge expired trash (the settings-update purge hook fails at runtime)
-
-**Scenario:** 120 (scenario code in `scenarios/settings.js`)
-
-**Status:** verified
-
-**Repro:** With a trashed thread whose `deleted_at` is older than the current
-retention, open Settings - General, lower "Trash Retention (days)" (e.g. 30 ->
-1) and Save.
-
-**Expected:** the settings save triggers the `purgeExpired` update hook
-(`Main.ahk`'s `WM_SETTINGS_UPDATED` -> `SettingsService.ReloadFromDisk` ->
-`Apply` -> hooks), so the expired trashed thread is purged immediately
-(bug #7's promise: "retention changes apply immediately").
-
-**Actual:** the setting persists and the app reloads, but the purge never runs.
-The debug log records `[SETTINGS] hook 'purgeExpired' failed: Missing a required
-parameter.` Root cause: `SettingsService.RegisterHook("purgeExpired",
-ChatDB.Thread_PurgeExpired)` passes a bare static-method reference, and in AHK
-v2 such a reference cannot be invoked as a zero-arg callback
-(`fn.Call()` throws "Missing a required parameter" - confirmed with a bounded
-probe; even `ChatDB.Thread_PurgeExpired.Bind()` still throws). The startup and
-hourly-timer purge calls are direct `ChatDB.Thread_PurgeExpired()` invocations
-and still work, so the bug only affects the settings-change path.
-
-**Evidence:** `Main.ahk:192` registers the hook; `app/settings/SettingsService.ahk`
-`_RunHooks` calls `fn.Call()`; runtime proof in `%TEMP%\LLM_Debug_Log.txt`
-("hook 'purgeExpired' failed: Missing a required parameter.") right after the
-save.
-
-**Verification:** headless scenario 120 - saved retention 1 via the real
-Settings UI over a 19-day-old trashed thread (survives the 30-day startup
-purge), waited 6s, and confirmed the thread is still present in `chat_threads`
-while `settings.json` has `trash.retentionDays: 1`. The same run verifies the
-save path itself is healthy (responseFontSize round-trips and a New Chat picks
-it up), isolating the failure to the purge hook.
 
 ### 8. Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)
 
@@ -631,6 +594,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in f0490c7: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
 
 - 2026-08-08 - "Hard-deleting a message in a branched tree miscalculates cumulative token counters" - FIXED in 664f960: MessageRepo._RecomputeCumulativeCounters is now tree-accurate - it sums each assistant's stored API prompt_tokens (falling back to the parent's active_path_tokens for legacy rows) and counts output/cached only on assistant rows, so a branched delete no longer charges off-path branches with the other branch's tokens (and user input token_counts no longer leak into output - the same fix closes #128); scenario 114 flipped to a regression check + ChatDB/UsageTracking unit tests.
+
+- 2026-08-08 - "Lowering Trash Retention in Settings does not purge expired trash (the settings-update purge hook fails at runtime)" - FIXED in f5ac7f5: SettingsService.RegisterHook("purgeExpired", ...) now registers the plain zero-arg TrashRetentionPurge wrapper instead of the bare static-method reference ChatDB.Thread_PurgeExpired, which AHK v2 cannot invoke via fn.Call() ("Missing a required parameter" - probe-verified, even .Bind() throws); lowering retention now purges expired trash immediately; scenario 120 flipped to a regression check + SettingsHandler unit test.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
