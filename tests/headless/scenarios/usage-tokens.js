@@ -414,4 +414,50 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 132,
+  regression: true, // mid-path retry audit: sibling branch created in the middle of the tree stays DB-consistent
+  name: 'Mid-conversation Retry creates a sibling branch in the middle of the tree and keeps counters/usage consistent (audit)',
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await showChat();
+    // Exchange 1.
+    await sendChatMessage(cdp, 'first question');
+    await waitStreamingIdle(cdp, 40000);
+    // Exchange 2.
+    await sendChatMessage(cdp, 'second question');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(900);
+    // Retry the FIRST assistant (mid-path retry): the new answer becomes a
+    // sibling of a1 with parent u1, and u2/a2 move off the active path.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const counts = seed.query(dbPath, "SELECT (SELECT COUNT(*) FROM messages) AS msgs, (SELECT COUNT(*) FROM messages_fts) AS fts");
+    if (counts[0].msgs !== 5) throw new Error('expected 5 messages (u1,a1,u2,a2,a1b), got ' + counts[0].msgs);
+    if (counts[0].msgs !== counts[0].fts) throw new Error('FTS out of sync: ' + JSON.stringify(counts[0]));
+    const badParent = seed.query(dbPath, "SELECT m.id FROM messages m LEFT JOIN messages p ON p.id = m.parent_id WHERE m.parent_id IS NOT NULL AND (p.id IS NULL OR p.thread_id <> m.thread_id)");
+    if (badParent.length) throw new Error('dangling/cross-thread parents: ' + JSON.stringify(badParent));
+    const badLeaf = seed.query(dbPath, "SELECT t.id FROM chat_threads t LEFT JOIN messages m ON m.id = t.active_leaf_id WHERE t.active_leaf_id IS NOT NULL AND m.id IS NULL");
+    if (badLeaf.length) throw new Error('dangling active_leaf: ' + JSON.stringify(badLeaf));
+    // The retried answer must be a sibling of a1 (same parent u1, sibling group).
+    const sibs = seed.query(dbPath, "SELECT sibling_group, sibling_index FROM messages WHERE parent_id = (SELECT id FROM messages WHERE role='user' AND content='first question') ORDER BY sibling_index");
+    if (sibs.length !== 2 || sibs[0].sibling_group !== sibs[1].sibling_group)
+      throw new Error('retried answer is not a sibling of a1: ' + JSON.stringify(sibs));
+    // Counters == assistant ground truth sums (3 API calls, mock: 12/9/4 each).
+    const sums = seed.query(dbPath, "SELECT COALESCE(SUM(prompt_tokens),0) AS inp, COALESCE(SUM(token_count + thinking_tokens),0) AS outp, COALESCE(SUM(cached_tokens),0) AS ckt FROM messages WHERE role='assistant'");
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads')[0];
+    if (Number(thread.cumulative_input_tokens) !== Number(sums[0].inp) || Number(thread.cumulative_output_tokens) !== Number(sums[0].outp) || Number(thread.cumulative_cached_tokens) !== Number(sums[0].ckt))
+      throw new Error('thread counters mismatch: thread=' + JSON.stringify(thread) + ' assistant-sums=' + JSON.stringify(sums[0]));
+    const usage = seed.query(dbPath, 'SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage')[0];
+    if (!usage || usage.call_count !== 3 || usage.prompt_tokens !== 36 || usage.completion_tokens !== 27 || usage.cached_tokens !== 12)
+      throw new Error('chat_usage wrong after mid-path retry: ' + JSON.stringify(usage));
+    return 'mid-path retry: messages=' + counts[0].msgs + ' fts=' + counts[0].fts + ' siblings=' +
+      JSON.stringify(sibs) + ' counters=' + JSON.stringify(thread) + ' match sums=' + JSON.stringify(sums[0]) +
+      ' chat_usage=' + JSON.stringify(usage);
+  }
+});
+
 module.exports = scenarios;

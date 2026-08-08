@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **15 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - intake of 5 NEW verified bugs on top of the previous 7 (assistant temperature wiped by Settings save, Save-as-Branch drops token metadata, tree modal counts all nodes as "active path", stale branch labels after deleting a sibling, fork copies full cumulative counters). Verified headlessly with scenarios 122-126; full AHK suite (503 tests) + JS suite (496 tests) green. Next step per the lifecycle is the fix cycle (pick #113 first).
+- **Where we left off:** 2026-08-08 - intake of 3 NEW verified bugs on top of the previous 12 (delete inflates cumulative output tokens, thread-level delete leaves stale FTS rows, Settings save wipes a custom Response Font) verified headlessly with scenarios 128-130, plus 2 new DB audits (131 attachment refcount lifecycle, 132 mid-path retry invariants); full AHK suite (503 tests) + JS suite (496 tests) + full E2E suite (126 scenarios) green. Next step per the lifecycle is the fix cycle (pick #113 first).
 ---
 
 ## Bug entry template
@@ -208,7 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118, #122, #123, #124, #125, #126 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
 
 ### 1. Forking a chat drops the deeper branches below off-path siblings
@@ -580,6 +580,112 @@ header token bar ("↑25 ↓50").
 
 
 ---
+
+### 13. Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output)
+
+**Scenario:** 128 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** In a thread with token data (user messages carry backfilled input
+token_counts, assistant messages carry visible output token_count), hard-delete
+any message via its Delete button.
+
+**Expected:** the header's cumulative output tokens drop by exactly the
+deleted message's output contribution (assistant token_count + thinking). With
+3 assistant calls of 50 output each (one deleted), the counter should fall from
+150 to 100.
+
+**Actual:** `MessageRepo._RecomputeCumulativeCounters` adds `token_count +
+thinking_tokens` for EVERY remaining row - including USER messages, whose
+token_count is the backfilled INPUT contribution (from `_BackfillUserTokens`),
+not output. After deleting the leaf `a2` the counter jumps UP to 400 (u1 100 +
+a1 50 + u2 100 + u2b 100 + a2b 50) instead of dropping to 100, and the header
+shows the inflated `down 400` (the header renders a down-arrow). The same
+recompute also feeds `cumulative_output_cost`, so the header's cost tooltip no
+longer matches the token bar.
+
+**Evidence:** `chat/db/MessageRepo.ahk` `_RecomputeCumulativeCounters` -
+`output += tc + tht` runs unconditionally for every row (user and assistant);
+only assistant rows charge `input`. `MessageRepo.Insert` only ever added
+assistant output to `cumulative_output_tokens`, so the delete path is the sole
+writer that mixes user input tokens into the output counter.
+
+**Verification:** headless scenario 128 - loaded a branched fixture (2
+assistant API calls remaining after the delete), deleted the active leaf via
+the UI, then read `chat_threads.cumulative_output_tokens`: 400 (buggy) instead
+of the tree-accurate 100, and the header token bar displays the inflated
+`down 400` (down-arrow rendered).
+
+
+### 14. Empty Trash / deleteThreadForever leaves stale `messages_fts` rows (thread-level delete skips FTS cleanup, unlike HardDelete)
+
+**Scenario:** 129 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** Trash a thread from the sidebar (Delete), then permanently delete it
+from the Trash ("Delete forever"), or lower trash retention so the hourly
+purge removes it.
+
+**Expected:** deleting a thread removes its messages AND their FTS index rows,
+exactly like deleting a single message does (`MessageRepo.HardDelete` ->
+`ChatDB.FTS_Remove`, the bug #65 guarantee "FTS stays in sync").
+
+**Actual:** `ThreadRepo.Delete` and `ThreadRepo.PurgeExpired` delete messages
+with raw `DELETE FROM messages` and never touch `messages_fts`, so the FTS
+index keeps one orphaned row per deleted message. The index only re-syncs on
+the next app startup, when `ChatDB._CreateSchema` notices the count mismatch
+and rebuilds it. In-session search still works (the result query joins back to
+`messages`), but the index drifts from the table for the whole session and
+every startup pays for a full rebuild.
+
+**Evidence:** `chat/db/ThreadRepo.ahk` `Delete` and `PurgeExpired` issue raw
+`DELETE FROM messages` / `DELETE FROM chat_threads` with no `FTS_Remove`;
+`chat/db/MessageRepo.ahk` `HardDelete` calls `ChatDB.FTS_Remove(msgId)` first
+(the inconsistency); `chat/db/ChatDB.ahk` `_CreateSchema` repairs the mismatch
+only at startup.
+
+**Verification:** headless scenario 129 - trashed the seeded thread via the
+sidebar, then deleted it forever from the trash, then read
+`messages_fts`: 0 messages and 0 threads remain, but 2 FTS rows still index
+the deleted messages.
+
+
+### 15. Saving Settings wipes a custom (unlisted) "Response Font" - the select has no matching option so save() emits an empty value
+
+**Scenario:** 130 (scenario code in `scenarios/settings.js`)
+
+**Status:** verified
+
+**Repro:** Configure `ui.responseFont` in `settings.json` (or
+`DefaultSettings.ahk`) with a font that is NOT one of the five UI options
+(Arial / Inter / Segoe UI / Georgia / JetBrains Mono), e.g. `"Courier New"`.
+Open Settings, change any field, and click Save.
+
+**Expected:** the custom font survives the save round-trip like every other
+configured value (the pattern bug #39 established for the custom
+system-message file: preserve the stored value when the select has no matching
+option).
+
+**Actual:** `ui-theme.js` `load()` assigns the raw value to the fixed-option
+`#responseFont` select (`S.setVal`), so a font outside the option list leaves
+the select with an EMPTY selection. `save()` then writes
+`responseFont: S.getVal('responseFont')` = `""` into `settings.json`, so the
+custom font is permanently wiped on the first Settings save and the app falls
+back to the default font. The same pattern applies to the Command Input
+Window / Suspend Banner font-face selects.
+
+**Evidence:** `webui/js/settings/sections/ui-theme.js` - `load()` uses
+`S.setVal('responseFont', fontName)` on the select (no "keep unknown value"
+fallback, unlike `SettingsShared.fillSelect`), and `save()` returns
+`S.getVal('responseFont')` directly.
+
+**Verification:** headless scenario 130 - seeded `ui.responseFont =
+"Courier New"`, opened Settings (select value reads ""), changed an unrelated
+UI field, saved, then read `settings.json`: `responseFont` is now "" and the
+value is gone.
+
 
 ## History (append-only)
 

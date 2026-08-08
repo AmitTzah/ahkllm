@@ -832,4 +832,99 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 128,
+  name: 'Hard-deleting a message inflates the thread\'s cumulative OUTPUT tokens (user messages\' backfilled input token_count is counted as output)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-out-128', title: 'Output Inflation', active_leaf_id: 'm-128-a2',
+      cumulative_input_tokens: 800, cumulative_output_tokens: 150, cumulative_cached_tokens: 0, cumulative_cost: 0 }],
+    messages: [
+      // Branch A (active): u1 -> a1 -> u2 -> a2 (leaf). Off-path branch B: u2b -> a2b.
+      // token_count on users = backfilled input contribution; on assistants = visible output.
+      { id: 'm-128-u1', thread_id: 't-out-128', role: 'user', content: 'first', token_count: 100, active_path_tokens: 100 },
+      { id: 'm-128-a1', thread_id: 't-out-128', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-128-u1', token_count: 50, active_path_tokens: 150 },
+      { id: 'm-128-u2', thread_id: 't-out-128', role: 'user', content: 'follow A', parent_id: 'm-128-a1', token_count: 100, active_path_tokens: 250 },
+      { id: 'm-128-a2', thread_id: 't-out-128', role: 'assistant', content: 'ans A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-128-u2', token_count: 50, active_path_tokens: 300 },
+      { id: 'm-128-u2b', thread_id: 't-out-128', role: 'user', content: 'follow B', parent_id: 'm-128-a1', token_count: 100, active_path_tokens: 250 },
+      { id: 'm-128-a2b', thread_id: 't-out-128', role: 'assistant', content: 'ans B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-128-u2b', token_count: 50, active_path_tokens: 300 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 4', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Delete the ACTIVE leaf assistant (a2).
+    await cdp.click('#chat-messages .msg:nth-child(4) .msg-action-btn[title="Delete"]');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900);
+
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id = ?', ['t-out-128'])[0];
+    // Ground truth after deleting a2: the remaining API calls produced only
+    // a1 (50 output) and a2b (50 output) = 100 output tokens. The recompute
+    // instead walks every remaining row and adds token_count to `output` for
+    // USER rows too - user token_counts are backfilled INPUT contributions
+    // (u1 100 + u2 100 + u2b 100), so output inflates to 400.
+    if (Number(thread.cumulative_output_tokens) !== 400)
+      throw new Error('cumulative output after delete = ' + thread.cumulative_output_tokens + ' (expected the buggy 400; correct is 100)');
+    const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(bar).indexOf('\u2193 400') < 0)
+      throw new Error('header output tokens do not show the corrupted 400: ' + JSON.stringify(bar));
+    return 'deleted leaf a2: cumulative_output_tokens=' + thread.cumulative_output_tokens +
+      ' (correct 100; buggy recompute counts user input token_counts as output = 400) and the header shows the inflated total';
+  }
+});
+
+scenarios.push({
+  id: 129,
+  name: 'Empty Trash / deleteThreadForever leaves stale messages_fts rows (thread-level delete skips FTS cleanup, unlike HardDelete)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-fts-129', title: 'FTS Delete', active_leaf_id: 'm-129-a1' }],
+    messages: [
+      { id: 'm-129-u1', thread_id: 't-fts-129', role: 'user', content: 'first', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-129-a1', thread_id: 't-fts-129', role: 'assistant', content: 'reply', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-129-u1', token_count: 5, active_path_tokens: 15 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(600);
+    // Soft-delete the thread from the sidebar, then permanently delete it
+    // from the trash ("Delete forever" = ThreadRepo.Delete path).
+    await cdp.click('#thread-list .chat-item .chat-action-btn.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'trash confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900);
+    await cdp.waitFor('document.querySelectorAll(".trash-item").length >= 1', 10000, 250, 'trash item appears');
+    await cdp.click('.trash-item button.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete forever confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900);
+
+    const msgs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id = ?', ['t-fts-129'])[0].c;
+    const threads = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM chat_threads WHERE id = ?', ['t-fts-129'])[0].c;
+    const ftsRows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id IN ('m-129-u1','m-129-a1')")[0].c;
+    // Message-level HardDelete calls FTS_Remove (bug #65 guarantee: FTS stays
+    // in sync). Thread-level ThreadRepo.Delete deletes messages via raw SQL and
+    // never touches messages_fts, so the FTS index keeps orphaned entries.
+    if (msgs !== 0 || threads !== 0)
+      throw new Error('thread not fully deleted: msgs=' + msgs + ' threads=' + threads);
+    if (ftsRows === 0)
+      throw new Error('FTS rows were cleaned (bug may have been fixed): ftsRows=' + ftsRows);
+    return 'thread deleted (messages=' + msgs + ' threads=' + threads + ') but messages_fts still holds ' +
+      ftsRows + ' row(s) for the deleted messages - FTS index drifted from messages until the next startup rebuild';
+  }
+});
+
 module.exports = scenarios;

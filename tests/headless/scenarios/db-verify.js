@@ -154,4 +154,126 @@ scenarios.push({
     return 'message deleted, 0 attachment rows left, but the physical file still exists at ' + filePath + ' (orphaned by the double-row ref count)';
   }
 });
+scenarios.push({
+  id: 131,
+  regression: true, // attachment lifecycle audit: cross-thread sharing + fork + trash + file refcount
+  name: 'Attachment files stay reference-counted across forks, thread trash and cross-thread sharing (audit)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-src-131', title: 'Src', active_leaf_id: 'm-131-a1' },
+      { id: 't-other-131', title: 'Other', active_leaf_id: 'm-131-u1b' }
+    ],
+    messages: [
+      { id: 'm-131-u1', thread_id: 't-src-131', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-131-a1', thread_id: 't-src-131', role: 'assistant', content: 'reply', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-131-u1', token_count: 5, active_path_tokens: 15 },
+      { id: 'm-131-u1b', thread_id: 't-other-131', role: 'user', content: 'other root', token_count: 10, active_path_tokens: 10 }
+    ]
+  },
+  async body({ cdp, dbPath, dataDir }) {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { DatabaseSync } = require('node:sqlite');
+    // One physical file shared by the source thread's message, the OTHER
+    // thread's message, and later the fork (content-addressable storage).
+    const attDir = path.join(dataDir, 'attachments');
+    fs.mkdirSync(attDir, { recursive: true });
+    const filePath = 'attachments/shared-131.txt';
+    fs.writeFileSync(path.join(dataDir, filePath), 'shared content');
+    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    const insAtt = db.prepare("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES (?,?,?,?,?,?,?,?)");
+    insAtt.run('a-131-1', 'm-131-u1', 'text_file', filePath, 'text/plain', 'shared.txt', 14, '');
+    insAtt.run('a-131-2', 'm-131-u1b', 'text_file', filePath, 'text/plain', 'shared.txt', 14, '');
+    db.close();
+
+    await showChat();
+    // 1. Load the source thread, fork at a1 (the fork copies the attachment row).
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-src-131"', 15000, 300, 'fork created');
+    const forkId = await cdp.eval('window.activeThreadId');
+    await sleep(700);
+    let refs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [filePath])[0].c;
+    if (refs !== 3) throw new Error('after fork refs should be 3 (src + other + fork), got ' + refs);
+    if (!fs.existsSync(path.join(dataDir, filePath))) throw new Error('file vanished after fork');
+
+    // 2. Trash + permanently delete the SOURCE thread (its rows drop; file stays via the other refs).
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === 't-src-131');
+      if (!it) return false;
+      it.querySelector('.chat-action-btn.danger').click();
+      return true;
+    })()`);
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'trash confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    await cdp.waitFor('document.querySelectorAll(".trash-item").length >= 1', 10000, 250, 'trash item');
+    await cdp.click('.trash-item button.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete forever confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    refs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [filePath])[0].c;
+    if (refs !== 2) throw new Error('after deleting source thread refs should be 2 (fork + other), got ' + refs);
+    if (!fs.existsSync(path.join(dataDir, filePath))) throw new Error('file deleted while fork/other still reference it');
+
+    // 3. Load the OTHER thread and delete it forever; file must still exist (fork ref).
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === 't-other-131');
+      if (!it) return false;
+      it.click();
+      return true;
+    })()`);
+    await cdp.waitFor('chatMessages.length >= 1 && chatMessages[0] && chatMessages[0].content === "other root"', 15000, 300, 'other thread loaded');
+    await sleep(600);
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === 't-other-131');
+      if (!it) return false;
+      it.querySelector('.chat-action-btn.danger').click();
+      return true;
+    })()`);
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'trash confirm 2');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    await cdp.click('.trash-item button.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete forever confirm 2');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    refs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [filePath])[0].c;
+    if (refs !== 1) throw new Error('after deleting other thread refs should be 1 (fork), got ' + refs);
+    if (!fs.existsSync(path.join(dataDir, filePath))) throw new Error('file deleted while the fork still references it');
+
+    // 4. Load the fork and delete its root message; the file becomes orphaned and must be removed.
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === '${forkId}');
+      if (!it) return false;
+      it.click();
+      return true;
+    })()`);
+    await cdp.waitFor('chatMessages.length >= 1 && chatMessages[0] && chatMessages[0].content === "root"', 15000, 300, 'fork loaded');
+    await sleep(600);
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Delete"]');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'msg delete confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    refs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [filePath])[0].c;
+    const fileGone = !fs.existsSync(path.join(dataDir, filePath));
+    // Final state: no rows reference the file and the physical file is removed.
+    if (refs !== 0) throw new Error('final refs should be 0, got ' + refs);
+    if (!fileGone) throw new Error('orphaned file still on disk after the last reference was deleted');
+    return 'shared attachment file survived fork + both thread deletions (refcount held), then was removed when the last referencing message was deleted (refs=' + refs + ', fileGone=' + fileGone + ')';
+  }
+});
 module.exports=scenarios;

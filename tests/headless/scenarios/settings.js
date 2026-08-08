@@ -767,4 +767,42 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 130,
+  name: 'Saving Settings wipes a custom (unlisted) "Response Font" - the select has no matching option so save() emits an empty value',
+  mode: null,
+  settings: { ui: { responseFont: 'Courier New', responseFontSize: '17' } },
+  fixtures: {
+    threads: [{ id: 't-font-130', title: 'Custom Font', active_leaf_id: 'm-130-a1' }],
+    messages: [{ id: 'm-130-a1', thread_id: 't-font-130', role: 'assistant', content: 'hello', model: 'deepseek/deepseek-v4-flash' }]
+  },
+  async body({ cdp, dataDir }) {
+    const settingsFile = require('node:path').join(dataDir, 'settings.json');
+    const before = readJsonFile(settingsFile);
+    if (before.ui.responseFont !== 'Courier New')
+      throw new Error('seed did not carry the custom font (setup): ' + JSON.stringify(before.ui));
+    await openSettings(cdp);
+    await openSection(cdp, 'ui');
+    await cdp.waitFor('document.getElementById("responseFont") !== null', 10000, 250, 'ui section');
+    // The select has NO "Courier New" option - load() assigns the raw value,
+    // leaving the select with an empty selection.
+    const selValue = await cdp.eval('document.getElementById("responseFont").value');
+    if (selValue !== '')
+      throw new Error('select unexpectedly matched the custom font: ' + JSON.stringify(selValue));
+    // Make the panel dirty with a no-op edit on another UI field, then save.
+    await cdp.type('#iwWidth', '500');
+    await saveSettings(cdp, dataDir);
+    const after = readJsonFile(settingsFile);
+    // BUG: save() returns S.getVal('responseFont') - the empty selection - so
+    // the custom font is permanently wiped from settings.json on the first
+    // Settings save (same class as #39's custom system-message file).
+    if (after.ui.responseFont === 'Courier New')
+      throw new Error('custom font survived the save (bug may have been fixed): ' + JSON.stringify(after.ui.responseFont));
+    if (after.ui.responseFont !== '')
+      throw new Error('unexpected saved responseFont: ' + JSON.stringify(after.ui.responseFont));
+    return 'seeded ui.responseFont="Courier New" (not one of the 5 select options); after opening Settings and saving, settings.json has responseFont="' +
+      after.ui.responseFont + '" - the custom font is lost';
+  }
+});
+
 module.exports = scenarios;
