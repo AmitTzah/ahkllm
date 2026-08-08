@@ -104,6 +104,12 @@
     card.dataset.id = a.id || '';
     card.dataset.systemMessage = a.systemMessage || '';
     card.dataset.systemMessageFile = a.systemMessageFile || '';
+    // Bug #122: temperature and isDefault have no card fields, so preserve the
+    // loaded values on the card and re-emit them in save() - otherwise a
+    // Settings save silently drops them (temperature falls back to Model
+    // Default and can never be restored from the UI).
+    card.dataset.temperature = (a.temperature !== undefined && a.temperature !== null) ? String(a.temperature) : '';
+    card.dataset.isDefault = a.isDefault ? 'true' : 'false';
     // Stash original values for select restoration
     card.dataset.orig_baseModel = a.baseModel || '';
     card.dataset.orig_reasoning = a.reasoning || '';
@@ -122,6 +128,10 @@
         if (el.classList.contains('switch')) obj[el.dataset.field] = el.classList.contains('on');
         else obj[el.dataset.field] = el.value || '';
       });
+      // Bug #122: read the preserved temperature/isDefault back so the save
+      // round-trip never drops them (the UI has no fields for them).
+      if (card.dataset.temperature) obj.temperature = card.dataset.temperature;
+      if (card.dataset.hasOwnProperty('isDefault')) obj.isDefault = card.dataset.isDefault === 'true';
       obj.systemMessage = card.dataset.systemMessage || '';
       obj.systemMessageFile = card.dataset.systemMessageFile || '';
       assistants.push(obj);

@@ -72,6 +72,7 @@ function loadModule() {
   const sandbox = {
     document: {
       getElementById: (id) => (id === 'assistantGrid' ? grid : null),
+      querySelectorAll: (sel) => (sel === '#assistantGrid .provider-card' ? cards.slice() : []),
       createElement: (tag) => {
         const el = {
           tagName: tag,
@@ -211,5 +212,27 @@ describe('assistants.js reasoning dropdown', () => {
     baseSel.value = 'google/gemini-2.5-flash';
     baseSel._fire('change');
     assert.strictEqual(reasoningSel.value, '', 'an unsupported level must fall back to Model Default');
+  });
+
+  it('preserves temperature and isDefault through load() -> save() (bug #122)', () => {
+    const { registered } = loadModule();
+    const assistants = [{ id: 'a1', name: 'A', baseModel: 'deepseek/deepseek-v4-flash', reasoning: '', systemMessage: '', temperature: '0.7', isDefault: true }];
+
+    registered.load({ assistants: assistants, models: null });
+    const saved = registered.save();
+    const a = saved.assistants[0];
+    assert.strictEqual(a.id, 'a1');
+    assert.strictEqual(a.temperature, '0.7', 'temperature must survive the save round-trip (bug #122)');
+    assert.strictEqual(a.isDefault, true, 'isDefault must survive the save round-trip (bug #122)');
+  });
+
+  it('keeps a temperature of 0 as a real value through save() (bug #122)', () => {
+    const { registered } = loadModule();
+    const assistants = [{ id: 'a2', name: 'B', baseModel: 'deepseek/deepseek-v4-flash', reasoning: '', systemMessage: '', temperature: '0', isDefault: false }];
+
+    registered.load({ assistants: assistants, models: null });
+    const saved = registered.save();
+    assert.strictEqual(saved.assistants[0].temperature, '0', 'a stored 0 temperature is a valid value, not empty');
+    assert.strictEqual(saved.assistants[0].isDefault, false);
   });
 });

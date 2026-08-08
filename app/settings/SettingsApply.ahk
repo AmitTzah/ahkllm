@@ -112,7 +112,10 @@ class SettingsApply {
                 systemMessageFile: a.Has("systemMessageFile") ? a["systemMessageFile"] : "",
                 description: a.Has("description") ? a["description"] : "",
                 reasoning: a.Has("reasoning") ? a["reasoning"] : "",
-                temperature: a.Has("temperature") ? a["temperature"] : ""
+                temperature: a.Has("temperature") ? a["temperature"] : "",
+                ; Bug #122: carry isDefault through the runtime globals too, so
+                ; the re-pushed assistantList does not silently lose it.
+                isDefault: a.Has("isDefault") ? a["isDefault"] : false
             })
         }
         assistants := newAssistants

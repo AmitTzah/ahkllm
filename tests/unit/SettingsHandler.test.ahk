@@ -501,4 +501,27 @@ class SettingsHandlerTest {
         SettingsService._hooks := oldHooks
     }
 
+    ; Regression (bug #122): _ApplyAssistants must carry temperature and
+    ; isDefault through the runtime globals so a Settings save round-trip does
+    ; not reset assistant temperature to Model Default or drop the default flag.
+    ApplyToGlobals_AssistantsKeepTemperatureAndIsDefault() {
+        global assistants
+        oldAssistants := assistants
+        settings := Map()
+        settings["assistants"] := [
+            Map("id", "a1", "name", "A", "baseModel", "deepseek/deepseek-v4-flash", "systemMessage", "", "systemMessageFile", "", "description", "", "reasoning", "high", "temperature", "0.7", "isDefault", true)
+        ]
+        SettingsHandler.ApplyToGlobals(settings)
+        try {
+            if assistants.Length != 1
+                throw Error("expected 1 assistant, got " assistants.Length)
+            if assistants[1].temperature != "0.7"
+                throw Error("assistant temperature should survive ApplyToGlobals, got '" assistants[1].temperature "'")
+            if assistants[1].isDefault != true
+                throw Error("assistant isDefault should survive ApplyToGlobals, got " assistants[1].isDefault)
+        } finally {
+            assistants := oldAssistants
+        }
+    }
+
 }

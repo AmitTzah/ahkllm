@@ -712,6 +712,7 @@ scenarios.push({
 scenarios.push({
   id: 122,
   name: 'Saving Settings silently drops assistant temperature and isDefault (the Assistants tab save() only emits the card fields)',
+  regression: true, // FIXED bug kept as a regression check (assistant temperature/isDefault survive a save)
   mode: null,
   settings: {
     assistants: [{
@@ -740,32 +741,30 @@ scenarios.push({
     await cdp.waitFor('typeof window.SettingsPanel !== "undefined" && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === true', 5000, 200, 'settings marked dirty');
     await saveSettings(cdp, dataDir);
     await sleep(800);
-    // BUG: assistants.js save() builds each assistant object from the card
-    // fields (name/baseModel/reasoning/description + systemMessage) only -
-    // temperature and isDefault are never read back from the loaded data, so
-    // a Settings save permanently strips them from settings.json and from the
-    // runtime assistantList (the UI has no temperature field to restore them).
+    // FIXED (bug #122): assistants.js save() reads temperature/isDefault back
+    // from the card dataset, and SettingsApply._ApplyAssistants carries them
+    // into the runtime globals, so the save round-trip preserves both.
     const saved = readJsonFile(path.join(dataDir, 'settings.json'));
     const asst = (saved.assistants || []).find((a) => a.id === 'asst-temp-122');
     if (!asst) throw new Error('assistant missing from settings.json after save');
-    if (asst.temperature !== undefined)
-      throw new Error('assistant temperature survived the save (bug may be fixed): ' + JSON.stringify(asst));
-    if (asst.isDefault !== undefined)
-      throw new Error('assistant isDefault survived the save (bug may be fixed): ' + JSON.stringify(asst));
-    // AHK re-pushes assistantList after the save; poll until the re-pushed
-    // copy arrives (the buggy copy has no temperature).
+    if (asst.temperature !== '0.7')
+      throw new Error('assistant temperature was dropped by the save (bug #122 not fixed): ' + JSON.stringify(asst));
+    // AHK has no boolean type - jsongo persists true as 1, so accept any
+    // truthy value (the bug was the key being dropped entirely).
+    if (!asst.isDefault)
+      throw new Error('assistant isDefault was dropped by the save (bug #122 not fixed): ' + JSON.stringify(asst));
+    // AHK re-pushes assistantList after the save; the re-pushed copy must keep
+    // the configured temperature.
     const start2 = Date.now();
     let afterList = null;
     while (Date.now() - start2 < 8000) {
       afterList = await cdp.eval('window.assistantList && window.assistantList[0] ? window.assistantList[0] : null');
-      // The runtime loss is a reset: SettingsApply._ApplyAssistants fills the
-      // missing temperature with "" (Model Default), so the saved 0.7 is gone.
-      if (afterList && afterList.temperature !== '0.7') break;
+      if (afterList && afterList.temperature === '0.7') break;
       await sleep(300);
     }
-    if (!afterList || afterList.temperature === '0.7')
-      throw new Error('runtime assistantList still carries temperature 0.7 after save (bug may be fixed): ' + JSON.stringify(afterList));
-    return 'assistant temperature 0.7 / isDefault true were present on load but gone from settings.json and assistantList after one Settings save';
+    if (!afterList || afterList.temperature !== '0.7')
+      throw new Error('runtime assistantList lost temperature after save (bug #122 not fixed): ' + JSON.stringify(afterList));
+    return 'assistant temperature 0.7 / isDefault true survived the Settings save round-trip in settings.json and the re-pushed assistantList';
   }
 });
 
