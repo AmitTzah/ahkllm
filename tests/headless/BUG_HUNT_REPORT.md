@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #123 (branch-edit copies now carry the source message's token metadata - token_count/prompt_tokens/thinking/cached/active_path_tokens - captured inside the Edit.ahk loop (AHK v2 for-loop vars die after the loop); seed.js now seeds prompt_tokens like the app schema; scenario 123 flipped + ChatDB unit test). Next up per the lifecycle is #124.
+- **Where we left off:** 2026-08-08 - FIXED #124 (the tree modal subtitle now counts only ACTIVE PATH nodes via _countActivePathNodes instead of every tree node, so "Viewing active path Â· 2 nodes" matches the highlighted path; scenario 124 flipped + chat-branching unit test). Next up per the lifecycle is #125.
 ---
 
 ## Bug entry template
@@ -208,33 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 10. Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)
-
-**Scenario:** 124 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** Open a branched conversation (active path shorter than the full
-tree), click the tree button, read the subtitle under the tree.
-
-**Expected:** the label "Viewing active path · N nodes" should count the
-messages on the ACTIVE path (the ones highlighted), not the whole tree.
-
-**Actual:** `renderChatTree` computes `total = _countTreeNodes(tree)` - every
-node in the tree, including off-path branches - and labels it "Viewing active
-path". With a 2-message active path in a 5-node tree the label claims "5
-nodes".
-
-**Evidence:** `webui/js/chat/chat-tree-modal.js` `renderChatTree` builds
-`total` from `_countTreeNodes(tree)` (all nodes) and writes it into the
-`Viewing active path` subtitle.
-
-**Verification:** headless scenario 124 - loaded a branched fixture (active
-path 2 messages, tree 5 nodes), opened the tree modal, and read the subtitle:
-"Viewing active path · 5 nodes".
 
 ### 11. Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches
 
@@ -431,6 +406,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)" - FIXED in 994eb5a: assistants.js save() re-emits the preserved temperature/isDefault from the card dataset and SettingsApply._ApplyAssistants carries isDefault into the runtime globals, so the save round-trip no longer resets assistant temperature to Model Default; scenario 122 flipped to a regression check + assistants-settings JS + SettingsHandler AHK unit tests.
 
 - 2026-08-08 - ""Save as Branch" on an assistant message drops the copy's token metadata (header Context Used falls back to the parent, token popover is blank)" - FIXED in 0d96955: Edit.ahk branch mode now copies the source message's token metadata (token_count/prompt_tokens/thinking/cached/active_path_tokens) into the local_copy insert - captured inside the loop because AHK v2 for-loop variables are not valid after it - and seed.js seeds prompt_tokens like the app schema; scenario 123 flipped to a regression check + ChatDB unit test.
+
+- 2026-08-08 - "Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)" - FIXED in c1c6387: renderChatTree now labels the subtitle with _countActivePathNodes (the highlighted path) instead of _countTreeNodes (the whole tree); scenario 124 flipped to a regression check + chat-branching unit test.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
