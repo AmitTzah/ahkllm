@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #116 (ThreadRepo.Delete now passes the RAW thread id to AttachmentRepo.DeleteByThread, which escapes it internally - no more double-escaping that orphaned crafted-id threads' attachments; scenario 116 flipped + ChatDB unit test). Next up per the lifecycle is #117.
+- **Where we left off:** 2026-08-08 - FIXED #117 (attachment deletes now batch-delete rows first and check the file refcount AFTER - refs=0 removes the file, refs>=1 keeps it - so duplicate rows on one message no longer orphan the file and cross-thread sharing still holds; scenarios 117 + 131 (audit) pass + AttachmentRepo unit tests). Next up per the lifecycle is #118.
 ---
 
 ## Bug entry template
@@ -208,35 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 6. Deleting a message that holds the same attachment file twice orphans the file on disk
-
-**Scenario:** 117 (scenario code in `scenarios/db-verify.js`)
-
-**Status:** verified
-
-**Repro:** Attach the same file twice to one chat message (the UI allows it;
-content-addressable storage gives both rows the same hash file path). Delete
-the message.
-
-**Expected:** once no DB row references the file, the physical file is removed
-with the rows.
-
-**Actual:** `AttachmentRepo._DeleteFileIfOrphaned` counts references BEFORE the
-batch delete runs: with 2 rows pointing at the same path the count is 2 for
-both rows, so neither triggers `FileDelete`, and then all rows are deleted. The
-physical file survives forever as an orphan on disk (same outcome for
-`DeleteByThread`). 
-
-**Evidence:** `chat/db/AttachmentRepo.ahk` - `DeleteByMessage`/`DeleteByThread`
-call `_DeleteFileIfOrphaned` per row while the other rows still exist, and the
-reference count is never re-checked after the batch delete.
-
-**Verification:** headless scenario 117 - created a real file plus two
-attachment rows sharing its path, deleted the message via the UI, then checked:
-message and both attachment rows are gone but the file still exists.
 
 ### 7. "Save as Branch" on an assistant message records a fake API request in the usage dashboard
 
@@ -544,6 +517,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)" - FIXED in 6eb143d: TreeRepo.GetActivePath/GetTree now route threadId through SQLite.Escape (the _RecomputeCumulativeCounters site was already escaped by the #114 rewrite), closing the last raw-id interpolation class; scenario 115 flipped to a regression check + ChatDB unit test (crafted `bad'thread` round-trips GetActivePath/GetTree).
 
 - 2026-08-08 - "ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments" - FIXED in 4dc8557: ThreadRepo.Delete now passes the RAW threadId to AttachmentRepo.DeleteByThread (which escapes it internally), so a crafted-id thread's messages AND attachment rows/files are all removed; scenario 116 flipped to a regression check + ChatDB unit test.
+
+- 2026-08-08 - "Deleting a message that holds the same attachment file twice orphans the file on disk" - FIXED in 32ad2c2: AttachmentRepo.DeleteByMessage/DeleteByThread/DeleteOne now batch-delete the rows first and check the file refcount AFTER (refs=0 removes the file, refs>=1 keeps it), so duplicate rows on one message no longer orphan the file while cross-thread/forks sharing still holds (audit #131 green); scenarios 117 + 131 pass + AttachmentRepo unit tests.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
