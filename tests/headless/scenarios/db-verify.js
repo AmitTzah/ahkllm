@@ -74,7 +74,7 @@ scenarios.push({
 scenarios.push({
   id: 106,
   regression: true,
-  name: "DB live: Fork copies messages and keeps folder + cumulative counters (bugs #58/#48 fixed)",
+  name: "DB live: Fork copies messages and keeps folder/font; cumulative counters recomputed from the fork's own messages (bugs #58/#48/#126)",
   mode: null,
   settings:{},
   fixtures:{
@@ -91,20 +91,23 @@ scenarios.push({
     await cdp.click('#thread-list .chat-item');
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length>=2',15000,300,"loaded");
     await sleep(600);
-    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Fork"]');
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Fork"]');
     await cdp.waitFor('window.activeThreadId !== "t-fork-106"',15000,300,"forked");
     const nid=await cdp.eval('window.activeThreadId');
     await sleep(600);
-    const fork=seed.query(dbPath,"SELECT folder_id, cumulative_cost, font_size FROM chat_threads WHERE id=?",[nid])[0];
+    const fork=seed.query(dbPath,"SELECT folder_id, cumulative_cost, cumulative_input_tokens, cumulative_output_tokens, font_size FROM chat_threads WHERE id=?",[nid])[0];
     const cnt=seed.query(dbPath,"SELECT COUNT(*) as c FROM messages WHERE thread_id=?",[nid])[0].c;
-    // Forked from the user message (the only bubble with a Fork button), so
-    // the copy legitimately holds that single message.
-    if(cnt!==1) throw new Error("cnt "+cnt);
-    // FIXED (bug #58/#48): the fork keeps the source folder and inherits the
-    // cumulative counters so the token bar does not reset.
+    // Forked from the assistant message: the copy holds u1 + a1.
+    if(cnt!==2) throw new Error("cnt "+cnt);
+    // FIXED (bug #58/#48/#126): the fork keeps the source folder and font size
+    // (per-message context is still copied), but the cumulative counters are
+    // RECOMPUTED from the fork's own messages - only a1's API call (5 input /
+    // 10 output), never the source thread's full ledger (cost 2.0).
     if(fork.folder_id!=="f106") throw new Error("folder not kept "+JSON.stringify(fork));
-    if(Number(fork.cumulative_cost)!==2.0) throw new Error("cumulative not copied "+JSON.stringify(fork));
-    return "fork "+nid+" msgs "+cnt+" folder kept cumulative 2.0";
+    if(Number(fork.font_size)!==20) throw new Error("font size not kept "+JSON.stringify(fork));
+    if(Number(fork.cumulative_input_tokens)!==5 || Number(fork.cumulative_output_tokens)!==10) throw new Error("counters not recomputed "+JSON.stringify(fork));
+    if(Number(fork.cumulative_cost)===2.0) throw new Error("source cost still copied "+JSON.stringify(fork));
+    return "fork "+nid+" msgs "+cnt+" folder/font kept, counters recomputed (5/10), source cost 2.0 NOT copied";
   }
 });
 scenarios.push({
