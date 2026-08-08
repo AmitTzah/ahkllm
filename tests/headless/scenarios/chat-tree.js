@@ -634,6 +634,7 @@ scenarios.push({
 scenarios.push({
   id: 114,
   name: 'Hard-deleting a message in a branched tree miscalculates cumulative token counters (rowid order, not tree paths)',
+  regression: true, // FIXED bug kept as a regression check (branched-delete recompute must be tree-accurate)
   mode: null,
   settings: {},
   fixtures: {
@@ -664,17 +665,19 @@ scenarios.push({
     await sleep(900);
 
     const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, active_leaf_id FROM chat_threads WHERE id = ?', ['t-del-114'])[0];
-    // Ground truth after deleting a2: remaining API calls were a1 (prompt = u1's
-    // 100) and a2b (prompt = u1 100 + a1 50 + u2b 100 = 250) -> 350 input tokens.
-    // _RecomputeCumulativeCounters instead walks messages in ROWID order and
-    // charges a2b with u2's tokens too (u2 is NOT on branch B's path): 450.
-    if (Number(thread.cumulative_input_tokens) !== 450)
-      throw new Error('cumulative input after branched delete = ' + thread.cumulative_input_tokens + ' (expected the buggy 450; correct is 350)');
+    // FIXED (bug #114): _RecomputeCumulativeCounters is tree-accurate - it uses
+    // each assistant's prompt ground truth (or its parent's active_path_tokens)
+    // instead of a rowid-order running sum. After deleting a2 the remaining API
+    // calls are a1 (prompt = u1's 100) and a2b (prompt = u1 100 + a1 50 + u2b
+    // 100 = 250) -> 350 input tokens, NOT the buggy 450 (u2's tokens charged to
+    // branch B).
+    if (Number(thread.cumulative_input_tokens) !== 350)
+      throw new Error('cumulative input after branched delete = ' + thread.cumulative_input_tokens + ' (expected the tree-accurate 350)');
     const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
-    if (String(bar).indexOf('\u2191 450') < 0)
-      throw new Error('header input tokens do not show the corrupted 450: ' + JSON.stringify(bar));
+    if (String(bar).indexOf('\u2191 350') < 0)
+      throw new Error('header input tokens do not show the corrected 350: ' + JSON.stringify(bar));
     return 'deleted leaf a2 from a branched tree: cumulative_input_tokens=' + thread.cumulative_input_tokens +
-      ' (correct 350; buggy rowid-order recompute = 450) and the header shows the wrong total';
+      ' (tree-accurate 350; the buggy rowid-order recompute charged 450) and the header shows the corrected total';
   }
 });
 

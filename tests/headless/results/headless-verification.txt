@@ -1,5 +1,5 @@
-# 2026-08-08T10:53:27.071Z | run of 1 scenario(s)
-PASS | #113 | Forking at a message drops the deeper branches below off-path siblings (tree copy is one level deep) | fork id=13421764-8661-60ff-04c5-00004d642b23 has 7 messages (13421774-2050-8bfa-04a3-0000f4121382,13421774-3701-c358-3a62-00003188a428,13421774-3c8b-2691-8c74-000035d13bc0,13421774-8cb7-5de9-72be-000018396365,13421774-9c3b-c9d4-8488-0000334f42df,13421774-cb5f-aa9d-4993-0000a1a06a2e,13421774-f32f-341f-4f20-000087d46acd) - deep branches below the off-path sibling a1b are copied; branch switch walks into the subtree (a1b children=2) | 6.4s
+# 2026-08-08T10:57:53.606Z | run of 1 scenario(s)
+PASS | #114 | Hard-deleting a message in a branched tree miscalculates cumulative token counters (rowid order, not tree paths) | deleted leaf a2 from a branched tree: cumulative_input_tokens=350 (tree-accurate 350; the buggy rowid-order recompute charged 450) and the header shows the corrected total | 6.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -809,6 +809,49 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #114): hard-deleting a leaf in a BRANCHED tree must
+    ; recompute cumulative counters by tree path (each assistant's stored API
+    ; prompt_tokens), not by insertion order - the old running-sum charged
+    ; off-path branch messages with the other branch's tokens.
+    HardDelete_BranchedTree_RecomputesTreeAccurateCounters() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "first", token_count: 100})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "reply A", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 50, prompt_tokens: 100})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow A", parent_id: a1Id, token_count: 100})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans A", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", token_count: 50, prompt_tokens: 300})
+        u2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow B", parent_id: a1Id, token_count: 100})
+        a2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans B", parent_id: u2bId, model: "deepseek/deepseek-v4-flash", token_count: 50, prompt_tokens: 250})
+        ChatDB.Msg_SetActiveLeaf(threadId, a2Id)
+        ChatDB.Msg_HardDelete(a2Id)
+        row := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
+        if Integer(row[1, "cumulative_input_tokens"]) != 350
+            throw Error("branched-delete recompute input = " row[1, "cumulative_input_tokens"] " (expected tree-accurate 350 = a1 100 + a2b 250)")
+        if Integer(row[1, "cumulative_output_tokens"]) != 100
+            throw Error("branched-delete recompute output = " row[1, "cumulative_output_tokens"] " (expected 100 = a1 50 + a2b 50)")
+        this._teardown()
+    }
+
+    ; Regression (bug #114, fallback): legacy rows without stored prompt_tokens
+    ; fall back to the parent message's active_path_tokens - the context the
+    ; API call actually saw - instead of the rowid running sum.
+    HardDelete_BranchedTree_FallsBackToParentContext() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "first", token_count: 100})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "reply A", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 50})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow A", parent_id: a1Id, token_count: 100})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans A", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", token_count: 50})
+        u2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow B", parent_id: a1Id, token_count: 100})
+        a2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans B", parent_id: u2bId, model: "deepseek/deepseek-v4-flash", token_count: 50})
+        ChatDB.Msg_SetActiveLeaf(threadId, a2Id)
+        ChatDB.Msg_HardDelete(a2Id)
+        row := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
+        if Integer(row[1, "cumulative_input_tokens"]) != 350
+            throw Error("fallback recompute input = " row[1, "cumulative_input_tokens"] " (expected 350 via parent active_path_tokens)")
+        if Integer(row[1, "cumulative_output_tokens"]) != 100
+            throw Error("fallback recompute output = " row[1, "cumulative_output_tokens"] " (expected 100)")
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit active_path_tokens recalculation
     ; --------------------

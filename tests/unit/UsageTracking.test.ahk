@@ -667,8 +667,12 @@ class UsageTrackingTest {
         ChatDB.Msg_HardDelete(aId)
 
         stats2 := ChatDB.Msg_GetThreadStats(threadId)
-        if stats2.cumulativeOutputTokens != 5
-            throw Error("expected cumulativeOutput=5 after delete (user token_count), got " stats2.cumulativeOutputTokens)
+        ; Bug #128: user token_counts are backfilled INPUT contributions - the
+        ; recompute must NOT count them as output. With no assistant rows left
+        ; there are no API calls, so cumulative output drops to 0 (the old
+        ; recompute inflated it with the user's backfilled input tokens).
+        if stats2.cumulativeOutputTokens != 0
+            throw Error("expected cumulativeOutput=0 after delete (user token_count is input, not output - bug #128), got " stats2.cumulativeOutputTokens)
         if stats2.cumulativeInputTokens != 0
             throw Error("expected cumulativeInput=0 after delete, got " stats2.cumulativeInputTokens)
         this._closeDb()
