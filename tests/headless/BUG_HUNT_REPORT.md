@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #126 (ForkThread now recomputes the fork's cumulative counters from its own messages instead of copying the source thread's full ledger - scenario 48's regression updated to the same semantics; scenario 126 flipped + ChatDB fork unit test). Next up per the lifecycle is #128.
+- **Where we left off:** 2026-08-08 - FIXED #128 (the recompute only counts output on assistant rows - user token_counts are backfilled INPUT contributions - so hard-deleting a message no longer inflates cumulative output; the fix landed with #114's recompute rewrite, this cycle flips the scenario and adds the dedicated ChatDB test). Next up per the lifecycle is #129.
 ---
 
 ## Bug entry template
@@ -208,44 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #128, #129, #130 - each entry keeps its stable scenario id.
-
-
-### 13. Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output)
-
-**Scenario:** 128 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** In a thread with token data (user messages carry backfilled input
-token_counts, assistant messages carry visible output token_count), hard-delete
-any message via its Delete button.
-
-**Expected:** the header's cumulative output tokens drop by exactly the
-deleted message's output contribution (assistant token_count + thinking). With
-3 assistant calls of 50 output each (one deleted), the counter should fall from
-150 to 100.
-
-**Actual:** `MessageRepo._RecomputeCumulativeCounters` adds `token_count +
-thinking_tokens` for EVERY remaining row - including USER messages, whose
-token_count is the backfilled INPUT contribution (from `_BackfillUserTokens`),
-not output. After deleting the leaf `a2` the counter jumps UP to 400 (u1 100 +
-a1 50 + u2 100 + u2b 100 + a2b 50) instead of dropping to 100, and the header
-shows the inflated `down 400` (the header renders a down-arrow). The same
-recompute also feeds `cumulative_output_cost`, so the header's cost tooltip no
-longer matches the token bar.
-
-**Evidence:** `chat/db/MessageRepo.ahk` `_RecomputeCumulativeCounters` -
-`output += tc + tht` runs unconditionally for every row (user and assistant);
-only assistant rows charge `input`. `MessageRepo.Insert` only ever added
-assistant output to `cumulative_output_tokens`, so the delete path is the sole
-writer that mixes user input tokens into the output counter.
-
-**Verification:** headless scenario 128 - loaded a branched fixture (2
-assistant API calls remaining after the delete), deleted the active leaf via
-the UI, then read `chat_threads.cumulative_output_tokens`: 400 (buggy) instead
-of the tree-accurate 100, and the header token bar displays the inflated
-`down 400` (down-arrow rendered).
+**Ranked (1 = highest):** #129, #130 - each entry keeps its stable scenario id.
 
 
 ### 14. Empty Trash / deleteThreadForever leaves stale `messages_fts` rows (thread-level delete skips FTS cleanup, unlike HardDelete)
@@ -345,6 +308,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches" - FIXED in 5cee451: buildStructuredMessagesFromPath now labels each branch by its 1-based POSITION in the siblings array (raw sibling_index+1 went stale after a delete and grew with every retry), and the updateBranchInfo IPC got a real WebView implementation; scenario 125 flipped to a regression check + ChatUtils/chat-branching unit tests.
 
 - 2026-08-08 - "Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix" - FIXED in be76b6e: ForkThread now recomputes the fork's cumulative counters from its own messages (MessageRepo._RecomputeCumulativeCounters) instead of copying the source thread's ledger verbatim - the per-message active_path_tokens are still copied, preserving bug #48's context part; scenario 126 flipped to a regression check, scenario 48 updated to the same semantics + ChatDB fork unit test.
+
+- 2026-08-08 - "Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output)" - FIXED in 664f960 (with #114): _RecomputeCumulativeCounters counts output/cached only on assistant rows, so user token_counts (backfilled INPUT contributions) never inflate cumulative output after a hard delete; scenario 128 flipped to a regression check + ChatDB unit test (UsageTracking regression updated at #114, closed by 7ab4282).
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
