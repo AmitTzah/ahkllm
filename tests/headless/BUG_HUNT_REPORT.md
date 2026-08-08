@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #108 FIXED in 38d8292; next: bug #109 (Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`).
+- **Where we left off:** 2026-08-08 — bug #109 FIXED in 6aa4798; next: bug #110 (Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 109. Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`
-
-**Scenario:** 109 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a crafted `sidebarAction` IPC with `subAction:"deleteFolder"` and `folderId:"bad''id"` (e.g. via hand-edited WebView postMessage or compromised extension), or call any `ChatDB` path with `threadId`/`msgId` containing `''` via hand-edited DB.
-
-**Expected:** all `WHERE id="..."` interpolations should use `SQLite.Escape`.
-
-**Actual:** 15+ call sites still do raw `WHERE id="''" threadId "''"` / `msgId` / `params["folderId"]` without `SQLite.Escape`: `chat/callbacks/Sidebar.ahk:143` `DELETE FROM chat_folders WHERE id="''" params["folderId"] "''"`, `chat/db/MessageRepo.ahk` 5× `WHERE id="''" msgId "''"`, `chat/db/TreeRepo.ahk` 8× `WHERE id="''" threadId "''"`, `chat/db/AttachmentRepo.ahk` 2× `WHERE id="''" attachmentId "''"`, etc. Same class as #80/#81/#96/#99 but uncovered locations — hand-edited or IPC-crafted `''` breaks literal and injects SQL.
-
-**Evidence:** `chat/callbacks/Sidebar.ahk:143` without `SQLite.Escape`; `chat/db/MessageRepo.ahk:131,157,163,167,181` etc. raw `msgId`.
-
-**Verification:** headless scenario 109 (noApp) asserts `Sidebar.ahk` contains `params["folderId"]` in `DELETE FROM chat_folders` without `SQLite.Escape`, and `MessageRepo.ahk` has ≥3 raw `WHERE id="''" msgId` occurrences.
 
 ### 110. Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`
 
@@ -303,6 +287,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants" - FIXED in 634ffca: prompt_tokens is now persisted on every message (schema migration + Insert + fork copies) and _RecomputeActivePath keeps the assistant's API ground truth (prompt + visible + thinking) instead of reducing to a visible-token prefix sum, so Context Used no longer drops after delete/edit; scenario 107 flipped to a regression static check + ChatDB unit tests (ground truth survives recompute; hard-delete re-parenting test updated to expect ground truth).
 
 - 2026-08-08 - "main.js IPC fallback calls arbitrary `window[target]` without allowlist" - FIXED in 38d8292: handleWebMessage now routes the two legacy targets (updateTopbarTitle/updateBranchInfo) via explicit cases and the default case only logs unknown targets — the dynamic window[target](...data) invocation is gone, so a crafted IPC target can no longer invoke arbitrary globals; scenario 108 flipped to a regression static check + main.js unit tests (legacy targets route explicitly; a decoy global is never invoked for an unknown target).
+
+- 2026-08-08 - "Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`" - FIXED in 6aa4798: every remaining raw id interpolation now uses SQLite.Escape — Sidebar (rename/delete/move folder + renameThread), Edit.ahk, MessageRepo (Insert thread_id/role, HardDelete, Edit, GetMaxSiblingIndex, _TouchThreadByMsg, backfill), TreeRepo (GetActivePath, GetSiblings, SetActiveLeaf, SwitchBranch, GetThreadStats, _ResolvePricing, _WalkToLeaf, forks), ThreadRepo (thread listing, PurgeExpired coerces retention to Integer), SearchRepo FTS id list, ChatUtils/ThreadTitleGen/StreamCompletion; scenario 109 flipped to a regression static check + ChatDB unit test (crafted `bad'thread`/`bad'msg` round-trip SetActiveLeaf + HardDelete).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 

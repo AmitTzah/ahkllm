@@ -1,5 +1,5 @@
-# 2026-08-08T07:54:15.111Z | run of 1 scenario(s)
-PASS | #108 | main.js IPC routing uses an explicit allowlist (arbitrary window[target] removed) | main.js handleWebMessage routes updateTopbarTitle/updateBranchInfo via explicit cases and never calls window[target], so a crafted IPC target cannot invoke arbitrary globals | 0.0s
+# 2026-08-08T07:59:26.474Z | run of 1 scenario(s)
+PASS | #109 | Sidebar and ChatDB escape remaining raw ids (SQL injection sweep complete) | Sidebar folderId/threadId and MessageRepo msgId sites all use SQLite.Escape - no raw id interpolation remains | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
