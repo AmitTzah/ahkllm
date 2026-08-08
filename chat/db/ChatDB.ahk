@@ -38,6 +38,9 @@ class ChatDB {
         ChatDB.db := SQLite(ChatDB.dbPath)
         ChatDB.db.Exec("PRAGMA journal_mode=WAL;")
         ChatDB.db.Exec("PRAGMA busy_timeout=5000;")
+        ; Hardening item 2: enforce referential integrity (ON DELETE CASCADE /
+        ; SET NULL) instead of relying on app-side deletion order.
+        ChatDB.db.Exec("PRAGMA foreign_keys=ON;")
         ChatDB._CreateSchema()
         ChatDB.isOpen := true
         debugLog("[DB] Opened - path=" ChatDB.dbPath)
@@ -53,25 +56,9 @@ class ChatDB {
 
     static _CreateSchema() {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL);")
-        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN font_size INTEGER DEFAULT 17;")
-        ; Right-rail Advanced toggles (Code Execution / Web Search - persisted
-        ; stubs), stored as a JSON object, e.g. {"codeExecution":true,...}
-        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN advanced_toggles TEXT DEFAULT '';")
-        ; messages.active_path_tokens: total context tokens from root to this message (inclusive).
-        ; For assistants: API prompt_tokens + token_count (ground truth at insert time).
-        ; For user/system: parent.active_path_tokens + token_count (prefix sum).
-        ; After structural changes (delete/edit): recomputed as parent + token_count.
-        ; Read by GetThreadStats() from the leaf message - O(1), no thread-level storage needed.
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
-        ; Bug #107: persist the assistant's API prompt_tokens so structural
-        ; changes (delete/edit) can recompute active_path_tokens from ground
-        ; truth instead of a pure prefix sum of visible tokens.
-        try ChatDB.db.Exec("ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER DEFAULT 0;")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', description TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
-        try ChatDB.db.Exec("ALTER TABLE assistants ADD COLUMN description TEXT DEFAULT '';")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));")
-        ; Add folder_id to chat_threads if it doesn't exist (idempotent)
-        try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN folder_id TEXT REFERENCES chat_folders(id) ON DELETE SET NULL;")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS message_attachments (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, attachment_type TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT, original_filename TEXT, file_size INTEGER DEFAULT 0, extracted_text TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE);")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS command_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, command_name TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider, command_name));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider));")
@@ -79,6 +66,10 @@ class ChatDB {
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
+
+        ; Hardening item 2: schema evolution is versioned (PRAGMA user_version)
+        ; instead of unconditional try/catch ALTER TABLEs.
+        ChatDB._Migrate()
 
         ; FTS5 full-text search - maintained incrementally by MessageRepo (FTS_Sync).
         ; Repair on startup only if counts mismatch (first run or corruption).
@@ -93,11 +84,49 @@ class ChatDB {
 
     }
 
+    ; Versioned migrations. Each step runs only when user_version is behind,
+    ; and _AddColumnIfMissing skips columns that already exist, so old
+    ; databases are brought forward exactly once and fresh databases no-op.
+    static _Migrate() {
+        versionRow := ChatDB.db.Exec("PRAGMA user_version;")
+        version := versionRow.count ? Integer(versionRow[1, "user_version"]) : 0
+
+        ; v1: per-thread font size + right-rail Advanced toggles.
+        if version < 1 {
+            ChatDB._AddColumnIfMissing("chat_threads", "font_size", "INTEGER DEFAULT 17")
+            ChatDB._AddColumnIfMissing("chat_threads", "advanced_toggles", "TEXT DEFAULT ''")
+            ChatDB.db.Exec("PRAGMA user_version = 1;")
+        }
+        ; v2: folder membership.
+        if version < 2 {
+            ChatDB._AddColumnIfMissing("chat_threads", "folder_id", "TEXT REFERENCES chat_folders(id) ON DELETE SET NULL")
+            ChatDB.db.Exec("PRAGMA user_version = 2;")
+        }
+        ; v3: assistant API prompt_tokens ground truth (bug #107).
+        if version < 3 {
+            ChatDB._AddColumnIfMissing("messages", "prompt_tokens", "INTEGER DEFAULT 0")
+            ChatDB.db.Exec("PRAGMA user_version = 3;")
+        }
+        ; v4: assistant description.
+        if version < 4 {
+            ChatDB._AddColumnIfMissing("assistants", "description", "TEXT DEFAULT ''")
+            ChatDB.db.Exec("PRAGMA user_version = 4;")
+        }
+    }
+
+    ; Add a column only when it is missing (table/column names are trusted
+    ; constants, never user input).
+    static _AddColumnIfMissing(tableName, columnName, definition) {
+        cols := ChatDB.db.Exec("PRAGMA table_info(" tableName ");")
+        for row in cols.rows {
+            if row.name = columnName
+                return
+        }
+        ChatDB.db.Exec("ALTER TABLE " tableName " ADD COLUMN " columnName " " definition ";")
+    }
+
     ; FTS5 sync - called from MessageRepo on Insert/Edit.
-    ; NOTE: SQLite.Escape only doubles internal single quotes (' -> ''),
-    ; it does NOT wrap in quotes. The caller must add wrapping quotes.
-    ;   WRONG: VALUES(..., SQLite.Escape(val))     -> VALUES(..., Hi)
-    ;   RIGHT: VALUES(..., '" SQLite.Escape(val) "') -> VALUES(..., 'Hi')
+    ; Values are bound parameters - msg_id/content can never alter the SQL.
     static FTS_Sync(msgId, content) {
         try {
             ChatDB.db.Query("DELETE FROM messages_fts WHERE msg_id=?;", msgId)

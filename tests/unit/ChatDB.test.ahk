@@ -39,6 +39,81 @@ class ChatDBTest {
         this._closeDb()
     }
 
+    ; ----------------------------------------------------
+    ; Schema migrations + foreign keys (hardening item 2)
+    ; ----------------------------------------------------
+
+    Schema_IsMigratedToLatest() {
+        this._setup()
+        version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
+        if Integer(version) != 4
+            throw Error("expected user_version 4, got " version)
+        cols := [
+            { t: "chat_threads", c: "font_size" },
+            { t: "chat_threads", c: "advanced_toggles" },
+            { t: "chat_threads", c: "folder_id" },
+            { t: "messages", c: "prompt_tokens" },
+            { t: "assistants", c: "description" }
+        ]
+        for item in cols {
+            found := false
+            for row in ChatDB.db.Exec("PRAGMA table_info(" item.t ");").rows {
+                if row.name = item.c
+                    found := true
+            }
+            if !found
+                throw Error("column " item.t "." item.c " missing after schema creation")
+        }
+        this._teardown()
+    }
+
+    Schema_MigratesOldDatabase() {
+        if ChatDB.isOpen
+            ChatDB.Close()
+        oldDbPath := A_Temp "\test_schema_old_" A_TickCount ".db"
+        try FileDelete(oldDbPath)
+        ; Simulate a v0 database: tables without the later columns.
+        db := SQLite(oldDbPath)
+        db.Exec("CREATE TABLE chat_threads (id TEXT PRIMARY KEY, title TEXT);")
+        db.Exec("CREATE TABLE messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0);")
+        db.Exec("CREATE TABLE assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0);")
+        db.Close()
+        ChatDB.Open(oldDbPath)
+        try {
+            version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
+            if Integer(version) != 4
+                throw Error("expected user_version 4 after migration, got " version)
+            hasPrompt := false
+            for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
+                if row.name = "prompt_tokens"
+                    hasPrompt := true
+            }
+            if !hasPrompt
+                throw Error("migration did not add messages.prompt_tokens")
+            hasFont := false
+            for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows {
+                if row.name = "font_size"
+                    hasFont := true
+            }
+            if !hasFont
+                throw Error("migration did not add chat_threads.font_size")
+        } finally {
+            ChatDB.Close()
+            try FileDelete(oldDbPath)
+        }
+    }
+
+    ForeignKeys_OnDeleteSetNull() {
+        threadId := this._setup()
+        ChatDB.db.Query("INSERT INTO chat_folders (id, name) VALUES(?, ?);", "f-fk", "Folder")
+        ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", "f-fk", threadId)
+        ChatDB.db.Query("DELETE FROM chat_folders WHERE id=?;", "f-fk")
+        row := ChatDB.db.Query("SELECT folder_id FROM chat_threads WHERE id=?;", threadId)
+        if row.rows[1].folder_id != ""
+            throw Error("PRAGMA foreign_keys=ON should SET NULL on folder delete, got '" row.rows[1].folder_id "'")
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Insert
     ; --------------------
@@ -487,13 +562,16 @@ class ChatDBTest {
     ; Regression (bug #58): a fork must land in the source thread's folder.
     ForkThread_CopiesFolder() {
         threadId := this._setup()
-        ChatDB.db.Exec("UPDATE chat_threads SET folder_id='f-58' WHERE id='" threadId "';")
+        ; Create the folder first - with PRAGMA foreign_keys=ON (hardening item
+        ; 2) a folder_id must reference an existing chat_folders row.
+        ChatDB.db.Query("INSERT INTO chat_folders (id, name) VALUES(?, ?);", "f-58", "Folder 58")
+        ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", "f-58", threadId)
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
         a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
         newId := ChatDB.Msg_ForkThread(threadId, a1Id)
         if !newId
             throw Error("Expected new thread id from fork (folder)")
-        row := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" newId "';")
+        row := ChatDB.db.Query("SELECT folder_id FROM chat_threads WHERE id=?;", newId)
         if !row.count || row[1, "folder_id"] != "f-58"
             throw Error("Expected forked thread folder_id=f-58, got " (row.count ? row[1, "folder_id"] : "none"))
         ChatDB.Thread_Delete(newId)

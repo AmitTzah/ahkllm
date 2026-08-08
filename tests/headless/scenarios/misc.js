@@ -1106,8 +1106,9 @@ scenarios.push({
         { id: "m2", thread_id: "t2", role: "user", content: "two" }
       ]
     });
-    // The app never runs PRAGMA foreign_keys=ON, so mirror that here (Node's
-    // DatabaseSync enables FK constraints by default, which would mask orphans).
+    // FK constraints are irrelevant to this injection proof; keep them off so
+    // the crafted id cannot be masked by FK errors (the app now runs
+    // PRAGMA foreign_keys=ON since hardening item 2).
     const db = new DatabaseSync(dbPath, { readOnly: true, enableForeignKeyConstraints: false });
     const crafted = "x' OR '1'='1";
     const rawRows = db.prepare("SELECT id FROM messages WHERE thread_id='" + crafted + "';").all();
