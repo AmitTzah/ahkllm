@@ -1072,6 +1072,7 @@ scenarios.push({
 scenarios.push({
   id: 115,
   name: "TreeRepo.GetActivePath/GetTree and MessageRepo._RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)",
+  regression: true, // FIXED bug kept as a regression check (all three call sites must escape thread_id)
   mode: null,
   noApp: true,
   async body() {
@@ -1082,16 +1083,17 @@ scenarios.push({
     const launcher = require("../launch");
     const seed = require("../seed");
 
-    // 1. Source-level: the three call sites interpolate the RAW thread id
-    //    (bug #109 escaped the rest of TreeRepo/MessageRepo but missed these).
+    // 1. Source-level: all three call sites must route threadId through
+    //    SQLite.Escape (bug #115 - bug #109 escaped the sibling call sites but
+    //    missed GetActivePath/GetTree/_RecomputeCumulativeCounters).
     const tree = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "TreeRepo.ahk"), "utf8");
     const msg = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "MessageRepo.ahk"), "utf8");
-    const rawInGetActivePath = /SELECT id, thread_id, role[\s\S]{0,220}FROM messages WHERE thread_id='" threadId "';/.test(tree);
-    const rawInGetTree = /SELECT \* FROM messages WHERE thread_id='" threadId "';/.test(tree);
-    const rawInRecompute = /SELECT role, model, token_count[\s\S]{0,80}FROM messages WHERE thread_id='" threadId "' ORDER BY rowid;/.test(msg);
-    if (!rawInGetActivePath || !rawInGetTree || !rawInRecompute)
-      throw new Error("escapes may have been added (bug not reproduced): rawInGetActivePath=" + rawInGetActivePath +
-        " rawInGetTree=" + rawInGetTree + " rawInRecompute=" + rawInRecompute);
+    const escapedInGetActivePath = /FROM messages WHERE thread_id='" SQLite\.Escape\(threadId\) "';/.test(tree);
+    const escapedInGetTree = /SELECT \* FROM messages WHERE thread_id='" SQLite\.Escape\(threadId\) "';/.test(tree);
+    const escapedInRecompute = /WHERE thread_id='" SQLite\.Escape\(threadId\) "';/.test(msg);
+    if (!escapedInGetActivePath || !escapedInGetTree || !escapedInRecompute)
+      throw new Error("raw thread_id interpolation still present (bug #115 not fixed): escapedInGetActivePath=" + escapedInGetActivePath +
+        " escapedInGetTree=" + escapedInGetTree + " escapedInRecompute=" + escapedInRecompute);
 
     // 2. Semantics: prove the interpolation changes the query. With a crafted
     //    thread id "x' OR '1'='1", the raw pattern becomes
@@ -1114,8 +1116,8 @@ scenarios.push({
     db.close();
     if (rawRows.length < 2 || escapedRows.length !== 0)
       throw new Error("crafted-id semantics not reproduced: rawRows=" + rawRows.length + " escapedRows=" + escapedRows.length);
-    return "GetActivePath/GetTree/_RecomputeCumulativeCounters interpolate raw thread_id; crafted id '" + crafted +
-      "' returns " + rawRows.length + " rows raw vs 0 escaped (SQL injection / wrong-thread reads for crafted ids)";
+    return "GetActivePath/GetTree/_RecomputeCumulativeCounters now escape thread_id; crafted id '" + crafted +
+      "' returns " + rawRows.length + " rows raw vs 0 escaped (SQL injection / wrong-thread reads for crafted ids are closed)";
   }
 });
 

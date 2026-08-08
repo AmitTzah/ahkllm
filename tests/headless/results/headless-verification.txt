@@ -1,5 +1,5 @@
-# 2026-08-08T11:02:05.172Z | run of 1 scenario(s)
-PASS | #120 | Lowering Trash Retention in Settings does NOT purge expired trash - the settings-update purge hook fails at runtime | retention 30->1 persisted and t-trash-120 (deleted 19 days ago) WAS purged after saving (hook "purgeExpired" now runs via the TrashRetentionPurge wrapper); responseFontSize 17->20 persisted and new chat 134a0aac-0e9e-c8fa-14a6-0000c07da525 has font_size=20 and --chat-font-size=20px | 8.3s
+# 2026-08-08T11:04:46.957Z | run of 1 scenario(s)
+PASS | #115 | TreeRepo.GetActivePath/GetTree and MessageRepo._RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape) | GetActivePath/GetTree/_RecomputeCumulativeCounters interpolate raw thread_id; crafted id 'x' OR '1'='1' returns 2 rows raw vs 0 escaped (SQL injection / wrong-thread reads for crafted ids) | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

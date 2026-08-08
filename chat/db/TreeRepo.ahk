@@ -17,7 +17,9 @@ class TreeRepo {
         if !leafId
             return []
 
-        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id='" threadId "';")
+        ; Bug #115: escape threadId like the sibling call sites (bug #109) - a
+        ; crafted id with ' would otherwise build an injectable WHERE clause.
+        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id='" SQLite.Escape(threadId) "';")
 
         msgMap := Map()
         for row in allTable.rows {
@@ -72,7 +74,8 @@ class TreeRepo {
     }
 
     static GetTree(threadId) {
-        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" threadId "';")
+        ; Bug #115: escape threadId (missed by bug #109's sweep).
+        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" SQLite.Escape(threadId) "';")
         nodeMap := Map(), childrenMap := Map()
         for row in allTable.rows {
             node := {

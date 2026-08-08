@@ -691,6 +691,27 @@ class ChatDBTest {
         }
     }
 
+    ; Regression (bug #115): GetActivePath/GetTree must escape crafted thread ids
+    ; (bug #109's sweep escaped the sibling call sites but missed these two).
+    TreeQueries_EscapeCraftedThreadId() {
+        this._setup()
+        crafted := "bad'thread"
+        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('bad''thread', 'Crafted');")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content) VALUES('bad''m1', 'bad''thread', 'user', 'hi');")
+        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='bad''m1' WHERE id='bad''thread';")
+        ; A decoy in another thread proves the WHERE clause stays literal.
+        otherId := ChatDB.Thread_Create("Other")
+        ChatDB.Msg_Insert({thread_id: otherId, role: "user", content: "decoy"})
+
+        path := ChatDB.Msg_GetActivePath(crafted)
+        if path.Length != 1 || path[1].id != "bad'm1"
+            throw Error("GetActivePath should return only the crafted thread's message, got length=" path.Length " first=" (path.Length ? path[1].id : "none"))
+        tree := ChatDB.Msg_GetTree(crafted)
+        if tree.Length != 1
+            throw Error("GetTree should return only the crafted thread's message, got " tree.Length)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------
