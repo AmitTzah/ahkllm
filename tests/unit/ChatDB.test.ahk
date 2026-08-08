@@ -949,6 +949,25 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #128): the recompute must NOT count user messages'
+    ; backfilled input token_counts as output - only assistant rows carry API
+    ; output. Deleting the active leaf leaves a1 (50) + a2b (50) = 100 output.
+    HardDelete_DoesNotCountUserInputAsOutput() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "first", token_count: 100, active_path_tokens: 100})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "reply A", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 50, active_path_tokens: 150})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow A", parent_id: a1Id, token_count: 100, active_path_tokens: 250})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans A", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", token_count: 50, active_path_tokens: 300})
+        u2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow B", parent_id: a1Id, token_count: 100, active_path_tokens: 250})
+        a2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "ans B", parent_id: u2bId, model: "deepseek/deepseek-v4-flash", token_count: 50, active_path_tokens: 300})
+        ChatDB.Msg_SetActiveLeaf(threadId, a2Id)
+        ChatDB.Msg_HardDelete(a2Id)
+        row := ChatDB.db.Exec("SELECT cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
+        if Integer(row[1, "cumulative_output_tokens"]) != 100
+            throw Error("output after branched delete = " row[1, "cumulative_output_tokens"] " (expected 100 = a1 50 + a2b 50; user input token_counts must not count - bug #128)")
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit active_path_tokens recalculation
     ; --------------------

@@ -845,6 +845,7 @@ scenarios.push({
 scenarios.push({
   id: 128,
   name: 'Hard-deleting a message inflates the thread\'s cumulative OUTPUT tokens (user messages\' backfilled input token_count is counted as output)',
+  regression: true, // FIXED bug kept as a regression check (user input token_counts never count as output)
   mode: null,
   settings: {},
   fixtures: {
@@ -875,18 +876,17 @@ scenarios.push({
     await sleep(900);
 
     const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id = ?', ['t-out-128'])[0];
-    // Ground truth after deleting a2: the remaining API calls produced only
-    // a1 (50 output) and a2b (50 output) = 100 output tokens. The recompute
-    // instead walks every remaining row and adds token_count to `output` for
-    // USER rows too - user token_counts are backfilled INPUT contributions
-    // (u1 100 + u2 100 + u2b 100), so output inflates to 400.
-    if (Number(thread.cumulative_output_tokens) !== 400)
-      throw new Error('cumulative output after delete = ' + thread.cumulative_output_tokens + ' (expected the buggy 400; correct is 100)');
+    // FIXED (bug #128): the recompute counts output ONLY on assistant rows -
+    // user token_counts are backfilled INPUT contributions. After deleting a2
+    // the remaining API calls produced a1 (50) + a2b (50) = 100 output tokens
+    // (the old recompute inflated it to 400 with u1/u2/u2b's input tokens).
+    if (Number(thread.cumulative_output_tokens) !== 100)
+      throw new Error('cumulative output after delete = ' + thread.cumulative_output_tokens + ' (expected 100)');
     const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
-    if (String(bar).indexOf('\u2193 400') < 0)
-      throw new Error('header output tokens do not show the corrupted 400: ' + JSON.stringify(bar));
+    if (String(bar).indexOf('\u2193 100') < 0)
+      throw new Error('header output tokens do not show the corrected 100: ' + JSON.stringify(bar));
     return 'deleted leaf a2: cumulative_output_tokens=' + thread.cumulative_output_tokens +
-      ' (correct 100; buggy recompute counts user input token_counts as output = 400) and the header shows the inflated total';
+      ' (tree-accurate 100; user input token_counts no longer count as output) and the header shows the corrected total';
   }
 });
 
