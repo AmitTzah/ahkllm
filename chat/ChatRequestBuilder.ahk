@@ -33,6 +33,12 @@ buildRequest() {
         return _ShowApiKeyError(providerInfo)
     }
 
+    ; Bug #112: a provider with no endpoint would produce a URL-less cURL
+    ; command - surface a friendly error instead of raw cURL stderr.
+    if !providerInfo.endpoint {
+        return _ShowEndpointError(providerInfo)
+    }
+
     ; Build messages array from DB path
     apiMessages := _BuildApiMessagesFromPath(path)
 
@@ -54,6 +60,16 @@ _ShowApiKeyError(providerInfo) {
     pInfo := providers[providerInfo.providerKey]
     envVar := pInfo ? pInfo.authEnvVar : providerInfo.providerKey
     errorMsg := "No API key configured for " providerInfo.providerKey ". Set " envVar " environment variable."
+    postWebMessage("showError", { message: errorMsg })
+    postWebMessage("setChatButtonsEnabled", true)
+    startLoadingCursor(false)
+    debugLog("ERROR: " errorMsg)
+    return ""
+}
+
+; Show "endpoint missing" error and return "" so caller aborts (bug #112).
+_ShowEndpointError(providerInfo) {
+    errorMsg := "No endpoint configured for provider '" providerInfo.providerKey "'. Set it in Settings → Providers."
     postWebMessage("showError", { message: errorMsg })
     postWebMessage("setChatButtonsEnabled", true)
     startLoadingCursor(false)

@@ -23,6 +23,12 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     }
 
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+    ; Bug #112: never launch a URL-less cURL command - surface a friendly
+    ; "No endpoint configured" error (same helper as the chat request path).
+    if !providerInfo.endpoint {
+        _ShowEndpointError(providerInfo)
+        return
+    }
     cURLCommand := CurlBuilder.BuildStream(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
     FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
 

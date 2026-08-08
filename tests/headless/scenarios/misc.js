@@ -1045,7 +1045,8 @@ scenarios.push({
 
 scenarios.push({
   id: 112,
-  name: "CurlBuilder does not validate empty endpoint — malformed cURL with no URL",
+  name: "CurlBuilder rejects empty endpoints (malformed cURL prevented)",
+  regression: true, // FIXED bug kept as a regression check (empty endpoint must not produce a URL-less cURL command)
   mode: null,
   noApp: true,
   async body() {
@@ -1053,11 +1054,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const cb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","CurlBuilder.ahk"),"utf8");
-    const hasEndpointCheck = /if !providerInfo\.endpoint/.test(cb) || /if providerInfo\.endpoint = ""/.test(cb);
-    const buildsWithEndpoint = /providerInfo\.endpoint/.test(cb);
-    if(hasEndpointCheck) throw new Error("already validates endpoint");
-    if(!buildsWithEndpoint) throw new Error("no endpoint usage");
-    return "CurlBuilder.Build concatenates providerInfo.endpoint without empty check — empty endpoint yields POST with no URL";
+    const crb=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","ChatRequestBuilder.ahk"),"utf8");
+    // FIXED (bug #112): every builder returns "" when the endpoint is empty,
+    // and the chat request path surfaces a friendly "No endpoint configured".
+    const buildGuard = /static Build\(providerInfo, requestFile, outputFile\)[\s\S]{0,250}if !providerInfo\.endpoint\s*\n\s*return ""/.test(cb);
+    const streamGuard = /static BuildStream\(providerInfo, requestFile, outputFile, errorFile\)[\s\S]{0,250}if !providerInfo\.endpoint\s*\n\s*return ""/.test(cb);
+    const fimGuard = /if !endpoint\s*\n\s*return ""/.test(cb);
+    const friendlyError = /_ShowEndpointError\(providerInfo\)/.test(crb);
+    if(!buildGuard || !streamGuard || !fimGuard || !friendlyError)
+      throw new Error("bug #112 not fixed: buildGuard="+buildGuard+" streamGuard="+streamGuard+" fimGuard="+fimGuard+" friendlyError="+friendlyError);
+    return "CurlBuilder.Build/BuildStream/BuildFIM return '' for empty endpoints and ChatRequestBuilder surfaces a friendly 'No endpoint configured' error";
   }
 });
 

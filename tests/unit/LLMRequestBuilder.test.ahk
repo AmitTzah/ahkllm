@@ -251,6 +251,22 @@ class LLMRequestBuilderTest {
             throw Error("Expected FIM request file in command")
     }
 
+    ; Regression (bug #112): CurlBuilder must not build a URL-less cURL
+    ; command when the provider endpoint is empty.
+    CurlBuilder_EmptyEndpoint_ReturnsEmpty() {
+        pi := { providerKey: "test", endpoint: "", fimEndpoint: "", apiKey: "sk-test" }
+        if CurlBuilder.Build(pi, "req.json", "out.json") != ""
+            throw Error("Build should return empty for an empty endpoint")
+        if CurlBuilder.BuildStream(pi, "req.json", "out.json", "err.txt") != ""
+            throw Error("BuildStream should return empty for an empty endpoint")
+        if CurlBuilder.BuildFIM(pi, "req.json", "out.json") != ""
+            throw Error("BuildFIM should return empty when both endpoints are empty")
+        pi2 := { providerKey: "test", endpoint: "https://api.test/v1", fimEndpoint: "https://api.test/fim", apiKey: "sk-test" }
+        cmd := CurlBuilder.BuildFIM(pi2, "req.json", "out.json")
+        if !InStr(cmd, "https://api.test/fim")
+            throw Error("BuildFIM should use the FIM endpoint when configured")
+    }
+
     ; --------------------
     ; appendToChatHistory
     ; --------------------

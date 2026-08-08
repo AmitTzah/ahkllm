@@ -17,6 +17,11 @@ class CurlBuilder {
     ; Build the cURL command for a non-streaming request.
     ; providerInfo from LLMRequestBuilder.ResolveProvider().
     static Build(providerInfo, requestFile, outputFile) {
+        ; Bug #112: a provider with no endpoint would produce a malformed
+        ; URL-less cURL command - return "" so callers surface a friendly
+        ; "No endpoint configured" error instead of raw cURL stderr.
+        if !providerInfo.endpoint
+            return ""
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
@@ -28,6 +33,9 @@ class CurlBuilder {
     ; Build the streaming cURL command.
     ; errorFile = path to capture stderr (e.g., cURLError_*.txt)
     static BuildStream(providerInfo, requestFile, outputFile, errorFile) {
+        ; Bug #112: same empty-endpoint guard as Build.
+        if !providerInfo.endpoint
+            return ""
         return 'cURL.exe -s --no-buffer --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
@@ -43,6 +51,9 @@ class CurlBuilder {
         if !endpoint {
             endpoint := providerInfo.endpoint
         }
+        ; Bug #112: same empty-endpoint guard as Build.
+        if !endpoint
+            return ""
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
