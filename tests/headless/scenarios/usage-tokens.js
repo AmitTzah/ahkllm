@@ -359,4 +359,59 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 127,
+  name: 'Complex branched tree stays DB-consistent: FTS == messages, valid parents/leaf, and token counters match the API calls (regression audit)',
+  regression: true, // guards DB integrity + token accounting through send/retry/branch-edit flows
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await showChat();
+    // Exchange 1.
+    await sendChatMessage(cdp, 'first question');
+    await waitStreamingIdle(cdp, 40000);
+    // Exchange 2.
+    await sendChatMessage(cdp, 'second question');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(900);
+    // Retry the last assistant (creates a sibling branch).
+    await cdp.click('#chat-messages .msg:last-child .msg-action-btn[title="Retry"]');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(900);
+    // Edit the LAST USER message and save as a NEW BRANCH (fires a real call).
+    const userIdx = await cdp.eval('chatMessages.length - 2');
+    await cdp.click('#chat-messages .msg:nth-child(' + (userIdx + 1) + ') .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(' + (userIdx + 1) + ')").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.type('#chat-messages .msg:nth-child(' + (userIdx + 1) + ') .msg-edit-textarea', 'second question (branch)');
+    await cdp.click('#chat-messages .msg:nth-child(' + (userIdx + 1) + ') .save-branch');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const dbPath_ = dbPath;
+    const counts = seed.query(dbPath_, "SELECT (SELECT COUNT(*) FROM messages) AS msgs, (SELECT COUNT(*) FROM messages_fts) AS fts");
+    if (counts[0].msgs !== counts[0].fts)
+      throw new Error('FTS out of sync: messages=' + counts[0].msgs + ' fts=' + counts[0].fts);
+    // Every message's parent must live in the same thread.
+    const badParent = seed.query(dbPath_, "SELECT m.id FROM messages m LEFT JOIN messages p ON p.id = m.parent_id WHERE m.parent_id IS NOT NULL AND (p.id IS NULL OR p.thread_id <> m.thread_id)");
+    if (badParent.length)
+      throw new Error('dangling/cross-thread parents: ' + JSON.stringify(badParent));
+    // The active leaf must exist.
+    const badLeaf = seed.query(dbPath_, "SELECT t.id FROM chat_threads t LEFT JOIN messages m ON m.id = t.active_leaf_id WHERE t.active_leaf_id IS NOT NULL AND m.id IS NULL");
+    if (badLeaf.length)
+      throw new Error('threads with dangling active_leaf: ' + JSON.stringify(badLeaf));
+    // Thread cumulative counters must equal the per-message API ground truth.
+    const sums = seed.query(dbPath_, "SELECT COALESCE(SUM(prompt_tokens),0) AS inp, COALESCE(SUM(token_count + thinking_tokens),0) AS outp FROM messages WHERE role='assistant'");
+    const thread = seed.query(dbPath_, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads')[0];
+    if (Number(thread.cumulative_input_tokens) !== Number(sums[0].inp) || Number(thread.cumulative_output_tokens) !== Number(sums[0].outp))
+      throw new Error('thread counters mismatch: thread=' + JSON.stringify(thread) + ' assistant-sums=' + JSON.stringify(sums[0]));
+    // Usage dashboard row: 4 API calls (2 sends + retry + user-branch-edit),
+    // each mock call = prompt 12 / completion 9 / cached 4.
+    const usage = seed.query(dbPath_, 'SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage');
+    if (usage.length !== 1 || usage[0].call_count !== 4 || usage[0].prompt_tokens !== 48 || usage[0].completion_tokens !== 36 || usage[0].cached_tokens !== 16)
+      throw new Error('chat_usage wrong: ' + JSON.stringify(usage));
+    return 'messages=' + counts[0].msgs + ' fts=' + counts[0].fts + ' parents/leaf valid, counters=' +
+      JSON.stringify(thread) + ' match assistant sums=' + JSON.stringify(sums[0]) + ', chat_usage=' + JSON.stringify(usage[0]);
+  }
+});
+
 module.exports = scenarios;

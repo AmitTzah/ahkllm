@@ -1,8 +1,6 @@
-# 2026-08-08T09:36:49.035Z | run of 3 scenario(s)
-PASS | #122 | Saving Settings silently drops assistant temperature and isDefault (the Assistants tab save() only emits the card fields) | assistant temperature 0.7 / isDefault true were present on load but gone from settings.json and assistantList after one Settings save | 5.7s
-PASS | #123 | "Save as Branch" on an assistant message drops the branch copy's token metadata (Context Used falls back to the parent, token popover is blank) | branch copy DB={"token_count":0,"prompt_tokens":0,"thinking_tokens":0,"cached_tokens":0,"active_path_tokens":12}, header context before="21 / 1m" after="12 / 1m" popover=" Token UsageOutput: 0 tokensVisible: 0 tokensThinking: 0 tokensCache: 0 tokensTotal time: 0.0s" (copy lost a1's 21/9 attribution) | 6.2s
-PASS | #124 | Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included) | tree modal label: "Viewing active path · 5 nodes" - counts all 5 tree nodes while the active path has 2 | 5.0s
+# 2026-08-08T09:50:50.557Z | run of 1 scenario(s)
+PASS | #127 | Complex branched tree stays DB-consistent: FTS == messages, valid parents/leaf, and token counters match the API calls (regression audit) | messages=7 fts=7 parents/leaf valid, counters={"cumulative_input_tokens":48,"cumulative_output_tokens":36} match assistant sums={"inp":48,"outp":36}, chat_usage={"call_count":4,"prompt_tokens":48,"completion_tokens":36,"cached_tokens":16} | 8.9s
 
-Summary: 3/3 scenarios PASS
+Summary: 1/1 scenarios PASS
 Real profile restored: yes
 Report sync: OK

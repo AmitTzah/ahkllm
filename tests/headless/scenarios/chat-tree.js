@@ -712,4 +712,124 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 125,
+  name: 'Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-label-125', title: 'Branch Labels', active_leaf_id: 'm-125-a1c' }],
+    messages: [
+      { id: 'm-125-u1', thread_id: 't-label-125', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      // Three retry branches of the same question (sibling group with indexes 0,1,2).
+      { id: 'm-125-a1', thread_id: 't-label-125', role: 'assistant', content: 'answer A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-125-u1', sibling_group: 'sg-125', sibling_index: 0, token_count: 20, active_path_tokens: 30 },
+      { id: 'm-125-a1b', thread_id: 't-label-125', role: 'assistant', content: 'answer B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-125-u1', sibling_group: 'sg-125', sibling_index: 1, token_count: 20, active_path_tokens: 30 },
+      { id: 'm-125-a1c', thread_id: 't-label-125', role: 'assistant', content: 'answer C', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-125-u1', sibling_group: 'sg-125', sibling_index: 2, token_count: 20, active_path_tokens: 30 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Sanity: the third branch (leaf) correctly shows 3/3 before any delete.
+    const labelBefore = await cdp.text('#chat-messages .msg:nth-child(2) .branch-label-inline');
+    if (labelBefore !== '3/3')
+      throw new Error('expected 3/3 before delete, got ' + JSON.stringify(labelBefore));
+    // Switch back to the FIRST branch (a1, index 0).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Previous branch"]');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer B"', 15000, 300, 'switched to branch B');
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Previous branch"]');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer A"', 15000, 300, 'switched to branch A');
+    await sleep(400);
+    const labelA = await cdp.text('#chat-messages .msg:nth-child(2) .branch-label-inline');
+    if (labelA !== '1/3')
+      throw new Error('expected 1/3 on branch A, got ' + JSON.stringify(labelA));
+    // Delete the FIRST branch (index 0). The remaining siblings still carry
+    // their original sibling_index 1 and 2.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Delete"]');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await cdp.waitFor('chatMessages.length === 1', 15000, 300, 'thread emptied to user message');
+    await sleep(400);
+    // Navigate to branch B through the tree modal.
+    await cdp.click('#treeBtn');
+    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open")', 15000, 300, 'tree open');
+    await cdp.waitFor('document.querySelectorAll(".tree-node").length >= 3', 20000, 300, 'tree nodes rendered');
+    const targets = await cdp.eval('[].map.call(document.querySelectorAll(".tree-node"), function(n){ return n.getAttribute("data-target"); }).join(",")');
+    if (String(targets).indexOf('m-125-a1b') < 0)
+      throw new Error('branch B node missing from tree; targets=' + targets);
+    await cdp.click('.tree-node[data-target="m-125-a1b"]');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer B"', 15000, 300, 'navigated to branch B');
+    await sleep(500);
+    const labelB = await cdp.text('#chat-messages .msg:nth-child(2) .branch-label-inline');
+    // BUG: buildStructuredMessagesFromPath labels the message with the RAW
+    // sibling_index + 1 (2) even though it is now the FIRST of 2 remaining
+    // branches. Expected 1/2.
+    if (labelB !== '2/2')
+      throw new Error('branch B label after deleting branch A = ' + JSON.stringify(labelB) + ' (expected the buggy 2/2)');
+    // And branch C now shows 3/2 (expected 2/2).
+    await cdp.click('#treeBtn');
+    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open")', 15000, 300, 'tree open again');
+    await cdp.click('.tree-node[data-target="m-125-a1c"]');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer C"', 15000, 300, 'navigated to branch C');
+    await sleep(500);
+    const labelC = await cdp.text('#chat-messages .msg:nth-child(2) .branch-label-inline');
+    if (labelC !== '3/2')
+      throw new Error('branch C label after deleting branch A = ' + JSON.stringify(labelC) + ' (expected the buggy 3/2)');
+    return 'labels before delete: A=' + labelA + ', C=' + labelBefore + '; after deleting A: B=' + labelB + ' (should be 1/2), C=' + labelC + ' (should be 2/2)';
+  }
+});
+
+scenarios.push({
+  id: 126,
+  name: 'Forking mid-conversation copies the source thread\'s FULL cumulative token/cost counters even though the fork only contains the prefix',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{
+      id: 't-fork-126', title: 'Fork Counters', active_leaf_id: 'm-126-a2',
+      cumulative_input_tokens: 25, cumulative_output_tokens: 50,
+      cumulative_cached_tokens: 0, cumulative_cost: 0
+    }],
+    messages: [
+      // Call 1: u1 -> a1 (input 10, output 20). Call 2: u2 -> a2 (input 15, output 30).
+      { id: 'm-126-u1', thread_id: 't-fork-126', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-126-a1', thread_id: 't-fork-126', role: 'assistant', content: 'answer one', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-126-u1', token_count: 20, active_path_tokens: 30 },
+      { id: 'm-126-u2', thread_id: 't-fork-126', role: 'user', content: 'follow up', parent_id: 'm-126-a1', token_count: 5, active_path_tokens: 35 },
+      { id: 'm-126-a2', thread_id: 't-fork-126', role: 'assistant', content: 'answer two', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-126-u2', token_count: 30, active_path_tokens: 65 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 4', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Fork at a1 (the second message): the fork contains ONLY u1 + a1, whose
+    // single API call consumed 10 input / 20 output tokens.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-fork-126"', 15000, 300, 'fork created');
+    const newId = await cdp.eval('window.activeThreadId');
+    await sleep(900);
+    const forkMsgs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id = ?', [newId])[0].c;
+    if (forkMsgs !== 2)
+      throw new Error('fork should contain exactly 2 messages, has ' + forkMsgs);
+    const forkThread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id = ?', [newId])[0];
+    // BUG: ForkThread copies the source thread's cumulative counters verbatim
+    // (25/50), but the fork's own messages only account for the first API call
+    // (10/20). The fork's header over-reports the conversation's totals until
+    // the next structural change (a delete then recalibrates them).
+    if (Number(forkThread.cumulative_input_tokens) !== 25 || Number(forkThread.cumulative_output_tokens) !== 50)
+      throw new Error('fork counters = ' + JSON.stringify(forkThread) + ' (expected the buggy copied 25/50)');
+    const bar = await cdp.text('#tokenBar .tu-item:nth-child(2) .tu-val');
+    if (String(bar).indexOf('\u2191 25') < 0 || String(bar).indexOf('\u2193 50') < 0)
+      throw new Error('fork header does not show the copied totals: ' + JSON.stringify(bar));
+    return 'fork id=' + newId + ' has ' + forkMsgs + ' messages but copied counters ' +
+      JSON.stringify(forkThread) + ' (its own calls are only 10 input / 20 output); header shows ' + JSON.stringify(bar);
+  }
+});
+
 module.exports = scenarios;

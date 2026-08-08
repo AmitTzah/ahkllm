@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - intake of 3 NEW verified bugs on top of the previous 7 (assistant temperature wiped by Settings save, Save-as-Branch drops token metadata, tree modal counts all nodes as "active path"). Verified headlessly with scenarios 122-124; full AHK suite (503 tests) + JS suite (496 tests) green. Next step per the lifecycle is the fix cycle (pick #113 first).
+- **Where we left off:** 2026-08-08 - intake of 5 NEW verified bugs on top of the previous 7 (assistant temperature wiped by Settings save, Save-as-Branch drops token metadata, tree modal counts all nodes as "active path", stale branch labels after deleting a sibling, fork copies full cumulative counters). Verified headlessly with scenarios 122-126; full AHK suite (503 tests) + JS suite (496 tests) green. Next step per the lifecycle is the fix cycle (pick #113 first).
 ---
 
 ## Bug entry template
@@ -208,7 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118, #122, #123, #124 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118, #122, #123, #124, #125, #126 - each entry keeps its stable scenario id.
 
 
 ### 1. Forking a chat drops the deeper branches below off-path siblings
@@ -513,6 +513,70 @@ nodes".
 **Verification:** headless scenario 124 - loaded a branched fixture (active
 path 2 messages, tree 5 nodes), opened the tree modal, and read the subtitle:
 "Viewing active path · 5 nodes".
+
+### 11. Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches
+
+**Scenario:** 125 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** Build a message with three retry branches (branch A index 0, B
+index 1, C index 2), switch to branch A, then delete it via the Delete button.
+The remaining two branches now display "2/2" (branch B) and "3/2" (branch C).
+
+**Expected:** branch labels are 1-based POSITIONS among the currently
+remaining siblings, so after deleting branch A the labels should read "1/2"
+and "2/2" (and a subsequent retry should be "3/3", not "4/3").
+
+**Actual:** `buildStructuredMessagesFromPath` builds `siblingInfo.index =
+msg.sibling_index + 1` from the raw DB value, which is never renumbered when
+a sibling is deleted. The branch label (and the branch-nav readout) show
+stale numbers ("2/2" and "3/2"), and the offset grows with every retry after
+a delete.
+
+**Evidence:** `chat/ChatUtils.ahk` `buildStructuredMessagesFromPath` -
+`siblingInfo := { index: msg.sibling_index + 1, total: siblings.Length }`
+(position should come from the siblings array); `webui/js/chat/chat-actions.js`
+renders `siblingInfo.index + '/' + siblingInfo.total`. The `updateBranchInfo`
+message AHK posts after a switch (which carries the position-based
+`siblingInfo` from `SwitchBranch`) has no WebView implementation - it is a
+silent no-op (`typeof updateBranchInfo === 'function'` is false in main.js).
+
+**Verification:** headless scenario 125 - loaded a 3-branch fixture, checked
+"1/3"/"3/3" before deletion, deleted branch A via the UI, then navigated to
+branches B and C through the tree modal: the labels read "2/2" and "3/2"
+instead of "1/2" and "2/2".
+
+### 12. Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix
+
+**Scenario:** 126 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** Build a 2-exchange thread (u1 -> a1 -> u2 -> a2, cumulative input
+25 / output 50), then click Fork on a1 (the second message).
+
+**Expected:** the fork's cumulative counters reflect the API calls whose
+messages are actually in the fork - a1's single call, 10 input / 20 output
+tokens (a2's call is not part of the copy).
+
+**Actual:** `TreeRepo.ForkThread` copies the source thread's `cumulative_*`
+columns verbatim, so the fork (which contains only u1 + a1) starts with the
+full conversation totals (25/50) and the header shows "↑25 ↓50" even though
+u2/a2 and their API calls are not in the fork. The totals only recalibrate
+after the first structural change (a delete calls
+`_RecomputeCumulativeCounters` and the counters suddenly drop to the fork's
+own calls), so the header is wrong both before and after.
+
+**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread` copies the source's
+cumulative counters unconditionally after copying only the active-path
+prefix (+ off-path siblings); `MessageRepo.Insert`/`_RecomputeCumulativeCounters`
+are the only other writers of those columns.
+
+**Verification:** headless scenario 126 - forked at a1 via the UI, confirmed
+the fork has exactly 2 messages, then read the fork thread's counters from
+the DB (25/50 - the buggy copied values, not the fork's own 10/20) and the
+header token bar ("↑25 ↓50").
 
 
 ---
