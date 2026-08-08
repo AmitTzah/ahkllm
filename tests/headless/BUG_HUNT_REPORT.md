@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #102 FIXED in 8533a7a; next: bug #103 (TreeRepo.GetThreadStats pricingUnit picks the first message's model, not the thread's active model).
+- **Where we left off:** 2026-08-08 — bug #103 FIXED in 24089f9; next: bug #107 (TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants).
 ---
 
 ## Bug entry template
@@ -212,23 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 103. TreeRepo.GetThreadStats pricingUnit picks the first message''s model, not the thread''s active model
-
-**Scenario:** 103 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a thread with mixed models (e.g. assistant message from `openai/gpt-4` then later assistant from `anthropic/claude-3`), then check the token-bar `pricingUnit` (input/cached/output per 1M) shown in the header.
-
-**Expected:** pricing should reflect the thread''s effective model (active leaf or `model_override`), not an arbitrary earlier message.
-
-**Actual:** `TreeRepo.GetThreadStats` does `allTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id=''" threadId "'' AND model IS NOT NULL AND model != '''' LIMIT 1;")` — picks the *first* message with a model (by insertion order), regardless of which model is active. A thread that switched models will report the wrong per-token prices and cost estimates until all early messages are deleted.
-
-**Evidence:** `chat/db/TreeRepo.ahk:363` `SELECT model ... LIMIT 1`.
-
-**Verification:** headless scenario 103 (noApp) asserts the `LIMIT 1` first-model query exists.
-
 
 ### 107. TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants
 
@@ -346,6 +329,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists" - FIXED in 0f42fdc: the command copy helpers (_SetIfTruthy/_SetIfNonZero/_SetIfNonEmptyTags) now assign whenever the key exists, so false toggles, maxContextWords 0 and explicitly empty tags survive the save round-trip; scenario 101 flipped to a regression static check + SettingsHandler unit test (ApplyToGlobals keeps stream/isFIM/showInputBox/expandNewlines/includeImageContext=false, maxContextWords=0, tags=[]).
 
 - 2026-08-08 - "UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models" - FIXED in 8533a7a (hardening): the latent providerChatClause LIKE now escapes `\` `%` `_` via a new UsageRepo._EscapeLike and declares ESCAPE '\' (same pattern as SearchRepo #69); scenario 102 flipped to a regression static check + UsageTracking unit test. (The executed chat/command queries already matched provider exactly, so the wildcard LIKE was latent.)
+
+- 2026-08-08 - "TreeRepo.GetThreadStats pricingUnit picks the first message's model, not the thread's active model" - FIXED in 24089f9: GetThreadStats now resolves pricing via a shared TreeRepo._ResolvePricing (current request model -> thread model_override -> last assistant on the active path) used for BOTH the context window and pricingUnit, so the token bar's per-token prices follow the active model; scenario 103 flipped to a regression static check + UsageTracking unit test (pricing follows the newest assistant, thread override, then request model).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 

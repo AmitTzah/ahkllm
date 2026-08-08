@@ -1,5 +1,5 @@
-# 2026-08-07T23:01:28.185Z | run of 1 scenario(s)
-PASS | #102 | UsageRepo provider LIKE escapes % _ \ wildcards (bug fixed) | UsageRepo provider LIKE escapes \ % _ and declares ESCAPE '\' so a provider value containing wildcards is matched literally | 0.0s
+# 2026-08-08T07:40:57.953Z | run of 1 scenario(s)
+PASS | #103 | TreeRepo.GetThreadStats resolves pricing from the active model (bug fixed) | TreeRepo.GetThreadStats pricingUnit uses _ResolvePricing (request model -> thread override -> last assistant on the active path) instead of the thread's first message | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
