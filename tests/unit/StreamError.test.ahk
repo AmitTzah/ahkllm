@@ -158,4 +158,79 @@ class StreamErrorTest {
         if !hasReenable
             throw Error("Expected setChatButtonsEnabled true; captured: " jsongo.Stringify(captured))
     }
+
+    ; ----------------------------------------------------
+    ; Bug #133 regression: the cancelled partial assistant is a LOCAL DB row
+    ; (no usage was ever reported), so inserting it with local_copy must NOT
+    ; upsert chat_usage (no fake "API Request") and must NOT recompute the
+    ; cumulative counters from the un-billed parent context. The 0-token row
+    ; keeps its parent's active_path_tokens so "Context Used" stays intact.
+    ; This mirrors the exact object shape _handleStreamCancelled now inserts.
+    ; ----------------------------------------------------
+    CancelPartial_InsertMarksLocalCopy() {
+        sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"
+        se := FileRead(sePath)
+        cancelIdx := InStr(se, "_handleStreamCancelled() {")
+        cancelBlock := SubStr(se, cancelIdx, 2000)
+        if !InStr(cancelBlock, "local_copy: true")
+            throw Error("_handleStreamCancelled must insert the cancelled partial as local_copy (bug #133)")
+    }
+
+    CancelPartial_LocalCopy_DoesNotBillUsage() {
+        threadId := this._setup()
+
+        ; Exchange 1: user + billed assistant (mock usage prompt 12 / completion 9 / cached 4).
+        usrId := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "user", content: "first question",
+            token_count: 12, active_path_tokens: 12
+        })
+        a1Id := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "assistant", content: "first answer",
+            model: "deepseek/deepseek-v4-flash", parent_id: usrId,
+            prompt_tokens: 12, token_count: 9, thinking_tokens: 0,
+            cached_tokens: 4, response_time_ms: 100
+        })
+
+        usageBefore := ChatDB.db.Query("SELECT call_count, prompt_tokens, completion_tokens FROM chat_usage;")
+        if usageBefore.count != 1 || usageBefore[1, "call_count"] != 1 || usageBefore[1, "prompt_tokens"] != 12
+            throw Error("setup: exchange 1 should have produced one billed chat_usage row, got " usageBefore.count)
+        threadBefore := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", threadId)
+        if threadBefore.count != 1 || threadBefore[1, "cumulative_input_tokens"] != 12 || threadBefore[1, "cumulative_output_tokens"] != 9 || threadBefore[1, "cumulative_cached_tokens"] != 4
+            throw Error("setup: exchange 1 cumulative counters wrong")
+
+        ; Exchange 2: user message (no usage yet), then the user cancels mid-stream.
+        u2Id := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "user", content: "second question", parent_id: a1Id
+        })
+
+        ; Cancelled partial (the shape _handleStreamCancelled inserts after the fix).
+        ChatDB.Msg_Insert({
+            thread_id: threadId, role: "assistant", content: "partial answer...",
+            model: "deepseek/deepseek-v4-flash", parent_id: u2Id,
+            reasoning: "partial reasoning",
+            local_copy: true,
+            token_count: 0, thinking_tokens: 0, cached_tokens: 0, response_time_ms: 0
+        })
+
+        ; The cancelled partial must NOT create a billed API request row.
+        usageAfter := ChatDB.db.Query("SELECT call_count, prompt_tokens, completion_tokens FROM chat_usage;")
+        if usageAfter.count != 1 || usageAfter[1, "call_count"] != 1 || usageAfter[1, "prompt_tokens"] != 12
+            throw Error("cancelled partial billed a fake request: " usageAfter.count " rows, call_count=" usageAfter[1, "call_count"])
+
+        ; Cumulative counters must stay at the completed exchange only (12/9/4,
+        ; not 33 = 12 real + 21 un-billed parent context).
+        threadAfter := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", threadId)
+        if threadAfter[1, "cumulative_input_tokens"] != 12 || threadAfter[1, "cumulative_output_tokens"] != 9 || threadAfter[1, "cumulative_cached_tokens"] != 4
+            throw Error("cancelled partial inflated cumulative counters: input=" threadAfter[1, "cumulative_input_tokens"] " output=" threadAfter[1, "cumulative_output_tokens"] " cached=" threadAfter[1, "cumulative_cached_tokens"])
+
+        ; The partial row carries no usage and keeps the parent's context total.
+        path := ChatDB.Msg_GetActivePath(threadId)
+        partial := path[path.Length]
+        if partial.token_count != 0 || partial.prompt_tokens != 0
+            throw Error("partial row should have zero usage, got token_count=" partial.token_count " prompt_tokens=" partial.prompt_tokens)
+        if partial.active_path_tokens != 21
+            throw Error("partial row should keep the parent context (21), got " partial.active_path_tokens)
+
+        this._teardown()
+    }
 }

@@ -154,13 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - Bugs #133 (cancelled-stream usage over-count), #138 (Active Icon change
-  is not re-applied to the open chat window), #140 (retrying the first exchange re-fires title generation) and
-  #142 (follow-up messages drop earlier image context from API requests) verified headlessly and committed.
-  Audits #134-#137, #139, #141 all PASS.
-  Next: fix #133 (rank 1), then #142, then #140, then #138; re-run `--check-sync` + full suites after each.
+- **Where we left off:** 2026-08-08 - FIXED #133 (cancelled partial is now inserted as local_copy, so no fake
+  chat_usage request and no un-billed cumulative charge; scenario 133 flipped + StreamError unit tests green).
+  Next: #142.
 ---
 
 ## Bug entry template
@@ -214,37 +212,7 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Cancelling a stream mid-response records a fake API request and inflates the thread's cumulative input tokens (header and usage dashboard disagree)
-
-**Scenario:** 133 (scenario code in scenarios/usage-tokens.js)
-
-**Status:** verified — open
-
-**Repro:** Send a message and let the response complete. Send a second message and click Stop (the send button
-becomes Stop) while the stream is still producing content/reasoning. Open the usage dashboard and look at the
-chat header token bar.
-
-**Expected:** A cancelled stream never reported usage, so it must not create a billed API request row (the
-dashboard keeps "API Requests" = completed calls) and the thread's cumulative input/output/cached tokens must
-only reflect completed API calls (the header and the dashboard must agree, as in the #119 pipeline).
-
-**Actual:** The cancelled partial assistant is persisted through `_handleStreamCancelled` → `ChatDB.Msg_Insert`
-WITHOUT `local_copy: true`/`prompt_tokens`, so `MessageRepo.Insert` (a) upserts a `chat_usage` row with 0 tokens
-(`call_count` +1, "API Requests" inflated by a request that never billed) and (b) `_RecomputeCumulativeCounters`
-falls back to the parent message's `active_path_tokens` as the prompt total, charging the un-billed context.
-Verified live: after exchange 1 (mock prompt 12 / completion 9 / cached 4) and a mid-stream cancel on exchange 2,
-the DB shows `chat_usage call_count=2 (prompt 12)` while the thread's `cumulative_input_tokens=33` (12 real + 21
-un-billed parent context); the header token bar shows `↑ 33` while the dashboard records only 12 prompt tokens.
-
-**Evidence:** `chat/streaming/StreamError.ahk` `_handleStreamCancelled` inserts the partial row with no
-`local_copy`/`prompt_tokens`; `chat/db/MessageRepo.ahk` `Insert` (chat_usage upsert + `_RecomputeCumulativeCounters`
-legacy fallback to `rowMap[parent].active_path_tokens`) turns it into a billed request.
-
-**Verification:** headless — scenario 133 sends two messages with the mock SSE server, presses Stop mid-stream
-(partial row has `token_count=0, prompt_tokens=0`), then asserts `chat_usage.call_count=2` and
-`cumulative_input_tokens=33` (both PASS = bug reproduced, 3/3 stable runs).
-
-### 2. Changing the "Active Icon" (iconOn) in Settings is not re-applied to the already-open chat window (stale until restart)
+### 1. Changing the "Active Icon" (iconOn) in Settings is not re-applied to the already-open chat window (stale until restart)
 
 **Scenario:** 138 (scenario code in scenarios/misc.js)
 
@@ -267,7 +235,7 @@ after saving iconOn=IconOff.ico the open chat window still renders IconOn (custo
 **Verification:** headless — scenario 138 drives Settings → Icons → sets `#iconOnPath` to IconOff.ico → Save, then
 `runIconCheck(IconOff.ico)` on the open chat window returns `customApplied=0` (PASS = stale icon, 2/2 stable runs).
 
-### 3. Retrying the first exchange fires a second title-generation request (duplicate API call while the title is still "New Chat")
+### 2. Retrying the first exchange fires a second title-generation request (duplicate API call while the title is still "New Chat")
 
 **Scenario:** 140 (scenario code in scenarios/usage-tokens.js)
 
@@ -291,7 +259,7 @@ re-checks `currentTitle`; `chat/ThreadTitleGen.ahk` `generateThreadTitle` has no
 **Verification:** headless — scenario 140 sends one exchange, waits, retries the first assistant, and asserts the
 mock log contains 2 title requests (`max_tokens === 50`) — PASS = duplicate fired.
 
-### 4. Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)
+### 3. Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)
 
 **Scenario:** 142 (scenario code in scenarios/misc.js)
 
@@ -321,6 +289,8 @@ PASS = context dropped.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-08 - "Cancelling a stream mid-response records a fake API request and inflates the thread's cumulative input tokens (header and usage dashboard disagree)" - FIXED: _handleStreamCancelled now inserts the cancelled partial as local_copy, so MessageRepo.Insert never upserts chat_usage (no fake API request) and never recomputes the cumulative counters from the un-billed parent context; scenario 133 flipped to a regression check + StreamError unit tests.
 
 - 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in f0490c7: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
 

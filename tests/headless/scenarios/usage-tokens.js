@@ -462,6 +462,7 @@ scenarios.push({
 
 scenarios.push({
   id: 133,
+  regression: true, // FIXED bug kept as a regression check (cancelled stream must not bill usage)
   name: 'Cancelling a stream mid-response records a fake 0-token API request in chat_usage and inflates the thread cumulative input by the un-billed parent context (header vs dashboard disagree)',
   mode: 'sse-success',
   settings: {},
@@ -497,18 +498,24 @@ scenarios.push({
       throw new Error('setup: last row is not an assistant after cancel: ' + JSON.stringify(msgs));
     if (Number(partial.prompt_tokens) > 0 || Number(partial.token_count) > 0)
       throw new Error('setup: stream finished before Stop landed (last assistant has usage) - re-run: ' + JSON.stringify(partial));
-    // BUG (repro): the cancelled insert lacks local_copy/prompt_tokens, so
-    // MessageRepo.Insert upserts a fake chat_usage request (call_count 2 with
-    // 0 tokens) and _RecomputeCumulativeCounters charges the parent's
-    // active_path_tokens (21) as input, inflating cumulative input to 33 while
-    // the dashboard records only 12 prompt tokens.
-    if (usage.call_count !== 2) throw new Error('expected buggy chat_usage call_count 2 (fake cancelled request), got ' + JSON.stringify(usage) + ' msgs=' + JSON.stringify(msgs));
-    if (Number(thread.cumulative_input_tokens) !== 33)
-      throw new Error('expected buggy cumulative input 33 (12 real + 21 un-billed parent context), got ' + JSON.stringify(thread) + ' msgs=' + JSON.stringify(msgs) + ' usage=' + JSON.stringify(usage));
+    // FIXED (bug #133): the cancelled partial is inserted as a local_copy, so
+    // MessageRepo.Insert never upserts chat_usage (no fake request) and never
+    // recomputes the cumulative counters. The dashboard keeps 1 call / 12
+    // prompt tokens, the thread counters stay 12/9/4, and the header token bar
+    // agrees with the dashboard (the old code charged the parent's
+    // active_path_tokens, inflating cumulative input to 33).
+    if (usage.call_count !== 1 || usage.prompt_tokens !== 12)
+      throw new Error('cancelled stream still billed a fake request: ' + JSON.stringify(usage) + ' msgs=' + JSON.stringify(msgs));
+    if (Number(thread.cumulative_input_tokens) !== 12 || Number(thread.cumulative_output_tokens) !== 9 || Number(thread.cumulative_cached_tokens) !== 4)
+      throw new Error('cancelled stream inflated the cumulative counters: ' + JSON.stringify(thread) + ' msgs=' + JSON.stringify(msgs) + ' usage=' + JSON.stringify(usage));
+    if (Number(partial.active_path_tokens) !== 21)
+      throw new Error('cancelled partial should keep the parent context (21), got ' + partial.active_path_tokens);
     const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(bar).indexOf('\u2191 12') < 0 || String(bar).indexOf('\u2191 33') >= 0)
+      throw new Error('header token bar must agree with the dashboard (\u2191 12, not \u2191 33): ' + JSON.stringify(bar));
     return 'cancelled mid-stream: partial row=' + JSON.stringify(partial) +
-      ', chat_usage=' + JSON.stringify(usage) + ' (fake 2nd request, 0 tokens), thread counters=' +
-      JSON.stringify(thread) + ' (input inflated to 33 = 12 real + 21 un-billed parent context), header=' + JSON.stringify(bar);
+      ', chat_usage=' + JSON.stringify(usage) + ' (1 completed call only), thread counters=' +
+      JSON.stringify(thread) + ' (12/9/4 - un-billed context never charged), header=' + JSON.stringify(bar);
   }
 });
 

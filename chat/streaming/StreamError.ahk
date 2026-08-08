@@ -102,6 +102,9 @@ _handleStreamCancelled() {
             model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
             parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
             reasoning: requestParams["_streamReasoning"],
+            ; Bug #133: cancelled stream never reported usage - LOCAL row:
+            ; local_copy skips the chat_usage upsert + cumulative recompute.
+            local_copy: true,
             token_count: 0,
             thinking_tokens: 0,
             cached_tokens: 0,
