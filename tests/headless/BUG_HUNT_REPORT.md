@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #110 FIXED in ef41e48; next: bug #111 (ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`).
+- **Where we left off:** 2026-08-08 — bug #111 FIXED in 193ed5b; next: bug #112 (CurlBuilder does not validate empty endpoint — malformed cURL with no URL).
 ---
 
 ## Bug entry template
@@ -213,22 +213,6 @@ one at a time, in rank order.
 
 ---
 
-### 111. ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`
-
-**Scenario:** 111 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a chat/command request that triggers `ApiLogger.LogRequest`, then kill the app mid-write (or have disk full).
-
-**Expected:** log write should be atomic (write to temp then rename), like settings should be.
-
-**Actual:** `ApiLogger.LogRequest` does `FileOpen(this.logFilePath, "w", "UTF-8-RAW").Write(jsongo.Stringify(logs))` — direct overwrite without temp file. Crash or power loss mid-write leaves truncated JSON, next `ReadLogs` fails to parse and returns `[]`, losing all history. Same class as #97 but for API logs.
-
-**Evidence:** `api/ApiLogger.ahk` `LogRequest` — `FileOpen(..., "w").Write` without `FileMove` temp.
-
-**Verification:** headless scenario 111 (noApp) asserts `FileOpen(this.logFilePath, "w"` exists and no atomic rename exists.
-
 ### 112. CurlBuilder does not validate empty endpoint — malformed cURL with no URL
 
 **Scenario:** 112 (scenario code in e2e-suite.js)
@@ -275,6 +259,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`" - FIXED in 6aa4798: every remaining raw id interpolation now uses SQLite.Escape — Sidebar (rename/delete/move folder + renameThread), Edit.ahk, MessageRepo (Insert thread_id/role, HardDelete, Edit, GetMaxSiblingIndex, _TouchThreadByMsg, backfill), TreeRepo (GetActivePath, GetSiblings, SetActiveLeaf, SwitchBranch, GetThreadStats, _ResolvePricing, _WalkToLeaf, forks), ThreadRepo (thread listing, PurgeExpired coerces retention to Integer), SearchRepo FTS id list, ChatUtils/ThreadTitleGen/StreamCompletion; scenario 109 flipped to a regression static check + ChatDB unit test (crafted `bad'thread`/`bad'msg` round-trip SetActiveLeaf + HardDelete).
 
 - 2026-08-08 - "Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`" - FIXED in ef41e48: _handleStreamComplete (success) and _handleStreamError (error) now call deleteTempFiles() after their reads, matching the cancel path, and deleteTempFiles is defensive about missing requestParams keys; scenario 110 flipped to a regression static check + StreamHandler unit test (success/error/cancel all delete temp files).
+
+- 2026-08-08 - "ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`" - FIXED in 193ed5b: LogRequest and TrimToLimit now write through a new ApiLogger._WriteLogs helper (temp file + FileMove with file-state verification, same pattern as settings #97), so a crash mid-write cannot leave truncated JSON; scenario 111 flipped to a regression static check + LLMRequestBuilder unit test (round-trip, no temp leftover).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 

@@ -1,5 +1,5 @@
-# 2026-08-08T08:03:43.819Z | run of 1 scenario(s)
-PASS | #110 | Streaming deletes temp files on success and error (credential leak fixed) | StreamCompletion._handleStreamComplete and StreamError._handleStreamError now call deleteTempFiles (like the cancel path), so request/cURL files with the Bearer token never linger in %TEMP% | 0.0s
+# 2026-08-08T08:06:38.383Z | run of 1 scenario(s)
+PASS | #111 | ApiLogger writes the log atomically via temp + rename (bug fixed) | ApiLogger.LogRequest/TrimToLimit write via temp file + FileMove (atomic), so a crash mid-write cannot corrupt LLM_API_Log.json | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
