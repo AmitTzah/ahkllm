@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #128 (the recompute only counts output on assistant rows - user token_counts are backfilled INPUT contributions - so hard-deleting a message no longer inflates cumulative output; the fix landed with #114's recompute rewrite, this cycle flips the scenario and adds the dedicated ChatDB test). Next up per the lifecycle is #129.
+- **Where we left off:** 2026-08-08 - FIXED #129 (ThreadRepo.Delete/PurgeExpired now call FTS_Remove for every deleted message before the raw DELETEs, so the FTS index stays in sync in-session instead of drifting until the next startup rebuild; scenario 129 flipped + ChatDB unit tests). Next up per the lifecycle is #130 (the last open bug).
 ---
 
 ## Bug entry template
@@ -208,41 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #129, #130 - each entry keeps its stable scenario id.
-
-
-### 14. Empty Trash / deleteThreadForever leaves stale `messages_fts` rows (thread-level delete skips FTS cleanup, unlike HardDelete)
-
-**Scenario:** 129 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** Trash a thread from the sidebar (Delete), then permanently delete it
-from the Trash ("Delete forever"), or lower trash retention so the hourly
-purge removes it.
-
-**Expected:** deleting a thread removes its messages AND their FTS index rows,
-exactly like deleting a single message does (`MessageRepo.HardDelete` ->
-`ChatDB.FTS_Remove`, the bug #65 guarantee "FTS stays in sync").
-
-**Actual:** `ThreadRepo.Delete` and `ThreadRepo.PurgeExpired` delete messages
-with raw `DELETE FROM messages` and never touch `messages_fts`, so the FTS
-index keeps one orphaned row per deleted message. The index only re-syncs on
-the next app startup, when `ChatDB._CreateSchema` notices the count mismatch
-and rebuilds it. In-session search still works (the result query joins back to
-`messages`), but the index drifts from the table for the whole session and
-every startup pays for a full rebuild.
-
-**Evidence:** `chat/db/ThreadRepo.ahk` `Delete` and `PurgeExpired` issue raw
-`DELETE FROM messages` / `DELETE FROM chat_threads` with no `FTS_Remove`;
-`chat/db/MessageRepo.ahk` `HardDelete` calls `ChatDB.FTS_Remove(msgId)` first
-(the inconsistency); `chat/db/ChatDB.ahk` `_CreateSchema` repairs the mismatch
-only at startup.
-
-**Verification:** headless scenario 129 - trashed the seeded thread via the
-sidebar, then deleted it forever from the trash, then read
-`messages_fts`: 0 messages and 0 threads remain, but 2 FTS rows still index
-the deleted messages.
+**Ranked (1 = highest):** #130 - each entry keeps its stable scenario id.
 
 
 ### 15. Saving Settings wipes a custom (unlisted) "Response Font" - the select has no matching option so save() emits an empty value
@@ -310,6 +276,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix" - FIXED in be76b6e: ForkThread now recomputes the fork's cumulative counters from its own messages (MessageRepo._RecomputeCumulativeCounters) instead of copying the source thread's ledger verbatim - the per-message active_path_tokens are still copied, preserving bug #48's context part; scenario 126 flipped to a regression check, scenario 48 updated to the same semantics + ChatDB fork unit test.
 
 - 2026-08-08 - "Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output)" - FIXED in 664f960 (with #114): _RecomputeCumulativeCounters counts output/cached only on assistant rows, so user token_counts (backfilled INPUT contributions) never inflate cumulative output after a hard delete; scenario 128 flipped to a regression check + ChatDB unit test (UsageTracking regression updated at #114, closed by 7ab4282).
+
+- 2026-08-08 - "Empty Trash / deleteThreadForever leaves stale messages_fts rows (thread-level delete skips FTS cleanup, unlike HardDelete)" - FIXED in 5af8b5d: ThreadRepo.Delete/PurgeExpired now call ChatDB.FTS_Remove for every deleted message before the raw DELETEs, so the FTS index stays in sync in-session (same guarantee as HardDelete, bug #65); scenario 129 flipped to a regression check + ChatDB unit tests.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
