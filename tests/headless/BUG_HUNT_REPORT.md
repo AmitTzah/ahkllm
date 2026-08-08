@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #117 (attachment deletes now batch-delete rows first and check the file refcount AFTER - refs=0 removes the file, refs>=1 keeps it - so duplicate rows on one message no longer orphan the file and cross-thread sharing still holds; scenarios 117 + 131 (audit) pass + AttachmentRepo unit tests). Next up per the lifecycle is #118.
+- **Where we left off:** 2026-08-08 - FIXED #118 (branch-edit copies are now inserted with local_copy: true, so MessageRepo.Insert never upserts chat_usage or re-charges the cumulative counters for them - the dashboard shows no fake API request; scenario 118 flipped + ChatDB unit test, live audits 119/127 stay green). Next up per the lifecycle is #122.
 ---
 
 ## Bug entry template
@@ -208,33 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 7. "Save as Branch" on an assistant message records a fake API request in the usage dashboard
-
-**Scenario:** 118 (scenario code in `scenarios/usage-tokens.js`)
-
-**Status:** verified
-
-**Repro:** In any chat, click Edit on an assistant message and choose "Save as
-Branch" (this is a local DB copy - no LLM request is fired for assistant
-messages). Open the Usage Dashboard.
-
-**Expected:** API Requests stays unchanged - no request was made.
-
-**Actual:** `MessageRepo.Insert` upserts `chat_usage` for EVERY assistant insert
-that carries a model, including branch-edit inserts that have no prompt/completion
-data. The dashboard gains one "API Request" with 0 tokens that never happened.
-
-**Evidence:** `chat/db/MessageRepo.ahk` `Insert` - the
-`if msgObj.role = "assistant" && msgObj.HasProp("model") && msgObj.model`
-block calls `ChatDB.ChatUsage_Upsert` unconditionally; `chat/callbacks/Edit.ahk`
-branch mode only fires a request when `role = "user"`.
-
-**Verification:** headless scenario 118 - edited the seeded assistant message
-and saved it as a branch via the UI, then read `chat_usage`: exactly one row
-with `call_count=1` and zero tokens, while no API call was made.
 
 ### 8. Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)
 
@@ -519,6 +494,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments" - FIXED in 4dc8557: ThreadRepo.Delete now passes the RAW threadId to AttachmentRepo.DeleteByThread (which escapes it internally), so a crafted-id thread's messages AND attachment rows/files are all removed; scenario 116 flipped to a regression check + ChatDB unit test.
 
 - 2026-08-08 - "Deleting a message that holds the same attachment file twice orphans the file on disk" - FIXED in 32ad2c2: AttachmentRepo.DeleteByMessage/DeleteByThread/DeleteOne now batch-delete the rows first and check the file refcount AFTER (refs=0 removes the file, refs>=1 keeps it), so duplicate rows on one message no longer orphan the file while cross-thread/forks sharing still holds (audit #131 green); scenarios 117 + 131 pass + AttachmentRepo unit tests.
+
+- 2026-08-08 - ""Save as Branch" on an assistant message records a fake API request in the usage dashboard" - FIXED in 77ae619: branch-edit copies are inserted with local_copy: true, so MessageRepo.Insert never upserts chat_usage or re-charges the cumulative counters/costs for them (no API call happened); scenario 118 flipped to a regression check + ChatDB unit test (live audits 119/127 stay green).
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
