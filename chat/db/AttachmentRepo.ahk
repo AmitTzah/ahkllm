@@ -1,5 +1,5 @@
 ; ======================================================
-; AttachmentRepo.ahk — Attachment CRUD operations
+; AttachmentRepo.ahk - Attachment CRUD operations
 ;
 ; Insert, select, delete, copy. File cleanup on disk.
 ; ======================================================
@@ -22,7 +22,7 @@ class AttachmentRepo {
         attHash := att.Has("contentHash") ? att["contentHash"] : ""
         filePath := ImageUtils.SaveBase64ToFile(attBase64, msgId, attFilename, attHash)
         if !filePath {
-            debugLog("[ATTACH] Save failed — file=" attFilename)
+            debugLog("[ATTACH] Save failed - file=" attFilename)
             return ""
         }
         return AttachmentRepo.Insert(msgId, {
@@ -37,27 +37,22 @@ class AttachmentRepo {
 
     static Insert(msgId, attObj) {
         id := ChatDB._UUID()
-        safeMsgId := SQLite.Escape(msgId)
-        safeType := SQLite.Escape(attObj.attachment_type)
-        safePath := SQLite.Escape(attObj.file_path)
-        safeMime := attObj.HasProp("mime_type") && attObj.mime_type ? SQLite.Escape(attObj.mime_type) : ""
-        safeFilename := attObj.HasProp("original_filename") && attObj.original_filename ? SQLite.Escape(attObj.original_filename) : ""
+        mimeType := attObj.HasProp("mime_type") && attObj.mime_type ? attObj.mime_type : ""
+        filename := attObj.HasProp("original_filename") && attObj.original_filename ? attObj.original_filename : ""
         fileSize := attObj.HasProp("file_size") ? attObj.file_size : 0
-        ; Base64-encode extracted_text to avoid SQL string escaping issues (e.g. " → "" corruption)
+        ; Base64-encode extracted_text to avoid SQL string escaping issues (e.g. " -> "" corruption)
         if attObj.HasProp("extracted_text") && attObj.extracted_text {
             encodedExtracted := AttachmentRepo._StrToBase64(attObj.extracted_text)
         } else {
             encodedExtracted := ""
         }
-        safeExtracted := SQLite.Escape(encodedExtracted)
 
-        ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" id "', '" safeMsgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
+        ChatDB.db.Query("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES(?, ?, ?, ?, ?, ?, ?, ?);", id, msgId, attObj.attachment_type, attObj.file_path, mimeType, filename, fileSize, encodedExtracted)
         return id
     }
 
     static GetByMessage(msgId) {
-        safeMsgId := SQLite.Escape(msgId)
-        table := ChatDB.db.Exec("SELECT id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text, created_at FROM message_attachments WHERE message_id='" safeMsgId "' ORDER BY created_at;")
+        table := ChatDB.db.Query("SELECT id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text, created_at FROM message_attachments WHERE message_id=? ORDER BY created_at;", msgId)
         result := []
         for row in table.rows {
             result.Push({
@@ -76,8 +71,7 @@ class AttachmentRepo {
     }
 
     static GetByThread(threadId) {
-        safeThreadId := SQLite.Escape(threadId)
-        table := ChatDB.db.Exec("SELECT a.id, a.message_id, a.attachment_type, a.file_path, a.mime_type, a.original_filename, a.file_size, a.extracted_text, a.created_at FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "' ORDER BY a.created_at;")
+        table := ChatDB.db.Query("SELECT a.id, a.message_id, a.attachment_type, a.file_path, a.mime_type, a.original_filename, a.file_size, a.extracted_text, a.created_at FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id=? ORDER BY a.created_at;", threadId)
         result := []
         for row in table.rows {
             result.Push({
@@ -95,12 +89,11 @@ class AttachmentRepo {
         return result
     }
 
-    ; Delete all attachments for a message — DB rows + disk files (reference-counted).
+    ; Delete all attachments for a message - DB rows + disk files (reference-counted).
     ; MUST be called BEFORE DELETE FROM messages to read file_path before CASCADE.
     static DeleteByMessage(msgId) {
-        safeMsgId := SQLite.Escape(msgId)
-        table := ChatDB.db.Exec("SELECT DISTINCT file_path FROM message_attachments WHERE message_id='" safeMsgId "';")
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id='" safeMsgId "';")
+        table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE message_id=?;", msgId)
+        ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id=?;", msgId)
         ; Bug #117: check the refcount AFTER the batch delete. Checking per-row
         ; before the delete left a file held by 2 rows on the same message (or
         ; by rows about to be deleted) looking referenced, so it was never
@@ -110,23 +103,21 @@ class AttachmentRepo {
         }
     }
 
-    ; Delete all attachments for a thread — DB rows + disk files (reference-counted).
+    ; Delete all attachments for a thread - DB rows + disk files (reference-counted).
     ; MUST be called BEFORE raw DELETE FROM messages that triggers CASCADE.
     static DeleteByThread(threadId) {
-        safeThreadId := SQLite.Escape(threadId)
-        table := ChatDB.db.Exec("SELECT DISTINCT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "';")
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" safeThreadId "');")
+        table := ChatDB.db.Query("SELECT DISTINCT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id=?;", threadId)
+        ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id=?);", threadId)
         ; Bug #117: refcount check runs AFTER the batch delete (see DeleteByMessage).
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
         }
     }
 
-    ; Delete a single attachment by ID — DB row + disk file (reference-counted).
+    ; Delete a single attachment by ID - DB row + disk file (reference-counted).
     static DeleteOne(attachmentId) {
-        safeAttachmentId := SQLite.Escape(attachmentId)
-        table := ChatDB.db.Exec("SELECT DISTINCT file_path FROM message_attachments WHERE id='" safeAttachmentId "';")
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE id='" safeAttachmentId "';")
+        table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE id=?;", attachmentId)
+        ChatDB.db.Query("DELETE FROM message_attachments WHERE id=?;", attachmentId)
         ; Bug #117: refcount check runs AFTER the row delete (see DeleteByMessage).
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
@@ -134,21 +125,17 @@ class AttachmentRepo {
     }
 
     ; Copy all attachments from one message to another.
-    ; Shares the same physical file (content-addressable storage) — only copies DB rows.
+    ; Shares the same physical file (content-addressable storage) - only copies DB rows.
     static CopyForMessage(sourceMsgId, targetMsgId) {
-        safeSourceMsgId := SQLite.Escape(sourceMsgId)
-        safeTargetMsgId := SQLite.Escape(targetMsgId)
-        table := ChatDB.db.Exec("SELECT attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id='" safeSourceMsgId "';")
+        table := ChatDB.db.Query("SELECT attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id=?;", sourceMsgId)
         for row in table.rows {
             newId := ChatDB._UUID()
-            safeType := SQLite.Escape(row.attachment_type)
-            safePath := SQLite.Escape(row.file_path)
-            safeMime := row.Has("mime_type") && row.mime_type ? SQLite.Escape(row.mime_type) : ""
-            safeFilename := row.Has("original_filename") && row.original_filename ? SQLite.Escape(row.original_filename) : ""
-            safeExtracted := row.Has("extracted_text") && row.extracted_text ? SQLite.Escape(row.extracted_text) : ""
+            mimeType := row.Has("mime_type") && row.mime_type ? row.mime_type : ""
+            filename := row.Has("original_filename") && row.original_filename ? row.original_filename : ""
+            extracted := row.Has("extracted_text") && row.extracted_text ? row.extracted_text : ""
             fileSize := row.Has("file_size") ? row.file_size : 0
 
-            ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" newId "', '" safeTargetMsgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
+            ChatDB.db.Query("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES(?, ?, ?, ?, ?, ?, ?, ?);", newId, targetMsgId, row.attachment_type, row.file_path, mimeType, filename, fileSize, extracted)
         }
     }
 
@@ -157,8 +144,7 @@ class AttachmentRepo {
     ; SURVIVING rows: delete the file only when refs = 0. (The old pre-delete
     ; pattern used refs <= 1, counting the row about to be deleted.)
     static _DeleteFileIfOrphaned(filePath) {
-        safePath := SQLite.Escape(filePath)
-        count := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM message_attachments WHERE file_path='" safePath "';")
+        count := ChatDB.db.Query("SELECT COUNT(*) AS cnt FROM message_attachments WHERE file_path=?;", filePath)
         refs := count.count ? count[1, "cnt"] : 0
         if refs = 0 {
             fullPath := AppInfo.DataDir "\" filePath
@@ -166,7 +152,7 @@ class AttachmentRepo {
         }
     }
 
-    ; Base64-encode a string for safe SQL storage (avoids " → "" corruption")
+    ; Base64-encode a string for safe SQL storage (avoids " -> "" corruption")
     static _StrToBase64(str) {
         size := StrPut(str, "UTF-8") - 1
         buf := Buffer(size)
@@ -186,7 +172,7 @@ class AttachmentRepo {
 
     ; Decode a base64-encoded string from SQL storage back to original
     static _Base64ToStr(b64) {
-        ; Use W variant — AHK strings are UTF-16 (StrPtr gives wide-char pointer)
+        ; Use W variant - AHK strings are UTF-16 (StrPtr gives wide-char pointer)
         requiredSize := 0
         DllCall("Crypt32.dll\CryptStringToBinaryW", "Ptr", StrPtr(b64), "UInt", StrLen(b64),
             "UInt", 0x1, "Ptr", 0, "UIntP", &requiredSize, "Ptr", 0, "Ptr", 0)

@@ -1,5 +1,5 @@
 ; ======================================================
-; ThreadRepo.ahk — Thread CRUD operations
+; ThreadRepo.ahk - Thread CRUD operations
 ;
 ; Part of ChatDB split. All thread-related database
 ; operations extracted from ChatDB.ahk.
@@ -17,47 +17,46 @@ class ThreadRepo {
     ; Create a new thread. Returns thread id string.
     static Create(title := "New Chat") {
         id := ChatDB._UUID()
-        safeTitle := SQLite.Escape(title)
-        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('" id "', '" safeTitle "');")
+        ChatDB.db.Query("INSERT INTO chat_threads (id, title) VALUES(?, ?);", id, title)
         return id
     }
 
     ; Save per-thread settings (model, assistant, system, reasoning, temperature,
     ; fontSize, and the right-rail Advanced toggles).
     static UpdateSettings(threadId, settings) {
-        safeId := SQLite.Escape(threadId)
         parts := []
+        params := []
         if settings.HasOwnProp("assistantId")
-            parts.Push("assistant_id = " (settings.assistantId ? "'" SQLite.Escape(settings.assistantId) "'" : "NULL"))
+            parts.Push("assistant_id = ?") params.Push(settings.assistantId ? settings.assistantId : SQLite.Null)
         if settings.HasOwnProp("modelOverride")
-            parts.Push("model_override = " (settings.modelOverride ? "'" SQLite.Escape(settings.modelOverride) "'" : "NULL"))
+            parts.Push("model_override = ?") params.Push(settings.modelOverride ? settings.modelOverride : SQLite.Null)
         if settings.HasOwnProp("systemOverride")
-            parts.Push("system_override = " (settings.systemOverride ? "'" SQLite.Escape(settings.systemOverride) "'" : "NULL"))
+            parts.Push("system_override = ?") params.Push(settings.systemOverride ? settings.systemOverride : SQLite.Null)
         if settings.HasOwnProp("reasoningOverride")
-            parts.Push("reasoning_override = " (settings.reasoningOverride ? "'" SQLite.Escape(settings.reasoningOverride) "'" : "NULL"))
+            parts.Push("reasoning_override = ?") params.Push(settings.reasoningOverride ? settings.reasoningOverride : SQLite.Null)
         if settings.HasOwnProp("temperatureOverride")
-            parts.Push("temperature_override = " (settings.temperatureOverride != "" ? settings.temperatureOverride : "NULL"))
+            parts.Push("temperature_override = ?") params.Push(settings.temperatureOverride != "" ? settings.temperatureOverride : SQLite.Null)
         if settings.HasOwnProp("fontSize")
-            parts.Push("font_size = " (settings.fontSize ? settings.fontSize : "17"))
+            parts.Push("font_size = ?") params.Push(settings.fontSize ? settings.fontSize : 17)
         if settings.HasOwnProp("codeExecution") || settings.HasOwnProp("webSearch") {
             togglesJson := jsongo.Stringify({
                 codeExecution: settings.HasOwnProp("codeExecution") ? ThreadRepo._ToBool(settings.codeExecution) : false,
                 webSearch: settings.HasOwnProp("webSearch") ? ThreadRepo._ToBool(settings.webSearch) : false
             })
-            parts.Push("advanced_toggles = '" SQLite.Escape(togglesJson) "'")
+            parts.Push("advanced_toggles = ?") params.Push(togglesJson)
         }
         if parts.Length {
             setClause := ""
             for i, p in parts
                 setClause .= (i > 1 ? ", " : "") p
-            ChatDB.db.Exec("UPDATE chat_threads SET " setClause " WHERE id='" safeId "';")
+            params.Push(threadId)
+            ChatDB.db.Query("UPDATE chat_threads SET " setClause " WHERE id=?;", params*)
         }
     }
 
     ; Get per-thread settings.
     static GetSettings(threadId) {
-        safeId := SQLite.Escape(threadId)
-        table := ChatDB.db.Exec("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, advanced_toggles FROM chat_threads WHERE id='" safeId "';")
+        table := ChatDB.db.Query("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, advanced_toggles FROM chat_threads WHERE id=?;", threadId)
         if table.count {
             row := table[1]
             codeExecution := false, webSearch := false
@@ -92,7 +91,7 @@ class ThreadRepo {
         threads := []
         for row in table.rows {
             model := ""
-            modelTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" SQLite.Escape(row.id) "' AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;")
+            modelTable := ChatDB.db.Query("SELECT model FROM messages WHERE thread_id=? AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;", row.id)
             if modelTable.count
                 model := modelTable[1, "model"]
             threads.Push({
@@ -110,48 +109,44 @@ class ThreadRepo {
 
     ; Trash a thread (soft-delete).
     static SoftDelete(threadId) {
-        ; Bug #80 (security): escape the id - a crafted id with ' could inject SQL.
-        safeId := SQLite.Escape(threadId)
-        debugLog("[THREAD] Deleted — id=" threadId)
-        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" safeId "';")
+        debugLog("[THREAD] Deleted - id=" threadId)
+        ChatDB.db.Query("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id=?;", threadId)
     }
 
     ; Restore a trashed thread.
     static Restore(threadId) {
-        ; Bug #80 (security): escape the id.
-        safeId := SQLite.Escape(threadId)
-        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id='" safeId "';")
+        ChatDB.db.Query("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id=?;", threadId)
     }
 
     ; Permanently delete expired trashed threads.
     static PurgeExpired() {
         if (IsSet(trashRetentionDays) && trashRetentionDays <= 0) || (!IsSet(trashRetentionDays))
             return
-        ; Coerce to a number so a crafted setting value cannot break the SQL.
+        ; Coerce to a number and bind it as the datetime modifier - a crafted
+        ; setting value can never alter the SQL text.
         retention := Integer(trashRetentionDays)
+        retentionModifier := "-" retention " days"
         ; Clean up attachment files on disk BEFORE the raw SQL DELETEs.
         ; The CASCADE FK would auto-delete message_attachments rows but leave orphan files.
-        expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
+        expiredTable := ChatDB.db.Query("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', ?);", retentionModifier)
         if !expiredTable.count
             return
         ; Bug #129: keep messages_fts in sync with messages - remove the FTS
         ; rows for every purged message (same guarantee as MessageRepo.HardDelete
         ; -> FTS_Remove). The raw DELETEs below never touch the FTS index.
         for row in expiredTable.rows {
-            msgIds := ChatDB.db.Exec("SELECT id FROM messages WHERE thread_id='" SQLite.Escape(row.id) "';")
+            msgIds := ChatDB.db.Query("SELECT id FROM messages WHERE thread_id=?;", row.id)
             for m in msgIds.rows
                 ChatDB.FTS_Remove(m.id)
             AttachmentRepo.DeleteByThread(row.id)
         }
-        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days'));")
-        ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
+        ChatDB.db.Query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', ?));", retentionModifier)
+        ChatDB.db.Query("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', ?);", retentionModifier)
     }
 
     ; Permanently delete a thread and all its messages.
     static Delete(threadId) {
-        ; Bug #80 (security): escape the id everywhere it is interpolated.
-        safeId := SQLite.Escape(threadId)
-        debugLog("[THREAD] Deleted — id=" threadId)
+        debugLog("[THREAD] Deleted - id=" threadId)
         ; Bug #116: pass the RAW id - DeleteByThread escapes it internally.
         ; Passing safeId (already escaped) double-escaped it, so crafted-id
         ; threads deleted their messages but orphaned their attachment rows.
@@ -159,23 +154,20 @@ class ThreadRepo {
         ; Bug #129: remove the FTS index rows before the raw DELETE - thread-
         ; level delete previously skipped FTS cleanup (unlike HardDelete),
         ; leaving stale index rows until the next startup rebuild.
-        msgIds := ChatDB.db.Exec("SELECT id FROM messages WHERE thread_id='" safeId "';")
+        msgIds := ChatDB.db.Query("SELECT id FROM messages WHERE thread_id=?;", threadId)
         for m in msgIds.rows
             ChatDB.FTS_Remove(m.id)
-        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" safeId "';")
-        ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" safeId "';")
+        ChatDB.db.Query("DELETE FROM messages WHERE thread_id=?;", threadId)
+        ChatDB.db.Query("DELETE FROM chat_threads WHERE id=?;", threadId)
     }
 
     ; Update thread title and timestamp.
     static Update(threadId, title, updateTimestamp := true) {
         if !threadId
             return
-        ; Bug #80 (security): escape the id.
-        safeId := SQLite.Escape(threadId)
-        safeTitle := SQLite.Escape(title)
         if updateTimestamp
-            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "', updated_at=datetime('now') WHERE id='" safeId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET title=?, updated_at=datetime('now') WHERE id=?;", title, threadId)
         else
-            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "' WHERE id='" safeId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET title=? WHERE id=?;", title, threadId)
     }
 }

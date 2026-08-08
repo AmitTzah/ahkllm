@@ -112,7 +112,7 @@ _HandleThreadAction(action, params) {
                 ChatDB.Thread_Update(params["threadId"], params["title"])
                 _postThreadListRefresh()
                 if activeThreadId = params["threadId"] {
-                    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(params["threadId"]) "';")
+                    threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", params["threadId"])
                     if threadInfo.count
                         chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
                 }
@@ -127,27 +127,27 @@ _HandleFolderAction(action, params) {
         case "createFolder":
             if params.Has("name") {
                 id := ChatDB._UUID()
-                ChatDB.db.Exec("INSERT INTO chat_folders (id, name) VALUES('" id "', '" SQLite.Escape(params["name"]) "');")
+                ChatDB.db.Query("INSERT INTO chat_folders (id, name) VALUES(?, ?);", id, params["name"])
                 _postThreadListRefresh()
             }
 
         case "renameFolder":
             if params.Has("folderId") && params.Has("name") {
-                ChatDB.db.Exec("UPDATE chat_folders SET name='" SQLite.Escape(params["name"]) "' WHERE id='" SQLite.Escape(params["folderId"]) "';")
+                ChatDB.db.Query("UPDATE chat_folders SET name=? WHERE id=?;", params["name"], params["folderId"])
                 _postThreadListRefresh()
             }
 
         case "deleteFolder":
             if params.Has("folderId") {
-                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=NULL WHERE folder_id='" SQLite.Escape(params["folderId"]) "';")
-                ChatDB.db.Exec("DELETE FROM chat_folders WHERE id='" SQLite.Escape(params["folderId"]) "';")
+                ChatDB.db.Query("UPDATE chat_threads SET folder_id=NULL WHERE folder_id=?;", params["folderId"])
+                ChatDB.db.Query("DELETE FROM chat_folders WHERE id=?;", params["folderId"])
                 _postThreadListRefresh()
             }
 
         case "moveToFolder":
             if params.Has("threadId") && params.Has("folderId") {
-                fid := params["folderId"] = "__none__" ? "NULL" : "'" SQLite.Escape(params["folderId"]) "'"
-                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=" fid " WHERE id='" SQLite.Escape(params["threadId"]) "';")
+                fid := params["folderId"] = "__none__" ? SQLite.Null : params["folderId"]
+                ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", fid, params["threadId"])
                 debugLog("[FOLDER] moveToFolder thread=" params["threadId"] " folderId=" params["folderId"])
                 _postThreadListRefresh()
             }

@@ -73,11 +73,11 @@ postThreadStats(threadId := "") {
     postWebMessage("updateTokenUsage", stats)
 }
 
-; debugLog() is now in lib/DebugLog.ahk — included via Config.ahk
+; debugLog() is now in lib/DebugLog.ahk - included via Config.ahk
 
 ; ----------------------------------------------------
 ; Build structured messages array from DB path for WebView
-; Used by ChatIPC, ChatCallbacks, StreamHandler — defined here
+; Used by ChatIPC, ChatCallbacks, StreamHandler - defined here
 ; as a shared utility rather than in a callbacks file.
 ; ----------------------------------------------------
 
@@ -159,7 +159,7 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     ; Bug #38: keep the window title in sync with the active thread. Only
     ; renameThread updated chatWindow.Title before, so switching threads left
     ; the previously renamed thread's title in the title bar.
-        threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(activeThreadId) "';")
+        threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
     if threadInfo.count
         chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
 }
@@ -174,7 +174,7 @@ _postThreadListRefresh() {
 }
 
 _GetFolders() {
-    table := ChatDB.db.Exec("SELECT id, name FROM chat_folders ORDER BY name;")
+    table := ChatDB.db.Query("SELECT id, name FROM chat_folders ORDER BY name;")
     folders := []
     for row in table.rows {
         folders.Push({ id: row.id, name: row.name })
@@ -182,4 +182,4 @@ _GetFolders() {
     return folders
 }
 
-; generateThreadTitle() is in ThreadTitleGen.ahk — included via ChatWindow.ahk
+; generateThreadTitle() is in ThreadTitleGen.ahk - included via ChatWindow.ahk

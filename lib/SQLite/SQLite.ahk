@@ -3,6 +3,14 @@
 #Include .\lib\interfaces\SQLite3.ahk
 
 /**
+ * Sentinel type for SQLite.Query: pass SQLite.Null to bind an explicit SQL NULL
+ * (plain empty strings bind as '').
+ */
+class SQLiteNull {
+    static marker := "sqlite-null"
+}
+
+/**
  * @description Main interface for the `SQLite` AutoHotkey wrapper class. Represents a `SQLite` database connection.
  *
  * ---
@@ -33,6 +41,9 @@ class SQLite extends SQLite3 {
 
 	/** @type {string} */
 	error := ''
+
+	/** @type {SQLiteNull} Bind NULL with Query: SQLite.Null */
+	static Null := SQLiteNull()
 
 	/** @type {integer} */
 	status {
@@ -334,6 +345,109 @@ class SQLite extends SQLite3 {
 			}
 		}
 	}
+
+	/**
+	 * @description Executes a statement with bound parameters (`?` placeholders).
+	 * Values are bound through sqlite3_bind_*, so caller data can never alter the
+	 * SQL text - this is the hardening replacement for string-interpolated
+	 * queries + SQLite.Escape (bug-hunt items #80/#81/#96/#99/#109/#115/#116).
+	 *
+	 * Row-producing statements (SELECT/PRAGMA/EXPLAIN/INSERT..RETURNING) return a
+	 * table with the same shape as Exec(): count / headers / rows, where each row
+	 * supports row["col"] and row.col, and NULL cells become ''.
+	 * Non-row statements (INSERT/UPDATE/DELETE) return SQLITE_OK (0) on success.
+	 *
+	 * @param {string} statement SQL text with ? placeholders
+	 * @param {*} params* values to bind (Integer/Float bind numerically, String
+	 * as text, SQLite.Null as NULL)
+	 */
+	Query(statement, params*) {
+		this.status := SQLITE_OK
+
+		sql := Buffer(StrPut(statement, 'utf-8'))
+		StrPut(statement, sql, 'utf-8')
+
+		stmt := 0
+		res := DllCall(SQLite3.bin '\sqlite3_prepare_v2',
+			'ptr', this.ptr,
+			'ptr', sql,
+			'int', -1,
+			'ptr*', &stmt,
+			'ptr*', &tail := 0,
+			'cdecl int')
+		if res != SQLITE_OK {
+			this.status := res
+			this.error := StrGet(DllCall(SQLite3.bin '\sqlite3_errmsg', 'ptr', this.ptr, 'cdecl ptr'), 'utf-8')
+			return res
+		}
+
+		try {
+			loop params.Length {
+				param := params[A_Index]
+				if param is SQLiteNull {
+					res := DllCall(SQLite3.bin '\sqlite3_bind_null', 'ptr', stmt, 'int', A_Index, 'cdecl int')
+				} else if IsInteger(param) {
+					res := DllCall(SQLite3.bin '\sqlite3_bind_int64', 'ptr', stmt, 'int', A_Index, 'int64', param, 'cdecl int')
+				} else if IsFloat(param) {
+					res := DllCall(SQLite3.bin '\sqlite3_bind_double', 'ptr', stmt, 'int', A_Index, 'double', param, 'cdecl int')
+				} else if Type(param) = 'String' {
+					buf := Buffer(StrPut(param, 'utf-8'))
+					StrPut(param, buf, 'utf-8')
+					res := DllCall(SQLite3.bin '\sqlite3_bind_text',
+						'ptr', stmt, 'int', A_Index, 'ptr', buf, 'int', -1, 'ptr', -1, 'cdecl int')
+				} else {
+					throw ValueError('Query parameter ' A_Index ' must be Number/String or SQLite.Null, got ' Type(param), A_ThisFunc)
+				}
+				if res != SQLITE_OK
+					throw OSError('sqlite3_bind failed: ' res)
+			}
+
+			cols := DllCall(SQLite3.bin '\sqlite3_column_count', 'ptr', stmt, 'cdecl int')
+			if cols > 0 {
+				headers := []
+				loop cols {
+					namePtr := DllCall(SQLite3.bin '\sqlite3_column_name', 'ptr', stmt, 'int', A_Index - 1, 'cdecl ptr')
+					headers.Push(StrGet(namePtr, 'utf-8'))
+				}
+				result := SQLiteQueryResult()
+				result.headers := headers
+				loop {
+					stepRes := DllCall(SQLite3.bin '\sqlite3_step', 'ptr', stmt, 'cdecl int')
+					if stepRes = SQLITE_DONE
+						break
+					if stepRes != SQLITE_ROW {
+						this.status := stepRes
+						this.error := StrGet(DllCall(SQLite3.bin '\sqlite3_errmsg', 'ptr', this.ptr, 'cdecl ptr'), 'utf-8')
+						return stepRes
+					}
+					fields := Map()
+					loop cols {
+						valPtr := DllCall(SQLite3.bin '\sqlite3_column_text', 'ptr', stmt, 'int', A_Index - 1, 'cdecl ptr')
+						fields[headers[A_Index]] := valPtr ? StrGet(valPtr, 'utf-8') : ''
+					}
+					result.rows.Push(SQLiteQueryRow(result, result.rows.Length + 1, fields))
+				}
+				result.count := result.rows.Length
+				return result
+			}
+
+			; DML without RETURNING: run to completion.
+			stepRes := DllCall(SQLite3.bin '\sqlite3_step', 'ptr', stmt, 'cdecl int')
+			if stepRes != SQLITE_DONE {
+				this.status := stepRes
+				this.error := StrGet(DllCall(SQLite3.bin '\sqlite3_errmsg', 'ptr', this.ptr, 'cdecl ptr'), 'utf-8')
+				return stepRes
+			}
+			return SQLITE_OK
+		} catch Error as e {
+			this.status := 1
+			this.error := e.Message
+			throw e
+		} finally {
+			DllCall(SQLite3.bin '\sqlite3_finalize', 'ptr', stmt, 'cdecl int')
+		}
+	}
+
 	static Escape(orig_str) {
 		; Only escape single quotes (' -> '') for SQL string literals.
 		; Double quotes (") are literal inside single-quoted SQL strings
@@ -347,4 +461,33 @@ class SQLite extends SQLite3 {
 		fixed_str := RegexReplace(fixed_str, '"+', '"')
 		return fixed_str
 	}
+}
+
+/**
+ * Result shape for SQLite.Query row-producing statements - mirrors the
+ * SQLite3.Table surface used across the app (count / headers / rows /
+ * table[row, "col"]), so callers need no changes.
+ */
+class SQLiteQueryResult {
+	count := 0
+	headers := []
+	rows := []
+
+	__Item[row, header?] {
+		get {
+			if IsSet(header)
+				return this.rows[row][header]
+			return this.rows[row]
+		}
+	}
+}
+
+/** Row object for SQLite.Query - Map-backed, supports row["col"] and row.col. */
+class SQLiteQueryRow extends Map {
+	__New(parent, rowid, data) {
+		for k, v in data
+			this[k] := v
+	}
+
+	__Get(Key, Params) => this.Has(Key) ? this[Key] : ''
 }

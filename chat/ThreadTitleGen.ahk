@@ -1,5 +1,5 @@
 ; ----------------------------------------------------
-; ThreadTitleGen — Fire-and-forget title generation
+; ThreadTitleGen - Fire-and-forget title generation
 ;
 ; Generates a short thread title from the first
 ; user+assistant exchange using a cheap LLM call.
@@ -28,7 +28,7 @@ generateThreadTitle(threadId) {
         titleGenMaxTokens,     ; maxTokens
         "",                    ; stop
         false,                 ; stream
-        "disabled"             ; reasoningEffort — title generation never thinks
+        "disabled"             ; reasoningEffort - title generation never thinks
     )
 
     raw := _TitleGen_ExecuteRequest(payload, providerInfo)
@@ -38,7 +38,7 @@ generateThreadTitle(threadId) {
     completionTokens := result.completionTokens
     thinkingTokens := result.thinkingTokens
 
-    debugLog("[API] Title gen — prompt=" promptTokens " completion=" completionTokens " model=" titleGenModel)
+    debugLog("[API] Title gen - prompt=" promptTokens " completion=" completionTokens " model=" titleGenModel)
 
     _TitleGen_TrackUsage(titleGenModel, providerInfo.providerKey, promptTokens, completionTokens, thinkingTokens, titleGenStart)
 
@@ -58,7 +58,7 @@ generateThreadTitle(threadId) {
         }
         ; Diagnostic: dump what the DB actually holds for this thread at
         ; title-gen time so a stale/missing folder is visible in the log.
-        folderRow := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
+        folderRow := ChatDB.db.Query("SELECT folder_id FROM chat_threads WHERE id=?;", threadId)
         dbFolderId := folderRow.count ? folderRow[1, "folder_id"] : ""
         debugLog("[TITLEGEN] title='" title "' thread=" threadId
             . " dbFolderId='" dbFolderId "' resolvedFolderName='" folderName "'")

@@ -92,4 +92,60 @@ class SQLiteEscapeTest {
         if result != input
             throw Error("Three quotes were modified! Input length=" StrLen(input) ", Output length=" StrLen(result))
     }
+
+    ; ---- Query: bound-parameter API (hardening item 1) ----
+
+    Query_BindsValuesAndReturnsSameTableShape() {
+        db := SQLite(":memory:")
+        db.Query("CREATE TABLE q_test (id TEXT PRIMARY KEY, n INTEGER, r REAL, body TEXT);")
+        db.Query("INSERT INTO q_test (id, n, r, body) VALUES(?, ?, ?, ?);", "a'b", 5, 2.5, "hello ' world")
+        db.Query("INSERT INTO q_test (id, n, r, body) VALUES(?, ?, ?, ?);", "c", -3, 0.0, "")
+        table := db.Query("SELECT id, n, r, body FROM q_test ORDER BY id;")
+        if table.count != 2
+            throw Error("expected 2 rows, got " table.count)
+        if table.rows[1].id != "a'b" || table.rows[1].n != 5 || table.rows[1].r != 2.5 || table.rows[1].body != "hello ' world"
+            throw Error("row[1] values wrong: " table.rows[1].id "/" table.rows[1].n "/" table.rows[1].r "/" table.rows[1].body)
+        if table[2, "id"] != "c" || table.rows[2]["n"] != -3
+            throw Error("bracket access wrong: " table[2, "id"] "/" table.rows[2]["n"])
+    }
+
+    Query_BindsNullExplicitly() {
+        db := SQLite(":memory:")
+        db.Query("CREATE TABLE n_test (id TEXT PRIMARY KEY, parent TEXT);")
+        db.Query("INSERT INTO n_test (id, parent) VALUES(?, ?);", "m1", SQLite.Null)
+        db.Query("INSERT INTO n_test (id, parent) VALUES(?, ?);", "m2", "")
+        nullRows := db.Query("SELECT id FROM n_test WHERE parent IS NULL;")
+        emptyRows := db.Query("SELECT id FROM n_test WHERE parent = '';")
+        if nullRows.count != 1 || nullRows.rows[1].id != "m1"
+            throw Error("NULL binding wrong: count=" nullRows.count)
+        if emptyRows.count != 1 || emptyRows.rows[1].id != "m2"
+            throw Error("empty-string binding wrong: count=" emptyRows.count)
+    }
+
+    Query_CraftedValueCannotInject() {
+        db := SQLite(":memory:")
+        db.Query("CREATE TABLE inj_test (id TEXT PRIMARY KEY);")
+        db.Query("INSERT INTO inj_test (id) VALUES(?);", "x' OR '1'='1")
+        db.Query("INSERT INTO inj_test (id) VALUES(?);", "safe")
+        rows := db.Query("SELECT id FROM inj_test WHERE id = ?;", "x' OR '1'='1")
+        if rows.count != 1 || rows.rows[1].id != "x' OR '1'='1"
+            throw Error("crafted value must match literally, got count=" rows.count)
+        all := db.Query("SELECT COUNT(*) AS c FROM inj_test;")
+        if all.rows[1].c != 2
+            throw Error("expected 2 rows total, got " all.rows[1].c)
+    }
+
+    Query_DmlReturnsZero() {
+        db := SQLite(":memory:")
+        db.Query("CREATE TABLE d_test (id TEXT PRIMARY KEY, v INTEGER);")
+        res := db.Query("INSERT INTO d_test (id, v) VALUES(?, ?);", "a", 1)
+        if res != 0
+            throw Error("INSERT should return 0, got " res)
+        res := db.Query("UPDATE d_test SET v = ? WHERE id = ?;", 9, "a")
+        if res != 0
+            throw Error("UPDATE should return 0, got " res)
+        row := db.Query("SELECT v FROM d_test WHERE id = ?;", "a")
+        if row.rows[1].v != 9
+            throw Error("updated value wrong: " row.rows[1].v)
+    }
 }

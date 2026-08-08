@@ -673,8 +673,10 @@ class ChatDBTest {
         srcPath := A_ScriptDir "\..\chat\callbacks\Branch.ahk"
         src := FileRead(srcPath)
         block := SubStr(src, InStr(src, "_setupSiblingGroup(msg) {"), 500)
-        if !InStr(block, "SQLite.Escape(msg.id)")
-            throw Error("_setupSiblingGroup must escape msg.id (bug #81)")
+        ; Hardening (bug #81): the update binds msg.id as a parameter, so a
+        ; crafted id can never alter the SQL text.
+        if !InStr(block, "UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;")
+            throw Error("_setupSiblingGroup must bind msg.id (hardening, bug #81)")
     }
 
     ; Regression (bug #70): FTS5 MATCH must quote terms so special characters

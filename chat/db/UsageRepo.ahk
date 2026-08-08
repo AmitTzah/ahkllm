@@ -1,5 +1,5 @@
 ; ======================================================
-; UsageRepo.ahk — Usage tracking operations
+; UsageRepo.ahk - Usage tracking operations
 ;
 ; Extracted from ChatDB.ahk. Handles daily usage
 ; aggregation (chat + command) and dashboard queries.
@@ -14,29 +14,32 @@ class UsageRepo {
     ; pulled in yesterday and over-reported vs the chart (bug #53).
     static _WhereDate(range, dateColumn := "date", localToday := "", monthCutoff := "", lastMonthStart := "", monthStart := "") {
         if range = "day" {
-            cutoff := localToday ? "'" localToday "'" : "date('now')"
-            return "WHERE " dateColumn " >= " cutoff
+            if localToday
+                return { sql: "WHERE " dateColumn " >= ?", params: [localToday] }
+            return { sql: "WHERE " dateColumn " >= date('now')", params: [] }
         }
         ; Bug #87/#88: month/lastMonth/thisMonth must use LOCAL calendar dates
         ; (rows are stored with local dates and the chart labels are local) -
         ; SQLite's date('now') is UTC and drifts by a day in non-UTC zones.
         if range = "month" {
-            cutoff := monthCutoff ? "'" monthCutoff "'" : "date('now', '-30 days')"
-            return "WHERE " dateColumn " >= " cutoff
+            if monthCutoff
+                return { sql: "WHERE " dateColumn " >= ?", params: [monthCutoff] }
+            return { sql: "WHERE " dateColumn " >= date('now', '-30 days')", params: [] }
         }
         if range = "thisMonth" {
-            cutoff := monthStart ? "'" monthStart "'" : "date('now', 'start of month')"
-            return "WHERE " dateColumn " >= " cutoff
+            if monthStart
+                return { sql: "WHERE " dateColumn " >= ?", params: [monthStart] }
+            return { sql: "WHERE " dateColumn " >= date('now', 'start of month')", params: [] }
         }
         if range = "lastMonth" {
             if lastMonthStart && monthStart
-                return "WHERE " dateColumn " >= '" lastMonthStart "' AND " dateColumn " < '" monthStart "'"
-            return "WHERE " dateColumn " >= date('now', 'start of month', '-1 month') AND " dateColumn " < date('now', 'start of month')"
+                return { sql: "WHERE " dateColumn " >= ? AND " dateColumn " < ?", params: [lastMonthStart, monthStart] }
+            return { sql: "WHERE " dateColumn " >= date('now', 'start of month', '-1 month') AND " dateColumn " < date('now', 'start of month')", params: [] }
         }
-        return ""
+        return { sql: "", params: [] }
     }
 
-    ; Usage dashboard — query aggregated data
+    ; Usage dashboard - query aggregated data
     static Query(filters) {
         result := { chat: [], commands: [], models: [], providers: [] }
         localToday := FormatTime(, "yyyy-MM-dd")
@@ -46,23 +49,24 @@ class UsageRepo {
 
         timeRange := filters.Has("timeRange") ? filters["timeRange"] : "all"
         modelFilter := filters.Has("model") ? filters["model"] : ""
-        modelClause := modelFilter ? "AND model='" SQLite.Escape(modelFilter) "'" : ""
         providerFilter := filters.Has("provider") ? filters["provider"] : ""
-        ; Bug #102: escape LIKE wildcards (% _ \) so a provider value that
-        ; contains them is matched literally (SQL declares ESCAPE '\').
-        providerChatClause := providerFilter ? "AND model LIKE '" UsageRepo._EscapeLike(SQLite.Escape(providerFilter)) "/%' ESCAPE '\'" : ""
         typeFilter := filters.Has("type") ? filters["type"] : "all"
 
-        ; Chat data — from chat_usage table
+        ; Chat data - from chat_usage table
         if typeFilter != "command" {
             chatWhere := UsageRepo._WhereDate(timeRange, "date", localToday, monthCutoff, lastMonthStart, monthStart)
-            if modelFilter
-                chatWhere .= (chatWhere ? " AND" : "WHERE") " model='" SQLite.Escape(modelFilter) "'"
-            if providerFilter
-                chatWhere .= (chatWhere ? " AND" : "WHERE") " provider='" SQLite.Escape(providerFilter) "'"
+            chatParams := chatWhere.params
+            if modelFilter {
+                chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " model=?"
+                chatParams.Push(modelFilter)
+            }
+            if providerFilter {
+                chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " provider=?"
+                chatParams.Push(providerFilter)
+            }
 
-            chatSql := "SELECT date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM chat_usage " chatWhere " ORDER BY date DESC, model"
-            chatTable := ChatDB.db.Exec(chatSql)
+            chatSql := "SELECT date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM chat_usage " chatWhere.sql " ORDER BY date DESC, model"
+            chatTable := ChatDB.db.Query(chatSql, chatParams*)
             for row in chatTable.rows {
                 result.chat.Push({
                     date: row.date, model: row.model, provider: row.provider,
@@ -81,16 +85,21 @@ class UsageRepo {
             }
         }
 
-        ; Command data — only if type includes commands
+        ; Command data - only if type includes commands
         if typeFilter != "chat" {
             cmdWhere := UsageRepo._WhereDate(timeRange, "date", localToday, monthCutoff, lastMonthStart, monthStart)
-            if modelFilter
-                cmdWhere .= (cmdWhere ? " AND" : "WHERE") " model='" SQLite.Escape(modelFilter) "'"
-            if providerFilter
-                cmdWhere .= (cmdWhere ? " AND" : "WHERE") " provider='" SQLite.Escape(providerFilter) "'"
+            cmdParams := cmdWhere.params
+            if modelFilter {
+                cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " model=?"
+                cmdParams.Push(modelFilter)
+            }
+            if providerFilter {
+                cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " provider=?"
+                cmdParams.Push(providerFilter)
+            }
 
-            cmdSql := "SELECT date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM command_usage " cmdWhere " ORDER BY date DESC"
-            cmdTable := ChatDB.db.Exec(cmdSql)
+            cmdSql := "SELECT date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM command_usage " cmdWhere.sql " ORDER BY date DESC"
+            cmdTable := ChatDB.db.Query(cmdSql, cmdParams*)
             for row in cmdTable.rows {
                 result.commands.Push({
                     date: row.date, model: row.model, provider: row.provider,
@@ -109,31 +118,22 @@ class UsageRepo {
             }
         }
 
-        ; Distinct models and providers — always unfiltered (dropdowns need full lists)
-        modelsTable := ChatDB.db.Exec("SELECT DISTINCT model FROM chat_usage UNION SELECT DISTINCT model FROM command_usage ORDER BY model")
+        ; Distinct models and providers - always unfiltered (dropdowns need full lists)
+        modelsTable := ChatDB.db.Query("SELECT DISTINCT model FROM chat_usage UNION SELECT DISTINCT model FROM command_usage ORDER BY model")
         for row in modelsTable.rows
             result.models.Push(row.model)
 
-        provTable := ChatDB.db.Exec("SELECT DISTINCT provider FROM chat_usage UNION SELECT DISTINCT provider FROM command_usage ORDER BY provider")
+        provTable := ChatDB.db.Query("SELECT DISTINCT provider FROM chat_usage UNION SELECT DISTINCT provider FROM command_usage ORDER BY provider")
         for row in provTable.rows {
             if row.provider && row.provider != ""
                 result.providers.Push(row.provider)
         }
 
-        debugLog("[DASHBOARD] Query — chat=" result.chat.Length " rows, cmd=" result.commands.Length " rows, type=" typeFilter " time=" timeRange)
+        debugLog("[DASHBOARD] Query - chat=" result.chat.Length " rows, cmd=" result.commands.Length " rows, type=" typeFilter " time=" timeRange)
         return result
     }
 
-    ; Escape SQL LIKE wildcards so provider values are matched literally
-    ; (bug #102; the LIKE clauses declare ESCAPE '\').
-    static _EscapeLike(value) {
-        value := StrReplace(value, "\", "\\")
-        value := StrReplace(value, "%", "\%")
-        value := StrReplace(value, "_", "\_")
-        return value
-    }
-
-    ; Command usage — daily aggregation UPSERT
+    ; Command usage - daily aggregation UPSERT
     static CommandUpsert(data) {
         date := data.date, model := data.model, provider := data.provider, cmd := data.command_name
         tht := data.HasProp("thinking_tokens") ? data.thinking_tokens : 0
@@ -141,15 +141,15 @@ class UsageRepo {
         cci := data.HasProp("cached_input_cost") ? data.cached_input_cost : 0
         lat := data.HasProp("response_time_ms") ? data.response_time_ms : 0
         ttft := data.HasProp("ttft_ms") ? data.ttft_ms : 0
-        existing := ChatDB.db.Exec("SELECT call_count FROM command_usage WHERE date='" date "' AND model='" SQLite.Escape(model) "' AND provider='" SQLite.Escape(provider) "' AND command_name='" SQLite.Escape(cmd) "';")
+        existing := ChatDB.db.Query("SELECT call_count FROM command_usage WHERE date=? AND model=? AND provider=? AND command_name=?;", date, model, provider, cmd)
         if existing.count {
-            ChatDB.db.Exec("UPDATE command_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+" data.prompt_tokens ", completion_tokens=completion_tokens+" data.completion_tokens ", thinking_tokens=thinking_tokens+" tht ", cached_tokens=cached_tokens+" ckt ", input_cost=input_cost+" data.input_cost ", cached_input_cost=cached_input_cost+" cci ", output_cost=output_cost+" data.output_cost ", total_cost=total_cost+" data.total_cost ", total_response_time_ms=total_response_time_ms+" lat ", total_ttft_ms=total_ttft_ms+" ttft " WHERE date='" date "' AND model='" SQLite.Escape(model) "' AND provider='" SQLite.Escape(provider) "' AND command_name='" SQLite.Escape(cmd) "';")
+            ChatDB.db.Query("UPDATE command_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+?, completion_tokens=completion_tokens+?, thinking_tokens=thinking_tokens+?, cached_tokens=cached_tokens+?, input_cost=input_cost+?, cached_input_cost=cached_input_cost+?, output_cost=output_cost+?, total_cost=total_cost+?, total_response_time_ms=total_response_time_ms+?, total_ttft_ms=total_ttft_ms+? WHERE date=? AND model=? AND provider=? AND command_name=?;", data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, date, model, provider, cmd)
         } else {
-            ChatDB.db.Exec("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES('" date "', '" SQLite.Escape(model) "', '" SQLite.Escape(provider) "', '" SQLite.Escape(cmd) "', 1, " data.prompt_tokens ", " data.completion_tokens ", " tht ", " ckt ", " data.input_cost ", " cci ", " data.output_cost ", " data.total_cost ", " lat ", " ttft ");")
+            ChatDB.db.Query("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES(?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, cmd, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft)
         }
     }
 
-    ; Chat usage — daily aggregation UPSERT
+    ; Chat usage - daily aggregation UPSERT
     static ChatUpsert(data) {
         date := data.date, model := data.model, provider := data.provider
         tht := data.HasProp("thinking_tokens") ? data.thinking_tokens : 0
@@ -157,11 +157,11 @@ class UsageRepo {
         cci := data.HasProp("cached_input_cost") ? data.cached_input_cost : 0
         lat := data.HasProp("response_time_ms") ? data.response_time_ms : 0
         ttft := data.HasProp("ttft_ms") ? data.ttft_ms : 0
-        existing := ChatDB.db.Exec("SELECT call_count FROM chat_usage WHERE date='" date "' AND model='" SQLite.Escape(model) "' AND provider='" SQLite.Escape(provider) "';")
+        existing := ChatDB.db.Query("SELECT call_count FROM chat_usage WHERE date=? AND model=? AND provider=?;", date, model, provider)
         if existing.count {
-            ChatDB.db.Exec("UPDATE chat_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+" data.prompt_tokens ", completion_tokens=completion_tokens+" data.completion_tokens ", thinking_tokens=thinking_tokens+" tht ", cached_tokens=cached_tokens+" ckt ", input_cost=input_cost+" data.input_cost ", cached_input_cost=cached_input_cost+" cci ", output_cost=output_cost+" data.output_cost ", total_cost=total_cost+" data.total_cost ", total_response_time_ms=total_response_time_ms+" lat ", total_ttft_ms=total_ttft_ms+" ttft " WHERE date='" date "' AND model='" SQLite.Escape(model) "' AND provider='" SQLite.Escape(provider) "';")
+            ChatDB.db.Query("UPDATE chat_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+?, completion_tokens=completion_tokens+?, thinking_tokens=thinking_tokens+?, cached_tokens=cached_tokens+?, input_cost=input_cost+?, cached_input_cost=cached_input_cost+?, output_cost=output_cost+?, total_cost=total_cost+?, total_response_time_ms=total_response_time_ms+?, total_ttft_ms=total_ttft_ms+? WHERE date=? AND model=? AND provider=?;", data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, date, model, provider)
         } else {
-            ChatDB.db.Exec("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES('" date "', '" SQLite.Escape(model) "', '" SQLite.Escape(provider) "', 1, " data.prompt_tokens ", " data.completion_tokens ", " tht ", " ckt ", " data.input_cost ", " cci ", " data.output_cost ", " data.total_cost ", " lat ", " ttft ");")
+            ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES(?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft)
         }
     }
 }

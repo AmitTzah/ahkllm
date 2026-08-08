@@ -317,14 +317,14 @@ scenarios.push({
   noApp: true,
   async body() {
     const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
-    // FIXED (bug #69): _EscapeLike escapes \ % _ before building the LIKE.
+    // FIXED (bug #69): _EscapeLike escapes \ % _ before binding the LIKE.
     const escapesBackslash = /StrReplace\(value, "\\", "\\\\"\)/.test(sr);
     const escapesPercent = /StrReplace\(value, "%", "\\%"\)/.test(sr);
     const escapesUnderscore = /StrReplace\(value, "_", "\\_"\)/.test(sr);
-    const usesEscaped = sr.includes("_EscapeLike(safeQuery)");
+    const usesEscaped = sr.includes("_EscapeLike(query)");
     if(!escapesBackslash || !escapesPercent || !escapesUnderscore || !usesEscaped)
       throw new Error("bug #69 not fixed: backslash=" + escapesBackslash + " percent=" + escapesPercent + " underscore=" + escapesUnderscore + " usesEscaped=" + usesEscaped);
-    return "SearchRepo._EscapeLike escapes \\ % _ (used by _Like and _Titles), so searching for % matches only literal percent";
+    return "SearchRepo._EscapeLike escapes \\ % _ (bound into the LIKE), so searching for % matches only literal percent";
   }
 });
 
@@ -503,13 +503,13 @@ scenarios.push({
   async body() {
     const tr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","ThreadRepo.ahk"),"utf8");
     const soft = tr.slice(tr.indexOf("static SoftDelete"), tr.indexOf("static SoftDelete")+800);
-    const hasEscapeSoft = /SQLite\.Escape\(threadId\)/.test(soft);
+    const hasBindSoft = /WHERE id=\?;"/.test(soft);
     const hasDirectSoft = /WHERE id='" threadId "'/.test(soft);
     const upd = tr.slice(tr.indexOf("static Update(threadId"), tr.indexOf("static Update(threadId")+800);
-    const hasEscapeUpd = /SQLite\.Escape\(threadId\)/.test(upd);
-    if(!hasEscapeSoft || hasDirectSoft) throw new Error("bug #80 not fixed: soft escapes=" + hasEscapeSoft + " direct=" + hasDirectSoft);
-    if(!hasEscapeUpd) throw new Error("bug #80 not fixed: update escapes=" + hasEscapeUpd);
-    return "ThreadRepo SoftDelete/Restore/Delete/Update escape threadId (SQLite.Escape), so crafted ids cannot inject SQL";
+    const hasBindUpd = /WHERE id=\?;"/.test(upd);
+    if(!hasBindSoft || hasDirectSoft) throw new Error("bug #80 not fixed: soft binds=" + hasBindSoft + " direct=" + hasDirectSoft);
+    if(!hasBindUpd) throw new Error("bug #80 not fixed: update binds=" + hasBindUpd);
+    return "ThreadRepo SoftDelete/Restore/Delete/Update bind threadId (?) - crafted ids cannot inject SQL";
   }
 });
 
@@ -522,10 +522,10 @@ scenarios.push({
   async body() {
     const br=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","callbacks","Branch.ahk"),"utf8");
     const snippet = br.slice(br.indexOf("_setupSiblingGroup"), br.indexOf("_setupSiblingGroup")+800);
-    const hasEscape = /SQLite\.Escape\(msg\.id\)/.test(snippet);
+    const hasBind = /UPDATE messages SET sibling_group=\?, sibling_index=0 WHERE id=\?;/.test(snippet);
     const hasDirect = /WHERE id='" msg\.id "'/.test(snippet);
-    if(!hasEscape || hasDirect) throw new Error("bug #81 not fixed: hasEscape=" + hasEscape + " hasDirect=" + hasDirect);
-    return "Branch._setupSiblingGroup escapes msg.id (SQLite.Escape), so crafted message ids cannot inject SQL";
+    if(!hasBind || hasDirect) throw new Error("bug #81 not fixed: hasBind=" + hasBind + " hasDirect=" + hasDirect);
+    return "Branch._setupSiblingGroup binds msg.id (?) - crafted message ids cannot inject SQL";
   }
 });
 
@@ -601,7 +601,7 @@ scenarios.push({
   async body() {
     const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
     const urBlock = ur.slice(ur.indexOf("static _WhereDate"), ur.indexOf("static _WhereDate")+1400);
-    const lastMonthUsesLocal = /dateColumn " >= '" lastMonthStart "' AND " dateColumn " < '" monthStart "'"/.test(urBlock);
+    const lastMonthUsesLocal = /lastMonthStart && monthStart[\s\S]{0,160}params: \[lastMonthStart, monthStart\]/.test(urBlock);
     const queryPassesLocal = /lastMonthStart := FormatTime\(DateAdd\(A_Now, -1/.test(ur);
     if(!lastMonthUsesLocal || !queryPassesLocal) throw new Error("bug #87 not fixed: lastMonthUsesLocal=" + lastMonthUsesLocal + " queryPassesLocal=" + queryPassesLocal);
     return "UsageRepo lastMonth filter uses local month boundaries (FormatTime/DateAdd), matching the dashboard labels";
@@ -617,7 +617,7 @@ scenarios.push({
   async body() {
     const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
     const monthBlock = ur.slice(ur.indexOf('if range = "month"'), ur.indexOf('if range = "month"')+220);
-    const usesLocal = /monthCutoff \? "'" monthCutoff "'"/.test(monthBlock);
+    const usesLocal = /monthCutoff[\s\S]{0,120}params: \[monthCutoff\]/.test(monthBlock);
     const queryPassesLocal = /monthCutoff := FormatTime\(DateAdd\(A_Now, -29/.test(ur);
     if(!usesLocal || !queryPassesLocal) throw new Error("bug #88 not fixed: usesLocal=" + usesLocal + " queryPassesLocal=" + queryPassesLocal);
     return "UsageRepo month (last 30 days) filter uses the local cutoff (FormatTime/DateAdd), matching the dashboard labels";
@@ -749,19 +749,19 @@ scenarios.push({
     const launcher=require("../launch");
     const ar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
     const cd=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","ChatDB.ahk"),"utf8");
-    // FIXED (bug #96): every msgId/threadId literal is escaped.
-    const insertEsc = /static Insert\(msgId, attObj\)[\s\S]{0,900}SQLite\.Escape\(msgId\)/.test(ar);
+    // Hardening (bug #96): every msgId/threadId is a bound parameter.
+    const insertBinds = /static Insert\(msgId, attObj\)[\s\S]{0,900}VALUES\(\?, \?, \?, \?/.test(ar);
     const rawInsert = /VALUES\('" id "', '" msgId "'/.test(ar);
-    const getEsc = /static GetByMessage\(msgId\)[\s\S]{0,300}SQLite\.Escape\(msgId\)/.test(ar);
-    const getThreadEsc = /static GetByThread\(threadId\)[\s\S]{0,300}SQLite\.Escape\(threadId\)/.test(ar);
-    const delEsc = /static DeleteByMessage\(msgId\)[\s\S]{0,500}SQLite\.Escape\(msgId\)/.test(ar);
-    const copyEsc = /static CopyForMessage\(sourceMsgId, targetMsgId\)[\s\S]{0,400}SQLite\.Escape\(sourceMsgId\)[\s\S]{0,700}SQLite\.Escape\(targetMsgId\)/.test(ar);
-    const ftsSyncEsc = /static FTS_Sync\(msgId, content\)[\s\S]{0,400}SQLite\.Escape\(msgId\)/.test(cd);
-    const ftsRemoveEsc = /static FTS_Remove\(msgId\)[\s\S]{0,200}SQLite\.Escape\(msgId\)/.test(cd);
+    const getBinds = /static GetByMessage\(msgId\)[\s\S]{0,300}WHERE message_id=\?/.test(ar);
+    const getThreadBinds = /static GetByThread\(threadId\)[\s\S]{0,300}WHERE m\.thread_id=\?/.test(ar);
+    const delBinds = /static DeleteByMessage\(msgId\)[\s\S]{0,300}DELETE FROM message_attachments WHERE message_id=\?/.test(ar);
+    const copyBinds = /static CopyForMessage\(sourceMsgId, targetMsgId\)[\s\S]{0,400}WHERE message_id=\?[\s\S]{0,700}VALUES\(\?, \?, \?/.test(ar);
+    const ftsSyncBinds = /static FTS_Sync\(msgId, content\)[\s\S]{0,400}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);
+    const ftsRemoveBinds = /static FTS_Remove\(msgId\)[\s\S]{0,200}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);
     const rawWhere = /WHERE message_id='" msgId "'/.test(ar);
-    if(!insertEsc || rawInsert || !getEsc || !getThreadEsc || !delEsc || !copyEsc || !ftsSyncEsc || !ftsRemoveEsc || rawWhere)
-      throw new Error("bug #96 not fixed: insertEsc="+insertEsc+" rawInsert="+rawInsert+" getEsc="+getEsc+" getThreadEsc="+getThreadEsc+" delEsc="+delEsc+" copyEsc="+copyEsc+" ftsSyncEsc="+ftsSyncEsc+" ftsRemoveEsc="+ftsRemoveEsc+" rawWhere="+rawWhere);
-    return "AttachmentRepo/ChatDB escape msgId/threadId in Insert, GetByMessage, GetByThread, DeleteByMessage, CopyForMessage, FTS_Sync, FTS_Remove - crafted ids stay literal";
+    if(!insertBinds || rawInsert || !getBinds || !getThreadBinds || !delBinds || !copyBinds || !ftsSyncBinds || !ftsRemoveBinds || rawWhere)
+      throw new Error("bug #96 not fixed: insertBinds="+insertBinds+" rawInsert="+rawInsert+" getBinds="+getBinds+" getThreadBinds="+getThreadBinds+" delBinds="+delBinds+" copyBinds="+copyBinds+" ftsSyncBinds="+ftsSyncBinds+" ftsRemoveBinds="+ftsRemoveBinds+" rawWhere="+rawWhere);
+    return "AttachmentRepo/ChatDB bind msgId/threadId in Insert, GetByMessage, GetByThread, DeleteByMessage, CopyForMessage, FTS_Sync, FTS_Remove - crafted ids stay literal";
   }
 });
 
@@ -822,16 +822,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
-    // FIXED (bug #99): parent_id and sibling_group are escaped, including the
-    // active-path parent lookup inside Insert.
-    const parentEsc = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" SQLite\.Escape\(msgObj\.parent_id\) "'" : "NULL"/.test(mr);
-    const siblingEsc = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" SQLite\.Escape\(msgObj\.sibling_group\) "'" : "NULL"/.test(mr);
-    const parentLookupEsc = /SELECT active_path_tokens FROM messages WHERE id='" SQLite\.Escape\(msgObj\.parent_id\) "'/.test(mr);
-    const parentRaw = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" msgObj\.parent_id "'"/.test(mr);
-    const siblingRaw = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" msgObj\.sibling_group "'"/.test(mr);
-    if(!parentEsc || !siblingEsc || !parentLookupEsc || parentRaw || siblingRaw)
-      throw new Error("bug #99 not fixed: parentEsc="+parentEsc+" siblingEsc="+siblingEsc+" parentLookupEsc="+parentLookupEsc+" parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
-    return "MessageRepo.Insert escapes parent_id and sibling_group (and the active-path parent lookup), so crafted ids stay literal";
+    // Hardening (bug #99): parent_id and sibling_group are bound parameters,
+    // including the active-path parent lookup inside Insert.
+    const parentBinds = /parentId := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? msgObj\.parent_id : ""/.test(mr);
+    const siblingBinds = /siblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? msgObj\.sibling_group : ""/.test(mr);
+    const parentLookupBinds = /SELECT active_path_tokens FROM messages WHERE id=\?/.test(mr);
+    const parentRaw = /WHERE id='" msgObj\.parent_id "'/.test(mr);
+    const siblingRaw = /WHERE sibling_group='" msgObj\.sibling_group "'/.test(mr);
+    if(!parentBinds || !siblingBinds || !parentLookupBinds || parentRaw || siblingRaw)
+      throw new Error("bug #99 not fixed: parentBinds="+parentBinds+" siblingBinds="+siblingBinds+" parentLookupBinds="+parentLookupBinds+" parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
+    return "MessageRepo.Insert binds parent_id and sibling_group (and the active-path parent lookup), so crafted ids stay literal";
   }
 });
 
@@ -892,15 +892,15 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const ur=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    // FIXED (bug #102): the provider LIKE escapes \ % _ and declares ESCAPE '\'.
-    const usesEscapeLike = /_EscapeLike\(SQLite\.Escape\(providerFilter\)\)/.test(ur);
-    const hasEscapeClause = /providerChatClause := providerFilter \? "AND model LIKE '"/.test(ur) && ur.includes("ESCAPE '\\'");
-    const escapesBackslash = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "\\", "\\\\"\)/.test(ur);
-    const escapesPercent = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "%", "\\%"\)/.test(ur);
-    const escapesUnderscore = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "_", "\\_"\)/.test(ur);
-    if(!usesEscapeLike || !hasEscapeClause || !escapesBackslash || !escapesPercent || !escapesUnderscore)
-      throw new Error("bug #102 not fixed: usesEscapeLike="+usesEscapeLike+" hasEscapeClause="+hasEscapeClause+" escapesBackslash="+escapesBackslash+" escapesPercent="+escapesPercent+" escapesUnderscore="+escapesUnderscore);
-    return "UsageRepo provider LIKE escapes \\ % _ and declares ESCAPE '\\' so a provider value containing wildcards is matched literally";
+    // Hardening (bug #102): provider filters are now BOUND parameters
+    // (provider=?) - exact match, so LIKE wildcards in a provider value are
+    // matched literally with no LIKE pattern to escape.
+    const bindsChatProvider = (ur.match(/" provider=\?"/g) || []).length >= 2; // chat + command queries
+    const noProviderLikeClause = !/providerChatClause/.test(ur);
+    const noUsageEscapeLike = !/static _EscapeLike\(value\)/.test(ur);
+    if(!bindsChatProvider || !noProviderLikeClause || !noUsageEscapeLike)
+      throw new Error("provider filter not bound: bindsChatProvider="+bindsChatProvider+" noProviderLikeClause="+noProviderLikeClause+" noUsageEscapeLike="+noUsageEscapeLike);
+    return "UsageRepo provider filters bind provider=? (exact match) - a provider value containing % _ \\ is matched literally";
   }
 });
 
@@ -988,15 +988,15 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sidebar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/callbacks/Sidebar.ahk"),"utf8");
-    // FIXED (bug #109): every id interpolation is escaped.
-    const folderEsc = /DELETE FROM chat_folders WHERE id='" SQLite\.Escape\(params\["folderId"\]\) "'/.test(sidebar);
-    const threadEsc = /WHERE id='" SQLite\.Escape\(params\["threadId"\]\) "'/.test(sidebar);
+    // Hardening (bug #109): every id is a bound parameter.
+    const folderBinds = /DELETE FROM chat_folders WHERE id=\?/.test(sidebar);
+    const threadBinds = /WHERE id=\?;", params\["threadId"\]/.test(sidebar);
     const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/db/MessageRepo.ahk"),"utf8");
     const rawMsgId = (mr.match(/WHERE id='" msgId "'/g) || []).length;
-    const escapedMsgId = (mr.match(/WHERE id='" SQLite\.Escape\(msgId\) "'/g) || []).length;
-    if(!folderEsc || !threadEsc || rawMsgId > 0 || escapedMsgId < 5)
-      throw new Error("bug #109 not fixed: folderEsc="+folderEsc+" threadEsc="+threadEsc+" rawMsgId="+rawMsgId+" escapedMsgId="+escapedMsgId);
-    return "Sidebar folderId/threadId and MessageRepo msgId sites all use SQLite.Escape - no raw id interpolation remains";
+    const boundMsgId = (mr.match(/WHERE id=\?/g) || []).length;
+    if(!folderBinds || !threadBinds || rawMsgId > 0 || boundMsgId < 5)
+      throw new Error("bug #109 not fixed: folderBinds="+folderBinds+" threadBinds="+threadBinds+" rawMsgId="+rawMsgId+" boundMsgId="+boundMsgId);
+    return "Sidebar folderId/threadId and MessageRepo msgId sites all bind ids (?) - no raw id interpolation remains";
   }
 });
 
@@ -1083,17 +1083,16 @@ scenarios.push({
     const launcher = require("../launch");
     const seed = require("../seed");
 
-    // 1. Source-level: all three call sites must route threadId through
-    //    SQLite.Escape (bug #115 - bug #109 escaped the sibling call sites but
-    //    missed GetActivePath/GetTree/_RecomputeCumulativeCounters).
+    // 1. Source-level: all three call sites must BIND threadId (? parameter) -
+    //    crafted ids can never alter the SQL text.
     const tree = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "TreeRepo.ahk"), "utf8");
     const msg = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "MessageRepo.ahk"), "utf8");
-    const escapedInGetActivePath = /FROM messages WHERE thread_id='" SQLite\.Escape\(threadId\) "';/.test(tree);
-    const escapedInGetTree = /SELECT \* FROM messages WHERE thread_id='" SQLite\.Escape\(threadId\) "';/.test(tree);
-    const escapedInRecompute = /WHERE thread_id='" SQLite\.Escape\(threadId\) "';/.test(msg);
-    if (!escapedInGetActivePath || !escapedInGetTree || !escapedInRecompute)
-      throw new Error("raw thread_id interpolation still present (bug #115 not fixed): escapedInGetActivePath=" + escapedInGetActivePath +
-        " escapedInGetTree=" + escapedInGetTree + " escapedInRecompute=" + escapedInRecompute);
+    const boundInGetActivePath = /FROM messages WHERE thread_id=\?;"/.test(tree);
+    const boundInGetTree = /SELECT \* FROM messages WHERE thread_id=\?;"/.test(tree);
+    const boundInRecompute = /WHERE thread_id=\?;"/.test(msg);
+    if (!boundInGetActivePath || !boundInGetTree || !boundInRecompute)
+      throw new Error("raw thread_id interpolation still present (bug #115 not fixed): boundInGetActivePath=" + boundInGetActivePath +
+        " boundInGetTree=" + boundInGetTree + " boundInRecompute=" + boundInRecompute);
 
     // 2. Semantics: prove the interpolation changes the query. With a crafted
     //    thread id "x' OR '1'='1", the raw pattern becomes
@@ -1136,16 +1135,16 @@ scenarios.push({
     const seed = require("../seed");
 
     // 1. Source-level: ThreadRepo.Delete must pass the RAW threadId to
-    //    AttachmentRepo.DeleteByThread (which escapes it internally) - the old
+    //    AttachmentRepo.DeleteByThread (which binds it internally) - the old
     //    code passed the already-escaped safeId, double-escaping quotes ('' -> ''''),
     //    so crafted-id threads orphaned their attachment rows/files.
     const tr = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "ThreadRepo.ahk"), "utf8");
     const ar = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "AttachmentRepo.ahk"), "utf8");
     const noDoubleEscape = !/AttachmentRepo\.DeleteByThread\(safeId\)/.test(tr);
     const passesRawId = /AttachmentRepo\.DeleteByThread\(threadId\)/.test(tr);
-    const reEscape = /static DeleteByThread\(threadId\)[\s\S]{0,120}safeThreadId := SQLite\.Escape\(threadId\)/.test(ar);
-    if (!passesRawId || !reEscape || !noDoubleEscape)
-      throw new Error("double-escape still present (bug #116 not fixed): passesRawId=" + passesRawId + " reEscape=" + reEscape + " noDoubleEscape=" + noDoubleEscape);
+    const bindsThread = /static DeleteByThread\(threadId\)[\s\S]{0,200}WHERE m\.thread_id=\?/.test(ar);
+    if (!passesRawId || !bindsThread || !noDoubleEscape)
+      throw new Error("double-escape still present (bug #116 not fixed): passesRawId=" + passesRawId + " bindsThread=" + bindsThread + " noDoubleEscape=" + noDoubleEscape);
 
     // 2. Semantics: SQLite.Escape doubles every internal quote. So for
     //    threadId "x'" the delete path builds:
@@ -1166,7 +1165,7 @@ scenarios.push({
     db.close();
     if (msgDel.changes !== 1 || attQuery !== 0 || orphanRows !== 1)
       throw new Error("crafted-id delete semantics not reproduced: msgDeleted=" + msgDel.changes + " attJoined=" + attQuery + " orphanRows=" + orphanRows);
-    return "ThreadRepo.Delete now passes the raw threadId into AttachmentRepo.DeleteByThread (escaped once, internally); for thread id 'x'' the messages AND attachment rows are deleted";
+    return "ThreadRepo.Delete now passes the raw threadId into AttachmentRepo.DeleteByThread (bound once, internally); for thread id 'x'' the messages AND attachment rows are deleted";
   }
 });
 

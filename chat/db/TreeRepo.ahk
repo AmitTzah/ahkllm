@@ -1,5 +1,5 @@
 ; ======================================================
-; TreeRepo.ahk — Message tree operations
+; TreeRepo.ahk - Message tree operations
 ;
 ; Branch navigation, tree visualization, fork, stats.
 ; Extracted from MessageRepo.ahk.
@@ -10,16 +10,16 @@
 class TreeRepo {
 
     static GetActivePath(threadId) {
-        leafTable := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
+        leafTable := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
         if !leafTable.count
             return []
         leafId := leafTable[1, "active_leaf_id"]
         if !leafId
             return []
 
-        ; Bug #115: escape threadId like the sibling call sites (bug #109) - a
-        ; crafted id with ' would otherwise build an injectable WHERE clause.
-        allTable := ChatDB.db.Exec("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id='" SQLite.Escape(threadId) "';")
+        ; Hardening item 1: threadId is a bound parameter - crafted ids can
+        ; never alter the SQL text.
+        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, created_at FROM messages WHERE thread_id=?;", threadId)
 
         msgMap := Map()
         for row in allTable.rows {
@@ -52,7 +52,7 @@ class TreeRepo {
     }
 
     static GetSiblings(msgId) {
-        table := ChatDB.db.Exec("SELECT sibling_group, thread_id FROM messages WHERE id='" SQLite.Escape(msgId) "';")
+        table := ChatDB.db.Query("SELECT sibling_group, thread_id FROM messages WHERE id=?;", msgId)
         if !table.count
             return []
         sg := table[1, "sibling_group"]
@@ -60,7 +60,7 @@ class TreeRepo {
             return []
         tid := table[1, "thread_id"]
 
-        table2 := ChatDB.db.Exec("SELECT id, role, content, model, sibling_index FROM messages WHERE sibling_group='" SQLite.Escape(sg) "' AND thread_id='" SQLite.Escape(tid) "' ORDER BY sibling_index;")
+        table2 := ChatDB.db.Query("SELECT id, role, content, model, sibling_index FROM messages WHERE sibling_group=? AND thread_id=? ORDER BY sibling_index;", sg, tid)
         siblings := []
         for row in table2.rows {
             siblings.Push({
@@ -74,8 +74,7 @@ class TreeRepo {
     }
 
     static GetTree(threadId) {
-        ; Bug #115: escape threadId (missed by bug #109's sweep).
-        allTable := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" SQLite.Escape(threadId) "';")
+        allTable := ChatDB.db.Query("SELECT * FROM messages WHERE thread_id=?;", threadId)
         nodeMap := Map(), childrenMap := Map()
         for row in allTable.rows {
             node := {
@@ -162,7 +161,7 @@ class TreeRepo {
         TreeRepo._CopyThreadSettings(threadId, newThreadId)
 
         idMap := Map()
-        sgMap := Map()  ; old sibling_group → new sibling_group (fresh UUIDs per fork)
+        sgMap := Map()  ; old sibling_group -> new sibling_group (fresh UUIDs per fork)
 
         ; First pass: copy active path messages up to cutoff
         for i, msg in path {
@@ -181,7 +180,7 @@ class TreeRepo {
         TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, path[cutoff].id)
 
         newLeafId := idMap[path[cutoff].id]
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" newThreadId "';")
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, newThreadId)
 
         ; Bug #126: do NOT copy the source thread's cumulative counters - the
         ; fork contains only the prefix (+ off-path branches), so its counters
@@ -192,7 +191,7 @@ class TreeRepo {
         MessageRepo._RecomputeCumulativeCounters(newThreadId)
 
         ; Bulk FTS sync for all copied messages in the forked thread
-        ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id='" newThreadId "';")
+        ChatDB.db.Query("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id=?;", newThreadId)
 
         return newThreadId
     }
@@ -200,7 +199,7 @@ class TreeRepo {
     ; Create a new thread for the fork with "Copy - " prefix.
     static _CreateForkThread(originalThreadId) {
         oldTitle := "New Chat"
-        titleRow := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(originalThreadId) "';")
+        titleRow := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", originalThreadId)
         if titleRow.count && titleRow[1, "title"]
             oldTitle := titleRow[1, "title"]
         return ThreadRepo.Create("Copy - " oldTitle)
@@ -210,50 +209,47 @@ class TreeRepo {
     static _CopyThreadSettings(sourceThreadId, targetThreadId) {
         settings := ThreadRepo.GetSettings(sourceThreadId)
         if settings.modelOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET model_override='" SQLite.Escape(settings.modelOverride) "' WHERE id='" targetThreadId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET model_override=? WHERE id=?;", settings.modelOverride, targetThreadId)
         if settings.systemOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET system_override='" SQLite.Escape(settings.systemOverride) "' WHERE id='" targetThreadId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET system_override=? WHERE id=?;", settings.systemOverride, targetThreadId)
         if settings.reasoningOverride
-            ChatDB.db.Exec("UPDATE chat_threads SET reasoning_override='" SQLite.Escape(settings.reasoningOverride) "' WHERE id='" targetThreadId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET reasoning_override=? WHERE id=?;", settings.reasoningOverride, targetThreadId)
         ; Bug #62: temperature 0 is a valid override - AHK treats the numeric
         ; 0 as falsy, so use an explicit empty check (same class as bug #35).
         if settings.temperatureOverride != ""
-            ChatDB.db.Exec("UPDATE chat_threads SET temperature_override=" settings.temperatureOverride " WHERE id='" targetThreadId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET temperature_override=? WHERE id=?;", settings.temperatureOverride, targetThreadId)
         if settings.assistantId
-            ChatDB.db.Exec("UPDATE chat_threads SET assistant_id='" SQLite.Escape(settings.assistantId) "' WHERE id='" targetThreadId "';")
+            ChatDB.db.Query("UPDATE chat_threads SET assistant_id=? WHERE id=?;", settings.assistantId, targetThreadId)
         ; Also copy per-thread font size and Advanced toggles (Code Execution / Web Search)
         try {
-            srcRow := ChatDB.db.Exec("SELECT font_size, advanced_toggles, folder_id FROM chat_threads WHERE id='" SQLite.Escape(sourceThreadId) "';")
+            srcRow := ChatDB.db.Query("SELECT font_size, advanced_toggles, folder_id FROM chat_threads WHERE id=?;", sourceThreadId)
             if srcRow.count {
                 if srcRow[1, "font_size"] != ""
-                    ChatDB.db.Exec("UPDATE chat_threads SET font_size=" Integer(srcRow[1, "font_size"]) " WHERE id='" targetThreadId "';")
+                    ChatDB.db.Query("UPDATE chat_threads SET font_size=? WHERE id=?;", Integer(srcRow[1, "font_size"]), targetThreadId)
                 if srcRow[1, "advanced_toggles"] != ""
-                    ChatDB.db.Exec("UPDATE chat_threads SET advanced_toggles='" SQLite.Escape(srcRow[1, "advanced_toggles"]) "' WHERE id='" targetThreadId "';")
+                    ChatDB.db.Query("UPDATE chat_threads SET advanced_toggles=? WHERE id=?;", srcRow[1, "advanced_toggles"], targetThreadId)
                 ; Bug #58: the fork belongs in the source thread's folder.
                 if srcRow[1, "folder_id"] != ""
-                    ChatDB.db.Exec("UPDATE chat_threads SET folder_id='" SQLite.Escape(srcRow[1, "folder_id"]) "' WHERE id='" targetThreadId "';")
+                    ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", srcRow[1, "folder_id"], targetThreadId)
             }
         }
     }
 
     ; Map an old sibling_group to a fresh UUID, creating one if needed.
-    ; Returns the SQL-safe sibling group string ("'uuid'" or "NULL").
+    ; Returns the fresh UUID, or "" when the message has no sibling group.
     static _MapSiblingGroup(msg, &sgMap) {
         if msg.sibling_group {
             if !sgMap.Has(msg.sibling_group)
                 sgMap[msg.sibling_group] := ChatDB._UUID()
-            return "'" sgMap[msg.sibling_group] "'"
+            return sgMap[msg.sibling_group]
         }
-        return "NULL"
+        return ""
     }
 
     ; Insert a single message row into the fork thread.
-    static _InsertForkMessage(newId, threadId, msg, parentId, safeSiblingGroup) {
-        safeContent := SQLite.Escape(msg.content)
-        safeModel := msg.model ? SQLite.Escape(msg.model) : ""
-        safeParent := parentId ? "'" parentId "'" : "NULL"
-        siblingIdx := msg.sibling_index
-        safeReasoning := msg.HasProp("reasoning") && msg.reasoning ? SQLite.Escape(msg.reasoning) : ""
+    static _InsertForkMessage(newId, threadId, msg, parentId, siblingGroup) {
+        model := msg.model ? msg.model : ""
+        reasoning := msg.HasProp("reasoning") && msg.reasoning ? msg.reasoning : ""
 
         tc := msg.HasProp("token_count") ? msg.token_count : 0
         tht := msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
@@ -267,7 +263,7 @@ class TreeRepo {
         ; later recompute can restore prompt+completion.
         spt := msg.HasProp("prompt_tokens") && msg.prompt_tokens != "" ? Integer(msg.prompt_tokens) : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" threadId "', '" msg.role "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " spt ", " tht ", " ckt ", " lat ", " ttft ", " apt ");")
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt)
     }
 
     ; Copy sibling messages that are NOT on the active path (so branch navigation
@@ -278,7 +274,7 @@ class TreeRepo {
     static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, cutoffMsgId := "") {
         ; First pass: direct siblings of messages already copied from the active path.
         for oldSg, newSg in sgMap {
-            siblings := ChatDB.db.Exec("SELECT * FROM messages WHERE sibling_group='" SQLite.Escape(oldSg) "' AND thread_id='" SQLite.Escape(threadId) "' ORDER BY sibling_index;")
+            siblings := ChatDB.db.Query("SELECT * FROM messages WHERE sibling_group=? AND thread_id=? ORDER BY sibling_index;", oldSg, threadId)
             for sibRow in siblings.rows {
                 if idMap.Has(sibRow.id)
                     continue  ; already copied from active path
@@ -294,7 +290,7 @@ class TreeRepo {
         ; deep - everything below off-path siblings was silently dropped).
         loop {
             copiedAny := false
-            all := ChatDB.db.Exec("SELECT * FROM messages WHERE thread_id='" SQLite.Escape(threadId) "' ORDER BY sibling_index, rowid;")
+            all := ChatDB.db.Query("SELECT * FROM messages WHERE thread_id=? ORDER BY sibling_index, rowid;", threadId)
             for row in all.rows {
                 if idMap.Has(row.id)
                     continue  ; already copied
@@ -315,12 +311,11 @@ class TreeRepo {
     static _InsertCopiedOffPathMessage(row, newThreadId, &idMap, &sgMap) {
         newId := ChatDB._UUID()
         idMap[row.id] := newId
-        mappedParent := row.parent_id && idMap.Has(row.parent_id) ? "'" idMap[row.parent_id] "'" : "NULL"
-        newSg := row.sibling_group ? TreeRepo._MapSiblingGroup(row, &sgMap) : "NULL"
+        mappedParent := row.parent_id && idMap.Has(row.parent_id) ? idMap[row.parent_id] : ""
+        newSg := row.sibling_group ? TreeRepo._MapSiblingGroup(row, &sgMap) : ""
 
-        safeC := SQLite.Escape(row.content)
-        safeM := row.model ? SQLite.Escape(row.model) : ""
-        safeR := row.Has("reasoning") && row.reasoning ? SQLite.Escape(row.reasoning) : ""
+        model := row.model ? row.model : ""
+        reasoning := row.Has("reasoning") && row.reasoning ? row.reasoning : ""
         sTc := row.token_count ? row.token_count : 0
         sPt := row.Has("prompt_tokens") ? row.prompt_tokens : 0
         sTht := row.thinking_tokens ? row.thinking_tokens : 0
@@ -329,15 +324,15 @@ class TreeRepo {
         sTtft := row.ttft_ms ? row.ttft_ms : 0
         sApt := row.Has("active_path_tokens") && row.active_path_tokens ? Integer(row.active_path_tokens) : 0
 
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" newId "', '" newThreadId "', '" row.role "', '" safeC "', '" safeM "', " mappedParent ", " newSg ", " row.sibling_index ", '" safeR "', " sTc ", " sPt ", " sTht ", " sCkt ", " sLat ", " sTtft ", " sApt ");")
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt)
         AttachmentRepo.CopyForMessage(row.id, newId)
     }
 
     static SetActiveLeaf(threadId, msgId) {
-        check := ChatDB.db.Exec("SELECT id FROM messages WHERE id='" SQLite.Escape(msgId) "' AND thread_id='" SQLite.Escape(threadId) "';")
+        check := ChatDB.db.Query("SELECT id FROM messages WHERE id=? AND thread_id=?;", msgId, threadId)
         if !check.count
             return
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" SQLite.Escape(msgId) "', updated_at=datetime('now') WHERE id='" SQLite.Escape(threadId) "';")
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", msgId, threadId)
         TreeRepo._RecomputeActivePath(threadId)
     }
 
@@ -361,7 +356,7 @@ class TreeRepo {
             return { path: TreeRepo.GetActivePath(threadId), siblingInfo: { index: currentPos + 1, total: siblings.Length } }
 
         newLeafId := TreeRepo._WalkToLeaf(newMsgId)
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" newLeafId "', updated_at=datetime('now') WHERE id='" SQLite.Escape(threadId) "';")
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, threadId)
 
         path := TreeRepo.GetActivePath(threadId)
         return { path: path, siblingInfo: { index: newPos + 1, total: siblings.Length } }
@@ -374,15 +369,15 @@ class TreeRepo {
     ; or path summation needed in the common case.
     static GetThreadStats(threadId) {
         ; Read active_path_tokens from the leaf message (O(1))
-        threadRow := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
+        threadRow := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
         activePathTokens := 0
         if threadRow.count && threadRow[1, "active_leaf_id"] {
-            leafRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" SQLite.Escape(threadRow[1, "active_leaf_id"]) "';")
+            leafRow := ChatDB.db.Query("SELECT active_path_tokens FROM messages WHERE id=?;", threadRow[1, "active_leaf_id"])
             if leafRow.count
                 activePathTokens := Integer(leafRow[1, "active_path_tokens"])
         }
 
-        threadTable := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
+        threadTable := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id=?;", threadId)
         ; Determine context window and pricing unit from the SAME model
         ; resolution order (bug #103): current request model, then thread
         ; model override, then the last assistant message on the active path.
@@ -430,7 +425,7 @@ class TreeRepo {
             if pricing
                 return pricing
         }
-        threadRow := ChatDB.db.Exec("SELECT model_override FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
+        threadRow := ChatDB.db.Query("SELECT model_override FROM chat_threads WHERE id=?;", threadId)
         if threadRow.count && threadRow[1, "model_override"] {
             pricing := TreeRepo._LookupPricing(threadRow[1, "model_override"])
             if pricing
@@ -458,7 +453,7 @@ class TreeRepo {
             ; ties). ORDER BY created_at picked the OLDEST child instead, so
             ; branch-nav/search landed on a stale leaf while the tree modal
             ; showed the newest one.
-            childTable := ChatDB.db.Exec("SELECT id FROM messages WHERE parent_id='" SQLite.Escape(currentId) "' ORDER BY sibling_index, rowid DESC LIMIT 1;")
+            childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? ORDER BY sibling_index, rowid DESC LIMIT 1;", currentId)
             if !childTable.count
                 break
             currentId := childTable[1, "id"]
@@ -470,7 +465,7 @@ class TreeRepo {
     ; (each msg = previous msg's total + this msg's token_count).
     ; Called after: insert with backfill, hard delete, edit.
     ; This overwrites any API ground truth on assistants with computed prefix
-    ; sums — acceptable because the ground truth is stale after structural changes.
+    ; sums - acceptable because the ground truth is stale after structural changes.
     ; The next API call restores ground truth via Insert().
     static _RecomputeActivePath(threadId) {
         path := TreeRepo.GetActivePath(threadId)
@@ -488,7 +483,7 @@ class TreeRepo {
                 ; prefix sums so recomputed active_path_tokens match the header.
                 prev += msg.thinking_tokens
             }
-            ChatDB.db.Exec("UPDATE messages SET active_path_tokens=" prev " WHERE id='" SQLite.Escape(msg.id) "';")
+            ChatDB.db.Query("UPDATE messages SET active_path_tokens=? WHERE id=?;", prev, msg.id)
         }
     }
 }

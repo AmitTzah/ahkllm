@@ -1,5 +1,5 @@
 ; ======================================================
-; SearchRepo.ahk — Message search operations
+; SearchRepo.ahk - Message search operations
 ;
 ; FTS5 full-text search with LIKE fallback.
 ; Part of ChatDB split. All search logic extracted
@@ -8,24 +8,22 @@
 
 class SearchRepo {
 
-    ; Two-phase search: FTS5 (word-level, ranked) → LIKE (substring) → title search (global only)
+    ; Two-phase search: FTS5 (word-level, ranked) -> LIKE (substring) -> title search (global only)
     static Search(query, threadId := "") {
-        safeQuery := SQLite.Escape(query)
-
         ; Phase 1: FTS5 MATCH (word-level, case-insensitive, ranked)
         results := SearchRepo._FTS5(query, threadId)
         if results.Length > 0
-            debugLog("[SEARCH] FTS5 — query='" query "' hits=" results.Length)
+            debugLog("[SEARCH] FTS5 - query='" query "' hits=" results.Length)
         else {
             ; Phase 2: LIKE fallback (substring matches FTS5 misses)
-            results := SearchRepo._Like(safeQuery, threadId)
+            results := SearchRepo._Like(query, threadId)
             if results.Length > 0
-                debugLog("[SEARCH] LIKE fallback — query='" query "' hits=" results.Length)
+                debugLog("[SEARCH] LIKE fallback - query='" query "' hits=" results.Length)
         }
 
         ; Title search: only for global (un-scoped) queries
         if !threadId {
-            titleResults := SearchRepo._Titles(safeQuery)
+            titleResults := SearchRepo._Titles(query)
             combined := []
             for tr in titleResults
                 combined.Push(tr)
@@ -43,9 +41,9 @@ class SearchRepo {
         return results
     }
 
-    ; FTS5 MATCH — word-level, case-insensitive, ranked, AND-joined words.
+    ; FTS5 MATCH - word-level, case-insensitive, ranked, AND-joined words.
     ; Last word uses prefix matching (*) so partial typing finds results.
-    ; "error hand" → MATCH 'error AND hand*' (matches "handle", "handling")
+    ; "error hand" -> MATCH 'error AND hand*' (matches "handle", "handling")
     static _FTS5(query, threadId := "") {
         words := StrSplit(query, " ")
         ftsExpr := ""
@@ -77,35 +75,18 @@ class SearchRepo {
             ftsExpr .= "*"
         }
 
-        ; Escape single quotes and wrap in SQL quotes for MATCH.
-        ; SQLite.Escape doubles quotes but doesn't wrap — MATCH needs 'term'.
+        ; The FTS expression is BOUND as the MATCH value - SQL quotes cannot
+        ; break out, only FTS5's own syntax needs the term quoting above.
         safeFTS := StrReplace(ftsExpr, "'", "''")
-
-        ; Two-step: query FTS for matching msg_ids, then messages by ID
-        ftsSQL := "SELECT msg_id FROM messages_fts WHERE messages_fts MATCH '" safeFTS "';"
-        ftsResults := ChatDB.db.Exec(ftsSQL)
-        if ftsResults.count = 0
-            return []
-
-        msgIdList := ""
-        for rowData in ftsResults.rows {
-            if StrLen(msgIdList) > 0
-                msgIdList .= ", "
-            msgIdList .= "'" SQLite.Escape(rowData.msg_id) "'"
-        }
-
-        whereClause := "t.is_deleted=0 AND m.id IN (" msgIdList ")"
-        if threadId
-            whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
 
         ; Extract a snippet window around the first match (case-insensitive).
         ; FTS5 MATCH is case-insensitive, so use LOWER() for INSTR to match.
         ; Only add "..." prefix/suffix when content is actually truncated.
-        safeFirstWordLower := SQLite.Escape(StrLower(firstWord))
-        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), '" safeFirstWordLower "') > 0 THEN"
-                     . " CASE WHEN INSTR(LOWER(m.content), '" safeFirstWordLower "') > 31 THEN '...' ELSE '' END"
-                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), '" safeFirstWordLower "') - 30), 100)"
-                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), '" safeFirstWordLower "') - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
+        firstWordLower := StrLower(firstWord)
+        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), ?) > 0 THEN"
+                     . " CASE WHEN INSTR(LOWER(m.content), ?) > 31 THEN '...' ELSE '' END"
+                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), ?) - 30), 100)"
+                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), ?) - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
                      . " ELSE SUBSTR(m.content, 1, 100) END"
 
         sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
@@ -114,34 +95,37 @@ class SearchRepo {
              . " t.title AS threadTitle"
              . " FROM messages m"
              . " JOIN chat_threads t ON m.thread_id = t.id"
-             . " WHERE " whereClause
-             . " ORDER BY m.created_at DESC"
+             . " WHERE t.is_deleted=0 AND m.id IN (SELECT msg_id FROM messages_fts WHERE messages_fts MATCH ?)"
+        params := [firstWordLower, firstWordLower, firstWordLower, firstWordLower, safeFTS]
+        if threadId {
+            sql .= " AND m.thread_id=?"
+            params.Push(threadId)
+        }
+        sql .= " ORDER BY m.created_at DESC"
              . " LIMIT 20"
 
-        return SearchRepo._BuildResults(sql)
+        return SearchRepo._BuildResults(sql, params*)
     }
 
     ; Bug #70: wrap an FTS5 term in double quotes (quoted strings match
     ; literally) and escape embedded quotes by doubling them.
+    ; sql-lint: ok - the result is a MATCH expression VALUE (bound as a
+    ; parameter), never interpolated into the SQL text itself.
     static _FTS5QuoteTerm(term) {
         term := StrReplace(term, '"', '""')
         return '"' term '"'
     }
 
-    ; LIKE '%term%' substring — case-insensitive for ASCII (SQLite LIKE default)
-    static _Like(safeQuery, threadId := "") {
-        likeQuery := SearchRepo._EscapeLike(safeQuery)
-        whereClause := "t.is_deleted=0 AND m.content LIKE '%' || '" likeQuery "' || '%' ESCAPE '\'"
-        if threadId
-            whereClause .= " AND m.thread_id='" SQLite.Escape(threadId) "'"
-
+    ; LIKE '%term%' substring - case-insensitive for ASCII (SQLite LIKE default)
+    static _Like(query, threadId := "") {
+        likeQuery := SearchRepo._EscapeLike(query)
         ; Extract a snippet window around the first match (case-insensitive).
         ; SQLite LIKE is case-insensitive for ASCII, so use LOWER() for INSTR.
         ; Only add "..." prefix/suffix when content is actually truncated.
-        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), LOWER('" safeQuery "')) > 0 THEN"
-                     . " CASE WHEN INSTR(LOWER(m.content), LOWER('" safeQuery "')) > 31 THEN '...' ELSE '' END"
-                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), LOWER('" safeQuery "')) - 30), 100)"
-                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), LOWER('" safeQuery "')) - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
+        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), LOWER(?)) > 0 THEN"
+                     . " CASE WHEN INSTR(LOWER(m.content), LOWER(?)) > 31 THEN '...' ELSE '' END"
+                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), LOWER(?)) - 30), 100)"
+                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), LOWER(?)) - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
                      . " ELSE SUBSTR(m.content, 1, 100) END"
 
         sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
@@ -150,26 +134,31 @@ class SearchRepo {
              . " t.title AS threadTitle"
              . " FROM messages m"
              . " JOIN chat_threads t ON m.thread_id = t.id"
-             . " WHERE " whereClause
-             . " ORDER BY m.created_at DESC"
+             . " WHERE t.is_deleted=0 AND m.content LIKE '%' || ? || '%' ESCAPE '\'"
+        params := [query, query, query, query, likeQuery]
+        if threadId {
+            sql .= " AND m.thread_id=?"
+            params.Push(threadId)
+        }
+        sql .= " ORDER BY m.created_at DESC"
              . " LIMIT 20"
 
-        return SearchRepo._BuildResults(sql)
+        return SearchRepo._BuildResults(sql, params*)
     }
 
     ; Title search: find threads whose title matches (LIKE, case-insensitive)
-    static _Titles(safeQuery) {
-        likeQuery := SearchRepo._EscapeLike(safeQuery)
+    static _Titles(query) {
+        likeQuery := SearchRepo._EscapeLike(query)
         sql := "SELECT NULL AS messageId, t.id AS threadId, 'system' AS role,"
              . " '' AS contentPreview, '' AS model, t.created_at AS createdAt,"
              . " t.title AS threadTitle"
              . " FROM chat_threads t"
              . " WHERE t.is_deleted=0"
-             . " AND t.title LIKE '%' || '" likeQuery "' || '%' ESCAPE '\'"
+             . " AND t.title LIKE '%' || ? || '%' ESCAPE '\'"
              . " ORDER BY t.updated_at DESC"
              . " LIMIT 10"
 
-        return SearchRepo._BuildResults(sql)
+        return SearchRepo._BuildResults(sql, likeQuery)
     }
 
     ; Bug #69: escape SQL LIKE wildcards so user input is matched literally
@@ -182,8 +171,8 @@ class SearchRepo {
     }
 
     ; Convert SQL result rows to search result objects
-    static _BuildResults(sql) {
-        table := ChatDB.db.Exec(sql)
+    static _BuildResults(sql, params*) {
+        table := ChatDB.db.Query(sql, params*)
         results := []
         for row in table.rows {
             results.Push({

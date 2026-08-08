@@ -37,7 +37,7 @@ handleEdit(params, *) {
                     siblingGroup := msg.sibling_group
                 } else {
                     siblingGroup := ChatDB._UUID()
-                    ChatDB.db.Exec("UPDATE messages SET sibling_group='" SQLite.Escape(siblingGroup) "', sibling_index=0 WHERE id='" SQLite.Escape(id) "';")
+                    ChatDB.db.Query("UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;", siblingGroup, id)
                 }
                 siblingIndex := MessageRepo.GetMaxSiblingIndex(siblingGroup) + 1
                 ; Bug #123: capture the source message's token metadata inside
@@ -81,7 +81,7 @@ handleEdit(params, *) {
             }
         }
         ; Trigger LLM request for the new branch (same as Retry flow)
-        ; Only auto-fire when branching a user message — branching an assistant
+        ; Only auto-fire when branching a user message - branching an assistant
         ; message just creates a sibling and updates the view.
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
@@ -90,7 +90,7 @@ handleEdit(params, *) {
             _BuildAndFireRequest()
         }
     } else {
-        ; Append any new attachments — never delete existing ones (× button handles removal)
+        ; Append any new attachments - never delete existing ones (× button handles removal)
         for att in attachments {
             if !IsObject(att)
                 continue
@@ -104,7 +104,7 @@ handleEdit(params, *) {
             }
         }
         ChatDB.Msg_Edit(id, content)
-        debugLog("[EDIT] Message — id=" id " thread=" activeThreadId)
+        debugLog("[EDIT] Message - id=" id " thread=" activeThreadId)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
@@ -112,7 +112,7 @@ handleEdit(params, *) {
 }
 
 ; ----------------------------------------------------
-; Delete message from WebView (D2) — hard-delete with re-parenting
+; Delete message from WebView (D2) - hard-delete with re-parenting
 ; ----------------------------------------------------
 
 handleDelete(msgId, *) {
@@ -121,11 +121,11 @@ handleDelete(msgId, *) {
         return
     
     ; Msg_HardDelete handles re-parenting and active_leaf_id internally.
-    ; No need to manually find parent or update active leaf — the method
+    ; No need to manually find parent or update active leaf - the method
     ; re-parents children to the deleted message's parent and only moves
     ; active_leaf_id if the deleted message was the leaf itself.
     ChatDB.Msg_HardDelete(msgId)
-    debugLog("[DELETE] Message — id=" msgId " thread=" activeThreadId)
+    debugLog("[DELETE] Message - id=" msgId " thread=" activeThreadId)
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
@@ -137,8 +137,6 @@ handleDelete(msgId, *) {
 ; ----------------------------------------------------
 
 _AttachmentExistsOnMessage(msgId, filePath) {
-    safeMsgId := SQLite.Escape(msgId)
-    safePath := SQLite.Escape(filePath)
-    result := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM message_attachments WHERE message_id='" safeMsgId "' AND file_path='" safePath "';")
+    result := ChatDB.db.Query("SELECT COUNT(*) AS cnt FROM message_attachments WHERE message_id=? AND file_path=?;", msgId, filePath)
     return result.count && result[1, "cnt"] > 0
 }

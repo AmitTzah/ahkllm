@@ -1,4 +1,4 @@
-; Branch callbacks — navigation, fork, retry
+; Branch callbacks - navigation, fork, retry
 
 ; ----------------------------------------------------
 ; Switch branch from WebView (D3)
@@ -11,7 +11,7 @@ handleBranchSwitch(params, *) {
     id := params["id"]
     direction := params.Has("direction") ? params["direction"] : 1
     result := ChatDB.Msg_SwitchBranch(activeThreadId, id, direction)
-    debugLog("[BRANCH] Switch — thread=" activeThreadId " leaf=" id)
+    debugLog("[BRANCH] Switch - thread=" activeThreadId " leaf=" id)
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path, activeThreadId))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
@@ -26,7 +26,7 @@ handleFork(msgId, *) {
     if !msgId || !activeThreadId
         return
     newThreadId := ChatDB.Msg_ForkThread(activeThreadId, msgId)
-    debugLog("[THREAD] Forked — id=" newThreadId " from=" activeThreadId)
+    debugLog("[THREAD] Forked - id=" newThreadId " from=" activeThreadId)
     if newThreadId
         postWebMessage("threadForked", { newThreadId: newThreadId })
 }
@@ -36,7 +36,7 @@ handleFork(msgId, *) {
 ; ----------------------------------------------------
 
 ; Find which message to retry: specific assistant by id, or last assistant in path.
-; Returns { targetMsg, parentMsg } — both empty if no retry target found.
+; Returns { targetMsg, parentMsg } - both empty if no retry target found.
 _findRetryTarget(path, messageId) {
     if messageId && path.Length {
         for i, msg in path {
@@ -59,8 +59,9 @@ _setupSiblingGroup(msg) {
     sg := msg.sibling_group
     if !sg {
         sg := ChatDB._UUID()
-        ; Bug #81 (security): escape msg.id - a crafted id with ' could inject SQL.
-        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" SQLite.Escape(msg.id) "';")
+        ; Hardening item 1: msg.id and sg are bound parameters - crafted ids
+        ; can never alter the SQL text.
+        ChatDB.db.Query("UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;", sg, msg.id)
     }
     return sg
 }

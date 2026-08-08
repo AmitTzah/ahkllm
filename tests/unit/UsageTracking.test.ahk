@@ -36,10 +36,10 @@ class UsageTrackingTest {
     ; pulls in yesterday and over-reports vs the chart.
     DayFilter_UsesLocalToday() {
         where := UsageRepo._WhereDate("day", "date", "2026-08-07")
-        if !InStr(where, "date >= '2026-08-07'")
-            throw Error("day filter must use the local today cutoff, got: " where)
-        if InStr(where, "date('now'")
-            throw Error("day filter must not use SQLite's UTC now, got: " where)
+        if where.sql != "WHERE date >= ?" || where.params.Length != 1 || where.params[1] != "2026-08-07"
+            throw Error("day filter must use the local today cutoff as a bound param, got: " where.sql)
+        if InStr(where.sql, "date('now'")
+            throw Error("day filter must not use SQLite's UTC now, got: " where.sql)
 
         ; Query wires the local date into both the chat and command filters.
         srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
@@ -60,11 +60,11 @@ class UsageTrackingTest {
         if !InStr(src, "monthCutoff := FormatTime(DateAdd(A_Now, -29")
             throw Error("Query must compute the local 30-day cutoff")
         where := UsageRepo._WhereDate("lastMonth", "date", "2026-08-07", "", "2026-07-01", "2026-08-01")
-        if !InStr(where, "date >= '2026-07-01'") || !InStr(where, "date < '2026-08-01'")
-            throw Error("lastMonth filter must use local month boundaries, got: " where)
+        if where.sql != "WHERE date >= ? AND date < ?" || where.params.Length != 2 || where.params[1] != "2026-07-01" || where.params[2] != "2026-08-01"
+            throw Error("lastMonth filter must use local month boundaries as bound params, got: " where.sql)
         where2 := UsageRepo._WhereDate("month", "date", "2026-08-07", "2026-07-09", "", "")
-        if !InStr(where2, "date >= '2026-07-09'")
-            throw Error("month filter must use the local cutoff, got: " where2)
+        if where2.sql != "WHERE date >= ?" || where2.params.Length != 1 || where2.params[1] != "2026-07-09"
+            throw Error("month filter must use the local cutoff as a bound param, got: " where2.sql)
     }
 
     ; ----------------------------------------------------
@@ -74,19 +74,19 @@ class UsageTrackingTest {
     ; Regression (bug #102): the provider LIKE must escape % _ \ so a provider
     ; value containing wildcards is matched literally (and the SQL declares
     ; ESCAPE '\', same pattern as SearchRepo).
-    ProviderFilter_LikeEscapesWildcards() {
-        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
-        src := FileRead(srcPath)
-        if !InStr(src, "_EscapeLike(SQLite.Escape(providerFilter))")
-            throw Error("provider LIKE must escape the provider filter (bug #102)")
-        if !InStr(src, "ESCAPE '\'")
-            throw Error("provider LIKE must declare ESCAPE '\' (bug #102)")
-        escapeIdx := InStr(src, "static _EscapeLike(value)")
-        if !escapeIdx
-            throw Error("_EscapeLike helper missing (bug #102)")
-        helper := SubStr(src, escapeIdx, 300)
-        if !InStr(helper, 'StrReplace(value, "\", "\\")') || !InStr(helper, 'StrReplace(value, "%", "\%")') || !InStr(helper, 'StrReplace(value, "_", "\_")')
-            throw Error("_EscapeLike must escape \ then % then _ (bug #102)")
+    ProviderFilter_BindsExactMatch() {
+        ; Hardening (bug #102): provider filters are bound parameters
+        ; (provider=?) instead of a LIKE pattern, so a provider value containing
+        ; LIKE wildcards (% _ \) matches literally and never acts as a wildcard.
+        this._openDb()
+        ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens) VALUES(?, ?, ?, 1, 10);", "2026-08-08", "openai/weird%model", "prov%ider")
+        exact := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "prov%ider", "type", "chat"))
+        if exact.chat.Length != 1
+            throw Error("provider filter must match the literal provider (bug #102), got " exact.chat.Length " rows")
+        partial := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "prov", "type", "chat"))
+        if partial.chat.Length != 0
+            throw Error("provider filter must be an exact match, got " partial.chat.Length " rows")
+        this._closeDb()
     }
 
     ; Regression (bug #103): pricingUnit must follow the ACTIVE model (request

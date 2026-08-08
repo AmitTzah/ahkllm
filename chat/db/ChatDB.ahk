@@ -1,8 +1,8 @@
 ; ======================================================
-; ChatDB.ahk — Chat persistence facade
+; ChatDB.ahk - Chat persistence facade
 ;
 ; Thin facade over ThreadRepo, MessageRepo, and AssistantRepo.
-; All callers use ChatDB.XXX() — internal delegation to repos
+; All callers use ChatDB.XXX() - internal delegation to repos
 ; is transparent.
 ; ======================================================
 
@@ -40,7 +40,7 @@ class ChatDB {
         ChatDB.db.Exec("PRAGMA busy_timeout=5000;")
         ChatDB._CreateSchema()
         ChatDB.isOpen := true
-        debugLog("[DB] Opened — path=" ChatDB.dbPath)
+        debugLog("[DB] Opened - path=" ChatDB.dbPath)
     }
 
     static Close() {
@@ -54,14 +54,14 @@ class ChatDB {
     static _CreateSchema() {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL);")
         try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN font_size INTEGER DEFAULT 17;")
-        ; Right-rail Advanced toggles (Code Execution / Web Search — persisted
+        ; Right-rail Advanced toggles (Code Execution / Web Search - persisted
         ; stubs), stored as a JSON object, e.g. {"codeExecution":true,...}
         try ChatDB.db.Exec("ALTER TABLE chat_threads ADD COLUMN advanced_toggles TEXT DEFAULT '';")
         ; messages.active_path_tokens: total context tokens from root to this message (inclusive).
         ; For assistants: API prompt_tokens + token_count (ground truth at insert time).
         ; For user/system: parent.active_path_tokens + token_count (prefix sum).
         ; After structural changes (delete/edit): recomputed as parent + token_count.
-        ; Read by GetThreadStats() from the leaf message — O(1), no thread-level storage needed.
+        ; Read by GetThreadStats() from the leaf message - O(1), no thread-level storage needed.
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
         ; Bug #107: persist the assistant's API prompt_tokens so structural
         ; changes (delete/edit) can recompute active_path_tokens from ground
@@ -80,7 +80,7 @@ class ChatDB {
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
 
-        ; FTS5 full-text search — maintained incrementally by MessageRepo (FTS_Sync).
+        ; FTS5 full-text search - maintained incrementally by MessageRepo (FTS_Sync).
         ; Repair on startup only if counts mismatch (first run or corruption).
         ChatDB.db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(msg_id, content);")
         ftsCount := ChatDB.db.Exec("SELECT COUNT(*) AS cnt FROM messages_fts;")
@@ -88,31 +88,27 @@ class ChatDB {
         if Integer(ftsCount[1, "cnt"]) != Integer(msgCount[1, "cnt"]) {
             ChatDB.db.Exec("DELETE FROM messages_fts;")
             ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages;")
-            debugLog("[DB] FTS5 rebuilt — " Integer(msgCount[1, "cnt"]) " messages indexed")
+            debugLog("[DB] FTS5 rebuilt - " Integer(msgCount[1, "cnt"]) " messages indexed")
         }
 
     }
 
-    ; FTS5 sync — called from MessageRepo on Insert/Edit.
-    ; NOTE: SQLite.Escape only doubles internal single quotes (' → ''),
+    ; FTS5 sync - called from MessageRepo on Insert/Edit.
+    ; NOTE: SQLite.Escape only doubles internal single quotes (' -> ''),
     ; it does NOT wrap in quotes. The caller must add wrapping quotes.
-    ;   WRONG: VALUES(..., SQLite.Escape(val))     → VALUES(..., Hi)
-    ;   RIGHT: VALUES(..., '" SQLite.Escape(val) "') → VALUES(..., 'Hi')
+    ;   WRONG: VALUES(..., SQLite.Escape(val))     -> VALUES(..., Hi)
+    ;   RIGHT: VALUES(..., '" SQLite.Escape(val) "') -> VALUES(..., 'Hi')
     static FTS_Sync(msgId, content) {
-        safeMsgId := SQLite.Escape(msgId)
-        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" safeMsgId "';")
-        safeContent := SQLite.Escape(content)
         try {
-            ; Wrapping quotes around safeContent: '" safeContent "'
-            ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) VALUES('" safeMsgId "', '" safeContent "');")
+            ChatDB.db.Query("DELETE FROM messages_fts WHERE msg_id=?;", msgId)
+            ChatDB.db.Query("INSERT INTO messages_fts(msg_id, content) VALUES(?, ?);", msgId, content)
         } catch Error as e {
             debugLog("[FTS] Sync ERROR: " e.Message, "FTS")
         }
     }
 
     static FTS_Remove(msgId) {
-        safeMsgId := SQLite.Escape(msgId)
-        ChatDB.db.Exec("DELETE FROM messages_fts WHERE msg_id='" safeMsgId "';")
+        ChatDB.db.Query("DELETE FROM messages_fts WHERE msg_id=?;", msgId)
     }
 
     static _UUID() {
@@ -121,7 +117,7 @@ class ChatDB {
             Random(0, 0xFFFF), Random(0, 0xFFFFFFFF))
     }
 
-    ; Thread operations — delegate to ThreadRepo
+    ; Thread operations - delegate to ThreadRepo
     static Thread_Create(title := "New Chat") => ThreadRepo.Create(title)
     static Thread_UpdateSettings(threadId, settings) => ThreadRepo.UpdateSettings(threadId, settings)
     static Thread_GetSettings(threadId) => ThreadRepo.GetSettings(threadId)
@@ -132,7 +128,7 @@ class ChatDB {
     static Thread_Delete(threadId) => ThreadRepo.Delete(threadId)
     static Thread_Update(threadId, title, updateTimestamp := true) => ThreadRepo.Update(threadId, title, updateTimestamp)
 
-    ; Message operations — delegate to MessageRepo
+    ; Message operations - delegate to MessageRepo
     static Msg_Insert(msgObj) => MessageRepo.Insert(msgObj)
     static Msg_HardDelete(msgId) => MessageRepo.HardDelete(msgId)
     static Msg_Edit(msgId, newContent) => MessageRepo.Edit(msgId, newContent)
@@ -144,7 +140,7 @@ class ChatDB {
     static Msg_SwitchBranch(threadId, msgId, direction := 1) => TreeRepo.SwitchBranch(threadId, msgId, direction)
     static Msg_GetThreadStats(threadId) => TreeRepo.GetThreadStats(threadId)
 
-    ; Attachment operations — delegate to AttachmentRepo
+    ; Attachment operations - delegate to AttachmentRepo
     static Attachment_Insert(msgId, attObj) => AttachmentRepo.Insert(msgId, attObj)
     static Attachment_Save(msgId, att) => AttachmentRepo.SaveAttachment(msgId, att)
     static Attachment_GetByMessage(msgId) => AttachmentRepo.GetByMessage(msgId)
@@ -154,11 +150,11 @@ class ChatDB {
     static Attachment_DeleteOne(attachmentId) => AttachmentRepo.DeleteOne(attachmentId)
     static Attachment_CopyForMessage(srcMsgId, dstMsgId) => AttachmentRepo.CopyForMessage(srcMsgId, dstMsgId)
 
-    ; Usage operations — delegate to UsageRepo
+    ; Usage operations - delegate to UsageRepo
     static Usage_Query(filters) => UsageRepo.Query(filters)
     static CommandUsage_Upsert(data) => UsageRepo.CommandUpsert(data)
     static ChatUsage_Upsert(data) => UsageRepo.ChatUpsert(data)
 
-    ; Search operations — delegate to SearchRepo
+    ; Search operations - delegate to SearchRepo
     static SearchMessages(query, threadId := "") => SearchRepo.Search(query, threadId)
 }

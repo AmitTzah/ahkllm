@@ -1,17 +1,16 @@
 ; ======================================================
-; MessageRepo.ahk — Message CRUD operations
+; MessageRepo.ahk - Message CRUD operations
 ; ======================================================
 
 class MessageRepo {
 
     static Insert(msgObj) {
         id := ChatDB._UUID()
-        safeContent := SQLite.Escape(msgObj.content)
-        safeModel := msgObj.HasProp("model") && msgObj.model ? SQLite.Escape(msgObj.model) : ""
-        safeParent := msgObj.HasProp("parent_id") && msgObj.parent_id ? "'" SQLite.Escape(msgObj.parent_id) "'" : "NULL"
-        safeSiblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? "'" SQLite.Escape(msgObj.sibling_group) "'" : "NULL"
+        model := msgObj.HasProp("model") && msgObj.model ? msgObj.model : ""
+        parentId := msgObj.HasProp("parent_id") && msgObj.parent_id ? msgObj.parent_id : ""
+        siblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? msgObj.sibling_group : ""
         siblingIdx := msgObj.HasProp("sibling_index") ? msgObj.sibling_index : 0
-        safeReasoning := msgObj.HasProp("reasoning") && msgObj.reasoning ? SQLite.Escape(msgObj.reasoning) : ""
+        reasoning := msgObj.HasProp("reasoning") && msgObj.reasoning ? msgObj.reasoning : ""
 
         tc := msgObj.HasProp("token_count") ? msgObj.token_count : 0
         tht := msgObj.HasProp("thinking_tokens") ? msgObj.thinking_tokens : 0
@@ -46,7 +45,7 @@ class MessageRepo {
             ; header "Context Used" must be prompt + visible output + thinking.
             activePathTokens := msgObj.prompt_tokens + tc + tht
         } else if msgObj.HasProp("parent_id") && msgObj.parent_id {
-            parentRow := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" SQLite.Escape(msgObj.parent_id) "';")
+            parentRow := ChatDB.db.Query("SELECT active_path_tokens FROM messages WHERE id=?;", msgObj.parent_id)
             if parentRow.count
                 activePathTokens := Integer(parentRow[1, "active_path_tokens"]) + tc
         }
@@ -55,7 +54,7 @@ class MessageRepo {
         ; _RecomputeActivePath can restore prompt+completion after structural
         ; changes instead of reducing to a visible-token prefix sum.
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
-        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES('" id "', '" SQLite.Escape(msgObj.thread_id) "', '" SQLite.Escape(msgObj.role) "', '" safeContent "', '" safeModel "', " safeParent ", " safeSiblingGroup ", " siblingIdx ", '" safeReasoning "', " tc ", " promptTotal ", " tht ", " ckt ", " lat ", " ttft ", " activePathTokens ");")
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens)
 
         ; Sync FTS5 index
         ChatDB.FTS_Sync(id, msgObj.content)
@@ -72,11 +71,11 @@ class MessageRepo {
                     totalCost := costs.totalCost != "" ? costs.totalCost : 0
                 }
             }
-            ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now'), cumulative_input_tokens=cumulative_input_tokens+" promptTotal ", cumulative_output_tokens=cumulative_output_tokens+" (tc + tht) ", cumulative_cached_tokens=cumulative_cached_tokens+" ckt ", cumulative_cost=cumulative_cost+" totalCost ", cumulative_input_cost=cumulative_input_cost+" inputCost ", cumulative_cached_input_cost=cumulative_cached_input_cost+" cachedInputCost ", cumulative_output_cost=cumulative_output_cost+" outputCost " WHERE id='" SQLite.Escape(msgObj.thread_id) "';")
+            ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now'), cumulative_input_tokens=cumulative_input_tokens+?, cumulative_output_tokens=cumulative_output_tokens+?, cumulative_cached_tokens=cumulative_cached_tokens+?, cumulative_cost=cumulative_cost+?, cumulative_input_cost=cumulative_input_cost+?, cumulative_cached_input_cost=cumulative_cached_input_cost+?, cumulative_output_cost=cumulative_output_cost+? WHERE id=?;", id, promptTotal, (tc + tht), ckt, totalCost, inputCost, cachedInputCost, outputCost, msgObj.thread_id)
         } else {
             ; Local copy: the message becomes the active leaf, but the thread's
             ; token/cost ledger must stay untouched (no API call happened).
-            ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now') WHERE id='" SQLite.Escape(msgObj.thread_id) "';")
+            ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
         }
 
         ; Note: _RecomputeActivePath is NOT called here because Insert already sets
@@ -119,7 +118,7 @@ class MessageRepo {
 
     ; Backfill the user message's token_count based on API prompt_tokens.
     ; Returns new_input (tokens the user message contributed).
-    ; @param existing_sum — output: sum of existing token_count values in path before backfill
+    ; @param existing_sum - output: sum of existing token_count values in path before backfill
     static _BackfillUserTokens(threadId, promptTokens, &existing_sum := 0) {
         path := TreeRepo.GetActivePath(threadId)
         existing_sum := 0
@@ -129,14 +128,14 @@ class MessageRepo {
         new_input := Max(0, promptTokens - existing_sum)
 
         ; Find the last user message in the path and backfill its token_count.
-        ; Only backfill if still 0 — user messages are shared across branches,
+        ; Only backfill if still 0 - user messages are shared across branches,
         ; and retry/switch must not overwrite the original attribution.
         i := path.Length
         while i >= 1 {
             if path[i].role = "user" {
                 currentTC := path[i].HasProp("token_count") ? path[i].token_count : 0
                 if currentTC = 0 {
-                    ChatDB.db.Exec("UPDATE messages SET token_count=" new_input " WHERE id='" SQLite.Escape(path[i].id) "';")
+                    ChatDB.db.Query("UPDATE messages SET token_count=? WHERE id=?;", new_input, path[i].id)
                 }
                 break
             }
@@ -147,33 +146,33 @@ class MessageRepo {
     }
 
     static HardDelete(msgId) {
-        parentTable := ChatDB.db.Exec("SELECT parent_id, thread_id FROM messages WHERE id='" SQLite.Escape(msgId) "';")
+        parentTable := ChatDB.db.Query("SELECT parent_id, thread_id FROM messages WHERE id=?;", msgId)
         if !parentTable.count
             return
         parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
         threadId := parentTable[1, "thread_id"]
 
-        childrenTable := ChatDB.db.Exec("SELECT id FROM messages WHERE parent_id='" SQLite.Escape(msgId) "';")
+        childrenTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=?;", msgId)
         for row in childrenTable.rows {
             if parentId
-                ChatDB.db.Exec("UPDATE messages SET parent_id='" SQLite.Escape(parentId) "' WHERE id='" SQLite.Escape(row.id) "';")
+                ChatDB.db.Query("UPDATE messages SET parent_id=? WHERE id=?;", parentId, row.id)
             else
-                ChatDB.db.Exec("UPDATE messages SET parent_id=NULL WHERE id='" SQLite.Escape(row.id) "';")
+                ChatDB.db.Query("UPDATE messages SET parent_id=NULL WHERE id=?;", row.id)
         }
 
-        leafTable := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='" SQLite.Escape(threadId) "';")
+        leafTable := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
         if leafTable.count && leafTable[1, "active_leaf_id"] = msgId {
             if parentId
-                ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" SQLite.Escape(parentId) "' WHERE id='" SQLite.Escape(threadId) "';")
+                ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=? WHERE id=?;", parentId, threadId)
             else
-                ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id=NULL WHERE id='" SQLite.Escape(threadId) "';")
+                ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=NULL WHERE id=?;", threadId)
         }
 
-        ; Delete attachments BEFORE the raw DELETE — ON DELETE CASCADE would remove
+        ; Delete attachments BEFORE the raw DELETE - ON DELETE CASCADE would remove
         ; message_attachments rows before we can read file_path for disk cleanup.
         AttachmentRepo.DeleteByMessage(msgId)
         ChatDB.FTS_Remove(msgId)
-        ChatDB.db.Exec("DELETE FROM messages WHERE id='" SQLite.Escape(msgId) "';")
+        ChatDB.db.Query("DELETE FROM messages WHERE id=?;", msgId)
 
         TreeRepo._RecomputeActivePath(threadId)
         ; Bug #65: the deleted message's tokens/cost must drop out of the
@@ -193,7 +192,7 @@ class MessageRepo {
     ; actually saw. Output/cached only count assistant rows (bug #128) - user
     ; token_counts are backfilled INPUT contributions, never output.
     static _RecomputeCumulativeCounters(threadId) {
-        table := ChatDB.db.Exec("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE thread_id='" SQLite.Escape(threadId) "';")
+        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE thread_id=?;", threadId)
         rowMap := Map()
         for row in table.rows {
             rowMap[row.id] := row
@@ -223,15 +222,14 @@ class MessageRepo {
             output += tc + tht
             cached += ckt
         }
-        ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=" input ", cumulative_output_tokens=" output ", cumulative_cached_tokens=" cached ", cumulative_cost=" totalCost ", cumulative_input_cost=" inputCost ", cumulative_cached_input_cost=" cachedInputCost ", cumulative_output_cost=" outputCost " WHERE id='" SQLite.Escape(threadId) "';")
+        ChatDB.db.Query("UPDATE chat_threads SET cumulative_input_tokens=?, cumulative_output_tokens=?, cumulative_cached_tokens=?, cumulative_cost=?, cumulative_input_cost=?, cumulative_cached_input_cost=?, cumulative_output_cost=? WHERE id=?;", input, output, cached, totalCost, inputCost, cachedInputCost, outputCost, threadId)
     }
 
     static Edit(msgId, newContent) {
-        oldTable := ChatDB.db.Exec("SELECT thread_id FROM messages WHERE id='" SQLite.Escape(msgId) "';")
+        oldTable := ChatDB.db.Query("SELECT thread_id FROM messages WHERE id=?;", msgId)
         threadId := oldTable.count ? oldTable[1, "thread_id"] : ""
 
-        safeContent := SQLite.Escape(newContent)
-        ChatDB.db.Exec("UPDATE messages SET content='" safeContent "' WHERE id='" SQLite.Escape(msgId) "';")
+        ChatDB.db.Query("UPDATE messages SET content=? WHERE id=?;", newContent, msgId)
         ChatDB.FTS_Sync(msgId, newContent)
         MessageRepo._TouchThreadByMsg(msgId)
 
@@ -240,13 +238,13 @@ class MessageRepo {
     }
 
     static GetMaxSiblingIndex(siblingGroup) {
-        table := ChatDB.db.Exec("SELECT MAX(sibling_index) as max_idx FROM messages WHERE sibling_group='" SQLite.Escape(siblingGroup) "';")
+        table := ChatDB.db.Query("SELECT MAX(sibling_index) as max_idx FROM messages WHERE sibling_group=?;", siblingGroup)
         return table.count ? Integer(table[1, "max_idx"]) : 0
     }
 
     static _TouchThreadByMsg(msgId) {
-        table := ChatDB.db.Exec("SELECT thread_id FROM messages WHERE id='" SQLite.Escape(msgId) "';")
+        table := ChatDB.db.Query("SELECT thread_id FROM messages WHERE id=?;", msgId)
         if table.count
-            ChatDB.db.Exec("UPDATE chat_threads SET updated_at=datetime('now') WHERE id='" SQLite.Escape(table[1, "thread_id"]) "';")
+            ChatDB.db.Query("UPDATE chat_threads SET updated_at=datetime('now') WHERE id=?;", table[1, "thread_id"])
     }
 }

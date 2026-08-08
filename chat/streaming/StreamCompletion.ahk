@@ -1,5 +1,5 @@
 ; ----------------------------------------------------
-; StreamCompletion.ahk — Streaming completion handling
+; StreamCompletion.ahk - Streaming completion handling
 ;
 ; Handles successful stream completion: response persistence,
 ; API logging, title generation trigger, provider lookup.
@@ -47,7 +47,7 @@ _handleStreamComplete() {
 
 _maybeGenerateTitle(path) {
     if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
-        threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(activeThreadId) "';")
+        threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
         if threadInfo.count {
             currentTitle := threadInfo[1, "title"]
             debugLog("[TITLEGEN] trigger check thread=" activeThreadId " title='" currentTitle "'")
@@ -113,11 +113,11 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
     ct := usage.HasProp("completionTokens") ? usage.completionTokens : 0
     tht := usage.HasProp("thinkingTokens") ? usage.thinkingTokens : 0
     ckt := usage.HasProp("cachedTokens") ? usage.cachedTokens : 0
-    debugLog("[API] Chat done — prompt=" pt " completion=" ct " cached=" ckt " latency=" responseTimeMs "ms model=" modelName)
-    debugLog("[USAGE] Chat — prompt=" pt " completion=" ct " cached=" ckt)
+    debugLog("[API] Chat done - prompt=" pt " completion=" ct " cached=" ckt " latency=" responseTimeMs "ms model=" modelName)
+    debugLog("[USAGE] Chat - prompt=" pt " completion=" ct " cached=" ckt)
     costs := CostCalculator.ComputeTokenCosts(modelName, usage)
     if costs.totalCost != ""
-        debugLog("[COST] Chat — input=$" costs.inputCost " cached=$" costs.cachedInputCost " output=$" costs.outputCost " total=$" costs.totalCost)
+        debugLog("[COST] Chat - input=$" costs.inputCost " cached=$" costs.cachedInputCost " output=$" costs.outputCost " total=$" costs.totalCost)
 
     ; Build response: real API data from last chunk, but with accumulated content
     responseStr := rawLastResponse
