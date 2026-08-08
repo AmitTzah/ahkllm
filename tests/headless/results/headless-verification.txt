@@ -1,5 +1,5 @@
-# 2026-08-08T11:24:59.187Z | run of 1 scenario(s)
-PASS | #123 | "Save as Branch" on an assistant message drops the branch copy's token metadata (Context Used falls back to the parent, token popover is blank) | branch copy DB={"token_count":9,"prompt_tokens":12,"thinking_tokens":0,"cached_tokens":0,"active_path_tokens":21}, header context before="21 / 1m" after="21 / 1m" popover=" Token UsageOutput: 9 tokensVisible: 9 tokensThinking: 0 tokensCache: 0 tokensTotal time: 0.0s" (copy kept a1's 21/9 attribution) | 6.2s
+# 2026-08-08T11:28:14.350Z | run of 1 scenario(s)
+PASS | #124 | Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included) | tree modal label: "Viewing active path · 2 nodes" - counts the 2 active-path nodes, not all 5 tree nodes | 5.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

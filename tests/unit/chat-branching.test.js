@@ -156,6 +156,22 @@ describe('tree helpers', () => {
         assert.strictEqual(ids['n3'], true);
         assert.strictEqual(ids['n2'], undefined); // not in active path
     });
+
+    it('_countActivePathNodes counts only the active-path nodes (bug #124)', () => {
+        const ctx = loadBranchingModule();
+        var tree = [
+            { id: 'n1', role: 'user', content_preview: 'Q', children: [
+                { id: 'n2', role: 'assistant', content_preview: 'A1', children: [] },
+                { id: 'n3', role: 'assistant', content_preview: 'A2', children: [
+                    { id: 'n4', role: 'assistant', content_preview: 'A2a', children: [] }
+                ] }
+            ]}
+        ];
+        // Active path n1 -> n3 -> n4: 3 of the 4 tree nodes.
+        var active = { n1: true, n3: true, n4: true };
+        assert.strictEqual(ctx._countActivePathNodes(tree, active), 3);
+        assert.strictEqual(ctx._countTreeNodes(tree), 4);
+    });
 });
 
 describe('_findDefaultLeaf', () => {

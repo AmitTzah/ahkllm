@@ -125,14 +125,16 @@ function renderChatTree(tree) {
 
   _inheritModels(tree, '');
 
-  var sub = document.querySelector('.tree-modal-sub');
-  if (sub) {
-    var total = _countTreeNodes(tree);
-    sub.textContent = 'Viewing active path · ' + total + ' node' + (total !== 1 ? 's' : '');
-  }
-
   var activeIds = {};
   _collectActivePath(activeIds);
+
+  var sub = document.querySelector('.tree-modal-sub');
+  if (sub) {
+    // Bug #124: the subtitle says "Viewing active path", so it must count the
+    // ACTIVE PATH nodes (the ones highlighted), not every node in the tree.
+    var total = _countActivePathNodes(tree, activeIds);
+    sub.textContent = 'Viewing active path · ' + total + ' node' + (total !== 1 ? 's' : '');
+  }
 
   var svgPaths = [];
   var allNodes = [];
@@ -215,6 +217,16 @@ function _countTreeNodes(tree) {
   var count = 0;
   for (var i = 0; i < tree.length; i++) {
     count += 1 + _countTreeNodes(tree[i].children || []);
+  }
+  return count;
+}
+
+// Bug #124: count only the nodes on the ACTIVE path (the ids in activeIds).
+function _countActivePathNodes(nodes, activeIds) {
+  var count = 0;
+  for (var i = 0; i < nodes.length; i++) {
+    if (activeIds[nodes[i].id]) count += 1;
+    count += _countActivePathNodes(nodes[i].children || [], activeIds);
   }
   return count;
 }

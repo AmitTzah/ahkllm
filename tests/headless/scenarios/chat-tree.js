@@ -684,6 +684,7 @@ scenarios.push({
 scenarios.push({
   id: 124,
   name: 'Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)',
+  regression: true, // FIXED bug kept as a regression check (subtitle must count the active path, not the whole tree)
   mode: null,
   settings: {},
   fixtures: {
@@ -707,14 +708,14 @@ scenarios.push({
     await cdp.click('#treeBtn');
     await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open") && document.querySelector(".tree-modal-sub") && document.querySelector(".tree-modal-sub").textContent.indexOf("Viewing active path") === 0', 15000, 300, 'tree modal open');
     const label = await cdp.text('.tree-modal-sub');
-    // BUG: renderChatTree computes total = _countTreeNodes(tree) (ALL nodes,
-    // including off-path branches) but labels it "Viewing active path". The
-    // active path here has 2 messages; the label claims 5.
-    if (!String(label).includes('5 node'))
-      throw new Error('tree label does not show the all-nodes count (bug may be fixed): ' + JSON.stringify(label));
-    if (String(label).includes('2 node'))
-      throw new Error('tree label shows the active-path count (bug may be fixed): ' + JSON.stringify(label));
-    return 'tree modal label: ' + JSON.stringify(label) + ' - counts all 5 tree nodes while the active path has 2';
+    // FIXED (bug #124): renderChatTree counts only the ACTIVE PATH nodes - the
+    // active path here has 2 messages, so the label says 2 even though the
+    // whole tree has 5 nodes (off-path branches no longer inflate it).
+    if (!String(label).includes('2 node'))
+      throw new Error('tree label does not show the active-path count: ' + JSON.stringify(label));
+    if (String(label).includes('5 node'))
+      throw new Error('tree label still counts the whole tree (bug #124 not fixed): ' + JSON.stringify(label));
+    return 'tree modal label: ' + JSON.stringify(label) + ' - counts the 2 active-path nodes, not all 5 tree nodes';
   }
 });
 
