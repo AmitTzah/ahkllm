@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #122 (assistants.js save() re-emits the preserved temperature/isDefault from the card dataset and SettingsApply._ApplyAssistants carries isDefault into the runtime globals, so a Settings save no longer resets assistant temperature to Model Default; scenario 122 flipped + assistants-settings JS + SettingsHandler AHK unit tests). Next up per the lifecycle is #123.
+- **Where we left off:** 2026-08-08 - FIXED #123 (branch-edit copies now carry the source message's token metadata - token_count/prompt_tokens/thinking/cached/active_path_tokens - captured inside the Edit.ahk loop (AHK v2 for-loop vars die after the loop); seed.js now seeds prompt_tokens like the app schema; scenario 123 flipped + ChatDB unit test). Next up per the lifecycle is #124.
 ---
 
 ## Bug entry template
@@ -208,40 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 9. "Save as Branch" on an assistant message drops the copy's token metadata (header Context Used falls back to the parent, token popover is blank)
-
-**Scenario:** 123 (scenario code in `scenarios/usage-tokens.js`)
-
-**Status:** verified
-
-**Repro:** In a chat with token data (e.g. user 12 tokens, assistant 9 tokens,
-context 21), click Edit on the assistant and choose "Save as Branch".
-
-**Expected:** the branch copy is a faithful copy of the assistant message,
-including its token attribution (`token_count`, `prompt_tokens`,
-`thinking_tokens`, `cached_tokens`, `active_path_tokens`), exactly like
-`TreeRepo._InsertForkMessage`/`_CopyOffPathSiblings` do for forks. The header
-"Context Used" should stay 21 and the copy's token popover should show the
-same 9 output tokens.
-
-**Actual:** `Edit.ahk` branch mode inserts the copy with NO token fields, so
-`MessageRepo.Insert` computes `active_path_tokens` from the parent only (12)
-and stores zero token attribution (token_count/prompt_tokens/thinking/cached
-= 0). The header "Context Used" drops from 21 to 12 and the per-message token
-popover on the branch copy shows "Output: 0 tokens".
-
-**Evidence:** `chat/callbacks/Edit.ahk` branch-mode `Msg_Insert({...})` passes
-only role/content/model/parent/sibling fields; `chat/db/MessageRepo.ahk`
-`Insert` falls back to `parent.active_path_tokens + token_count` when
-`prompt_tokens` is absent.
-
-**Verification:** headless scenario 123 - edited the seeded assistant (context
-21, output 9) and saved it as a branch via the UI, then read the new message's
-DB fields (active_path_tokens=12, token_count=0), the header context (12), and
-the copy's token popover ("Output: 0 tokens").
 
 ### 10. Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)
 
@@ -461,6 +429,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - ""Save as Branch" on an assistant message records a fake API request in the usage dashboard" - FIXED in 77ae619: branch-edit copies are inserted with local_copy: true, so MessageRepo.Insert never upserts chat_usage or re-charges the cumulative counters/costs for them (no API call happened); scenario 118 flipped to a regression check + ChatDB unit test (live audits 119/127 stay green).
 
 - 2026-08-08 - "Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)" - FIXED in 994eb5a: assistants.js save() re-emits the preserved temperature/isDefault from the card dataset and SettingsApply._ApplyAssistants carries isDefault into the runtime globals, so the save round-trip no longer resets assistant temperature to Model Default; scenario 122 flipped to a regression check + assistants-settings JS + SettingsHandler AHK unit tests.
+
+- 2026-08-08 - ""Save as Branch" on an assistant message drops the copy's token metadata (header Context Used falls back to the parent, token popover is blank)" - FIXED in 0d96955: Edit.ahk branch mode now copies the source message's token metadata (token_count/prompt_tokens/thinking/cached/active_path_tokens) into the local_copy insert - captured inside the loop because AHK v2 for-loop variables are not valid after it - and seed.js seeds prompt_tokens like the app schema; scenario 123 flipped to a regression check + ChatDB unit test.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
