@@ -1,5 +1,5 @@
-# 2026-08-08T08:06:38.383Z | run of 1 scenario(s)
-PASS | #111 | ApiLogger writes the log atomically via temp + rename (bug fixed) | ApiLogger.LogRequest/TrimToLimit write via temp file + FileMove (atomic), so a crash mid-write cannot corrupt LLM_API_Log.json | 0.0s
+# 2026-08-08T08:10:00.648Z | run of 1 scenario(s)
+PASS | #112 | CurlBuilder rejects empty endpoints (malformed cURL prevented) | CurlBuilder.Build/BuildStream/BuildFIM return '' for empty endpoints and ChatRequestBuilder surfaces a friendly 'No endpoint configured' error | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

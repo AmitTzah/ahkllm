@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #111 FIXED in 193ed5b; next: bug #112 (CurlBuilder does not validate empty endpoint — malformed cURL with no URL).
+- **Where we left off:** 2026-08-08 — ALL open bugs FIXED (bug #112 in 23d462c). The bug-hunt report is complete; scenarios remain as regression checks.
 ---
 
 ## Bug entry template
@@ -213,22 +213,6 @@ one at a time, in rank order.
 
 ---
 
-### 112. CurlBuilder does not validate empty endpoint — malformed cURL with no URL
-
-**Scenario:** 112 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** configure a provider with empty `endpoint` (e.g. add provider via Settings → Providers → leave Chat Endpoint blank → Save), then send a chat request with that provider''s model.
-
-**Expected:** request builder should return early with “No endpoint configured” error (like missing API key does via `_ShowApiKeyError`).
-
-**Actual:** `CurlBuilder.Build` does `return ''cURL.exe ... -X POST '' . providerInfo.endpoint . '' '' . ''-H ...''` without checking `endpoint`. Empty endpoint yields `cURL.exe -s ... -X POST  -H "Authorization: …"` with double-space and no URL — cURL exits with “no URL specified” (stderr), but the error is not surfaced as a user-friendly “endpoint missing” banner; the UI appears stuck or shows raw cURL stderr.
-
-**Evidence:** `api/CurlBuilder.ahk` `Build`/`BuildStream`/`BuildFIM` all concatenate `providerInfo.endpoint` without `if !endpoint` guard.
-
-**Verification:** headless scenario 112 (noApp) asserts `providerInfo.endpoint` is used without empty check.
-
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
@@ -261,6 +245,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`" - FIXED in ef41e48: _handleStreamComplete (success) and _handleStreamError (error) now call deleteTempFiles() after their reads, matching the cancel path, and deleteTempFiles is defensive about missing requestParams keys; scenario 110 flipped to a regression static check + StreamHandler unit test (success/error/cancel all delete temp files).
 
 - 2026-08-08 - "ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`" - FIXED in 193ed5b: LogRequest and TrimToLimit now write through a new ApiLogger._WriteLogs helper (temp file + FileMove with file-state verification, same pattern as settings #97), so a crash mid-write cannot leave truncated JSON; scenario 111 flipped to a regression static check + LLMRequestBuilder unit test (round-trip, no temp leftover).
+
+- 2026-08-08 - "CurlBuilder does not validate empty endpoint — malformed cURL with no URL" - FIXED in 23d462c: CurlBuilder.Build/BuildStream/BuildFIM now return "" when the endpoint is empty (no URL-less cURL command can be produced) and ChatRequestBuilder + sendStreamingRequest surface a friendly "No endpoint configured" error via the new _ShowEndpointError helper; scenario 112 flipped to a regression static check + LLMRequestBuilder unit test (empty endpoint returns "", FIM endpoint still preferred when configured).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
