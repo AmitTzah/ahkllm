@@ -41,7 +41,25 @@ const standaloneTargets = [
     file: path.join(REPO_ROOT, 'api', 'CostCalculator.ahk'),
     stubs: 'global models := Map()\n'
   },
-  { name: 'chat/db/AssistantRepo', file: path.join(REPO_ROOT, 'chat', 'db', 'AssistantRepo.ahk') }
+  { name: 'chat/db/AssistantRepo', file: path.join(REPO_ROOT, 'chat', 'db', 'AssistantRepo.ahk') },
+  {
+    name: 'app/TrayIcon',
+    file: path.join(REPO_ROOT, 'app', 'TrayIcon.ahk'),
+    stubs: 'global iconOn := "icons\\IconOn.ico"\nglobal iconOff := "icons\\IconOff.ico"\n'
+  },
+  {
+    name: 'app/TrayMenu',
+    file: path.join(REPO_ROOT, 'app', 'TrayMenu.ahk'),
+    stubs: 'global trayMenuItems := []\n' +
+      'openChatWindow(threadId := "") {\n' +
+      '    return ""\n' +
+      '}\n' +
+      'class ChatDB {\n' +
+      '    static Thread_Create(title := "") {\n' +
+      '        return ""\n' +
+      '    }\n' +
+      '}\n'
+  }
 ];
 const allTargets = [
   { name: 'lib/Config (full production chain)', file: path.join(REPO_ROOT, 'lib', 'Config.ahk') },

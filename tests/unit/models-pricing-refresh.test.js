@@ -207,6 +207,64 @@ describe('added-state id normalization', () => {
     SM.addFromRefresh('google/gemini-3-flash-preview');
     assert.strictEqual(appended, 0);
   });
+
+  it('rightPanelIds uses the edited id, not the stale data-full-id (bug #40)', () => {
+    const tbody = makeRightTbody([
+      { displayId: 'renamed-model-id', fullId: 'openai/gpt-5', provider: 'openai' }
+    ]);
+    const { SM } = loadModule({ els: { refreshRightTbody: tbody } });
+    assert.deepStrictEqual([...SM.rightPanelIds()], ['openai/renamed-model-id']);
+  });
+
+  it('rightPanelIds keeps the unedited full id when the input is untouched', () => {
+    const tbody = makeRightTbody([
+      { displayId: 'gemini-3-flash-preview', fullId: 'google/gemini-3-flash-preview', provider: 'google' }
+    ]);
+    const { SM } = loadModule({ els: { refreshRightTbody: tbody } });
+    assert.deepStrictEqual([...SM.rightPanelIds()], ['google/gemini-3-flash-preview']);
+  });
+
+  it('saveRefresh writes the edited model id to the main table (bug #40)', () => {
+    const rightTbody = makeRightTbody([
+      { displayId: 'renamed-model-id', fullId: 'openai/gpt-5', provider: 'openai' }
+    ]);
+    const appended = [];
+    const mainTbody = {
+      innerHTML: '',
+      appendChild: (tr) => appended.push(tr),
+      querySelectorAll: () => []
+    };
+    const { SM } = loadModule({
+      els: {
+        refreshRightTbody: rightTbody,
+        modelsTableBody: mainTbody,
+        refreshModal: { classList: { remove: () => {} } }
+      }
+    });
+    SM.saveRefresh();
+    assert.strictEqual(appended.length, 1);
+    assert.ok(appended[0].innerHTML.indexOf('renamed-model-id') >= 0,
+        'main table row must use the edited id, got ' + JSON.stringify(appended[0].innerHTML));
+    assert.ok(appended[0].innerHTML.indexOf('value="openai/gpt-5"') < 0,
+        'the stale data-full-id must not win on save');
+  });
+});
+
+describe('ensureFullId provider precedence (bug #92)', () => {
+  it('rebuilds the full id from the provider dropdown even when the id contains /', () => {
+    const row = makeMainRow('openai/gpt-4', 'google');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models.length, 1);
+    assert.strictEqual(models[0].id, 'google/gpt-4');
+  });
+
+  it('keeps the id as-is when no provider is selected', () => {
+    const row = makeMainRow('openai/gpt-4', '');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models[0].id, 'openai/gpt-4');
+  });
 });
 
 describe('new model metadata survives a settings save round-trip', () => {

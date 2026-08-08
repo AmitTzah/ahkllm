@@ -216,11 +216,11 @@ describe('initChatMode', () => {
         assert.strictEqual(ctx.activeThreadId, 'thread-456');
     });
 
-    it('does not overwrite activeThreadId if already set', () => {
+    it('updates activeThreadId when switching threads (bug #76)', () => {
         const ctx = loadModule();
         ctx.activeThreadId = 'existing-thread';
         ctx.initChatMode({ messages: [], threadId: 'new-thread' });
-        assert.strictEqual(ctx.activeThreadId, 'existing-thread');
+        assert.strictEqual(ctx.activeThreadId, 'new-thread');
     });
 
     it('resets persisted thinking block states', () => {

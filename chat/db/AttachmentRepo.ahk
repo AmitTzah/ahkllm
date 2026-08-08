@@ -37,6 +37,7 @@ class AttachmentRepo {
 
     static Insert(msgId, attObj) {
         id := ChatDB._UUID()
+        safeMsgId := SQLite.Escape(msgId)
         safeType := SQLite.Escape(attObj.attachment_type)
         safePath := SQLite.Escape(attObj.file_path)
         safeMime := attObj.HasProp("mime_type") && attObj.mime_type ? SQLite.Escape(attObj.mime_type) : ""
@@ -50,12 +51,13 @@ class AttachmentRepo {
         }
         safeExtracted := SQLite.Escape(encodedExtracted)
 
-        ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" id "', '" msgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
+        ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" id "', '" safeMsgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
         return id
     }
 
     static GetByMessage(msgId) {
-        table := ChatDB.db.Exec("SELECT id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text, created_at FROM message_attachments WHERE message_id='" msgId "' ORDER BY created_at;")
+        safeMsgId := SQLite.Escape(msgId)
+        table := ChatDB.db.Exec("SELECT id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text, created_at FROM message_attachments WHERE message_id='" safeMsgId "' ORDER BY created_at;")
         result := []
         for row in table.rows {
             result.Push({
@@ -74,7 +76,8 @@ class AttachmentRepo {
     }
 
     static GetByThread(threadId) {
-        table := ChatDB.db.Exec("SELECT a.id, a.message_id, a.attachment_type, a.file_path, a.mime_type, a.original_filename, a.file_size, a.extracted_text, a.created_at FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" threadId "' ORDER BY a.created_at;")
+        safeThreadId := SQLite.Escape(threadId)
+        table := ChatDB.db.Exec("SELECT a.id, a.message_id, a.attachment_type, a.file_path, a.mime_type, a.original_filename, a.file_size, a.extracted_text, a.created_at FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "' ORDER BY a.created_at;")
         result := []
         for row in table.rows {
             result.Push({
@@ -95,36 +98,41 @@ class AttachmentRepo {
     ; Delete all attachments for a message — DB rows + disk files (reference-counted).
     ; MUST be called BEFORE DELETE FROM messages to read file_path before CASCADE.
     static DeleteByMessage(msgId) {
-        table := ChatDB.db.Exec("SELECT file_path FROM message_attachments WHERE message_id='" msgId "';")
+        safeMsgId := SQLite.Escape(msgId)
+        table := ChatDB.db.Exec("SELECT file_path FROM message_attachments WHERE message_id='" safeMsgId "';")
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
         }
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id='" msgId "';")
+        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id='" safeMsgId "';")
     }
 
     ; Delete all attachments for a thread — DB rows + disk files (reference-counted).
     ; MUST be called BEFORE raw DELETE FROM messages that triggers CASCADE.
     static DeleteByThread(threadId) {
-        table := ChatDB.db.Exec("SELECT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" threadId "';")
+        safeThreadId := SQLite.Escape(threadId)
+        table := ChatDB.db.Exec("SELECT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" safeThreadId "';")
         for row in table.rows {
             AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
         }
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" threadId "');")
+        ChatDB.db.Exec("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id='" safeThreadId "');")
     }
 
     ; Delete a single attachment by ID — DB row + disk file (reference-counted).
     static DeleteOne(attachmentId) {
-        table := ChatDB.db.Exec("SELECT file_path FROM message_attachments WHERE id='" attachmentId "';")
+        safeAttachmentId := SQLite.Escape(attachmentId)
+        table := ChatDB.db.Exec("SELECT file_path FROM message_attachments WHERE id='" safeAttachmentId "';")
         if table.count {
             AttachmentRepo._DeleteFileIfOrphaned(table[1, "file_path"])
         }
-        ChatDB.db.Exec("DELETE FROM message_attachments WHERE id='" attachmentId "';")
+        ChatDB.db.Exec("DELETE FROM message_attachments WHERE id='" safeAttachmentId "';")
     }
 
     ; Copy all attachments from one message to another.
     ; Shares the same physical file (content-addressable storage) — only copies DB rows.
     static CopyForMessage(sourceMsgId, targetMsgId) {
-        table := ChatDB.db.Exec("SELECT attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id='" sourceMsgId "';")
+        safeSourceMsgId := SQLite.Escape(sourceMsgId)
+        safeTargetMsgId := SQLite.Escape(targetMsgId)
+        table := ChatDB.db.Exec("SELECT attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id='" safeSourceMsgId "';")
         for row in table.rows {
             newId := ChatDB._UUID()
             safeType := SQLite.Escape(row.attachment_type)
@@ -134,7 +142,7 @@ class AttachmentRepo {
             safeExtracted := row.Has("extracted_text") && row.extracted_text ? SQLite.Escape(row.extracted_text) : ""
             fileSize := row.Has("file_size") ? row.file_size : 0
 
-            ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" newId "', '" targetMsgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
+            ChatDB.db.Exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES('" newId "', '" safeTargetMsgId "', '" safeType "', '" safePath "', '" safeMime "', '" safeFilename "', " fileSize ", '" safeExtracted "');")
         }
     }
 

@@ -17,9 +17,14 @@ class CurlBuilder {
     ; Build the cURL command for a non-streaming request.
     ; providerInfo from LLMRequestBuilder.ResolveProvider().
     static Build(providerInfo, requestFile, outputFile) {
+        ; Bug #112: a provider with no endpoint would produce a malformed
+        ; URL-less cURL command - return "" so callers surface a friendly
+        ; "No endpoint configured" error instead of raw cURL stderr.
+        if !providerInfo.endpoint
+            return ""
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
-            . '-H "Authorization: Bearer ' providerInfo.apiKey '" '
+            . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '"'
@@ -28,9 +33,12 @@ class CurlBuilder {
     ; Build the streaming cURL command.
     ; errorFile = path to capture stderr (e.g., cURLError_*.txt)
     static BuildStream(providerInfo, requestFile, outputFile, errorFile) {
+        ; Bug #112: same empty-endpoint guard as Build.
+        if !providerInfo.endpoint
+            return ""
         return 'cURL.exe -s --no-buffer --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
-            . '-H "Authorization: Bearer ' providerInfo.apiKey '" '
+            . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '" '
@@ -43,12 +51,30 @@ class CurlBuilder {
         if !endpoint {
             endpoint := providerInfo.endpoint
         }
+        ; Bug #112: same empty-endpoint guard as Build.
+        if !endpoint
+            return ""
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . endpoint ' '
-            . '-H "Authorization: Bearer ' providerInfo.apiKey '" '
+            . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '"'
+    }
+
+    ; Bug #89 (security): the API key is embedded in a "..."-quoted header on
+    ; the cURL command line - remove characters that can break the quote or
+    ; inject commands when the command runs through cmd. Bearer tokens never
+    ; legitimately contain these.
+    static _SafeApiKey(key) {
+        key := StrReplace(key, '"', '')
+        key := StrReplace(key, '%', '')
+        key := StrReplace(key, '&', '')
+        key := StrReplace(key, '|', '')
+        key := StrReplace(key, '<', '')
+        key := StrReplace(key, '>', '')
+        key := StrReplace(key, '^', '')
+        return key
     }
 
 }

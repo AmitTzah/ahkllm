@@ -36,7 +36,7 @@ handleEdit(params, *) {
                     siblingGroup := msg.sibling_group
                 } else {
                     siblingGroup := ChatDB._UUID()
-                    ChatDB.db.Exec("UPDATE messages SET sibling_group='" siblingGroup "', sibling_index=0 WHERE id='" id "';")
+                    ChatDB.db.Exec("UPDATE messages SET sibling_group='" SQLite.Escape(siblingGroup) "', sibling_index=0 WHERE id='" SQLite.Escape(id) "';")
                 }
                 siblingIndex := MessageRepo.GetMaxSiblingIndex(siblingGroup) + 1
                 break

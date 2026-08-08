@@ -50,8 +50,14 @@ class InlineRequestRunner {
             chatHistoryJSONRequest := llmClient.createFIMRequest(fullAPIModelName, captured.prefix, captured.suffix,
                 temperature, maxTokens, stop)
         } else {
+            ; Bug #46: the inline runner is single-shot (CurlBuilder.Build +
+            ; whole-file JSON parse), so it must NOT advertise stream:true - a
+            ; streaming API would answer SSE that cannot be parsed as one JSON
+            ; document and the command would silently paste nothing.
+            ; replace/append has no live streaming UI anyway; the result is
+            ; pasted at the end.
             chatHistoryJSONRequest := LLMRequestBuilder.createJSONRequest(fullAPIModelName, systemMessage, captured.userMessage,
-                temperature, maxTokens, stop, stream, thinking, thinkingLevel)
+                temperature, maxTokens, stop, false, thinking, thinkingLevel)
         }
 
         ; Resolve provider info for CurlBuilder

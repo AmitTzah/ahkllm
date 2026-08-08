@@ -37,17 +37,19 @@ class ThreadSettings {
             assistantBaseModel: "",
             assistantDescription: ""
         }
+        hasTemperatureOverride := false
         if row.HasOwnProp("modelOverride") && row.modelOverride
             eff.model := row.modelOverride
         if row.HasOwnProp("systemOverride") && row.systemOverride
             eff.systemMessage := row.systemOverride
         if row.HasOwnProp("reasoningOverride") && row.reasoningOverride
             eff.reasoning := row.reasoningOverride
-        ; NOTE: truthiness intentionally matches the historical behavior
-        ; (temperature 0 is dropped - tracked as bug #35, fixed in its own
-        ; cycle).
-        if row.HasOwnProp("temperatureOverride") && row.temperatureOverride
+        ; Temperature 0 is a valid override (bug #35): AHK treats the numeric
+        ; 0 as falsy, so only NULL/empty string means "no override".
+        if row.HasOwnProp("temperatureOverride") && row.temperatureOverride != "" {
             eff.temperature := row.temperatureOverride
+            hasTemperatureOverride := true
+        }
         if eff.assistantId && asst {
             if !eff.model
                 eff.model := asst.baseModel
@@ -55,7 +57,7 @@ class ThreadSettings {
                 eff.systemMessage := AssistantRepo._resolveSystemMessage(asst)
             if !eff.reasoning
                 eff.reasoning := asst.reasoning
-            if !eff.temperature
+            if !hasTemperatureOverride
                 eff.temperature := asst.temperature
             eff.assistantName := asst.HasOwnProp("name") ? asst.name : ""
             eff.assistantBaseModel := asst.baseModel

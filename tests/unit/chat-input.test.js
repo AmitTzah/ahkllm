@@ -78,6 +78,22 @@ describe('onChatSend — payload construction', () => {
         assert.strictEqual(postedMessages.length, 1);
         assert.strictEqual(JSON.parse(postedMessages[0]).action, 'cancelStream');
     });
+
+    it('does nothing when input is empty and there are no attachments (bug #77)', () => {
+        const { ctx, postedMessages } = loadInputModule();
+        ctx.isLoading = false;
+        ctx.chatMessages = [{ role: 'assistant', content: 'old reply', id: 'm1' }];
+        let retried = 0;
+        ctx.retryLastAssistantMessage = () => { retried++; };
+        const origGetEl = ctx.document.getElementById;
+        ctx.document.getElementById = (id) => {
+            if (id === 'chat-input') return { value: '', style: {}, disabled: false, focus: () => {} };
+            return origGetEl(id);
+        };
+        ctx.onChatSend();
+        assert.strictEqual(postedMessages.length, 0, 'empty Send must not post anything');
+        assert.strictEqual(retried, 0, 'empty Send must not retry the last message');
+    });
 });
 
 describe('retryLastAssistantMessage', () => {

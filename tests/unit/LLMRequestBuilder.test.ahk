@@ -251,6 +251,22 @@ class LLMRequestBuilderTest {
             throw Error("Expected FIM request file in command")
     }
 
+    ; Regression (bug #112): CurlBuilder must not build a URL-less cURL
+    ; command when the provider endpoint is empty.
+    CurlBuilder_EmptyEndpoint_ReturnsEmpty() {
+        pi := { providerKey: "test", endpoint: "", fimEndpoint: "", apiKey: "sk-test" }
+        if CurlBuilder.Build(pi, "req.json", "out.json") != ""
+            throw Error("Build should return empty for an empty endpoint")
+        if CurlBuilder.BuildStream(pi, "req.json", "out.json", "err.txt") != ""
+            throw Error("BuildStream should return empty for an empty endpoint")
+        if CurlBuilder.BuildFIM(pi, "req.json", "out.json") != ""
+            throw Error("BuildFIM should return empty when both endpoints are empty")
+        pi2 := { providerKey: "test", endpoint: "https://api.test/v1", fimEndpoint: "https://api.test/fim", apiKey: "sk-test" }
+        cmd := CurlBuilder.BuildFIM(pi2, "req.json", "out.json")
+        if !InStr(cmd, "https://api.test/fim")
+            throw Error("BuildFIM should use the FIM endpoint when configured")
+    }
+
     ; --------------------
     ; appendToChatHistory
     ; --------------------
@@ -305,6 +321,32 @@ class LLMRequestBuilderTest {
         FileDelete(logPath)
         if backupPath && FileExist(backupPath)
             FileMove(backupPath, logPath, 1)
+    }
+
+    ; Regression (bug #111): the API log must be written atomically (temp file
+    ; + rename), so a crash mid-write cannot leave truncated JSON.
+    LogRequest_IsAtomic() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath
+        oldLimit := apiLogMaxEntries
+        target := A_Temp "\test_api_log_" A_TickCount ".json"
+        ApiLogger.logFilePath := target
+        apiLogMaxEntries := 10
+        try {
+            try FileDelete(target)
+            ApiLogger.LogRequest({ promptName: "one", request: "{}", response: "{}", status: "success" })
+            ApiLogger.LogRequest({ promptName: "two", request: "{}", response: "{}", status: "success" })
+            if FileExist(target ".tmp")
+                throw Error("temp file should be renamed away after a successful log write")
+            logs := ApiLogger.ReadLogs()
+            if logs.Length != 2 || logs[1]["promptName"] != "two"
+                throw Error("log should contain both entries newest-first")
+        } finally {
+            ApiLogger.logFilePath := oldPath
+            apiLogMaxEntries := oldLimit
+            try FileDelete(target)
+            try FileDelete(target ".tmp")
+        }
     }
 
     ; ----------------------------------------------------
@@ -368,6 +410,35 @@ class LLMRequestBuilderTest {
         ; Only stream/include_usage/include_thoughts are fixed — others stay as 1
         if InStr(result, '"stream":1') || InStr(result, '"include_usage":1') || InStr(result, '"include_thoughts":1')
             throw Error("Non-target booleans should remain unchanged")
+    }
+
+    ; Regression (bug #100): the rewrite must only touch real JSON keys, never
+    ; string values. User content containing `"stream":1` (escaped inside a
+    ; JSON string) must survive unchanged while the real top-level stream is
+    ; still converted.
+    FixStreamBoolean_DoesNotCorruptUserContent() {
+        raw := '{"messages":[{"content":"{\"stream\":1,\"include_usage\":1}","role":"user"}],"stream":1}'
+        result := LLMRequestBuilder._FixStreamBoolean(raw)
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("stream") || parsed["stream"] != true
+            throw Error("top-level stream should become true, got: " (parsed.Has("stream") ? parsed["stream"] : "(absent)"))
+        content := parsed["messages"][1]["content"]
+        if content != '{"stream":1,"include_usage":1}'
+            throw Error("user content must survive unchanged, got: " content)
+    }
+
+    ; Regression (bug #100): end-to-end through createJSONRequest - a user
+    ; prompt containing `"stream":1` must be sent verbatim.
+    CreateJSONRequest_UserContentWithStreamSnippet_Survives() {
+        prompt := '{"stream":1,"include_usage":1} in my prompt'
+        result := LLMRequestBuilder.createJSONRequest("deepseek-v4-flash", "sys", prompt, "", "", "", true, "")
+        parsed := jsongo.Parse(result)
+        if parsed["stream"] != true
+            throw Error("top-level stream should be true, got: " parsed["stream"])
+        msgs := parsed["messages"]
+        userContent := msgs[msgs.Length]["content"]
+        if userContent != prompt
+            throw Error("user prompt must survive unchanged, got: " userContent)
     }
 
     ; ----------------------------------------------------
@@ -610,5 +681,61 @@ class LLMRequestBuilderTest {
         OpenAIChatCompletions.ApplyThinking(&requestObj, model, "low")
         if requestObj.reasoning_effort != "low"
             throw Error("Default format should set reasoning_effort='low', got: " requestObj.reasoning_effort)
+    }
+
+    ; Regression (bug #68): legacy short ids resolve by PREFIX - a model whose
+    ; name merely CONTAINS the provider prefix (e.g. mygpt-custom) must not
+    ; match the gpt provider.
+    ProviderResolver_LegacyPrefixIsPrefixOnly() {
+        r1 := ProviderResolver.Resolve("gpt-4o")
+        if r1.providerKey != "openai"
+            throw Error("gpt-4o should resolve to openai, got '" r1.providerKey "'")
+        r2 := ProviderResolver.Resolve("mygpt-custom")
+        if r2.providerKey = "openai"
+            throw Error("mygpt-custom must NOT match the gpt prefix (bug #68), got '" r2.providerKey "'")
+        if r2.providerKey != "deepseek"
+            throw Error("mygpt-custom should fall back to deepseek, got '" r2.providerKey "'")
+    }
+
+    ; Regression (bug #73): the Gemini 2.x disabled thinking config must
+    ; include include_thoughts:false (symmetric with the enabled config).
+    GoogleDisabledConfig_IncludesThoughtsFalse() {
+        cfg := GoogleChatCompletions.DisabledConfig("google/gemini-2.0-flash")
+        if !cfg.HasOwnProp("include_thoughts")
+            throw Error("Gemini 2.x disabled config must include include_thoughts")
+        if cfg.include_thoughts != false
+            throw Error("include_thoughts should be false, got '" cfg.include_thoughts "'")
+        if cfg.thinking_budget != 0
+            throw Error("thinking_budget should be 0, got '" cfg.thinking_budget "'")
+    }
+
+    ; Regression (bug #75): the budget table must match the Gemini family
+    ; (gemini-2.5-pro), not any model whose name merely contains "2.5-pro".
+    GoogleBudgetTable_FamilyCheckOnly() {
+        t1 := GoogleChatCompletions._BudgetTable("google/gemini-2.5-pro-preview-09-13")
+        if t1["high"] != 32768
+            throw Error("gemini-2.5-pro should use its own budget table, got high=" t1["high"])
+        t2 := GoogleChatCompletions._BudgetTable("custom/my2.5-pro-custom")
+        if t2["high"] = 32768
+            throw Error("my2.5-pro must NOT match the 2.5-pro table (bug #75)")
+        if !t2.Has("high")
+            throw Error("custom model should fall back to the generic table")
+    }
+
+    ; Regression (bug #89, security): the API key must be sanitized before it
+    ; is embedded in the cURL Authorization header.
+    CurlBuilder_SanitizesApiKey() {
+        providerInfo := { endpoint: "https://api.test/v1", apiKey: 'sk-" && echo pwned && "', fimEndpoint: "" }
+        cmd := CurlBuilder.Build(providerInfo, "req.json", "out.json")
+        if InStr(cmd, 'sk-"')
+            throw Error("crafted key must not appear raw in the curl command: " cmd)
+        if !InStr(cmd, "Authorization: Bearer sk-")
+            throw Error("sanitized key should remain in the header: " cmd)
+        ; The quote break and command separators must be gone (the remaining
+        ; words are inert header text, not a second command).
+        if InStr(cmd, '&&')
+            throw Error("command separator survived in the curl command: " cmd)
+        if InStr(cmd, '" echo ')
+            throw Error("quote break survived in the curl command: " cmd)
     }
 }

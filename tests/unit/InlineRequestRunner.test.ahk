@@ -49,6 +49,26 @@ class InlineRequestRunnerTest {
             throw Error("_GetHighlightParams should be removed")
     }
 
+    ; Regression (bug #46): a replace/append command with "Stream Response" ON
+    ; used to send stream:true in the request body while the inline runner
+    ; still executed a single-shot cURL and parsed the whole output as one JSON
+    ; document. The API then answered SSE, the parse failed, and nothing was
+    ; pasted. The runner must build its request with stream=false.
+    NonFimRequest_BuildsWithoutStream() {
+        srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
+        src := FileRead(srcPath)
+
+        buildPos := InStr(src, "static _BuildAndWriteRequest(")
+        if !buildPos
+            throw Error("_BuildAndWriteRequest not found in InlineRequestRunner.ahk")
+        buildBlock := SubStr(src, buildPos, 2200)
+
+        if !InStr(buildBlock, "LLMRequestBuilder.createJSONRequest(")
+            throw Error("non-FIM path must use LLMRequestBuilder.createJSONRequest")
+        if !InStr(buildBlock, "temperature, maxTokens, stop, false, thinking, thinkingLevel)")
+            throw Error("non-FIM request must build with stream=false (bug #46); passing the stream flag makes the API answer SSE the single-shot parser cannot read")
+    }
+
 }
 
 RegisterTestClass("InlineRequestRunnerTest")

@@ -8,6 +8,13 @@ var allData = null, mainChart = null;
 const MODEL_COLORS = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
 var modelColors = {};
 
+// Bug #82 (XSS): provider/model names are user-controlled - escape them when
+// injecting into HTML (filter dropdown options).
+function escHtml(s) {
+  if (s === undefined || s === null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Generate array of date strings (YYYY-MM-DD) for the selected time range
 function getDateRangeLabels() {
   var range = document.getElementById('timeRange').value;
@@ -121,7 +128,10 @@ function renderSummary() {
   }
   for (var i=0; i<allData.commands.length; i++) {
     var c = allData.commands[i];
-    var cmdOutput = (c.completion_tokens||0) + (c.thinking_tokens||0);
+    // Bug #52: command_usage.completion_tokens already includes thinking
+    // (same as chat's output_tokens), so adding thinking_tokens would
+    // double-count it.
+    var cmdOutput = (c.completion_tokens||0);
     tokens += (c.prompt_tokens||0) + cmdOutput;
     outputTokens += cmdOutput;
     cost += (c.total_cost||0);
@@ -236,7 +246,8 @@ function renderModelSections() {
     models[m].requests[d] = (models[m].requests[d]||0) + (c.call_count||0);
     models[m].cacheHit[d] = (models[m].cacheHit[d]||0) + cmdCached;
     models[m].cacheMiss[d] = (models[m].cacheMiss[d]||0) + Math.max(0, cmdPrompt - cmdCached);
-    models[m].output[d] = (models[m].output[d]||0) + (c.completion_tokens||0) + (c.thinking_tokens||0);
+    // Bug #52: completion_tokens already includes thinking; do not add it again.
+    models[m].output[d] = (models[m].output[d]||0) + (c.completion_tokens||0);
   }
 
   var entries = Object.entries(models);
@@ -256,7 +267,8 @@ function renderModelSections() {
 
     var color = getColor(model, e);
     var div = document.createElement('div'); div.className = 'model-section chart-card';
-    div.innerHTML = '<h6>'+model+'</h6><div class="row"><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="req-'+e+'"></canvas></div></div><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="tok-'+e+'"></canvas></div></div></div>';
+    // Bug #95 (XSS): model ids are user-controlled - escape the heading.
+    div.innerHTML = '<h6>'+escHtml(model)+'</h6><div class="row"><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="req-'+e+'"></canvas></div></div><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="tok-'+e+'"></canvas></div></div></div>';
     container.appendChild(div);
 
     // Requests — smooth area chart
@@ -316,7 +328,7 @@ function extractProvider(model) {
 function populateFilters() {
   var provSel = document.getElementById('providerFilter'), curP = provSel.value;
   provSel.innerHTML = '<option value="">All Providers</option>';
-  (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+p+'">'+p+'</option>'; });
+  (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+escHtml(p)+'">'+escHtml(p)+'</option>'; });
   provSel.value = curP;
 
   // Build model→provider map from data (backend lists don't include provider info)
@@ -333,7 +345,7 @@ function populateFilters() {
   (allData.models||[]).forEach(function(m){
     // Filter by selected provider if one is chosen
     if (!curP || modelProv[m] === curP)
-      modSel.innerHTML += '<option value="'+m+'">'+m+'</option>';
+      modSel.innerHTML += '<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>';
   });
   modSel.value = curM;
 }

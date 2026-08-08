@@ -92,7 +92,7 @@ class ThreadRepo {
         threads := []
         for row in table.rows {
             model := ""
-            modelTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" row.id "' AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;")
+            modelTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id='" SQLite.Escape(row.id) "' AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;")
             if modelTable.count
                 model := modelTable[1, "model"]
             threads.Push({
@@ -110,44 +110,54 @@ class ThreadRepo {
 
     ; Trash a thread (soft-delete).
     static SoftDelete(threadId) {
+        ; Bug #80 (security): escape the id - a crafted id with ' could inject SQL.
+        safeId := SQLite.Escape(threadId)
         debugLog("[THREAD] Deleted — id=" threadId)
-        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" threadId "';")
+        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id='" safeId "';")
     }
 
     ; Restore a trashed thread.
     static Restore(threadId) {
-        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id='" threadId "';")
+        ; Bug #80 (security): escape the id.
+        safeId := SQLite.Escape(threadId)
+        ChatDB.db.Exec("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id='" safeId "';")
     }
 
     ; Permanently delete expired trashed threads.
     static PurgeExpired() {
         if (IsSet(trashRetentionDays) && trashRetentionDays <= 0) || (!IsSet(trashRetentionDays))
             return
+        ; Coerce to a number so a crafted setting value cannot break the SQL.
+        retention := Integer(trashRetentionDays)
         ; Clean up attachment files on disk BEFORE the raw SQL DELETEs.
         ; The CASCADE FK would auto-delete message_attachments rows but leave orphan files.
-        expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
+        expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
         for row in expiredTable.rows
             AttachmentRepo.DeleteByThread(row.id)
-        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days'));")
-        ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" trashRetentionDays " days');")
+        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days'));")
+        ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
     }
 
     ; Permanently delete a thread and all its messages.
     static Delete(threadId) {
+        ; Bug #80 (security): escape the id everywhere it is interpolated.
+        safeId := SQLite.Escape(threadId)
         debugLog("[THREAD] Deleted — id=" threadId)
-        AttachmentRepo.DeleteByThread(threadId)
-        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" threadId "';")
-        ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" threadId "';")
+        AttachmentRepo.DeleteByThread(safeId)
+        ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" safeId "';")
+        ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" safeId "';")
     }
 
     ; Update thread title and timestamp.
     static Update(threadId, title, updateTimestamp := true) {
         if !threadId
             return
+        ; Bug #80 (security): escape the id.
+        safeId := SQLite.Escape(threadId)
         safeTitle := SQLite.Escape(title)
         if updateTimestamp
-            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "', updated_at=datetime('now') WHERE id='" threadId "';")
+            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "', updated_at=datetime('now') WHERE id='" safeId "';")
         else
-            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "' WHERE id='" threadId "';")
+            ChatDB.db.Exec("UPDATE chat_threads SET title='" safeTitle "' WHERE id='" safeId "';")
     }
 }

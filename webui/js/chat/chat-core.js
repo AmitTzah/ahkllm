@@ -28,8 +28,10 @@ function initChatMode(data) {
     _persistedThinkingStates = {};
   }
 
-  // Set activeThreadId if provided (fixes first-message scoped search)
-  if (data && data.threadId && !activeThreadId) {
+  // Bug #76: always adopt the loaded thread's id - the old !activeThreadId
+  // guard left activeThreadId stale when switching threads (rapid switch,
+  // fork, programmatic load), so sends/search targeted the wrong thread.
+  if (data && data.threadId) {
     activeThreadId = data.threadId;
   }
 

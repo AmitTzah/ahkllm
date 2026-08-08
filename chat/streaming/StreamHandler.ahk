@@ -23,6 +23,12 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     }
 
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+    ; Bug #112: never launch a URL-less cURL command - surface a friendly
+    ; "No endpoint configured" error (same helper as the chat request path).
+    if !providerInfo.endpoint {
+        _ShowEndpointError(providerInfo)
+        return
+    }
     cURLCommand := CurlBuilder.BuildStream(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
     FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
 
@@ -198,16 +204,26 @@ _finalizeStreaming() {
         reasoningLen := StrLen(requestParams["_streamReasoning"])
         debugLog("[STREAM] Done — content=" contentLen "chars reasoning=" reasoningLen "chars polls=" requestParams["_streamPollCount"])
 
-        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
-            _handleStreamError()
+        wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
+
+        ; Bug #56: a user-initiated Stop before the first token must finalize
+        ; as a clean cancellation - check the flag BEFORE the empty-content
+        ; branch, which would otherwise look like a connection failure and show
+        ; the misleading API-key banner.
+        if wasCancelled {
+            _handleStreamCancelled()
+            ; Bug #98: every exit path must clean up the _stream* keys so a
+            ; cancelled request can never leak stale stream state into the
+            ; next send. The call is idempotent (_handleStreamCancelled also
+            ; cleans up internally), but _finalizeStreaming must not rely on
+            ; that transitive cleanup.
             _cleanupStreamState()
             return
         }
 
-        wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
-
-        if wasCancelled {
-            _handleStreamCancelled()
+        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
+            _handleStreamError()
+            _cleanupStreamState()
             return
         }
 

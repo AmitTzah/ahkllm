@@ -30,7 +30,10 @@ class SystemMessageResolver {
     static Resolve(obj) {
         if obj.HasProp("systemMessageFile") && obj.systemMessageFile {
             filePath := obj.systemMessageFile
-            if !InStr(filePath, ":") {
+            ; Bug #72: UNC paths (\\server\share) and rooted paths (\foo) are
+            ; absolute even though they have no drive-letter colon - use them
+            ; as-is instead of searching the relative candidates.
+            if !InStr(filePath, ":") && !(SubStr(filePath, 1, 1) = "\") && !(SubStr(filePath, 1, 1) = "/") {
                 SplitPath(filePath, &name)
                 candidates := [A_ScriptDir "\" filePath
                              , A_ScriptDir "\..\" filePath

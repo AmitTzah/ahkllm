@@ -67,50 +67,51 @@ scenarios.push({
 
 scenarios.push({
   id: 36,
-  name: 'Command temperature/reasoning are dropped when the command model equals the app default (static check)',
+  name: 'Command temperature/reasoning persist when the command model equals the app default (static check)',
+  regression: true, // FIXED bug kept as a regression check (default-model commands must keep their temperature/reasoning overrides)
   mode: null,
   noApp: true,
   async body() {
     const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
     const gatePos = src.indexOf('if fullAPIModelName != appDefaultModel');
     if (gatePos < 0) throw new Error('model-default gate not found in RequestProcessor.ahk');
-    const block = src.slice(gatePos, gatePos + 1200);
-    const hasTemp = block.indexOf('temperatureOverride') >= 0;
-    const hasReasoning = block.indexOf('reasoningOverride') >= 0;
-    // BUG: Thread_UpdateSettings (with temperatureOverride/reasoningOverride) is
-    // nested inside the "model != appDefaultModel" branch, so a chat-mode command
-    // whose model IS the app default never persists its temperature/thinking and
-    // the fired request silently uses defaults.
-    if (!hasTemp || !hasReasoning)
-      throw new Error('overrides not inside the gated block (bug not reproduced): hasTemp=' + hasTemp + ' hasReasoning=' + hasReasoning);
-    return 'Thread_UpdateSettings with temperatureOverride/reasoningOverride sits inside `if fullAPIModelName != appDefaultModel`; default-model commands drop them';
+    const gateBlock = src.slice(gatePos, gatePos + 500);
+    // FIXED (bug #36): the gate now wraps ONLY modelOverride; temperature,
+    // reasoning, and system overrides are persisted unconditionally, so a
+    // chat-mode command whose model IS the app default keeps its overrides.
+    if (gateBlock.indexOf('temperatureOverride') >= 0 || gateBlock.indexOf('reasoningOverride') >= 0 || gateBlock.indexOf('systemOverride') >= 0)
+      throw new Error('overrides still inside the model-default gate (bug #36 not fixed)');
+    const objPos = src.indexOf('commandThreadSettings := {');
+    if (objPos < 0) throw new Error('unconditional command settings object not found in RequestProcessor.ahk');
+    const objBlock = src.slice(objPos, objPos + 500);
+    if (objBlock.indexOf('temperatureOverride') < 0 || objBlock.indexOf('reasoningOverride') < 0)
+      throw new Error('temperature/reasoning overrides missing from the unconditional command settings object');
+    return 'temperature/reasoning overrides persist outside the model-default gate; only modelOverride is gated';
   }
 });
 
 scenarios.push({
   id: 46,
-  name: 'Command "Stream Response" + pasteMode replace/append silently produces no output (static check)',
+  name: 'Command "Stream Response" + pasteMode replace/append builds a non-streaming request (static check)',
+  regression: true, // FIXED bug kept as a regression check (replace/append must not advertise stream:true to the single-shot runner)
   mode: null,
   noApp: true,
   async body() {
     const lb = fs.readFileSync(path.join(launcher.REPO_ROOT, 'api', 'LLMRequestBuilder.ahk'), 'utf8');
     const irr = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'InlineRequestRunner.ahk'), 'utf8');
-    // createJSONRequest unconditionally adds stream:true to the JSON body when the
-    // command's stream flag is set (no pasteMode check)...
-    const bodyAddsStream = /if stream \{[\s\S]*?requestObj\.stream := true/.test(lb);
-    // ...the inline runner builds the request via createJSONRequest and executes it
-    // with the NON-streaming single-shot CurlBuilder.Build (not BuildStream)...
+    // The inline runner is single-shot: it builds via createJSONRequest and
+    // executes with the NON-streaming CurlBuilder.Build (not BuildStream)...
     const nonFimUsesBuild = /LLMRequestBuilder\.createJSONRequest[\s\S]*?CurlBuilder\.Build\(providerInfo, requestFile, outputFile\)/.test(irr);
     // ...and parses the whole output file as ONE JSON document.
     const parsesAsJson = /JSONResponseFromLLM := CurlExecutor\.Run[\s\S]*?jsongo\.Parse\(JSONResponseFromLLM\)/.test(irr);
     const noSseInInline = !/SSEParser/.test(irr);
-    // BUG: with stream=true the API answers with SSE (multiple data: lines),
-    // which jsongo.Parse cannot parse as one JSON document; ParseChatResponse is
-    // skipped and success=false, so nothing is pasted and no error is shown.
-    if (!bodyAddsStream || !nonFimUsesBuild || !parsesAsJson || !noSseInInline)
-      throw new Error('bug not reproduced: bodyAddsStream=' + bodyAddsStream +
-        ' nonFimUsesBuild=' + nonFimUsesBuild + ' parsesAsJson=' + parsesAsJson + ' noSseInInline=' + noSseInInline);
-    return 'createJSONRequest adds stream:true for any pasteMode; InlineRequestRunner executes with single-shot CurlBuilder.Build and parses the whole output as one JSON document (no SSEParser) - a replace/append command with Stream Response ON receives SSE it cannot parse, so it silently pastes nothing';
+    // FIXED (bug #46): the runner builds its request with stream=false, so the
+    // API returns a plain JSON response the single-shot parser can read.
+    const buildsWithoutStream = /createJSONRequest\(fullAPIModelName, systemMessage, captured\.userMessage,[\s\S]*?temperature, maxTokens, stop, false, thinking, thinkingLevel\)/.test(irr);
+    if (!nonFimUsesBuild || !parsesAsJson || !noSseInInline || !buildsWithoutStream)
+      throw new Error('inline runner stream handling not fixed: nonFimUsesBuild=' + nonFimUsesBuild +
+        ' parsesAsJson=' + parsesAsJson + ' noSseInInline=' + noSseInInline + ' buildsWithoutStream=' + buildsWithoutStream);
+    return 'InlineRequestRunner builds its request with stream=false (single-shot CurlBuilder.Build + JSON parse), so a replace/append command with Stream Response ON pastes its response instead of silently dropping SSE';
   }
 });
 

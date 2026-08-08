@@ -30,9 +30,101 @@ class UsageTrackingTest {
         }
     }
 
+    ; Regression (bug #53): the "day" usage filter must use the LOCAL calendar
+    ; date (the chart plots a single local "today" label and usage rows are
+    ; stored with local dates), not SQLite's UTC date('now', '-1 day') which
+    ; pulls in yesterday and over-reports vs the chart.
+    DayFilter_UsesLocalToday() {
+        where := UsageRepo._WhereDate("day", "date", "2026-08-07")
+        if !InStr(where, "date >= '2026-08-07'")
+            throw Error("day filter must use the local today cutoff, got: " where)
+        if InStr(where, "date('now'")
+            throw Error("day filter must not use SQLite's UTC now, got: " where)
+
+        ; Query wires the local date into both the chat and command filters.
+        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "localToday := FormatTime(")
+            throw Error("UsageRepo.Query must compute the local today date")
+        if !InStr(src, "_WhereDate(timeRange, ")
+            throw Error("UsageRepo.Query must pass the local today into both filters")
+    }
+
+    ; Regression (bug #87/#88): lastMonth/month filters must use LOCAL calendar
+    ; boundaries (matching the local dashboard labels), not SQLite UTC.
+    MonthFilters_UseLocalBoundaries() {
+        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "lastMonthStart := FormatTime(DateAdd(A_Now, -1")
+            throw Error("Query must compute the local last-month start")
+        if !InStr(src, "monthCutoff := FormatTime(DateAdd(A_Now, -29")
+            throw Error("Query must compute the local 30-day cutoff")
+        where := UsageRepo._WhereDate("lastMonth", "date", "2026-08-07", "", "2026-07-01", "2026-08-01")
+        if !InStr(where, "date >= '2026-07-01'") || !InStr(where, "date < '2026-08-01'")
+            throw Error("lastMonth filter must use local month boundaries, got: " where)
+        where2 := UsageRepo._WhereDate("month", "date", "2026-08-07", "2026-07-09", "", "")
+        if !InStr(where2, "date >= '2026-07-09'")
+            throw Error("month filter must use the local cutoff, got: " where2)
+    }
+
     ; ----------------------------------------------------
     ; Single exchange — verify per-message token fields
     ; ----------------------------------------------------
+
+    ; Regression (bug #102): the provider LIKE must escape % _ \ so a provider
+    ; value containing wildcards is matched literally (and the SQL declares
+    ; ESCAPE '\', same pattern as SearchRepo).
+    ProviderFilter_LikeEscapesWildcards() {
+        srcPath := A_ScriptDir "\..\chat\db\UsageRepo.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "_EscapeLike(SQLite.Escape(providerFilter))")
+            throw Error("provider LIKE must escape the provider filter (bug #102)")
+        if !InStr(src, "ESCAPE '\'")
+            throw Error("provider LIKE must declare ESCAPE '\' (bug #102)")
+        escapeIdx := InStr(src, "static _EscapeLike(value)")
+        if !escapeIdx
+            throw Error("_EscapeLike helper missing (bug #102)")
+        helper := SubStr(src, escapeIdx, 300)
+        if !InStr(helper, 'StrReplace(value, "\", "\\")') || !InStr(helper, 'StrReplace(value, "%", "\%")') || !InStr(helper, 'StrReplace(value, "_", "\_")')
+            throw Error("_EscapeLike must escape \ then % then _ (bug #102)")
+    }
+
+    ; Regression (bug #103): pricingUnit must follow the ACTIVE model (request
+    ; model -> thread override -> last assistant on the active path), never the
+    ; thread's first (oldest) message.
+    ThreadStats_PricingUnit_FollowsActiveModel() {
+        global requestParams
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Pricing")
+        oldParams := IsSet(requestParams) ? requestParams : ""
+        try {
+            ; Clear the request model so the thread's own models drive pricing.
+            requestParams := Map("singleAPIModelName", "")
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hi"})
+            a1 := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "first", model: "deepseek/deepseek-v4-flash"})
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.14
+                throw Error("pricing should follow the active assistant model (deepseek-v4-flash 0.14), got " stats.pricingUnit.input)
+            ; A newer assistant message becomes the leaf - pricing must follow it.
+            ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "second", model: "openai/gpt-5-mini", parent_id: a1})
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.25
+                throw Error("pricing should follow the newest assistant model (gpt-5-mini 0.25), got " stats.pricingUnit.input)
+            ; Thread override wins over message models.
+            ChatDB.db.Exec("UPDATE chat_threads SET model_override='deepseek/deepseek-v4-flash' WHERE id='" threadId "';")
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.14
+                throw Error("thread override should win over message models, got " stats.pricingUnit.input)
+            ; Current request model wins over everything.
+            requestParams := Map("singleAPIModelName", "openai/gpt-5-mini")
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.input) != 0.25
+                throw Error("request model should win, got " stats.pricingUnit.input)
+        } finally {
+            requestParams := oldParams
+            this._closeDb()
+        }
+    }
 
     SingleExchange_AllTokenFields() {
         this._openDb()
@@ -81,8 +173,9 @@ class UsageTrackingTest {
 
         ; Verify thread counters
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 38
-            throw Error("Expected activePathTokens=38 (5+33), got " stats.activePathTokens)
+        ; Bug #64: thinking tokens occupy the context window.
+        if stats.activePathTokens != 131
+            throw Error("Expected activePathTokens=131 (5+33+93), got " stats.activePathTokens)
         if stats.cumulativeInputTokens != 5
             throw Error("Expected cumulativeInputTokens=5, got " stats.cumulativeInputTokens)
         if stats.cumulativeOutputTokens != 126
@@ -114,8 +207,9 @@ class UsageTrackingTest {
         stats1 := ChatDB.Msg_GetThreadStats(threadId)
         if stats1.cumulativeInputTokens != 5
             throw Error("T1: Expected cumulativeInput=5, got " stats1.cumulativeInputTokens)
-        if stats1.activePathTokens != 35
-            throw Error("T1: Expected activePathTokens=35 (5+30), got " stats1.activePathTokens)
+        ; Bug #64: thinking tokens occupy the context window.
+        if stats1.activePathTokens != 105
+            throw Error("T1: Expected activePathTokens=105 (5+30+70), got " stats1.activePathTokens)
 
         ; Turn 2: "How are you?" -> assistant
         user2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "How are you?", parent_id: asst1Id})
@@ -268,7 +362,7 @@ class UsageTrackingTest {
     ; Thinking tokens — stored and excluded from context
     ; ----------------------------------------------------
 
-    ThinkingTokens_StoredAndExcludedFromContext() {
+    ThinkingTokens_StoredAndIncludedInContext() {
         this._openDb()
         threadId := ChatDB.Thread_Create("Test")
 
@@ -282,10 +376,10 @@ class UsageTrackingTest {
             response_time_ms: 2500, prompt_tokens: 5
         })
 
-        ; active_path_tokens should exclude thinking (only token_count)
+        ; Bug #64: active_path_tokens includes thinking (prompt + visible + thinking).
         stats := ChatDB.Msg_GetThreadStats(threadId)
-        if stats.activePathTokens != 45
-            throw Error("Expected activePathTokens=45 (5+40, excludes thinking), got " stats.activePathTokens)
+        if stats.activePathTokens != 205
+            throw Error("Expected activePathTokens=205 (5+40+160), got " stats.activePathTokens)
         if stats.cumulativeOutputTokens != 200
             throw Error("Expected cumulativeOutput=200 (40+160), got " stats.cumulativeOutputTokens)
 
@@ -558,6 +652,28 @@ class UsageTrackingTest {
         this._closeDb()
     }
 
+    ; Regression (bug #65): hard-deleting a message must update the thread's
+    ; cumulative counters so the header totals do not stay inflated.
+    HardDelete_UpdatesCumulativeCounters() {
+        this._openDb()
+        threadId := ChatDB.Thread_Create("Test")
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hi", parent_id: ""})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hello", model: "deepseek/deepseek-v4-flash", parent_id: uId, token_count: 10, thinking_tokens: 5, cached_tokens: 2, prompt_tokens: 5})
+
+        stats := ChatDB.Msg_GetThreadStats(threadId)
+        if stats.cumulativeOutputTokens != 15
+            throw Error("expected cumulativeOutput=15 (10+5) before delete, got " stats.cumulativeOutputTokens)
+
+        ChatDB.Msg_HardDelete(aId)
+
+        stats2 := ChatDB.Msg_GetThreadStats(threadId)
+        if stats2.cumulativeOutputTokens != 5
+            throw Error("expected cumulativeOutput=5 after delete (user token_count), got " stats2.cumulativeOutputTokens)
+        if stats2.cumulativeInputTokens != 0
+            throw Error("expected cumulativeInput=0 after delete, got " stats2.cumulativeInputTokens)
+        this._closeDb()
+    }
+
     ; ----------------------------------------------------
     ; Cancelled assistant has active_path_tokens from parent
     ; ----------------------------------------------------
@@ -600,10 +716,12 @@ class UsageTrackingTest {
         ; Delete a1 — a2 gets re-parented to uId
         ChatDB.Msg_HardDelete(a1Id)
 
-        ; After re-parenting: u(5) + a2(8) = 13 (recomputed as prefix sum)
+        ; Bug #107: the recompute keeps the assistant's API ground truth, so
+        ; the re-parented a2 leaf still reports prompt(15)+completion(8)=23
+        ; (the pure prefix sum u(5)+a2(8)=13 would drop its prompt tokens).
         stats2 := ChatDB.Msg_GetThreadStats(threadId)
-        if stats2.activePathTokens != 13
-            throw Error("Expected activePathTokens=13 after hard delete re-parenting, got " stats2.activePathTokens)
+        if stats2.activePathTokens != 23
+            throw Error("Expected activePathTokens=23 after hard delete re-parenting (ground truth), got " stats2.activePathTokens)
 
         this._closeDb()
     }

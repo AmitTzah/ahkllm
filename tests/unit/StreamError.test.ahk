@@ -139,7 +139,9 @@ class StreamErrorTest {
         } finally {
             responseWindow := oldResponseWindow
             apiLogMaxEntries := oldLogLimit
-            FileDelete(errFile)
+            ; The error path now deletes its temp files (bug #110), so the
+            ; stderr file may already be gone by cleanup time.
+            try FileDelete(errFile)
         }
 
         hasError := false

@@ -35,15 +35,19 @@ _handleStreamComplete() {
         postThreadStats(activeThreadId)
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
+        ; Bug #110: never leave the request/cURL temp files (which contain the
+        ; Authorization Bearer token) on disk after a successful stream.
+        deleteTempFiles()
     } catch Error as normErr {
         debugLog("Stream completion error: " normErr.Message "`nStack: " normErr.Stack)
         postWebMessage("showError", { message: "Request failed: " normErr.Message })
+        deleteTempFiles()
     }
 }
 
 _maybeGenerateTitle(path) {
     if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
-        threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" activeThreadId "';")
+        threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(activeThreadId) "';")
         if threadInfo.count {
             currentTitle := threadInfo[1, "title"]
             debugLog("[TITLEGEN] trigger check thread=" activeThreadId " title='" currentTitle "'")

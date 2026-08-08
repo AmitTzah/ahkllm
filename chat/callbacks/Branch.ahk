@@ -59,7 +59,8 @@ _setupSiblingGroup(msg) {
     sg := msg.sibling_group
     if !sg {
         sg := ChatDB._UUID()
-        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" msg.id "';")
+        ; Bug #81 (security): escape msg.id - a crafted id with ' could inject SQL.
+        ChatDB.db.Exec("UPDATE messages SET sibling_group='" sg "', sibling_index=0 WHERE id='" SQLite.Escape(msg.id) "';")
     }
     return sg
 }

@@ -23,6 +23,11 @@ class SettingsPersistence {
             return Map()
         try {
             raw := FileRead(path, "UTF-8")
+            ; Bug #79: some editors write a UTF-8 BOM - strip it before parsing
+            ; (jsongo chokes on the leading \uFEFF and settings were silently
+            ; reset to defaults).
+            if SubStr(raw, 1, 1) = Chr(0xFEFF)
+                raw := SubStr(raw, 2)
             parsed := jsongo.Parse(raw)
             if !IsObject(parsed)
                 return Map()
@@ -74,15 +79,30 @@ class SettingsPersistence {
         userSysMsgDir := AppInfo.DataDir "\system-messages"
         if !DirExist(userSysMsgDir)
             DirCreate(userSysMsgDir)
+        ; Atomic write (bug #97): write to a temp file in the same directory,
+        ; then rename it over the target. The old FileDelete-then-FileAppend
+        ; pattern destroyed the original settings.json before the new content
+        ; was on disk, so a crash/failure mid-save silently reset all settings
+        ; to defaults. A failed write/move now leaves the original untouched.
+        tmpPath := path ".tmp"
         try {
             jsonStr := jsongo.Stringify(settingsMap, , 2)
-            try FileDelete(path)
-            FileAppend(jsonStr, path, "UTF-8")
+            f := FileOpen(tmpPath, "w", "UTF-8")
+            f.Write(jsonStr)
+            f.Close()
+            ; FileMove's return value is unreliable in this AHK build (it can
+            ; be empty even on success), so verify success by file state:
+            ; the temp must be gone and the target must exist.
+            FileMove(tmpPath, path, 1)
+            if FileExist(tmpPath) || !FileExist(path)
+                throw Error("FileMove failed: " tmpPath " -> " path)
             debugLog("[SETTINGS] Saved to " path)
             return true
         } catch Error as e {
             debugLog("[SETTINGS] Failed to save settings.json: " e.Message)
             return false
+        } finally {
+            try FileDelete(tmpPath)
         }
     }
 

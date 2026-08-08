@@ -264,7 +264,8 @@ scenarios.push({
 
 scenarios.push({
   id: 38,
-  name: 'Chat window title stays stale after renaming a thread and switching to another',
+  name: 'Chat window title follows the active thread after a rename + switch',
+  regression: true, // FIXED bug kept as a regression check (switching threads must update the window title)
   mode: null,
   settings: {},
   fixtures: {
@@ -320,14 +321,14 @@ scenarios.push({
     await sleep(800);
     const topbarTitle = await cdp.eval('document.querySelector(".title-text") ? document.querySelector(".title-text").textContent : ""');
     const info = runProbe('chat-info');
-    // BUG: _LoadThreadAndRefreshUI never updates chatWindow.Title; only
-    // renameThread does. After renaming A and switching to B the title bar still
-    // shows the renamed A title.
+    // FIXED (bug #38): _LoadThreadAndRefreshUI now updates chatWindow.Title
+    // from the active thread, so after renaming A and switching to B the title
+    // bar follows the newly active thread.
     if (topbarTitle.indexOf('Beta') < 0)
       throw new Error('thread B did not load (setup): topbar=' + JSON.stringify(topbarTitle));
-    if ((info.title || '').indexOf('Beta') >= 0)
-      throw new Error('window title followed the thread (bug not reproduced): ' + JSON.stringify(info.title));
-    return 'topbar shows "' + topbarTitle + '" but the window title is "' + info.title + '" (stale renamed-A title)';
+    if ((info.title || '').indexOf('Beta') < 0)
+      throw new Error('window title did not follow the thread switch: ' + JSON.stringify(info.title) + ' topbar=' + JSON.stringify(topbarTitle));
+    return 'window title follows the active thread: "' + info.title + '"';
   }
 });
 
@@ -377,7 +378,8 @@ scenarios.push({
 
 scenarios.push({
   id: 48,
-  name: 'Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)',
+  name: 'Forking a chat keeps the token/cost stats (active_path_tokens and cumulative counters are copied)',
+  regression: true, // FIXED bug kept as a regression check (forks must inherit context tokens and cumulative cost)
   mode: null,
   settings: {},
   fixtures: {
@@ -413,11 +415,15 @@ scenarios.push({
     const leafStats = forkRow.active_leaf_id
       ? seed.query(dbPath, 'SELECT active_path_tokens FROM messages WHERE id = ?', [forkRow.active_leaf_id])[0] || {}
       : {};
-    // BUG: TreeRepo.ForkThread copies messages but neither the thread's
-    // cumulative_* counters nor the leaf's active_path_tokens (and never calls
-    // _RecomputeActivePath), so the fork's token bar and cost reset to zero.
-    if (String(forkBar).indexOf('$0.50') >= 0)
-      throw new Error('fork kept the cost stats (bug not reproduced): ' + JSON.stringify(forkBar));
+    // FIXED (bug #48): TreeRepo.ForkThread copies each message's
+    // active_path_tokens and carries the source thread's cumulative counters,
+    // so the fork's token bar keeps the context + cost stats.
+    if (String(forkBar).indexOf('$0.50') < 0)
+      throw new Error('fork lost the cost stats (bug #48 not fixed): ' + JSON.stringify(forkBar));
+    if (forkRow.cumulative_cost !== 0.5)
+      throw new Error('fork did not inherit cumulative_cost: ' + forkRow.cumulative_cost);
+    if (leafStats.active_path_tokens !== 10)
+      throw new Error('fork leaf active_path_tokens was not copied: ' + leafStats.active_path_tokens);
     return 'source token bar: ' + JSON.stringify(sourceBar) + '; fork token bar: ' + JSON.stringify(forkBar) +
       ' (cumulative_cost=' + forkRow.cumulative_cost + ', leaf active_path_tokens=' + leafStats.active_path_tokens + ')';
   }
@@ -476,7 +482,8 @@ scenarios.push({
 
 scenarios.push({
   id: 55,
-  name: 'Branch switch / search navigation land on the OLDEST continuation while the tree modal lands on the newest (header context disagrees)',
+  name: 'Branch switch / search navigation land on the newest continuation (matching the tree modal)',
+  regression: true, // FIXED bug kept as a regression check (branch-nav/search must land on the same leaf the tree modal picks)
   mode: null,
   settings: {},
   fixtures: {
@@ -511,11 +518,11 @@ scenarios.push({
     await sleep(700);
     const contextSwitch = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
     const leafAfterSwitch = await cdp.eval('chatMessages[chatMessages.length - 1] ? chatMessages[chatMessages.length - 1].id : ""');
-    // BUG: _WalkToLeaf picks ORDER BY created_at LIMIT 1 -> the OLDEST child
-    // (a2b, context 70) instead of the newest continuation (a2bx, context 95)
-    // that the tree modal's _findDefaultLeaf would pick.
-    if (leafAfterSwitch === 'm-br-55-a2bx' && String(contextSwitch).indexOf('95') >= 0)
-      throw new Error('branch switch landed on the newest continuation (bug not reproduced): leaf=' + leafAfterSwitch + ' context=' + contextSwitch);
+    // FIXED (bug #55): _WalkToLeaf now picks the same leaf the tree modal's
+    // _findDefaultLeaf picks (the newest continuation), so branch-nav/search
+    // navigation lands on the newest continuation.
+    if (leafAfterSwitch !== 'm-br-55-a2bx' || String(contextSwitch).indexOf('95') < 0)
+      throw new Error('branch switch did not land on the newest continuation (bug #55 not fixed): leaf=' + leafAfterSwitch + ' context=' + contextSwitch);
     // Tree modal navigation to the SAME node must land on the newest leaf (95) -
     // proving the two navigation paths disagree.
     await cdp.click('#treeBtn');
@@ -525,14 +532,17 @@ scenarios.push({
     await cdp.waitFor('chatMessages[chatMessages.length - 1] && chatMessages[chatMessages.length - 1].id === "m-br-55-a2bx"', 15000, 300, 'tree navigated to newest');
     await sleep(700);
     const contextTree = await cdp.eval('document.querySelector("#tokenBar .tu-item:first-child .tu-val").textContent');
+    if (String(contextTree).indexOf('95') < 0)
+      throw new Error('tree modal did not land on the newest continuation: ' + JSON.stringify(contextTree));
     return 'branch-nav switch from a1 landed on leaf ' + leafAfterSwitch + ' (context ' + JSON.stringify(contextSwitch) +
-      ', oldest) while the tree modal lands on m-br-55-a2bx (context ' + JSON.stringify(contextTree) + ', newest)';
+      ') and the tree modal lands on m-br-55-a2bx (context ' + JSON.stringify(contextTree) + ') - both newest';
   }
 });
 
 scenarios.push({
   id: 58,
-  name: 'Forking a chat drops the thread\'s folder (the copy lands in Unfiled)',
+  name: 'Forking a chat keeps the thread\'s folder',
+  regression: true, // FIXED bug kept as a regression check (forks must stay in the source folder)
   mode: null,
   settings: {},
   fixtures: {
@@ -552,11 +562,11 @@ scenarios.push({
     await sleep(500);
     const rows = seed.query(dbPath, 'SELECT folder_id FROM chat_threads WHERE id = ?', [newId]);
     const folder = rows[0] && rows[0].folder_id;
-    // BUG: TreeRepo._CopyThreadSettings copies settings but never folder_id, so
-    // the forked thread appears in Unfiled instead of the source's folder.
-    if (folder === 'f-fork-58')
-      throw new Error('fork kept the folder (bug not reproduced): folder=' + folder);
-    return 'source thread is in folder f-fork-58; fork id=' + newId + ' has folder_id=' + JSON.stringify(folder) + ' (Unfiled)';
+    // FIXED (bug #58): _CopyThreadSettings now copies folder_id, so the fork
+    // appears in the source thread's folder.
+    if (folder !== 'f-fork-58')
+      throw new Error('fork did not keep the source folder (bug #58 not fixed): folder=' + JSON.stringify(folder));
+    return 'source thread is in folder f-fork-58; fork id=' + newId + ' has folder_id=' + JSON.stringify(folder) + ' (same folder)';
   }
 });
 

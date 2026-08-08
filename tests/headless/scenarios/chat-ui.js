@@ -249,7 +249,8 @@ scenarios.push({
 
 scenarios.push({
   id: 49,
-  name: 'Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)',
+  name: 'Canceling a message edit rolls back deferred attachment removals',
+  regression: true, // FIXED bug kept as a regression check (cancel must not leave attachments half-removed)
   mode: null,
   settings: {},
   fixtures: {
@@ -288,42 +289,49 @@ scenarios.push({
     })()`);
     const editingId = await cdp.eval('typeof _editingMessageId !== "undefined" ? _editingMessageId : "undef"');
     const rowAfter = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE id='att-49'")[0].c;
-    // BUG: cancel neither applies nor rolls back the deferred removal - the
-    // wrapper stays hidden while the DB row survives, and _editingMessageId is
-    // left truthy so later attachment clicks also defer instead of deleting.
-    if (hiddenAfterCancel !== 'none' || rowAfter === 0)
-      throw new Error('cancel restored/removed the attachment (bug not reproduced): hidden=' + hiddenAfterCancel + ' rows=' + rowAfter);
+    // FIXED (bug #49): canceling rolls back the deferred removal (wrapper is
+    // restored), clears the edit state, and leaves the DB row untouched.
+    if (hiddenAfterCancel === 'none')
+      throw new Error('cancel left the attachment hidden (bug #49 not fixed): hidden=' + hiddenAfterCancel);
+    if (rowAfter === 0)
+      throw new Error('cancel deleted the attachment instead of rolling back: rows=' + rowAfter);
+    if (editingId !== null && editingId !== 'undef' && editingId !== '')
+      throw new Error('cancel left a stale _editingMessageId=' + JSON.stringify(editingId));
     return 'Edit -> remove attachment -> Cancel: wrapper display=' + hiddenDuringEdit + ' -> ' + hiddenAfterCancel +
-      ', DB rows during=' + rowDuring + ' after=' + rowAfter + ', stale _editingMessageId=' + editingId +
-      ' (attachment stays hidden but is still in the DB and will be sent)';
+      ', DB rows during=' + rowDuring + ' after=' + rowAfter + ', _editingMessageId=' + JSON.stringify(editingId) +
+      ' (cancel rolls back the deferred removal)';
   }
 });
 
 scenarios.push({
   id: 56,
-  name: 'Stopping a stream before the first token shows an error banner instead of a clean cancel (static check)',
+  name: 'Stopping a stream before the first token is a clean cancel (static check)',
+  regression: true, // FIXED bug kept as a regression check (cancel must be checked before the empty-content error branch)
   mode: null,
   noApp: true,
   async body() {
     const sh = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamHandler.ahk'), 'utf8');
     const se = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamError.ahk'), 'utf8');
-    // _finalizeStreaming handles the empty-content case BEFORE checking
-    // _streamCancelled...
-    const emptyCheckBeforeCancel = /_streamContent"\] = "" && requestParams\["_streamReasoning"\] = ""[\s\S]{0,400}?_streamCancelled/.test(sh);
-    // ...and that empty branch calls _handleStreamError.
-    const emptyPathCallsError = /if \(requestParams\["_streamContent"\] = "" && requestParams\["_streamReasoning"\] = ""\) \{[\s\S]*?_handleStreamError\(\)/.test(sh);
-    // _handleStreamError falls back to a message that blames the API key.
-    const genericError = /Request failed\. Check your API key and try again\./.test(se);
-    if (!emptyCheckBeforeCancel || !emptyPathCallsError || !genericError)
-      throw new Error('bug not reproduced: emptyCheckBeforeCancel=' + emptyCheckBeforeCancel +
-        ' emptyPathCallsError=' + emptyPathCallsError + ' genericError=' + genericError);
-    return '_finalizeStreaming routes the empty-content case (-> _handleStreamError, "Request failed. Check your API key") BEFORE checking _streamCancelled, so pressing Stop before the first token surfaces a misleading API error instead of a clean cancellation';
+    const finalizePos = sh.indexOf('_finalizeStreaming() {');
+    const block = sh.slice(finalizePos, finalizePos + 1200);
+    const cancelPos = block.indexOf('_handleStreamCancelled()');
+    const errorPos = block.indexOf('_handleStreamError()');
+    // FIXED (bug #56): the cancelled branch runs BEFORE the empty-content
+    // error branch, so a Stop before the first token is a clean cancel.
+    if (cancelPos < 0 || errorPos < 0 || cancelPos > errorPos)
+      throw new Error('cancel branch not before the empty-content error branch (bug #56 not fixed): cancelPos=' + cancelPos + ' errorPos=' + errorPos);
+    // _handleStreamCancelled posts a clean cancellation for empty content.
+    const cleanCancel = /postWebMessage\("streamCancelled", true\)/.test(se);
+    if (!cleanCancel)
+      throw new Error('_handleStreamCancelled must post a clean streamCancelled for empty content');
+    return '_finalizeStreaming checks _streamCancelled before the empty-content branch, so pressing Stop before the first token is a clean cancellation (no API-key banner)';
   }
 });
 
 scenarios.push({
   id: 57,
-  name: 'Chat message content is rendered as raw HTML with no sanitization (embedded HTML executes in the WebView)',
+  name: 'Chat message HTML is rendered as inert text (XSS fixed)',
+  regression: true, // FIXED bug kept as a regression check (raw HTML in messages must not execute)
   mode: null,
   settings: {},
   fixtures: {
@@ -337,13 +345,15 @@ scenarios.push({
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
     await sleep(700);
     const pwned = await cdp.eval('window.__xssPwned || 0');
-    // BUG: chat-render.js feeds msg.content straight into md.render() with
-    // markdown-it html:true (and linkify), so embedded HTML/event handlers are
-    // executed. The WebView page has chrome.webview.postMessage access, so a
-    // malicious model response (or pasted message) can drive the app.
-    if (pwned !== 1)
-      throw new Error('inline handler did not execute (bug not reproduced): pwned=' + pwned);
-    return 'assistant message <img src="x" onerror=...> executed in the WebView (window.__xssPwned=1) - message content is rendered unsanitized with markdown-it html:true';
+    // FIXED (bug #57): markdown-it is configured with html:false, so raw HTML
+    // in messages is escaped and rendered as inert text - the onerror handler
+    // must not run.
+    if (pwned !== 0)
+      throw new Error('inline handler still executed (bug #57 not fixed): pwned=' + pwned);
+    const renderedHtml = await cdp.eval('document.querySelector(".msg-content") ? document.querySelector(".msg-content").innerHTML : ""');
+    if (String(renderedHtml).indexOf('<img') >= 0)
+      throw new Error('raw <img> tag still present in rendered HTML (bug #57 not fixed): ' + JSON.stringify(renderedHtml));
+    return 'assistant message <img src="x" onerror=...> rendered inert (window.__xssPwned=0); msg HTML=' + JSON.stringify(renderedHtml);
   }
 });
 

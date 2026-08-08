@@ -106,15 +106,18 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
                 })
             }
 
-            if fullAPIModelName != appDefaultModel {
-                ChatDB.Thread_UpdateSettings(threadId, {
-                    modelOverride: fullAPIModelName,
-                    assistantId: "",
-                    systemOverride: systemMessage,
-                    reasoningOverride: thinking = "enabled" ? (thinkingLevel != "" ? thinkingLevel : "medium") : thinking,
-                    temperatureOverride: temperature
-                })
+            commandThreadSettings := {
+                assistantId: "",
+                systemOverride: systemMessage,
+                reasoningOverride: thinking = "enabled" ? (thinkingLevel != "" ? thinkingLevel : "medium") : thinking,
+                temperatureOverride: temperature
             }
+            ; Bug #36: temperature/reasoning overrides must persist even when the
+            ; command model equals the app default - only modelOverride is
+            ; redundant in that case (the thread then uses the default model).
+            if fullAPIModelName != appDefaultModel
+                commandThreadSettings.modelOverride := fullAPIModelName
+            ChatDB.Thread_UpdateSettings(threadId, commandThreadSettings)
 
             openChatWindow(threadId)
             SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd), -100)

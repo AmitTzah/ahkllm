@@ -300,79 +300,100 @@ scenarios.push({
 
 scenarios.push({
   id: 34,
-  name: 'Tray icon changes do not apply until restart (static check of the settings-update path)',
+  name: 'Tray icon changes apply live on settings updates (static check of the settings-update path)',
+  regression: true, // FIXED bug kept as a regression check (tray icon must re-apply on settings updates)
   mode: null,
   noApp: true,
   async body() {
     const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
-    // Startup applies the tray icon; the WM_SETTINGS_UPDATED handler must too
-    // for icon edits to take effect live.
-    const hasStartupApply = /TraySetIcon\(iconOn\)/.test(mainSrc);
+    const traySrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayIcon.ahk'), 'utf8');
+    // FIXED: startup applies the icon through the shared rebuild, the rebuild
+    // is registered as the trayIcon settings hook, and it honors suspend state.
+    const hasStartupRebuild = /_rebuildTrayIcon\(\)/.test(mainSrc);
+    const hasHook = mainSrc.includes('SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)');
+    const hasApply = /TraySetIcon\(_trayIconForCurrentState\(\)/.test(traySrc);
+    const hasOnBranch = /iconOn/.test(traySrc);
+    const hasOffBranch = /iconOff/.test(traySrc);
+    const hasSuspendBranch = /A_IsSuspended/.test(traySrc);
     const updStart = mainSrc.indexOf('WM_SETTINGS_UPDATED');
     const reloadStart = mainSrc.indexOf('WM_RELOAD_MAIN');
     const handler = mainSrc.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
-    const hasLiveApply = /TraySetIcon/.test(handler);
-    // BUG: the settings-update handler reloads globals and re-registers
-    // hotkeys but never re-applies the tray icon, so icon edits need a restart.
-    if (!hasStartupApply || hasLiveApply)
-      throw new Error('bug not reproduced: startupApply=' + hasStartupApply + ' liveApplyInHandler=' + hasLiveApply);
-    return 'TraySetIcon is called at startup but NOT in the WM_SETTINGS_UPDATED handler; tray icon edits require a restart';
+    // The handler reloads through SettingsService, which runs the registered
+    // trayIcon hook, so icon edits apply without a restart.
+    const handlerReloads = handler.includes('SettingsService.ReloadFromDisk()');
+    if (!hasStartupRebuild || !hasHook || !hasApply || !hasOnBranch || !hasOffBranch || !hasSuspendBranch || !handlerReloads)
+      throw new Error('tray icon fix not wired: startupRebuild=' + hasStartupRebuild + ' hook=' + hasHook +
+        ' apply=' + hasApply + ' onBranch=' + hasOnBranch + ' offBranch=' + hasOffBranch + ' suspendBranch=' + hasSuspendBranch +
+        ' handlerReloads=' + handlerReloads);
+    return 'Tray icon rebuild runs at startup, is registered as the trayIcon settings hook, honors suspend state, and the settings-update handler reloads via SettingsService';
   }
 });
 
 scenarios.push({
   id: 35,
-  name: 'Temperature override of 0 is dropped when the thread reloads (right rail shows Default)',
-  mode: null,
+  name: 'Temperature override of 0 is restored when the thread reloads (request uses 0)',
+  regression: true, // FIXED bug kept as a regression check (temperature 0 override must survive thread reload)
+  mode: 'sse-success',
   settings: {},
   fixtures: {
     threads: [{ id: 't-temp0-35', title: 'Temp Zero Thread', active_leaf_id: 'm-temp0-35', temperature_override: 0 }],
     messages: [{ id: 'm-temp0-35', thread_id: 't-temp0-35', role: 'user', content: 'hello' }]
   },
-  async body({ cdp }) {
+  async body({ cdp, mockLog }) {
     await showChat();
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
     await cdp.click('#thread-list .chat-item');
-    // Wait until the thread actually loads (messages render), then read the
-    // right-rail temperature state.
+    // Wait until the thread actually loads (messages render), then let the
+    // currentSettings round trip finish.
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
     await sleep(500); // currentSettings round trip for the right rail
-    const tempVal = await cdp.eval('document.getElementById("tempVal") ? document.getElementById("tempVal").textContent : "(missing)"');
-    const slider = await cdp.eval('document.getElementById("tempSlider") ? document.getElementById("tempSlider").value : "(missing)"');
-    // BUG: ChatSettings._restoreThreadSettings uses a truthiness check
-    // (`if settings.temperatureOverride`), and AHK treats 0 as falsy, so a
-    // saved 0 override is never restored - the rail falls back to Default/1.0.
-    if (tempVal === '0.0' || slider === '0')
-      throw new Error('temperature 0 override was restored (bug not reproduced): tempVal=' + JSON.stringify(tempVal) + ' slider=' + JSON.stringify(slider));
-    return 'thread with temperature_override=0 shows tempVal=' + JSON.stringify(tempVal) + ' slider=' + JSON.stringify(slider) + ' instead of 0.0';
+    // FIXED (bug #35): the 0 override is restored into requestParams, so the
+    // next request must carry temperature 0. (The right-rail DISPLAY of 0 is
+    // a separate bug, #78, tracked in its own cycle.)
+    await sendChatMessage(cdp, 'second message');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean);
+    const chatReq = lines.map((l) => JSON.parse(l)).find((e) => e.body && e.body.stream === true);
+    if (!chatReq) throw new Error('no streaming chat request was logged; lines=' + lines.length);
+    const temp = chatReq.body.temperature;
+    if (temp !== 0)
+      throw new Error('temperature 0 override was dropped from the request: ' + JSON.stringify(temp));
+    return 'thread with temperature_override=0 sent a request with temperature=0 (' + temp + ')';
   }
 });
 
 scenarios.push({
   id: 37,
-  name: 'Tray menu item changes do not apply until restart (static check of the settings-update path)',
+  name: 'Tray menu item changes apply live via the settings hook (static check of the settings-update path)',
+  regression: true, // FIXED bug kept as a regression check (tray menu must rebuild from trayMenuItems on settings update)
   mode: null,
   noApp: true,
   async body() {
     const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
-    // The tray menu is populated once at startup from trayMenuItems...
-    const hasStartupBuild = /A_TrayMenu\.Add/.test(mainSrc);
-    // ...but the WM_SETTINGS_UPDATED handler never rebuilds it.
-    const updStart = mainSrc.indexOf('WM_SETTINGS_UPDATED');
-    const reloadStart = mainSrc.indexOf('WM_RELOAD_MAIN');
-    const handler = mainSrc.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
-    const hasRebuild = /A_TrayMenu/.test(handler);
-    // BUG: Menu Items -> tray edits are written to settings.json but the tray
-    // menu keeps the startup entries until the app is restarted.
-    if (!hasStartupBuild || hasRebuild)
-      throw new Error('bug not reproduced: startupBuild=' + hasStartupBuild + ' rebuildInHandler=' + hasRebuild);
-    return 'A_TrayMenu is populated at startup but never rebuilt in WM_SETTINGS_UPDATED; tray menu edits require a restart';
+    const trayMenuSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayMenu.ahk'), 'utf8');
+    // FIXED (bug #37): the tray menu rebuild lives in app/TrayMenu.ahk and is
+    // registered as a SettingsService hook, so Menu Items edits apply live
+    // (the WM_SETTINGS_UPDATED handler reloads via SettingsService, which runs
+    // the hooks).
+    const hasInclude = /#Include app\\TrayMenu\.ahk/.test(mainSrc);
+    const hasHook = /SettingsService\.RegisterHook\("trayMenu", _rebuildTrayMenu\)/.test(mainSrc);
+    const hasStartupCall = /_rebuildTrayMenu\(\)/.test(mainSrc);
+    const menuDeletes = /A_TrayMenu\.Delete\(\)/.test(trayMenuSrc);
+    const menuAdds = /A_TrayMenu\.Add/.test(trayMenuSrc);
+    const iteratesItems = /for _, item in trayMenuItems/.test(trayMenuSrc);
+    if (!hasInclude || !hasHook || !hasStartupCall || !menuDeletes || !menuAdds || !iteratesItems)
+      throw new Error('tray menu rebuild not wired through the settings hook: include=' + hasInclude +
+        ' hook=' + hasHook + ' startupCall=' + hasStartupCall + ' deletes=' + menuDeletes +
+        ' adds=' + menuAdds + ' iterates=' + iteratesItems);
+    return 'A_TrayMenu is rebuilt from trayMenuItems by _rebuildTrayMenu (app/TrayMenu.ahk), registered as the trayMenu settings hook in Main.ahk - menu edits apply without restart';
   }
 });
 
 scenarios.push({
   id: 39,
-  name: 'System-message modal silently clears a custom (unlisted) system-message file on Save',
+  name: 'System-message modal preserves a custom (unlisted) system-message file on Save',
+  regression: true, // FIXED bug kept as a regression check (opening + saving the modal must not clear a custom system-message file)
   mode: null,
   settings: {
     commands: [{
@@ -404,18 +425,20 @@ scenarios.push({
       return c && c[0] ? { systemMessageFile: c[0].systemMessageFile, systemMessage: c[0].systemMessage } : null;
     })()`);
     const label = await cdp.eval('document.getElementById("cmdSysMsgLabel") ? document.getElementById("cmdSysMsgLabel").textContent : ""');
-    // BUG: sysmsg-modal.js saves fileSelect.value (""), so the command's
-    // systemMessageFile is silently cleared even though the user changed nothing.
-    if (after && after.systemMessageFile === 'default-settings/system-messages/my-custom-prompt.txt')
-      throw new Error('custom file survived the modal save (bug not reproduced): ' + JSON.stringify(after));
-    return 'modal select selectedIndex=' + selState.selectedIndex + ' value=' + JSON.stringify(selState.value) +
-      '; after Save systemMessageFile=' + JSON.stringify(after && after.systemMessageFile) + ' label="' + label + '"';
+    // FIXED (bug #39): the modal remembers the stored file and falls back to it
+    // when the select has no matching option, so the custom file survives.
+    if (!after || after.systemMessageFile !== 'default-settings/system-messages/my-custom-prompt.txt')
+      throw new Error('custom system-message file was not preserved through the modal save: ' +
+        JSON.stringify(after) + ' label="' + label + '"');
+    return 'custom file survived the modal save: systemMessageFile=' +
+      JSON.stringify(after.systemMessageFile) + ' label="' + label + '"';
   }
 });
 
 scenarios.push({
   id: 40,
-  name: 'Refresh-models modal discards edits to a model id (stale data-full-id wins on Save)',
+  name: 'Refresh-models modal keeps edits to a model id on Save',
+  regression: true, // FIXED bug kept as a regression check (edited model ids must survive the refresh-modal save)
   mode: null,
   settings: {},
   async body({ cdp }) {
@@ -438,44 +461,47 @@ scenarios.push({
       const inp = document.querySelector('#modelsTableBody tr [data-field=id]');
       return inp ? inp.value : null;
     })()`);
-    // BUG: saveRefresh reads data-full-id (the ORIGINAL id) instead of the
-    // edited input value, so the rename is silently discarded.
-    if (after === 'renamed-model-id')
-      throw new Error('model id edit was kept (bug not reproduced): before=' + JSON.stringify(before) + ' after=' + after);
-    return 'edited the first model id to "renamed-model-id" in the refresh modal; after Save the table still shows "' + after +
-      '" (stale data-full-id=' + JSON.stringify(before && before.fullId) + ')';
+    // FIXED (bug #40): saveRefresh and _rightPanelIds now prefer the live
+    // input value over the stale data-full-id attribute.
+    if (after !== 'renamed-model-id')
+      throw new Error('model id edit was discarded on Save: before=' + JSON.stringify(before) + ' after=' + JSON.stringify(after));
+    return 'edited the first model id to "renamed-model-id" in the refresh modal; after Save the table shows "' + after + '"';
   }
 });
 
 scenarios.push({
   id: 41,
-  name: 'Tray "New Chat" ignores the "New Chats Start With" default (static check of the tray path)',
+  name: 'Tray "New Chat" applies the "New Chats Start With" default (static check of the tray path)',
+  regression: true, // FIXED bug kept as a regression check (tray-started chats must start with the configured default)
   mode: null,
   noApp: true,
   async body() {
     const mainSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    const trayMenuSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayMenu.ahk'), 'utf8');
     const sidebarSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'callbacks', 'Sidebar.ahk'), 'utf8');
     const utilsSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatUtils.ahk'), 'utf8');
     const ipcSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
-    // Tray "New Chat" creates the thread directly and opens it...
-    const trayNewChat = /openChatWindow\(ChatDB\.Thread_Create\(\)\)/.test(mainSrc);
-    // ...while the sidebar newChat action DOES apply the start-with default.
+    const settingsSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatSettings.ahk'), 'utf8');
+    // Tray "New Chat" creates the thread directly and opens it (the tray menu
+    // build lives in app/TrayMenu.ahk since bug #37).
+    const trayNewChat = /openChatWindow\(ChatDB\.Thread_Create\(\)\)/.test(trayMenuSrc);
+    // FIXED (bug #41): the unified loader path now applies the new-chat
+    // default to fresh (message-less, settings-less) threads.
+    const loaderApplies = ipcSrc.includes('_applyNewChatDefaultToFreshThread(threadId)');
+    const helperExists = settingsSrc.includes('_applyNewChatDefaultToFreshThread(threadId)');
+    // The sidebar newChat action still applies the default at creation.
     const sidebarApplies = sidebarSrc.includes('_applyNewChatDefault()');
-    // The unified loader path (tray -> notifyLoadThread -> LoadThreadIntoUI ->
-    // _LoadThreadAndRefreshUI) never applies the default.
-    const loaderApplies = ipcSrc.includes('_applyNewChatDefault') || utilsSrc.includes('_applyNewChatDefault');
-    // BUG: tray-started chats skip _applyNewChatDefault (and the default font
-    // size that the sidebar newChat path writes), so they always start with the
-    // raw app default model instead of the configured "New Chats Start With".
-    if (!trayNewChat || !sidebarApplies || loaderApplies)
-      throw new Error('bug not reproduced: trayNewChat=' + trayNewChat + ' sidebarApplies=' + sidebarApplies + ' loaderApplies=' + loaderApplies);
-    return 'tray New Chat calls openChatWindow(ChatDB.Thread_Create()) directly; LoadThreadIntoUI/_LoadThreadAndRefreshUI never call _applyNewChatDefault, so tray-started chats ignore newChatStartsWith and the default font size';
+    if (!trayNewChat || !loaderApplies || !helperExists || !sidebarApplies)
+      throw new Error('tray new-chat default wiring missing: trayNewChat=' + trayNewChat +
+        ' loaderApplies=' + loaderApplies + ' helperExists=' + helperExists + ' sidebarApplies=' + sidebarApplies);
+    return 'LoadThreadIntoUI applies _applyNewChatDefaultToFreshThread to fresh threads, so tray "New Chat" starts with the configured default';
   }
 });
 
 scenarios.push({
   id: 45,
-  name: '"Response Font" setting is not applied to chat messages until Settings is opened',
+  name: '"Response Font" is applied to chat messages at startup and after saves',
+  regression: true, // FIXED bug kept as a regression check (response font must apply without opening Settings)
   mode: null,
   settings: { ui: { responseFont: 'Georgia' } },
   fixtures: {
@@ -490,16 +516,13 @@ scenarios.push({
     await sleep(500);
     const familyBefore = await cdp.eval(`getComputedStyle(document.querySelector('.msg-content')).fontFamily`);
     const varBefore = await cdp.eval(`getComputedStyle(document.documentElement).getPropertyValue('--chat-font-family').trim()`);
-    // BUG: ui-theme.js only sets --chat-font-family inside load(), which runs
-    // when the Settings panel receives the full settings payload. At startup the
-    // CSS var keeps the default, so the configured Response Font is not applied.
-    if (String(familyBefore).indexOf('Georgia') >= 0)
-      throw new Error('response font was applied before opening settings (bug not reproduced): ' + familyBefore);
-    await openSettings(cdp);
-    await sleep(400);
-    const familyAfter = await cdp.eval(`getComputedStyle(document.querySelector('.msg-content')).fontFamily`);
-    return 'configured ui.responseFont=Georgia; before opening Settings msg font=' + JSON.stringify(familyBefore) +
-      ' (var=' + JSON.stringify(varBefore) + '); after opening Settings it becomes ' + JSON.stringify(familyAfter);
+    // FIXED (bug #45): appSettings is re-pushed on webViewReady and after
+    // saves, so ui-theme.js applies --chat-font-family at startup.
+    if (String(familyBefore).indexOf('Georgia') < 0)
+      throw new Error('response font was not applied at startup: ' + JSON.stringify(familyBefore) + ' var=' + JSON.stringify(varBefore));
+    if (String(varBefore).indexOf('Georgia') < 0)
+      throw new Error('--chat-font-family not set at startup: ' + JSON.stringify(varBefore));
+    return 'configured ui.responseFont=Georgia applied at startup: msg font=' + JSON.stringify(familyBefore) + ' (var=' + JSON.stringify(varBefore) + ')';
   }
 });
 

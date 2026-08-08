@@ -1,6 +1,6 @@
-# 2026-08-07T11:03:38.321Z | run of 1 scenario(s)
-PASS | #112 | CurlBuilder does not validate empty endpoint — malformed cURL with no URL | CurlBuilder.Build concatenates providerInfo.endpoint without empty check — empty endpoint yields POST with no URL | 0.0s
+# 2026-08-08T08:10:00.648Z | run of 1 scenario(s)
+PASS | #112 | CurlBuilder rejects empty endpoints (malformed cURL prevented) | CurlBuilder.Build/BuildStream/BuildFIM return '' for empty endpoints and ChatRequestBuilder surfaces a friendly 'No endpoint configured' error | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
-Report sync: MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js
+Report sync: OK

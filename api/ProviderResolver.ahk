@@ -37,7 +37,9 @@ class ProviderResolver {
         ; Legacy format: no provider prefix — infer from providerMap
         providerKey := "deepseek"
         for prefix, prov in providerMap {
-            if InStr(modelId, prefix) {
+            ; Bug #68: match by PREFIX only - a substring match (InStr) made
+            ; "mygpt-custom" resolve to the gpt provider.
+            if SubStr(modelId, 1, StrLen(prefix)) = prefix {
                 providerKey := prov
                 break
             }

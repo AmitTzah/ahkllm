@@ -83,6 +83,27 @@ _applyNewChatDefault() {
     return true
 }
 
+; Bug #41: apply the configured "New Chats Start With" default (assistant or
+; model, plus the default font size) to a brand-new thread that has no messages
+; and no stored settings yet. Mirrors _HandleThreadAction's newChat case; used
+; by LoadThreadIntoUI for threads created outside the sidebar newChat action
+; (tray "New Chat", command-line spawn), which used to start with the raw app
+; default model.
+_applyNewChatDefaultToFreshThread(threadId) {
+    if ChatDB.Msg_GetActivePath(threadId).Length > 0
+        return false
+    s := ChatDB.Thread_GetSettings(threadId)
+    if s.modelOverride || s.assistantId || s.systemOverride || s.reasoningOverride || s.temperatureOverride != ""
+        return false
+    _resetToDefaultSettings()
+    if _applyNewChatDefault()
+        ChatDB.Thread_UpdateSettings(threadId, _CurrentSettingsObject())
+    global responseWindowFontSize
+    if IsSet(responseWindowFontSize) && responseWindowFontSize
+        ChatDB.Thread_UpdateSettings(threadId, { fontSize: responseWindowFontSize })
+    return true
+}
+
 ; Send current dropdown label to WebView (assistant name / model name / "Default Model").
 _sendDropdownLabel() {
     if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {

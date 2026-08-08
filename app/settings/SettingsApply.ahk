@@ -53,9 +53,17 @@ class SettingsApply {
             }
         }
         providers := newProviders
-        ; Only overwrite providerMap when prefixes were actually defined,
-        ; otherwise keep the UserConfig mapping (e.g. older settings.json without prefixes)
-        if newProviderMap.Count > 0
+        ; Bug #74: assign the rebuilt map whenever the saved providers define
+        ; prefixes explicitly - an explicitly empty set must clear the old map.
+        ; Providers without a "prefixes" key keep the UserConfig mapping.
+        hasExplicitPrefixes := false
+        for k, p in settings["providers"] {
+            if p.Has("prefixes") {
+                hasExplicitPrefixes := true
+                break
+            }
+        }
+        if hasExplicitPrefixes
             providerMap := newProviderMap
     }
 
@@ -151,17 +159,24 @@ class SettingsApply {
     }
 
     static _SetIfTruthy(cmd, c, key) {
-        if c.Has(key) && c[key]
+        ; Bug #101: assign whenever the key exists - false (0) is a valid
+        ; value and must persist, or clearing a command toggle silently
+        ; reverts on the next settings round-trip.
+        if c.Has(key)
             cmd.%key% := c[key]
     }
 
     static _SetIfNonZero(cmd, c, key) {
-        if c.Has(key) && c[key] != 0
+        ; Bug #101: 0 is a valid value (cleared maxContextWords) and must
+        ; persist, not be dropped.
+        if c.Has(key)
             cmd.%key% := c[key]
     }
 
     static _SetIfNonEmptyTags(cmd, c) {
-        if c.Has("tags") && IsObject(c["tags"]) && c["tags"].Length > 0
+        ; Bug #101: an explicitly empty tags array must persist (clearing all
+        ; tags should survive the save round-trip).
+        if c.Has("tags") && IsObject(c["tags"])
             cmd.tags := c["tags"]
     }
 
@@ -183,11 +198,13 @@ class SettingsApply {
             return
         tt := settings["threadTitles"]
         autoTitleGenerationEnabled := tt.Has("enabled") ? tt["enabled"] : true
-        if tt.Has("model") && tt["model"] != ""
+        ; Bug #71 (family #61): clearing a field (empty string) must reset the
+        ; global instead of leaving the stale value in place.
+        if tt.Has("model")
             titleGenModel := tt["model"]
-        if tt.Has("prompt") && tt["prompt"] != ""
+        if tt.Has("prompt")
             titleGenSystemPrompt := tt["prompt"]
-        if tt.Has("maxTokens") && tt["maxTokens"] != ""
+        if tt.Has("maxTokens")
             titleGenMaxTokens := tt["maxTokens"]
     }
 
@@ -197,9 +214,11 @@ class SettingsApply {
         if !settings.Has("ui")
             return
         u := settings["ui"]
-        if u.Has("responseFont") && u["responseFont"] != ""
+        ; Bug #61: clearing a UI field (empty string) must replace the global -
+        ; skipping empty values left the stale value in place.
+        if u.Has("responseFont")
             responseWindowFontFace := u["responseFont"]
-        if u.Has("responseFontSize") && u["responseFontSize"] != ""
+        if u.Has("responseFontSize")
             responseWindowFontSize := u["responseFontSize"]
         SettingsApply._ApplyInputWindow(u)
         SettingsApply._ApplySuspendBanner(u)
@@ -211,17 +230,17 @@ class SettingsApply {
         if !u.Has("inputWindow")
             return
         iw := u["inputWindow"]
-        if iw.Has("background") && iw["background"] != ""
+        if iw.Has("background")
             inputWindowBackground := iw["background"]
-        if iw.Has("fontSize") && iw["fontSize"] != ""
+        if iw.Has("fontSize")
             inputWindowFontSize := iw["fontSize"]
-        if iw.Has("fontColor") && iw["fontColor"] != ""
+        if iw.Has("fontColor")
             inputWindowFontColor := iw["fontColor"]
-        if iw.Has("fontFace") && iw["fontFace"] != ""
+        if iw.Has("fontFace")
             inputWindowFontFace := iw["fontFace"]
-        if iw.Has("width") && iw["width"] != ""
+        if iw.Has("width")
             inputWindowWidth := iw["width"]
-        if iw.Has("height") && iw["height"] != ""
+        if iw.Has("height")
             inputWindowHeight := iw["height"]
     }
 
@@ -231,15 +250,15 @@ class SettingsApply {
         if !u.Has("suspendBanner")
             return
         sb := u["suspendBanner"]
-        if sb.Has("text") && sb["text"] != ""
+        if sb.Has("text")
             suspendBannerText := sb["text"]
-        if sb.Has("fontSize") && sb["fontSize"] != ""
+        if sb.Has("fontSize")
             suspendBannerFontSize := sb["fontSize"]
-        if sb.Has("fontFace") && sb["fontFace"] != ""
+        if sb.Has("fontFace")
             suspendBannerFontFace := sb["fontFace"]
-        if sb.Has("textColor") && sb["textColor"] != ""
+        if sb.Has("textColor")
             suspendBannerTextColor := sb["textColor"]
-        if sb.Has("background") && sb["background"] != ""
+        if sb.Has("background")
             suspendBannerBackground := sb["background"]
     }
 

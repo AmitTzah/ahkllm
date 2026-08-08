@@ -7,7 +7,10 @@ window.chrome.webview.addEventListener('message', handleWebMessage);
 
 // Initialize markdown-it with options
 var md = window.markdownit({
-  html: true,
+  // Bug #57 (XSS): raw HTML from model responses / pasted messages must not
+  // execute in the WebView (it has chrome.webview.postMessage access). With
+  // html:false markdown-it escapes inline HTML so it renders as inert text.
+  html: false,
   linkify: true,
   typographer: true,
   highlight: function (str, lang) {
@@ -209,17 +212,19 @@ function handleWebMessage(event) {
         }
         break;
 
+      case 'updateTopbarTitle':
+        if (typeof updateTopbarTitle === 'function') updateTopbarTitle(data);
+        break;
+
+      case 'updateBranchInfo':
+        if (typeof updateBranchInfo === 'function') updateBranchInfo(data);
+        break;
+
       default:
-        // Try calling as a function name for backward compatibility
-        if (typeof window[target] === 'function') {
-          if (Array.isArray(data)) {
-            window[target](...data);
-          } else {
-            window[target](data);
-          }
-        } else {
-          console.log('Unknown message target:', target);
-        }
+        // Bug #108: unknown targets are NEVER dispatched dynamically. Calling
+        // arbitrary window[target] would let a crafted message invoke any
+        // global (eval, postMessage, fetch, ...). Log and ignore instead.
+        console.log('Unknown message target:', target);
     }
   } catch (error) {
     console.error('Error handling incoming message:', error);

@@ -134,7 +134,8 @@ scenarios.push({
 
 scenarios.push({
   id: 52,
-  name: 'Usage dashboard double-counts thinking tokens for command usage (completion_tokens already includes thinking)',
+  name: 'Usage dashboard counts command thinking tokens once (completion_tokens already includes thinking)',
+  regression: true, // FIXED bug kept as a regression check (command completion_tokens must not be double-counted)
   mode: null,
   settings: {},
   fixtures: {
@@ -160,13 +161,11 @@ scenarios.push({
     await cdp.waitFor('typeof allData !== "undefined" && allData.chat.length === 1 && allData.commands.length === 1', 15000, 300, 'all-time data');
     await sleep(500); // let the async host-object query + render settle
     const totalTokens = await cdp.text('#totalTokens');
-    // BUG: renderSummary adds completion_tokens + thinking_tokens for commands
-    // (cmdOutput = completion + thinking) even though command_usage
-    // completion_tokens already includes thinking. The equivalent chat row is
-    // counted once (output_tokens), so the same 100-token response with 40
-    // thinking tokens is counted as 140 for commands vs 100 for chat.
-    if (totalTokens === '220')
-      throw new Error('command thinking tokens were not double-counted (bug not reproduced): ' + totalTokens);
+    // FIXED (bug #52): renderSummary and renderModelSections count
+    // command_usage.completion_tokens once (it already includes thinking,
+    // matching chat's output_tokens).
+    if (totalTokens !== '220')
+      throw new Error('command thinking tokens still double-counted (bug #52 not fixed): ' + totalTokens);
     return 'chat row (prompt 10 + completion 100) + command row (prompt 10 + completion 100 + thinking 40): dashboard Total Tokens = ' + totalTokens +
       ' (220 = counted once; 260 = thinking double-counted for the command)';
   }
@@ -174,7 +173,8 @@ scenarios.push({
 
 scenarios.push({
   id: 53,
-  name: 'Dashboard "Last 24 Hours" spans two calendar days - summary counts yesterday while the chart only plots today',
+  name: 'Dashboard "Last 24 Hours" summary matches the chart (local today only)',
+  regression: true, // FIXED bug kept as a regression check (day-range summary must not over-count yesterday)
   mode: null,
   settings: {},
   fixtures: {
@@ -194,14 +194,13 @@ scenarios.push({
     await cdp.waitFor('mainChart && mainChart.data.labels.length === 1', 15000, 300, 'day-range chart rendered');
     const totalCost = await cdp.text('#totalCost');
     const labels = await cdp.eval('mainChart.data.labels.length');
-    // BUG: the "day" SQL filter is date >= date('now','-1 day') - yesterday's
-    // 00:00 UTC through now (up to ~48 hours) - so the summary counts both
-    // seeded days, while getDateRangeLabels('day') produces ONE label (today),
-    // so yesterday's usage is counted in the summary but never plotted.
-    if (totalCost !== '$4.00')
-      throw new Error('day summary no longer over-counts yesterday (bug not reproduced): cost=' + totalCost + ' labels=' + labels);
-    return 'seeded yesterday + today rows (total $4.00): "Last 24 Hours" summary shows $' + totalCost +
-      ' (both days) while the chart has ' + labels + ' label(s) (today only)';
+    // FIXED (bug #53): the "day" SQL filter now uses the LOCAL today date
+    // (usage rows are stored with local dates and the chart plots one local
+    // "today" label), so the summary matches the chart.
+    if (totalCost !== '$2.00')
+      throw new Error('day summary still over-counts yesterday (bug #53 not fixed): cost=' + totalCost + ' labels=' + labels);
+    return 'seeded yesterday + today rows (total $4.00): "Last 24 Hours" summary shows ' + totalCost +
+      ' (today only) while the chart has ' + labels + ' label(s) - summary matches the chart';
   }
 });
 

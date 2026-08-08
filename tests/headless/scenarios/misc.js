@@ -140,7 +140,8 @@ scenarios.push({
 
 scenarios.push({
   id: 61,
-  name: "Clearing Suspend Banner text still shows the old banner (SettingsApply skips empty)",
+  name: "Clearing Suspend Banner text resets the banner (SettingsApply assigns empty)",
+  regression: true, // FIXED bug kept as a regression check (clearing a UI field must replace the stale global)
   mode: null,
   noApp: true,
   async body() {
@@ -148,15 +149,19 @@ scenarios.push({
     const path = require("node:path");
     const launcher = require("../launch");
     const sa = fs.readFileSync(path.join(launcher.REPO_ROOT, "app", "settings", "SettingsApply.ahk"), "utf8");
-    const bannerSkipsEmpty = /if sb\.Has\("text"\) && sb\["text"\] != ""/.test(sa);
-    if (!bannerSkipsEmpty) throw new Error("bug not reproduced: banner does not skip empty");
-    return "SettingsApply._ApplySuspendBanner skips empty text ï¿½ clearing leaves stale banner";
+    // FIXED (bug #61): _ApplySuspendBanner assigns the text even when empty.
+    const assignsEmptyText = /if sb\.Has\("text"\)\s*\n\s*suspendBannerText := sb\["text"\]/.test(sa);
+    const skipsEmpty = /sb\.Has\("text"\) && sb\["text"\] != ""/.test(sa);
+    if (!assignsEmptyText || skipsEmpty)
+      throw new Error("clearing suspend banner text still skipped (bug #61 not fixed): assignsEmptyText=" + assignsEmptyText + " skipsEmpty=" + skipsEmpty);
+    return "SettingsApply._ApplySuspendBanner assigns the text even when empty, so clearing the field resets the banner";
   }
 });
 
 scenarios.push({
   id: 62,
-  name: "Forking a chat with temperature 0 drops the override (TreeRepo skips falsy)",
+  name: "Forking a chat with temperature 0 keeps the override (TreeRepo zero-safe)",
+  regression: true, // FIXED bug kept as a regression check (fork must inherit a temperature 0 override)
   mode: null,
   noApp: true,
   async body() {
@@ -164,16 +169,19 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    const hasTruthy = tr.includes('if settings.temperatureOverride') && tr.includes('temperature_override');
-    const notZeroSafe = !tr.includes('temperatureOverride != ""');
-    if(!hasTruthy || !notZeroSafe) throw new Error("bug not reproduced hasTruthy="+hasTruthy+" notZeroSafe="+notZeroSafe);
-    return "TreeRepo._CopyThreadSettings checks if settings.temperatureOverride (falsy for 0) ï¿½ forking a thread with temp 0 loses it";
+    // FIXED (bug #62): _CopyThreadSettings treats 0 as a valid override.
+    const zeroSafe = tr.includes('if settings.temperatureOverride != ""');
+    const truthyOnly = tr.includes('if settings.temperatureOverride') && !zeroSafe;
+    if (!zeroSafe || truthyOnly)
+      throw new Error("fork temp-0 copy not fixed (bug #62): zeroSafe=" + zeroSafe + " truthyOnly=" + truthyOnly);
+    return "TreeRepo._CopyThreadSettings checks temperatureOverride != \"\" (0 is a valid override), so forking a thread with temp 0 keeps it";
   }
 });
 
 scenarios.push({
   id: 63,
-  name: "Thread pricing unit falls back incorrectly when cachedInput is empty string",
+  name: "Thread pricing unit falls back to 10% when cachedInput is empty string",
+  regression: true, // FIXED bug kept as a regression check (empty cachedInput must fall back to 10% of input)
   mode: null,
   noApp: true,
   async body() {
@@ -181,9 +189,10 @@ scenarios.push({
     const path = require("node:path");
     const launcher = require("../launch");
     const tr = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "TreeRepo.ahk"), "utf8");
-    const hasFallback = /cachedInput: pricing\.HasOwnProp\("cachedInput"\) \? pricing\.cachedInput : \(pricing\.HasOwnProp\("input"\) \? pricing\.input \* 0\.1/.test(tr);
-    if (!hasFallback) throw new Error("bug not reproduced: fallback not found");
-    return "TreeRepo GetThreadStats pricingUnit treats cachedInput=\"\" as 0 instead of 10% fallback";
+    // FIXED (bug #63): a stored "" is treated as missing.
+    const emptySafe = /cachedInput: pricing\.HasOwnProp\("cachedInput"\) && pricing\.cachedInput != ""/.test(tr);
+    if (!emptySafe) throw new Error("cachedInput empty fallback not fixed (bug #63): emptySafe=" + emptySafe);
+    return "TreeRepo GetThreadStats pricingUnit treats cachedInput=\"\" as missing and falls back to 10% of input";
   }
 });
 
@@ -191,24 +200,29 @@ scenarios.push({
 
 scenarios.push({
   id: 64,
-  name: "Context Used excludes thinking tokens (header underreports)",
+  name: "Context Used includes thinking tokens (header reports full context)",
+  regression: true, // FIXED bug kept as a regression check (active_path_tokens must include thinking)
   mode: null,
   noApp: true,
   async body() {
     const sc=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","streaming","StreamCompletion.ahk"),"utf8");
+    // token_count stays visible-only (that is the message body output).
     const hasVisibleOnly = /token_count: Max\(0, completionTokens - thinkingTokens\)/.test(sc);
     const mr2=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
-    const activeExcludesThinking = /activePathTokens := msgObj\.prompt_tokens \+ tc/.test(mr2);
+    // FIXED (bug #64): active_path_tokens = prompt + visible + thinking.
+    const activeIncludesThinking = /activePathTokens := msgObj\.prompt_tokens \+ tc \+ tht/.test(mr2);
     const tr=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    const readsActivePath = /active_path_tokens/.test(tr);
-    if(!hasVisibleOnly || !activeExcludesThinking || !readsActivePath) throw new Error("bug not reproduced");
-    return "MessageRepo stores token_count = completion-thinking and active_path_tokens = prompt+visible; header Context Used never counts thinking";
+    // _RecomputeActivePath adds thinking to the prefix sums too.
+    const recomputeIncludesThinking = /prev \+= msg\.HasProp\("thinking_tokens"\) \? msg\.thinking_tokens : 0/.test(tr);
+    if(!hasVisibleOnly || !activeIncludesThinking || !recomputeIncludesThinking) throw new Error("bug #64 not fixed: visibleOnly=" + hasVisibleOnly + " activeIncludesThinking=" + activeIncludesThinking + " recomputeIncludesThinking=" + recomputeIncludesThinking);
+    return "MessageRepo active_path_tokens includes thinking (prompt + visible + thinking) and _RecomputeActivePath adds thinking to prefix sums, so the header Context Used counts reasoning tokens";
   }
 });
 
 scenarios.push({
   id: 65,
-  name: "Hard-delete leaves cumulative token/cost counters stale (header stays inflated)",
+  name: "Hard-delete recomputes cumulative token/cost counters",
+  regression: true, // FIXED bug kept as a regression check (hard delete must decrement the header totals)
   mode: null,
   noApp: true,
   async body() {
@@ -217,14 +231,17 @@ scenarios.push({
     const launcher2=require("../launch");
     const mr=fs2.readFileSync(path2.join(launcher2.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
     const hd=mr.slice(mr.indexOf("static HardDelete"), mr.indexOf("static HardDelete")+3000);
-    if(/cumulative_/.test(hd)) throw new Error("bug not reproduced: touches cumulative");
-    return "HardDelete recomputes active_path_tokens but never updates cumulative_* counters";
+    // FIXED (bug #65): HardDelete recomputes the cumulative counters.
+    const recomputes = hd.includes("_RecomputeCumulativeCounters(");
+    if(!recomputes) throw new Error("bug #65 not fixed: HardDelete does not recompute cumulative counters");
+    return "HardDelete recomputes cumulative_* counters (via _RecomputeCumulativeCounters) so the header totals drop with the deleted message";
   }
 });
 
 scenarios.push({
   id: 66,
-  name: "Header tooltip typo Culminative",
+  name: "Header tooltip says Cumulative (typo fixed)",
+  regression: true, // FIXED bug kept as a regression check (tooltip must not be misspelled)
   mode: null,
   noApp: true,
   async body() {
@@ -232,8 +249,10 @@ scenarios.push({
     const path3=require("node:path");
     const launcher3=require("../launch");
     const fmt=fs3.readFileSync(path3.join(launcher3.REPO_ROOT,"webui","js","chat","chat-format.js"),"utf8");
-    if(!/Culminative/.test(fmt)) throw new Error("bug not reproduced");
-    return "chat-format.js tooltip has Culminative (should be Cumulative)";
+    // FIXED (bug #66): the tooltip reads "Cumulative".
+    if(/Culminative/.test(fmt)) throw new Error("bug #66 not fixed: Culminative still present");
+    if(!/Cumulative Input\/output token usage/.test(fmt)) throw new Error("bug #66 not fixed: corrected label missing");
+    return "chat-format.js tooltip reads 'Cumulative Input/output token usage across all conversation branches'";
   }
 });
 
@@ -274,35 +293,43 @@ scenarios.push({
 });
 scenarios.push({
   id: 68,
-  name: "ProviderResolver legacy prefix uses substring InStr, not prefix check",
+  name: "ProviderResolver legacy prefix match is prefix-only",
+  regression: true, // FIXED bug kept as a regression check (substring matches must not resolve to the wrong provider)
   mode: null,
   noApp: true,
   async body() {
     const pr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","ProviderResolver.ahk"),"utf8");
+    // FIXED (bug #68): legacy short ids match by prefix only.
+    const hasPrefixCheck = /SubStr\(modelId, 1, StrLen\(prefix\)\) = prefix/.test(pr);
     const hasSubstring = /if InStr\(modelId, prefix\)/.test(pr);
-    const hasPrefixCheck = /SubStr\(modelId, 1,/.test(pr) || /InStr\(modelId, prefix\) = 1/.test(pr);
-    if(!hasSubstring || hasPrefixCheck) throw new Error("bug not reproduced hasSubstring="+hasSubstring+" hasPrefixCheck="+hasPrefixCheck);
-    return "ProviderResolver.Resolve uses InStr substring ï¿½ mygpt-custom would match gpt incorrectly";
+    if(!hasPrefixCheck || hasSubstring) throw new Error("bug #68 not fixed: hasPrefixCheck=" + hasPrefixCheck + " hasSubstring=" + hasSubstring);
+    return "ProviderResolver.Resolve matches legacy short ids by prefix only, so mygpt-custom no longer resolves to the gpt provider";
   }
 });
 
 scenarios.push({
   id: 69,
-  name: "Search LIKE does not escape % _ wildcard ï¿½ searching for % returns everything",
+  name: "Search LIKE escapes % _ \\ wildcards (literal search)",
+  regression: true, // FIXED bug kept as a regression check (LIKE must match user input literally)
   mode: null,
   noApp: true,
   async body() {
     const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
-    const likeLine = sr.slice(sr.indexOf("static _Like"), sr.indexOf("static _Like")+1500);
-    const escapesWildcards = /StrReplace.*%/.test(likeLine) && /StrReplace.*_/.test(likeLine);
-    if(escapesWildcards) throw new Error("bug not reproduced: LIKE escapes wildcards");
-    return "SearchRepo._Like uses LIKE ESCAPE but safeQuery only doubles single quotes ï¿½ % remains wildcard";
+    // FIXED (bug #69): _EscapeLike escapes \ % _ before building the LIKE.
+    const escapesBackslash = /StrReplace\(value, "\\", "\\\\"\)/.test(sr);
+    const escapesPercent = /StrReplace\(value, "%", "\\%"\)/.test(sr);
+    const escapesUnderscore = /StrReplace\(value, "_", "\\_"\)/.test(sr);
+    const usesEscaped = sr.includes("_EscapeLike(safeQuery)");
+    if(!escapesBackslash || !escapesPercent || !escapesUnderscore || !usesEscaped)
+      throw new Error("bug #69 not fixed: backslash=" + escapesBackslash + " percent=" + escapesPercent + " underscore=" + escapesUnderscore + " usesEscaped=" + usesEscaped);
+    return "SearchRepo._EscapeLike escapes \\ % _ (used by _Like and _Titles), so searching for % matches only literal percent";
   }
 });
 
 scenarios.push({
   id: 70,
-  name: "Search FTS5 does not escape special characters ï¿½ C++ breaks MATCH",
+  name: "Search FTS5 quotes terms so special characters do not break MATCH",
+  regression: true, // FIXED bug kept as a regression check (FTS5 must not choke on special chars)
   mode: null,
   noApp: true,
   async body() {
@@ -311,44 +338,52 @@ scenarios.push({
     const launcher=require("../launch");
     const sr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","SearchRepo.ahk"),"utf8");
     const fts=sr.slice(sr.indexOf("static _FTS5"), sr.indexOf("static _FTS5")+2500);
+    // FIXED (bug #70): terms are quoted for FTS5 MATCH.
+    const quotesTerms = /_FTS5QuoteTerm\(trimmed\)/.test(fts);
     const buildsRaw = /ftsExpr \.= trimmed/.test(fts);
-    const escapesDouble = /StrReplace\(ftsExpr, "\""/.test(fts);
-    if(!buildsRaw || escapesDouble) throw new Error("bug not reproduced buildsRaw="+buildsRaw+" escapesDouble="+escapesDouble);
-    return "SearchRepo._FTS5 builds from raw trimmed words and only escapes single quotes ï¿½ C++ breaks MATCH";
+    if(!quotesTerms || buildsRaw) throw new Error("bug #70 not fixed: quotesTerms=" + quotesTerms + " buildsRaw=" + buildsRaw);
+    return "SearchRepo._FTS5 quotes each term (_FTS5QuoteTerm), so C++ / quoted queries no longer break MATCH";
   }
 });
 
 scenarios.push({
   id: 71,
-  name: "Clearing Thread Title Generation model/prompt leaves stale global",
+  name: "Clearing Thread Title Generation fields resets the globals",
+  regression: true, // FIXED bug kept as a regression check (family #61: cleared fields must reset globals)
   mode: null,
   noApp: true,
   async body() {
     const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    const skipsModel = /if tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
-    const skipsPrompt = /if tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
-    if(!skipsModel || !skipsPrompt) throw new Error("bug not reproduced");
-    return "SettingsApply._ApplyThreadTitles only assigns when != empty ï¿½ clearing leaves stale model/prompt";
+    // FIXED (bug #71): _ApplyThreadTitles assigns even when empty.
+    const assignsModel = /if tt\.Has\("model"\)\s*\n\s*titleGenModel := tt\["model"\]/.test(sa);
+    const assignsPrompt = /if tt\.Has\("prompt"\)\s*\n\s*titleGenSystemPrompt := tt\["prompt"\]/.test(sa);
+    const skipsModel = /tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
+    const skipsPrompt = /tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
+    if(!assignsModel || !assignsPrompt || skipsModel || skipsPrompt)
+      throw new Error("bug #71 not fixed: assignsModel=" + assignsModel + " assignsPrompt=" + assignsPrompt + " skipsModel=" + skipsModel + " skipsPrompt=" + skipsPrompt);
+    return "SettingsApply._ApplyThreadTitles assigns cleared values, so title-gen fields reset instead of keeping stale globals";
   }
 });
 
 scenarios.push({
   id: 72,
-  name: "SystemMessageResolver UNC path treated as relative ï¿½ \\\\server\\share broken",
+  name: "SystemMessageResolver treats UNC paths as absolute",
+  regression: true, // FIXED bug kept as a regression check (UNC paths must be read as-is)
   mode: null,
   noApp: true,
   async body() {
     const sr=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"shared","SystemMessageResolver.ahk"),"utf8");
     const checksColon = /if !InStr\(filePath, ":"\)/.test(sr);
-    const handlesUNC = /\\\\/.test(sr) || /InStr\(filePath, "\\\\/.test(sr);
-    if(!checksColon || handlesUNC) throw new Error("bug not reproduced checksColon="+checksColon+" handlesUNC="+handlesUNC);
-    return "SystemMessageResolver.Resolve checks InStr(filePath, \":\") to detect absolute ï¿½ UNC \\\\server\\share has no colon and is searched as relative";
+    const handlesUnc = /SubStr\(filePath, 1, 1\) = "\\"/.test(sr);
+    if(!checksColon || !handlesUnc) throw new Error("bug #72 not fixed: checksColon=" + checksColon + " handlesUnc=" + handlesUnc);
+    return "SystemMessageResolver.Resolve treats \\\\server\\share (UNC) and rooted paths as absolute and reads them as-is";
   }
 });
 
 scenarios.push({
   id: 73,
-  name: "GoogleChatCompletions disabled config missing include_thoughts for 2.x",
+  name: "GoogleChatCompletions disabled config includes include_thoughts:false for 2.x",
+  regression: true, // FIXED bug kept as a regression check (disabled config must be symmetric with enabled)
   mode: null,
   noApp: true,
   async body() {
@@ -357,102 +392,110 @@ scenarios.push({
     const disabledEnd = gc.indexOf("static ThinkingConfig", disabledStart);
     const disabled = gc.slice(disabledStart, disabledEnd);
     const hasBudget0 = /thinking_budget: 0/.test(disabled);
-    const hasInclude = /include_thoughts/.test(disabled);
-    if(!hasBudget0 || hasInclude) throw new Error("bug not reproduced hasBudget0="+hasBudget0+" hasInclude="+hasInclude);
-    return "GoogleChatCompletions.DisabledConfig returns {thinking_budget:0} without include_thoughts";;
+    const hasIncludeFalse = /include_thoughts: false/.test(disabled);
+    if(!hasBudget0 || !hasIncludeFalse) throw new Error("bug #73 not fixed: hasBudget0=" + hasBudget0 + " hasIncludeFalse=" + hasIncludeFalse);
+    return "GoogleChatCompletions.DisabledConfig returns {include_thoughts:false, thinking_budget:0} for Gemini 2.x";
   }
 });
 
 scenarios.push({
   id: 74,
-  name: "SettingsApply providerMap stale when all prefixes cleared",
+  name: "SettingsApply clears providerMap when all prefixes are explicitly cleared",
+  regression: true, // FIXED bug kept as a regression check (empty prefix sets must clear the map)
   mode: null,
   noApp: true,
   async body() {
     const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    const hasGuard = /if newProviderMap\.Count > 0/.test(sa) && /providerMap := newProviderMap/.test(sa);
-    const hasElseClear = /else.*providerMap.*Map\(\)/.test(sa) || /providerMap := Map\(\)/.test(sa);
-    if(!hasGuard || hasElseClear) throw new Error("bug not reproduced hasGuard="+hasGuard+" hasElseClear="+hasElseClear);
-    return "SettingsApply._ApplyProviders only overwrites providerMap when Count>0 ï¿½ clearing all prefixes leaves old map";
+    // FIXED (bug #74): explicit prefixes (even empty) rebuild providerMap.
+    const hasExplicitCheck = /hasExplicitPrefixes/.test(sa);
+    const stillGuarded = /if newProviderMap\.Count > 0/.test(sa);
+    if(!hasExplicitCheck || stillGuarded) throw new Error("bug #74 not fixed: hasExplicitCheck=" + hasExplicitCheck + " stillGuarded=" + stillGuarded);
+    return "SettingsApply._ApplyProviders assigns providerMap whenever prefixes are explicitly defined (an empty set clears it)";
   }
 });
 
 scenarios.push({
   id: 75,
-  name: "GoogleChatCompletions budget table uses substring InStr, not prefix/contains check",
+  name: "GoogleChatCompletions budget table matches the Gemini family",
+  regression: true, // FIXED bug kept as a regression check (budget table must not match arbitrary substrings)
   mode: null,
   noApp: true,
   async body() {
     const gc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","handlers","GoogleChatCompletions.ahk"),"utf8");
     const hasSubstring = /if InStr\(modelId, "2\.5-pro"\)/.test(gc);
-    const hasExact = /modelId = "2\.5-pro"/.test(gc);
-    if(!hasSubstring) throw new Error("bug not reproduced");
-    return "GoogleChatCompletions._BudgetTable uses InStr substring ï¿½ my2.5-pro would match 2.5-pro incorrectly";
+    const hasFamily = /if InStr\(modelId, "gemini-2\.5-pro"\)/.test(gc);
+    if(hasSubstring || !hasFamily) throw new Error("bug #75 not fixed: hasSubstring=" + hasSubstring + " hasFamily=" + hasFamily);
+    return "GoogleChatCompletions._BudgetTable matches the gemini-2.5-pro family (not any substring), so my2.5-pro falls back to generic";
   }
 });
 
 scenarios.push({
   id: 76,
-  name: "initChatMode guard prevents activeThreadId update when already set ï¿½ stale thread",
+  name: "initChatMode always updates activeThreadId on thread switch",
+  regression: true, // FIXED bug kept as a regression check (loaded thread must become active even when one was already set)
   mode: null,
   noApp: true,
   async body() {
     const cc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-core.js"),"utf8");
     const hasGuard = /if \(data && data\.threadId && !activeThreadId\)/.test(cc);
-    const hasDirectAssign = /activeThreadId = data\.threadId/.test(cc);
-    // Guard means if activeThreadId already holds old thread's id, new thread's id is ignored
-    if(!hasGuard || !hasDirectAssign) throw new Error("bug not reproduced hasGuard="+hasGuard);
-    return "chat-core.js initChatMode only sets activeThreadId when !activeThreadId ï¿½ stale if already set";
+    const assigns = /if \(data && data\.threadId\)\s*\{\s*activeThreadId = data\.threadId/.test(cc);
+    if(hasGuard || !assigns) throw new Error("bug #76 not fixed: hasGuard=" + hasGuard + " assigns=" + assigns);
+    return "initChatMode always updates activeThreadId from the loaded thread, so thread switches/search/sends target the right thread";
   }
 });
 
 scenarios.push({
   id: 77,
-  name: "onChatSend empty input with existing messages triggers retry instead of no-op",
+  name: "onChatSend empty input is a no-op (no accidental retry)",
+  regression: true, // FIXED bug kept as a regression check (empty Send must not re-fire the last message)
   mode: null,
   noApp: true,
   async body() {
     const ci=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-input.js"),"utf8");
-    const hasEmptyRetry = /if \(chatMessages && chatMessages\.length > 0\)/.test(ci) && /retryLastAssistantMessage/.test(ci) && /Ipc\.postToHost\('retry'/.test(ci);
-    const hasTrimCheck = /var message = input\.value\.trim\(\)/.test(ci);
-    if(!hasEmptyRetry || !hasTrimCheck) throw new Error("bug not reproduced");
-    return "chat-input.js onChatSend: empty trimmed message + attachments 0 falls through to retry last assistant ï¿½ empty Send unexpectedly re-fires";
+    // FIXED (bug #77): empty Send returns early.
+    const hasNoOp = ci.includes("Bug #77");
+    const stillRetries = ci.includes("retryLastAssistantMessage(lastMsg.id)") || ci.includes("Ipc.postToHost('retry')");
+    if(!hasNoOp || stillRetries) throw new Error("bug #77 not fixed: hasNoOp=" + hasNoOp + " stillRetries=" + stillRetries);
+    return "chat-input.js onChatSend returns early for empty input, so an empty Send no longer retries the last message";
   }
 });
 
 scenarios.push({
   id: 78,
-  name: "Right-rail temperature 0 shows Default instead of 0.0 (falsy check)",
+  name: "Right-rail temperature 0 shows 0.0 (falsy check fixed)",
+  regression: true, // FIXED bug kept as a regression check (0 must be a valid displayed temperature)
   mode: null,
   noApp: true,
   async body() {
     const cfg=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","model-picker","model-picker-config.js"),"utf8");
-    const hasFalsy = /var hasTemp = settings\.temperature && settings\.temperature !==/.test(cfg);
-    const handlesZero = /settings\.temperature != "" && settings\.temperature !== undefined/.test(cfg) || /hasTemp =.*temperature.*!= ""/.test(cfg) && !/settings\.temperature &&/.test(cfg);
-    if(!hasFalsy) throw new Error("bug not reproduced hasFalsy false");
-    // hasFalsy true means 0 is treated as falsy -> shows Default
-    return "model-picker-config.js hasTemp = settings.temperature && ... ï¿½ 0 is falsy, shows Default";
+    // FIXED (bug #78): hasTemp uses explicit empty checks so 0 is valid.
+    const hasFalsy = /var hasTemp = settings\.temperature &&/.test(cfg);
+    const handlesZero = /settings\.temperature !== '' && settings\.temperature !== undefined/.test(cfg);
+    if(hasFalsy || !handlesZero) throw new Error("bug #78 not fixed: hasFalsy=" + hasFalsy + " handlesZero=" + handlesZero);
+    return "model-picker-config.js hasTemp uses explicit empty checks, so a 0 override shows 0.0 instead of Default";
   }
 });
 
 scenarios.push({
   id: 79,
-  name: "SettingsPersistence.Load does not strip UTF-8 BOM before JSON parse ï¿½ settings may be lost",
+  name: "SettingsPersistence.Load strips a UTF-8 BOM before parsing",
+  regression: true, // FIXED bug kept as a regression check (BOM'd settings files must load)
   mode: null,
   noApp: true,
   async body() {
     const sp=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsPersistence.ahk"),"utf8");
     const loadsRaw = /raw := FileRead\(path, "UTF-8"\)/.test(sp);
-    const stripsBOM = /Strip.*BOM|SubStr\(raw, 1, 1\) =/.test(sp) || /BOM/.test(sp);
+    const stripsBOM = /Chr\(0xFEFF\)/.test(sp) || /FEFF/.test(sp);
     const parsesDirect = /parsed := jsongo\.Parse\(raw\)/.test(sp);
-    if(!loadsRaw || !parsesDirect || stripsBOM) throw new Error("bug not reproduced loadsRaw="+loadsRaw+" parsesDirect="+parsesDirect+" stripsBOM="+stripsBOM);
-    return "SettingsPersistence.Load reads with FileRead UTF-8 and parses directly without stripping BOM ï¿½ BOM would cause parse failure";
+    if(!loadsRaw || !stripsBOM || !parsesDirect) throw new Error("bug #79 not fixed: loadsRaw=" + loadsRaw + " stripsBOM=" + stripsBOM + " parsesDirect=" + parsesDirect);
+    return "SettingsPersistence.Load strips a leading UTF-8 BOM (Chr(0xFEFF)) before jsongo.Parse, so BOM'd settings files load normally";
   }
 });
 
 scenarios.push({
   id: 80,
-  name: "ThreadRepo SoftDelete/Restore/Delete/Update do not escape threadId ï¿½ SQL injection via crafted id",
+  name: "ThreadRepo escapes threadId in mutators (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must not inject SQL)
   mode: null,
   noApp: true,
   async body() {
@@ -462,198 +505,221 @@ scenarios.push({
     const hasDirectSoft = /WHERE id='" threadId "'/.test(soft);
     const upd = tr.slice(tr.indexOf("static Update(threadId"), tr.indexOf("static Update(threadId")+800);
     const hasEscapeUpd = /SQLite\.Escape\(threadId\)/.test(upd);
-    if(hasEscapeSoft || !hasDirectSoft) throw new Error("bug not reproduced soft hasEscape="+hasEscapeSoft);
-    if(hasEscapeUpd) throw new Error("bug not reproduced update hasEscape");
-    return "ThreadRepo SoftDelete/Restore/Delete/Update use WHERE id='\" threadId \"' without SQLite.Escape ï¿½ crafted threadId with ' could inject";
+    if(!hasEscapeSoft || hasDirectSoft) throw new Error("bug #80 not fixed: soft escapes=" + hasEscapeSoft + " direct=" + hasDirectSoft);
+    if(!hasEscapeUpd) throw new Error("bug #80 not fixed: update escapes=" + hasEscapeUpd);
+    return "ThreadRepo SoftDelete/Restore/Delete/Update escape threadId (SQLite.Escape), so crafted ids cannot inject SQL";
   }
 });
 
 scenarios.push({
   id: 81,
-  name: "Branch _setupSiblingGroup UPDATE does not escape msg.id ï¿½ SQL injection via crafted message id",
+  name: "Branch _setupSiblingGroup escapes msg.id (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted message ids must not inject SQL)
   mode: null,
   noApp: true,
   async body() {
     const br=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","callbacks","Branch.ahk"),"utf8");
     const snippet = br.slice(br.indexOf("_setupSiblingGroup"), br.indexOf("_setupSiblingGroup")+800);
-    const hasEscape = /SQLite\.Escape(msg.id)/.test(snippet);
-    const hasDirect = /WHERE id='" msg.id "'/.test(snippet);
-    if(hasEscape || !hasDirect) throw new Error("bug not reproduced hasEscape="+hasEscape);
-    return 'Branch._setupSiblingGroup does UPDATE ... WHERE id=' + "'msg.id' without SQLite.Escape";
+    const hasEscape = /SQLite\.Escape\(msg\.id\)/.test(snippet);
+    const hasDirect = /WHERE id='" msg\.id "'/.test(snippet);
+    if(!hasEscape || hasDirect) throw new Error("bug #81 not fixed: hasEscape=" + hasEscape + " hasDirect=" + hasDirect);
+    return "Branch._setupSiblingGroup escapes msg.id (SQLite.Escape), so crafted message ids cannot inject SQL";
   }
 });
 
 scenarios.push({
   id: 82,
-  name: "Usage dashboard provider/model filter XSS ï¿½ option values not escaped",
+  name: "Usage dashboard filter dropdowns escape provider/model names (XSS fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: option values/labels must be escaped)
   mode: null,
   noApp: true,
   async body() {
     const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const hasEsc = /escHtml\(p\)/.test(dash) || /escHtml\(m\)/.test(dash);
-    const hasRaw = /provSel\.innerHTML \+=.*\'<option value="\'\+p\+/.test(dash);
-    if(hasEsc || !hasRaw) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRaw="+hasRaw);
-    return "usage-dashboard.js populateFilters does provSel.innerHTML += '<option value=\"'+p+'\">'+p without escHtml ï¿½ XSS via provider/model name";
+    const hasEsc = /escHtml\(p\)/.test(dash) && /escHtml\(m\)/.test(dash);
+    const hasRaw = /provSel\.innerHTML \+=.*'<option value="'\+p\+/.test(dash);
+    if(!hasEsc || hasRaw) throw new Error("bug #82 not fixed: hasEsc=" + hasEsc + " hasRaw=" + hasRaw);
+    return "usage-dashboard.js populateFilters escapes provider/model option values and labels (escHtml), so names render as inert text";
   }
 });
 
 scenarios.push({
   id: 83,
-  name: "Threadmap who XSS ï¿½ model name not escaped in nav list",
+  name: "Threadmap who label escapes the model name (XSS fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: model names in the nav list must be escaped)
   mode: null,
   noApp: true,
   async body() {
     const tm=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-threadmap.js"),"utf8");
     const hasEsc = /escHtml\(who\)/.test(tm);
     const hasRawWho = /item\.innerHTML =.*\+ who \+/.test(tm);
-    if(hasEsc || !hasRawWho) throw new Error("bug not reproduced hasEsc="+hasEsc+" hasRawWho="+hasRawWho);
-    return "chat-threadmap.js renderNavList does item.innerHTML = ... + who + ... without escHtml ï¿½ model name XSS";
+    if(!hasEsc || hasRawWho) throw new Error("bug #83 not fixed: hasEsc=" + hasEsc + " hasRawWho=" + hasRawWho);
+    return "chat-threadmap.js renderNavList escapes the who label (escHtml(who)), so model names render as inert text";
   }
 });
 
 scenarios.push({
   id: 84,
-  name: "ApiLogsViewer esc() does not escape single quote ï¿½ title attribute break",
+  name: "ApiLogsViewer esc() escapes single quotes (title attribute safe)",
+  regression: true, // FIXED bug kept as a regression check (security: esc must handle ')
   mode: null,
   noApp: true,
   async body() {
     const html=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","api-logs.html"),"utf8");
     const escBody = html.slice(html.indexOf("function esc(s)"), html.indexOf("function esc(s)")+500);
-    const missingSingle = /\[&<>"]/.test(escBody) && escBody.indexOf("&#39;") < 0;
-    if(!missingSingle) throw new Error("bug not reproduced");
-    return "webui/api-logs.html esc() missing single quote ï¿½ title attribute breaks on '";
+    const escapesQuote = /&#39;/.test(escBody);
+    const hasQuoteInRegex = /\[&<>"']/.test(escBody);
+    if(!escapesQuote || !hasQuoteInRegex) throw new Error("bug #84 not fixed: escapesQuote=" + escapesQuote + " hasQuoteInRegex=" + hasQuoteInRegex);
+    return "webui/api-logs.html esc() escapes single quotes (&#39;), so title attributes cannot be broken";
   }
 });
 
 scenarios.push({
   id: 86,
-  name: "FIM fallback renderMarkdown XSS ï¿½ md.render with html:true for non-chat content",
+  name: "FIM fallback renderMarkdown uses the html:false markdown renderer (XSS fixed)",
+  regression: true, // REFUTED as a duplicate of #57 (fixed in 05e2ccb); kept as a regression check for the FIM fallback path
   mode: null,
   noApp: true,
   async body() {
     const cc=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-core.js"),"utf8");
     const hasMdRender = /contentElement\.innerHTML = result/.test(cc) && /md\.render\(contentToRender\)/.test(cc);
-    const hasHtmlTrue = /markdownit\(\{[^}]*html: true/.test(require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","main.js"),"utf8"));
-    if(!hasMdRender || !hasHtmlTrue) throw new Error("bug not reproduced");
-    return "chat-core.js renderMarkdown does md.render(content) with html:true and innerHTML ï¿½ FIM fallback XSS same as #57";
+    const main=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","main.js"),"utf8");
+    const htmlSafe = /html: false/.test(main);
+    const htmlTrue = /markdownit\(\{[^}]*html: true/.test(main);
+    if(!hasMdRender || !htmlSafe || htmlTrue) throw new Error("bug #86/#57 not fixed: hasMdRender=" + hasMdRender + " htmlSafe=" + htmlSafe + " htmlTrue=" + htmlTrue);
+    return "chat-core.js renderMarkdown renders via the html:false md instance (fixed by #57), so FIM fallback content is inert";
   }
 });
 
 scenarios.push({
   id: 87,
-  name: "UsageRepo lastMonth SQL uses UTC date('now') while dashboard labels use local ï¿½ off by timezone",
+  name: "UsageRepo lastMonth filter uses local boundaries (matches local labels)",
+  regression: true, // FIXED bug kept as a regression check (lastMonth must use local calendar dates)
   mode: null,
   noApp: true,
   async body() {
     const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    const hasUTC = /date\('now', 'start of month'/.test(ur);
-    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const hasLocal = /getDateRangeLabels/.test(dash) && /new Date\(/.test(dash);
-    if(!hasUTC || !hasLocal) throw new Error("bug not reproduced");
-    return "UsageRepo _WhereDate lastMonth uses UTC date('now') while getDateRangeLabels uses local new Date() ï¿½ timezone mismatch";
+    const urBlock = ur.slice(ur.indexOf("static _WhereDate"), ur.indexOf("static _WhereDate")+1400);
+    const lastMonthUsesLocal = /dateColumn " >= '" lastMonthStart "' AND " dateColumn " < '" monthStart "'"/.test(urBlock);
+    const queryPassesLocal = /lastMonthStart := FormatTime\(DateAdd\(A_Now, -1/.test(ur);
+    if(!lastMonthUsesLocal || !queryPassesLocal) throw new Error("bug #87 not fixed: lastMonthUsesLocal=" + lastMonthUsesLocal + " queryPassesLocal=" + queryPassesLocal);
+    return "UsageRepo lastMonth filter uses local month boundaries (FormatTime/DateAdd), matching the dashboard labels";
   }
 });
 
 scenarios.push({
   id: 88,
-  name: "UsageRepo month (last 30 days) SQL uses UTC while dashboard uses local ï¿½ timezone mismatch",
+  name: "UsageRepo month (last 30 days) filter uses the local cutoff (matches dashboard)",
+  regression: true, // FIXED with bug #87 (local monthCutoff) - kept as a regression check
   mode: null,
   noApp: true,
   async body() {
     const ur=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    const has30UTC = /date\('now', '-30 days'\)/.test(ur);
-    const dash=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const has30Local = /days = 30/.test(dash) && /new Date/.test(dash);
-    if(!has30UTC || !has30Local) throw new Error("bug not reproduced");
-    return "UsageRepo _WhereDate month uses UTC date('now','-30 days') while dashboard month uses local today minus 30 days";
+    const monthBlock = ur.slice(ur.indexOf('if range = "month"'), ur.indexOf('if range = "month"')+220);
+    const usesLocal = /monthCutoff \? "'" monthCutoff "'"/.test(monthBlock);
+    const queryPassesLocal = /monthCutoff := FormatTime\(DateAdd\(A_Now, -29/.test(ur);
+    if(!usesLocal || !queryPassesLocal) throw new Error("bug #88 not fixed: usesLocal=" + usesLocal + " queryPassesLocal=" + queryPassesLocal);
+    return "UsageRepo month (last 30 days) filter uses the local cutoff (FormatTime/DateAdd), matching the dashboard labels";
   }
 });
 
 scenarios.push({
   id: 89,
-  name: "CurlBuilder API key with double quote breaks cURL Authorization header",
+  name: "CurlBuilder sanitizes the API key in the Authorization header (injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted keys must not break/inject the curl command)
   mode: null,
   noApp: true,
   async body() {
     const cb=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"api","CurlBuilder.ahk"),"utf8");
-    const hasBearer = /Authorization: Bearer.*providerInfo\.apiKey/.test(cb);
-    const escapes = /Escape.*apiKey/.test(cb) || /StrReplace.*apiKey.*"/.test(cb);
-    if(!hasBearer || escapes) throw new Error("bug not reproduced hasBearer="+hasBearer+" escapes="+escapes);
-    return "CurlBuilder interpolates apiKey into Authorization header without escaping double quote";
+    const hasSanitize = /_SafeApiKey/.test(cb);
+    const rawInterp = /Authorization: Bearer ' providerInfo\.apiKey '/.test(cb);
+    if(!hasSanitize || rawInterp) throw new Error("bug #89 not fixed: hasSanitize=" + hasSanitize + " rawInterp=" + rawInterp);
+    return "CurlBuilder sanitizes the API key (_SafeApiKey strips \\\" % & | < > ^) before embedding it in the Authorization header";
   }
 });
 
 scenarios.push({
   id: 90,
-  name: "SettingsService SaveFromWebView with empty data corrupts settings via string iteration",
+  name: "SettingsMerge.Override guards non-object incoming (settings safe)",
+  regression: true, // FIXED bug kept as a regression check (non-object payloads must not pollute settings)
   mode: null,
   noApp: true,
   async body() {
     const sm=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsMerge.ahk"),"utf8");
-    const hasOverrideLoop = /for k, v in incoming/.test(sm);
-    const checksIsMap = /if IsObject\(incoming\)/.test(sm);
-    if(!hasOverrideLoop || checksIsMap) throw new Error("bug not reproduced");
-    return "SettingsMerge.Override iterates over incoming without IsObject check ï¿½ empty string would iterate chars";
+    const overrideBlock = sm.slice(sm.indexOf("static Override"), sm.indexOf("static Override")+300);
+    const hasGuard = /if !IsObject\(incoming\)/.test(overrideBlock);
+    const rawIter = /for k, v in incoming/.test(overrideBlock) && !hasGuard;
+    if(!hasGuard || rawIter) throw new Error("bug #90 not fixed: hasGuard=" + hasGuard + " rawIter=" + rawIter);
+    return "SettingsMerge.Override guards non-object incoming payloads (IsObject), so a crafted empty-string payload cannot pollute settings";
   }
 });
 
 scenarios.push({
   id: 91,
-  name: "InputWindow validateInputAndHide treats \"0\" as empty ï¿½ !value falsy",
+  name: "InputWindow validateInputAndHide accepts '0' as valid input",
+  regression: true, // FIXED bug kept as a regression check ("0" must not be treated as empty)
   mode: null,
   noApp: true,
   async body() {
     const iw=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","InputWindow.ahk"),"utf8");
-    const hasFalsy = /if !this\.EditControl\.Value/.test(iw);
-    if(!hasFalsy) throw new Error("bug not reproduced");
-    return "InputWindow.validateInputAndHide does if !this.EditControl.Value ï¿½ \"0\" is falsy";
+    const block = iw.slice(iw.indexOf("validateInputAndHide"), iw.indexOf("validateInputAndHide")+300);
+    const usesTrim = /Trim\(this\.EditControl\.Value\) = ""/.test(block);
+    const falsyCheck = /if !this\.EditControl\.Value/.test(block);
+    if(!usesTrim || falsyCheck) throw new Error("bug #91 not fixed: usesTrim=" + usesTrim + " falsyCheck=" + falsyCheck);
+    return "InputWindow.validateInputAndHide treats only empty/whitespace as empty, so '0' is accepted";
   }
 });
 
 scenarios.push({
   id: 92,
-  name: "Models save ensureFullId ignores provider dropdown change when id already contains slash",
+  name: "Models ensureFullId rebuilds from the provider dropdown (prefix updated)",
+  regression: true, // FIXED bug kept as a regression check (selected provider must win over an embedded prefix)
   mode: null,
   noApp: true,
   async body() {
     const m=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","settings","sections","models.js"),"utf8");
-    const hasEnsure = /function ensureFullId\(id, provider\)/.test(m) && /if \(id\.indexOf\('\/'\) >= 0\) return id/.test(m);
-    if(!hasEnsure) throw new Error("bug not reproduced");
-    return "models.js ensureFullId returns id as-is when it contains '/', so changing provider dropdown does not update fullId";
+    const block = m.slice(m.indexOf("function ensureFullId"), m.indexOf("function ensureFullId")+300);
+    const stripsPrefix = /id = id\.slice\(slash \+ 1\)/.test(block);
+    const earlyReturn = /if \(id\.indexOf\('\/'\) >= 0\) return id/.test(block);
+    if(!stripsPrefix || earlyReturn) throw new Error("bug #92 not fixed: stripsPrefix=" + stripsPrefix + " earlyReturn=" + earlyReturn);
+    return "models.js ensureFullId rebuilds the full id from the provider dropdown (strips embedded prefix), so changing the provider updates the saved id";
   }
 });
 
 scenarios.push({
   id: 93,
-  name: "SettingsDefaults GetDefaults shallow copies Map values ï¿½ mutating snapshot corrupts pristine defaults",
+  name: "SettingsDefaults GetDefaults deep-clones snapshots (hardening)",
+  regression: true, // FIXED bug kept as a regression check (snapshot mutations must not corrupt pristine defaults)
   mode: null,
   noApp: true,
   async body() {
     const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
+    const doesDeep = /snapshot\[k\] := SettingsDefaults\._DeepClone\(v\)/.test(sd);
     const hasShallow = /snapshot\[k\] := v/.test(sd);
-    const doesDeep = /snapshot\[k\] := .*Clone/.test(sd);
-    if(!hasShallow || doesDeep) throw new Error("bug not reproduced hasShallow="+hasShallow+" doesDeep="+doesDeep);
-    return "SettingsDefaults.GetDefaults shallow copies _initialDefaults values ï¿½ nested Maps share reference";
+    if(!doesDeep || hasShallow) throw new Error("bug #93 not fixed: doesDeep=" + doesDeep + " hasShallow=" + hasShallow);
+    return "SettingsDefaults.GetDefaults deep-clones nested Maps/Arrays, so mutating a snapshot cannot corrupt the pristine defaults";
   }
 });
 
 scenarios.push({
   id: 94,
-  name: "SettingsDefaults _DefaultsAssistants generates new UUID each call ï¿½ defaults not stable",
+  name: "SettingsDefaults GetDefaults is stable after caching (UUID churn refuted)",
+  regression: true, // REFUTED: UUIDs are generated only when building defaults; after CacheInitialDefaults the cached snapshot is returned
   mode: null,
   noApp: true,
   async body() {
     const sd=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsDefaults.ahk"),"utf8");
-    const hasUUID = /SettingsPersistence\._UUID\(\)/.test(sd) && /_DefaultsAssistants/.test(sd);
-    if(!hasUUID) throw new Error("bug not reproduced");
-    return "SettingsDefaults._DefaultsAssistants calls SettingsPersistence._UUID() for each assistant id on every GetDefaults ï¿½ defaults have non-deterministic ids";
+    const caches = /CacheInitialDefaults\(\)/.test(sd) && /_initialDefaultsCaptured/.test(sd);
+    const cachedReturn = /snapshot := Map\(\)/.test(sd) && /_initialDefaults/.test(sd);
+    if(!caches || !cachedReturn) throw new Error("bug #94 not fixed: caches=" + caches + " cachedReturn=" + cachedReturn);
+    return "SettingsDefaults caches the pristine defaults at startup and GetDefaults returns the cached snapshot, so assistant ids are stable after caching (UUID churn refuted)";
   }
 });
 
 
 scenarios.push({
   id: 95,
-  name: "Usage dashboard model heading XSS — model id not escaped in section header",
+  name: "Usage dashboard model heading escapes the model id (XSS fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: model headings must be escaped)
   mode: null,
   noApp: true,
   async body() {
@@ -661,17 +727,18 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const dash=fs.readFileSync(path.join(launcher.REPO_ROOT,"webui","js","usage-dashboard.js"),"utf8");
-    const hasRawInner = /div\.innerHTML = .<h6>.+model/.test(dash);
     const sec = dash.slice(dash.indexOf("model-section"), dash.indexOf("model-section")+3000);
     const hasEsc = /escHtml\(model\)/.test(sec);
-    if(!hasRawInner || hasEsc) throw new Error("bug not reproduced hasRawInner="+hasRawInner+" hasEsc="+hasEsc);
-    return "usage-dashboard.js div.innerHTML = '<h6>'+model without escHtml — XSS";
+    const hasRawInner = /div\.innerHTML = .<h6>.+model \+/.test(sec);
+    if(!hasEsc || hasRawInner) throw new Error("bug #95 not fixed: hasEsc=" + hasEsc + " hasRawInner=" + hasRawInner);
+    return "usage-dashboard.js renderModelSections escapes the model heading (escHtml(model)), so model ids render as inert text";
   }
 });
 
 scenarios.push({
   id: 96,
-  name: "AttachmentRepo SQL injection via unescaped msgId",
+  name: "AttachmentRepo escapes msgId/threadId in every statement (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must stay literal)
   mode: null,
   noApp: true,
   async body() {
@@ -679,16 +746,27 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const ar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
-    const unsafe = /WHERE message_id='" msgId "'/.test(ar);
-    const hasEsc = /SQLite\.Escape\(msgId\)/.test(ar.slice(ar.indexOf("static Insert"), ar.indexOf("static Insert")+800));
-    if(!unsafe || hasEsc) throw new Error("bug not reproduced unsafe="+unsafe);
-    return "AttachmentRepo Insert/GetByMessage interpolates msgId without Escape";
+    const cd=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","ChatDB.ahk"),"utf8");
+    // FIXED (bug #96): every msgId/threadId literal is escaped.
+    const insertEsc = /static Insert\(msgId, attObj\)[\s\S]{0,900}SQLite\.Escape\(msgId\)/.test(ar);
+    const rawInsert = /VALUES\('" id "', '" msgId "'/.test(ar);
+    const getEsc = /static GetByMessage\(msgId\)[\s\S]{0,300}SQLite\.Escape\(msgId\)/.test(ar);
+    const getThreadEsc = /static GetByThread\(threadId\)[\s\S]{0,300}SQLite\.Escape\(threadId\)/.test(ar);
+    const delEsc = /static DeleteByMessage\(msgId\)[\s\S]{0,500}SQLite\.Escape\(msgId\)/.test(ar);
+    const copyEsc = /static CopyForMessage\(sourceMsgId, targetMsgId\)[\s\S]{0,400}SQLite\.Escape\(sourceMsgId\)[\s\S]{0,700}SQLite\.Escape\(targetMsgId\)/.test(ar);
+    const ftsSyncEsc = /static FTS_Sync\(msgId, content\)[\s\S]{0,400}SQLite\.Escape\(msgId\)/.test(cd);
+    const ftsRemoveEsc = /static FTS_Remove\(msgId\)[\s\S]{0,200}SQLite\.Escape\(msgId\)/.test(cd);
+    const rawWhere = /WHERE message_id='" msgId "'/.test(ar);
+    if(!insertEsc || rawInsert || !getEsc || !getThreadEsc || !delEsc || !copyEsc || !ftsSyncEsc || !ftsRemoveEsc || rawWhere)
+      throw new Error("bug #96 not fixed: insertEsc="+insertEsc+" rawInsert="+rawInsert+" getEsc="+getEsc+" getThreadEsc="+getThreadEsc+" delEsc="+delEsc+" copyEsc="+copyEsc+" ftsSyncEsc="+ftsSyncEsc+" ftsRemoveEsc="+ftsRemoveEsc+" rawWhere="+rawWhere);
+    return "AttachmentRepo/ChatDB escape msgId/threadId in Insert, GetByMessage, GetByThread, DeleteByMessage, CopyForMessage, FTS_Sync, FTS_Remove - crafted ids stay literal";
   }
 });
 
 scenarios.push({
   id: 97,
-  name: "SettingsPersistence.Save non-atomic FileDelete then FileAppend",
+  name: "SettingsPersistence.Save writes temp file then renames atomically (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (settings must never be deleted before write)
   mode: null,
   noApp: true,
   async body() {
@@ -696,15 +774,22 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sp=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsPersistence.ahk"),"utf8");
-    const hasPattern = /FileDelete\(path\)/.test(sp) && /FileAppend\(jsonStr, path/.test(sp);
-    if(!hasPattern) throw new Error("bug not reproduced");
-    return "SettingsPersistence.Save FileDelete then FileAppend non-atomic";
+    const saveBlock=sp.slice(sp.indexOf("static Save"), sp.indexOf("static Save")+1400);
+    // FIXED (bug #97): write to a temp file, then rename over the target.
+    const hasTempWrite = /tmpPath := path "\.tmp"/.test(saveBlock) && /FileOpen\(tmpPath, "w"/.test(saveBlock);
+    const hasAtomicMove = /FileMove\(tmpPath, path, 1\)/.test(saveBlock);
+    const deletesFirst = /FileDelete\(path\)/.test(saveBlock);
+    const appendsDirect = /FileAppend\(jsonStr, path/.test(saveBlock);
+    if(!hasTempWrite || !hasAtomicMove || deletesFirst || appendsDirect)
+      throw new Error("bug #97 not fixed: hasTempWrite="+hasTempWrite+" hasAtomicMove="+hasAtomicMove+" deletesFirst="+deletesFirst+" appendsDirect="+appendsDirect);
+    return "SettingsPersistence.Save writes settings.json.tmp then FileMove(tmpPath, path, 1) - a mid-write failure can no longer destroy the original settings.json";
   }
 });
 
 scenarios.push({
   id: 98,
-  name: "StreamHandler cancel leaks state — no cleanup after wasCancelled",
+  name: "StreamHandler cancel branch cleans up _stream state (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (cancel must not leak _stream* keys)
   mode: null,
   noApp: true,
   async body() {
@@ -712,19 +797,22 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sh=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamHandler.ahk"),"utf8");
-    const hasBug = /if wasCancelled\s*\{\s*\n?\s*_handleStreamCancelled\(\)\s*\n\s*return/.test(sh);
-    const hasCleanupBetween = /if wasCancelled[\s\S]*?_cleanupStreamState[\s\S]*?return/.test(sh.slice(sh.indexOf("if wasCancelled"), sh.indexOf("if wasCancelled")+500));
-    // More precise: block between wasCancelled and return should not contain cleanup
     const idx = sh.indexOf("if wasCancelled");
-    const block = sh.slice(idx, sh.indexOf("return", idx)+20);
-    const hasCleanupInBlock = /_cleanupStreamState/.test(block);
-    if(!hasBug || hasCleanupInBlock) throw new Error("bug not reproduced hasBug="+hasBug+" hasCleanupInBlock="+hasCleanupInBlock);
-    return "StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then return without _cleanupStreamState — leaks _stream* keys";
+    if (idx < 0) throw new Error("bug #98 regression: wasCancelled branch not found");
+    const branch = sh.slice(idx, sh.indexOf("return", idx)+20);
+    // FIXED (bug #98): the cancel branch must clean up _stream state before return.
+    const hasCancelHandler = /_handleStreamCancelled\(\)/.test(branch);
+    const hasCleanup = /_cleanupStreamState\(\)/.test(branch);
+    const cleanupBeforeReturn = branch.indexOf("_cleanupStreamState()") > 0 && branch.indexOf("_cleanupStreamState()") < branch.indexOf("return");
+    if(!hasCancelHandler || !hasCleanup || !cleanupBeforeReturn)
+      throw new Error("bug #98 not fixed: hasCancelHandler="+hasCancelHandler+" hasCleanup="+hasCleanup+" cleanupBeforeReturn="+cleanupBeforeReturn);
+    return "StreamHandler _finalizeStreaming wasCancelled branch calls _handleStreamCancelled then _cleanupStreamState before return - no _stream* keys leak into the next request";
   }
 });
 scenarios.push({
   id: 99,
-  name: "MessageRepo.Insert parent_id/sibling_group SQL injection via unescaped interpolation",
+  name: "MessageRepo.Insert escapes parent_id/sibling_group (SQL injection fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must stay literal)
   mode: null,
   noApp: true,
   async body() {
@@ -732,18 +820,23 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","MessageRepo.ahk"),"utf8");
+    // FIXED (bug #99): parent_id and sibling_group are escaped, including the
+    // active-path parent lookup inside Insert.
+    const parentEsc = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" SQLite\.Escape\(msgObj\.parent_id\) "'" : "NULL"/.test(mr);
+    const siblingEsc = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" SQLite\.Escape\(msgObj\.sibling_group\) "'" : "NULL"/.test(mr);
+    const parentLookupEsc = /SELECT active_path_tokens FROM messages WHERE id='" SQLite\.Escape\(msgObj\.parent_id\) "'/.test(mr);
     const parentRaw = /safeParent := msgObj\.HasProp\("parent_id"\) && msgObj\.parent_id \? "'" msgObj\.parent_id "'"/.test(mr);
     const siblingRaw = /safeSiblingGroup := msgObj\.HasProp\("sibling_group"\) && msgObj\.sibling_group \? "'" msgObj\.sibling_group "'"/.test(mr);
-    if (!parentRaw || !siblingRaw) throw new Error("bug not reproduced parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
-    const hasEsc = /SQLite\.Escape\(msgObj\.parent_id\)/.test(mr) || /SQLite\.Escape\(msgObj\.sibling_group\)/.test(mr);
-    if (hasEsc) throw new Error("already fixed");
-    return "MessageRepo.Insert builds safeParent/safeSiblingGroup without SQLite.Escape";
+    if(!parentEsc || !siblingEsc || !parentLookupEsc || parentRaw || siblingRaw)
+      throw new Error("bug #99 not fixed: parentEsc="+parentEsc+" siblingEsc="+siblingEsc+" parentLookupEsc="+parentLookupEsc+" parentRaw="+parentRaw+" siblingRaw="+siblingRaw);
+    return "MessageRepo.Insert escapes parent_id and sibling_group (and the active-path parent lookup), so crafted ids stay literal";
   }
 });
 
 scenarios.push({
   id: 100,
-  name: "LLMRequestBuilder._FixStreamBoolean naive StrReplace corrupts user content",
+  name: "LLMRequestBuilder._FixStreamBoolean is quote-aware (user content safe)",
+  regression: true, // FIXED bug kept as a regression check (boolean fix must not touch string values)
   mode: null,
   noApp: true,
   async body() {
@@ -751,15 +844,21 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const lb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","LLMRequestBuilder.ahk"),"utf8");
-    const hasFix = /static _FixStreamBoolean\(jsonStr\)/.test(lb) && /StrReplace\(jsonStr,.*stream/.test(lb);
-    if (!hasFix) throw new Error("bug not reproduced");
-    return "LLMRequestBuilder._FixStreamBoolean does global StrReplace stream 1->true";
+    const block=lb.slice(lb.indexOf("static _FixStreamBoolean"), lb.indexOf("static _FixStreamBoolean")+1400);
+    // FIXED (bug #100): no global StrReplace over the whole payload - the
+    // rewrite is quote-aware (scans outside string literals).
+    const naiveReplace = block.includes('StrReplace(jsonStr,');
+    const quoteAware = /inString/.test(block);
+    if(naiveReplace || !quoteAware)
+      throw new Error("bug #100 not fixed: naiveReplace="+naiveReplace+" quoteAware="+quoteAware);
+    return "LLMRequestBuilder._FixStreamBoolean scans outside JSON string literals (inString tracking), so user content containing stream/include_usage snippets can never be rewritten";
   }
 });
 
 scenarios.push({
   id: 101,
-  name: "SettingsApply._ApplyCommands _SetIfTruthy drops false for stream/isFIM",
+  name: "SettingsApply._ApplyCommands persists false/0/empty command values (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (clearing a command toggle must persist)
   mode: null,
   noApp: true,
   async body() {
@@ -767,16 +866,23 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sa=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    const hasHelper = /static _SetIfTruthy\(cmd, c, key\)/.test(sa) && /if c\.Has\(key\) && c\[key\]/.test(sa);
+    // FIXED (bug #101): the copy helpers assign whenever the key exists, so
+    // false/0/empty values survive the round-trip.
+    const truthyAssignsFalse = /static _SetIfTruthy\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
+    const truthyGuard = /static _SetIfTruthy\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\) && c\[key\]/.test(sa);
+    const nonZeroKeepsZero = /static _SetIfNonZero\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
+    const tagsKeepsEmpty = /static _SetIfNonEmptyTags\(cmd, c\)[\s\S]{0,400}if c\.Has\("tags"\) && IsObject\(c\["tags"\]\)\s*\n\s*cmd\.tags := c\["tags"\]/.test(sa);
     const callsTruthy = /_SetIfTruthy\(cmd, c, "stream"\)/.test(sa);
-    if (!hasHelper || !callsTruthy) throw new Error("bug not reproduced");
-    return "SettingsApply uses _SetIfTruthy for stream/isFIM — false dropped";
+    if(!truthyAssignsFalse || truthyGuard || !nonZeroKeepsZero || !tagsKeepsEmpty || !callsTruthy)
+      throw new Error("bug #101 not fixed: truthyAssignsFalse="+truthyAssignsFalse+" truthyGuard="+truthyGuard+" nonZeroKeepsZero="+nonZeroKeepsZero+" tagsKeepsEmpty="+tagsKeepsEmpty+" callsTruthy="+callsTruthy);
+    return "SettingsApply copy helpers assign whenever the key exists - stream/isFIM/showInputBox false, maxContextWords 0 and empty tags all survive the save round-trip";
   }
 });
 
 scenarios.push({
   id: 102,
-  name: "UsageRepo provider LIKE uses SQLite.Escape but not wildcard-escape %_",
+  name: "UsageRepo provider LIKE escapes % _ \\ wildcards (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (LIKE must match provider literally)
   mode: null,
   noApp: true,
   async body() {
@@ -784,17 +890,22 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const ur=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","UsageRepo.ahk"),"utf8");
-    const hasLike = /providerChatClause := providerFilter \? "AND model LIKE/.test(ur);
-    if (!hasLike) throw new Error("bug not reproduced");
-    const escapes = /StrReplace.*providerFilter.*%/.test(ur);
-    if (escapes) throw new Error("already escapes");
-    return "UsageRepo provider LIKE not escaping % _";
+    // FIXED (bug #102): the provider LIKE escapes \ % _ and declares ESCAPE '\'.
+    const usesEscapeLike = /_EscapeLike\(SQLite\.Escape\(providerFilter\)\)/.test(ur);
+    const hasEscapeClause = /providerChatClause := providerFilter \? "AND model LIKE '"/.test(ur) && ur.includes("ESCAPE '\\'");
+    const escapesBackslash = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "\\", "\\\\"\)/.test(ur);
+    const escapesPercent = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "%", "\\%"\)/.test(ur);
+    const escapesUnderscore = /static _EscapeLike\(value\)[\s\S]{0,300}StrReplace\(value, "_", "\\_"\)/.test(ur);
+    if(!usesEscapeLike || !hasEscapeClause || !escapesBackslash || !escapesPercent || !escapesUnderscore)
+      throw new Error("bug #102 not fixed: usesEscapeLike="+usesEscapeLike+" hasEscapeClause="+hasEscapeClause+" escapesBackslash="+escapesBackslash+" escapesPercent="+escapesPercent+" escapesUnderscore="+escapesUnderscore);
+    return "UsageRepo provider LIKE escapes \\ % _ and declares ESCAPE '\\' so a provider value containing wildcards is matched literally";
   }
 });
 
 scenarios.push({
   id: 103,
-  name: "TreeRepo.GetThreadStats pricingUnit picks first message model, not active model",
+  name: "TreeRepo.GetThreadStats resolves pricing from the active model (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (pricing must follow the active model, not the first message)
   mode: null,
   noApp: true,
   async body() {
@@ -802,9 +913,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    const hasFirst = /SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL.*LIMIT 1/.test(tr);
-    if (!hasFirst) throw new Error("bug not reproduced");
-    return "TreeRepo.GetThreadStats pricingUnit LIMIT 1 first model";
+    // FIXED (bug #103): pricing resolves from the active model (request ->
+    // thread override -> last assistant), never the first message.
+    const hasResolver = /_ResolvePricing\(threadId\)/.test(tr);
+    const resolvesRequest = /static _ResolvePricing\(threadId\)[\s\S]{0,300}requestParams\["singleAPIModelName"\]/.test(tr);
+    const resolvesOverride = /static _ResolvePricing\(threadId\)[\s\S]{0,600}model_override/.test(tr);
+    const resolvesLastAssistant = /static _ResolvePricing\(threadId\)[\s\S]{0,1200}role = "assistant"/.test(tr);
+    const firstModelQuery = /SELECT model FROM messages WHERE thread_id='" threadId "' AND model IS NOT NULL.*LIMIT 1/.test(tr);
+    if(!hasResolver || !resolvesRequest || !resolvesOverride || !resolvesLastAssistant || firstModelQuery)
+      throw new Error("bug #103 not fixed: hasResolver="+hasResolver+" resolvesRequest="+resolvesRequest+" resolvesOverride="+resolvesOverride+" resolvesLastAssistant="+resolvesLastAssistant+" firstModelQuery="+firstModelQuery);
+    return "TreeRepo.GetThreadStats pricingUnit uses _ResolvePricing (request model -> thread override -> last assistant on the active path) instead of the thread's first message";
   }
 });
 
@@ -814,7 +932,8 @@ scenarios.push({
 
 scenarios.push({
   id: 107,
-  name: "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants",
+  name: "TreeRepo._RecomputeActivePath keeps assistant prompt_tokens ground truth (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (recompute must not drop assistant prompt tokens)
   mode: null,
   noApp: true,
   async body() {
@@ -823,18 +942,22 @@ scenarios.push({
     const launcher=require("../launch");
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
     const defIdx=tr.indexOf("static _RecomputeActivePath");
-    const body=tr.slice(defIdx, defIdx+600);
-    const hasPrefix = body.includes('prev += msg.HasProp("token_count")');
-    const hasPrompt = body.includes("prompt_tokens");
-    if(!hasPrefix) throw new Error("bug not reproduced: no prev+= token_count");
-    if(hasPrompt) throw new Error("bug not reproduced: recompute handles prompt_tokens");
-    return "_RecomputeActivePath does prev+=token_count only — assistant prompt_tokens lost after delete/edit";
+    const body=tr.slice(defIdx, defIdx+700);
+    // FIXED (bug #107): assistants keep API ground truth (prompt + visible +
+    // thinking); other messages still prefix-sum.
+    const keepsPrompt = /msg\.role = "assistant" && msg\.prompt_tokens/.test(body);
+    const usesGroundTruth = /prev := msg\.prompt_tokens \+ msg\.token_count \+ msg\.thinking_tokens/.test(body);
+    const stillPrefixSums = /prev \+= msg\.token_count/.test(body);
+    if(!keepsPrompt || !usesGroundTruth || !stillPrefixSums)
+      throw new Error("bug #107 not fixed: keepsPrompt="+keepsPrompt+" usesGroundTruth="+usesGroundTruth+" stillPrefixSums="+stillPrefixSums);
+    return "_RecomputeActivePath keeps assistant prompt_tokens (+ visible + thinking) as ground truth and prefix-sums the rest, so Context Used no longer drops after delete/edit";
   }
 });
 
 scenarios.push({
   id: 108,
-  name: "main.js IPC fallback calls arbitrary window[target] without allowlist — XSS can invoke any global",
+  name: "main.js IPC routing uses an explicit allowlist (arbitrary window[target] removed)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted targets must not invoke globals)
   mode: null,
   noApp: true,
   async body() {
@@ -842,15 +965,20 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const main=fs.readFileSync(path.join(launcher.REPO_ROOT,"webui","js","main.js"),"utf8");
-    const hasFallback = /if \(typeof window\[target\] === .function.\)/.test(main) && /window\[target\]\(/.test(main);
-    if(!hasFallback) throw new Error("bug not reproduced: no window[target] fallback");
-    return "main.js default: case calls window[target](...data) for any undeclared target — arbitrary global invocation";
+    // FIXED (bug #108): no dynamic window[target] invocation - the legacy
+    // targets (updateTopbarTitle/updateBranchInfo) now have explicit cases.
+    const hasDynamicCall = /window\[target\]\(/.test(main);
+    const hasAllowlist = /case 'updateTopbarTitle':/.test(main) && /case 'updateBranchInfo':/.test(main);
+    if(hasDynamicCall || !hasAllowlist)
+      throw new Error("bug #108 not fixed: hasDynamicCall="+hasDynamicCall+" hasAllowlist="+hasAllowlist);
+    return "main.js handleWebMessage routes updateTopbarTitle/updateBranchInfo via explicit cases and never calls window[target], so a crafted IPC target cannot invoke arbitrary globals";
   }
 });
 
 scenarios.push({
   id: 109,
-  name: "Sidebar folderId and 15+ ChatDB call sites interpolate raw ids without SQLite.Escape",
+  name: "Sidebar and ChatDB escape remaining raw ids (SQL injection sweep complete)",
+  regression: true, // FIXED bug kept as a regression check (security: crafted ids must stay literal everywhere)
   mode: null,
   noApp: true,
   async body() {
@@ -858,23 +986,23 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sidebar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/callbacks/Sidebar.ahk"),"utf8");
-    const hasFolderRaw = sidebar.includes("DELETE FROM chat_folders WHERE id=''\" params[\"folderId\"] \"''\"") || sidebar.includes("params[\"folderId\"]") && sidebar.includes("DELETE FROM chat_folders");
-    // Simpler: check raw interpolation without SQLite.Escape
-    const hasUnescaped = /WHERE id=.\" threadId/.test(sidebar) || /WHERE id=.\" params\["folderId"\]/.test(sidebar);
-    const hasEscaped = /SQLite\.Escape\(params\["folderId"\]\)/.test(sidebar);
-    if(!sidebar.includes("params[\"folderId\"]") || hasEscaped) throw new Error("bug not reproduced: folderId escaped or not found");
-    // Also check MessageRepo still has 15+ unescaped
+    // FIXED (bug #109): every id interpolation is escaped.
+    const folderEsc = /DELETE FROM chat_folders WHERE id='" SQLite\.Escape\(params\["folderId"\]\) "'/.test(sidebar);
+    const threadEsc = /WHERE id='" SQLite\.Escape\(params\["threadId"\]\) "'/.test(sidebar);
     const mr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat/db/MessageRepo.ahk"),"utf8");
-    const unescapedCount = (mr.match(/WHERE id=.\" msgId/g) || []).length;
-    if(unescapedCount < 3) throw new Error("bug not reproduced: unescaped msgId count low "+unescapedCount);
-    return "Sidebar folderId raw + MessageRepo "+unescapedCount+" raw msgId WHERE id=''...'' — same class as #80/#99";
+    const rawMsgId = (mr.match(/WHERE id='" msgId "'/g) || []).length;
+    const escapedMsgId = (mr.match(/WHERE id='" SQLite\.Escape\(msgId\) "'/g) || []).length;
+    if(!folderEsc || !threadEsc || rawMsgId > 0 || escapedMsgId < 5)
+      throw new Error("bug #109 not fixed: folderEsc="+folderEsc+" threadEsc="+threadEsc+" rawMsgId="+rawMsgId+" escapedMsgId="+escapedMsgId);
+    return "Sidebar folderId/threadId and MessageRepo msgId sites all use SQLite.Escape - no raw id interpolation remains";
   }
 });
 
 
 scenarios.push({
   id: 110,
-  name: "Chat streaming temp files with API keys not deleted after success — credential leak in %TEMP%",
+  name: "Streaming deletes temp files on success and error (credential leak fixed)",
+  regression: true, // FIXED bug kept as a regression check (security: Bearer tokens must not linger in %TEMP%)
   mode: null,
   noApp: true,
   async body() {
@@ -882,20 +1010,22 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sc=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamCompletion.ahk"),"utf8");
-    const sh=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamHandler.ahk"),"utf8");
-    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,800}deleteTempFiles/.test(sc);
-    const hasDeleteOnCancel = /_handleStreamCancelled[\s\S]{0,400}deleteTempFiles/.test(fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamError.ahk"),"utf8"));
-    const buildsCurlWithKey = /providerInfo\.apiKey/.test(fs.readFileSync(path.join(launcher.REPO_ROOT,"api","CurlBuilder.ahk"),"utf8"));
-    if(hasDeleteOnSuccess) throw new Error("bug not reproduced: success deletes temp files");
-    if(!hasDeleteOnCancel) throw new Error("cancel should delete but missing");
-    if(!buildsCurlWithKey) throw new Error("CurlBuilder not building with apiKey");
-    return "StreamCompletion._handleStreamComplete does not call deleteTempFiles — cURL files with Bearer apiKey remain in TEMP after success";
+    const se=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamError.ahk"),"utf8");
+    // FIXED (bug #110): every terminal path deletes the temp files (which
+    // contain the Bearer token): success, error, and cancel.
+    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,2000}deleteTempFiles/.test(sc);
+    const hasDeleteOnError = /_handleStreamError[\s\S]{0,1200}deleteTempFiles/.test(se);
+    const hasDeleteOnCancel = /_handleStreamCancelled[\s\S]{0,400}deleteTempFiles/.test(se);
+    if(!hasDeleteOnSuccess || !hasDeleteOnError || !hasDeleteOnCancel)
+      throw new Error("bug #110 not fixed: hasDeleteOnSuccess="+hasDeleteOnSuccess+" hasDeleteOnError="+hasDeleteOnError+" hasDeleteOnCancel="+hasDeleteOnCancel);
+    return "StreamCompletion._handleStreamComplete and StreamError._handleStreamError now call deleteTempFiles (like the cancel path), so request/cURL files with the Bearer token never linger in %TEMP%";
   }
 });
 
 scenarios.push({
   id: 111,
-  name: "ApiLogger LogRequest non-atomic overwrite — crash mid-write corrupts log file",
+  name: "ApiLogger writes the log atomically via temp + rename (bug fixed)",
+  regression: true, // FIXED bug kept as a regression check (crash mid-write must not corrupt the log)
   mode: null,
   noApp: true,
   async body() {
@@ -903,17 +1033,20 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const al=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","ApiLogger.ahk"),"utf8");
-    const hasOverwrite = /FileOpen\(this\.logFilePath, "w"/.test(al) && /Write\(jsongo\.Stringify\(logs\)\)/.test(al);
-    const hasAtomic = /FileMove|FileAppend.*tmp|atomic/.test(al);
-    if(!hasOverwrite) throw new Error("bug not reproduced: no overwrite");
-    if(hasAtomic) throw new Error("already atomic");
-    return "ApiLogger.LogRequest does FileOpen w + Write without temp rename — crash corrupts log";
+    // FIXED (bug #111): writes go through a temp file + rename helper.
+    const hasAtomicHelper = /static _WriteLogs\(logs\)[\s\S]{0,600}FileMove\(tmpPath, this\.logFilePath, 1\)/.test(al);
+    const usesHelper = /this\._WriteLogs\(logs\)/.test(al);
+    const directOverwrite = /FileOpen\(this\.logFilePath, "w"[\s\S]{0,120}jsongo\.Stringify\(logs\)/.test(al);
+    if(!hasAtomicHelper || !usesHelper || directOverwrite)
+      throw new Error("bug #111 not fixed: hasAtomicHelper="+hasAtomicHelper+" usesHelper="+usesHelper+" directOverwrite="+directOverwrite);
+    return "ApiLogger.LogRequest/TrimToLimit write via temp file + FileMove (atomic), so a crash mid-write cannot corrupt LLM_API_Log.json";
   }
 });
 
 scenarios.push({
   id: 112,
-  name: "CurlBuilder does not validate empty endpoint — malformed cURL with no URL",
+  name: "CurlBuilder rejects empty endpoints (malformed cURL prevented)",
+  regression: true, // FIXED bug kept as a regression check (empty endpoint must not produce a URL-less cURL command)
   mode: null,
   noApp: true,
   async body() {
@@ -921,11 +1054,16 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const cb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","CurlBuilder.ahk"),"utf8");
-    const hasEndpointCheck = /if !providerInfo\.endpoint/.test(cb) || /if providerInfo\.endpoint = ""/.test(cb);
-    const buildsWithEndpoint = /providerInfo\.endpoint/.test(cb);
-    if(hasEndpointCheck) throw new Error("already validates endpoint");
-    if(!buildsWithEndpoint) throw new Error("no endpoint usage");
-    return "CurlBuilder.Build concatenates providerInfo.endpoint without empty check — empty endpoint yields POST with no URL";
+    const crb=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","ChatRequestBuilder.ahk"),"utf8");
+    // FIXED (bug #112): every builder returns "" when the endpoint is empty,
+    // and the chat request path surfaces a friendly "No endpoint configured".
+    const buildGuard = /static Build\(providerInfo, requestFile, outputFile\)[\s\S]{0,250}if !providerInfo\.endpoint\s*\n\s*return ""/.test(cb);
+    const streamGuard = /static BuildStream\(providerInfo, requestFile, outputFile, errorFile\)[\s\S]{0,250}if !providerInfo\.endpoint\s*\n\s*return ""/.test(cb);
+    const fimGuard = /if !endpoint\s*\n\s*return ""/.test(cb);
+    const friendlyError = /_ShowEndpointError\(providerInfo\)/.test(crb);
+    if(!buildGuard || !streamGuard || !fimGuard || !friendlyError)
+      throw new Error("bug #112 not fixed: buildGuard="+buildGuard+" streamGuard="+streamGuard+" fimGuard="+fimGuard+" friendlyError="+friendlyError);
+    return "CurlBuilder.Build/BuildStream/BuildFIM return '' for empty endpoints and ChatRequestBuilder surfaces a friendly 'No endpoint configured' error";
   }
 });
 

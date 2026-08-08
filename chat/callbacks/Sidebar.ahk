@@ -112,7 +112,7 @@ _HandleThreadAction(action, params) {
                 ChatDB.Thread_Update(params["threadId"], params["title"])
                 _postThreadListRefresh()
                 if activeThreadId = params["threadId"] {
-                    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" params["threadId"] "';")
+                    threadInfo := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='" SQLite.Escape(params["threadId"]) "';")
                     if threadInfo.count
                         chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
                 }
@@ -133,21 +133,21 @@ _HandleFolderAction(action, params) {
 
         case "renameFolder":
             if params.Has("folderId") && params.Has("name") {
-                ChatDB.db.Exec("UPDATE chat_folders SET name='" SQLite.Escape(params["name"]) "' WHERE id='" params["folderId"] "';")
+                ChatDB.db.Exec("UPDATE chat_folders SET name='" SQLite.Escape(params["name"]) "' WHERE id='" SQLite.Escape(params["folderId"]) "';")
                 _postThreadListRefresh()
             }
 
         case "deleteFolder":
             if params.Has("folderId") {
-                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=NULL WHERE folder_id='" params["folderId"] "';")
-                ChatDB.db.Exec("DELETE FROM chat_folders WHERE id='" params["folderId"] "';")
+                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=NULL WHERE folder_id='" SQLite.Escape(params["folderId"]) "';")
+                ChatDB.db.Exec("DELETE FROM chat_folders WHERE id='" SQLite.Escape(params["folderId"]) "';")
                 _postThreadListRefresh()
             }
 
         case "moveToFolder":
             if params.Has("threadId") && params.Has("folderId") {
-                fid := params["folderId"] = "__none__" ? "NULL" : "'" params["folderId"] "'"
-                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=" fid " WHERE id='" params["threadId"] "';")
+                fid := params["folderId"] = "__none__" ? "NULL" : "'" SQLite.Escape(params["folderId"]) "'"
+                ChatDB.db.Exec("UPDATE chat_threads SET folder_id=" fid " WHERE id='" SQLite.Escape(params["threadId"]) "';")
                 debugLog("[FOLDER] moveToFolder thread=" params["threadId"] " folderId=" params["folderId"])
                 _postThreadListRefresh()
             }

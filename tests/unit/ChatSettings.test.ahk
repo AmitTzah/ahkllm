@@ -379,4 +379,133 @@ class ChatSettingsTest {
             assistants := oldAsst
         }
     }
+
+    ; Regression (bug #35): a per-thread temperature override of 0 is valid.
+    ; ComputeEffective used a truthiness check and AHK treats numeric 0 as
+    ; falsy, so the 0 override was dropped and the assistant's temperature
+    ; (or nothing) was applied instead.
+    test_ThreadSettings_temperatureZeroOverrideWins() {
+        global assistants
+        oldAsst := assistants
+        assistants := [{
+            id: "asst-35a", name: "Eff Asst", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+        try {
+            row := {
+                assistantId: "asst-35a",
+                temperatureOverride: 0
+            }
+            eff := ThreadSettings.ComputeEffective(row, assistants[1])
+            if eff.temperature = "" || eff.temperature != 0
+                throw Error("temperature 0 override was dropped: '" eff.temperature "'")
+        } finally {
+            assistants := oldAsst
+        }
+    }
+
+    ; Regression (bug #35) end-to-end: restoring a thread whose
+    ; temperature_override column is 0 must put 0 back into requestParams
+    ; (the previous truthiness check dropped it, so the next request used the
+    ; model default).
+    test_restoreThreadSettings_temperatureZeroRestored() {
+        global requestParams, activeThreadId, assistants
+
+        this._openDb()
+
+        oldAsst := assistants
+        oldHasAsst := requestParams.Has("activeAssistantId")
+        oldAsstId := oldHasAsst ? requestParams["activeAssistantId"] : ""
+        assistants := [{ id: "asst-35b", name: "Asst", baseModel: "deepseek/test", systemMessage: "", systemMessageFile: "", reasoning: "", temperature: "" }]
+        threadId := ChatDB.Thread_Create("Temp Zero Thread")
+        ChatDB.Thread_UpdateSettings(threadId, { temperatureOverride: 0 })
+
+        try {
+            _restoreThreadSettings(threadId)
+
+            if !requestParams.Has("temperatureOverride") || requestParams["temperatureOverride"] = ""
+                throw Error("temperature 0 override was not restored: '" requestParams["temperatureOverride"] "'")
+            if requestParams["temperatureOverride"] != 0
+                throw Error("restored temperature is not 0: " requestParams["temperatureOverride"])
+        } finally {
+            ; Restore the state this test disturbed (restoring a thread with no
+            ; assistant deletes the activeAssistantId key, which other tests
+            ; assume exists).
+            assistants := oldAsst
+            if oldHasAsst
+                requestParams["activeAssistantId"] := oldAsstId
+            else if requestParams.Has("activeAssistantId")
+                requestParams.Delete("activeAssistantId")
+            this._closeDb()
+        }
+    }
+
+    ; Regression (bug #41): a thread created outside the sidebar newChat path
+    ; (tray "New Chat", command-line spawn) must still start with the
+    ; configured "New Chats Start With" default. The sidebar applies it at
+    ; creation; LoadThreadIntoUI now applies it to fresh (message-less,
+    ; settings-less) threads via _applyNewChatDefaultToFreshThread.
+    test_freshThread_GetsNewChatDefault() {
+        global requestParams, activeThreadId, assistants, newChatStartsWith, responseWindowFontSize
+
+        this._openDb()
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        oldFont := responseWindowFontSize
+        oldActive := activeThreadId
+        assistants := [{ id: "asst-41", name: "Default Asst", baseModel: "deepseek/deepseek-v4-pro", systemMessage: "default sys", reasoning: "high", temperature: "0.3" }]
+        newChatStartsWith := "asst:asst-41"
+        responseWindowFontSize := "19"
+        activeThreadId := ""
+
+        try {
+            threadId := ChatDB.Thread_Create("Tray New Chat")
+            applied := _applyNewChatDefaultToFreshThread(threadId)
+            if !applied
+                throw Error("fresh thread should apply the new-chat default")
+            s := ChatDB.Thread_GetSettings(threadId)
+            if s.assistantId != "asst-41"
+                throw Error("fresh thread should start with the default assistant, got '" s.assistantId "'")
+            if s.fontSize != 19
+                throw Error("fresh thread should get the default font size, got '" s.fontSize "'")
+        } finally {
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            responseWindowFontSize := oldFont
+            activeThreadId := oldActive
+            this._closeDb()
+        }
+    }
+
+    ; Regression (bug #41): a thread that already has stored settings must NOT
+    ; be re-defaulted when it is loaded.
+    test_configuredThread_IsNotReDefaulted() {
+        global requestParams, assistants, newChatStartsWith
+
+        this._openDb()
+        oldParams := requestParams
+        oldAsst := assistants
+        oldDefault := newChatStartsWith
+        assistants := [{ id: "asst-41", name: "Default Asst", baseModel: "deepseek/deepseek-v4-pro", systemMessage: "default sys", reasoning: "high", temperature: "0.3" }]
+        newChatStartsWith := "asst:asst-41"
+
+        try {
+            threadId := ChatDB.Thread_Create("Configured Thread")
+            ChatDB.Thread_UpdateSettings(threadId, { modelOverride: "openai/gpt-5-mini", fontSize: 21 })
+            applied := _applyNewChatDefaultToFreshThread(threadId)
+            if applied
+                throw Error("configured thread should not be re-defaulted")
+            s := ChatDB.Thread_GetSettings(threadId)
+            if s.modelOverride != "openai/gpt-5-mini" || s.fontSize != 21
+                throw Error("configured thread settings were overwritten")
+        } finally {
+            requestParams := oldParams
+            assistants := oldAsst
+            newChatStartsWith := oldDefault
+            this._closeDb()
+        }
+    }
 }

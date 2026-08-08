@@ -27,6 +27,80 @@ class SettingsHandlerTest {
         SettingsHandler.settingsPath := oldPath
     }
 
+    ; Regression (bug #79): a UTF-8 BOM before the JSON must not break loading.
+    Load_BomPrefix_StillParses() {
+        oldPath := SettingsHandler.settingsPath
+        SettingsHandler.settingsPath := this._tempPath()
+        FileAppend(Chr(0xFEFF) . '{"version":1,"trash":{"retentionDays":30}}', SettingsHandler.settingsPath, "UTF-8-RAW")
+        try {
+            result := SettingsHandler.Load()
+            if !result.Has("trash")
+                throw Error("BOM-prefixed settings should parse, got " Type(result))
+            if result["trash"]["retentionDays"] != 30
+                throw Error("expected retentionDays=30, got " result["trash"]["retentionDays"])
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(SettingsHandler.settingsPath)
+        }
+    }
+
+    ; Regression (bug #97): Save must be atomic - write a temp file in the same
+    ; directory, then rename it over settings.json, so a failure mid-write never
+    ; leaves the original deleted or half-written.
+    Save_IsAtomic() {
+        oldPath := SettingsHandler.settingsPath
+        target := A_Temp "\test_settings_atomic_" A_TickCount ".json"
+        tmp := target ".tmp"
+        SettingsHandler.settingsPath := target
+        try {
+            try FileDelete(target)
+            try FileDelete(tmp)
+            s := Map("version", 1, "trash", Map("retentionDays", 30))
+            if !SettingsHandler.Save(s)
+                throw Error("Save() should return true on success")
+            if !FileExist(target)
+                throw Error("settings.json should exist after Save()")
+            if FileExist(tmp)
+                throw Error("temp file should be renamed away after a successful Save()")
+            loaded := SettingsHandler.Load()
+            if !loaded.Has("trash") || loaded["trash"]["retentionDays"] != 30
+                throw Error("saved settings should load back with the expected values")
+            ; A second save must replace, not append to, the file.
+            s2 := Map("version", 2)
+            if !SettingsHandler.Save(s2)
+                throw Error("second Save() should return true")
+            loaded2 := SettingsHandler.Load()
+            if loaded2.Has("trash")
+                throw Error("second Save() should replace the file content (got leftover 'trash')")
+            if !loaded2.Has("version") || loaded2["version"] != 2
+                throw Error("second Save() should persist the new content")
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(target)
+            try FileDelete(tmp)
+        }
+    }
+
+    ; Regression (bug #97): when the write/move fails, Save returns false,
+    ; leaves no temp behind, and does not throw.
+    Save_FailureCleansTempAndReturnsFalse() {
+        oldPath := SettingsHandler.settingsPath
+        ; ':' is invalid in a Windows filename, so the temp write must fail.
+        target := A_Temp "\test_settings_bad:name.json"
+        SettingsHandler.settingsPath := target
+        try {
+            result := SettingsHandler.Save(Map("version", 1))
+            if result
+                throw Error("Save() should return false when the write fails")
+            if FileExist(target ".tmp")
+                throw Error("failed Save() should clean up its temp file")
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(target)
+            try FileDelete(target ".tmp")
+        }
+    }
+
     GetDefaults_HasAllTopLevelKeys() {
         defaults := SettingsHandler.GetDefaults()
         expectedKeys := ["version", "providers", "models", "assistants", "commands",
@@ -35,6 +109,144 @@ class SettingsHandlerTest {
         for _, k in expectedKeys {
             if !defaults.Has(k)
                 throw Error("GetDefaults() missing key: " k)
+        }
+    }
+
+    ; Regression (bug #93, hardening): GetDefaults must return an independent
+    ; copy - mutating the returned models Map must not corrupt future calls.
+    GetDefaults_ReturnsIndependentCopy() {
+        first := SettingsHandler.GetDefaults()
+        second := SettingsHandler.GetDefaults()
+        first["models"]["__test_poison__"] := Map("input", 1)
+        third := SettingsHandler.GetDefaults()
+        if third["models"].Has("__test_poison__")
+            throw Error("mutating a GetDefaults() snapshot corrupted the pristine defaults (bug #93)")
+        if second["models"].Has("__test_poison__")
+            throw Error("second snapshot shares the mutated map (bug #93)")
+    }
+
+    ; Regression (bug #61): clearing a UI field (empty string) must replace the
+    ; global instead of being skipped - otherwise the stale value survives
+    ; (banner text, input window background, response font).
+    ApplyUI_ClearedFieldsResetGlobals() {
+        global suspendBannerText, inputWindowBackground, responseWindowFontFace
+
+        oldSbText := suspendBannerText
+        oldIwBg := inputWindowBackground
+        oldFont := responseWindowFontFace
+
+        try {
+            SettingsApply._ApplyUI(Map(
+                "ui", Map(
+                    "responseFont", "",
+                    "responseFontSize", "",
+                    "inputWindow", Map("background", ""),
+                    "suspendBanner", Map("text", "")
+                )
+            ))
+            if suspendBannerText != ""
+                throw Error("clearing suspend banner text should empty the global, got '" suspendBannerText "'")
+            if inputWindowBackground != ""
+                throw Error("clearing input window background should empty the global, got '" inputWindowBackground "'")
+            if responseWindowFontFace != ""
+                throw Error("clearing response font should empty the global, got '" responseWindowFontFace "'")
+        } finally {
+            suspendBannerText := oldSbText
+            inputWindowBackground := oldIwBg
+            responseWindowFontFace := oldFont
+        }
+    }
+
+    ; Regression (bug #71, family #61): clearing Thread Title Generation fields
+    ; must reset the stale globals.
+    ApplyThreadTitles_ClearedFieldsResetGlobals() {
+        global titleGenModel, titleGenSystemPrompt, titleGenMaxTokens
+        oldModel := titleGenModel
+        oldPrompt := titleGenSystemPrompt
+        oldMax := titleGenMaxTokens
+        try {
+            SettingsApply._ApplyThreadTitles(Map(
+                "threadTitles", Map("model", "", "prompt", "", "maxTokens", "")
+            ))
+            if titleGenModel != ""
+                throw Error("clearing title-gen model should empty the global, got '" titleGenModel "'")
+            if titleGenSystemPrompt != ""
+                throw Error("clearing title-gen prompt should empty the global, got '" titleGenSystemPrompt "'")
+            if titleGenMaxTokens != ""
+                throw Error("clearing title-gen maxTokens should empty the global, got '" titleGenMaxTokens "'")
+        } finally {
+            titleGenModel := oldModel
+            titleGenSystemPrompt := oldPrompt
+            titleGenMaxTokens := oldMax
+        }
+    }
+
+    ; Regression (bug #74): explicitly clearing all provider prefixes must clear
+    ; providerMap (the old Count>0 guard kept the stale map).
+    ApplyProviders_ClearedPrefixesClearMap() {
+        global providers, providerMap
+        oldProviders := providers
+        oldMap := providerMap
+        try {
+            SettingsApply._ApplyProviders(Map(
+                "providers", Map(
+                    "openai", Map("displayName", "OpenAI", "endpoint", "https://x", "prefixes", []),
+                    "deepseek", Map("displayName", "DeepSeek", "endpoint", "https://y", "prefixes", [])
+                )
+            ))
+            if providerMap.Count != 0
+                throw Error("providerMap should be empty after all prefixes are cleared, got " providerMap.Count " entries")
+        } finally {
+            providers := oldProviders
+            providerMap := oldMap
+        }
+    }
+
+    ; Regression (bug #90): Override must ignore non-object incoming payloads.
+    Override_NonObjectIncoming_Ignored() {
+        result := SettingsMerge.Override("", Map("version", 1, "trash", Map("retentionDays", 30)))
+        if result.Has("1") || result.Has("2")
+            throw Error("non-object incoming must not iterate characters into the result")
+        if !result.Has("trash") || result["trash"]["retentionDays"] != 30
+            throw Error("base values should survive a non-object incoming")
+    }
+
+    ; Regression (bug #101): clearing a command toggle must persist - the copy
+    ; helpers must assign false/0/empty values, not skip them.
+    ApplyCommands_FalseAndZeroValuesPersist() {
+        global commands
+        oldCommands := commands
+        try {
+            cmdSettings := Map(
+                "commands", [
+                    Map(
+                        "commandName", "Test", "menuText", "Test",
+                        "stream", false, "isFIM", false, "showInputBox", false,
+                        "expandNewlines", false, "includeImageContext", false,
+                        "maxContextWords", 0, "tags", []
+                    )
+                ]
+            )
+            SettingsHandler.ApplyToGlobals(cmdSettings)
+            if commands.Length != 1
+                throw Error("expected 1 command, got " commands.Length)
+            cmd := commands[1]
+            if !cmd.HasOwnProp("stream") || cmd.stream != false
+                throw Error("stream=false should persist, got " (cmd.HasOwnProp("stream") ? cmd.stream : "(absent)"))
+            if !cmd.HasOwnProp("isFIM") || cmd.isFIM != false
+                throw Error("isFIM=false should persist, got " (cmd.HasOwnProp("isFIM") ? cmd.isFIM : "(absent)"))
+            if !cmd.HasOwnProp("showInputBox") || cmd.showInputBox != false
+                throw Error("showInputBox=false should persist, got " (cmd.HasOwnProp("showInputBox") ? cmd.showInputBox : "(absent)"))
+            if !cmd.HasOwnProp("expandNewlines") || cmd.expandNewlines != false
+                throw Error("expandNewlines=false should persist, got " (cmd.HasOwnProp("expandNewlines") ? cmd.expandNewlines : "(absent)"))
+            if !cmd.HasOwnProp("includeImageContext") || cmd.includeImageContext != false
+                throw Error("includeImageContext=false should persist, got " (cmd.HasOwnProp("includeImageContext") ? cmd.includeImageContext : "(absent)"))
+            if !cmd.HasOwnProp("maxContextWords") || cmd.maxContextWords != 0
+                throw Error("maxContextWords=0 should persist, got " (cmd.HasOwnProp("maxContextWords") ? cmd.maxContextWords : "(absent)"))
+            if !cmd.HasOwnProp("tags") || !IsObject(cmd.tags) || cmd.tags.Length != 0
+                throw Error("empty tags should persist, got " (cmd.HasOwnProp("tags") ? "non-empty/array" : "(absent)"))
+        } finally {
+            commands := oldCommands
         }
     }
 

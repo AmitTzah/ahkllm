@@ -11,6 +11,23 @@ class ChatUtilsTest {
         RegisterTestClass("ChatUtilsTest")
     }
 
+    _openDb() {
+        if ChatDB.isOpen {
+            oldPath := ChatDB.dbPath
+            ChatDB.Close()
+            try FileDelete(oldPath)
+        }
+        ChatDB.Open(A_Temp "\test_chat_utils_" A_TickCount ".db")
+    }
+
+    _closeDb() {
+        if ChatDB.isOpen {
+            dbPath := ChatDB.dbPath
+            ChatDB.Close()
+            try FileDelete(dbPath)
+        }
+    }
+
     ; --------------------
     ; cURLState — cURL PID management
     ; --------------------
@@ -135,6 +152,31 @@ class ChatUtilsTest {
         result := buildStructuredMessagesFromPath([msg])
         if result[1].createdAt != ""
             throw Error("Expected empty createdAt when missing, got '" result[1].createdAt "'")
+    }
+
+    ; Regression (bug #38): switching threads must update the chat window
+    ; title. Only the renameThread handler updated chatWindow.Title before, so
+    ; after renaming one thread and switching to another the title bar kept the
+    ; stale renamed title.
+    LoadThreadAndRefreshUI_UpdatesWindowTitle() {
+        global chatWindow, activeThreadId
+
+        this._openDb()
+        oldChatWindow := chatWindow
+        oldActiveThreadId := activeThreadId
+        chatWindow := { hWnd: 0, Hide: (*) => "", Title: "" }
+
+        try {
+            threadId := ChatDB.Thread_Create("Title Test Thread")
+            _LoadThreadAndRefreshUI(threadId, false)
+            expected := AppInfo.Name " - Title Test Thread"
+            if chatWindow.Title != expected
+                throw Error("window title not updated to the active thread: got '" chatWindow.Title "' expected '" expected "'")
+        } finally {
+            chatWindow := oldChatWindow
+            activeThreadId := oldActiveThreadId
+            this._closeDb()
+        }
     }
 
 }

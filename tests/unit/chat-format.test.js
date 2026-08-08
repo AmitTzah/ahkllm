@@ -147,6 +147,12 @@ describe('updateTokenUsage', () => {
         assert.doesNotThrow(() => ctx.updateTokenUsage({ activePathTokens: 0, contextWindow: 0 }));
         ctx.document.getElementById = origGetEl;
     });
+
+    it('tooltip label says Cumulative (bug #66)', () => {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'chat-format.js'), 'utf-8');
+        assert.ok(!src.includes('Culminative'), 'tooltip must not contain the misspelling Culminative');
+        assert.ok(src.includes('Cumulative Input/output token usage'), 'tooltip should read Cumulative...');
+    });
 });
 
 describe('showTokenUsageBar', () => {

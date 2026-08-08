@@ -369,6 +369,285 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #48): a fork must carry the token/cost stats - the
+    ; per-message active_path_tokens (context used) and the thread's
+    ; cumulative counters - so the fork's token bar does not reset to zero.
+    ForkThread_CopiesTokenStats() {
+        threadId := this._setup()
+        ChatDB.db.Exec("UPDATE chat_threads SET cumulative_input_tokens=10, cumulative_output_tokens=20, cumulative_cached_tokens=2, cumulative_cost=0.5, cumulative_input_cost=0.3, cumulative_cached_input_cost=0.01, cumulative_output_cost=0.2 WHERE id='" threadId "';")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1", token_count: 10})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, token_count: 20})
+        newId := ChatDB.Msg_ForkThread(threadId, u1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (token stats)")
+        row := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cost, active_leaf_id FROM chat_threads WHERE id='" newId "';")
+        if !row.count
+            throw Error("fork thread row missing")
+        if Integer(row[1, "cumulative_input_tokens"]) != 10
+            throw Error("fork should inherit cumulative_input_tokens=10, got " row[1, "cumulative_input_tokens"])
+        if Number(row[1, "cumulative_cost"]) != 0.5
+            throw Error("fork should inherit cumulative_cost=0.5, got " row[1, "cumulative_cost"])
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" row[1, "active_leaf_id"] "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 10
+            throw Error("fork leaf should keep active_path_tokens=10, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
+    ; Regression (bug #58): a fork must land in the source thread's folder.
+    ForkThread_CopiesFolder() {
+        threadId := this._setup()
+        ChatDB.db.Exec("UPDATE chat_threads SET folder_id='f-58' WHERE id='" threadId "';")
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (folder)")
+        row := ChatDB.db.Exec("SELECT folder_id FROM chat_threads WHERE id='" newId "';")
+        if !row.count || row[1, "folder_id"] != "f-58"
+            throw Error("Expected forked thread folder_id=f-58, got " (row.count ? row[1, "folder_id"] : "none"))
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
+    ; Regression (bug #62): a fork must inherit a temperature override of 0
+    ; (AHK treats 0 as falsy, so the old truthiness check dropped it).
+    ForkThread_CopiesTemperatureZero() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        ChatDB.Thread_UpdateSettings(threadId, { temperatureOverride: 0 })
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (temp 0)")
+        s := ChatDB.Thread_GetSettings(newId)
+        if s.temperatureOverride = "" || s.temperatureOverride != 0
+            throw Error("fork should inherit temperature override 0, got '" s.temperatureOverride "'")
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
+    ; Regression (bug #69): the LIKE fallback must escape %/_/\\ so searching for
+    ; a literal % does not match every message.
+    SearchMessages_LikeEscapesWildcards() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "50% done"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "plain text here"})
+        results := ChatDB.SearchMessages("%", threadId)
+        if results.Length != 1
+            throw Error("searching for % should match only the message containing it, got " results.Length)
+        if !InStr(results[1].contentPreview, "50% done")
+            throw Error("expected the %-containing message, got '" results[1].contentPreview "'")
+        this._teardown()
+    }
+
+    ; Regression (bug #80, security): thread mutators must escape threadId - a
+    ; crafted id with a single quote must not break or inject SQL.
+    ThreadMutators_EscapeThreadId() {
+        threadId := this._setup()
+        crafted := "bad'id"
+        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('bad''id', 'Crafted');")
+        try {
+            ChatDB.Thread_SoftDelete(crafted)
+            row := ChatDB.db.Exec("SELECT is_deleted FROM chat_threads WHERE id='bad''id';")
+            if !row.count || Integer(row[1, "is_deleted"]) != 1
+                throw Error("SoftDelete should target the crafted id literally")
+            ChatDB.Thread_Restore(crafted)
+            row := ChatDB.db.Exec("SELECT is_deleted FROM chat_threads WHERE id='bad''id';")
+            if !row.count || Integer(row[1, "is_deleted"]) != 0
+                throw Error("Restore should target the crafted id literally")
+            ChatDB.Thread_Update(crafted, "Renamed")
+            row := ChatDB.db.Exec("SELECT title FROM chat_threads WHERE id='bad''id';")
+            if row[1, "title"] != "Renamed"
+                throw Error("Update should target the crafted id literally")
+            ChatDB.Thread_Delete(crafted)
+            row := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM chat_threads WHERE id='bad''id';")
+            if Integer(row[1, "c"]) != 0
+                throw Error("Delete should target the crafted id literally")
+        } finally {
+            this._teardown()
+        }
+    }
+
+    ; Regression (bug #96, security): AttachmentRepo must escape msgId/threadId
+    ; and ChatDB FTS_Sync/FTS_Remove the same way - a crafted id with a single
+    ; quote must not break or inject SQL.
+    AttachmentRepo_EscapesMsgId() {
+        threadId := this._setup()
+        craftedMsgId := "bad'id"
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content) VALUES('bad''id', '" threadId "', 'user', 'attached content');")
+        try {
+            attId := ChatDB.Attachment_Insert(craftedMsgId, {
+                attachment_type: "text_file",
+                file_path: "tmp/nonexistent.bin",
+                mime_type: "text/plain",
+                original_filename: "note.txt",
+                file_size: 12,
+                extracted_text: "hello"
+            })
+            if !attId
+                throw Error("Attachment_Insert should return an id for a crafted msgId")
+            rows := ChatDB.Attachment_GetByMessage(craftedMsgId)
+            if rows.Length != 1 || rows[1].original_filename != "note.txt"
+                throw Error("GetByMessage should find the crafted-id attachment, got " rows.Length " rows")
+            ChatDB.Attachment_DeleteByMessage(craftedMsgId)
+            rows := ChatDB.Attachment_GetByMessage(craftedMsgId)
+            if rows.Length != 0
+                throw Error("DeleteByMessage should remove the crafted-id attachment, got " rows.Length " rows")
+
+            ; FTS sync/remove must also escape msgId (bug #96).
+            ChatDB.FTS_Sync(craftedMsgId, "content with a quote ' here")
+            ftsRow := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id='bad''id';")
+            if !ftsRow.count || Integer(ftsRow[1, "c"]) != 1
+                throw Error("FTS_Sync should index the crafted-id message, got " (ftsRow.count ? ftsRow[1, "c"] : "none"))
+            ChatDB.FTS_Remove(craftedMsgId)
+            ftsRow := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id='bad''id';")
+            if !ftsRow.count || Integer(ftsRow[1, "c"]) != 0
+                throw Error("FTS_Remove should remove the crafted-id message, got " (ftsRow.count ? ftsRow[1, "c"] : "none"))
+        } finally {
+            this._teardown()
+        }
+    }
+
+    ; Regression (bug #99, security): MessageRepo.Insert must escape parent_id
+    ; and sibling_group - a crafted id with a single quote must not break or
+    ; inject SQL (same class as #80/#81/#96).
+    Insert_EscapesParentIdAndSiblingGroup() {
+        threadId := this._setup()
+        craftedParent := "bad'parent"
+        craftedGroup := "sib'group"
+        try {
+            parentId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "parent", parent_id: craftedParent, sibling_group: craftedGroup})
+            if !parentId
+                throw Error("Msg_Insert should accept a crafted parent_id/sibling_group")
+            row := ChatDB.db.Exec("SELECT parent_id, sibling_group FROM messages WHERE id='" parentId "';")
+            if !row.count || row[1, "parent_id"] != craftedParent || row[1, "sibling_group"] != craftedGroup
+                throw Error("crafted parent_id/sibling_group should round-trip literally, got " (row.count ? row[1, "parent_id"] " / " row[1, "sibling_group"] : "none"))
+            ; A child with a crafted parent hits the active-path lookup too.
+            childId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "child", parent_id: craftedParent})
+            if !childId
+                throw Error("Msg_Insert child with crafted parent_id should succeed")
+            childRow := ChatDB.db.Exec("SELECT parent_id FROM messages WHERE id='" childId "';")
+            if !childRow.count || childRow[1, "parent_id"] != craftedParent
+                throw Error("child parent_id should round-trip literally")
+        } finally {
+            this._teardown()
+        }
+    }
+
+    ; Regression (bug #81, security): _setupSiblingGroup must escape msg.id.
+    Branch_SetupSiblingGroup_EscapesMsgId() {
+        srcPath := A_ScriptDir "\..\chat\callbacks\Branch.ahk"
+        src := FileRead(srcPath)
+        block := SubStr(src, InStr(src, "_setupSiblingGroup(msg) {"), 500)
+        if !InStr(block, "SQLite.Escape(msg.id)")
+            throw Error("_setupSiblingGroup must escape msg.id (bug #81)")
+    }
+
+    ; Regression (bug #70): FTS5 MATCH must quote terms so special characters
+    ; (e.g. C++) do not produce a syntax error / empty results.
+    SearchMessages_FTS5EscapesSpecialChars() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "I code C++ daily"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "plain text"})
+        results := ChatDB.SearchMessages("C++", threadId)
+        if results.Length = 0
+            throw Error("searching for C++ should return the C++ message, got 0 results")
+        found := false
+        for r in results {
+            if InStr(r.contentPreview, "C++")
+                found := true
+        }
+        if !found
+            throw Error("the C++ message was not found among the results")
+        this._teardown()
+    }
+
+    ; Regression (bug #63): a model with cachedInput="" must fall back to 10%
+    ; of the input price instead of showing 0 in the token-bar pricing unit.
+    GetThreadStats_CachedInputEmpty_FallsBackToTenPercent() {
+        global models, requestParams
+        threadId := this._setup()
+        testModel := "deepseek/test-empty-cached"
+        models[testModel] := {
+            provider: "deepseek", api: "openai-completions",
+            compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
+            thinkingLevelMap: Map("none", "none", "low", "low", "high", "high", "max", "max"),
+            thinkingOff: "disabled",
+            input: 1, cachedInput: "", output: 2, context: 1000000, reasoning: true, vision: false
+        }
+        ; Bug #103: pricing resolves from the ACTIVE model (request model
+        ; first) - make the test model active so its pricing drives the unit.
+        oldModel := requestParams["singleAPIModelName"]
+        try {
+            requestParams["singleAPIModelName"] := testModel
+            ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "hi", model: testModel})
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if Number(stats.pricingUnit.cachedInput) != 0.1
+                throw Error("cachedInput fallback should be 10% of input (0.1), got " stats.pricingUnit.cachedInput)
+        } finally {
+            requestParams["singleAPIModelName"] := oldModel
+            models.Delete(testModel)
+            this._teardown()
+        }
+    }
+
+    ; Regression (bug #64): active_path_tokens must include thinking tokens so
+    ; the header "Context Used" reflects the full context-window usage.
+    ActivePathTokens_IncludesThinkingTokens() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello", token_count: 10})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer", parent_id: uId, prompt_tokens: 20, token_count: 5, thinking_tokens: 7})
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" aId "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 32
+            throw Error("expected active_path_tokens = prompt(20) + visible(5) + thinking(7) = 32, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        this._teardown()
+    }
+
+    ; Regression (bug #107): _RecomputeActivePath must keep an assistant's API
+    ; ground truth (prompt + visible + thinking) instead of reducing it to a
+    ; pure prefix sum of visible tokens.
+    RecomputeActivePath_PreservesAssistantPromptTokens() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello", token_count: 10})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer", parent_id: uId, prompt_tokens: 100, token_count: 20})
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens, prompt_tokens FROM messages WHERE id='" aId "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 120
+            throw Error("setup: assistant active_path should be prompt(100)+visible(20)=120, got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        if !leaf.count || Integer(leaf[1, "prompt_tokens"]) != 100
+            throw Error("setup: assistant prompt_tokens should be persisted (bug #107), got " (leaf.count ? leaf[1, "prompt_tokens"] : "none"))
+        ; Simulate the structural-change recompute (delete/edit path).
+        TreeRepo._RecomputeActivePath(threadId)
+        leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" aId "';")
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 120
+            throw Error("recompute must keep prompt+visible (120), got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        this._teardown()
+    }
+
+    ; Regression (bug #109, security): the remaining repo paths must escape
+    ; crafted ids - SetActiveLeaf and HardDelete round-trip a crafted id with
+    ; a single quote instead of breaking the SQL.
+    RepoPaths_EscapeCraftedIds() {
+        this._setup()
+        craftedThread := "bad'thread"
+        craftedMsg := "bad'msg"
+        ChatDB.db.Exec("INSERT INTO chat_threads (id, title) VALUES('bad''thread', 'Crafted');")
+        ChatDB.db.Exec("INSERT INTO messages (id, thread_id, role, content) VALUES('bad''msg', 'bad''thread', 'user', 'hi');")
+        try {
+            ChatDB.Msg_SetActiveLeaf(craftedThread, craftedMsg)
+            row := ChatDB.db.Exec("SELECT active_leaf_id FROM chat_threads WHERE id='bad''thread';")
+            if !row.count || row[1, "active_leaf_id"] != craftedMsg
+                throw Error("SetActiveLeaf should target the crafted ids literally")
+            ; Hard delete the crafted message.
+            ChatDB.Msg_HardDelete(craftedMsg)
+            row := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages WHERE id='bad''msg';")
+            if !row.count || Integer(row[1, "c"]) != 0
+                throw Error("HardDelete should delete the crafted message literally")
+        } finally {
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Msg_Edit
     ; --------------------
@@ -462,26 +741,28 @@ class ChatDBTest {
     ; Cumulative counter persistence
     ; --------------------
 
-    HardDelete_PreservesCumulativeCounters() {
+    ; Regression (bug #65): hard-deleting a message must decrement the thread's
+    ; cumulative counters (they used to stay stale and forever inflated).
+    HardDelete_DecrementsCumulativeCounters() {
         threadId := this._setup()
         ChatDB.Msg_Insert({thread_id: threadId, role: "system", content: "sys"})
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Hello"})
         a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "Hi!", model: "deepseek-v4-flash", token_count: 15, cached_tokens: 0})
-        ; Capture cumulative counters before delete
-        threadRow := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
-        beforeIn := Integer(threadRow[1, "cumulative_input_tokens"])
+        threadRow := ChatDB.db.Exec("SELECT cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
         beforeOut := Integer(threadRow[1, "cumulative_output_tokens"])
+        if beforeOut != 15
+            throw Error("Expected cumulative output 15 before delete, got " beforeOut)
 
         ChatDB.Msg_HardDelete(a1Id)
 
-        ; Verify cumulative counters unchanged
         threadRow := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
         afterIn := Integer(threadRow[1, "cumulative_input_tokens"])
         afterOut := Integer(threadRow[1, "cumulative_output_tokens"])
-        if afterIn != beforeIn
-            throw Error("Cumulative input_tokens changed after delete: " beforeIn " -> " afterIn)
-        if afterOut != beforeOut
-            throw Error("Cumulative output_tokens changed: " beforeOut " -> " afterOut)
+        afterCached := Integer(threadRow[1, "cumulative_cached_tokens"])
+        if afterOut != 0
+            throw Error("Cumulative output_tokens should drop to 0 after delete, got " afterOut)
+        if afterIn != 0 || afterCached != 0
+            throw Error("Cumulative input/cached should be 0 after delete, got in=" afterIn " cached=" afterCached)
         this._teardown()
     }
 
@@ -1122,11 +1403,31 @@ class ChatDBTest {
             throw Error("Expected path: [user, assistant], got: [" path[1].role ", " path[2].role "]")
 
         this._teardown()
+
+    ; Regression (bug #55): _WalkToLeaf must descend to the NEWEST continuation
+    ; (the leaf the tree modal's _findDefaultLeaf picks), not the oldest child.
+    WalkToLeaf_PicksNewestContinuation() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello"})
+        aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "response", parent_id: uId})
+        oldId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "old follow-up", parent_id: aId})
+        oldLeaf := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "old answer", parent_id: oldId})
+        newId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "new follow-up", parent_id: aId})
+        newLeaf := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "new answer", parent_id: newId})
+
+        leafId := TreeRepo._WalkToLeaf(aId)
+        if leafId != newLeaf
+            throw Error("Expected _WalkToLeaf to pick the NEWEST continuation (" newLeaf "), got " leafId)
+
+        ChatDB.Thread_Delete(threadId)
+        this._teardown()
+    }
+
         ; Verify FTS5 works independently (not just LIKE fallback).
         ; FTS5 finds whole-word matches; LIKE finds substrings.
         ; Test: search for a whole word → FTS5 should find it.
         ; Then search for a substring → LIKE fallback should find it.
-        SearchMessages_FTS5_DirectMatch() {
+    SearchMessages_FTS5_DirectMatch() {
             threadId := this._setup()
             ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "the zebra crossed the road"})
     
@@ -1140,9 +1441,9 @@ class ChatDBTest {
             if results2.Length != 1
                 throw Error("Expected 1 LIKE fallback match for substring 'oss', got " results2.Length)
     
-            this._teardown()
-        }
-    
+        this._teardown()
+    }
+
         ; Regression: FTS5 MATCH must use proper quoting ('term' not bare term).
         ; SQLite.Escape escapes internal quotes but does NOT wrap in quotes.
         ; If we used SQLite.Escape directly, MATCH would see bare words as column names.

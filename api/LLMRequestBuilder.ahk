@@ -107,12 +107,69 @@ class LLMRequestBuilder {
     ; ----------------------------------------------------
     ; JSON Serialization Fix
     ; ----------------------------------------------------
+    ; jsongo serializes AHK booleans (true=1/false=0) as JSON 1/0, but some
+    ; APIs require real JSON booleans for stream/include_usage/include_thoughts.
+    ; The rewrite is QUOTE-AWARE: it walks the JSON and only rewrites these
+    ; key:value tokens outside string literals, so user content that merely
+    ; contains `"stream":1` (escaped inside a string) is never corrupted
+    ; (bug #100).
     static _FixStreamBoolean(jsonStr) {
-        jsonStr := StrReplace(jsonStr, '"stream":1', '"stream":true')
-        jsonStr := StrReplace(jsonStr, '"stream":0', '"stream":false')
-        jsonStr := StrReplace(jsonStr, '"include_usage":1', '"include_usage":true')
-        jsonStr := StrReplace(jsonStr, '"include_thoughts":1', '"include_thoughts":true')
-        return jsonStr
+        replacements := Map(
+            '"stream":1', '"stream":true',
+            '"stream":0', '"stream":false',
+            '"include_usage":1', '"include_usage":true',
+            '"include_thoughts":1', '"include_thoughts":true'
+        )
+        result := ""
+        i := 1
+        len := StrLen(jsonStr)
+        inString := false
+        while i <= len {
+            ch := SubStr(jsonStr, i, 1)
+            if inString {
+                result .= ch
+                if ch = "\" {
+                    ; Escaped character - copy it and the escaped char as-is.
+                    if i < len {
+                        result .= SubStr(jsonStr, i + 1, 1)
+                        i += 2
+                        continue
+                    }
+                } else if ch = '"' {
+                    inString := false
+                }
+                i += 1
+                continue
+            }
+            if ch = '"' {
+                ; Possible JSON key. Only rewrite when it is one of the target
+                ; keys followed by a whole 1/0 value (the next char must be a
+                ; JSON delimiter, so `"stream":10` is never mangled).
+                matched := false
+                for k, v in replacements {
+                    if SubStr(jsonStr, i, StrLen(k)) = k {
+                        after := SubStr(jsonStr, i + StrLen(k), 1)
+                        if after = "" || after = "," || after = "}" || after = "]" || after = " " || after = "`n" || after = "`r" || after = "`t" {
+                            result .= v
+                            i += StrLen(k)
+                            matched := true
+                            break
+                        }
+                    }
+                }
+                if matched
+                    continue
+                ; Not a target key - consume the whole string value (escaped
+                ; quotes included) so its contents are never rewritten.
+                inString := true
+                result .= ch
+                i += 1
+                continue
+            }
+            result .= ch
+            i += 1
+        }
+        return result
     }
 
     ; ----------------------------------------------------

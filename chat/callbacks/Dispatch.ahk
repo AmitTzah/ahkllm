@@ -116,6 +116,10 @@ _OnWebViewReady() {
     ; user opens Settings. Re-push on the ready handshake — the one point we
     ; know the page is listening.
     postAssistantsToWebView()
+    ; Bug #45: re-push the full merged settings so the page applies UI CSS
+    ; vars (ui-theme.js sets --chat-font-family from ui.responseFont) at
+    ; startup, without the user opening Settings.
+    _HandleRequestAllSettings()
     if activeThreadId
         _LoadThreadAndRefreshUI(activeThreadId)
 }
@@ -164,6 +168,10 @@ _HandleSaveSettings(parsed) {
         if merged {
             ; Push updated assistant list (and model list) to the chat sidebar
             postAssistantsToWebView()
+            ; Bug #45: re-push merged settings so UI CSS vars (e.g. the
+            ; response font) apply immediately after a save, without reopening
+            ; Settings.
+            _HandleRequestAllSettings()
             ; Refresh thinking levels for current model
             postCurrentSettingsToWebView()
             ; Notify Main process to reload

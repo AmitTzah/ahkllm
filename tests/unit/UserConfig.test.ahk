@@ -30,6 +30,32 @@ class UserConfigTest {
             throw Error("Expected empty string, got '" result "'")
     }
 
+    ; Regression (bug #72): UNC paths (\\server\share) are absolute and must be
+    ; used as-is - a candidate file with the same bare name in
+    ; default-settings/system-messages/ must NOT be picked up instead.
+    ResolveSystemMessage_UncPathUsedAsIs() {
+        candidate := A_ScriptDir "\..\default-settings\system-messages\unc-test-72.txt"
+        oldText := ""
+        if FileExist(candidate) {
+            oldText := FileRead(candidate, "UTF-8")
+        } else {
+            FileAppend("SHOULD NOT BE READ", candidate, "UTF-8")
+        }
+        try {
+            r := SystemMessageResolver.Resolve({ systemMessageFile: "\\server\share\unc-test-72.txt", systemMessage: "inline fallback" })
+            ; With the fix the UNC path is used as-is -> the candidate is not read.
+            if r.error = ""
+                throw Error("expected an error for a non-existent UNC file (candidate must not be used)")
+            if r.text != "inline fallback"
+                throw Error("expected the inline fallback, got '" r.text "'")
+        } finally {
+            if oldText = "" && FileExist(candidate)
+                FileDelete(candidate)
+            else if oldText != ""
+                FileOpen(candidate, "w", "UTF-8-RAW").Write(oldText)
+        }
+    }
+
     ResolveSystemMessage_FileTakesPrecedence() {
         ; Write a temp file and test that systemMessageFile overrides systemMessage
         tmpFile := A_Temp "\__test_system_message.txt"

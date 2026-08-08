@@ -16,7 +16,9 @@ function populateCurrentSettings(settings) {
     model: settings.model || '',
     systemMessage: settings.systemMessage || '',
     reasoning: settings.reasoning || '',
-    temperature: settings.temperature || '',
+    // Bug #78: 0 is a valid temperature override - only treat null/undefined
+    // as "not set".
+    temperature: settings.temperature == null ? '' : settings.temperature,
     fontSize: settings.fontSize || '17',
     assistantName: settings.assistantName || '',
     assistantBaseModel: settings.assistantBaseModel || '',
@@ -48,7 +50,9 @@ function populateCurrentSettings(settings) {
   var tempVal = document.getElementById('tempVal');
   var tempReset = document.getElementById('tempReset');
   if (tempSlider) {
-    var hasTemp = settings.temperature && settings.temperature !== '';
+    // Bug #78: 0 is a valid temperature override - use explicit empty checks
+    // instead of a truthiness check (0 is falsy in JS).
+    var hasTemp = settings.temperature !== '' && settings.temperature !== undefined && settings.temperature !== null;
     if (hasTemp) {
       tempSlider.value = settings.temperature;
       tempSlider.classList.remove('temp-default');

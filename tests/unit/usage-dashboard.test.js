@@ -181,6 +181,26 @@ describe('renderSummary', () => {
         assert.ok(ctx.document.getElementById('totalCalls').textContent !== undefined);
         assert.ok(ctx.document.getElementById('totalTokens').textContent !== undefined);
     });
+
+    it('counts command completion_tokens once (thinking already included, bug #52)', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [{
+                input_tokens: 10, output_tokens: 100, total_cost: 0, message_count: 1,
+                cached_input_cost: 0, input_cost: 0, output_cost: 0,
+                total_response_time_ms: 0, total_ttft_ms: 0
+            }],
+            commands: [{
+                prompt_tokens: 10, completion_tokens: 100, thinking_tokens: 40,
+                total_cost: 0, call_count: 1, cached_input_cost: 0, input_cost: 0,
+                output_cost: 0, total_response_time_ms: 0, total_ttft_ms: 0
+            }]
+        };
+        ctx.renderSummary();
+        // 110 (chat) + 110 (command, thinking already inside completion) = 220.
+        // Double-counting the command's thinking would yield 260.
+        assert.strictEqual(ctx.document.getElementById('totalTokens').textContent, '220');
+    });
 });
 
 describe('populateFilters', () => {
@@ -189,6 +209,45 @@ describe('populateFilters', () => {
         ctx.allData = { chat: [], commands: [], models: ['deepseek/deepseek-v4'], providers: ['deepseek'] };
         ctx.populateFilters();
         assert.ok(true);  // Doesn't throw
+    });
+
+    it('escapes provider/model option values and labels (bug #82)', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [], commands: [],
+            providers: ['deepseek', '"><img src=x onerror=window.__x=1>'],
+            models: ['deepseek-v4-flash', '"><svg onload=window.__y=1>']
+        };
+        ctx.populateFilters();
+        const provHTML = ctx.document.getElementById('providerFilter').innerHTML;
+        const modHTML = ctx.document.getElementById('modelFilter').innerHTML;
+        assert.ok(!provHTML.includes('"><img'), 'provider option must be escaped, got ' + provHTML);
+        assert.ok(!modHTML.includes('"><svg'), 'model option must be escaped, got ' + modHTML);
+        assert.ok(provHTML.includes('&lt;img'), 'escaped provider label should render as text');
+        assert.ok(modHTML.includes('&lt;svg'), 'escaped model label should render as text');
+    });
+});
+
+describe('renderModelSections XSS (bug #95)', () => {
+    it('escapes the model heading', () => {
+        const ctx = loadDashboardModule();
+        const container = ctx.document.getElementById('modelSections');
+        let appended = null;
+        container.appendChild = (child) => { appended = child; };
+        ctx.allData = {
+            chat: [{
+                date: '2026-08-07', model: '"><img src=x onerror=window.__h=1>',
+                provider: 'deepseek', output_tokens: 10, input_tokens: 5, message_count: 1,
+                total_cost: 0, cached_input_cost: 0, input_cost: 0, output_cost: 0,
+                total_response_time_ms: 0, total_ttft_ms: 0
+            }],
+            commands: [], models: [], providers: []
+        };
+        ctx.renderModelSections();
+        assert.ok(appended, 'model section should be appended');
+        const html = appended.innerHTML;
+        assert.ok(!html.includes('"><img'), 'model heading must be escaped, got ' + html);
+        assert.ok(html.includes('&lt;img'), 'model heading should render as escaped text');
     });
 });
 

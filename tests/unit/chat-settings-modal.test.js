@@ -72,6 +72,16 @@ describe('populateCurrentSettings', () => {
         assert.strictEqual(ctx.window._currentSettings.temperature, '');
     });
 
+    it('keeps a temperature override of 0 (bug #78)', () => {
+        const ctx = loadModule();
+        const settings = { model: '', systemMessage: '', reasoning: '', temperature: 0 };
+        ctx.populateCurrentSettings(settings);
+        assert.strictEqual(ctx.window._currentSettings.temperature, 0, 'stored temperature must stay 0');
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
+        assert.ok(!/settings\.temperature && settings\.temperature !== ''/.test(src), 'hasTemp must not treat 0 as falsy');
+        assert.ok(/settings\.temperature !== '' && settings\.temperature !== undefined/.test(src), 'hasTemp should use explicit empty checks');
+    });
+
     it('handles null settings gracefully', () => {
         const ctx = loadModule();
         assert.doesNotThrow(() => ctx.populateCurrentSettings(null));

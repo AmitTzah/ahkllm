@@ -37,7 +37,7 @@ class ApiLogger {
             logs.RemoveAt(logs.Length)
         }
 
-        FileOpen(this.logFilePath, "w", "UTF-8-RAW").Write(jsongo.Stringify(logs))
+        this._WriteLogs(logs)
     }
 
     ; Reads the log file and returns the entries array (newest first)
@@ -55,7 +55,26 @@ class ApiLogger {
             return
         while logs.Length > apiLogMaxEntries
             logs.RemoveAt(logs.Length)
-        FileOpen(this.logFilePath, "w", "UTF-8-RAW").Write(jsongo.Stringify(logs))
+        this._WriteLogs(logs)
+    }
+
+    ; Write the log array atomically (bug #111): write a temp file in the same
+    ; directory, then rename it over the target, so a crash mid-write never
+    ; leaves truncated JSON that ReadLogs fails to parse (same class as #97).
+    static _WriteLogs(logs) {
+        tmpPath := this.logFilePath ".tmp"
+        try {
+            f := FileOpen(tmpPath, "w", "UTF-8-RAW")
+            f.Write(jsongo.Stringify(logs))
+            f.Close()
+            ; FileMove's return value is unreliable in this AHK build (it can
+            ; be empty even on success), so verify success by file state.
+            FileMove(tmpPath, this.logFilePath, 1)
+            if FileExist(tmpPath) || !FileExist(this.logFilePath)
+                throw Error("FileMove failed: " tmpPath " -> " this.logFilePath)
+        } finally {
+            try FileDelete(tmpPath)
+        }
     }
 
     static ClearLogs() {

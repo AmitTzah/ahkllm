@@ -1,4 +1,4 @@
-﻿# Bug Hunt Report (living document)
+# Bug Hunt Report (living document)
 
 > **READ THIS FIRST.** This file is the single source of truth for open bugs. The harness
 > manual is `README.md` in this folder. Start here; resume from "Where we left off".
@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **62 verified, 3 reported, 0 fix applied, 0 fix in progress** (2026-08-07). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-07 — bug #33 FIXED and committed in 10549ec (clearing icon now correctly clears global, scenario 33 flipped to regression); next: bug #34 per rank order.
+- **Where we left off:** 2026-08-08 — ALL open bugs FIXED (bug #112 in 23d462c). The bug-hunt report is complete; scenarios remain as regression checks.
 ---
 
 ## Bug entry template
@@ -208,1267 +208,145 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-### 34. Tray icon changes don't apply until restart
-
-**Scenario:** 34 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Icons -> pick a different tray icon -> Save -> look at the
-system tray.
-
-**Expected:** the tray icon changes immediately (like the fixed Suspend-banner and
-Input-window settings that rebuild on every settings update).
-
-**Actual:** the tray keeps the old icon until the app is restarted. `TraySetIcon(iconOn)`
-runs once at Main startup (and again only when suspend is toggled); the
-`WM_SETTINGS_UPDATED` handler reloads globals, hotkeys, the suspend banner, and the
-input window, but never re-applies the tray icon.
-
-**Evidence:** `Main.ahk` startup `TraySetIcon(iconOn)`; the `WM_SETTINGS_UPDATED`
-OnMessage handler has no `TraySetIcon` call (visual â€” cannot be asserted by the
-headless harness, hence the static scenario).
-
-**Verification:** headless scenario 34 (noApp) statically scans `Main.ahk`:
-`TraySetIcon(iconOn)` exists at startup but not inside the `WM_SETTINGS_UPDATED`
-handler. Final visual confirmation requires a human looking at the tray after
-changing the icon.
-
-### 35. Temperature override of 0 is dropped when the thread reloads (right rail shows Default)
-
-**Scenario:** 35 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set the chat right-rail temperature slider to 0.0, then switch to
-another chat and back (or restart the app) and look at the temperature slider.
-
-**Expected:** the slider shows 0.0 and the next request uses temperature 0.
-
-**Actual:** the override is silently lost â€” the rail shows "Default" (slider 1.0)
-and requests use the model default. `_restoreThreadSettings` gates restoration
-with `if settings.temperatureOverride`, and AHK treats the numeric 0 as falsy, so
-the saved 0 override is never applied back to `requestParams`. A later right-rail
-save then overwrites `temperature_override` with NULL, wiping it permanently.
-
-**Evidence:** `chat/ChatSettings.ahk` `_restoreThreadSettings()`:
-`if settings.temperatureOverride requestParams["temperatureOverride"] := settings.temperatureOverride`;
-`chat/db/ThreadRepo.ahk` `GetSettings()` returns the raw numeric column
-(0 when set), and `_ClearRequestOverrides()` empties the override on every load.
-
-**Verification:** headless scenario 35 seeds a thread with
-`temperature_override = 0`, loads it in the real app, and observes the right-rail
-temperature shows "Default" / slider 1.0 instead of 0.0.
-
-### 36. Command temperature/reasoning are dropped when the command model equals the app default
-
-**Scenario:** 36 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a chat-mode command whose API Model is the app default
-(`deepseek/deepseek-v4-flash`), set a Temperature (e.g. 0) or a Thinking level,
-save, then trigger the command and watch the request.
-
-**Expected:** the command's temperature and thinking level are sent to the API.
-
-**Actual:** they are silently dropped. `processInitialRequest` persists
-per-thread settings (`temperatureOverride`, `reasoningOverride`, ...) only inside
-`if fullAPIModelName != appDefaultModel`, so a command using the default model
-never writes those overrides â€” the thread loads with defaults and the fired
-request uses the model default temperature and no thinking config. (The system
-message survives because it is stored as a system message row, not an override.)
-
-**Evidence:** `app/RequestProcessor.ahk` â€” `ChatDB.Thread_UpdateSettings(threadId,
-{ ... temperatureOverride: temperature, reasoningOverride: ... })` is nested in
-`if fullAPIModelName != appDefaultModel`.
-
-**Verification:** headless scenario 36 (noApp) statically scans
-`app/RequestProcessor.ahk` and asserts the temperature/reasoning overrides live
-inside the `!= appDefaultModel` gate â€” proving default-model commands skip them.
-
-### 37. Tray menu item changes don't apply until restart
-
-**Scenario:** 37 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Menu Items -> add/remove/rename a Tray item -> Save -> open
-the tray menu.
-
-**Expected:** the tray menu shows the new items immediately (the Quick Access
-submenu is rebuilt on every open).
-
-**Actual:** the tray keeps the startup entries until the app restarts. `Main.ahk`
-populates `A_TrayMenu` once at startup from `trayMenuItems`; the
-`WM_SETTINGS_UPDATED` handler reloads the globals but never rebuilds the tray menu.
-
-**Evidence:** `Main.ahk` `A_TrayMenu.Delete()` / `A_TrayMenu.Add(...)` at startup
-only; the `WM_SETTINGS_UPDATED` handler has no `A_TrayMenu` call.
-
-**Verification:** headless scenario 37 (noApp) statically scans `Main.ahk`:
-`A_TrayMenu.Add` exists at startup but not in the `WM_SETTINGS_UPDATED` handler.
-Final visual confirmation requires a human opening the tray after saving.
-
-### 38. Chat window title stays stale after renaming a thread and switching to another
-
-**Scenario:** 38 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open a chat, rename it from the sidebar (or the topbar rename button),
-then click a different chat in the sidebar and look at the window title bar.
-
-**Expected:** the title bar shows the active thread ("AhkLLM - <current title>").
-
-**Actual:** the title bar keeps the previously renamed thread's title.
-`chatWindow.Title` is only set at startup and in the `renameThread` handler
-(`chat/callbacks/Sidebar.ahk`); `_LoadThreadAndRefreshUI` never updates it, so
-switching threads leaves the stale title (and before any rename it just shows
-the generic app title).
-
-**Evidence:** `chat/ChatWindow.ahk` `responseWindow.Title := AppInfo.Name`;
-`chat/callbacks/Sidebar.ahk` `renameThread` sets `chatWindow.Title := AppInfo.Name " - " title`;
-`chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI()` never touches the window title.
-
-**Verification:** headless scenario 38 seeds two threads, renames the first via
-the sidebar, switches to the second, and probes the window title (WinGetTitle):
-the topbar shows the second thread's title while the window title still contains
-the renamed first thread's title.
-
-### 45. "Response Font" setting is not applied to chat messages until Settings is opened
-
-**Scenario:** 45 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings Ã¢â€ â€™ UI & Theme Ã¢â€ â€™ set Response Font to something other than
-Inter (e.g. Georgia) Ã¢â€ â€™ Save Ã¢â€ â€™ close Settings Ã¢â€ â€™ look at the message text.
-
-**Expected:** messages render in the configured font immediately, and keep it
-after every restart.
-
-**Actual:** messages keep the default font until the user opens Settings again.
-`ui-theme.js` applies `--chat-font-family` only inside `load()`, which runs when
-the Settings panel receives the full settings payload. At app start (and after a
-save until Settings is reopened) the WebView never receives the CSS var, so the
-saved Response Font is silently ignored.
-
-**Evidence:** `webui/js/settings/sections/ui-theme.js` sets
-`--chat-font-family` only in `load()`; `SettingsApply._ApplyUI` only updates the
-AHK global `responseWindowFontFace` Ã¢â‚¬â€ nothing applies it to the WebView.
-
-**Verification:** headless scenario 45 seeds `ui.responseFont: "Georgia"`,
-launches, loads a thread, and reads the computed font-family of a rendered
-message Ã¢â‚¬â€ it is the default Inter stack; after opening Settings it becomes
-Georgia.
-
-### 39. System-message modal silently clears a custom (unlisted) system-message file on Save
-
-**Scenario:** 39 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Commands -> select a command whose System Message uses a
-file NOT in the hardcoded App Defaults list (e.g. `default-settings/system-messages/my-prompt.txt`
-created in AppData per the UI hint) -> click Edit next to System Message -> click
-Save without changing anything -> look at the command's System Message label.
-
-**Expected:** the file reference is preserved (opening and saving a modal should
-never silently change the value).
-
-**Actual:** the file reference is cleared to empty and the label becomes
-"(none)". `populateSysMsgModal` sets `#smFileSelect` from the stored value, and
-the fallback only strips the directory prefix; the select's options are a
-hardcoded list of 7 app-default files (the "Your Files" optgroup is never
-populated), so any other file leaves `selectedIndex = -1` / `value = ""`. The
-Save handler writes `fileSelect.value` back, wiping `systemMessageFile`. The
-command then runs without its system prompt (falls back to empty inline).
-
-**Evidence:** `webui/js/settings/sections/sysmsg-modal.js` `populateSysMsgModal()`
-sets `fileSelect.value = opts.systemMessageFile` with a prefix-strip fallback and
-the Save handler does `sysMsgFile = fileSelect ? fileSelect.value : ''`;
-`webui/index.html` `#smFileSelect` contains only the app-default filenames.
-
-**Verification:** headless scenario 39 seeds a command with
-`systemMessageFile: "default-settings/system-messages/my-custom-prompt.txt"`, opens the modal
-(select ends with `selectedIndex=-1`), clicks Save, and observes the command's
-`systemMessageFile` becomes `""` and the label "(none)".
-
-### 41. Tray "New Chat" ignores the "New Chats Start With" default
-
-**Scenario:** 41 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set General -> New Chats Start With to an assistant (or model), then
-right-click the tray icon -> New Chat, and look at the chat's model/assistant.
-
-**Expected:** the new chat starts with the configured default (same as the
-sidebar "+ New Chat" button, which applies `_applyNewChatDefault()` and the
-default font size).
-
-**Actual:** the tray-created chat starts with the raw app-default model and no
-assistant. `Main.ahk`'s tray item calls `openChatWindow(ChatDB.Thread_Create())`
-directly; the loaded-thread path (`notifyLoadThread` -> `LoadThreadIntoUI` ->
-`_LoadThreadAndRefreshUI`) never calls `_applyNewChatDefault()` nor writes the
-default font size. Only `_HandleThreadAction`'s `newChat` case applies them.
-
-**Evidence:** `Main.ahk` `A_TrayMenu.Add("ðŸ“ New Chat", (*) => openChatWindow(ChatDB.Thread_Create()))`;
-`chat/ChatIPC.ahk` `LoadThreadIntoUI` / `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`
-contain no `_applyNewChatDefault` call; `chat/callbacks/Sidebar.ahk` `newChat`
-does.
-
-**Verification:** headless scenario 41 (noApp) statically scans `Main.ahk`,
-`Sidebar.ahk`, `ChatIPC.ahk`, and `ChatUtils.ahk`: the tray lambda creates the
-thread directly while the loader path never applies the start-with default.
-
-### 40. Refresh-models modal discards edits to a model id (stale `data-full-id` wins on Save)
-
-**Scenario:** 40 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Models -> Fetch Latest Models -> in the "Your Models"
-panel edit a model's id field -> Save.
-
-**Expected:** the edited id is saved to the models table.
-
-**Actual:** the edit is silently discarded. `saveRefresh()` reads
-`idEl.getAttribute('data-full-id') || idEl.value`; the `data-full-id` attribute
-was stamped when the row was built and is never updated as the user types, so it
-always wins over the visible (edited) value. Renames in the refresh modal are
-impossible.
-
-**Evidence:** `webui/js/settings/sections/models.js` `_rightRowHtml()` writes
-`data-full-id`; `saveRefresh()` reads `data-full-id` first; no input listener
-updates it.
-
-**Verification:** headless scenario 40 opens the refresh modal, changes the first
-row's id to "renamed-model-id", clicks Save, and observes the models table still
-shows the original id.
-
-### 46. Command "Stream Response" + pasteMode replace/append silently produces no output
-
-**Scenario:** 46 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a command with Paste Mode replace (or append) and Stream
-Response ON, then trigger it with a text selection.
-
-**Expected:** the response is pasted, or at least a clear error is shown.
-
-**Actual:** nothing is pasted and no error is shown. `LLMRequestBuilder.
-createJSONRequest` writes `"stream": true` into the request body whenever the
-command's stream flag is set, but `InlineRequestRunner` always executes the
-request with the single-shot `CurlBuilder.Build` and parses the whole output file
-as one JSON document (`jsongo.Parse` + `ResponseParser.ParseChatResponse`). A
-streaming API answers with SSE (`data:` lines), which cannot be parsed as one JSON
-document, so `success=false` and the response is silently discarded (only a debug
-log line is written).
-
-**Evidence:** `api/LLMRequestBuilder.ahk` `createJSONRequest()` Ã¢â‚¬â€
-`if stream { requestObj.stream := true }` with no pasteMode check;
-`app/InlineRequestRunner.ahk` `_BuildAndWriteRequest()` / `_ExecuteCurlAndParse()`
-use `CurlBuilder.Build` + `jsongo.Parse` with no SSE handling.
-
-**Verification:** headless scenario 46 (noApp) statically scans the three files
-and asserts the stream flag is added to the body for any pasteMode while the
-inline runner uses the non-streaming single-shot parse path (no SSEParser) Ã¢â‚¬â€
-proving a replace/append + stream command sends an SSE-mode request it cannot
-read back.
-
-### 49. Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)
-
-**Scenario:** 49 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** in a chat with an attachment, click Edit on the message, click the
-attachment's Ãƒâ€” (it hides), then click Cancel instead of Save/Branch.
-
-**Expected:** canceling an edit restores the attachment (or at least the removal
-is consistently applied or not â€” never half-applied).
-
-**Actual:** the attachment stays hidden in the UI while its DB row survives, so
-the next request still sends it to the API. `editMessage` sets
-`_editingMessageId` and starts `_removedAttachmentIds = []`; the attachment Ãƒâ€”
-handler defers deletion to the next Save (`_removedAttachmentIds.push(attId)` +
-`wrapper.style.display = 'none'`), but the Cancel handler only removes the
-`.editing` class â€” it neither applies the deferred deletion nor restores the
-hidden wrapper, and it leaves `_editingMessageId` truthy, so subsequent Ãƒâ€”
-clicks on any attachment also defer (hide) instead of deleting.
-
-**Evidence:** `webui/js/chat/chat-branching.js` `editMessage()` /
-`commitEdit()` and the cancel wiring (`bubble.classList.remove('editing')`
-only); `webui/js/chat/attachments/chat-attachments-setup.js`
-`setupMessageAttachmentDeleteDelegation()` defers when `_editingMessageId` is
-truthy.
-
-**Verification:** headless scenario 49 seeds a user message with an attachment,
-clicks Edit Ã¢â€ â€™ Ãƒâ€” (wrapper hides, DB row still present) Ã¢â€ â€™ Cancel, and observes
-the wrapper stays hidden, the DB row is still there, and `_editingMessageId`
-remains set.
-
-### 48. Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)
-
-**Scenario:** 48 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open a chat with some token/cost history (token bar shows context
-used and a running cost), click Fork on a message, and look at the forked
-chat's token bar.
-
-**Expected:** the fork reflects the copied conversation â€” at least the active
-path's context tokens, and ideally the totals.
-
-**Actual:** the fork's token bar resets to 0 / $0.00. `TreeRepo.ForkThread`
-copies message rows but neither the thread's `cumulative_*` counters nor the
-leaf's `active_path_tokens`, and it never calls `_RecomputeActivePath` on the
-new thread â€” so `GetThreadStats` reads zeros.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `ForkThread()`/`_InsertForkMessage()` â€”
-no `active_path_tokens` column in the INSERT and no `_RecomputeActivePath`
-call; `ThreadRepo.Create()` starts cumulative counters at 0.
-
-**Verification:** headless scenario 48 seeds a thread with token stats
-(`active_path_tokens` + cumulative counters), confirms the source token bar
-shows them, forks from the UI, and observes the fork's token bar shows $0.00
-and the new thread's leaf `active_path_tokens` is 0.
-
-### 52. Usage dashboard double-counts thinking tokens for command usage
-
-**Scenario:** 52 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** run an inline command (pasteMode replace/append) or a title-gen call
-with a reasoning model that reports thinking tokens, then open Usage Dashboard
-and look at Total Tokens or the per-model Output chart.
-
-**Expected:** each generated token is counted once, and identical usage counts
-identically for chat vs commands.
-
-**Actual:** command output tokens are counted twice when thinking is present.
-The command-usage rows store `completion_tokens` as the FULL completion
-(`ResponseParser` returns the raw `completion_tokens`, which include reasoning
-tokens for OpenAI-style models, or the Gemini-inflated `total - prompt`) plus a
-separate `thinking_tokens` column; `renderSummary` then computes
-`cmdOutput = completion_tokens + thinking_tokens` and `renderModelSections`
-does the same, so thinking tokens are added twice. Chat rows are stored as
-`output_tokens` (already full, incl. thinking) and counted once â€” the same
-100-token response with 40 thinking tokens is counted as 100 for chat and 140
-for commands.
-
-**Evidence:** `webui/js/usage-dashboard.js` `renderSummary()` (`cmdOutput =
-(c.completion_tokens||0) + (c.thinking_tokens||0)`) and `renderModelSections()`
-(same); `api/ResponseParser.ahk` `ParseChatResponse()` (completionTokens =
-full); `app/InlineRequestRunner.ahk` `_PasteAndLogResponse()` /
-`_ExtractUsage()`; `chat/ThreadTitleGen.ahk` `_TitleGen_TrackUsage()`.
-
-**Verification:** headless scenario 52 seeds one chat row and one command row
-with identical usage (prompt 10, completion 100, thinking 40) and opens the
-dashboard: Total Tokens shows 260 (command counted as 140) instead of 220.
-
-### 53. Dashboard "Last 24 Hours" spans two calendar days â€” the summary counts yesterday while the chart only plots today
-
-**Scenario:** 53 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open Usage Dashboard, select "Last 24 Hours", and compare the
-summary with the chart when there was usage both yesterday and today.
-
-**Expected:** the chart and summary cover the same window.
-
-**Actual:** the SQL filter is `date >= date('now', '-1 day')` â€” yesterday's
-00:00 UTC through now, i.e. up to ~48 hours â€” so the summary sums BOTH
-yesterday's and today's rows, while `getDateRangeLabels('day')` produces a
-single "today" label and the chart only plots today's rows. The summary
-therefore always over-reports vs the chart for this range.
-
-**Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate()` (`"day"` returns
-`date >= date('now', '-1 day')`); `webui/js/usage-dashboard.js`
-`getDateRangeLabels()` (`day` Ã¢â€ â€™ 1 label) and `renderMainChart()` /
-`renderSummary()`.
-
-**Verification:** headless scenario 53 seeds usage rows for yesterday and
-today and opens the dashboard with "Last 24 Hours": the summary shows $4.00
-(both days) while the chart has exactly 1 label (today only).
-
-**Note:** same UTC-vs-local root as #87 (Last Month) and #88 (Last 30 Days) — `_WhereDate` uses UTC `date('now')` while `getDateRangeLabels` uses local `new Date()`. Fix all three together.
-
-### 55. Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest (header shows the stale branch's context)
-
-**Scenario:** 55 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** in a chat, branch from the same assistant message twice (two
-different follow-ups created at different times), then use the branch-nav
-arrows (or a search result) to switch to that branch; compare the header's
-Context Used with what the tree modal shows for the same node.
-
-**Expected:** switching to a branch lands on its newest continuation (the same
-leaf the tree modal navigates to), so the header's Context Used reflects that
-branch's latest state.
-
-**Actual:** the branch switch (and search navigation) descend via
-`TreeRepo._WalkToLeaf`, which picks the FIRST child by `ORDER BY created_at
-LIMIT 1` â€” the OLDEST continuation â€” while the tree modal's `_findDefaultLeaf`
-picks `children[children.length - 1]` (the newest). The header then shows the
-stale branch's Context Used, disagreeing with the tree modal.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_WalkToLeaf()` (`ORDER BY created_at
-LIMIT 1`); `webui/js/chat/chat-tree-modal.js` `_findDefaultLeaf()`
-(`children[children.length - 1]`).
-
-**Verification:** headless scenario 55 seeds a message with an old and a new
-continuation (context 70 vs 95) plus a sibling branch, switches branches with
-the nav arrows, and observes Context Used shows 70 (oldest); clicking the same
-node in the tree modal navigates to 95 (newest).
-
-### 56. Stopping a stream before the first token shows an error banner instead of a clean cancel
-
-**Scenario:** 56 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a message to a slow model and press Stop (or Esc) before any
-content or reasoning token has arrived.
-
-**Expected:** a user-initiated cancellation is reported as cancelled â€” no error
-banner.
-
-**Actual:** the UI shows the generic failure banner "Request failed. Check your
-API key and try again." `_finalizeStreaming` checks "no content AND no
-reasoning" FIRST and routes that case to `_handleStreamError`; the
-`_streamCancelled` flag is only consulted after that check. A Stop that lands
-before the first token therefore looks exactly like a connection failure.
-
-**Evidence:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming()` â€” the
-empty-content branch (`_handleStreamError()`) precedes the `wasCancelled`
-check; `chat/streaming/StreamError.ahk` `_handleStreamError()` falls back to
-the generic API-key message when stderr is empty.
-
-**Verification:** headless scenario 56 (noApp) statically scans
-`StreamHandler.ahk` and asserts the empty-content error branch runs before the
-`_streamCancelled` branch and that the fallback error text blames the API key.
-
-### 57. Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)
-
-**Scenario:** 57 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** have a model respond with (or paste into a message) HTML such as
-`<img src="x" onerror="...">` and view the message.
-
-**Expected:** message content is displayed as inert text; HTML from the model
-or pasted input must not execute.
-
-**Actual:** `markdown-it` is configured with `html: true` and every message /
-streamed chunk is fed straight into `md.render()` without escaping or
-sanitizing, so inline event handlers execute in the WebView. Because the page
-has access to `window.chrome.webview.postMessage`, a malicious model response
-or pasted message can drive app actions (send messages, change settings, etc.).
-
-**Evidence:** `webui/js/main.js` `markdownit({ html: true, ... })`;
-`webui/js/chat/chat-render.js` `createMessageBubble()` (`md.render(msg.content
-|| '')`); `webui/js/chat/stream.js` `onStreamContent()` /
-`_finalizeStreamContent()`; no CSP or sanitizer anywhere in `webui/`.
-
-**Verification:** headless scenario 57 seeds an assistant message containing
-`<img src="x" onerror="window.__xssPwned = 1">`, loads the thread, and observes
-`window.__xssPwned === 1` â€” the handler executed.
-
-### 58. Forking a chat drops the thread's folder (the copy lands in Unfiled)
-
-**Scenario:** 58 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** put a chat in a folder, click Fork on a message, and look at the
-sidebar.
-
-**Expected:** the forked copy appears in the same folder as its source (like
-the other copied thread-level settings).
-
-**Actual:** the fork is created with `folder_id = NULL` and appears under
-Unfiled. `TreeRepo._CopyThreadSettings` copies model/system/reasoning/
-temperature/assistant but never `folder_id`.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` (no `folder_id`
-UPDATE); `ThreadRepo.Create()` inserts a thread without a folder.
-
-**Verification:** headless scenario 58 seeds a folder + a thread inside it,
-forks from the UI, and queries the new thread's `folder_id` â€” it is NULL
-(Unfiled) instead of the source folder.
-
-
-### 61. Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear] ï¿½ stale global survives
-
-**Scenario:** 61 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> UI -> Suspend Banner -> clear "Text" (or Input Window Background, or Response Font) -> Save -> observe banner / window / font.
-
-**Expected:** clearing the field resets to the default / empty state (banner shows no text, input window uses default background, font falls back).
-
-**Actual:** the banner still shows the old text, input window keeps the old background color, and Response Font keeps the old face. `SettingsApply._ApplySuspendBanner` (and `_ApplyInputWindow` / `_ApplyUI`) only assign the global when the saved value is non-empty (`!= ""`), so saving "" leaves the previous global value in place. Same root cause as bug #33 (icons).
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplySuspendBanner` `if sb.Has("text") && sb["text"] != ""`, `_ApplyInputWindow` `if iw.Has("background") && iw["background"] != ""`, `_ApplyUI` `if u.Has("responseFont") && u["responseFont"] != ""`.
-
-**Verification:** headless scenario 61 (noApp) statically checks SettingsApply.ahk — the three guards use != "" and no fallback assignment exists. Same pattern as #71 (`_ApplyThreadTitles`). Fix together by assigning the empty value (clear) instead of skipping.
-
-### 62. Forking a chat with temperature 0 drops the override (reset to Default)
-
-**Scenario:** 62 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set per-thread temperature to 0 (right-rail slider), then click Fork on any message and inspect the forked thread.
-
-**Expected:** the fork inherits temperature 0.
-
-**Actual:** the fork shows Default (1.0). `TreeRepo._CopyThreadSettings` copies `temperature_override` only when `if settings.temperatureOverride` is truthy; in AHK 0 is falsy, so a 0 override is never copied. Same class of bug as #35 (restore path) and #44 (font size).
-
-**Evidence:** `chat/db/TreeRepo.ahk` `_CopyThreadSettings()` `if settings.temperatureOverride` guard; `ThreadRepo.GetSettings()` returns 0 for the source.
-
-**Verification:** headless scenario 62 (noApp) statically asserts the truthiness guard exists and that no `!= ""` check handles 0.
-
-### 63. Token-bar pricing unit shows 0 for cached input when the model stores "" instead of falling back to 10%
-
-**Scenario:** 63 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** add a model with Cached price left blank (stored as ""), send a message with cached tokens, and check the header token tooltip / cost and the Usage Dashboard pricing display.
-
-**Expected:** blank Cached should display and calculate as 10% of input price (as the Models hint promises).
-
-**Actual:** the header pricing unit and dashboard cached-cost show 0. `TreeRepo.GetThreadStats` builds `pricingUnit.cachedInput` as `pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : (input*0.1)` ï¿½ a present "" is taken as 0, not as missing. Same root cause as bug #29 (CostCalculator).
-
-**Evidence:** `chat/db/TreeRepo.ahk` `GetThreadStats` `cachedInput: pricing.HasOwnProp("cachedInput") ? pricing.cachedInput : ...`; `api/CostCalculator.ahk` `_ResolvePricing` same pattern.
-
 **Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
 
 
-
-### 64. Header "Context Used" excludes thinking tokens ï¿½ underreports context window usage
-
-**Scenario:** 64 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** use a reasoning-capable model (e.g. deepseek) with a prompt that triggers thinking (see mock sse-success which streams reasoning + 9 completion tokens). After the response, read the header "Context Used" and the per-message tooltip's Output/Thinking breakdown.
-
-**Expected:** "Context Used" equals prompt_tokens + visible_output + thinking_tokens (all tokens that occupy the context window). Tooltip should sum to the same total.
-
-**Actual:** header shows prompt + visible_output only. `chat/streaming/StreamCompletion.ahk` stores `token_count := Max(0, completion - thinking)` (visible only) and `chat/db/MessageRepo.ahk` sets `active_path_tokens := prompt + token_count`. `chat/db/TreeRepo.ahk` `GetThreadStats` reads that leaf value for "Context Used". Thinking tokens are stored separately and never added to the header, while the Usage Dashboard and per-message tooltip correctly count them ï¿½ header is ~30-40% low for reasoning responses and disagrees with the tooltip's total.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk:96` `token_count: Max(0, completionTokens - thinkingTokens)`; `chat/db/MessageRepo.ahk` `activePathTokens := msgObj.prompt_tokens + tc`; `chat/db/TreeRepo.ahk` `activePathTokens := Integer(leafRow[1, "active_path_tokens"])`.
-
-**Verification:** headless scenario 64 (noApp) statically asserts the three patterns exist.
-
-### 65. Hard-deleting a message leaves cumulative token/cost counters stale ï¿½ header stays inflated
-
-**Scenario:** 65 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** in a chat, note the header totals (e.g. ? 12 ? 9 $0.02), then delete any message (trash icon ? confirm). Re-read the header.
-
-**Expected:** cumulative Input/Output/Cost/ Cached counters decrement to reflect the remaining messages, consistent with the new Context Used.
-
-**Actual:** header totals stay inflated. `chat/db/MessageRepo.ahk` `HardDelete` re-parents children, clears the FTS row and calls `_RecomputeActivePath`, but never updates `chat_threads.cumulative_input_tokens / cumulative_output_tokens / cumulative_cached_tokens / cumulative_cost` (or the `chat_usage` aggregation). Cost and token totals from deleted branches remain counted forever.
-
-**Evidence:** `chat/db/MessageRepo.ahk` `static HardDelete` ï¿½ no `cumulative_` UPDATE; `chat/db/TreeRepo.ahk` `_RecomputeActivePath` only rebuilds `active_path_tokens`.
-
-**Verification:** headless scenario 65 (noApp) slices HardDelete and asserts no `cumulative_` write exists.
-
-### 66. Header tooltip typo "Culminative" (should be "Cumulative") and mismatched semantics
-
-**Scenario:** 66 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** hover the middle header item (?/?).
-
-**Expected:** tooltip reads "Cumulative Input/output token usage across all conversation branches".
-
-**Actual:** tooltip reads "Culminative Input/output token usage across all conversation branches" (misspelled). Minor, but the string is also used as the spec for what the value should be ï¿½ the typo has propagated to the report's assumptions.
-
-**Evidence:** `webui/js/chat/chat-format.js` `updateTokenUsage` `title="Culminative Input/output token usage across all conversation branches"`.
-
-**Verification:** headless scenario 66 (noApp) checks for /Culminative/ in chat-format.js.
-
-### 68. ProviderResolver legacy prefix match uses substring InStr, not prefix check ï¿½ mygpt matches gpt
-
-**Scenario:** 68 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** configure a custom providerMap prefix `gpt` (default) and use a short-form model id that merely *contains* the substring, e.g. `mygpt-custom` or `agpt-model` (no `provider/` prefix).
-
-**Expected:** legacy short ids should resolve by *prefix* (starts-with) ï¿½ `mygpt-custom` should fall back to `deepseek` (or remain unmatched), not to the `gpt` provider.
-
-**Actual:** `ProviderResolver.Resolve` loops `for prefix, prov in providerMap` and does `if InStr(modelId, prefix)` ï¿½ substring anywhere. `mygpt-custom` therefore resolves to the `gpt` ? `openai` provider and is sent to `openai`'s endpoint with the wrong model name, while a legitimate `gpt-4o` and a bogus `mygpt` both hit the same provider.
-
-**Evidence:** `api/ProviderResolver.ahk` `Resolve()` `if InStr(modelId, prefix)` (no `=1` or `SubStr` prefix check).
-
-**Verification:** headless scenario 68 (noApp) asserts `InStr(modelId, prefix)` exists and no `SubStr(...,1,)` or `InStr(...)=1` prefix check exists.
-
-### 69. Search LIKE fallback does not escape % _ \ ï¿½ searching for % returns all messages
-
-**Scenario:** 69 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** seed a chat with messages, then use Search (global or scoped) and type `%` (or `_`).
-
-**Expected:** searching for a literal `%` should return only messages that contain `%` (or no results if none do).
-
-**Actual:** the LIKE phase does `m.content LIKE '%' || 'safeQuery' || '%' ESCAPE '\'` where `safeQuery` is only `SQLite.Escape(query)` (doubles `'` ? `''`). `%` and `_` are LIKE wildcards and `\` is the ESCAPE char ï¿½ none are escaped. `safeQuery = "%"` becomes `LIKE '%%% '`, which matches every row (and `_` matches any single char). The same bug exists in `_Titles` for title search.
-
-**Evidence:** `chat/db/SearchRepo.ahk` `static _Like` and `static _Titles` ï¿½ `safeQuery := SQLite.Escape(query)` then `LIKE '%' || '" safeQuery "' || '%' ESCAPE '\'` with no `%`/`_`/`\` escaping.
-
-**Verification:** headless scenario 69 (noApp) slices `_Like` and asserts no `StrReplace` for `%`/`_` exists while `ESCAPE '\'` is present.
-
-### 70. Search FTS5 MATCH does not escape special characters ï¿½ C++ or "hello" breaks the query (empty results)
-
-**Scenario:** 70 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** seed messages containing `C++`, `hello:world`, or `foo-bar`, then search for `C++` (or a quoted phrase `"hello"`).
-
-**Expected:** FTS5 should treat the query as literal terms or return the LIKE fallback results.
-
-**Actual:** `SearchRepo._FTS5` builds `ftsExpr` as `trimmed` words joined by ` AND ` with a trailing `*`, then only does `safeFTS := StrReplace(ftsExpr, "'", "''")`. FTS5 special characters `"` `(` `)` `:` `-` `+` `*` etc. are not escaped/quoted. `C++` becomes `MATCH 'C++*'` (plus is a FTS5 operator) and throws `fts5: syntax error near "+"`, causing `_FTS5` to return `[]` and the search falls through to LIKE (which then may also mis-handle it). Quoted queries like `"hello"` become `MATCH '"hello"*'` (unbalanced) and also error.
-
-**Evidence:** `chat/db/SearchRepo.ahk` `static _FTS5` ï¿½ `ftsExpr .= trimmed` raw, `safeFTS := StrReplace(ftsExpr, "'", "''")` only.
-
-**Verification:** headless scenario 70 (noApp) asserts `ftsExpr .= trimmed` exists and no `StrReplace` for `"` or `(` exists.
-
-### 71. Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]
-
-**Scenario:** 71 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings ? General ? Thread Title Generation ? clear Model (or Prompt / Max Tokens) ? Save ? trigger title generation (send a new chat exchange).
-
-**Expected:** clearing the field should reset to the default (or empty) and title generation should use the default model/prompt or be disabled for that field.
-
-**Actual:** the previous `titleGenModel` / `titleGenSystemPrompt` / `titleGenMaxTokens` value survives. `SettingsApply._ApplyThreadTitles` only assigns when `tt["model"] != ""` (and same for `prompt`, `maxTokens`), so saving `""` leaves the old global. Same root as bugs #33 and #61.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyThreadTitles` `if tt.Has("model") && tt["model"] != ""` etc.
-
-**Verification:** headless scenario 71 (noApp) asserts the two `!= ""` guards exist.
-
-### 72. SystemMessageResolver treats UNC \\server\share paths as relative ï¿½ file not found
-
-**Scenario:** 72 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set an assistant or command `systemMessageFile` to a UNC path like `\\server\share\prompt.txt` that exists and is readable, then trigger the assistant/command.
-
-**Expected:** the file is read from the UNC path (absolute path used as-is, like `C:\` paths).
-
-**Actual:** the resolver only checks `InStr(filePath, ":")` to detect absolute paths. UNC paths have no colon, so they are treated as relative and searched in `A_ScriptDir\`, `..\`, `default-settings\system-messages\`, and `AppData\system-messages\` ï¿½ none match, so `FileRead` fails and the resolver falls back to the inline `systemMessage` (or empty) with an error. The UNC file is never read.
-
-**Evidence:** `shared/SystemMessageResolver.ahk` `Resolve()` `if !InStr(filePath, ":")` ï¿½ no `\\` check.
-
-**Verification:** headless scenario 72 (noApp) asserts `InStr(filePath, ":")` exists and no `\\` handling exists.
-
-### 73. GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)
-
-**Scenario:** 73 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** select a Gemini 2.x model (e.g. `google/gemini-2.0-flash`) and set Thinking Level to the disabled option (or to Model Default where `ApplyDefaults` is not used), then send a request and inspect the JSON payload (`requestFile`).
-
-**Expected:** disabled payload should be symmetric with enabled: `extra_body.google.thinking_config = {include_thoughts:false, thinking_budget:0}` or at least consistently include `include_thoughts`.
-
-**Actual:** `GoogleChatCompletions.ThinkingConfig` (enabled) always sets `include_thoughts:true` plus a budget/level, but `DisabledConfig` for 2.x returns only `{thinking_budget:0}` with no `include_thoughts` field. The API may therefore still return thoughts or behave inconsistently between enabled/disabled.
-
-**Evidence:** `api/handlers/GoogleChatCompletions.ahk` `DisabledConfig()` `return {thinking_budget:0}` vs `ThinkingConfig()` `tc := {include_thoughts:true}`.
-
-**Verification:** headless scenario 73 (noApp) slices `DisabledConfig` and asserts `thinking_budget:0` present and `include_thoughts` absent.
-
-### 74. SettingsApply leaves providerMap stale when all prefixes are cleared
-
-**Scenario:** 74 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings ? Providers ? edit every provider to remove all `prefixes` entries (or set a provider to have an empty prefixes array) ? Save ? check provider resolution for a legacy short id like `deepseek-v4-flash`.
-
-**Expected:** clearing prefixes should clear `providerMap` (or rebuild it empty) so legacy short ids no longer resolve to that provider.
-
-**Actual:** `SettingsApply._ApplyProviders` builds `newProviderMap` from the saved providers' `prefixes`, then does `if newProviderMap.Count >0` `providerMap := newProviderMap`. When all prefixes are cleared, `Count` is 0, so the assignment is skipped and the old `providerMap` (from startup defaults or previous save) remains live. Legacy short ids continue to resolve to the old provider even though the settings show no prefixes.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_ApplyProviders` `if newProviderMap.Count >0` `providerMap := newProviderMap`.
-
-**Verification:** headless scenario 74 (noApp) asserts the `Count >0` guard exists and no `else` clear exists.
-
-### 75. GoogleChatCompletions budget table matches via substring InStr, not exact family check
-
-**Scenario:** 75 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** use a custom model id that merely *contains* a budget-table substring, e.g. `my2.5-pro-custom` or `test2.5-flash-lite`, with thinking Level `high`.
-
-**Expected:** `_BudgetTable` should match only the intended Gemini family (e.g. `2.5-pro` family), or fall back to generic.
-
-**Actual:** `_BudgetTable` uses `if InStr(modelId, "2.5-pro")` substring checks. Any model id containing that substring ï¿½ even `my2.5-pro` or `foo2.5-pro-bar` ï¿½ will match the first table (`minimal 128 ï¿½ high 32768`) even though it is not a Gemini 2.5-pro model, giving a wrong thinking budget.
-
-**Evidence:** `api/handlers/GoogleChatCompletions.ahk` `_BudgetTable` `if InStr(modelId, "2.5-pro")` etc.
-
-**Verification:** headless scenario 75 (noApp) asserts `InStr(modelId, "2.5-pro")` exists.
-
-### 76. initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread
-
-**Scenario:** 76 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open thread A, then via IPC or direct `initChatMode({messages:..., threadId:"B"})` where `activeThreadId` already equals `A` (e.g. rapid switch, fork, or programmatic load).
-
-**Expected:** `activeThreadId` should update to `B` so subsequent `updateScopedSearchState`, `onSearchCrossThreadLoaded`, and new-message sends target B.
-
-**Actual:** `webui/js/chat/chat-core.js` `initChatMode` does `if (data && data.threadId && !activeThreadId) { activeThreadId = data.threadId; }`. When `activeThreadId` is already truthy (`"A"`), the assignment is skipped, so the WebView stays on `A` while the message list shows `B`'s messages ï¿½ `activeThreadId` is stale. Subsequent scoped search, token-bar updates, and `chatSend` will use the wrong thread id.
-
-**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` guard `!activeThreadId`.
-
-**Verification:** headless scenario 76 (noApp) asserts the `!activeThreadId` guard and `activeThreadId = data.threadId` assignment exist.
-
-### 77. Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry
-
-**Scenario:** 77 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open a chat that already has messages (e.g. last message is an assistant response), clear the input (`input.value = ""`), click Send (or press Enter).
-
-**Expected:** no action ï¿½ empty input should be a no-op (like most chat UIs) or show a hint.
-
-**Actual:** `webui/js/chat/chat-input.js` `onChatSend` trims input to `""`, finds `message` falsy and `attachments` empty, then falls through to `if (chatMessages && chatMessages.length>0) { var lastMsg = chatMessages[chatMessages.length-1]; if (lastMsg.role==="assistant") retryLastAssistantMessage(...) ; else if (lastMsg.role==="user") Ipc.postToHost('retry') }`. An empty Send therefore re-fires the last assistant message (or resends the last user message) instead of doing nothing ï¿½ a single accidental click/Enter duplicates a request and burns tokens/cost.
-
-**Evidence:** `webui/js/chat/chat-input.js` `onChatSend` empty-input branch with `retryLastAssistantMessage` and `Ipc.postToHost('retry')`.
-
-**Verification:** headless scenario 77 (noApp) asserts the empty-input `chatMessages.length` branch and `retry` post exist.
-
-### 78. Right-rail temperature 0 displays as "Default" instead of 0.0 ï¿½ falsy check hides 0
-
-**Scenario:** 78 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set per-thread temperature to 0 (right-rail slider to 0.0 ? Save), reload the thread or switch away and back, then read the right-rail Temperature value.
-
-**Expected:** the rail shows `0.0` and the slider sits at 0, with the reset `ï¿½` visible.
-
-**Actual:** the rail shows `Default` and the slider snaps to `1.0` with `temp-default` class, as if no override were set. `webui/js/chat/model-picker/model-picker-config.js` `populateCurrentSettings` does `var hasTemp = settings.temperature && settings.temperature !== ""` ï¿½ `0` / `"0"` is falsy, so `hasTemp` is false and the `else` branch (Default) runs. The stored override is still `0` (via `TemperatureOverride` in DB and `requestParams`), so the API request correctly sends `temperature:0`, but the UI lies about it. Same root as bug #35 (falsy `0`).
-
-**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` `hasTemp = settings.temperature && ...`.
-
-**Verification:** headless scenario 78 (noApp) asserts the `&&` falsy guard exists.
-
-### 79. Settings file with UTF-8 BOM fails to load ï¿½ settings silently reset to defaults
-
-**Scenario:** 79 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** write `%APPDATA%\AhkLLM\settings.json` with a UTF-8 BOM (many Windows editors do), restart the app.
-
-**Expected:** settings load normally ï¿½ the app itself writes with BOM, so the loader must tolerate it.
-
-**Actual:** `app/settings/SettingsPersistence.ahk` `Load()` does `raw := FileRead(path, "UTF-8")` then `parsed := jsongo.Parse(raw)` with no BOM stripping. `jsongo` chokes on leading `\uFEFF`, the `catch` returns an empty `Map()`, and the app falls back to `DefaultSettings` ï¿½ all custom settings are lost. The harness README notes the BOM issue and `seed.readJsonFile` strips it, but the production loader does not.
-
-**Evidence:** `app/settings/SettingsPersistence.ahk` `Load()` ï¿½ no BOM handling before `jsongo.Parse`.
-
-**Verification:** headless scenario 79 (noApp) asserts `FileRead` + direct `jsongo.Parse` without BOM handling.
-
-### 80. ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape ï¿½ SQL injection via crafted id
-
-**Scenario:** 80 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft a thread id containing a single quote (e.g. `bad'id`) and call any thread mutator that interpolates it ï¿½ `SoftDelete`, `Restore`, `Delete`, or `Update` (e.g. via a malicious `threadId` posted over IPC or a hand-edited DB).
-
-**Expected:** all SQL statements should use `SQLite.Escape(threadId)` like `UpdateSettings`/`GetSettings` do.
-
-**Actual:** `ThreadRepo.SoftDelete`, `Restore`, `Delete`, and `Update` do `WHERE id='" threadId "'` with no escaping. A `threadId` containing `'` breaks the string literal and can inject arbitrary SQL (e.g. `bad'id'; DROP TABLE chat_threads; --` would terminate the `UPDATE` and execute a second statement, depending on the SQLite wrapper's multi-statement handling). `UpdateSettings` and `GetSettings` correctly use `safeId := SQLite.Escape(threadId)`.
-
-**Evidence:** `chat/db/ThreadRepo.ahk` `SoftDelete` `WHERE id='" threadId "'` (no `SQLite.Escape`); same for `Restore`, `Delete`, `Update`.
-
-**Verification:** headless scenario 80 (noApp) asserts `SQLite.Escape(threadId)` absent in `SoftDelete` and `WHERE id='" threadId "'` present.
-
-### 81. Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping ï¿½ SQL injection via crafted message id
-
-**Scenario:** 81 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft a message id containing `'` (e.g. via a hand-edited DB or a malicious `retry` payload that references `messageId`) and trigger a retry that needs a new sibling group (assistant without `sibling_group`).
-
-**Expected:** the `UPDATE messages SET sibling_group=... WHERE id='...'` should use `SQLite.Escape(msg.id)`.
-
-**Actual:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` does `WHERE id='" msg.id "'` with no escaping. Same injection class as #80.
-
-**Evidence:** `chat/callbacks/Branch.ahk` `_setupSiblingGroup` `WHERE id='" msg.id "'`.
-
-**Verification:** headless scenario 81 (noApp) asserts `SQLite.Escape(msg.id)` absent and `WHERE id='" msg.id "'` present.
-
-### 82. Usage dashboard provider/model filter dropdown XSS ï¿½ option values not escaped
-
-**Scenario:** 82 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set a provider `displayName` or model id to `"><img src=x onerror=alert(1)>` via Settings ? Providers/Models ? Save, then open Usage Dashboard.
-
-**Expected:** the filter dropdowns show the name as inert text.
-
-**Actual:** `webui/js/usage-dashboard.js` `populateFilters` does `provSel.innerHTML += '<option value="'+p+'">'+p+'</option>'` and `modSel.innerHTML += '<option value="'+m+'">'+m+'</option>'` with no `escHtml`. A provider/model name containing HTML is parsed as HTML and its event handlers execute in the WebView (same `chrome.webview.postMessage` access as #57).
-
-**Evidence:** `webui/js/usage-dashboard.js` `populateFilters` raw `innerHTML` for `p` and `m`.
-
-**Verification:** headless scenario 82 (noApp) asserts raw `innerHTML` with `p`/`m` and no `escHtml(p)` exists.
-
-### 83. Thread-map "who" label XSS ï¿½ model name not escaped in right-panel nav list
-
-**Scenario:** 83 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set a custom model id to `"><img src=x onerror=...>` (or have an assistant with such a model), send a message with that model, then look at the right-panel Thread Map.
-
-**Expected:** the `who` label shows the model name as text.
-
-**Actual:** `webui/js/chat/chat-threadmap.js` `renderNavList` does `var who = msg.model || 'Assistant'; item.innerHTML = '<span class="who">' + who + '</span>...' ` with no `escHtml(who)`. The model string is interpreted as HTML. `createMessageBubble` correctly uses `escHtml` for the model in the header, but the thread map does not.
-
-**Evidence:** `webui/js/chat/chat-threadmap.js` `renderNavList` `+ who +` without `escHtml`.
-
-**Verification:** headless scenario 83 (noApp) asserts `+ who +` raw and no `escHtml(who)` exists.
-
-### 84. API Logs Viewer `esc()` does not escape single quote ï¿½ `title` attribute break and potential XSS
-
-**Scenario:** 84 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft an API log entry where `endpoint` contains a single quote (e.g. `https://example.com/'onmouseover='alert(1)` via a custom provider endpoint), then open API Logs Viewer and hover the Endpoint cell.
-
-**Expected:** the `title` attribute shows the endpoint as inert text.
-
-**Actual:** `webui/api-logs.html` `esc()` does `String(s).replace(/[&<>"]/g, ...)` ï¿½ it escapes `& < > "` but not `'`. The log table builds `<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">'`. A `'` closes the `title='...'` attribute early, breaking the HTML and allowing an unescaped attribute injection. The cell text itself is inside `esc()`, but the attribute is not.
-
-**Evidence:** `webui/api-logs.html` `function esc(s)` regex `/[&<>"]/`.
-
-**Verification:** headless scenario 84 (noApp) asserts `esc` regex missing `'` and `&#39;` absent.
-
-### 86. FIM fallback `renderMarkdown` XSS ï¿½ `md.render` with `html:true` for non-chat content
-
-**Scenario:** 86 (scenario code in e2e-suite.js)
-
-**Status:** reported — duplicate of #57, static check only (same `html:true` root)
-
-**Repro:** trigger a Fill-In-the-Middle (FIM) request that returns HTML like `<img src=x onerror=...>` (e.g. via a FIM command with a mock LLM), then view the fallback rendering (`#content` when `isChatMode` is false).
-
-**Expected:** content is rendered as inert text, even in FIM fallback mode.
-
-**Actual:** `webui/js/chat/chat-core.js` `renderMarkdown` does `var result = md.render(contentToRender); var contentElement = document.getElementById('content'); if (contentElement) contentElement.innerHTML = result;` with `md` configured `html:true` in `webui/js/main.js`. No sanitization, same root as #57 but for the non-chat `content` path. **Duplicate of #57 — fix together; scenario kept as reported.**
-
-**Evidence:** `webui/js/chat/chat-core.js` `renderMarkdown` `md.render` + `innerHTML`; `webui/js/main.js` `markdownit({ html:true })`.
-
-**Verification:** headless scenario 86 (noApp) asserts `md.render` with `html:true` and `contentElement.innerHTML = result` exist.
-
-### 87. Usage dashboard "Last Month" SQL uses UTC `date('now')` while chart labels use local `new Date()` ï¿½ timezone drift
-
-**Scenario:** 87 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set system timezone to UTC+9 (e.g. Asia/Tokyo), seed usage rows for last month's first day in local time, open Dashboard ? Last Month.
-
-**Expected:** chart labels and SQL summary cover the same local last-month window.
-
-**Actual:** `chat/db/UsageRepo.ahk` `_WhereDate("lastMonth")` returns `WHERE date >= date('now','start of month','-1 month') AND date < date('now','start of month')` ï¿½ `date('now')` is UTC. `webui/js/usage-dashboard.js` `getDateRangeLabels("lastMonth")` builds labels from local `new Date()`. In UTC+9, local last month 01 00:00 is still previous UTC day, so the SQL window and chart labels are off by one day and the summary total mismatches the chart.
-
-**Evidence:** `chat/db/UsageRepo.ahk` `_WhereDate` `date('now','start of month',...)`; `webui/js/usage-dashboard.js` `getDateRangeLabels` `new Date()` local.
-
-**Verification:** headless scenario 87 (noApp) asserts UTC `date('now')` in `UsageRepo` and local `new Date()` in dashboard exist.
-
-### 88. Usage dashboard "Last 30 Days" SQL uses UTC while chart uses local ï¿½ same timezone drift as Last Month
-
-**Scenario:** 88 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** same as #87 but select ï¿½Last 30 Daysï¿½ (range `month`) in Dashboard.
-
-**Expected:** SQL and chart cover the same 30-day window in local time.
-
-**Actual:** `_WhereDate("month")` is `WHERE date >= date('now','-30 days')` (UTC), while `getDateRangeLabels("month")` does `days=30` from local `today`. Same UTC vs local drift as #87 and #53 (which was for `day`). The fix for #42 (chart labels `localDateKey`) did not fix the SQL side.
-
-**Evidence:** `chat/db/UsageRepo.ahk` `date('now','-30 days')`; `webui/js/usage-dashboard.js` `days=30` + `new Date()`.
-
-**Verification:** headless scenario 88 (noApp) asserts both UTC and local patterns exist.
-
-### 89. CurlBuilder interpolates API key with `"` into `-H "Authorization: Bearer ..."` without escaping ï¿½ header break / injection
-
-**Scenario:** 89 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set any provider `apiKey` (direct mode) to contain a double quote, e.g. `sk-"test`, save, then trigger any LLM request (chat or command).
-
-**Expected:** the key is shell-escaped or the header is built via a safe API, not via string interpolation.
-
-**Actual:** `api/CurlBuilder.ahk` `Build`/`BuildStream`/`BuildFIM` do `'-H "Authorization: Bearer ' providerInfo.apiKey '" '` with no `StrReplace` or `SQLite.Escape` for `"`. A key containing `"` closes the `"` early, breaking the cURL command line (`Authorization: Bearer sk-` + `"` + `test` + `"` ? header is `sk-` and `test` becomes a stray argument). A key like `sk-" && echo pwned && "` could inject a second command when the `Run` goes through `cmd` (stream path does, via `2>`).
-
-**Evidence:** `api/CurlBuilder.ahk` three builders interpolate `providerInfo.apiKey` into `"`-quoted header with no escaping.
-
-**Verification:** headless scenario 89 (noApp) asserts `Authorization: Bearer` + `apiKey` exists and no `Escape`/`StrReplace` for `apiKey` exists.
-
-### 90. SettingsMerge.Override iterates over `incoming` without `IsObject` guard ï¿½ empty string corrupts settings
-
-**Scenario:** 90 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a `saveSettings` IPC with `data: ""` (empty string) instead of an object ï¿½ e.g. via a crafted `chrome.webview.postMessage` or a WebView bug.
-
-**Expected:** `Override` should guard `if !IsObject(incoming)` or check `incoming is Map`, and ignore non-Map payloads.
-
-**Actual:** `app/settings/SettingsMerge.ahk` `Override(incoming, base)` does `for k, v in incoming` with no `IsObject` check. In AHK, `for k, v in ""` iterates over the stringï¿½s characters (`k=1, v='"'`, `k=2, v='{'` ï¿½), so `result["1"] := '"'`, `result["2"] := '{'` etc. The merged settings Map gets polluted with numeric string keys and single-character values, then `SettingsPersistence.Save` writes a corrupted `settings.json`.
-
-**Evidence:** `app/settings/SettingsMerge.ahk` `Override` `for k, v in incoming` with no `IsObject` guard.
-
-**Verification:** headless scenario 90 (noApp) asserts `for k, v in incoming` exists and no `IsObject(incoming)` guard exists.
-
-### 91. InputWindow `validateInputAndHide` treats `"0"` as empty ï¿½ `!value` falsy check
-
-**Scenario:** 91 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** trigger any command with `showInputBox: true` (e.g. Quick Ask), type `0` (single zero) in the popup, press Enter or click Send.
-
-**Expected:** the input `0` is accepted and sent as `{{input}}` (or as `inputText`).
-
-**Actual:** `app/InputWindow.ahk` `validateInputAndHide` does `if !this.EditControl.Value { MsgBox "Please enter a message..." ; return false }`. In AHK, `! "0"` is `true` because `"0"` is falsy (same as `0` and `""`), so typing `0` is considered empty and the popup stays open with the ï¿½Please enter a messageï¿½ box. The same `!value` pattern appears in `CommandState.onCommandInputSend` via `validateInputAndHide`.
-
-**Evidence:** `app/InputWindow.ahk` `if !this.EditControl.Value`.
-
-**Verification:** headless scenario 91 (noApp) asserts `if !this.EditControl.Value` exists.
-
-### 92. Models `ensureFullId` ignores provider dropdown when id already contains `/` ï¿½ stale provider prefix
-
-**Scenario:** 92 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings ? Models ? pick any model with full id like `openai/gpt-4` (display shows `gpt-4`), change the Provider dropdown from `openai` to `google`, then Save and check `settings.json`.
-
-**Expected:** the saved full id should be `google/gpt-4` (provider from dropdown + stripped id).
-
-**Actual:** `webui/js/settings/sections/models.js` `ensureFullId(id, provider)` does `if (id.indexOf('/') >=0) return id; return provider ? provider+'/'+id : id`. When `id` already contains `/` (because the row was rendered from a full id like `openai/gpt-4` but the input shows only `gpt-4` ï¿½ wait, actually `_mainRowHtml` does `stripProvider(id)` for display, so the input value is `gpt-4` without prefix, but `_readRowValues` reads `id` as `tr.querySelector('[data-field="id"]').value` which is `gpt-4` (no slash), and `values.provider` is `google`, so `ensureFullId("gpt-4", "google")` would correctly return `google/gpt-4`. However, in the *refresh modal* (`_rightRowHtml`), the id input has `data-full-id="openai/gpt-4"` and the `saveRefresh` path does `var id = idEl.getAttribute('data-full-id') || idEl.value` ï¿½ it prefers `data-full-id` (stale `openai/gpt-4`) over the current `value` (`gpt-4`), so changing the provider dropdown there does not update the saved id. The bug is in `saveRefresh`, not `ensureFullId` for the main table, but the `ensureFullId` early-return for `id` containing `/` is still a latent bug if a user types a full id manually.
-
-**Evidence:** `webui/js/settings/sections/models.js` `ensureFullId` `if (id.indexOf('/') >=0) return id`.
-
-**Verification:** headless scenario 92 (noApp) asserts `ensureFullId` early-return for `/` exists.
-
-### 93. SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] ï¿½ mutating snapshot corrupts pristine defaults
-
-**Scenario:** 93 (scenario code in e2e-suite.js)
-
-**Status:** reported — latent design flaw (no active caller mutates the snapshot in place)
-
-**Repro:** call `SettingsDefaults.GetDefaults()` twice, mutate the first resultï¿½s `models` Map (e.g. `m1["models"]["openai/gpt-4"] := deleted`), then call `GetDefaults()` again and read `models`.
-
-**Expected:** each `GetDefaults()` returns an independent deep copy of the pristine defaults, so mutating one does not affect the next.
-
-**Actual:** `GetDefaults` when captured does `snapshot := Map(); for k, v in _initialDefaults snapshot[k] := v` ï¿½ `v` is a `Map` (e.g. `models` Map), so `snapshot["models"]` shares the *same* Map object as `_initialDefaults["models"]`. Mutating `snapshot["models"]` mutates the cached pristine copy, corrupting future `GetDefaults()` and `Reset to Defaults`.
-
-**Evidence:** `app/settings/SettingsDefaults.ahk` `GetDefaults` `snapshot[k] := v` without `CloneMap`.
-
-**Verification:** headless scenario 93 (noApp) asserts `snapshot[k] := v` shallow copy exists. Latent: no production caller currently mutates `GetDefaults()["models"]` in place, so not user-visible today; keep as hardening. Fix by deep-cloning Map values (`_CloneMap`).
-
-### 94. SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` ï¿½ defaults not stable
-
-**Scenario:** 94 (scenario code in e2e-suite.js)
-
-**Status:** reported — overstated (UUID churn does not occur after CacheInitialDefaults; shallow copy preserves same array)
-
-**Repro:** call `SettingsDefaults.GetDefaults()` twice and compare `assistants[1].id` (or `commands` via `_CommandToMap` which also uses `UUID` for missing ids, but assistants always does).
-
-**Expected:** the default `assistants` list should have stable ids (e.g. from `DefaultSettings.ahk` or a fixed seed), so `Reset to Defaults` and diffing are deterministic.
-
-**Actual:** `_DefaultsAssistants` does `asstList.Push(Map("id", SettingsPersistence._UUID(), "name", a.name, ...))` for every assistant on *every* `GetDefaults()` call. Before `CacheInitialDefaults` each call would generate fresh UUIDs; after caching, `GetDefaults()` shallow-copies the cached array — no churn in normal runtime, so the bug is overstated. Keep as low-priority hardening for stable ids.
-
-**Evidence:** `app/settings/SettingsDefaults.ahk` `_DefaultsAssistants` `SettingsPersistence._UUID()` inside the loop.
-
-**Verification:** headless scenario 94 (noApp) asserts `SettingsPersistence._UUID()` inside `_DefaultsAssistants` exists — but this only proves the code *could* generate UUIDs, not that `GetDefaults()` churns after caching (it does not). Keep as low-priority hardening (stable ids).
-
-### 95. Usage dashboard model heading XSS — model id not escaped in section header
-
-**Scenario:** 95 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** set a model id to `"><img src=x onerror=alert(1)>` via Settings → Models → Save, then open Usage Dashboard with data for that model.
-
-**Expected:** the model-section heading shows the id as inert text.
-
-**Actual:** `webui/js/usage-dashboard.js` `renderModelSections` does `div.innerHTML = ''<h6>''+model+''</h6>...'` with no `escHtml(model)`. The model string is parsed as HTML and handlers execute (same `chrome.webview.postMessage` access as #57/#82).
-
-**Evidence:** `webui/js/usage-dashboard.js:259` `div.innerHTML = ''<h6>''+model+''</h6>''`.
-
-**Verification:** headless scenario 95 (noApp) asserts raw `div.innerHTML = ''<h6>''+model` exists and no `escHtml(model)` in the section.
-
-### 96. AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection
-
-**Scenario:** 96 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** craft a message id containing `''` (e.g. `bad''id`) via hand-edited DB or malicious IPC `messageId`, then call any AttachmentRepo path (Insert, GetByMessage, DeleteByMessage, CopyForMessage) or ChatDB FTS_Sync.
-
-**Expected:** all statements should use `SQLite.Escape(msgId)` / `SQLite.Escape(threadId)`.
-
-**Actual:** `chat/db/AttachmentRepo.ahk` `Insert` does `VALUES(''id'', ''msgId''`, `GetByMessage`/`DeleteByMessage` do `WHERE message_id=''msgId''`, `GetByThread`/`DeleteByThread` do `WHERE m.thread_id=''threadId''`, and `chat/db/ChatDB.ahk` `FTS_Sync`/`FTS_Remove` do `WHERE msg_id=''msgId''` — none escape. A `'` breaks the literal and can inject SQL (same class as #80/#81).
-
-**Evidence:** `AttachmentRepo.ahk` `Insert`/`GetByMessage`/`DeleteByMessage`/`CopyForMessage` and `ChatDB.ahk` `FTS_Sync` — `''" msgId "''` without `SQLite.Escape`.
-
-**Verification:** headless scenario 96 (noApp) asserts `WHERE message_id=''msgId''` exists and no `SQLite.Escape(msgId)` in `Insert`.
-
-### 97. SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure
-
-**Scenario:** 97 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** save settings when disk is full / file locked (or kill the process between the two calls).
-
-**Expected:** save should be atomic (write to temp file then `FileMove`/`Rename`).
-
-**Actual:** `app/settings/SettingsPersistence.ahk` `Save` does `try FileDelete(path)` then `FileAppend(jsonStr, path, "UTF-8")` with no temp file. If `FileAppend` fails (disk full, permission, crash), the original `settings.json` is already deleted — settings are lost and next load falls back to defaults (same silent-reset as BOM bug #79).
-
-**Evidence:** `SettingsPersistence.ahk` `Save` — `FileDelete` + `FileAppend` without atomic rename.
-
-**Verification:** headless scenario 97 (noApp) asserts `FileDelete(path)` and `FileAppend(jsonStr, path` both exist and no temp-file rename exists.
-
-### 98. StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled
-
-**Scenario:** 98 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** start a stream, then press Stop/Cancel before completion and start another request without restarting the app.
-
-**Expected:** `_finalizeStreaming` should always clean up `requestParams _stream*` keys.
-
-**Actual:** `chat/streaming/StreamHandler.ahk` `_finalizeStreaming` does `wasCancelled := ...; if wasCancelled { _handleStreamCancelled(); return }` — returns without calling `_cleanupStreamState()`. The `_streamContent`/`_streamPID`/etc. keys remain in `requestParams`, polluting the next `sendStreamingRequest` (which overwrites most but not all) and leaving `IsSet` checks stale.
-
-**Evidence:** `StreamHandler.ahk` `_finalizeStreaming` — `wasCancelled` branch `return` without `_cleanupStreamState`; the non-cancel path does `_handleStreamComplete` + `_cleanupStreamState`.
-
-**Verification:** headless scenario 98 (noApp) asserts `wasCancelled` branch has `_handleStreamCancelled` + `return` but no `_cleanupStreamState` before `return`.
-
 ---
-
-### 99. MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids
-
-**Scenario:** 99 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** insert a message with crafted `parent_id` containing `''` (e.g. `bad''id` via IPC `parent_id` or hand-edited DB), or craft `sibling_group` similarly, then insert a child message.
-
-**Expected:** `parent_id` and `sibling_group` literals should be escaped with `SQLite.Escape`.
-
-**Actual:** `MessageRepo.Insert` does `safeParent := msgObj.HasProp("parent_id") && msgObj.parent_id ? "''" msgObj.parent_id "''" : "NULL"` and same for `sibling_group` — no `SQLite.Escape`. A `''` breaks the literal and can inject SQL (same class as #80/#81/#96, but this path was not yet covered — the INSERT that creates every user/assistant message).
-
-**Evidence:** `chat/db/MessageRepo.ahk:11` `safeParent := ... "'" msgObj.parent_id "'"` without `SQLite.Escape`; `chat/db/MessageRepo.ahk:12` `safeSiblingGroup` same.
-
-**Verification:** headless scenario 99 (noApp) asserts the two raw `"'\" msgObj.parent_id \"'\""` lines exist and no `SQLite.Escape(msgObj.parent_id)` / `sibling_group` escapes exist nearby.
-
-### 100. LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted
-
-**Scenario:** 100 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a chat or command request where the user message contains the substring `"stream":1` (e.g. paste a JSON snippet), then check the request written to the temp file / sent to the API.
-
-**Expected:** JSON serialization should encode booleans correctly without string replacement on the whole payload.
-
-**Actual:** `LLMRequestBuilder._FixStreamBoolean` does global `StrReplace(jsonStr, ''"stream":1'', ''"stream":true'')` (and similarly for `0`/`include_usage`/`include_thoughts`). The replace runs on the entire JSON string, so any occurrence inside `content`, `systemMessage`, or other string fields is also rewritten, corrupting the payload (e.g. user JSON snippet `"stream":1` becomes `"stream":true` before it is sent).
-
-**Evidence:** `api/LLMRequestBuilder.ahk` `static _FixStreamBoolean(jsonStr)` — four `StrReplace` calls on the whole JSON string; also called from `LLMRequestBuilder.createJSONRequest` and `appendToChatHistory`.
-
-**Verification:** headless scenario 100 (noApp) asserts `_FixStreamBoolean` exists and contains `StrReplace(jsonStr, ...stream...`.
-
-### 101. SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists
-
-**Scenario:** 101 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings → Commands → edit a command that has `stream` enabled, uncheck `Stream Response` (set to `false`) → Save → reopen Settings → the toggle is back on.
-
-**Expected:** saving `false` should persist as `false` (the command should run non-streaming).
-
-**Actual:** `SettingsApply._ApplyCommands` builds each command with `SettingsApply._SetIfTruthy(cmd, c, "stream")` (and `isFIM`, `showInputBox`, `expandNewlines`, `includeImageContext`), where `_SetIfTruthy` is `if c.Has(key) && c[key] cmd.%key% := c[key]`. A `false` value is falsy, so the assignment is skipped and the key is omitted from the new `commands` global; the next save round-trip loses the `false`. Same for `maxContextWords` via `_SetIfNonZero` (0 dropped) and `tags` via `Length>0`.
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_SetIfTruthy` `if c.Has(key) && c[key]` and calls for `"stream"`, `"isFIM"`, `"showInputBox"`; `_SetIfNonZero` for `maxContextWords`.
-
-**Verification:** headless scenario 101 (noApp) asserts `_SetIfTruthy` helper exists with `c.Has(key) && c[key]` and is called for `"stream"`.
-
-### 102. UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models
-
-**Scenario:** 102 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** open Usage Dashboard, select a provider filter value containing `%` (crafted via hand-edited `settings.json` or direct `UsageRepo.Query` call with `provider="%"`), query dashboard.
-
-**Expected:** `providerFilter` should be wildcard-escaped before `LIKE`.
-
-**Actual:** `UsageRepo.Query` does `providerChatClause := providerFilter ? "AND model LIKE ''" SQLite.Escape(providerFilter) "/%''" : ""` — `SQLite.Escape` only doubles `'`, it does not escape `%`/`_`/`\` for `LIKE ESCAPE`. The dashboard also uses `LIKE` without `ESCAPE` handling for provider, so `%` becomes a wildcard and returns all rows (same class as #69, but provider path was not yet reported).
-
-**Evidence:** `chat/db/UsageRepo.ahk` `providerChatClause` line with `LIKE` and `SQLite.Escape(providerFilter)` but no `StrReplace` for `%`.
-
-**Verification:** headless scenario 102 (noApp) asserts `providerChatClause := providerFilter ? "AND model LIKE` exists and no wildcard escape exists.
-
-### 103. TreeRepo.GetThreadStats pricingUnit picks the first message''s model, not the thread''s active model
-
-**Scenario:** 103 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a thread with mixed models (e.g. assistant message from `openai/gpt-4` then later assistant from `anthropic/claude-3`), then check the token-bar `pricingUnit` (input/cached/output per 1M) shown in the header.
-
-**Expected:** pricing should reflect the thread''s effective model (active leaf or `model_override`), not an arbitrary earlier message.
-
-**Actual:** `TreeRepo.GetThreadStats` does `allTable := ChatDB.db.Exec("SELECT model FROM messages WHERE thread_id=''" threadId "'' AND model IS NOT NULL AND model != '''' LIMIT 1;")` — picks the *first* message with a model (by insertion order), regardless of which model is active. A thread that switched models will report the wrong per-token prices and cost estimates until all early messages are deleted.
-
-**Evidence:** `chat/db/TreeRepo.ahk:363` `SELECT model ... LIMIT 1`.
-
-**Verification:** headless scenario 103 (noApp) asserts the `LIMIT 1` first-model query exists.
-
-
-### 107. TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants
-
-**Scenario:** 107 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a thread with an assistant message that has `prompt_tokens=100` + `token_count=20` (active_path=120), then delete a middle message and check the leaf''s `active_path_tokens`.
-
-**Expected:** after structural change the leaf should still reflect prompt+completion (or be recomputed from API ground truth).
-
-**Actual:** `_RecomputeActivePath` does `prev := 0; for msg in path { prev += token_count; UPDATE ... active_path_tokens=prev }` — it sums only `token_count` (visible tokens), ignoring `prompt_tokens`. After delete/edit the assistant''s 100 prompt tokens are lost, header “Context Used” drops from 120 to ~20.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `static _RecomputeActivePath` — loop `prev += msg.HasProp("token_count") ? msg.token_count : 0` without `prompt_tokens`.
-
-**Verification:** headless scenario 107 (noApp) asserts the function contains `prev +=` with `token_count` and no `prompt_tokens` in its 600-char body.
-
-### 108. main.js IPC fallback calls arbitrary `window[target]` without allowlist
-
-**Scenario:** 108 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** from a compromised WebView (XSS via #57/#86), post a message with `target="eval"` and `data="alert(1)"` via `chrome.webview.postMessage`; or have AHK send an undeclared `target` to the WebView.
-
-**Expected:** only declared `IPCMessages` targets should be dispatched; unknown targets should be dropped after logging.
-
-**Actual:** `webui/js/main.js` `handleWebMessage` `default:` case does `if (typeof window[target] === "function") window[target](...data)` — any global (e.g. `eval`, `fetch`, `location`) is invocable. `IPCMessages.validate` only `console.error`s, it doesn''t block the dispatch, so the allowlist is bypassed.
-
-**Evidence:** `webui/js/main.js` `default:` → `window[target](...data)`.
-
-**Verification:** headless scenario 108 (noApp) asserts `window[target]` fallback exists.
-
-### 109. Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`
-
-**Scenario:** 109 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a crafted `sidebarAction` IPC with `subAction:"deleteFolder"` and `folderId:"bad''id"` (e.g. via hand-edited WebView postMessage or compromised extension), or call any `ChatDB` path with `threadId`/`msgId` containing `''` via hand-edited DB.
-
-**Expected:** all `WHERE id="..."` interpolations should use `SQLite.Escape`.
-
-**Actual:** 15+ call sites still do raw `WHERE id="''" threadId "''"` / `msgId` / `params["folderId"]` without `SQLite.Escape`: `chat/callbacks/Sidebar.ahk:143` `DELETE FROM chat_folders WHERE id="''" params["folderId"] "''"`, `chat/db/MessageRepo.ahk` 5× `WHERE id="''" msgId "''"`, `chat/db/TreeRepo.ahk` 8× `WHERE id="''" threadId "''"`, `chat/db/AttachmentRepo.ahk` 2× `WHERE id="''" attachmentId "''"`, etc. Same class as #80/#81/#96/#99 but uncovered locations — hand-edited or IPC-crafted `''` breaks literal and injects SQL.
-
-**Evidence:** `chat/callbacks/Sidebar.ahk:143` without `SQLite.Escape`; `chat/db/MessageRepo.ahk:131,157,163,167,181` etc. raw `msgId`.
-
-**Verification:** headless scenario 109 (noApp) asserts `Sidebar.ahk` contains `params["folderId"]` in `DELETE FROM chat_folders` without `SQLite.Escape`, and `MessageRepo.ahk` has ≥3 raw `WHERE id="''" msgId` occurrences.
-
-### 110. Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`
-
-**Scenario:** 110 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send any chat request (streaming), then check `%TEMP%` for `ChatWindow_cURL_*.txt` and `ChatWindow_Req_*.json`.
-
-**Expected:** temp files should be deleted after the request completes (like the cancel path does via `deleteTempFiles()`).
-
-**Actual:** `ChatRequestBuilder._WriteRequestFiles` writes `ChatWindow_Req_*.json` + `ChatWindow_cURL_*.txt` (containing `Authorization: Bearer <apiKey>`) to `A_Temp`, and `StreamHandler.sendStreamingRequest` writes the cURL command file. On success `StreamCompletion._handleStreamComplete` never calls `deleteTempFiles()` — only `_handleStreamCancelled` (in `StreamError.ahk`) does. Successful streams leave Bearer tokens on disk indefinitely; error path also leaks.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk` `_handleStreamComplete` has no `deleteTempFiles`; `chat/streaming/StreamError.ahk` `_handleStreamCancelled` does; `api/CurlBuilder.ahk` `Build`/`BuildStream` embed `providerInfo.apiKey`.
-
-**Verification:** headless scenario 110 (noApp) asserts `StreamCompletion.ahk` has no `deleteTempFiles` in `_handleStreamComplete`, `StreamError.ahk` does in cancel, and `CurlBuilder.ahk` contains `providerInfo.apiKey`.
-
-### 111. ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`
-
-**Scenario:** 111 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** send a chat/command request that triggers `ApiLogger.LogRequest`, then kill the app mid-write (or have disk full).
-
-**Expected:** log write should be atomic (write to temp then rename), like settings should be.
-
-**Actual:** `ApiLogger.LogRequest` does `FileOpen(this.logFilePath, "w", "UTF-8-RAW").Write(jsongo.Stringify(logs))` — direct overwrite without temp file. Crash or power loss mid-write leaves truncated JSON, next `ReadLogs` fails to parse and returns `[]`, losing all history. Same class as #97 but for API logs.
-
-**Evidence:** `api/ApiLogger.ahk` `LogRequest` — `FileOpen(..., "w").Write` without `FileMove` temp.
-
-**Verification:** headless scenario 111 (noApp) asserts `FileOpen(this.logFilePath, "w"` exists and no atomic rename exists.
-
-### 112. CurlBuilder does not validate empty endpoint — malformed cURL with no URL
-
-**Scenario:** 112 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** configure a provider with empty `endpoint` (e.g. add provider via Settings → Providers → leave Chat Endpoint blank → Save), then send a chat request with that provider''s model.
-
-**Expected:** request builder should return early with “No endpoint configured” error (like missing API key does via `_ShowApiKeyError`).
-
-**Actual:** `CurlBuilder.Build` does `return ''cURL.exe ... -X POST '' . providerInfo.endpoint . '' '' . ''-H ...''` without checking `endpoint`. Empty endpoint yields `cURL.exe -s ... -X POST  -H "Authorization: …"` with double-space and no URL — cURL exits with “no URL specified” (stderr), but the error is not surfaced as a user-friendly “endpoint missing” banner; the UI appears stuck or shows raw cURL stderr.
-
-**Evidence:** `api/CurlBuilder.ahk` `Build`/`BuildStream`/`BuildFIM` all concatenate `providerInfo.endpoint` without `if !endpoint` guard.
-
-**Verification:** headless scenario 112 (noApp) asserts `providerInfo.endpoint` is used without empty check.
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
+
+- 2026-08-08 - "AttachmentRepo inserts/queries interpolate msgId/threadId without SQLite.Escape — SQL injection" - FIXED in 0bb1d2f: AttachmentRepo now escapes msgId/threadId in Insert/GetByMessage/GetByThread/DeleteByMessage/DeleteOne/CopyForMessage and ChatDB FTS_Sync/FTS_Remove, so crafted ids stay literal (same class as #80/#81); scenario 96 flipped to a regression static check + ChatDB unit test (crafted `bad'id` round-trips through attachment CRUD and FTS).
+
+- 2026-08-08 - "SettingsPersistence.Save is non-atomic — FileDelete then FileAppend leaves empty file on failure" - FIXED in 122ef51: Save now writes settings.json.tmp and renames it over the target (FileMove + file-state verification, since FileMove's return value is unreliable in this AHK build), so a crash/failure mid-write can no longer destroy the original settings.json; scenario 97 flipped to a regression static check + SettingsHandler unit tests (round-trip, replace-not-append, failure cleans temp and returns false).
+
+- 2026-08-08 - "StreamHandler _finalizeStreaming leaks state on cancel — no _cleanupStreamState after _handleStreamCancelled" - FIXED in 8702a42 (hardening): _finalizeStreaming's wasCancelled branch now calls _cleanupStreamState() explicitly before returning (idempotent — _handleStreamCancelled already cleaned up internally), so every exit path guarantees the _stream* keys are cleared and no stale state can leak into the next send; scenario 98 flipped to a regression static check + StreamHandler unit test.
+
+- 2026-08-08 - "MessageRepo.Insert builds parent_id / sibling_group without SQLite.Escape — SQL injection via crafted ids" - FIXED in 13be371: Insert now escapes parent_id and sibling_group (and the active-path parent lookup inside Insert), so crafted ids stay literal; scenario 99 flipped to a regression static check + ChatDB unit test (crafted `bad'parent`/`sib'group` round-trip through Insert).
+
+- 2026-08-08 - "LLMRequestBuilder._FixStreamBoolean uses global StrReplace — user message containing `"stream":1` is corrupted" - FIXED in 7cf0328: _FixStreamBoolean is now quote-aware — it scans the JSON and rewrites only real stream/include_usage/include_thoughts key:value tokens outside string literals (no more global StrReplace over the whole payload); scenario 100 flipped to a regression static check + LLMRequestBuilder unit tests (user prompt with a `{"stream":1}` snippet survives verbatim while the real top-level stream still becomes true).
+
+- 2026-08-08 - "SettingsApply._ApplyCommands _SetIfTruthy drops `false` — clearing stream/isFIM/showInputBox never persists" - FIXED in 0f42fdc: the command copy helpers (_SetIfTruthy/_SetIfNonZero/_SetIfNonEmptyTags) now assign whenever the key exists, so false toggles, maxContextWords 0 and explicitly empty tags survive the save round-trip; scenario 101 flipped to a regression static check + SettingsHandler unit test (ApplyToGlobals keeps stream/isFIM/showInputBox/expandNewlines/includeImageContext=false, maxContextWords=0, tags=[]).
+
+- 2026-08-08 - "UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models" - FIXED in 8533a7a (hardening): the latent providerChatClause LIKE now escapes `\` `%` `_` via a new UsageRepo._EscapeLike and declares ESCAPE '\' (same pattern as SearchRepo #69); scenario 102 flipped to a regression static check + UsageTracking unit test. (The executed chat/command queries already matched provider exactly, so the wildcard LIKE was latent.)
+
+- 2026-08-08 - "TreeRepo.GetThreadStats pricingUnit picks the first message's model, not the thread's active model" - FIXED in 24089f9: GetThreadStats now resolves pricing via a shared TreeRepo._ResolvePricing (current request model -> thread model_override -> last assistant on the active path) used for BOTH the context window and pricingUnit, so the token bar's per-token prices follow the active model; scenario 103 flipped to a regression static check + UsageTracking unit test (pricing follows the newest assistant, thread override, then request model).
+
+- 2026-08-08 - "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants" - FIXED in 634ffca: prompt_tokens is now persisted on every message (schema migration + Insert + fork copies) and _RecomputeActivePath keeps the assistant's API ground truth (prompt + visible + thinking) instead of reducing to a visible-token prefix sum, so Context Used no longer drops after delete/edit; scenario 107 flipped to a regression static check + ChatDB unit tests (ground truth survives recompute; hard-delete re-parenting test updated to expect ground truth).
+
+- 2026-08-08 - "main.js IPC fallback calls arbitrary `window[target]` without allowlist" - FIXED in 38d8292: handleWebMessage now routes the two legacy targets (updateTopbarTitle/updateBranchInfo) via explicit cases and the default case only logs unknown targets — the dynamic window[target](...data) invocation is gone, so a crafted IPC target can no longer invoke arbitrary globals; scenario 108 flipped to a regression static check + main.js unit tests (legacy targets route explicitly; a decoy global is never invoked for an unknown target).
+
+- 2026-08-08 - "Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`" - FIXED in 6aa4798: every remaining raw id interpolation now uses SQLite.Escape — Sidebar (rename/delete/move folder + renameThread), Edit.ahk, MessageRepo (Insert thread_id/role, HardDelete, Edit, GetMaxSiblingIndex, _TouchThreadByMsg, backfill), TreeRepo (GetActivePath, GetSiblings, SetActiveLeaf, SwitchBranch, GetThreadStats, _ResolvePricing, _WalkToLeaf, forks), ThreadRepo (thread listing, PurgeExpired coerces retention to Integer), SearchRepo FTS id list, ChatUtils/ThreadTitleGen/StreamCompletion; scenario 109 flipped to a regression static check + ChatDB unit test (crafted `bad'thread`/`bad'msg` round-trip SetActiveLeaf + HardDelete).
+
+- 2026-08-08 - "Chat streaming temp files with API keys not deleted after success — credential leak in `%TEMP%`" - FIXED in ef41e48: _handleStreamComplete (success) and _handleStreamError (error) now call deleteTempFiles() after their reads, matching the cancel path, and deleteTempFiles is defensive about missing requestParams keys; scenario 110 flipped to a regression static check + StreamHandler unit test (success/error/cancel all delete temp files).
+
+- 2026-08-08 - "ApiLogger LogRequest overwrites log file non-atomically — crash corrupts `LLM_API_Log.json`" - FIXED in 193ed5b: LogRequest and TrimToLimit now write through a new ApiLogger._WriteLogs helper (temp file + FileMove with file-state verification, same pattern as settings #97), so a crash mid-write cannot leave truncated JSON; scenario 111 flipped to a regression static check + LLMRequestBuilder unit test (round-trip, no temp leftover).
+
+- 2026-08-08 - "CurlBuilder does not validate empty endpoint — malformed cURL with no URL" - FIXED in 23d462c: CurlBuilder.Build/BuildStream/BuildFIM now return "" when the endpoint is empty (no URL-less cURL command can be produced) and ChatRequestBuilder + sendStreamingRequest surface a friendly "No endpoint configured" error via the new _ShowEndpointError helper; scenario 112 flipped to a regression static check + LLMRequestBuilder unit test (empty endpoint returns "", FIM endpoint still preferred when configured).
+
+- 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
+
+- 2026-08-07 - "SettingsDefaults `GetDefaults` shallow-copies `Map` values [latent] - mutating snapshot corrupts pristine defaults" - FIXED in 182c6ce (hardening): GetDefaults now deep-clones nested Maps/Arrays via a new _DeepClone helper, so callers cannot corrupt the cached pristine defaults by mutating a snapshot; scenario 93 flipped to a regression static check + SettingsHandler unit test.
+
+- 2026-08-07 - "Models `ensureFullId` ignores provider dropdown when id already contains `/` - stale provider prefix" - FIXED in 3925a32: ensureFullId now strips any embedded prefix and rebuilds the full id from the selected provider (keeps the id as-is when no provider is chosen); the refresh-modal data-full-id precedence was already fixed by bug #40; scenario 92 flipped to a regression static check + models-pricing-refresh unit test.
+
+- 2026-08-07 - "InputWindow `validateInputAndHide` treats `\"0\"` as empty - `!value` falsy check" - FIXED in b7dfb20: validateInputAndHide now treats only empty/whitespace as empty (Trim(...) = \"\"), so a single \"0\" is accepted; scenario 91 flipped to a regression static check + InputWindow unit tests.
+
+- 2026-08-07 - "SettingsMerge.Override iterates over `incoming` without `IsObject` guard - empty string corrupts settings" - FIXED in b20131d: Override now normalizes non-object incoming payloads to an empty Map before merging; scenario 90 flipped to a regression static check + SettingsHandler unit test.
+
+- 2026-08-07 - "CurlBuilder interpolates API key with `\"` into `-H \"Authorization: Bearer ...\"` without escaping - header break / injection" - FIXED in 0a72a67: Build/BuildStream/BuildFIM now pass the key through CurlBuilder._SafeApiKey (strips \" % & | < > ^) before embedding it in the header; scenario 89 flipped to a regression static check + LLMRequestBuilder unit test.
+
+- 2026-08-07 - "Usage dashboard \"Last 30 Days\" SQL uses UTC while chart uses local - same timezone drift as Last Month" - FIXED with bug #87 (fad0f52): the month filter now uses a local monthCutoff (FormatTime(DateAdd(A_Now,-29))) instead of UTC date('now','-30 days'); scenario 88 flipped to a regression static check.
+
+- 2026-08-07 - "Usage dashboard \"Last Month\" SQL uses UTC `date('now')` while chart labels use local `new Date()` - timezone drift" - FIXED in fad0f52: _WhereDate now takes local month boundaries (monthStart/lastMonthStart/monthCutoff computed via FormatTime/DateAdd) for lastMonth/thisMonth/month, matching the local chart labels; scenario 87 flipped to a regression static check + UsageTracking unit test.
+
+- 2026-08-07 - "FIM fallback `renderMarkdown` XSS - `md.render` with `html:true` for non-chat content" - REFUTED (duplicate of #57, which was FIXED in 05e2ccb: markdown-it html:false covers the FIM fallback path too); scenario 86 converted to a regression check for the non-chat renderMarkdown path.
+
+- 2026-08-07 - "API Logs Viewer `esc()` does not escape single quote - `title` attribute break and potential XSS" - FIXED in 2bb8435: esc() now escapes single quotes (&#39;) in addition to & < > \", so title attributes cannot be broken; scenario 84 flipped to a regression static check + api-logs-viewer unit test.
+
+- 2026-08-07 - "Thread-map \"who\" label XSS - model name not escaped in right-panel nav list" - FIXED in e5e45b6: renderNavList now escapes the who label with escHtml(who) like the snippet; scenario 83 flipped to a regression static check + chat-sidebar unit test.
+
+- 2026-08-07 - "Usage dashboard provider/model filter dropdown XSS - option values not escaped" - FIXED in fceb5a1: populateFilters now escapes provider/model option values and labels with a local escHtml helper; scenario 82 flipped to a regression static check + usage-dashboard unit test.
+
+- 2026-08-07 - "Branch _setupSiblingGroup UPDATE interpolates msg.id without escaping - SQL injection via crafted message id" - FIXED in 21b5cd1: _setupSiblingGroup now escapes msg.id with SQLite.Escape before the UPDATE; scenario 81 flipped to a regression static check + ChatDB unit test.
+
+- 2026-08-07 - "ThreadRepo SoftDelete/Restore/Delete/Update interpolate threadId without SQLite.Escape - SQL injection via crafted id" - FIXED in f499225: SoftDelete/Restore/Delete/Update now escape threadId with SQLite.Escape (and AttachmentRepo.DeleteByThread too), so crafted ids cannot inject SQL; scenario 80 flipped to a regression static check + ChatDB unit test.
+
+- 2026-08-07 - "Settings file with UTF-8 BOM fails to load - settings silently reset to defaults" - FIXED in 608a7a7: SettingsPersistence.Load now strips a leading UTF-8 BOM (Chr(0xFEFF)) before jsongo.Parse, so BOM'd settings files load instead of silently resetting; scenario 79 flipped to a regression static check + SettingsHandler unit test.
+
+- 2026-08-07 - "Right-rail temperature 0 displays as \"Default\" instead of 0.0 - falsy check hides 0" - FIXED in 5389f74: populateCurrentSettings now keeps a stored 0 and uses explicit empty checks (temperature !== '' && !== undefined && !== null) instead of a truthiness check, so the rail shows 0.0; scenario 78 flipped to a regression static check + model-picker unit test.
+
+- 2026-08-07 - "Empty Send (no text, no attachments) with existing chat history triggers an unexpected retry" - FIXED in 8c651dd: onChatSend now returns early when the input is empty and there are no attachments, so an accidental click/Enter no longer retries the last assistant/user message and burns tokens; scenario 77 flipped to a regression static check + chat-input unit test.
+
+- 2026-08-07 - "initChatMode guard `!activeThreadId` prevents thread switch when WebView already holds a thread" - FIXED in f4cd45f: initChatMode now assigns activeThreadId whenever a threadId is provided (the old !activeThreadId guard left it stale on switches, so sends/search targeted the wrong thread); scenario 76 flipped to a regression static check + chat-core unit test.
+
+- 2026-08-07 - "GoogleChatCompletions budget table matches via substring InStr, not exact family check" - FIXED in b1e1fc0: _BudgetTable now matches the Gemini family (gemini-2.5-pro / gemini-2.5-flash-lite / gemini-2.5-flash / gemini-2.0-flash) instead of any substring, so custom ids like my2.5-pro fall back to the generic table; scenario 75 flipped to a regression static check + LLMRequestBuilder unit test.
+
+- 2026-08-07 - "SettingsApply leaves providerMap stale when all prefixes are cleared" - FIXED in bcd199a: _ApplyProviders now rebuilds providerMap whenever the saved providers define prefixes explicitly (an empty set clears the stale map), while providers without a prefixes key still keep the UserConfig mapping; scenario 74 flipped to a regression static check + SettingsHandler unit test.
+
+- 2026-08-07 - "GoogleChatCompletions disabled thinking config for Gemini 2.x omits include_thoughts (inconsistent with enabled)" - FIXED in d8c0096: DisabledConfig now returns {include_thoughts:false, thinking_budget:0} for Gemini 2.x, symmetric with the enabled config; scenario 73 flipped to a regression static check + LLMRequestBuilder unit test.
+
+- 2026-08-07 - "SystemMessageResolver treats UNC \\server\\share paths as relative - file not found" - FIXED in d58d2bf: Resolve now treats paths starting with \\ or / as absolute (no drive-letter colon required), so UNC/rooted system-message files are read as-is; scenario 72 flipped to a regression static check + UserConfig unit test.
+
+- 2026-08-07 - "Clearing Thread Title Generation model/prompt/maxTokens leaves stale globals [family: #61/#71]" - FIXED in 0f06b9a: SettingsApply._ApplyThreadTitles now assigns the saved value whenever the key exists (empty string included), so clearing title-gen fields resets the stale globals; scenario 71 flipped to a regression static check + SettingsHandler unit test.
+
+- 2026-08-07 - "Search FTS5 MATCH does not escape special characters - C++ or \"hello\" breaks the query (empty results)" - FIXED in ab3ef6b: SearchRepo._FTS5 now quotes each term (_FTS5QuoteTerm, doubling embedded quotes) so FTS5 special characters match literally and the trailing * still does prefix matching; scenario 70 flipped to a regression static check + ChatDB unit test.
+
+- 2026-08-07 - "Search LIKE fallback does not escape % _ \\ - searching for % returns all messages" - FIXED in e452650: new SearchRepo._EscapeLike escapes \\ % _ (used by _Like and _Titles) so user input is matched literally; scenario 69 flipped to a regression static check + ChatDB unit test.
+
+- 2026-08-07 - "ProviderResolver legacy prefix match uses substring InStr, not prefix check - mygpt matches gpt" - FIXED in a368b2a: Resolve now matches legacy short ids by PREFIX (SubStr(...) = prefix) instead of substring InStr, so mygpt-custom no longer resolves to the gpt provider; scenario 68 flipped to a regression static check + LLMRequestBuilder unit test.
+
+- 2026-08-07 - "Header tooltip typo \"Culminative\" (should be \"Cumulative\") and mismatched semantics" - FIXED in d72b4f5: the updateTokenUsage tooltip now reads \"Cumulative Input/output token usage across all conversation branches\"; scenario 66 flipped to a regression static check + chat-format unit test.
+
+- 2026-08-07 - "Hard-deleting a message leaves cumulative token/cost counters stale - header stays inflated" - FIXED in 12f3a8a: MessageRepo._RecomputeCumulativeCounters rebuilds the thread's cumulative input/output/cached/cost counters from the remaining messages (mirroring Insert's per-message accumulation) and HardDelete calls it, so the header totals drop with the deleted message; scenario 65 flipped to a regression static check + UsageTracking/ChatDB unit tests (old preserve-counters test updated to the fixed semantics).
+
+- 2026-08-07 - "Header \"Context Used\" excludes thinking tokens - underreports context window usage" - FIXED in f9769f7: MessageRepo now stores active_path_tokens = prompt + visible + thinking for assistants, and TreeRepo._RecomputeActivePath adds thinking_tokens to the prefix sums, so the header Context Used matches the tooltip/dashboard totals; scenario 64 flipped to a regression static check + ChatDB/UsageTracking unit tests (existing thinking-token expectations updated).
+
+- 2026-08-07 - "Token-bar pricing unit shows 0 for cached input when the model stores \"\" instead of falling back to 10%" - FIXED in d7af83c: TreeRepo.GetThreadStats now treats a stored cachedInput of \"\" as missing and falls back to 10% of the input price; scenario 63 flipped to a regression static check + ChatDB unit test.
+
+- 2026-08-07 - "Forking a chat with temperature 0 drops the override (reset to Default)" - FIXED in 2110b67: TreeRepo._CopyThreadSettings now uses an explicit empty check (temperatureOverride != "") so a stored 0 is copied to the fork; scenario 62 flipped to a regression static check + ChatDB fork unit test.
+
+- 2026-08-07 - "Clearing the Suspend Banner text (and other UI fields) has no effect [family: #61/#71 stale global on clear]" - FIXED in 4b609f2: SettingsApply._ApplyUI/_ApplyInputWindow/_ApplySuspendBanner now assign the saved value whenever the key exists (empty string included) instead of skipping empties, so clearing a field resets the stale global; scenario 61 flipped to a regression static check + SettingsHandler unit test. (#71's _ApplyThreadTitles uses the same pattern and is fixed in its own cycle.)
+
+- 2026-08-07 - "Forking a chat drops the thread's folder (the copy lands in Unfiled)" - FIXED in 6a0c98b: TreeRepo._CopyThreadSettings now copies folder_id alongside the other thread-level settings, so forks stay in the source folder; scenario 58 flipped to a regression check + ChatDB fork unit test.
+
+- 2026-08-07 - "Chat message content is rendered as raw HTML with no sanitization (embedded HTML/scripts execute in the WebView)" - FIXED in 05e2ccb: markdown-it is now configured with html:false, so raw HTML in messages is escaped and rendered as inert text (was html:true, letting inline event handlers run with chrome.webview.postMessage access); scenario 57 flipped to a regression check + main.js unit test. (#86 is a duplicate of this bug and will be refuted when reached.)
+
+- 2026-08-07 - "Stopping a stream before the first token shows an error banner instead of a clean cancel" - FIXED in 4fe5245: _finalizeStreaming now checks _streamCancelled BEFORE the empty-content branch, so a user Stop before the first token finalizes as a clean cancellation (_handleStreamCancelled posts streamCancelled) instead of the misleading API-key error banner; scenario 56 flipped to a regression static check + StreamHandler unit test.
+
+- 2026-08-07 - "Branch switch / search navigation land on the OLDEST continuation of a message while the tree modal lands on the newest" - FIXED in 6e87641: TreeRepo._WalkToLeaf now picks the same child the tree modal's _findDefaultLeaf chooses (ORDER BY sibling_index, rowid DESC = newest continuation) instead of the oldest by created_at; scenario 55 flipped to a regression check + ChatDB unit test.
+
+- 2026-08-07 - "Dashboard \"Last 24 Hours\" spans two calendar days" - FIXED in 74c589d: UsageRepo._WhereDate now takes the LOCAL today date (FormatTime) for the \"day\" range, so the summary counts the same local calendar day the chart plots (usage rows are stored with local dates); scenario 53 flipped to a regression check + UsageTracking unit test. (The month/lastMonth ranges still use UTC - tracked as #87/#88.)
+
+- 2026-08-07 - "Usage dashboard double-counts thinking tokens for command usage" - FIXED in f9f34ea: renderSummary and renderModelSections now count command_usage.completion_tokens once (it already includes thinking, matching chat's output_tokens) instead of adding thinking_tokens again; scenario 52 flipped to a regression check + usage-dashboard unit test.
+
+- 2026-08-07 - "Forking a chat resets the token/cost stats (active_path_tokens and cumulative counters are not copied or recomputed)" - FIXED in 4bdfc51: TreeRepo.GetActivePath now selects active_path_tokens, _InsertForkMessage/_CopyOffPathSiblings copy it per message, and ForkThread carries the source thread's cumulative counters to the fork, so the token bar keeps context + cost; scenario 48 flipped to a regression check + ChatDB fork unit test.
+
+- 2026-08-07 - "Canceling a message edit leaves removed attachments hidden in the UI but still in the DB (they get sent anyway)" - FIXED in 5597ff1: the edit Cancel handler now restores wrappers of deferred-removed attachments, clears _removedAttachmentIds, and resets _editingMessageId, so cancel is a clean rollback; scenario 49 flipped to a regression check + chat-branching unit test.
+
+- 2026-08-07 - "Command \"Stream Response\" + pasteMode replace/append silently produces no output" - FIXED in 1979523: InlineRequestRunner now builds its non-FIM request with stream=false (was passing the command's stream flag, so the API answered SSE the single-shot parser could not read); scenario 46 flipped to a regression static check + InlineRequestRunner unit test.
+
+- 2026-08-07 - "Refresh-models modal discards edits to a model id (stale data-full-id wins on Save)" - FIXED in fa86b1c: saveRefresh and _rightPanelIds now prefer the live input value over the stale data-full-id attribute (the provider column still supplies the prefix), so renames in the refresh modal survive; scenario 40 flipped to a regression check + models-pricing-refresh unit tests.
+
+- 2026-08-07 - "Tray \"New Chat\" ignores the \"New Chats Start With\" default" - FIXED in 4d9228b: new _applyNewChatDefaultToFreshThread applies the configured assistant/model + default font size to fresh (message-less, settings-less) threads; LoadThreadIntoUI now calls it, so tray/command-line-spawned chats start with the configured default; scenario 41 flipped to a regression static check + ChatSettings unit tests (fresh thread gets default, configured thread untouched).
+
+- 2026-08-07 - "System-message modal silently clears a custom (unlisted) system-message file on Save" - FIXED in 0218d75: populateSysMsgModal records the stored file on the modal and the Save handler falls back to it when the select has no matching option (selectedIndex=-1), so a custom file survives opening + saving; scenario 39 flipped to a regression check + sysmsg-modal unit tests (preserve custom file, explicit \"(none)\" still clears).
+
+- 2026-08-07 - "\"Response Font\" setting is not applied to chat messages until Settings is opened" - FIXED in 13a4cec: Dispatch now re-pushes the merged appSettings on the webViewReady handshake and after every successful save, so ui-theme.js applies --chat-font-family (and other UI CSS vars) at startup and live; scenario 45 flipped to a regression check + ChatDispatch unit tests.
+
+- 2026-08-07 - "Chat window title stays stale after renaming a thread and switching to another" - FIXED in eb54326: _LoadThreadAndRefreshUI now sets chatWindow.Title from the active thread (was only renameThread), so the title bar follows thread switches; scenario 38 flipped to a regression check + ChatUtils unit test.
+
+- 2026-08-07 - "Tray menu item changes don't apply until restart" - FIXED in 5701466: new app/TrayMenu.ahk rebuilds A_TrayMenu from the current trayMenuItems global at startup and via a SettingsService trayMenu hook, so Menu Items edits apply live; scenario 37 flipped to a regression static check + TrayMenu unit tests.
+
+- 2026-08-07 - "Command temperature/reasoning are dropped when the command model equals the app default" - FIXED in a1e086e: processInitialRequest now persists temperature/reasoning/system overrides unconditionally (only modelOverride is gated by `fullAPIModelName != appDefaultModel`); scenario 36 flipped to a regression static check + RequestProcessor AHK unit test.
+
+- 2026-08-07 - "Temperature override of 0 is dropped when the thread reloads (right rail shows Default)" - FIXED in b3a50f8: ThreadSettings.ComputeEffective now tracks hasTemperatureOverride so a stored 0 is a valid override (assistant temperature only applies when there is no per-thread override); scenario 35 flipped to a live regression check (sse-success asserting temperature 0 in the request) + ChatSettings AHK unit tests (ComputeEffective and restore path).
+
+- 2026-08-07 - "Tray icon changes don't apply until restart" - FIXED in fb7fce8: new app/TrayIcon.ahk re-applies the tray icon from the current icons globals (honoring suspend state) at startup and via a SettingsService hook, so icon edits apply live; scenario 34 flipped to regression check (regression: true) + TrayIcon unit tests.
 
 - 2026-08-07 - "Clearing the chat-window icon setting still loads the default custom icon" - FIXED in 10549ec: SettingsApply._ApplyIcons now applies empty strings (was skipped, kept DefaultSettings); scenario 33 flipped to regression check (regression: true) + SettingsHandler unit test.
 
