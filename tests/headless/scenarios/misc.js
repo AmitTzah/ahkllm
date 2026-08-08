@@ -12,7 +12,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { CDP } = require('../cdp');
 const launcher = require('../launch');
-const { sleep, runIconCheck, readJsonFile, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
+const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
 
@@ -63,6 +63,47 @@ scenarios.push({
     if (mangled.customApplied !== 1) throw new Error('custom icon NOT applied to chat window; probe=' + JSON.stringify(mangled));
     if (mangled.renderFailed === 1) throw new Error('icon render failed 3x; probe=' + JSON.stringify(mangled));
     return 'absolute icon path: direct LoadPicture ok (h=' + mangled.hCustom + '), mangled path h=' + mangled.hMangled + ', custom icon applied to chat window (customApplied=1)';
+  }
+});
+
+scenarios.push({
+  id: 138,
+  name: 'Changing the Active Icon (iconOn) in Settings does not re-apply to the already-open chat window (only the tray updates until restart)',
+  mode: null,
+  settings: {},
+  async body({ cdp, dataDir }) {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const launcher = require('../launch');
+    const onIco = path.join(launcher.REPO_ROOT, 'icons', 'IconOn.ico');
+    const offIco = path.join(launcher.REPO_ROOT, 'icons', 'IconOff.ico');
+    if (!fs.existsSync(onIco) || !fs.existsSync(offIco)) throw new Error('icons missing (setup)');
+
+    await showChat();
+    await sleep(600);
+    // Baseline: the chat window must currently show the DEFAULT IconOn icon.
+    const before = runIconCheck(onIco);
+    if (before.renderFailed === 1) throw new Error('baseline icon render failed (setup): ' + JSON.stringify(before));
+    if (before.customApplied !== 1) throw new Error('baseline icon mismatch (setup): ' + JSON.stringify(before));
+
+    // Change the Active Icon in Settings to IconOff.ico and save.
+    await openSettings(cdp);
+    await openSection(cdp, 'icons');
+    await cdp.waitFor('document.getElementById("iconOnPath") !== null', 10000, 250, 'icons section');
+    await cdp.type('#iconOnPath', offIco);
+    await saveSettings(cdp, dataDir);
+    await sleep(1000);
+
+    // The running chat window must now show IconOff.ico if the setting is
+    // applied live (the tray icon does via the TrayIcon hook).
+    const after = runIconCheck(offIco);
+    if (after.renderFailed === 1) throw new Error('post-save icon render failed (measurement): ' + JSON.stringify(after));
+    // BUG (repro): ChatWindow.ahk only sets the window icon at startup - no
+    // settings hook re-applies it, so the open window keeps IconOn.
+    if (after.customApplied !== 0)
+      throw new Error('window icon unexpectedly updated (bug not reproduced): ' + JSON.stringify(after));
+    return 'baseline window icon=IconOn (customApplied=1); after saving iconOn=' + path.basename(offIco) +
+      ' the open chat window still shows the OLD icon (customApplied=' + after.customApplied + ' - stale until restart)';
   }
 });
 

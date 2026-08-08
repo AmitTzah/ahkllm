@@ -154,12 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - NEW bug #133 verified headlessly (cancelled mid-stream responses are
-  counted as billed API requests and inflate the thread's cumulative input tokens). Added audits #134-#137
-  (General/UI/Menu settings round-trips, dashboard filters, complex-tree + attachment lifecycle) - all PASS.
-  Next: fix #133 (rank 1), then re-run `--check-sync` + full suites.
+- **Where we left off:** 2026-08-08 - Bugs #133 (cancelled-stream usage over-count) and #138 (Active Icon change
+  is not re-applied to the open chat window) verified headlessly and committed. Audits #134-#137 all PASS.
+  Next: fix #133 (rank 1), then #138; re-run `--check-sync` + full suites after each.
 ---
 
 ## Bug entry template
@@ -242,6 +241,29 @@ legacy fallback to `rowMap[parent].active_path_tokens`) turns it into a billed r
 **Verification:** headless — scenario 133 sends two messages with the mock SSE server, presses Stop mid-stream
 (partial row has `token_count=0, prompt_tokens=0`), then asserts `chat_usage.call_count=2` and
 `cumulative_input_tokens=33` (both PASS = bug reproduced, 3/3 stable runs).
+
+### 2. Changing the "Active Icon" (iconOn) in Settings is not re-applied to the already-open chat window (stale until restart)
+
+**Scenario:** 138 (scenario code in scenarios/misc.js)
+
+**Status:** verified — open
+
+**Repro:** Open Settings → Icons, change the "Active Icon (iconOn)" path to a different .ico, Save. Look at the
+chat window's title-bar/taskbar icon (the tray icon does update).
+
+**Expected:** The chat window icon follows the saved iconOn setting immediately (like the tray icon does via the
+TrayIcon settings hook).
+
+**Actual:** The chat window keeps the OLD icon until the ChatWindow process restarts. `ChatWindow.ahk` applies the
+window icon (WM_SETICON) only at startup; no settings-update hook re-applies it (the only ChatWindow hook is
+`chatHotkeys`). Verified live with the pixel-fingerprint probe: baseline window icon = IconOn (customApplied=1);
+after saving iconOn=IconOff.ico the open chat window still renders IconOn (customApplied=0).
+
+**Evidence:** `chat/ChatWindow.ahk:116-120` (WM_SETICON at startup only) vs `app/TrayIcon.ahk` + the
+`SettingsService.RegisterHook("trayIcon", ...)` chain in `Main.ahk` (tray re-applies live).
+
+**Verification:** headless — scenario 138 drives Settings → Icons → sets `#iconOnPath` to IconOff.ico → Save, then
+`runIconCheck(IconOff.ico)` on the open chat window returns `customApplied=0` (PASS = stale icon, 2/2 stable runs).
 
 
 ## History (append-only)
