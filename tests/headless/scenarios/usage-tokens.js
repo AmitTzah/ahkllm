@@ -512,4 +512,70 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 135,
+  name: 'Usage dashboard filters and totals stay consistent with the DB rows (audit)',
+  mode: null,
+  regression: true, // audit: summary + type/provider/model filters must match the DB rows
+  settings: {},
+  fixtures: {
+    chatUsage: [
+      { date: seed.daysAgo(0), model: 'deepseek/deepseek-v4-flash', provider: 'deepseek', call_count: 2, prompt_tokens: 20, completion_tokens: 14, thinking_tokens: 2, cached_tokens: 6, input_cost: 0.002, cached_input_cost: 0.0002, output_cost: 0.004, total_cost: 0.006 },
+      { date: seed.daysAgo(0), model: 'openai/gpt-5-mini', provider: 'openai', call_count: 1, prompt_tokens: 10, completion_tokens: 8, thinking_tokens: 0, cached_tokens: 3, input_cost: 0.001, cached_input_cost: 0.0001, output_cost: 0.002, total_cost: 0.003 },
+      { date: seed.daysAgo(2), model: 'deepseek/deepseek-v4-flash', provider: 'deepseek', call_count: 1, prompt_tokens: 5, completion_tokens: 4, thinking_tokens: 0, cached_tokens: 1, input_cost: 0.0005, cached_input_cost: 0.00005, output_cost: 0.001, total_cost: 0.0015 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES ('" + seed.daysAgo(0) + "', 'deepseek/deepseek-v4-flash', 'deepseek', 'Audit', 1, 6, 5, 1, 2, 0.0006, 0.00006, 0.0012, 0.0018, 0, 0)");
+    db.close();
+
+    await showChat();
+    await cdp.click('#dashboard-icon');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat && allData.commands && allData.chat.length === 3 && allData.commands.length === 1', 15000, 300, 'dashboard data');
+    await cdp.eval('document.getElementById("timeRange").value = "all"; loadData(); true');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat.length === 3 && allData.commands.length === 1', 15000, 300, 'all-time data');
+    await sleep(600);
+
+    // Summary: cost = 0.006 + 0.003 + 0.0015 + 0.0018 = 0.0123; calls = 2+1+1+1 = 5;
+    // tokens = chat(20+14)+(10+8)+(5+4) + command(6+5) = 72.
+    const totalCost = await cdp.text('#totalCost');
+    const totalCalls = await cdp.text('#totalCalls');
+    const totalTokens = await cdp.text('#totalTokens');
+    if (totalCost !== '$0.0123') throw new Error('total cost wrong: ' + totalCost);
+    if (totalCalls !== '5') throw new Error('total calls wrong: ' + totalCalls);
+    if (totalTokens !== '72') throw new Error('total tokens wrong: ' + totalTokens);
+
+    // Type filter: chat only -> calls 4, tokens 61 (20+14+10+8+5+4).
+    await cdp.eval('document.getElementById("typeFilter").value = "chat"; loadData(); true');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.commands.length === 0', 15000, 300, 'chat-only data');
+    await sleep(500);
+    if (await cdp.text('#totalCalls') !== '4') throw new Error('chat-only calls wrong: ' + await cdp.text('#totalCalls'));
+    if (await cdp.text('#totalTokens') !== '61') throw new Error('chat-only tokens wrong: ' + await cdp.text('#totalTokens'));
+
+    // Type filter: commands only -> calls 1, tokens 11.
+    await cdp.eval('document.getElementById("typeFilter").value = "command"; loadData(); true');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat.length === 0 && allData.commands.length === 1', 15000, 300, 'command-only data');
+    await sleep(500);
+    if (await cdp.text('#totalCalls') !== '1') throw new Error('command-only calls wrong: ' + await cdp.text('#totalCalls'));
+    if (await cdp.text('#totalTokens') !== '11') throw new Error('command-only tokens wrong: ' + await cdp.text('#totalTokens'));
+
+    // Provider filter: deepseek (all types) -> 3 chat + 1 command rows.
+    await cdp.eval('document.getElementById("typeFilter").value = "all"; document.getElementById("providerFilter").value = "deepseek"; loadData(); true');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat.length === 2 && allData.commands.length === 1', 15000, 300, 'deepseek data');
+    await sleep(500);
+    if (await cdp.text('#totalCalls') !== '4') throw new Error('deepseek calls wrong: ' + await cdp.text('#totalCalls'));
+
+    // Model filter: deepseek/deepseek-v4-flash only -> 2 chat + 1 command.
+    await cdp.eval('document.getElementById("modelFilter").value = "deepseek/deepseek-v4-flash"; loadData(); true');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat.length === 2 && allData.commands.length === 1', 15000, 300, 'model-filtered data');
+    await sleep(500);
+    if (await cdp.text('#totalCalls') !== '4') throw new Error('model-filter calls wrong: ' + await cdp.text('#totalCalls'));
+    if (await cdp.text('#totalTokens') !== '54') throw new Error('model-filter tokens wrong: ' + await cdp.text('#totalTokens'));
+
+    return 'dashboard audit: all-time cost=$0.0123 calls=5 tokens=72; chat-only 4/61; command-only 1/11; deepseek 4; model-filter 4/54 - all match the DB rows';
+  }
+});
+
 module.exports = scenarios;

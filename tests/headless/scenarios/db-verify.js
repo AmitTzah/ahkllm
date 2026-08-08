@@ -5,7 +5,7 @@ const path=require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const seed=require("../seed");
 const launcher=require("../launch");
-const { sleep, showChat } = require("./helpers");
+const { sleep, showChat, waitStreamingIdle } = require("./helpers");
 const scenarios=[];
 scenarios.push({
   id: 104,
@@ -278,6 +278,203 @@ scenarios.push({
     if (refs !== 0) throw new Error('final refs should be 0, got ' + refs);
     if (!fileGone) throw new Error('orphaned file still on disk after the last reference was deleted');
     return 'shared attachment file survived fork + both thread deletions (refcount held), then was removed when the last referencing message was deleted (refs=' + refs + ', fileGone=' + fileGone + ')';
+  }
+});
+scenarios.push({
+  id: 136,
+  name: 'Complex branched tree with attachments: branch-edit copy, mid-path retry, fork, deletes and thread trash keep DB + attachment files consistent (audit)',
+  mode: 'sse-success',
+  regression: true, // audit: complex-tree branching + attachment refcounts + fork/trash lifecycle stay consistent
+  settings: {},
+  fixtures: {
+    threads: [{
+      id: 't-cplx-136', title: 'Complex', active_leaf_id: 'm-136-a2',
+      cumulative_input_tokens: 360, cumulative_output_tokens: 160, cumulative_cached_tokens: 0
+    }],
+    messages: [
+      { id: 'm-136-u1', thread_id: 't-cplx-136', role: 'user', content: 'root', token_count: 100, active_path_tokens: 100 },
+      { id: 'm-136-a1', thread_id: 't-cplx-136', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-136-u1', sibling_group: 'sg-136-a', sibling_index: 0, token_count: 50, prompt_tokens: 100, active_path_tokens: 150 },
+      { id: 'm-136-a1b', thread_id: 't-cplx-136', role: 'assistant', content: 'reply B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-136-u1', sibling_group: 'sg-136-a', sibling_index: 1, token_count: 50, prompt_tokens: 100, active_path_tokens: 150 },
+      { id: 'm-136-u2', thread_id: 't-cplx-136', role: 'user', content: 'follow A', parent_id: 'm-136-a1', token_count: 60, active_path_tokens: 210 },
+      { id: 'm-136-a2', thread_id: 't-cplx-136', role: 'assistant', content: 'ans A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-136-u2', token_count: 60, prompt_tokens: 160, active_path_tokens: 220 }
+    ]
+  },
+  async body({ cdp, dbPath, dataDir }) {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { DatabaseSync } = require('node:sqlite');
+    const attDir = path.join(dataDir, 'attachments');
+    fs.mkdirSync(attDir, { recursive: true });
+    const fileF = 'attachments/f-136.txt';
+    const fileF2 = 'attachments/f2-136.txt';
+    fs.writeFileSync(path.join(dataDir, fileF), 'root attachment');
+    fs.writeFileSync(path.join(dataDir, fileF2), 'follow attachment');
+    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    const insAtt = db.prepare("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES (?,?,?,?,?,?,?,?)");
+    insAtt.run('a-136-f1', 'm-136-u1', 'text_file', fileF, 'text/plain', 'f.txt', 15, '');
+    insAtt.run('a-136-f2', 'm-136-u2', 'text_file', fileF2, 'text/plain', 'f2.txt', 17, '');
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[3] && chatMessages[3].id === "m-136-a2"', 15000, 300, 'complex thread loaded');
+    await sleep(800);
+
+    // 1. Branch switch: a1 -> a1b (off-path sibling). Path becomes u1,a1b.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Next branch"]');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-136-a1b"', 15000, 300, 'branch switched to a1b');
+    await sleep(700);
+    let ctx = await cdp.text('#tokenBar .tu-item:first-child .tu-val');
+    if (String(ctx).indexOf('150') !== 0) throw new Error('branch switch context wrong: ' + JSON.stringify(ctx));
+    // Back to a1's leaf (Previous branch).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Previous branch"]');
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[3] && chatMessages[3].id === "m-136-a2"', 15000, 300, 'branch switched back');
+    await sleep(700);
+
+    // 2. Branch-edit the user message u2 (index 3) -> u2b copy (attachments copied) + real request -> a2b.
+    await cdp.click('#chat-messages .msg:nth-child(3) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(3)").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.type('#chat-messages .msg:nth-child(3) .msg-edit-textarea', 'follow A (branch)');
+    await cdp.click('#chat-messages .msg:nth-child(3) .save-branch');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+    let rows = seed.query(dbPath, "SELECT id, role, content FROM messages WHERE thread_id='t-cplx-136' AND (content='follow A (branch)' OR content='Hello from the mock LLM. This is the streamed answer.') ORDER BY created_at");
+    const u2b = rows.find((r) => r.role === 'user');
+    const a2b = rows.find((r) => r.role === 'assistant');
+    if (!u2b || !a2b) throw new Error('branch-edit did not create u2b/a2b: ' + JSON.stringify(rows));
+    let f2refs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF2])[0].c;
+    if (f2refs !== 2) throw new Error('branch-edit should copy the attachment row (F2 refs 2), got ' + f2refs);
+    let thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?', ['t-cplx-136'])[0];
+    if (Number(thread.cumulative_input_tokens) !== 372 || Number(thread.cumulative_output_tokens) !== 169 || Number(thread.cumulative_cached_tokens) !== 4)
+      throw new Error('counters after branch-edit wrong: ' + JSON.stringify(thread));
+    let usage = seed.query(dbPath, 'SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage')[0];
+    if (!usage || usage.call_count !== 1 || usage.prompt_tokens !== 12) throw new Error('chat_usage after branch-edit wrong: ' + JSON.stringify(usage));
+
+    // 3. Mid-path retry of a1 (now message index 2 on the active path u1,a1,u2b,a2b).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+    thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, active_leaf_id FROM chat_threads WHERE id=?', ['t-cplx-136'])[0];
+    if (Number(thread.cumulative_input_tokens) !== 384 || Number(thread.cumulative_output_tokens) !== 178 || Number(thread.cumulative_cached_tokens) !== 8)
+      throw new Error('counters after mid-path retry wrong: ' + JSON.stringify(thread));
+    const leaf = seed.query(dbPath, 'SELECT id FROM messages WHERE id=?', [thread.active_leaf_id]);
+    if (!leaf.length) throw new Error('active leaf dangling after retry');
+    const a1Siblings = seed.query(dbPath, "SELECT sibling_group, sibling_index FROM messages WHERE parent_id='m-136-u1' AND role='assistant' ORDER BY sibling_index");
+    if (a1Siblings.length !== 3 || a1Siblings[0].sibling_group !== a1Siblings[1].sibling_group || a1Siblings[1].sibling_group !== a1Siblings[2].sibling_group)
+      throw new Error('retried a1 not a sibling of a1/a1b: ' + JSON.stringify(a1Siblings));
+    usage = seed.query(dbPath, 'SELECT call_count, prompt_tokens, completion_tokens FROM chat_usage')[0];
+    if (usage.call_count !== 2) throw new Error('chat_usage after retry wrong: ' + JSON.stringify(usage));
+
+    // 4. Fork at the retried leaf (a1c). The fork is a faithful copy of the
+    // whole tree up to the fork point: the active path (u1,a1c) PLUS the
+    // off-path siblings of the retried group (a1, a1b) and their full
+    // descendant subtrees (u2,a2,u2b,a2b) = 8 messages, FTS synced, counters
+    // recomputed from the fork's own assistant rows (100+100+160+12+12 input /
+    // 50+50+60+9+9 output / 8 cached), and attachment rows copied (F x2, F2 x4).
+    await cdp.click('#chat-messages .msg:last-child .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-cplx-136"', 15000, 300, 'fork created');
+    const forkId = await cdp.eval('window.activeThreadId');
+    await sleep(900);
+    const forkMsgs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id=?', [forkId])[0].c;
+    const forkFts = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id IN (SELECT id FROM messages WHERE thread_id=?)', [forkId])[0].c;
+    if (forkMsgs !== 8 || forkFts !== 8) throw new Error('fork msgs/FTS wrong: ' + forkMsgs + '/' + forkFts);
+    const forkThread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id=?', [forkId])[0];
+    if (Number(forkThread.cumulative_input_tokens) !== 384 || Number(forkThread.cumulative_output_tokens) !== 178)
+      throw new Error('fork counters wrong: ' + JSON.stringify(forkThread));
+    let fRefs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF])[0].c;
+    if (fRefs !== 2) throw new Error('fork should copy the F attachment row (refs 2), got ' + fRefs);
+    let f2RefsAfterFork = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF2])[0].c;
+    if (f2RefsAfterFork !== 4) throw new Error('fork should copy the F2 rows (refs 4), got ' + f2RefsAfterFork);
+    if (!fs.existsSync(path.join(dataDir, fileF))) throw new Error('F file missing after fork');
+
+    // 5. Delete the fork forever: F refs drop back to 1, F2 refs back to 2,
+    // and both files stay.
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === '${forkId}');
+      if (!it) return false;
+      it.querySelector('.chat-action-btn.danger').click();
+      return true;
+    })()`);
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'trash confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    await cdp.waitFor('document.querySelectorAll(".trash-item").length >= 1', 10000, 250, 'trash item');
+    await cdp.click('.trash-item button.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete forever confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    fRefs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF])[0].c;
+    if (fRefs !== 1) throw new Error('after fork delete F refs should be 1, got ' + fRefs);
+    if (!fs.existsSync(path.join(dataDir, fileF))) throw new Error('F file removed while the source thread still references it');
+    const f2RefsAfterForkDelete = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF2])[0].c;
+    if (f2RefsAfterForkDelete !== 2) throw new Error('after fork delete F2 refs should be 2, got ' + f2RefsAfterForkDelete);
+    if (!fs.existsSync(path.join(dataDir, fileF2))) throw new Error('F2 file removed while the source thread still references it');
+
+    // 6. Back on the source thread: delete the branch-edited user copy u2b -
+    // F2 refs drop to 1 (u2's row) and the file stays.
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === 't-cplx-136');
+      if (!it) return false;
+      it.click();
+      return true;
+    })()`);
+    await cdp.waitFor('chatMessages.length >= 2', 15000, 300, 'source thread reloaded');
+    await sleep(800);
+    // The source thread's active path ends at the retried leaf (a1c); u2b is
+    // off-path inside the a1 subtree. Navigate to it through the tree modal.
+    await cdp.click('#treeBtn');
+    await cdp.waitFor('typeof window._treeData !== "undefined" && window._treeData.length > 0', 15000, 300, 'tree data');
+    await cdp.waitFor('[...document.querySelectorAll(".tree-node")].some((n) => n.textContent.indexOf("follow A (branch)") >= 0)', 15000, 300, 'u2b tree node');
+    await cdp.eval('(() => { const n = [...document.querySelectorAll(".tree-node")].find((el) => el.textContent.indexOf("follow A (branch)") >= 0); if (!n) return false; n.click(); return true; })()');
+    await cdp.waitFor('chatMessages.length >= 4 && chatMessages.some((m) => m.content === "follow A (branch)") && chatMessages[chatMessages.length - 1].content === "Hello from the mock LLM. This is the streamed answer."', 15000, 300, 'navigated to u2b branch');
+    await sleep(800);
+    const u2bIdx = await cdp.eval('chatMessages.findIndex((m) => m.content === "follow A (branch)")');
+    if (u2bIdx < 0) throw new Error('u2b not in the active view: ' + u2bIdx);
+    await cdp.click('#chat-messages .msg:nth-child(' + (u2bIdx + 1) + ') .msg-action-btn[title="Delete"]');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'u2b delete confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900);
+    f2refs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF2])[0].c;
+    if (f2refs !== 1) throw new Error('after deleting u2b F2 refs should be 1 (u2 row), got ' + f2refs);
+    if (!fs.existsSync(path.join(dataDir, fileF2))) throw new Error('F2 file removed while u2 still references it');
+
+    // 7. Trash + delete the source thread forever: F2 (last ref gone) is
+    // removed from disk; F stays (the fork is gone, so F2 must vanish but F
+    // only drops to 0 refs when no other thread holds it - here the fork was
+    // deleted, so F is removed too).
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === 't-cplx-136');
+      if (!it) return false;
+      it.querySelector('.chat-action-btn.danger').click();
+      return true;
+    })()`);
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'thread trash confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(800);
+    await cdp.waitFor('document.querySelectorAll(".trash-item").length >= 1', 10000, 250, 'trash item 2');
+    await cdp.click('.trash-item button.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'thread delete forever confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900);
+    const f2Gone = !fs.existsSync(path.join(dataDir, fileF2));
+    const fGone = !fs.existsSync(path.join(dataDir, fileF));
+    const f2Rows = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF2])[0].c;
+    const fRows = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE file_path = ?', [fileF])[0].c;
+    if (f2Rows !== 0 || !f2Gone) throw new Error('F2 orphaned after thread delete: rows=' + f2Rows + ' gone=' + f2Gone);
+    if (fRows !== 0 || !fGone) throw new Error('F orphaned after thread delete: rows=' + fRows + ' gone=' + fGone);
+
+    // Final DB integrity sweep on the surviving fork state (nothing left).
+    const integrity = seed.query(dbPath, "SELECT (SELECT COUNT(*) FROM messages) AS msgs, (SELECT COUNT(*) FROM messages_fts) AS fts, (SELECT COUNT(*) FROM message_attachments) AS atts");
+    return 'complex tree audit: branch-edit copied F2 rows (4->2->1->0), retry sibling group OK, fork (8 msgs, FTS 8, counters 384/178, F refs 2->1->0, F2 refs 4->2->1->0), thread delete removed both files; final rows=' + JSON.stringify(integrity[0]);
   }
 });
 module.exports=scenarios;

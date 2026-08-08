@@ -805,4 +805,147 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 134,
+  name: 'General-tab settings round-trip and live application (New Chats Start With assistant, title-gen off, API log cap, trash days, chat shortcut)',
+  mode: 'sse-success',
+  regression: true, // audit: General-tab settings persist, reload and apply live
+  settings: {},
+  async body({ cdp, dataDir, mockLog }) {
+    const os = require('node:os');
+    await showChat();
+    await cdp.waitFor('typeof window.assistantList !== "undefined" && window.assistantList.length > 0', 15000, 300, 'assistant list');
+    const asst = await cdp.eval('window.assistantList[0]');
+    if (!asst || !asst.id || !asst.name) throw new Error('no assistant to select: ' + JSON.stringify(asst));
+
+    await openSettings(cdp);
+    await openSection(cdp, 'general');
+    await cdp.waitFor('document.getElementById("newChatStartsWith") !== null', 10000, 250, 'general fields');
+    // Change: New Chats Start With -> the first assistant.
+    await cdp.eval('document.getElementById("newChatStartsWith").value = "asst:' + asst.id + '"; true');
+    // Turn thread-title generation OFF (the toggle starts 'on').
+    await cdp.eval('(() => { const t = document.getElementById("titleGenToggle"); if (t.classList.contains("on")) t.click(); return t.classList.contains("on"); })()');
+    // API log cap 3, trash retention 7, chat shortcut '9'.
+    await cdp.eval('document.getElementById("apiLogMaxEntries").value = "3"; true');
+    await cdp.eval('document.getElementById("trashRetentionDays").value = "7"; true');
+    await cdp.eval('document.getElementById("chatShortcut").value = "9"; true');
+    await saveSettings(cdp, dataDir);
+    await sleep(800);
+
+    // Persisted on disk.
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    if (!saved.newChatStartsWith || saved.newChatStartsWith !== 'asst:' + asst.id)
+      throw new Error('newChatStartsWith not persisted: ' + JSON.stringify(saved.newChatStartsWith));
+    if (saved.threadTitles.enabled) throw new Error('threadTitles.enabled not persisted as false: ' + JSON.stringify(saved.threadTitles));
+    if (Number(saved.apiLogs.maxEntries) !== 3) throw new Error('apiLogs.maxEntries not persisted: ' + JSON.stringify(saved.apiLogs));
+    if (Number(saved.trash.retentionDays) !== 7) throw new Error('trash.retentionDays not persisted: ' + JSON.stringify(saved.trash));
+    if (saved.chatShortcut !== '9') throw new Error('chatShortcut not persisted: ' + JSON.stringify(saved.chatShortcut));
+
+    // Reload round-trip: reopen Settings and verify the fields repopulate.
+    await hideSettingsToChat(cdp);
+    await openSettings(cdp);
+    await openSection(cdp, 'general');
+    await sleep(400);
+    const reloaded = await cdp.eval('({ ncs: document.getElementById("newChatStartsWith").value, titleOn: document.getElementById("titleGenToggle").classList.contains("on"), logs: document.getElementById("apiLogMaxEntries").value, trash: document.getElementById("trashRetentionDays").value, cs: document.getElementById("chatShortcut").value })');
+    if (reloaded.ncs !== 'asst:' + asst.id || reloaded.titleOn !== false || reloaded.logs !== '3' || reloaded.trash !== '7' || reloaded.cs !== '9')
+      throw new Error('settings fields did not round-trip: ' + JSON.stringify(reloaded));
+    await hideSettingsToChat(cdp);
+
+    // Application 1: New Chat from the sidebar starts with the chosen assistant.
+    await cdp.click('#new-chat-btn');
+    await sleep(900);
+    const cardName = await cdp.eval('document.querySelector("#modelCardTrigger .name") ? document.querySelector("#modelCardTrigger .name").textContent : ""');
+    if (String(cardName).indexOf(asst.name) < 0)
+      throw new Error('new chat did not start with the assistant: card=' + JSON.stringify(cardName) + ' expected ' + asst.name);
+
+    // Application 2: send a chat message - the request must use the
+    // assistant's base model, and with title-gen disabled NO title request may
+    // hit the mock (modeUsed 'title' / max_tokens 50).
+    await sendChatMessage(cdp, 'check the default');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1500);
+    const logLines = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
+    const requests = logLines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const chatReqs = requests.filter((r) => r.body && r.body.messages && !r.body.prompt);
+    const titleReqs = requests.filter((r) => r.body && r.body.max_tokens === 50);
+    if (!chatReqs.length) throw new Error('no chat request reached the mock: ' + JSON.stringify(requests));
+    const lastChatModel = String(chatReqs[chatReqs.length - 1].body.model || '');
+    const asstModelShort = String(asst.baseModel || '').split('/').pop();
+    if (lastChatModel.indexOf(asstModelShort) < 0 && lastChatModel !== asst.baseModel)
+      throw new Error('chat request did not use the assistant model: sent=' + JSON.stringify(lastChatModel) + ' expected base=' + asst.baseModel);
+    if (titleReqs.length !== 0)
+      throw new Error('title generation still fired with threadTitles.enabled=false: ' + JSON.stringify(titleReqs));
+
+    // Application 3: API log file capped at maxEntries after the save.
+    const apiLog = path.join(os.tmpdir(), 'LLM_API_Log.json');
+    let apiCount = 0;
+    if (fs.existsSync(apiLog)) {
+      try { apiCount = JSON.parse(fs.readFileSync(apiLog, 'utf8')).length; } catch {}
+    }
+    if (apiCount > 3)
+      throw new Error('API log not trimmed to maxEntries=3: ' + apiCount + ' entries');
+
+    return 'round-trip OK (newChatStartsWith=asst:' + asst.id + ', titleGen off, apiLogs=3, trash=7, shortcut=9); new chat card=' +
+      JSON.stringify(cardName) + '; chat request model=' + lastChatModel + '; title requests=' + titleReqs.length +
+      '; API log entries=' + apiCount;
+  }
+});
+
+scenarios.push({
+  id: 137,
+  name: 'UI/Theme and Menu Items settings round-trip with live CSS application (response font applies after save)',
+  mode: null,
+  regression: true, // audit: UI/Theme + Menu Items settings persist, reload and apply live
+  settings: {},
+  async body({ cdp, dataDir }) {
+    await showChat();
+    await openSettings(cdp);
+    await openSection(cdp, 'ui');
+    await cdp.waitFor('document.getElementById("responseFont") !== null', 10000, 250, 'ui section');
+    // Change the response font to a listed option and the font size to 18.
+    await cdp.eval('(() => { const s = document.getElementById("responseFont"); for (let i = 0; i < s.options.length; i++) { if (s.options[i].value === "Georgia") { s.selectedIndex = i; break; } } s.dispatchEvent(new Event("change", { bubbles: true })); return s.value; })()');
+    await cdp.eval('(() => { const el = document.getElementById("responseFontSize"); el.value = "18"; el.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
+    // Change the input-window background color.
+    await cdp.eval('(() => { const el = document.getElementById("iwBackground"); el.value = "#123456"; el.dispatchEvent(new Event("input", { bubbles: true })); document.getElementById("iwBackgroundHex").value = "0x123456"; return true; })()');
+    await saveSettings(cdp, dataDir);
+    await sleep(800);
+
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    if (saved.ui.responseFont !== 'Georgia') throw new Error('ui.responseFont not persisted: ' + JSON.stringify(saved.ui.responseFont));
+    if (saved.ui.responseFontSize !== '18') throw new Error('ui.responseFontSize not persisted: ' + JSON.stringify(saved.ui.responseFontSize));
+    if (saved.ui.inputWindow.background !== '0x123456') throw new Error('inputWindow.background not persisted: ' + JSON.stringify(saved.ui.inputWindow.background));
+
+    // Live application: the response font CSS var must update without reopening Settings.
+    const fontVar = await cdp.eval('getComputedStyle(document.documentElement).getPropertyValue("--chat-font-family").trim()');
+    if (String(fontVar).indexOf('Georgia') < 0)
+      throw new Error('--chat-font-family not applied after save: ' + JSON.stringify(fontVar));
+
+    // Reload round-trip.
+    await hideSettingsToChat(cdp);
+    await openSettings(cdp);
+    await openSection(cdp, 'ui');
+    await sleep(400);
+    const reloaded = await cdp.eval('({ rf: document.getElementById("responseFont").value, rfs: document.getElementById("responseFontSize").value, iwb: document.getElementById("iwBackground").value })');
+    if (reloaded.rf !== 'Georgia' || reloaded.rfs !== '18' || String(reloaded.iwb).toUpperCase() !== '#123456')
+      throw new Error('ui fields did not round-trip: ' + JSON.stringify(reloaded));
+
+    // Menu Items: add a Quick Access row and save.
+    await openSection(cdp, 'menu');
+    await cdp.waitFor('document.getElementById("qaTableBody") !== null', 10000, 250, 'menu section');
+    await cdp.click('#addQaRow');
+    await sleep(300);
+    const rowsBefore = await cdp.eval('document.querySelectorAll("#qaTableBody tr").length');
+    await cdp.eval('(() => { const tr = document.querySelector("#qaTableBody tr:last-child"); const inputs = tr.querySelectorAll("input"); inputs[0].value = "&9 - Test"; inputs[1].value = "https://example.com"; inputs.forEach((i) => i.dispatchEvent(new Event("input", { bubbles: true }))); return true; })()');
+    await saveSettings(cdp, dataDir);
+    await sleep(800);
+    const saved2 = readJsonFile(path.join(dataDir, 'settings.json'));
+    const qa = saved2.menuItems.quickAccess;
+    const added = qa.find((i) => i.menuText === '&9 - Test' && i.command === 'https://example.com');
+    if (!added) throw new Error('quick-access row not persisted: ' + JSON.stringify(qa));
+    return 'ui round-trip: responseFont=Georgia size=18 iwBg=0x123456 persisted + applied (--chat-font-family=' +
+      JSON.stringify(fontVar) + '); reload shows ' + JSON.stringify(reloaded) + '; quick access rows before=' + rowsBefore +
+      ' after=' + qa.length + ' (added &9 - Test)';
+  }
+});
+
 module.exports = scenarios;
