@@ -207,6 +207,7 @@ scenarios.push({
 scenarios.push({
   id: 118,
   name: 'Editing an assistant message with "Save as Branch" records a fake API request in the usage dashboard (no API call happens)',
+  regression: true, // FIXED bug kept as a regression check (branch-edit copies must not record chat_usage)
   mode: null,
   settings: {},
   fixtures: {
@@ -234,14 +235,13 @@ scenarios.push({
     await sleep(700);
 
     const rows = seed.query(dbPath, "SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage WHERE model='deepseek/deepseek-v4-flash'");
-    // BUG: MessageRepo.Insert upserts chat_usage for ANY assistant insert with
-    // a model, even when no API call was made (branch-edit inserts have no
-    // prompt/completion data). The dashboard then shows a request that never
-    // happened. Correct state: zero chat_usage rows.
-    if (rows.length !== 1 || rows[0].call_count !== 1 || rows[0].prompt_tokens !== 0 || rows[0].completion_tokens !== 0)
-      throw new Error('fake request state not reproduced: ' + JSON.stringify(rows));
+    // FIXED (bug #118): branch-edit inserts are local_copy - MessageRepo.Insert
+    // never upserts chat_usage for them, so the dashboard stays at zero API
+    // requests (no request happened).
+    if (rows.length !== 0)
+      throw new Error('branch-edit still recorded a fake request: ' + JSON.stringify(rows));
     const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id = ?', ['t-fake-118'])[0];
-    return 'assistant branch-edit produced a chat_usage row (call_count=1, 0 tokens) - dashboard API Requests +1 with no API call; thread cumulative counters stay ' +
+    return 'assistant branch-edit produced NO chat_usage row - dashboard API Requests stays 0 (no API call); thread cumulative counters stay ' +
       JSON.stringify(thread);
   }
 });

@@ -42,7 +42,9 @@ handleEdit(params, *) {
                 break
             }
         }
-        newMsgId := ChatDB.Msg_Insert({ thread_id: activeThreadId, role: role, content: content, model: model, parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex })
+        ; Bug #118: this is a LOCAL DB copy - no API call happened, so Insert
+        ; must not upsert chat_usage or re-charge the cumulative counters.
+        newMsgId := ChatDB.Msg_Insert({ thread_id: activeThreadId, role: role, content: content, model: model, parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex, local_copy: true })
         ; Copy attachments from old message to new branch message
         ChatDB.Attachment_CopyForMessage(id, newMsgId)
         ; Save new attachments from edit (skip if already present on message)

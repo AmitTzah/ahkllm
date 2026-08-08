@@ -83,6 +83,24 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #118): a local branch-edit copy (local_copy) must NOT
+    ; upsert chat_usage (no API call happened) and must not re-charge the
+    ; thread's cumulative counters.
+    Insert_LocalCopy_DoesNotRecordUsage() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "original question", token_count: 12})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "original answer", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 9})
+        before := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "edited answer branch", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", sibling_group: "sg-118", sibling_index: 1, local_copy: true})
+        usage := ChatDB.db.Exec("SELECT COUNT(*) AS c, COALESCE(SUM(call_count),0) AS calls FROM chat_usage;")
+        if Integer(usage[1, "c"]) != 1 || Integer(usage[1, "calls"]) != 1
+            throw Error("local copy must not add a chat_usage row (bug #118): rows=" usage[1, "c"] " calls=" usage[1, "calls"] " (expected exactly the real assistant's 1)")
+        after := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id='" threadId "';")
+        if Integer(after[1, "cumulative_input_tokens"]) != Integer(before[1, "cumulative_input_tokens"]) || Integer(after[1, "cumulative_output_tokens"]) != Integer(before[1, "cumulative_output_tokens"])
+            throw Error("local copy must not re-charge cumulative counters: before in=" before[1, "cumulative_input_tokens"] " out=" before[1, "cumulative_output_tokens"] " after in=" after[1, "cumulative_input_tokens"] " out=" after[1, "cumulative_output_tokens"])
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_GetActivePath
     ; --------------------

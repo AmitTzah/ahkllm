@@ -19,11 +19,17 @@ class MessageRepo {
         lat := msgObj.HasProp("response_time_ms") ? msgObj.response_time_ms : 0
         ttft := msgObj.HasProp("ttft_ms") ? msgObj.ttft_ms : 0
 
+        ; Bug #118/#123: branch-edit copies are LOCAL DB duplicates - no API
+        ; call happens. They must not backfill user tokens, re-charge the
+        ; cumulative counters/costs, or upsert chat_usage (which would show a
+        ; fake API request in the dashboard).
+        isLocalCopy := msgObj.HasProp("local_copy") && msgObj.local_copy
+
         ; Per-message attribution: if this is an assistant with API data,
         ; backfill the user message's token_count via subtraction.
         new_input := 0
         existing_sum := 0
-        if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") && msgObj.prompt_tokens > 0 {
+        if !isLocalCopy && msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") && msgObj.prompt_tokens > 0 {
             new_input := MessageRepo._BackfillUserTokens(msgObj.thread_id, msgObj.prompt_tokens, &existing_sum)
         }
 
@@ -32,7 +38,10 @@ class MessageRepo {
         ; User/system messages store parent.active_path_tokens + token_count (prefix sum).
         ; This column is read by GetThreadStats() for the UI token bar ("Context Used").
         activePathTokens := tc
-        if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") {
+        if msgObj.HasProp("active_path_tokens") && msgObj.active_path_tokens != "" {
+            ; Local copies carry the source message's context total verbatim.
+            activePathTokens := Integer(msgObj.active_path_tokens)
+        } else if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") {
             ; Bug #64: thinking tokens occupy the context window too - the
             ; header "Context Used" must be prompt + visible output + thinking.
             activePathTokens := msgObj.prompt_tokens + tc + tht
@@ -52,18 +61,23 @@ class MessageRepo {
         ChatDB.FTS_Sync(id, msgObj.content)
 
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
-        if msgObj.HasProp("model") && msgObj.model {
-            usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
-            costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
-            if costs.inputCost != "" {
-                inputCost := costs.inputCost
-                cachedInputCost := costs.cachedInputCost != "" ? costs.cachedInputCost : 0
-                outputCost := costs.outputCost != "" ? costs.outputCost : 0
-                totalCost := costs.totalCost != "" ? costs.totalCost : 0
+        if !isLocalCopy {
+            if msgObj.HasProp("model") && msgObj.model {
+                usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
+                costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
+                if costs.inputCost != "" {
+                    inputCost := costs.inputCost
+                    cachedInputCost := costs.cachedInputCost != "" ? costs.cachedInputCost : 0
+                    outputCost := costs.outputCost != "" ? costs.outputCost : 0
+                    totalCost := costs.totalCost != "" ? costs.totalCost : 0
+                }
             }
+            ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now'), cumulative_input_tokens=cumulative_input_tokens+" promptTotal ", cumulative_output_tokens=cumulative_output_tokens+" (tc + tht) ", cumulative_cached_tokens=cumulative_cached_tokens+" ckt ", cumulative_cost=cumulative_cost+" totalCost ", cumulative_input_cost=cumulative_input_cost+" inputCost ", cumulative_cached_input_cost=cumulative_cached_input_cost+" cachedInputCost ", cumulative_output_cost=cumulative_output_cost+" outputCost " WHERE id='" SQLite.Escape(msgObj.thread_id) "';")
+        } else {
+            ; Local copy: the message becomes the active leaf, but the thread's
+            ; token/cost ledger must stay untouched (no API call happened).
+            ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now') WHERE id='" SQLite.Escape(msgObj.thread_id) "';")
         }
-
-        ChatDB.db.Exec("UPDATE chat_threads SET active_leaf_id='" id "', updated_at=datetime('now'), cumulative_input_tokens=cumulative_input_tokens+" promptTotal ", cumulative_output_tokens=cumulative_output_tokens+" (tc + tht) ", cumulative_cached_tokens=cumulative_cached_tokens+" ckt ", cumulative_cost=cumulative_cost+" totalCost ", cumulative_input_cost=cumulative_input_cost+" inputCost ", cumulative_cached_input_cost=cumulative_cached_input_cost+" cachedInputCost ", cumulative_output_cost=cumulative_output_cost+" outputCost " WHERE id='" SQLite.Escape(msgObj.thread_id) "';")
 
         ; Note: _RecomputeActivePath is NOT called here because Insert already sets
         ; active_path_tokens correctly (API ground truth for assistants, prefix sum for others).
@@ -71,7 +85,7 @@ class MessageRepo {
         ; _RecomputeActivePath is only needed after structural changes (delete, edit).
 
         ; Track chat usage for dashboard (daily aggregation)
-        if msgObj.role = "assistant" && msgObj.HasProp("model") && msgObj.model {
+        if !isLocalCopy && msgObj.role = "assistant" && msgObj.HasProp("model") && msgObj.model {
             provider := ModelParser.Split(msgObj.model).provider
             if provider = "" {
                 ; Fallback: look up provider from UserConfig models map
