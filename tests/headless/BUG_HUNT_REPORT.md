@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - intake of 7 new verified bugs (fork drops deep branches, branched-delete counter corruption, missed raw-id escapes, delete double-escape, duplicate-attachment orphan, fake branch-edit API request, trash-retention purge hook broken). All verified headlessly with scenarios 113-121; next step per the lifecycle is the fix cycle (pick #113 first).
+- **Where we left off:** 2026-08-08 - intake of 3 NEW verified bugs on top of the previous 7 (assistant temperature wiped by Settings save, Save-as-Branch drops token metadata, tree modal counts all nodes as "active path"). Verified headlessly with scenarios 122-124; full AHK suite (503 tests) + JS suite (496 tests) green. Next step per the lifecycle is the fix cycle (pick #113 first).
 ---
 
 ## Bug entry template
@@ -208,7 +208,7 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118, #122, #123, #124 - each entry keeps its stable scenario id.
 
 
 ### 1. Forking a chat drops the deeper branches below off-path siblings
@@ -419,6 +419,100 @@ purge), waited 6s, and confirmed the thread is still present in `chat_threads`
 while `settings.json` has `trash.retentionDays: 1`. The same run verifies the
 save path itself is healthy (responseFontSize round-trips and a New Chat picks
 it up), isolating the failure to the purge hook.
+
+### 8. Saving Settings silently wipes assistant temperature and isDefault (Assistants tab save() only emits the card fields)
+
+**Scenario:** 122 (scenario code in `scenarios/settings.js`)
+
+**Status:** verified
+
+**Repro:** Configure an assistant with a temperature (e.g. `temperature: "0.7"`
+in `DefaultSettings.ahk` or `settings.json`), open Settings, change any field
+(or nothing), and click Save.
+
+**Expected:** the assistant's `temperature` and `isDefault` survive the save
+round-trip like every other configured field.
+
+**Actual:** they are silently dropped. `assistants.js` `save()` builds each
+assistant object from the card fields (`name`, `baseModel`, `reasoning`,
+`description`, `systemMessage`, `systemMessageFile`) and never reads back
+`temperature` or `isDefault`. The settings panel sends the whole `assistants`
+array as an authoritative top-level key, `SettingsMerge.Override` replaces the
+base list wholesale, and `SettingsMerge.Merge` treats arrays as opaque - so
+the stripped entries are written to `settings.json` and applied to the runtime
+`assistants` globals (`SettingsApply._ApplyAssistants` fills missing values
+with `""`). The UI has no temperature field for assistants, so the value can
+never be restored: every assistant silently falls back to "Model Default"
+temperature after the first Settings save.
+
+**Evidence:** `webui/js/settings/sections/assistants.js` `save()` (no
+temperature/isDefault); `app/settings/SettingsMerge.ahk` `Override` replaces
+the array wholesale; `app/settings/SettingsApply.ahk` `_ApplyAssistants`
+defaults missing temperature to `""`; `DefaultSettings.ahk` documents
+`temperature` as a per-assistant field.
+
+**Verification:** headless scenario 122 - seeded an assistant with
+temperature 0.7 / isDefault true, opened Settings, changed the chat shortcut,
+saved, then read `settings.json` (temperature/isDefault keys gone) and the
+re-pushed `window.assistantList` (temperature reset to ""): the configured
+value is permanently lost while the rest of the assistant survives.
+
+### 9. "Save as Branch" on an assistant message drops the copy's token metadata (header Context Used falls back to the parent, token popover is blank)
+
+**Scenario:** 123 (scenario code in `scenarios/usage-tokens.js`)
+
+**Status:** verified
+
+**Repro:** In a chat with token data (e.g. user 12 tokens, assistant 9 tokens,
+context 21), click Edit on the assistant and choose "Save as Branch".
+
+**Expected:** the branch copy is a faithful copy of the assistant message,
+including its token attribution (`token_count`, `prompt_tokens`,
+`thinking_tokens`, `cached_tokens`, `active_path_tokens`), exactly like
+`TreeRepo._InsertForkMessage`/`_CopyOffPathSiblings` do for forks. The header
+"Context Used" should stay 21 and the copy's token popover should show the
+same 9 output tokens.
+
+**Actual:** `Edit.ahk` branch mode inserts the copy with NO token fields, so
+`MessageRepo.Insert` computes `active_path_tokens` from the parent only (12)
+and stores zero token attribution (token_count/prompt_tokens/thinking/cached
+= 0). The header "Context Used" drops from 21 to 12 and the per-message token
+popover on the branch copy shows "Output: 0 tokens".
+
+**Evidence:** `chat/callbacks/Edit.ahk` branch-mode `Msg_Insert({...})` passes
+only role/content/model/parent/sibling fields; `chat/db/MessageRepo.ahk`
+`Insert` falls back to `parent.active_path_tokens + token_count` when
+`prompt_tokens` is absent.
+
+**Verification:** headless scenario 123 - edited the seeded assistant (context
+21, output 9) and saved it as a branch via the UI, then read the new message's
+DB fields (active_path_tokens=12, token_count=0), the header context (12), and
+the copy's token popover ("Output: 0 tokens").
+
+### 10. Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)
+
+**Scenario:** 124 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** Open a branched conversation (active path shorter than the full
+tree), click the tree button, read the subtitle under the tree.
+
+**Expected:** the label "Viewing active path · N nodes" should count the
+messages on the ACTIVE path (the ones highlighted), not the whole tree.
+
+**Actual:** `renderChatTree` computes `total = _countTreeNodes(tree)` - every
+node in the tree, including off-path branches - and labels it "Viewing active
+path". With a 2-message active path in a 5-node tree the label claims "5
+nodes".
+
+**Evidence:** `webui/js/chat/chat-tree-modal.js` `renderChatTree` builds
+`total` from `_countTreeNodes(tree)` (all nodes) and writes it into the
+`Viewing active path` subtitle.
+
+**Verification:** headless scenario 124 - loaded a branched fixture (active
+path 2 messages, tree 5 nodes), opened the tree modal, and read the subtitle:
+"Viewing active path · 5 nodes".
 
 
 ---

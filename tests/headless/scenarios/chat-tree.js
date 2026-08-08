@@ -675,4 +675,41 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 124,
+  name: 'Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-tree-124', title: 'Tree Count', active_leaf_id: 'm-124-a1' }],
+    messages: [
+      // Active path: u1 -> a1 (2 messages).
+      { id: 'm-124-u1', thread_id: 't-tree-124', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-124-a1', thread_id: 't-tree-124', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-124-u1', sibling_group: 'sg-124', sibling_index: 0, token_count: 20, active_path_tokens: 30 },
+      // Off-path branch: a1b -> u2b -> a2b (3 more nodes, NOT on the active path).
+      { id: 'm-124-a1b', thread_id: 't-tree-124', role: 'assistant', content: 'reply B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-124-u1', sibling_group: 'sg-124', sibling_index: 1, token_count: 20, active_path_tokens: 30 },
+      { id: 'm-124-u2b', thread_id: 't-tree-124', role: 'user', content: 'follow B', parent_id: 'm-124-a1b', token_count: 5, active_path_tokens: 35 },
+      { id: 'm-124-a2b', thread_id: 't-tree-124', role: 'assistant', content: 'ans B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-124-u2b', token_count: 30, active_path_tokens: 65 }
+    ]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(600);
+    await cdp.click('#treeBtn');
+    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open") && document.querySelector(".tree-modal-sub") && document.querySelector(".tree-modal-sub").textContent.indexOf("Viewing active path") === 0', 15000, 300, 'tree modal open');
+    const label = await cdp.text('.tree-modal-sub');
+    // BUG: renderChatTree computes total = _countTreeNodes(tree) (ALL nodes,
+    // including off-path branches) but labels it "Viewing active path". The
+    // active path here has 2 messages; the label claims 5.
+    if (!String(label).includes('5 node'))
+      throw new Error('tree label does not show the all-nodes count (bug may be fixed): ' + JSON.stringify(label));
+    if (String(label).includes('2 node'))
+      throw new Error('tree label shows the active-path count (bug may be fixed): ' + JSON.stringify(label));
+    return 'tree modal label: ' + JSON.stringify(label) + ' - counts all 5 tree nodes while the active path has 2';
+  }
+});
+
 module.exports = scenarios;

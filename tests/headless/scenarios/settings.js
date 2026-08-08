@@ -707,4 +707,64 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 122,
+  name: 'Saving Settings silently drops assistant temperature and isDefault (the Assistants tab save() only emits the card fields)',
+  mode: null,
+  settings: {
+    assistants: [{
+      id: 'asst-temp-122', name: 'Temp Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+      systemMessage: '', systemMessageFile: '', description: '', reasoning: 'high',
+      temperature: '0.7', isDefault: true
+    }]
+  },
+  async body({ cdp, dataDir, dbPath }) {
+    await showChat();
+    await cdp.waitFor('typeof window.assistantList !== "undefined" && window.assistantList.length === 1', 15000, 300, 'assistant list');
+    // Sanity: the assistant arrives WITH its configured temperature.
+    const before = await cdp.eval('window.assistantList[0].temperature');
+    if (before !== '0.7')
+      throw new Error('assistant did not arrive with temperature 0.7: ' + JSON.stringify(before));
+    // Open Settings and make one harmless change so Save is enabled.
+    await openSettings(cdp);
+    // Wait until the settings panel has actually received the merged payload
+    // (loadSettings -> clearDirty disables the Save button; until then
+    // _currentSettings is unset and clicking Save silently does nothing).
+    await cdp.waitFor('document.querySelector(".nav-footer .btn-primary") && document.querySelector(".nav-footer .btn-primary").disabled === true', 15000, 250, 'settings payload loaded');
+    // Use a shortcut that cannot collide with any default command accelerator
+    // ('9' is unused) - a conflicting value would abort the save in the
+    // commands validator before it reaches AHK.
+    await cdp.type('#chatShortcut', '9');
+    await cdp.waitFor('typeof window.SettingsPanel !== "undefined" && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === true', 5000, 200, 'settings marked dirty');
+    await saveSettings(cdp, dataDir);
+    await sleep(800);
+    // BUG: assistants.js save() builds each assistant object from the card
+    // fields (name/baseModel/reasoning/description + systemMessage) only -
+    // temperature and isDefault are never read back from the loaded data, so
+    // a Settings save permanently strips them from settings.json and from the
+    // runtime assistantList (the UI has no temperature field to restore them).
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    const asst = (saved.assistants || []).find((a) => a.id === 'asst-temp-122');
+    if (!asst) throw new Error('assistant missing from settings.json after save');
+    if (asst.temperature !== undefined)
+      throw new Error('assistant temperature survived the save (bug may be fixed): ' + JSON.stringify(asst));
+    if (asst.isDefault !== undefined)
+      throw new Error('assistant isDefault survived the save (bug may be fixed): ' + JSON.stringify(asst));
+    // AHK re-pushes assistantList after the save; poll until the re-pushed
+    // copy arrives (the buggy copy has no temperature).
+    const start2 = Date.now();
+    let afterList = null;
+    while (Date.now() - start2 < 8000) {
+      afterList = await cdp.eval('window.assistantList && window.assistantList[0] ? window.assistantList[0] : null');
+      // The runtime loss is a reset: SettingsApply._ApplyAssistants fills the
+      // missing temperature with "" (Model Default), so the saved 0.7 is gone.
+      if (afterList && afterList.temperature !== '0.7') break;
+      await sleep(300);
+    }
+    if (!afterList || afterList.temperature === '0.7')
+      throw new Error('runtime assistantList still carries temperature 0.7 after save (bug may be fixed): ' + JSON.stringify(afterList));
+    return 'assistant temperature 0.7 / isDefault true were present on load but gone from settings.json and assistantList after one Settings save';
+  }
+});
+
 module.exports = scenarios;
