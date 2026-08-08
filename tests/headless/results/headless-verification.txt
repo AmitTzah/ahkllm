@@ -1,5 +1,5 @@
-# 2026-08-08T07:48:02.430Z | run of 1 scenario(s)
-PASS | #107 | TreeRepo._RecomputeActivePath keeps assistant prompt_tokens ground truth (bug fixed) | _RecomputeActivePath keeps assistant prompt_tokens (+ visible + thinking) as ground truth and prefix-sums the rest, so Context Used no longer drops after delete/edit | 0.0s
+# 2026-08-08T07:54:15.111Z | run of 1 scenario(s)
+PASS | #108 | main.js IPC routing uses an explicit allowlist (arbitrary window[target] removed) | main.js handleWebMessage routes updateTopbarTitle/updateBranchInfo via explicit cases and never calls window[target], so a crafted IPC target cannot invoke arbitrary globals | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

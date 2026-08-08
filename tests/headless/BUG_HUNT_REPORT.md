@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #107 FIXED in 634ffca; next: bug #108 (main.js IPC fallback calls arbitrary `window[target]` without allowlist).
+- **Where we left off:** 2026-08-08 — bug #108 FIXED in 38d8292; next: bug #109 (Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 108. main.js IPC fallback calls arbitrary `window[target]` without allowlist
-
-**Scenario:** 108 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** from a compromised WebView (XSS via #57/#86), post a message with `target="eval"` and `data="alert(1)"` via `chrome.webview.postMessage`; or have AHK send an undeclared `target` to the WebView.
-
-**Expected:** only declared `IPCMessages` targets should be dispatched; unknown targets should be dropped after logging.
-
-**Actual:** `webui/js/main.js` `handleWebMessage` `default:` case does `if (typeof window[target] === "function") window[target](...data)` — any global (e.g. `eval`, `fetch`, `location`) is invocable. `IPCMessages.validate` only `console.error`s, it doesn''t block the dispatch, so the allowlist is bypassed.
-
-**Evidence:** `webui/js/main.js` `default:` → `window[target](...data)`.
-
-**Verification:** headless scenario 108 (noApp) asserts `window[target]` fallback exists.
 
 ### 109. Sidebar `folderId` and 15+ remaining ChatDB call sites interpolate raw ids without `SQLite.Escape`
 
@@ -317,6 +301,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "TreeRepo.GetThreadStats pricingUnit picks the first message's model, not the thread's active model" - FIXED in 24089f9: GetThreadStats now resolves pricing via a shared TreeRepo._ResolvePricing (current request model -> thread model_override -> last assistant on the active path) used for BOTH the context window and pricingUnit, so the token bar's per-token prices follow the active model; scenario 103 flipped to a regression static check + UsageTracking unit test (pricing follows the newest assistant, thread override, then request model).
 
 - 2026-08-08 - "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants" - FIXED in 634ffca: prompt_tokens is now persisted on every message (schema migration + Insert + fork copies) and _RecomputeActivePath keeps the assistant's API ground truth (prompt + visible + thinking) instead of reducing to a visible-token prefix sum, so Context Used no longer drops after delete/edit; scenario 107 flipped to a regression static check + ChatDB unit tests (ground truth survives recompute; hard-delete re-parenting test updated to expect ground truth).
+
+- 2026-08-08 - "main.js IPC fallback calls arbitrary `window[target]` without allowlist" - FIXED in 38d8292: handleWebMessage now routes the two legacy targets (updateTopbarTitle/updateBranchInfo) via explicit cases and the default case only logs unknown targets — the dynamic window[target](...data) invocation is gone, so a crafted IPC target can no longer invoke arbitrary globals; scenario 108 flipped to a regression static check + main.js unit tests (legacy targets route explicitly; a decoy global is never invoked for an unknown target).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
