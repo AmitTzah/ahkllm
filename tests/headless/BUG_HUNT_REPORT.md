@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — bug #103 FIXED in 24089f9; next: bug #107 (TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants).
+- **Where we left off:** 2026-08-08 — bug #107 FIXED in 634ffca; next: bug #108 (main.js IPC fallback calls arbitrary `window[target]` without allowlist).
 ---
 
 ## Bug entry template
@@ -212,22 +212,6 @@ one at a time, in rank order.
 
 
 ---
-
-### 107. TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants
-
-**Scenario:** 107 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** create a thread with an assistant message that has `prompt_tokens=100` + `token_count=20` (active_path=120), then delete a middle message and check the leaf''s `active_path_tokens`.
-
-**Expected:** after structural change the leaf should still reflect prompt+completion (or be recomputed from API ground truth).
-
-**Actual:** `_RecomputeActivePath` does `prev := 0; for msg in path { prev += token_count; UPDATE ... active_path_tokens=prev }` — it sums only `token_count` (visible tokens), ignoring `prompt_tokens`. After delete/edit the assistant''s 100 prompt tokens are lost, header “Context Used” drops from 120 to ~20.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `static _RecomputeActivePath` — loop `prev += msg.HasProp("token_count") ? msg.token_count : 0` without `prompt_tokens`.
-
-**Verification:** headless scenario 107 (noApp) asserts the function contains `prev +=` with `token_count` and no `prompt_tokens` in its 600-char body.
 
 ### 108. main.js IPC fallback calls arbitrary `window[target]` without allowlist
 
@@ -331,6 +315,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "UsageRepo provider LIKE does not escape `%` `_` `\` — provider filter `%` matches all models" - FIXED in 8533a7a (hardening): the latent providerChatClause LIKE now escapes `\` `%` `_` via a new UsageRepo._EscapeLike and declares ESCAPE '\' (same pattern as SearchRepo #69); scenario 102 flipped to a regression static check + UsageTracking unit test. (The executed chat/command queries already matched provider exactly, so the wildcard LIKE was latent.)
 
 - 2026-08-08 - "TreeRepo.GetThreadStats pricingUnit picks the first message's model, not the thread's active model" - FIXED in 24089f9: GetThreadStats now resolves pricing via a shared TreeRepo._ResolvePricing (current request model -> thread model_override -> last assistant on the active path) used for BOTH the context window and pricingUnit, so the token bar's per-token prices follow the active model; scenario 103 flipped to a regression static check + UsageTracking unit test (pricing follows the newest assistant, thread override, then request model).
+
+- 2026-08-08 - "TreeRepo._RecomputeActivePath recomputes active_path as prefix sum, losing prompt_tokens for assistants" - FIXED in 634ffca: prompt_tokens is now persisted on every message (schema migration + Insert + fork copies) and _RecomputeActivePath keeps the assistant's API ground truth (prompt + visible + thinking) instead of reducing to a visible-token prefix sum, so Context Used no longer drops after delete/edit; scenario 107 flipped to a regression static check + ChatDB unit tests (ground truth survives recompute; hard-delete re-parenting test updated to expect ground truth).
 
 - 2026-08-07 - "SettingsDefaults `_DefaultsAssistants` generates a new UUID on every `GetDefaults()` - defaults not stable" - REFUTED (overstated): UUIDs are generated only when the defaults are first built; after CacheInitialDefaults, GetDefaults returns the cached snapshot, so ids are stable in normal runtime; scenario 94 converted to a regression check for snapshot stability.
 
