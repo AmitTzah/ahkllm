@@ -6,13 +6,34 @@
   var sectionName = 'ui';
   var S = window.SettingsShared;
 
+  // Bug #130 (same class as #39): a fixed-option <select> cannot display a
+  // custom value, so load() records the stored value on the element and save()
+  // falls back to it when the select has no matching option - otherwise the
+  // first Settings save wipes the custom font (responseFont / iwFontFace /
+  // sbFontFace).
+  function _loadFontFace(id, selectValue, storedValue) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (!el.dataset) el.dataset = {};
+    el.dataset.storedValue = storedValue || '';
+    el.value = selectValue || '';
+  }
+
+  function _saveFontFace(id) {
+    var el = document.getElementById(id);
+    if (!el) return '';
+    var v = el.value;
+    if (v) return v;
+    return (el.dataset && el.dataset.storedValue) || '';
+  }
+
   function load(data) {
     // UI
     if (data && data.ui) {
       var u = data.ui;
       // responseFont: stored as CSS stack, UI shows single name
       var fontName = (u.responseFont || '').split(',')[0].trim();
-      S.setVal('responseFont', fontName);
+      _loadFontFace('responseFont', fontName, u.responseFont);
       if (fontName) document.documentElement.style.setProperty('--chat-font-family', fontName + ', sans-serif');
       // responseFontSize: only sets the select value, does NOT apply CSS var.
       // Per-chat font size is applied by populateCurrentSettings from DB.
@@ -24,7 +45,7 @@
         S.setVal('iwBackgroundHex', iw.background || '0xFFFFFF');
         S.setVal('iwFontSize', iw.fontSize);
         S.setVal('iwFontColor', iw.fontColor);
-        S.setVal('iwFontFace', iw.fontFace);
+        _loadFontFace('iwFontFace', iw.fontFace, iw.fontFace);
         S.setVal('iwWidth', iw.width);
         S.setVal('iwHeight', iw.height);
       }
@@ -33,7 +54,7 @@
         S.setVal('sbText', sb.text);
         S.setVal('sbFontSize', sb.fontSize);
         S.setVal('sbFontColor', sb.textColor);
-        S.setVal('sbFontFace', sb.fontFace);
+        _loadFontFace('sbFontFace', sb.fontFace, sb.fontFace);
         S.setVal('sbBackground', sb.background ? sb.background.replace('0x', '#') : '#FFDF00');
         S.setVal('sbBackgroundHex', sb.background || '0xFFDF00');
       }
@@ -43,13 +64,13 @@
   function save() {
     return {
       ui: {
-        responseFont: S.getVal('responseFont'),
+        responseFont: _saveFontFace('responseFont'),
         responseFontSize: S.getVal('responseFontSize'),
         inputWindow: {
           background: '0x' + S.getVal('iwBackground').replace('#', ''),
           fontSize: S.getVal('iwFontSize'),
           fontColor: S.getVal('iwFontColor'),
-          fontFace: S.getVal('iwFontFace'),
+          fontFace: _saveFontFace('iwFontFace'),
           width: parseInt(S.getVal('iwWidth')) || 500,
           height: parseInt(S.getVal('iwHeight')) || 250
         },
@@ -57,7 +78,7 @@
           text: S.getVal('sbText'),
           fontSize: S.getVal('sbFontSize'),
           textColor: S.getVal('sbFontColor'),
-          fontFace: S.getVal('sbFontFace'),
+          fontFace: _saveFontFace('sbFontFace'),
           background: '0x' + S.getVal('sbBackground').replace('#', '')
         }
       }

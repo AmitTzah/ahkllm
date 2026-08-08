@@ -771,6 +771,7 @@ scenarios.push({
 scenarios.push({
   id: 130,
   name: 'Saving Settings wipes a custom (unlisted) "Response Font" - the select has no matching option so save() emits an empty value',
+  regression: true, // FIXED bug kept as a regression check (custom fonts survive a save round-trip)
   mode: null,
   settings: { ui: { responseFont: 'Courier New', responseFontSize: '17' } },
   fixtures: {
@@ -794,15 +795,13 @@ scenarios.push({
     await cdp.type('#iwWidth', '500');
     await saveSettings(cdp, dataDir);
     const after = readJsonFile(settingsFile);
-    // BUG: save() returns S.getVal('responseFont') - the empty selection - so
-    // the custom font is permanently wiped from settings.json on the first
-    // Settings save (same class as #39's custom system-message file).
-    if (after.ui.responseFont === 'Courier New')
-      throw new Error('custom font survived the save (bug may have been fixed): ' + JSON.stringify(after.ui.responseFont));
-    if (after.ui.responseFont !== '')
-      throw new Error('unexpected saved responseFont: ' + JSON.stringify(after.ui.responseFont));
+    // FIXED (bug #130): save() falls back to the recorded stored value when
+    // the select has no matching option (same class as #39's custom
+    // system-message file), so the custom font survives the round-trip.
+    if (after.ui.responseFont !== 'Courier New')
+      throw new Error('custom font was wiped by the save (bug #130 not fixed): ' + JSON.stringify(after.ui.responseFont));
     return 'seeded ui.responseFont="Courier New" (not one of the 5 select options); after opening Settings and saving, settings.json has responseFont="' +
-      after.ui.responseFont + '" - the custom font is lost';
+      after.ui.responseFont + '" - the custom font survives';
   }
 });
 

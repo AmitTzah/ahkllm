@@ -18,6 +18,7 @@ function makeClassList(initial) {
 function makeEl(overrides) {
     return Object.assign({
         value: '',
+        dataset: {},
         innerHTML: '',
         children: [],
         classList: makeClassList(),
@@ -197,6 +198,43 @@ describe('UI & theme settings section', () => {
         assert.ok(data.ui.inputWindow.height === 250);
         assert.ok(data.ui.inputWindow.background === '0x');
         assert.ok(data.ui.suspendBanner.background === '0x');
+    });
+
+    it('preserves a custom (unlisted) font through load() -> save() (bug #130)', () => {
+        const ctx = loadSection({
+            els: {
+                responseFont: makeEl(),
+                responseFontSize: makeEl(),
+                iwFontFace: makeEl(),
+                sbFontFace: makeEl(),
+            },
+        });
+        ctx.module.load({
+            theme: {},
+            ui: {
+                responseFont: 'Courier New',
+                inputWindow: { fontFace: 'Courier New' },
+                suspendBanner: { fontFace: 'Courier New' },
+            },
+        });
+        // No option matches, so the selects hold an empty selection, but the
+        // stored values are preserved and save() falls back to them.
+        const data = JSON.parse(JSON.stringify(ctx.module.save()));
+        assert.strictEqual(data.ui.responseFont, 'Courier New');
+        assert.strictEqual(data.ui.inputWindow.fontFace, 'Courier New');
+        assert.strictEqual(data.ui.suspendBanner.fontFace, 'Courier New');
+    });
+
+    it('a listed font still round-trips through save() as the select value (bug #130)', () => {
+        const ctx = loadSection({
+            els: {
+                responseFont: makeEl({ value: 'Arial' }),
+                responseFontSize: makeEl(),
+            },
+        });
+        ctx.module.load({ theme: {}, ui: { responseFont: 'Arial, sans-serif' } });
+        const data = JSON.parse(JSON.stringify(ctx.module.save()));
+        assert.strictEqual(data.ui.responseFont, 'Arial');
     });
 
     it('wireColorPair syncs hex display and marks dirty', () => {
