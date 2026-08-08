@@ -1,5 +1,5 @@
-# 2026-08-08T11:39:50.990Z | run of 1 scenario(s)
-PASS | #128 | Hard-deleting a message inflates the thread's cumulative OUTPUT tokens (user messages' backfilled input token_count is counted as output) | deleted leaf a2: cumulative_output_tokens=100 (tree-accurate 100; user input token_counts no longer count as output) and the header shows the corrected total | 6.6s
+# 2026-08-08T11:42:50.460Z | run of 1 scenario(s)
+PASS | #129 | Empty Trash / deleteThreadForever leaves stale messages_fts rows (thread-level delete skips FTS cleanup, unlike HardDelete) | thread deleted (messages=0 threads=0) and messages_fts holds 0 row(s) for the deleted messages - FTS index stays in sync | 7.7s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -302,6 +302,20 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #129): thread-level delete must remove messages_fts rows
+    ; like MessageRepo.HardDelete does - the old raw DELETEs left stale index
+    ; rows until the next startup rebuild.
+    Thread_Delete_RemovesFtsRows() {
+        threadId := this._setup()
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "first"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "reply"})
+        ChatDB.Thread_Delete(threadId)
+        fts := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages_fts;")
+        if Integer(fts[1, "c"]) != 0
+            throw Error("thread delete must remove FTS rows (bug #129), got " fts[1, "c"])
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_SetActiveLeaf
     ; --------------------
@@ -871,6 +885,28 @@ class ChatDBTest {
             }
             if !recentSurvived
                 throw Error("Recent trashed thread was purged before its retention period")
+        } finally {
+            trashRetentionDays := oldRetention
+            this._teardown()
+        }
+    }
+
+    ; Regression (bug #129): PurgeExpired must also remove the purged messages'
+    ; FTS index rows (the raw DELETEs never touch messages_fts).
+    Thread_PurgeExpired_RemovesFtsRows() {
+        global trashRetentionDays
+        oldRetention := trashRetentionDays
+        trashRetentionDays := 1
+        try {
+            this._setup()
+            expiredId := ChatDB.Thread_Create("Expired")
+            ChatDB.Msg_Insert({thread_id: expiredId, role: "user", content: "expired msg"})
+            ChatDB.Thread_SoftDelete(expiredId)
+            ChatDB.db.Exec("UPDATE chat_threads SET deleted_at=datetime('now', '-2 days') WHERE id='" expiredId "';")
+            ChatDB.Thread_PurgeExpired()
+            fts := ChatDB.db.Exec("SELECT COUNT(*) AS c FROM messages_fts;")
+            if Integer(fts[1, "c"]) != 0
+                throw Error("purge must remove FTS rows (bug #129), got " fts[1, "c"])
         } finally {
             trashRetentionDays := oldRetention
             this._teardown()

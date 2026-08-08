@@ -132,8 +132,17 @@ class ThreadRepo {
         ; Clean up attachment files on disk BEFORE the raw SQL DELETEs.
         ; The CASCADE FK would auto-delete message_attachments rows but leave orphan files.
         expiredTable := ChatDB.db.Exec("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
-        for row in expiredTable.rows
+        if !expiredTable.count
+            return
+        ; Bug #129: keep messages_fts in sync with messages - remove the FTS
+        ; rows for every purged message (same guarantee as MessageRepo.HardDelete
+        ; -> FTS_Remove). The raw DELETEs below never touch the FTS index.
+        for row in expiredTable.rows {
+            msgIds := ChatDB.db.Exec("SELECT id FROM messages WHERE thread_id='" SQLite.Escape(row.id) "';")
+            for m in msgIds.rows
+                ChatDB.FTS_Remove(m.id)
             AttachmentRepo.DeleteByThread(row.id)
+        }
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days'));")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', '-" retention " days');")
     }
@@ -147,6 +156,12 @@ class ThreadRepo {
         ; Passing safeId (already escaped) double-escaped it, so crafted-id
         ; threads deleted their messages but orphaned their attachment rows.
         AttachmentRepo.DeleteByThread(threadId)
+        ; Bug #129: remove the FTS index rows before the raw DELETE - thread-
+        ; level delete previously skipped FTS cleanup (unlike HardDelete),
+        ; leaving stale index rows until the next startup rebuild.
+        msgIds := ChatDB.db.Exec("SELECT id FROM messages WHERE thread_id='" safeId "';")
+        for m in msgIds.rows
+            ChatDB.FTS_Remove(m.id)
         ChatDB.db.Exec("DELETE FROM messages WHERE thread_id='" safeId "';")
         ChatDB.db.Exec("DELETE FROM chat_threads WHERE id='" safeId "';")
     }

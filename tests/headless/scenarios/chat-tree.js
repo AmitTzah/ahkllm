@@ -893,6 +893,7 @@ scenarios.push({
 scenarios.push({
   id: 129,
   name: 'Empty Trash / deleteThreadForever leaves stale messages_fts rows (thread-level delete skips FTS cleanup, unlike HardDelete)',
+  regression: true, // FIXED bug kept as a regression check (thread-level delete must clean the FTS index)
   mode: null,
   settings: {},
   fixtures: {
@@ -925,15 +926,15 @@ scenarios.push({
     const msgs = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id = ?', ['t-fts-129'])[0].c;
     const threads = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM chat_threads WHERE id = ?', ['t-fts-129'])[0].c;
     const ftsRows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id IN ('m-129-u1','m-129-a1')")[0].c;
-    // Message-level HardDelete calls FTS_Remove (bug #65 guarantee: FTS stays
-    // in sync). Thread-level ThreadRepo.Delete deletes messages via raw SQL and
-    // never touches messages_fts, so the FTS index keeps orphaned entries.
+    // FIXED (bug #129): ThreadRepo.Delete/PurgeExpired now call FTS_Remove for
+    // every deleted message (the same guarantee MessageRepo.HardDelete gives -
+    // bug #65), so the FTS index stays in sync with messages in-session.
     if (msgs !== 0 || threads !== 0)
       throw new Error('thread not fully deleted: msgs=' + msgs + ' threads=' + threads);
-    if (ftsRows === 0)
-      throw new Error('FTS rows were cleaned (bug may have been fixed): ftsRows=' + ftsRows);
-    return 'thread deleted (messages=' + msgs + ' threads=' + threads + ') but messages_fts still holds ' +
-      ftsRows + ' row(s) for the deleted messages - FTS index drifted from messages until the next startup rebuild';
+    if (ftsRows !== 0)
+      throw new Error('FTS rows were NOT cleaned (bug #129 not fixed): ftsRows=' + ftsRows);
+    return 'thread deleted (messages=' + msgs + ' threads=' + threads + ') and messages_fts holds ' +
+      ftsRows + ' row(s) for the deleted messages - FTS index stays in sync';
   }
 });
 
