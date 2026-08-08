@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **14 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #113 (fork now copies full descendant subtrees of off-path siblings; scenario 113 flipped to a regression check + ChatDB unit test). Next up per the lifecycle is #114.
+- **Where we left off:** 2026-08-08 - FIXED #114 (branched-delete recompute is tree-accurate: assistant prompt_tokens ground truth with parent active_path_tokens fallback; user token_counts no longer count as output - the same fix that will close #128; scenario 114 flipped + ChatDB/UsageTracking unit tests). Next up per the lifecycle is #120.
 ---
 
 ## Bug entry template
@@ -208,43 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #114, #120, #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #120, #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 2. Hard-deleting a message in a branched tree miscalculates cumulative token counters
-
-### 2. Hard-deleting a message in a branched tree miscalculates cumulative token counters
-
-**Scenario:** 114 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** In a thread with two branches (active `u1 -> a1 -> u2 -> a2`, plus
-off-path retry branch `u2b -> a2b`), delete the active leaf `a2` via its Delete
-button.
-
-**Expected:** the header's cumulative input tokens/cost drop by exactly what
-`a2`'s API call consumed. Here that is 350 input tokens (a1's prompt `u1` = 100,
-plus a2b's prompt `u1+a1+u2b` = 250); the cost ledger must follow the tree, not
-the insertion order.
-
-**Actual:** `MessageRepo._RecomputeCumulativeCounters` recomputes every counter
-by walking messages `ORDER BY rowid` (insertion order) and charging each
-assistant the running sum of all earlier messages. In a branched tree that
-charges off-path messages to the wrong assistant: after deleting `a2` the total
-becomes 450 (a2b is charged u2's 100 tokens even though u2 is not on branch B),
-and the header shows `↑ 450`. The corrupted totals persist until the next API
-call.
-
-**Evidence:** `chat/db/MessageRepo.ahk` `_RecomputeCumulativeCounters` selects
-`... ORDER BY rowid` and builds `runningSum` from every prior row regardless of
-parent chain (the tree-order ground truth is available via `prompt_tokens` on
-assistants but is ignored).
-
-**Verification:** headless scenario 114 - loaded the branched thread, deleted
-the active leaf via the UI, then read `chat_threads.cumulative_input_tokens`
-from the DB: 450 (buggy) instead of the tree-accurate 350, and the header token
-bar displays the corrupted `↑ 450`.
 
 ### 4. GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)
 
@@ -664,6 +629,8 @@ Entries move here when a bug is closed (user committed) or refuted. Add one line
 closure; never rewrite past entries.
 
 - 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in f0490c7: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
+
+- 2026-08-08 - "Hard-deleting a message in a branched tree miscalculates cumulative token counters" - FIXED in 664f960: MessageRepo._RecomputeCumulativeCounters is now tree-accurate - it sums each assistant's stored API prompt_tokens (falling back to the parent's active_path_tokens for legacy rows) and counts output/cached only on assistant rows, so a branched delete no longer charges off-path branches with the other branch's tokens (and user input token_counts no longer leak into output - the same fix closes #128); scenario 114 flipped to a regression check + ChatDB/UsageTracking unit tests.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
