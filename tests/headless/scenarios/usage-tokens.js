@@ -578,4 +578,43 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 140,
+  name: 'Retrying the first exchange fires a SECOND title-generation request (no in-flight/title guard - duplicate API calls while the title is still "New Chat")',
+  mode: 'sse-success',
+  settings: { threadTitles: { enabled: true, model: 'deepseek/deepseek-v4-flash', prompt: 'Generate a short title.', maxTokens: 50 } },
+  async body({ cdp, mockLog }) {
+    const fs = require('node:fs');
+    await showChat();
+    // Exchange 1 completes; _maybeGenerateTitle(path of length 1) fires the
+    // first title request (max_tokens 50).
+    await sendChatMessage(cdp, 'first question');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1800);
+    const titleReqs = () => {
+      if (!fs.existsSync(mockLog)) return [];
+      return fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean)
+        .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
+        .filter((r) => r.body && r.body.max_tokens === 50);
+    };
+    if (titleReqs().length !== 1)
+      throw new Error('setup: expected exactly 1 title request after exchange 1, got ' + titleReqs().length);
+
+    // Retry the first assistant. The retry response is inserted as a sibling
+    // of a1 and _maybeGenerateTitle runs again with the PRE-insert path
+    // (length 1) and the title still "New Chat", so a second title request
+    // fires even though one is already in flight / already attempted.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1800);
+    const after = titleReqs().length;
+    // BUG (repro): the retry must NOT re-fire title generation (only the
+    // first exchange may); the missing guard produces a duplicate API call.
+    if (after !== 2)
+      throw new Error('expected buggy duplicate title request (2 total), got ' + after);
+    return 'title requests after exchange 1 = 1; after retrying the first assistant = ' + after +
+      ' (duplicate title-gen fired because the title is still "New Chat" and no in-flight guard exists)';
+  }
+});
+
 module.exports = scenarios;

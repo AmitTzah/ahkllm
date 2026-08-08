@@ -154,11 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - Bugs #133 (cancelled-stream usage over-count) and #138 (Active Icon change
-  is not re-applied to the open chat window) verified headlessly and committed. Audits #134-#137 all PASS.
-  Next: fix #133 (rank 1), then #138; re-run `--check-sync` + full suites after each.
+- **Where we left off:** 2026-08-08 - Bugs #133 (cancelled-stream usage over-count), #138 (Active Icon change
+  is not re-applied to the open chat window) and #140 (retrying the first exchange re-fires title generation)
+  verified headlessly and committed. Audits #134-#137, #139 all PASS.
+  Next: fix #133 (rank 1), then #140, then #138; re-run `--check-sync` + full suites after each.
 ---
 
 ## Bug entry template
@@ -264,6 +265,30 @@ after saving iconOn=IconOff.ico the open chat window still renders IconOn (custo
 
 **Verification:** headless — scenario 138 drives Settings → Icons → sets `#iconOnPath` to IconOff.ico → Save, then
 `runIconCheck(IconOff.ico)` on the open chat window returns `customApplied=0` (PASS = stale icon, 2/2 stable runs).
+
+### 3. Retrying the first exchange fires a second title-generation request (duplicate API call while the title is still "New Chat")
+
+**Scenario:** 140 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified — open
+
+**Repro:** Enable Thread Titles, send the first message, wait for the response, then immediately Retry the first
+assistant response (before/while the title generation completes — or after it fails).
+
+**Expected:** Title generation fires only for the first exchange; a retry must not re-fire it (one title request
+per thread until the title is set).
+
+**Actual:** `_maybeGenerateTitle` is called with the PRE-insert active path (length 1 on the first exchange AND on
+any retry of the first exchange) and gates only on `path.Length <= 2` + the title still being "New Chat", with no
+in-flight/title guard. A retry therefore fires a SECOND title request, duplicating the API call (and, when both
+complete, the last response wins the title). Verified live: mock log shows 1 title request after exchange 1 and 2
+after retrying the first assistant (2/2 stable runs).
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` `_maybeGenerateTitle(path)` receives the pre-insert path and
+re-checks `currentTitle`; `chat/ThreadTitleGen.ahk` `generateThreadTitle` has no in-flight guard.
+
+**Verification:** headless — scenario 140 sends one exchange, waits, retries the first assistant, and asserts the
+mock log contains 2 title requests (`max_tokens === 50`) — PASS = duplicate fired.
 
 
 ## History (append-only)
