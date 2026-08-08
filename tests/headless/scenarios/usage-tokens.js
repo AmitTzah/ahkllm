@@ -13,7 +13,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, showChat } = require('./helpers');
+const { sleep, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
 
@@ -201,6 +201,102 @@ scenarios.push({
       throw new Error('day summary still over-counts yesterday (bug #53 not fixed): cost=' + totalCost + ' labels=' + labels);
     return 'seeded yesterday + today rows (total $4.00): "Last 24 Hours" summary shows ' + totalCost +
       ' (today only) while the chart has ' + labels + ' label(s) - summary matches the chart';
+  }
+});
+
+scenarios.push({
+  id: 118,
+  name: 'Editing an assistant message with "Save as Branch" records a fake API request in the usage dashboard (no API call happens)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-fake-118', title: 'Branch Edit Assistant', active_leaf_id: 'm-118-a1' }],
+    messages: [
+      { id: 'm-118-u1', thread_id: 't-fake-118', role: 'user', content: 'original question', token_count: 12, active_path_tokens: 12 },
+      { id: 'm-118-a1', thread_id: 't-fake-118', role: 'assistant', content: 'original answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-118-u1', token_count: 9, active_path_tokens: 21 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Edit the assistant message and save it as a NEW BRANCH - this is a pure
+    // local DB operation: no LLM request is fired for role=assistant.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2)").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.type('#chat-messages .msg:nth-child(2) .msg-edit-textarea', 'edited answer branch');
+    await cdp.click('#chat-messages .msg:nth-child(2) .save-branch');
+    // The new message is a sibling of the edited assistant (same parent u1),
+    // so the active path becomes [u1, new message].
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "edited answer branch"', 15000, 300, 'branch message created');
+    await sleep(700);
+
+    const rows = seed.query(dbPath, "SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage WHERE model='deepseek/deepseek-v4-flash'");
+    // BUG: MessageRepo.Insert upserts chat_usage for ANY assistant insert with
+    // a model, even when no API call was made (branch-edit inserts have no
+    // prompt/completion data). The dashboard then shows a request that never
+    // happened. Correct state: zero chat_usage rows.
+    if (rows.length !== 1 || rows[0].call_count !== 1 || rows[0].prompt_tokens !== 0 || rows[0].completion_tokens !== 0)
+      throw new Error('fake request state not reproduced: ' + JSON.stringify(rows));
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id = ?', ['t-fake-118'])[0];
+    return 'assistant branch-edit produced a chat_usage row (call_count=1, 0 tokens) - dashboard API Requests +1 with no API call; thread cumulative counters stay ' +
+      JSON.stringify(thread);
+  }
+});
+
+scenarios.push({
+  id: 119,
+  name: 'Live exchange: token counters, header tooltips and dashboard all agree (regression check for the usage pipeline)',
+  regression: true, // guards the end-to-end usage accounting: insert -> chat_usage -> header -> dashboard
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await showChat();
+    // Fresh profile: send the first message (mock usage: prompt 12, completion 9, cached 4).
+    await sendChatMessage(cdp, 'count my tokens');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const rows = seed.query(dbPath, "SELECT model, prompt_tokens, completion_tokens, cached_tokens, call_count FROM chat_usage");
+    if (rows.length !== 1 || rows[0].prompt_tokens !== 12 || rows[0].completion_tokens !== 9 || rows[0].cached_tokens !== 4 || rows[0].call_count !== 1)
+      throw new Error('chat_usage row wrong: ' + JSON.stringify(rows));
+    const msgs = seed.query(dbPath, "SELECT role, token_count, thinking_tokens, cached_tokens, prompt_tokens, active_path_tokens FROM messages ORDER BY created_at");
+    if (msgs.length !== 2) throw new Error('expected 2 messages, got ' + msgs.length);
+    const asst = msgs[1];
+    if (asst.role !== 'assistant' || asst.prompt_tokens !== 12 || asst.token_count !== 9 || asst.active_path_tokens !== 21)
+      throw new Error('assistant token fields wrong: ' + JSON.stringify(asst));
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads')[0];
+    if (thread.cumulative_input_tokens !== 12 || thread.cumulative_output_tokens !== 9 || thread.cumulative_cached_tokens !== 4)
+      throw new Error('thread cumulative counters wrong: ' + JSON.stringify(thread));
+
+    // Header token bar: context 21, input 12, output 9, cache 4.
+    const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(bar).indexOf('21') < 0 || String(bar).indexOf('\u2191 12') < 0 || String(bar).indexOf('\u2193 9') < 0 || String(bar).indexOf('4') < 0)
+      throw new Error('header token bar wrong: ' + JSON.stringify(bar));
+    // Cost tooltip and totals must agree with the DB (input+cached split).
+    const costTip = await cdp.attr('#tokenBar .tu-item:last-child', 'title');
+    if (!costTip || costTip.indexOf('Input: $') < 0 || costTip.indexOf('Cached: $') < 0 || costTip.indexOf('Output: $') < 0)
+      throw new Error('cost tooltip malformed: ' + JSON.stringify(costTip));
+
+    // Per-message token popover on the assistant bubble.
+    await cdp.click('#chat-messages .msg:nth-child(2) .stat-btn');
+    await cdp.waitFor('document.querySelector(".stat-toggle.pop-open") !== null', 5000, 200, 'popover open');
+    const pop = await cdp.text('.stat-toggle.pop-open .stat-popover');
+    if (String(pop).indexOf('Output: 9 tokens') < 0 || String(pop).indexOf('Cache: 4 tokens') < 0)
+      throw new Error('assistant token popover wrong: ' + JSON.stringify(pop));
+
+    // Dashboard: 1 call, 21 total tokens.
+    await cdp.click('#dashboard-icon');
+    await cdp.waitFor('typeof allData !== "undefined" && allData.chat && allData.chat.length >= 1', 15000, 300, 'dashboard data');
+    await sleep(600);
+    const totalTokens = await cdp.text('#totalTokens');
+    const totalCalls = await cdp.text('#totalCalls');
+    if (totalTokens !== '21' || totalCalls !== '1')
+      throw new Error('dashboard totals wrong: tokens=' + totalTokens + ' calls=' + totalCalls);
+    return 'live exchange: chat_usage row=' + JSON.stringify(rows[0]) + ', thread counters=' + JSON.stringify(thread) +
+      ', header=' + JSON.stringify(bar) + ', popover=' + JSON.stringify(pop) + ', dashboard tokens=' + totalTokens + ' calls=' + totalCalls;
   }
 });
 

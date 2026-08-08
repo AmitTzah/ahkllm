@@ -212,8 +212,10 @@ scenarios.push({
     // FIXED (bug #64): active_path_tokens = prompt + visible + thinking.
     const activeIncludesThinking = /activePathTokens := msgObj\.prompt_tokens \+ tc \+ tht/.test(mr2);
     const tr=fs.readFileSync(require("path").join(require("../launch").REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
-    // _RecomputeActivePath adds thinking to the prefix sums too.
-    const recomputeIncludesThinking = /prev \+= msg\.HasProp\("thinking_tokens"\) \? msg\.thinking_tokens : 0/.test(tr);
+    // _RecomputeActivePath adds thinking to the prefix sums too. Bug #107
+    // refactored the loop to read the always-present path field directly
+    // (msg.thinking_tokens), so the old HasProp-guarded form is gone.
+    const recomputeIncludesThinking = /prev \+= msg\.thinking_tokens/.test(tr);
     if(!hasVisibleOnly || !activeIncludesThinking || !recomputeIncludesThinking) throw new Error("bug #64 not fixed: visibleOnly=" + hasVisibleOnly + " activeIncludesThinking=" + activeIncludesThinking + " recomputeIncludesThinking=" + recomputeIncludesThinking);
     return "MessageRepo active_path_tokens includes thinking (prompt + visible + thinking) and _RecomputeActivePath adds thinking to prefix sums, so the header Context Used counts reasoning tokens";
   }
@@ -1064,6 +1066,102 @@ scenarios.push({
     if(!buildGuard || !streamGuard || !fimGuard || !friendlyError)
       throw new Error("bug #112 not fixed: buildGuard="+buildGuard+" streamGuard="+streamGuard+" fimGuard="+fimGuard+" friendlyError="+friendlyError);
     return "CurlBuilder.Build/BuildStream/BuildFIM return '' for empty endpoints and ChatRequestBuilder surfaces a friendly 'No endpoint configured' error";
+  }
+});
+
+scenarios.push({
+  id: 115,
+  name: "TreeRepo.GetActivePath/GetTree and MessageRepo._RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const path = require("node:path");
+    const { DatabaseSync } = require("node:sqlite");
+    const launcher = require("../launch");
+    const seed = require("../seed");
+
+    // 1. Source-level: the three call sites interpolate the RAW thread id
+    //    (bug #109 escaped the rest of TreeRepo/MessageRepo but missed these).
+    const tree = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "TreeRepo.ahk"), "utf8");
+    const msg = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "MessageRepo.ahk"), "utf8");
+    const rawInGetActivePath = /SELECT id, thread_id, role[\s\S]{0,220}FROM messages WHERE thread_id='" threadId "';/.test(tree);
+    const rawInGetTree = /SELECT \* FROM messages WHERE thread_id='" threadId "';/.test(tree);
+    const rawInRecompute = /SELECT role, model, token_count[\s\S]{0,80}FROM messages WHERE thread_id='" threadId "' ORDER BY rowid;/.test(msg);
+    if (!rawInGetActivePath || !rawInGetTree || !rawInRecompute)
+      throw new Error("escapes may have been added (bug not reproduced): rawInGetActivePath=" + rawInGetActivePath +
+        " rawInGetTree=" + rawInGetTree + " rawInRecompute=" + rawInRecompute);
+
+    // 2. Semantics: prove the interpolation changes the query. With a crafted
+    //    thread id "x' OR '1'='1", the raw pattern becomes
+    //    WHERE thread_id='x' OR '1'='1'  -> matches EVERY row, while the
+    //    escaped form (SQLite.Escape) matches only the literal id.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llm-escape-115-"));
+    const dbPath = seed.createDb(dir, {
+      threads: [{ id: "t1", title: "A" }, { id: "t2", title: "B" }],
+      messages: [
+        { id: "m1", thread_id: "t1", role: "user", content: "one" },
+        { id: "m2", thread_id: "t2", role: "user", content: "two" }
+      ]
+    });
+    // The app never runs PRAGMA foreign_keys=ON, so mirror that here (Node's
+    // DatabaseSync enables FK constraints by default, which would mask orphans).
+    const db = new DatabaseSync(dbPath, { readOnly: true, enableForeignKeyConstraints: false });
+    const crafted = "x' OR '1'='1";
+    const rawRows = db.prepare("SELECT id FROM messages WHERE thread_id='" + crafted + "';").all();
+    const escapedRows = db.prepare("SELECT id FROM messages WHERE thread_id='" + crafted.replace(/'/g, "''") + "';").all();
+    db.close();
+    if (rawRows.length < 2 || escapedRows.length !== 0)
+      throw new Error("crafted-id semantics not reproduced: rawRows=" + rawRows.length + " escapedRows=" + escapedRows.length);
+    return "GetActivePath/GetTree/_RecomputeCumulativeCounters interpolate raw thread_id; crafted id '" + crafted +
+      "' returns " + rawRows.length + " rows raw vs 0 escaped (SQL injection / wrong-thread reads for crafted ids)";
+  }
+});
+
+scenarios.push({
+  id: 116,
+  name: "ThreadRepo.Delete double-escapes the thread id into AttachmentRepo.DeleteByThread - crafted ids orphan attachments",
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const path = require("node:path");
+    const { DatabaseSync } = require("node:sqlite");
+    const launcher = require("../launch");
+    const seed = require("../seed");
+
+    // 1. Source-level: ThreadRepo.Delete escapes threadId into safeId, then
+    //    passes the ALREADY-escaped value to AttachmentRepo.DeleteByThread,
+    //    which escapes AGAIN (double '' doubling).
+    const tr = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "ThreadRepo.ahk"), "utf8");
+    const ar = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "AttachmentRepo.ahk"), "utf8");
+    const doubleEscape = /safeId := SQLite\.Escape\(threadId\)[\s\S]{0,220}AttachmentRepo\.DeleteByThread\(safeId\)/.test(tr);
+    const reEscape = /static DeleteByThread\(threadId\)[\s\S]{0,120}safeThreadId := SQLite\.Escape\(threadId\)/.test(ar);
+    if (!doubleEscape || !reEscape)
+      throw new Error("double-escape pattern not found (bug not reproduced): doubleEscape=" + doubleEscape + " reEscape=" + reEscape);
+
+    // 2. Semantics: SQLite.Escape doubles every internal quote. So for
+    //    threadId "x'" the delete path builds:
+    //      messages:      WHERE thread_id='x'' '        -> matches literal "x'"  (messages ARE deleted)
+    //      attachments:   WHERE m.thread_id='x'''' '     -> matches literal "x''" (NO rows -> attachments orphaned)
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llm-escape-116-"));
+    const dbPath = seed.createDb(dir, {
+      threads: [{ id: "x'", title: "Crafted" }],
+      messages: [{ id: "m1", thread_id: "x'", role: "user", content: "hi" }]
+    });
+    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    db.prepare("INSERT INTO message_attachments (id, message_id, attachment_type, file_path) VALUES ('a1','m1','text_file','attachments/x.txt')").run();
+    const crafted = "x'";
+    const safeId = crafted.replace(/'/g, "''"); // what ThreadRepo.Delete passes on
+    const msgDel = db.prepare("DELETE FROM messages WHERE thread_id='" + safeId + "';").run();
+    const attQuery = db.prepare("SELECT COUNT(*) AS c FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id='" + safeId.replace(/'/g, "''") + "';").all()[0].c;
+    const orphanRows = db.prepare("SELECT COUNT(*) AS c FROM message_attachments WHERE message_id='m1';").all()[0].c;
+    db.close();
+    if (msgDel.changes !== 1 || attQuery !== 0 || orphanRows !== 1)
+      throw new Error("crafted-id delete semantics not reproduced: msgDeleted=" + msgDel.changes + " attJoined=" + attQuery + " orphanRows=" + orphanRows);
+    return "ThreadRepo.Delete passes the already-escaped safeId into AttachmentRepo.DeleteByThread; for thread id 'x'' the messages are deleted but the attachment rows/files are never touched (orphaned)";
   }
 });
 

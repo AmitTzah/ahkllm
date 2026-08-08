@@ -623,4 +623,88 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 120,
+  name: 'Lowering Trash Retention in Settings does NOT purge expired trash - the settings-update purge hook fails at runtime',
+  mode: null,
+  settings: { trash: { retentionDays: 30 } },
+  fixtures: {
+    threads: [
+      // Deleted 19 days ago: survives the startup purge (retention 30) but
+      // must be purged the moment retention is lowered to 1 and saved.
+      { id: 't-trash-120', title: 'To Purge', is_deleted: 1, deleted_at: '2026-07-20 00:00:00' },
+      { id: 't-live-120', title: 'Live Thread', active_leaf_id: 'm-120-u1' }
+    ],
+    messages: [{ id: 'm-120-u1', thread_id: 't-live-120', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp, dbPath, dataDir }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    // Sanity: with retention 30 the 19-day-old trashed thread must still exist
+    // (startup purge must NOT have removed it).
+    await sleep(1500);
+    if (seed.query(dbPath, "SELECT id FROM chat_threads WHERE id='t-trash-120'").length !== 1)
+      throw new Error('setup: trashed thread was purged before the retention change');
+
+    // 1) General tab: lower trash retention to 1 and save.
+    await openSettings(cdp);
+    await openSection(cdp, 'general');
+    await cdp.eval('(() => { const el = document.getElementById("trashRetentionDays"); el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); return el.value; })()');
+    await saveSettings(cdp, dataDir);
+    const afterSave = readJsonFile(path.join(dataDir, 'settings.json'));
+    if (!afterSave.trash || afterSave.trash.retentionDays !== 1)
+      throw new Error('trash retention not persisted: ' + JSON.stringify(afterSave.trash));
+    // The Main process reloads on WM_SETTINGS_UPDATED and re-runs the purge
+    // hook - but the hook was registered as a bare static-method reference
+    // (ChatDB.Thread_PurgeExpired), which AHK cannot invoke as a callback:
+    // SettingsService._RunHooks logs "hook 'purgeExpired' failed: Missing a
+    // required parameter." and the purge never happens.
+    const start = Date.now();
+    let purged = false;
+    while (Date.now() - start < 6000) {
+      if (seed.query(dbPath, "SELECT id FROM chat_threads WHERE id='t-trash-120'").length === 0) { purged = true; break; }
+      await sleep(300);
+    }
+    if (purged)
+      throw new Error('trashed thread WAS purged after saving - bug no longer reproduces (hook fixed?)');
+
+    // 2) UI & Theme tab: change the default response font size to 20 and save.
+    await openSection(cdp, 'ui');
+    await cdp.eval('(() => { const el = document.getElementById("responseFontSize"); el.value = "20"; el.dispatchEvent(new Event("change", { bubbles: true })); return el.value; })()');
+    await cdp.click('.nav-footer .btn-primary');
+    // The saveSettings helper's "has models" poll returns instantly on a second
+    // save (the key is already on disk), so poll for the actual value here.
+    const start2 = Date.now();
+    let afterSave2 = null;
+    while (Date.now() - start2 < 15000) {
+      try {
+        const j = readJsonFile(path.join(dataDir, 'settings.json'));
+        if (j.ui && j.ui.responseFontSize === '20') { afterSave2 = j; break; }
+      } catch {}
+      await sleep(300);
+    }
+    if (!afterSave2)
+      throw new Error('responseFontSize not persisted: ' + JSON.stringify(afterSave2));
+    // The settings DID persist and the app accepted them - only the purge hook
+    // is broken. Continue verifying that OTHER settings still round-trip, so
+    // the failure is isolated to the purge path.
+
+    // 3) New Chat must start with the new default font size (20px) applied.
+    await cdp.click('#sidebar-toggle'); // back to chat view
+    await sleep(500);
+    const oldThread = await cdp.eval('window.activeThreadId');
+    await cdp.click('#new-chat-btn');
+    await cdp.waitFor('window.activeThreadId !== ' + JSON.stringify(oldThread), 15000, 300, 'new chat created');
+    await cdp.waitFor('document.getElementById("font-size-display") && document.getElementById("font-size-display").textContent === "20px"', 15000, 300, 'font size applied');
+    const cssFont = await cdp.eval('document.documentElement.style.getPropertyValue("--chat-font-size").trim()');
+    const newThread = await cdp.eval('window.activeThreadId');
+    const row = seed.query(dbPath, 'SELECT font_size FROM chat_threads WHERE id = ?', [newThread])[0];
+    if (cssFont !== '20px' || !row || Number(row.font_size) !== 20)
+      throw new Error('new chat font size not reflected: css=' + JSON.stringify(cssFont) + ' db=' + JSON.stringify(row));
+    return 'retention 30->1 persisted but t-trash-120 (deleted 19 days ago) was NOT purged after saving ' +
+      '(hook "purgeExpired" fails: Missing a required parameter); responseFontSize 17->20 persisted and new chat ' +
+      newThread + ' has font_size=' + row.font_size + ' and --chat-font-size=' + cssFont;
+  }
+});
+
 module.exports = scenarios;

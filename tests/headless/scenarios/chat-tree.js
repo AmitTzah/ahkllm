@@ -570,4 +570,109 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 113,
+  name: 'Forking at a message drops the deeper branches below off-path siblings (tree copy is one level deep)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-fork-113', title: 'Fork Deep Tree', active_leaf_id: 'm-113-a1' }],
+    messages: [
+      // Active path: u1 -> a1 (fork point). a1b is an off-path sibling with a
+      // whole subtree under it (u2b->a2b and a retry pair u2b2->a2b2).
+      { id: 'm-113-u1', thread_id: 't-fork-113', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-113-a1', thread_id: 't-fork-113', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-113-u1', sibling_group: 'sg-113', sibling_index: 0, token_count: 20, active_path_tokens: 30 },
+      { id: 'm-113-a1b', thread_id: 't-fork-113', role: 'assistant', content: 'reply B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-113-u1', sibling_group: 'sg-113', sibling_index: 1, token_count: 20, active_path_tokens: 30 },
+      // Continuations below the OFF-PATH sibling a1b (normal branch navigation walks into these).
+      { id: 'm-113-u2b', thread_id: 't-fork-113', role: 'user', content: 'follow B', parent_id: 'm-113-a1b', sibling_group: 'sg-113b', sibling_index: 0, token_count: 5, active_path_tokens: 35 },
+      { id: 'm-113-a2b', thread_id: 't-fork-113', role: 'assistant', content: 'ans B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-113-u2b', token_count: 30, active_path_tokens: 65 },
+      // Retry of "follow B" - another sibling group that only exists below the off-path sibling.
+      { id: 'm-113-u2b2', thread_id: 't-fork-113', role: 'user', content: 'follow B retry', parent_id: 'm-113-a1b', sibling_group: 'sg-113b', sibling_index: 1, token_count: 8, active_path_tokens: 38 },
+      { id: 'm-113-a2b2', thread_id: 't-fork-113', role: 'assistant', content: 'ans B2', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-113-u2b2', token_count: 25, active_path_tokens: 63 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(600);
+    // Fork at the assistant message (a1) - the last message on the active path.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-fork-113"', 15000, 300, 'fork created');
+    const newId = await cdp.eval('window.activeThreadId');
+    await sleep(700);
+    const forkMsgs = seed.query(dbPath, "SELECT id, parent_id, sibling_group FROM messages WHERE thread_id = ? ORDER BY created_at", [newId]);
+    const ids = forkMsgs.map((m) => m.id).sort();
+    // BUG: _CopyOffPathSiblings only copies the messages that share a sibling
+    // group with the ACTIVE PATH. It copies a1b but never its descendants, so
+    // the fork is missing the continuation subtree (u2b/a2b/u2b2/a2b2) that
+    // branch navigation would walk into in the original thread.
+    if (ids.length !== 3)
+      throw new Error('fork message count changed: ' + ids.length + ' -> ' + ids.join(',') + ' (bug may have been fixed)');
+    const missing = ['m-113-u2b', 'm-113-a2b', 'm-113-u2b2', 'm-113-a2b2'].filter((id) => !ids.includes(id));
+    if (missing.length !== 4)
+      throw new Error('fork kept some deep branches: missing=' + JSON.stringify(missing) + ' ids=' + JSON.stringify(ids));
+    // The visible symptom: switching branch in the fork lands on the a1b copy
+    // with NO continuation (dead leaf), while the original thread continues to
+    // u2b under it. Assert against the fork's own (fresh) message ids.
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Next branch"]');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].siblingInfo && chatMessages[1].siblingInfo.total === 2', 15000, 300, 'fork switched to a1b copy');
+    const forkThread = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id = ?', [newId])[0];
+    const leafChildren = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE parent_id = ?', [forkThread.active_leaf_id])[0].c;
+    if (leafChildren !== 0)
+      throw new Error('fork leaf has continuations (bug may have been fixed): ' + forkThread.active_leaf_id + ' children=' + leafChildren);
+    const forkCount = forkMsgs.length;
+    return 'fork id=' + newId + ' has ' + forkCount + ' messages (' + ids.join(',') +
+      ') - deep branches below the off-path sibling a1b were dropped; branch switch lands on a dead leaf (children=' + leafChildren + ')';
+  }
+});
+
+scenarios.push({
+  id: 114,
+  name: 'Hard-deleting a message in a branched tree miscalculates cumulative token counters (rowid order, not tree paths)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-del-114', title: 'Branch Delete', active_leaf_id: 'm-114-a2',
+      cumulative_input_tokens: 550, cumulative_output_tokens: 150, cumulative_cached_tokens: 0, cumulative_cost: 0 }],
+    messages: [
+      // Branch A (active): u1 -> a1 -> u2 -> a2 (leaf).
+      { id: 'm-114-u1', thread_id: 't-del-114', role: 'user', content: 'first', token_count: 100, active_path_tokens: 100 },
+      { id: 'm-114-a1', thread_id: 't-del-114', role: 'assistant', content: 'reply A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-114-u1', token_count: 50, active_path_tokens: 150 },
+      { id: 'm-114-u2', thread_id: 't-del-114', role: 'user', content: 'follow A', parent_id: 'm-114-a1', token_count: 100, active_path_tokens: 250 },
+      { id: 'm-114-a2', thread_id: 't-del-114', role: 'assistant', content: 'ans A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-114-u2', token_count: 50, active_path_tokens: 300 },
+      // Branch B (off-path): u2b -> a2b (a retry sibling of u2).
+      { id: 'm-114-u2b', thread_id: 't-del-114', role: 'user', content: 'follow B', parent_id: 'm-114-a1', token_count: 100, active_path_tokens: 250 },
+      { id: 'm-114-a2b', thread_id: 't-del-114', role: 'assistant', content: 'ans B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-114-u2b', token_count: 50, active_path_tokens: 300 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 4', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Delete the ACTIVE leaf assistant (a2). It is not on branch B's path.
+    await cdp.click('#chat-messages .msg:nth-child(4) .msg-action-btn[title="Delete"]');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(900);
+
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, active_leaf_id FROM chat_threads WHERE id = ?', ['t-del-114'])[0];
+    // Ground truth after deleting a2: remaining API calls were a1 (prompt = u1's
+    // 100) and a2b (prompt = u1 100 + a1 50 + u2b 100 = 250) -> 350 input tokens.
+    // _RecomputeCumulativeCounters instead walks messages in ROWID order and
+    // charges a2b with u2's tokens too (u2 is NOT on branch B's path): 450.
+    if (Number(thread.cumulative_input_tokens) !== 450)
+      throw new Error('cumulative input after branched delete = ' + thread.cumulative_input_tokens + ' (expected the buggy 450; correct is 350)');
+    const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(bar).indexOf('\u2191 450') < 0)
+      throw new Error('header input tokens do not show the corrupted 450: ' + JSON.stringify(bar));
+    return 'deleted leaf a2 from a branched tree: cumulative_input_tokens=' + thread.cumulative_input_tokens +
+      ' (correct 350; buggy rowid-order recompute = 450) and the header shows the wrong total';
+  }
+});
+
 module.exports = scenarios;

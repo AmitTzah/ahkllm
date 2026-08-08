@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 — ALL open bugs FIXED (bug #112 in 23d462c). The bug-hunt report is complete; scenarios remain as regression checks.
+- **Where we left off:** 2026-08-08 - intake of 7 new verified bugs (fork drops deep branches, branched-delete counter corruption, missed raw-id escapes, delete double-escape, duplicate-attachment orphan, fake branch-edit API request, trash-retention purge hook broken). All verified headlessly with scenarios 113-121; next step per the lifecycle is the fix cycle (pick #113 first).
 ---
 
 ## Bug entry template
@@ -208,7 +208,217 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Verification:** headless scenario 63 (noApp) statically checks that GetThreadStats uses HasOwnProp without an empty-string guard.
+**Ranked (1 = highest):** #113, #114, #121, #115, #116, #117, #118 - each entry keeps its stable scenario id.
+
+
+### 1. Forking a chat drops the deeper branches below off-path siblings
+
+**Scenario:** 113 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** Build a branched conversation where the active path is `u1 -> a1`,
+`a1` has an off-path sibling `a1b` (same sibling_group), and `a1b` has its own
+continuations (`u2b -> a2b` plus a retry pair `u2b2 -> a2b2`). Click Fork on
+`a1`, then in the fork switch to branch `a1b` and continue chatting.
+
+**Expected:** the fork is a faithful copy of the conversation tree so far -
+switching to `a1b` in the fork still shows its continuations and lets the user
+continue from them, exactly like the source thread.
+
+**Actual:** the fork contains only `u1`, `a1`, `a1b`. Everything below the
+off-path sibling (the `u2b`/`a2b` and `u2b2`/`a2b2` subtrees) is silently
+missing, so branch navigation in the fork lands on a dead `a1b` leaf with no
+continuation. Root cause: `TreeRepo._CopyOffPathSiblings` only copies the
+messages that share a sibling_group with the ACTIVE PATH - it never walks
+descendants of the copied off-path siblings.
+
+**Evidence:** `chat/db/TreeRepo.ahk` - `_CopyOffPathSiblings` iterates only the
+`sgMap` sibling groups and inserts only the matching rows; children of those
+rows are never copied.
+
+**Verification:** headless scenario 113 - clicked Fork on the last active-path
+message, then read the fork thread's messages from the DB: only 3 rows
+(`u1`,`a1`,`a1b`) exist and the 4 deep-branch messages are missing; a branch
+switch in the fork lands on a leaf with no continuation.
+
+### 2. Hard-deleting a message in a branched tree miscalculates cumulative token counters
+
+**Scenario:** 114 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** In a thread with two branches (active `u1 -> a1 -> u2 -> a2`, plus
+off-path retry branch `u2b -> a2b`), delete the active leaf `a2` via its Delete
+button.
+
+**Expected:** the header's cumulative input tokens/cost drop by exactly what
+`a2`'s API call consumed. Here that is 350 input tokens (a1's prompt `u1` = 100,
+plus a2b's prompt `u1+a1+u2b` = 250); the cost ledger must follow the tree, not
+the insertion order.
+
+**Actual:** `MessageRepo._RecomputeCumulativeCounters` recomputes every counter
+by walking messages `ORDER BY rowid` (insertion order) and charging each
+assistant the running sum of all earlier messages. In a branched tree that
+charges off-path messages to the wrong assistant: after deleting `a2` the total
+becomes 450 (a2b is charged u2's 100 tokens even though u2 is not on branch B),
+and the header shows `↑ 450`. The corrupted totals persist until the next API
+call.
+
+**Evidence:** `chat/db/MessageRepo.ahk` `_RecomputeCumulativeCounters` selects
+`... ORDER BY rowid` and builds `runningSum` from every prior row regardless of
+parent chain (the tree-order ground truth is available via `prompt_tokens` on
+assistants but is ignored).
+
+**Verification:** headless scenario 114 - loaded the branched thread, deleted
+the active leaf via the UI, then read `chat_threads.cumulative_input_tokens`
+from the DB: 450 (buggy) instead of the tree-accurate 350, and the header token
+bar displays the corrupted `↑ 450`.
+
+### 4. GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)
+
+**Scenario:** 115 (scenario code in `scenarios/misc.js`)
+
+**Status:** verified
+
+**Repro:** None needed in the UI - the bug is in the query construction. Any
+thread id containing a single quote (crafted, e.g. via the DB directly) makes
+`TreeRepo.GetActivePath`, `TreeRepo.GetTree` and
+`MessageRepo._RecomputeCumulativeCounters` build a broken/injectable WHERE
+clause.
+
+**Expected:** every id interpolated into SQL goes through `SQLite.Escape`
+(that is what bug #109 did for the sibling call sites).
+
+**Actual:** three call sites still concatenate the raw `threadId` into the
+query. A crafted id like `x' OR '1'='1` turns `WHERE thread_id='x' OR '1'='1'`
+and returns every message in the database (wrong thread reads, or SQL
+injection). `GetActivePath` is the most sensitive - it is the path used for
+every chat send, branch switch and fork.
+
+**Evidence:** `chat/db/TreeRepo.ahk` lines ~20 (GetActivePath allTable) and ~75
+(GetTree); `chat/db/MessageRepo.ahk` ~178 (_RecomputeCumulativeCounters).
+Commit 6aa4798 (bug #109) escaped the other queries in these functions but
+missed these three.
+
+**Verification:** headless scenario 115 (noApp) - statically matched the three
+raw interpolation sites, then in a Node SQLite DB proved the crafted id
+`x' OR '1'='1` matches 2 rows when interpolated raw vs 0 when escaped.
+
+### 5. ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments
+
+**Scenario:** 116 (scenario code in `scenarios/misc.js`)
+
+**Status:** verified
+
+**Repro:** Give a thread an id containing a single quote, attach a file to one
+of its messages, then permanently delete the thread (or Empty Trash).
+
+**Expected:** the thread's messages AND attachment rows/files are all removed.
+
+**Actual:** `ThreadRepo.Delete` escapes `threadId` into `safeId`, then calls
+`AttachmentRepo.DeleteByThread(safeId)` - but `DeleteByThread` escapes its
+argument again (`''` becomes `''''`), so the attachment query matches the
+literal `x''` instead of `x'` and touches nothing. The messages are deleted but
+the `message_attachments` rows and their files stay behind forever (orphaned).
+
+**Evidence:** `chat/db/ThreadRepo.ahk` `Delete` passes `safeId` (already
+escaped) to `AttachmentRepo.DeleteByThread`; `chat/db/AttachmentRepo.ahk`
+`DeleteByThread` escapes its parameter again.
+
+**Verification:** headless scenario 116 (noApp) - matched the double-escape
+call pattern, then in a Node SQLite DB simulated the exact SQL: messages row
+deleted (1 change), attachment join matched 0 rows, and the attachment row
+survived as an orphan.
+
+### 6. Deleting a message that holds the same attachment file twice orphans the file on disk
+
+**Scenario:** 117 (scenario code in `scenarios/db-verify.js`)
+
+**Status:** verified
+
+**Repro:** Attach the same file twice to one chat message (the UI allows it;
+content-addressable storage gives both rows the same hash file path). Delete
+the message.
+
+**Expected:** once no DB row references the file, the physical file is removed
+with the rows.
+
+**Actual:** `AttachmentRepo._DeleteFileIfOrphaned` counts references BEFORE the
+batch delete runs: with 2 rows pointing at the same path the count is 2 for
+both rows, so neither triggers `FileDelete`, and then all rows are deleted. The
+physical file survives forever as an orphan on disk (same outcome for
+`DeleteByThread`). 
+
+**Evidence:** `chat/db/AttachmentRepo.ahk` - `DeleteByMessage`/`DeleteByThread`
+call `_DeleteFileIfOrphaned` per row while the other rows still exist, and the
+reference count is never re-checked after the batch delete.
+
+**Verification:** headless scenario 117 - created a real file plus two
+attachment rows sharing its path, deleted the message via the UI, then checked:
+message and both attachment rows are gone but the file still exists.
+
+### 7. "Save as Branch" on an assistant message records a fake API request in the usage dashboard
+
+**Scenario:** 118 (scenario code in `scenarios/usage-tokens.js`)
+
+**Status:** verified
+
+**Repro:** In any chat, click Edit on an assistant message and choose "Save as
+Branch" (this is a local DB copy - no LLM request is fired for assistant
+messages). Open the Usage Dashboard.
+
+**Expected:** API Requests stays unchanged - no request was made.
+
+**Actual:** `MessageRepo.Insert` upserts `chat_usage` for EVERY assistant insert
+that carries a model, including branch-edit inserts that have no prompt/completion
+data. The dashboard gains one "API Request" with 0 tokens that never happened.
+
+**Evidence:** `chat/db/MessageRepo.ahk` `Insert` - the
+`if msgObj.role = "assistant" && msgObj.HasProp("model") && msgObj.model`
+block calls `ChatDB.ChatUsage_Upsert` unconditionally; `chat/callbacks/Edit.ahk`
+branch mode only fires a request when `role = "user"`.
+
+**Verification:** headless scenario 118 - edited the seeded assistant message
+and saved it as a branch via the UI, then read `chat_usage`: exactly one row
+with `call_count=1` and zero tokens, while no API call was made.
+
+### 3. Lowering Trash Retention in Settings does not purge expired trash (the settings-update purge hook fails at runtime)
+
+**Scenario:** 120 (scenario code in `scenarios/settings.js`)
+
+**Status:** verified
+
+**Repro:** With a trashed thread whose `deleted_at` is older than the current
+retention, open Settings - General, lower "Trash Retention (days)" (e.g. 30 ->
+1) and Save.
+
+**Expected:** the settings save triggers the `purgeExpired` update hook
+(`Main.ahk`'s `WM_SETTINGS_UPDATED` -> `SettingsService.ReloadFromDisk` ->
+`Apply` -> hooks), so the expired trashed thread is purged immediately
+(bug #7's promise: "retention changes apply immediately").
+
+**Actual:** the setting persists and the app reloads, but the purge never runs.
+The debug log records `[SETTINGS] hook 'purgeExpired' failed: Missing a required
+parameter.` Root cause: `SettingsService.RegisterHook("purgeExpired",
+ChatDB.Thread_PurgeExpired)` passes a bare static-method reference, and in AHK
+v2 such a reference cannot be invoked as a zero-arg callback
+(`fn.Call()` throws "Missing a required parameter" - confirmed with a bounded
+probe; even `ChatDB.Thread_PurgeExpired.Bind()` still throws). The startup and
+hourly-timer purge calls are direct `ChatDB.Thread_PurgeExpired()` invocations
+and still work, so the bug only affects the settings-change path.
+
+**Evidence:** `Main.ahk:192` registers the hook; `app/settings/SettingsService.ahk`
+`_RunHooks` calls `fn.Call()`; runtime proof in `%TEMP%\LLM_Debug_Log.txt`
+("hook 'purgeExpired' failed: Missing a required parameter.") right after the
+save.
+
+**Verification:** headless scenario 120 - saved retention 1 via the real
+Settings UI over a 19-day-old trashed thread (survives the 30-day startup
+purge), waited 6s, and confirmed the thread is still present in `chat_threads`
+while `settings.json` has `trash.retentionDays: 1`. The same run verifies the
+save path itself is healthy (responseFontSize round-trips and a New Chat picks
+it up), isolating the failure to the purge hook.
 
 
 ---

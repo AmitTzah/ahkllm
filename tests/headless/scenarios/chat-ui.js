@@ -313,7 +313,11 @@ scenarios.push({
     const sh = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamHandler.ahk'), 'utf8');
     const se = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'streaming', 'StreamError.ahk'), 'utf8');
     const finalizePos = sh.indexOf('_finalizeStreaming() {');
-    const block = sh.slice(finalizePos, finalizePos + 1200);
+    // Slice to the end of _finalizeStreaming (the next function definition).
+    // Later bug-#98 comments made the fixed 1200-char slice too short, which
+    // hid _handleStreamError and falsely failed this regression check.
+    const cleanupPos = sh.indexOf('_cleanupStreamState() {', finalizePos);
+    const block = sh.slice(finalizePos, cleanupPos > finalizePos ? cleanupPos : finalizePos + 3000);
     const cancelPos = block.indexOf('_handleStreamCancelled()');
     const errorPos = block.indexOf('_handleStreamError()');
     // FIXED (bug #56): the cancelled branch runs BEFORE the empty-content
