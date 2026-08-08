@@ -7,15 +7,32 @@
 ; and cURL execution to CurlBuilder.
 ; ----------------------------------------------------
 
+; Bug #140: at most one title-generation request per thread per process. A
+; retry (or cancel) of the first exchange must not re-fire title generation
+; while the title is still "New Chat" - the request may be in flight, may
+; have failed, or may already have succeeded with a title the DB gate
+; (currentTitle != "New Chat") would otherwise re-check.
+global _titleGenRequestedThreads := Map()
+
 generateThreadTitle(threadId) {
+    global _titleGenRequestedThreads
     if !autoTitleGenerationEnabled || !IsSet(titleGenModel) || !titleGenModel
         return
-
-    debugLog("[TITLEGEN] generateThreadTitle thread=" threadId " model=" titleGenModel)
 
     prompt := _TitleGen_BuildPrompt(threadId)
     if !prompt
         return
+
+    ; Only one request per thread: the first caller dispatches, any later
+    ; caller (a duplicate timer scheduled before this one fired, a direct
+    ; call, or a retry of the first exchange) returns without an API call.
+    if _titleGenRequestedThreads.Has(threadId) {
+        debugLog("[TITLEGEN] skip duplicate title request thread=" threadId)
+        return
+    }
+    _titleGenRequestedThreads[threadId] := true
+
+    debugLog("[TITLEGEN] generateThreadTitle thread=" threadId " model=" titleGenModel)
 
     titleGenStart := A_TickCount
     providerInfo := ProviderResolver.Resolve(titleGenModel)

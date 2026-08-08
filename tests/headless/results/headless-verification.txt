@@ -1,5 +1,5 @@
-# 2026-08-08T17:54:22.357Z | run of 1 scenario(s)
-PASS | #141 | Vision gate blocks an image attachment on a non-vision model BEFORE any API request is sent (live audit) | image attachment on deepseek-v4-flash: error banner "Model 'deepseek/deepseek-v4-flash' does not support vision. Remove images or switch models.×" shown and 0 chat requests reached the API (vision gate blocks pre-flight) | 5.5s
+# 2026-08-08T17:58:00.886Z | run of 1 scenario(s)
+PASS | #140 | Retrying the first exchange fires a SECOND title-generation request (no in-flight/title guard - duplicate API calls while the title is still "New Chat") | title requests after exchange 1 = 1; after retrying the first assistant = 1 (no duplicate title-gen - one request per thread) | 8.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -47,6 +47,15 @@ _handleStreamComplete() {
 
 _maybeGenerateTitle(path) {
     if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
+        ; Bug #140: once a title request has been dispatched for this thread,
+        ; never schedule another - a retry of the first exchange re-checks the
+        ; same pre-insert path (length 1) with the title still "New Chat" and
+        ; used to fire a duplicate API call.
+        global _titleGenRequestedThreads
+        if _titleGenRequestedThreads.Has(activeThreadId) {
+            debugLog("[TITLEGEN] skip duplicate trigger thread=" activeThreadId)
+            return
+        }
         threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
         if threadInfo.count {
             currentTitle := threadInfo[1, "title"]

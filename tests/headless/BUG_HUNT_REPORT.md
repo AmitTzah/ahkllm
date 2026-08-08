@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 1 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #133 (committed 8875847) and #142 (ChatRequestBuilder now attaches
-  every user message's images/files; scenario 142 flipped + ChatRequestBuilder unit test). Next: #140.
+- **Where we left off:** 2026-08-08 - FIXED #133 (8875847) and #142 (4fe0eba). #140 in progress: per-thread
+  title-gen guard added (ThreadTitleGen + _maybeGenerateTitle). Next: flip scenario 140 + verify + commit.
 ---
 
 ## Bug entry template
@@ -234,30 +234,6 @@ after saving iconOn=IconOff.ico the open chat window still renders IconOn (custo
 **Verification:** headless — scenario 138 drives Settings → Icons → sets `#iconOnPath` to IconOff.ico → Save, then
 `runIconCheck(IconOff.ico)` on the open chat window returns `customApplied=0` (PASS = stale icon, 2/2 stable runs).
 
-### 2. Retrying the first exchange fires a second title-generation request (duplicate API call while the title is still "New Chat")
-
-**Scenario:** 140 (scenario code in scenarios/usage-tokens.js)
-
-**Status:** verified — open
-
-**Repro:** Enable Thread Titles, send the first message, wait for the response, then immediately Retry the first
-assistant response (before/while the title generation completes — or after it fails).
-
-**Expected:** Title generation fires only for the first exchange; a retry must not re-fire it (one title request
-per thread until the title is set).
-
-**Actual:** `_maybeGenerateTitle` is called with the PRE-insert active path (length 1 on the first exchange AND on
-any retry of the first exchange) and gates only on `path.Length <= 2` + the title still being "New Chat", with no
-in-flight/title guard. A retry therefore fires a SECOND title request, duplicating the API call (and, when both
-complete, the last response wins the title). Verified live: mock log shows 1 title request after exchange 1 and 2
-after retrying the first assistant (2/2 stable runs).
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk` `_maybeGenerateTitle(path)` receives the pre-insert path and
-re-checks `currentTitle`; `chat/ThreadTitleGen.ahk` `generateThreadTitle` has no in-flight guard.
-
-**Verification:** headless — scenario 140 sends one exchange, waits, retries the first assistant, and asserts the
-mock log contains 2 title requests (`max_tokens === 50`) — PASS = duplicate fired.
-
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
@@ -266,6 +242,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Cancelling a stream mid-response records a fake API request and inflates the thread's cumulative input tokens (header and usage dashboard disagree)" - FIXED: _handleStreamCancelled now inserts the cancelled partial as local_copy, so MessageRepo.Insert never upserts chat_usage (no fake API request) and never recomputes the cumulative counters from the un-billed parent context; scenario 133 flipped to a regression check + StreamError unit tests.
 
 - 2026-08-08 - "Follow-up messages drop the image context of earlier attached images from the API request (multi-turn vision loses the image after the first exchange)" - FIXED: ChatRequestBuilder._ProcessAttachmentsForPath now attaches EVERY user message's attachments (images + file contexts) to its API content part, so follow-up requests keep the earlier image context (the old _ProcessAttachmentsForLastUser only processed the last user message); scenario 142 flipped to a regression check + ChatRequestBuilder unit test.
+
+- 2026-08-08 - "Retrying the first exchange fires a second title-generation request (duplicate API call while the title is still 'New Chat')" - FIXED: ThreadTitleGen keeps a per-thread dispatched-request guard (_titleGenRequestedThreads) and _maybeGenerateTitle skips re-triggering, so a retry of the first exchange no longer fires a second title request; scenario 140 flipped to a regression check + ThreadTitleGen unit tests.
 
 - 2026-08-08 - "Forking a chat drops the deeper branches below off-path siblings" - FIXED in f0490c7: TreeRepo._CopyOffPathSiblings now walks the full descendant subtrees of copied off-path siblings (children of the fork point are excluded - they are the source thread's continuation beyond the fork), so the fork is a faithful copy of the conversation tree; scenario 113 flipped to a regression check + ChatDB fork unit test.
 

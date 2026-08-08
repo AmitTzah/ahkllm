@@ -587,6 +587,7 @@ scenarios.push({
 
 scenarios.push({
   id: 140,
+  regression: true, // FIXED bug kept as a regression check (retry must not re-fire title generation)
   name: 'Retrying the first exchange fires a SECOND title-generation request (no in-flight/title guard - duplicate API calls while the title is still "New Chat")',
   mode: 'sse-success',
   settings: { threadTitles: { enabled: true, model: 'deepseek/deepseek-v4-flash', prompt: 'Generate a short title.', maxTokens: 50 } },
@@ -615,12 +616,13 @@ scenarios.push({
     await waitStreamingIdle(cdp, 40000);
     await sleep(1800);
     const after = titleReqs().length;
-    // BUG (repro): the retry must NOT re-fire title generation (only the
-    // first exchange may); the missing guard produces a duplicate API call.
-    if (after !== 2)
-      throw new Error('expected buggy duplicate title request (2 total), got ' + after);
+    // FIXED (bug #140): at most one title request per thread - the retry must
+    // NOT re-fire title generation (ThreadTitleGen/_maybeGenerateTitle now
+    // keep a per-thread dispatched-request guard).
+    if (after !== 1)
+      throw new Error('retry re-fired title generation: ' + after + ' title requests (expected 1)');
     return 'title requests after exchange 1 = 1; after retrying the first assistant = ' + after +
-      ' (duplicate title-gen fired because the title is still "New Chat" and no in-flight guard exists)';
+      ' (no duplicate title-gen - one request per thread)';
   }
 });
 

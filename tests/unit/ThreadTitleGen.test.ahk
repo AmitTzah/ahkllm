@@ -160,6 +160,58 @@ class ThreadTitleGenTest {
         this._teardownDb()
     }
 
+    ; ----------------------------------------------------
+    ; Bug #140 regression: only ONE title request per thread. Calling
+    ; generateThreadTitle twice (e.g. a direct call plus a duplicate timer
+    ; scheduled before the first fired) must dispatch exactly one API call.
+    ; ----------------------------------------------------
+    Generate_CalledTwice_FiresOneRequest() {
+        global _mockTitleGenOutput, _mockRunCalls
+        this._setupDb()
+        this._setGlobals()
+        threadId := ChatDB.Thread_Create("Dup Guard")
+        usrId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "Hello" })
+        ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "Hi", parent_id: usrId })
+        _mockTitleGenOutput := '{"choices":[{"message":{"content":"T"}}],"usage":{"prompt_tokens":2,"completion_tokens":1}}'
+        _mockRunCalls := []
+        generateThreadTitle(threadId)
+        generateThreadTitle(threadId)
+        if _mockRunCalls.Length != 1
+            throw Error("expected exactly one cURL title request, got " _mockRunCalls.Length)
+        this._teardownDb()
+    }
+
+    ; ----------------------------------------------------
+    ; Bug #140 regression: retrying the first exchange calls _maybeGenerateTitle
+    ; with the same pre-insert path and "New Chat" title. Once a title request
+    ; has been dispatched, the trigger must not schedule (or fire) a second one.
+    ; ----------------------------------------------------
+    MaybeGenerateTitle_AfterDispatch_DoesNotReschedule() {
+        global activeThreadId, _mockTitleGenOutput, _mockRunCalls, _mockSetTimerCalls
+        this._setupDb()
+        this._setGlobals()
+        threadId := ChatDB.Thread_Create("New Chat")
+        usrId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "first question" })
+        ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "first answer", parent_id: usrId })
+        activeThreadId := threadId
+
+        _mockTitleGenOutput := '{"choices":[{"message":{"content":"A Title"}}],"usage":{"prompt_tokens":4,"completion_tokens":2}}'
+        _mockRunCalls := []
+        _mockSetTimerCalls := []
+        generateThreadTitle(threadId)
+        if _mockRunCalls.Length != 1
+            throw Error("expected one title request after the first dispatch, got " _mockRunCalls.Length)
+
+        ; Retry of the first exchange: same pre-insert path, title still New Chat.
+        path := ChatDB.Msg_GetActivePath(threadId)
+        _maybeGenerateTitle(path)
+        if _mockRunCalls.Length != 1
+            throw Error("retry re-fired title generation: " _mockRunCalls.Length " requests")
+        if _mockSetTimerCalls.Length != 0
+            throw Error("retry scheduled another title-gen timer: " _mockSetTimerCalls.Length)
+        this._teardownDb()
+    }
+
     Generate_EmptyResponse_NoTitle() {
         global _mockTitleGenOutput, _mockRunCalls
         this._setupDb()
