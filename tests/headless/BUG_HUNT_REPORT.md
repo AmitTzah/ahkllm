@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #120 (the purgeExpired settings hook now registers the plain zero-arg TrashRetentionPurge wrapper instead of a bare static-method reference, which AHK cannot invoke via fn.Call(); lowering Trash Retention purges expired trash immediately; scenario 120 flipped + SettingsHandler unit test). Next up per the lifecycle is #115.
+- **Where we left off:** 2026-08-08 - FIXED #115 (TreeRepo.GetActivePath/GetTree and MessageRepo._RecomputeCumulativeCounters now escape thread_id through SQLite.Escape - the _RecomputeCumulativeCounters site was already escaped by #114's rewrite; scenario 115 flipped + ChatDB unit test). Next up per the lifecycle is #116.
 ---
 
 ## Bug entry template
@@ -208,38 +208,10 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #115, #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
 
-### 4. GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)
-
-**Scenario:** 115 (scenario code in `scenarios/misc.js`)
-
-**Status:** verified
-
-**Repro:** None needed in the UI - the bug is in the query construction. Any
-thread id containing a single quote (crafted, e.g. via the DB directly) makes
-`TreeRepo.GetActivePath`, `TreeRepo.GetTree` and
-`MessageRepo._RecomputeCumulativeCounters` build a broken/injectable WHERE
-clause.
-
-**Expected:** every id interpolated into SQL goes through `SQLite.Escape`
-(that is what bug #109 did for the sibling call sites).
-
-**Actual:** three call sites still concatenate the raw `threadId` into the
-query. A crafted id like `x' OR '1'='1` turns `WHERE thread_id='x' OR '1'='1'`
-and returns every message in the database (wrong thread reads, or SQL
-injection). `GetActivePath` is the most sensitive - it is the path used for
-every chat send, branch switch and fork.
-
-**Evidence:** `chat/db/TreeRepo.ahk` lines ~20 (GetActivePath allTable) and ~75
-(GetTree); `chat/db/MessageRepo.ahk` ~178 (_RecomputeCumulativeCounters).
-Commit 6aa4798 (bug #109) escaped the other queries in these functions but
-missed these three.
-
-**Verification:** headless scenario 115 (noApp) - statically matched the three
-raw interpolation sites, then in a Node SQLite DB proved the crafted id
-`x' OR '1'='1` matches 2 rows when interpolated raw vs 0 when escaped.
+### 5. ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments
 
 ### 5. ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments
 
@@ -596,6 +568,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Hard-deleting a message in a branched tree miscalculates cumulative token counters" - FIXED in 664f960: MessageRepo._RecomputeCumulativeCounters is now tree-accurate - it sums each assistant's stored API prompt_tokens (falling back to the parent's active_path_tokens for legacy rows) and counts output/cached only on assistant rows, so a branched delete no longer charges off-path branches with the other branch's tokens (and user input token_counts no longer leak into output - the same fix closes #128); scenario 114 flipped to a regression check + ChatDB/UsageTracking unit tests.
 
 - 2026-08-08 - "Lowering Trash Retention in Settings does not purge expired trash (the settings-update purge hook fails at runtime)" - FIXED in f5ac7f5: SettingsService.RegisterHook("purgeExpired", ...) now registers the plain zero-arg TrashRetentionPurge wrapper instead of the bare static-method reference ChatDB.Thread_PurgeExpired, which AHK v2 cannot invoke via fn.Call() ("Missing a required parameter" - probe-verified, even .Bind() throws); lowering retention now purges expired trash immediately; scenario 120 flipped to a regression check + SettingsHandler unit test.
+
+- 2026-08-08 - "GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)" - FIXED in 6eb143d: TreeRepo.GetActivePath/GetTree now route threadId through SQLite.Escape (the _RecomputeCumulativeCounters site was already escaped by the #114 rewrite), closing the last raw-id interpolation class; scenario 115 flipped to a regression check + ChatDB unit test (crafted `bad'thread` round-trips GetActivePath/GetTree).
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
