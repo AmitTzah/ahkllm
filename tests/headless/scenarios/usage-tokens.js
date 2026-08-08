@@ -303,6 +303,7 @@ scenarios.push({
 scenarios.push({
   id: 123,
   name: '"Save as Branch" on an assistant message drops the branch copy\'s token metadata (Context Used falls back to the parent, token popover is blank)',
+  regression: true, // FIXED bug kept as a regression check (branch copies carry the source token metadata)
   mode: null,
   settings: {},
   fixtures: {
@@ -312,7 +313,7 @@ scenarios.push({
     }],
     messages: [
       { id: 'm-123-u1', thread_id: 't-branch-123', role: 'user', content: 'original question', token_count: 12, active_path_tokens: 12 },
-      { id: 'm-123-a1', thread_id: 't-branch-123', role: 'assistant', content: 'original answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-123-u1', token_count: 9, active_path_tokens: 21 }
+      { id: 'm-123-a1', thread_id: 't-branch-123', role: 'assistant', content: 'original answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-123-u1', token_count: 9, prompt_tokens: 12, active_path_tokens: 21 }
     ]
   },
   async body({ cdp, dbPath }) {
@@ -336,26 +337,25 @@ scenarios.push({
     const rows = seed.query(dbPath, "SELECT token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE content='edited answer branch'");
     if (rows.length !== 1) throw new Error('branch copy row missing: ' + JSON.stringify(rows));
     const r = rows[0];
-    // BUG: Edit.ahk branch mode inserts the copy with NO token fields, so
-    // MessageRepo.Insert computes active_path_tokens from the PARENT only
-    // (12) instead of copying the edited message's ground truth (21), and the
-    // copy carries zero token attribution (token_count/prompt_tokens=0).
-    if (Number(r.active_path_tokens) === 21 || Number(r.token_count) === 9)
-      throw new Error('branch copy kept token metadata (bug may be fixed): ' + JSON.stringify(r));
-    if (Number(r.active_path_tokens) !== 12)
-      throw new Error('branch copy active_path_tokens = ' + r.active_path_tokens + ' (expected the buggy parent value 12)');
-    // Header now shows the LOWER parent context (12), not the copied message's 21.
+    // FIXED (bug #123): Edit.ahk branch mode copies the source assistant's
+    // token metadata, so the branch copy keeps active_path_tokens 21 (prompt
+    // 12 + output 9) and the full token attribution instead of zeroing it.
+    if (Number(r.active_path_tokens) !== 21)
+      throw new Error('branch copy active_path_tokens = ' + r.active_path_tokens + ' (expected the copied 21)');
+    if (Number(r.token_count) !== 9 || Number(r.prompt_tokens) !== 12)
+      throw new Error('branch copy lost token attribution: ' + JSON.stringify(r));
+    // Header keeps the copied message's context (21), not the parent's 12.
     const barAfter = await cdp.text('#tokenBar .tu-item:first-child .tu-val');
-    if (String(barAfter).indexOf('12') !== 0)
-      throw new Error('header context after branch edit = ' + JSON.stringify(barAfter) + ' (expected the buggy 12)');
-    // Per-message popover on the branch copy: token attribution is blank.
+    if (String(barAfter).indexOf('21') !== 0)
+      throw new Error('header context after branch edit = ' + JSON.stringify(barAfter) + ' (expected 21)');
+    // Per-message popover on the branch copy shows the same 9 output tokens.
     await cdp.click('#chat-messages .msg:nth-child(2) .stat-btn');
     await cdp.waitFor('document.querySelector(".stat-toggle.pop-open") !== null', 5000, 200, 'popover open');
     const pop = await cdp.text('.stat-toggle.pop-open .stat-popover');
-    if (String(pop).indexOf('Output: 0 tokens') < 0)
-      throw new Error('branch popover does not show blank tokens: ' + JSON.stringify(pop));
+    if (String(pop).indexOf('Output: 9 tokens') < 0)
+      throw new Error('branch popover lost the output attribution: ' + JSON.stringify(pop));
     return 'branch copy DB=' + JSON.stringify(r) + ', header context before=' + JSON.stringify(barBefore) +
-      ' after=' + JSON.stringify(barAfter) + ' popover=' + JSON.stringify(pop) + ' (copy lost a1\'s 21/9 attribution)';
+      ' after=' + JSON.stringify(barAfter) + ' popover=' + JSON.stringify(pop) + ' (copy kept a1\'s 21/9 attribution)';
   }
 });
 

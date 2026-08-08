@@ -101,6 +101,25 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #123): a local branch-edit copy must carry the source
+    ; message's token metadata (token_count/prompt_tokens/thinking/cached/
+    ; active_path_tokens) so the header Context Used and the token popover stay
+    ; faithful - while still not re-charging the counters (bug #118).
+    Insert_LocalCopy_KeepsTokenMetadata() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "original question", token_count: 12})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "original answer", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12, thinking_tokens: 0, cached_tokens: 4, active_path_tokens: 21})
+        before := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
+        copyId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "edited answer branch", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", sibling_group: "sg-123", sibling_index: 1, token_count: 9, prompt_tokens: 12, thinking_tokens: 0, cached_tokens: 4, active_path_tokens: 21, local_copy: true})
+        row := ChatDB.db.Exec("SELECT token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE id='" copyId "';")
+        if Integer(row[1, "token_count"]) != 9 || Integer(row[1, "prompt_tokens"]) != 12 || Integer(row[1, "thinking_tokens"]) != 0 || Integer(row[1, "cached_tokens"]) != 4 || Integer(row[1, "active_path_tokens"]) != 21
+            throw Error("local copy must keep the source token metadata (bug #123): tc=" row[1, "token_count"] " pt=" row[1, "prompt_tokens"] " tht=" row[1, "thinking_tokens"] " ckt=" row[1, "cached_tokens"] " apt=" row[1, "active_path_tokens"])
+        after := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
+        if Integer(after[1, "cumulative_input_tokens"]) != Integer(before[1, "cumulative_input_tokens"]) || Integer(after[1, "cumulative_output_tokens"]) != Integer(before[1, "cumulative_output_tokens"]) || Integer(after[1, "cumulative_cached_tokens"]) != Integer(before[1, "cumulative_cached_tokens"])
+            throw Error("metadata copy must not re-charge counters: before in=" before[1, "cumulative_input_tokens"] " out=" before[1, "cumulative_output_tokens"] " ckt=" before[1, "cumulative_cached_tokens"] " after in=" after[1, "cumulative_input_tokens"] " out=" after[1, "cumulative_output_tokens"] " ckt=" after[1, "cumulative_cached_tokens"])
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_GetActivePath
     ; --------------------

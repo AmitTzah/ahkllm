@@ -135,7 +135,7 @@ The next scenario run also auto-recovers as a fallback.
 |---|---|
 | `cdp.js` | Minimal CDP client (fetch + built-in WebSocket): evaluate, click, type, waitFor, postMessage hook |
 | `mock-llm-server.js` | Local fake LLM (SSE / JSON / title / error modes) so send/stream/title-gen paths are deterministic |
-| `seed.js` | Writes `settings.json` and creates/seeds the SQLite DB (schema mirrors `chat/db/ChatDB.ahk`) |
+| `seed.js` | Writes `settings.json` and creates/seeds the SQLite DB (schema mirrors `chat/db/ChatDB.ahk`; message fixtures support `prompt_tokens` alongside the other token fields) |
 | `launch.js` | Profile isolation (junction), app launch with WebView2 remote-debugging args, CDP discovery, teardown |
 | `probe.ahk` | Win32 checks the browser can't see: window titles, icons via `WM_GETICON` + pixel fingerprint, hotkey presses, suspend banner, input window |
 | `probe-thinking.ahk` | Standalone AHK check used by one scenario (see report) |
