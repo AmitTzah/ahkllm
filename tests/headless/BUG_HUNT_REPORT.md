@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #115 (TreeRepo.GetActivePath/GetTree and MessageRepo._RecomputeCumulativeCounters now escape thread_id through SQLite.Escape - the _RecomputeCumulativeCounters site was already escaped by #114's rewrite; scenario 115 flipped + ChatDB unit test). Next up per the lifecycle is #116.
+- **Where we left off:** 2026-08-08 - FIXED #116 (ThreadRepo.Delete now passes the RAW thread id to AttachmentRepo.DeleteByThread, which escapes it internally - no more double-escaping that orphaned crafted-id threads' attachments; scenario 116 flipped + ChatDB unit test). Next up per the lifecycle is #117.
 ---
 
 ## Bug entry template
@@ -208,36 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #116, #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #117, #118, #122, #123, #124, #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 5. ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments
-
-### 5. ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments
-
-**Scenario:** 116 (scenario code in `scenarios/misc.js`)
-
-**Status:** verified
-
-**Repro:** Give a thread an id containing a single quote, attach a file to one
-of its messages, then permanently delete the thread (or Empty Trash).
-
-**Expected:** the thread's messages AND attachment rows/files are all removed.
-
-**Actual:** `ThreadRepo.Delete` escapes `threadId` into `safeId`, then calls
-`AttachmentRepo.DeleteByThread(safeId)` - but `DeleteByThread` escapes its
-argument again (`''` becomes `''''`), so the attachment query matches the
-literal `x''` instead of `x'` and touches nothing. The messages are deleted but
-the `message_attachments` rows and their files stay behind forever (orphaned).
-
-**Evidence:** `chat/db/ThreadRepo.ahk` `Delete` passes `safeId` (already
-escaped) to `AttachmentRepo.DeleteByThread`; `chat/db/AttachmentRepo.ahk`
-`DeleteByThread` escapes its parameter again.
-
-**Verification:** headless scenario 116 (noApp) - matched the double-escape
-call pattern, then in a Node SQLite DB simulated the exact SQL: messages row
-deleted (1 change), attachment join matched 0 rows, and the attachment row
-survived as an orphan.
 
 ### 6. Deleting a message that holds the same attachment file twice orphans the file on disk
 
@@ -570,6 +542,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - "Lowering Trash Retention in Settings does not purge expired trash (the settings-update purge hook fails at runtime)" - FIXED in f5ac7f5: SettingsService.RegisterHook("purgeExpired", ...) now registers the plain zero-arg TrashRetentionPurge wrapper instead of the bare static-method reference ChatDB.Thread_PurgeExpired, which AHK v2 cannot invoke via fn.Call() ("Missing a required parameter" - probe-verified, even .Bind() throws); lowering retention now purges expired trash immediately; scenario 120 flipped to a regression check + SettingsHandler unit test.
 
 - 2026-08-08 - "GetActivePath/GetTree/_RecomputeCumulativeCounters still interpolate raw thread_id (missed #109-class escape)" - FIXED in 6eb143d: TreeRepo.GetActivePath/GetTree now route threadId through SQLite.Escape (the _RecomputeCumulativeCounters site was already escaped by the #114 rewrite), closing the last raw-id interpolation class; scenario 115 flipped to a regression check + ChatDB unit test (crafted `bad'thread` round-trips GetActivePath/GetTree).
+
+- 2026-08-08 - "ThreadRepo.Delete double-escapes the thread id - crafted-id threads orphan their attachments" - FIXED in 4dc8557: ThreadRepo.Delete now passes the RAW threadId to AttachmentRepo.DeleteByThread (which escapes it internally), so a crafted-id thread's messages AND attachment rows/files are all removed; scenario 116 flipped to a regression check + ChatDB unit test.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
