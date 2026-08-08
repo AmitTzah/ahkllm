@@ -60,23 +60,25 @@ class MessageRepo {
         ChatDB.FTS_Sync(id, msgObj.content)
 
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
-        if !isLocalCopy {
-            if msgObj.HasProp("model") && msgObj.model {
-                usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
-                costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
-                if costs.inputCost != "" {
-                    inputCost := costs.inputCost
-                    cachedInputCost := costs.cachedInputCost != "" ? costs.cachedInputCost : 0
-                    outputCost := costs.outputCost != "" ? costs.outputCost : 0
-                    totalCost := costs.totalCost != "" ? costs.totalCost : 0
-                }
+        if msgObj.HasProp("model") && msgObj.model {
+            usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
+            costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
+            if costs.inputCost != "" {
+                inputCost := costs.inputCost
+                cachedInputCost := costs.cachedInputCost != "" ? costs.cachedInputCost : 0
+                outputCost := costs.outputCost != "" ? costs.outputCost : 0
+                totalCost := costs.totalCost != "" ? costs.totalCost : 0
             }
-            ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now'), cumulative_input_tokens=cumulative_input_tokens+?, cumulative_output_tokens=cumulative_output_tokens+?, cumulative_cached_tokens=cumulative_cached_tokens+?, cumulative_cost=cumulative_cost+?, cumulative_input_cost=cumulative_input_cost+?, cumulative_cached_input_cost=cumulative_cached_input_cost+?, cumulative_output_cost=cumulative_output_cost+? WHERE id=?;", id, promptTotal, (tc + tht), ckt, totalCost, inputCost, cachedInputCost, outputCost, msgObj.thread_id)
-        } else {
-            ; Local copy: the message becomes the active leaf, but the thread's
-            ; token/cost ledger must stay untouched (no API call happened).
-            ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
         }
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
+
+        ; Hardening item 3: the thread's cumulative counters are DERIVED from
+        ; the messages in exactly one place (_RecomputeCumulativeCounters) -
+        ; never accumulated incrementally here - so the thread ledger can never
+        ; drift from the per-message token fields (ground truth). Local copies
+        ; (no API call) leave the ledger untouched.
+        if !isLocalCopy
+            MessageRepo._RecomputeCumulativeCounters(msgObj.thread_id)
 
         ; Note: _RecomputeActivePath is NOT called here because Insert already sets
         ; active_path_tokens correctly (API ground truth for assistants, prefix sum for others).

@@ -195,6 +195,28 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Hardening item 3: the thread's cumulative counters are DERIVED from the
+    ; messages in one place (_RecomputeCumulativeCounters) - after every insert
+    ; the ledger equals the per-message API ground truth (sum of assistant
+    ; prompt_tokens / token_count+thinking / cached), never an incremental
+    ; accumulation that can drift.
+    Insert_DerivesCumulativeCountersFromMessages() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "q1", token_count: 12})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12, cached_tokens: 4, thinking_tokens: 0})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "q2", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a1';").rows[1].id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", token_count: 5, prompt_tokens: 24, thinking_tokens: 2, cached_tokens: 1})
+        row := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", threadId)
+        ; Ground truth: input = 12 + 24 = 36; output = 9 + (5 + 2) = 16; cached = 4 + 1 = 5.
+        if Integer(row[1, "cumulative_input_tokens"]) != 36
+            throw Error("cumulative input should equal SUM(assistant prompt_tokens)=36, got " row[1, "cumulative_input_tokens"])
+        if Integer(row[1, "cumulative_output_tokens"]) != 16
+            throw Error("cumulative output should equal SUM(assistant token_count+thinking)=16, got " row[1, "cumulative_output_tokens"])
+        if Integer(row[1, "cumulative_cached_tokens"]) != 5
+            throw Error("cumulative cached should equal SUM(assistant cached)=5, got " row[1, "cumulative_cached_tokens"])
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_GetActivePath
     ; --------------------
