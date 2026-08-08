@@ -626,6 +626,7 @@ scenarios.push({
 scenarios.push({
   id: 120,
   name: 'Lowering Trash Retention in Settings does NOT purge expired trash - the settings-update purge hook fails at runtime',
+  regression: true, // FIXED bug kept as a regression check (retention changes must purge expired trash immediately)
   mode: null,
   settings: { trash: { retentionDays: 30 } },
   fixtures: {
@@ -655,18 +656,19 @@ scenarios.push({
     if (!afterSave.trash || afterSave.trash.retentionDays !== 1)
       throw new Error('trash retention not persisted: ' + JSON.stringify(afterSave.trash));
     // The Main process reloads on WM_SETTINGS_UPDATED and re-runs the purge
-    // hook - but the hook was registered as a bare static-method reference
-    // (ChatDB.Thread_PurgeExpired), which AHK cannot invoke as a callback:
-    // SettingsService._RunHooks logs "hook 'purgeExpired' failed: Missing a
-    // required parameter." and the purge never happens.
+    // hook. FIXED (bug #120): the hook is now a plain zero-arg wrapper
+    // (TrashRetentionPurge) instead of the bare static-method reference
+    // ChatDB.Thread_PurgeExpired, which AHK cannot invoke via fn.Call()
+    // ("hook 'purgeExpired' failed: Missing a required parameter."), so the
+    // expired trashed thread must be purged right after the save.
     const start = Date.now();
     let purged = false;
     while (Date.now() - start < 6000) {
       if (seed.query(dbPath, "SELECT id FROM chat_threads WHERE id='t-trash-120'").length === 0) { purged = true; break; }
       await sleep(300);
     }
-    if (purged)
-      throw new Error('trashed thread WAS purged after saving - bug no longer reproduces (hook fixed?)');
+    if (!purged)
+      throw new Error('trashed thread was NOT purged after saving retention 1 (bug #120 still reproduces)');
 
     // 2) UI & Theme tab: change the default response font size to 20 and save.
     await openSection(cdp, 'ui');
@@ -701,8 +703,8 @@ scenarios.push({
     const row = seed.query(dbPath, 'SELECT font_size FROM chat_threads WHERE id = ?', [newThread])[0];
     if (cssFont !== '20px' || !row || Number(row.font_size) !== 20)
       throw new Error('new chat font size not reflected: css=' + JSON.stringify(cssFont) + ' db=' + JSON.stringify(row));
-    return 'retention 30->1 persisted but t-trash-120 (deleted 19 days ago) was NOT purged after saving ' +
-      '(hook "purgeExpired" fails: Missing a required parameter); responseFontSize 17->20 persisted and new chat ' +
+    return 'retention 30->1 persisted and t-trash-120 (deleted 19 days ago) WAS purged after saving ' +
+      '(hook "purgeExpired" now runs via the TrashRetentionPurge wrapper); responseFontSize 17->20 persisted and new chat ' +
       newThread + ' has font_size=' + row.font_size + ' and --chat-font-size=' + cssFont;
   }
 });

@@ -189,7 +189,11 @@ SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
 SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend))
 SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)
 SettingsService.RegisterHook("runtimeResolver", RuntimeResolver_ResolvePrimaryProvider)
-SettingsService.RegisterHook("purgeExpired", ChatDB.Thread_PurgeExpired)
+; Bug #120: hooks are invoked via fn.Call(), and a bare static-method reference
+; (ChatDB.Thread_PurgeExpired) throws "Missing a required parameter" in AHK v2
+; (probe-verified: even .Bind() throws). Register the plain zero-arg wrapper
+; instead, so lowering Trash Retention purges expired trash immediately.
+SettingsService.RegisterHook("purgeExpired", TrashRetentionPurge)
 
 ; ----------------------------------------------------
 ; Register inter-process communication handlers

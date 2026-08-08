@@ -1,5 +1,5 @@
-# 2026-08-08T10:57:53.606Z | run of 1 scenario(s)
-PASS | #114 | Hard-deleting a message in a branched tree miscalculates cumulative token counters (rowid order, not tree paths) | deleted leaf a2 from a branched tree: cumulative_input_tokens=350 (tree-accurate 350; the buggy rowid-order recompute charged 450) and the header shows the corrected total | 6.3s
+# 2026-08-08T11:02:05.172Z | run of 1 scenario(s)
+PASS | #120 | Lowering Trash Retention in Settings does NOT purge expired trash - the settings-update purge hook fails at runtime | retention 30->1 persisted and t-trash-120 (deleted 19 days ago) WAS purged after saving (hook "purgeExpired" now runs via the TrashRetentionPurge wrapper); responseFontSize 17->20 persisted and new chat 134a0aac-0e9e-c8fa-14a6-0000c07da525 has font_size=20 and --chat-font-size=20px | 8.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

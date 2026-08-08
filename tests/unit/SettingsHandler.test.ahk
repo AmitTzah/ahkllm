@@ -484,4 +484,21 @@ class SettingsHandlerTest {
         iconOff := oldOff
     }
 
+    ; Regression (bug #120): SettingsService invokes update hooks via fn.Call(),
+    ; which throws "Missing a required parameter" for a bare static-method
+    ; reference (probe-verified - even .Bind() throws). Main.ahk must register a
+    ; plain zero-arg function (TrashRetentionPurge), so lowering Trash Retention
+    ; purges expired trash immediately. Assert that a registered zero-arg
+    ; function hook is actually invoked by _RunHooks.
+    Hooks_InvokePlainFunctionReference() {
+        oldHooks := SettingsService._hooks
+        SettingsService._hooks := Map()
+        ran := 0
+        SettingsService.RegisterHook("testZeroArg", () => (ran := ran + 1))
+        SettingsService._RunHooks()
+        if ran != 1
+            throw Error("registered zero-arg hook was not invoked (ran=" ran ")")
+        SettingsService._hooks := oldHooks
+    }
+
 }
