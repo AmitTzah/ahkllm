@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - FIXED #124 (the tree modal subtitle now counts only ACTIVE PATH nodes via _countActivePathNodes instead of every tree node, so "Viewing active path Â· 2 nodes" matches the highlighted path; scenario 124 flipped + chat-branching unit test). Next up per the lifecycle is #125.
+- **Where we left off:** 2026-08-08 - FIXED #125 (branch labels are now 1-based POSITIONS among the remaining siblings - buildStructuredMessagesFromPath finds the message's slot in the siblings array instead of using raw sibling_index+1 - and the updateBranchInfo IPC now has a WebView implementation; scenario 125 flipped + ChatUtils/chat-branching unit tests). Next up per the lifecycle is #126.
 ---
 
 ## Bug entry template
@@ -208,41 +208,8 @@ one at a time, in rank order.
 
 ## Open bugs (ranked)
 
-**Ranked (1 = highest):** #125, #126, #128, #129, #130 - each entry keeps its stable scenario id.
+**Ranked (1 = highest):** #126, #128, #129, #130 - each entry keeps its stable scenario id.
 
-
-### 11. Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches
-
-**Scenario:** 125 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** Build a message with three retry branches (branch A index 0, B
-index 1, C index 2), switch to branch A, then delete it via the Delete button.
-The remaining two branches now display "2/2" (branch B) and "3/2" (branch C).
-
-**Expected:** branch labels are 1-based POSITIONS among the currently
-remaining siblings, so after deleting branch A the labels should read "1/2"
-and "2/2" (and a subsequent retry should be "3/3", not "4/3").
-
-**Actual:** `buildStructuredMessagesFromPath` builds `siblingInfo.index =
-msg.sibling_index + 1` from the raw DB value, which is never renumbered when
-a sibling is deleted. The branch label (and the branch-nav readout) show
-stale numbers ("2/2" and "3/2"), and the offset grows with every retry after
-a delete.
-
-**Evidence:** `chat/ChatUtils.ahk` `buildStructuredMessagesFromPath` -
-`siblingInfo := { index: msg.sibling_index + 1, total: siblings.Length }`
-(position should come from the siblings array); `webui/js/chat/chat-actions.js`
-renders `siblingInfo.index + '/' + siblingInfo.total`. The `updateBranchInfo`
-message AHK posts after a switch (which carries the position-based
-`siblingInfo` from `SwitchBranch`) has no WebView implementation - it is a
-silent no-op (`typeof updateBranchInfo === 'function'` is false in main.js).
-
-**Verification:** headless scenario 125 - loaded a 3-branch fixture, checked
-"1/3"/"3/3" before deletion, deleted branch A via the UI, then navigated to
-branches B and C through the tree modal: the labels read "2/2" and "3/2"
-instead of "1/2" and "2/2".
 
 ### 12. Forking mid-conversation copies the source thread's FULL cumulative token/cost counters even though the fork only contains the prefix
 
@@ -408,6 +375,8 @@ closure; never rewrite past entries.
 - 2026-08-08 - ""Save as Branch" on an assistant message drops the copy's token metadata (header Context Used falls back to the parent, token popover is blank)" - FIXED in 0d96955: Edit.ahk branch mode now copies the source message's token metadata (token_count/prompt_tokens/thinking/cached/active_path_tokens) into the local_copy insert - captured inside the loop because AHK v2 for-loop variables are not valid after it - and seed.js seeds prompt_tokens like the app schema; scenario 123 flipped to a regression check + ChatDB unit test.
 
 - 2026-08-08 - "Conversation tree modal says "Viewing active path" but counts every node in the tree (off-path branches included)" - FIXED in c1c6387: renderChatTree now labels the subtitle with _countActivePathNodes (the highlighted path) instead of _countTreeNodes (the whole tree); scenario 124 flipped to a regression check + chat-branching unit test.
+
+- 2026-08-08 - "Branch position labels (x/y) go stale after deleting a sibling - they use the raw sibling_index, not the position among remaining branches" - FIXED in 5cee451: buildStructuredMessagesFromPath now labels each branch by its 1-based POSITION in the siblings array (raw sibling_index+1 went stale after a delete and grew with every retry), and the updateBranchInfo IPC got a real WebView implementation; scenario 125 flipped to a regression check + ChatUtils/chat-branching unit tests.
 
 - 2026-08-07 - "Usage dashboard model heading XSS — model id not escaped in section header" - FIXED in 53a5290: renderModelSections now escapes the model heading with escHtml(model); scenario 95 flipped to a regression static check + usage-dashboard unit test.
 
