@@ -21,6 +21,12 @@ const { startMockServer } = require('../../tests/headless/mock-llm-server');
 const FFMPEG = path.join(__dirname, '..', '..', '.tools', 'ffmpeg', 'bin', 'ffmpeg.exe');
 const OUT_DIR = path.join(__dirname, '..', '..', 'docs', 'videos');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Hard per-scene budget. Video takes can run for minutes, so the default is
+// generous; verification passes a short timeout to prove hangs are reaped.
+const DEFAULT_SCENE_TIMEOUT_MS = 20 * 60 * 1000;
+// Children spawned by this process (ffmpeg encodes). The emergency cleanup
+// kills them so a force-exit can never leave an orphaned encoder behind.
+const activeChildren = new Set();
 
 // In-page UI injected into the WebView: cursor, caption bubble, token-bar CSS.
 const INJECT_UI = `(() => {
@@ -143,11 +149,13 @@ function encodeFrames(framesDir, frameCount, fps, outPath) {
       outPath
     ];
     const proc = spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    activeChildren.add(proc);
     let errBuf = '';
     proc.stderr.on('data', (d) => { errBuf += d; });
-    proc.on('error', reject);
+    proc.on('error', (e) => { activeChildren.delete(proc); reject(e); });
     proc.stdin.on('error', () => {});
     proc.on('exit', (code) => {
+      activeChildren.delete(proc);
       if (code === 0) resolve();
       else reject(new Error('encode failed (' + code + '): ' + errBuf.slice(-600)));
     });
@@ -368,13 +376,20 @@ function startCapture(cdp) {
   const t0 = Date.now();
   const tick = async () => {
     if (!capturing) return;
-    const p = draggingCursor || cursorAt(Date.now());
-    await cdp.eval(`window.__setCursor(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`);
-    const res = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 85 });
-    if (res && res.data) {
-      fs.writeFileSync(path.join(framesDir, String(frameIndex++).padStart(6, '0') + '.jpg'), Buffer.from(res.data, 'base64'));
+    try {
+      const p = draggingCursor || cursorAt(Date.now());
+      await cdp.eval(`window.__setCursor(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`);
+      const res = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 85 });
+      if (res && res.data) {
+        fs.writeFileSync(path.join(framesDir, String(frameIndex++).padStart(6, '0') + '.jpg'), Buffer.from(res.data, 'base64'));
+      }
+    } catch (e) {
+      // A failure AFTER stop() (teardown closing the CDP socket mid-tick) is
+      // expected; a failure while the scene is still running is fatal.
+      if (capturing) throw e;
+      return;
     }
-    setTimeout(tick, 50);
+    if (capturing) setTimeout(tick, 50);
   };
   tick();
   return {
@@ -398,17 +413,87 @@ async function encodeClip(framesDir, frameCount, fps, outName) {
 // seedFn(dataDir, endpoint) writes settings + DB. mock is
 // { mode, opts } passed to startMockServer. body({ cdp, cap, viewport }) runs
 // the scene steps; it must stop the capture and encode via encodeClip itself
-// (so scenes control the final fps/duration).
-async function runOffscreenScene({ outName, seedFn, mock, body }) {
+// (so scenes control the final fps/duration). timeoutMs bounds the whole scene
+// (default 20 min); a hang past it triggers guaranteed cleanup + hard exit.
+async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFAULT_SCENE_TIMEOUT_MS }) {
+  // Self-healing sweep: a previous run that hung (or was force-killed) must
+  // not leave orphaned node/app processes or temp dirs behind. Command-line
+  // matched only; the real profile is never touched here. Runs BEFORE the
+  // preflight check so a leftover app from a crashed run is reaped instead of
+  // blocking every subsequent run.
+  const swept = launcher.sweepOffscreenArtifacts();
+  if (swept && swept !== 'nothing to clean up')
+    console.log('[' + outName + '] self-healing sweep: ' + swept);
+
   console.log('[' + outName + '] preflight...');
   if (launcher.preflight()) {
-    throw new Error('AhkLLM is already running. Close it, then rerun.');
+    throw new Error('AhkLLM is still running after the self-healing sweep. Close it, then rerun.');
   }
 
   console.log('[' + outName + '] isolating profile...');
   const iso = launcher.isolateProfile();
   let mainPid = 0;
   let server = null;
+  let cdp = null;
+  let cap = null;
+  let watchdog = null;
+  let cleanedUp = false;
+
+  // ONE cleanup path shared by normal completion, scene errors, watchdog
+  // timeouts, unhandled rejections and uncaught exceptions: close the CDP
+  // socket, kill spawned children, close the mock server (force-dropping
+  // keep-alive SSE connections), teardown the app, restore the real profile.
+  const cleanup = async (reason) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (watchdog) clearTimeout(watchdog);
+    if (reason) console.error('[' + outName + '] cleaning up after: ' + reason);
+    try { if (cap) await cap.stop(); } catch {}
+    try { if (cdp) await cdp.close(); } catch {}
+    for (const child of activeChildren) { try { child.kill(); } catch {} }
+    activeChildren.clear();
+    try {
+      if (server) {
+        const srv = server.server;
+        if (srv.closeAllConnections) srv.closeAllConnections();
+        if (srv.closeIdleConnections) srv.closeIdleConnections();
+        await new Promise((resolve) => {
+          srv.close(() => resolve());
+          // A stuck keep-alive socket must not block the guaranteed cleanup.
+          setTimeout(resolve, 2000).unref();
+        });
+      }
+    } catch {}
+    launcher.teardown(mainPid);
+    let ok = false;
+    try { ok = launcher.restoreProfile(iso); } catch (e) { console.error('[' + outName + '] restoreProfile error: ' + e.message); }
+    console.log('Real profile restored:', ok ? 'yes' : 'FAILED');
+  };
+
+  // Hard per-scene watchdog: if anything keeps the event loop alive past
+  // timeoutMs (a CDP wait, a capture, an encode, a stuck promise), clean up
+  // and force-exit instead of leaking the process holding the mock port.
+  watchdog = setTimeout(() => {
+    console.error('[' + outName + '] SCENE TIMEOUT after ' + Math.round(timeoutMs / 1000) + 's - forcing cleanup + exit');
+    cleanup('watchdog timeout').finally(() => process.exit(1));
+  }, timeoutMs);
+  watchdog.unref(); // failsafe only - never keeps the process alive by itself
+
+  // Crash handlers: convert unhandled rejections/exceptions into the same
+  // guaranteed cleanup + exit instead of an orphaned process.
+  const onUnhandledRejection = (reason) => {
+    if (cleanedUp) return; // late stray after the scene already finished
+    console.error('[' + outName + '] unhandled rejection: ' + (reason && reason.stack ? reason.stack : reason));
+    cleanup('unhandled rejection').finally(() => process.exit(1));
+  };
+  const onUncaughtException = (err) => {
+    if (cleanedUp) return; // late stray after the scene already finished
+    console.error('[' + outName + '] uncaught exception: ' + (err && err.stack ? err.stack : err));
+    cleanup('uncaught exception').finally(() => process.exit(1));
+  };
+  process.on('unhandledRejection', onUnhandledRejection);
+  process.on('uncaughtException', onUncaughtException);
+
   try {
     launcher.resetDataDir(iso.sandboxData);
     let endpoint = 'http://127.0.0.1:9';
@@ -428,7 +513,7 @@ async function runOffscreenScene({ outName, seedFn, mock, body }) {
 
     console.log('[' + outName + '] waiting for chat target...');
     const target = await launcher.waitForChatTarget(port, 60000);
-    const cdp = await CDP.connect(target.webSocketDebuggerUrl);
+    cdp = await CDP.connect(target.webSocketDebuggerUrl);
     runProbe('show-chat');
     await sleep(1500);
 
@@ -451,21 +536,52 @@ async function runOffscreenScene({ outName, seedFn, mock, body }) {
     })()`);
     await sleep(400);
     const viewport = await cdp.eval('({ w: window.innerWidth, h: window.innerHeight })');
-    const cap = startCapture(cdp);
+    cap = startCapture(cdp);
     try {
       return await body({ cdp, cap, viewport, outName });
     } catch (e) {
+      try { await cap.stop(); } catch {}
       try { fs.rmSync(cap.framesDir, { recursive: true, force: true }); } catch {}
       throw e;
     } finally {
-      await cdp.close().catch(() => {});
+      try { await cap.stop(); } catch {}
     }
   } finally {
-    if (server) try { server.server.close(); } catch {}
-    launcher.teardown(mainPid);
-    const ok = launcher.restoreProfile(iso);
-    console.log('Real profile restored:', ok ? 'yes' : 'FAILED');
+    try { await cleanup(); } finally {
+      process.removeListener('unhandledRejection', onUnhandledRejection);
+      process.removeListener('uncaughtException', onUncaughtException);
+    }
   }
+}
+
+// Run a scene from a script FILE as a child process with a hard timeout.
+// Fixed scenes should live in scripts/videos/ and be run directly; this is
+// the cleanup-guaranteeing wrapper for agent-generated one-offs: the child is
+// bounded, whatever it left behind is swept, and the temp file is deleted
+// afterward. Returns { outcome, swept }.
+async function runSceneFile(scriptPath, { timeoutMs = DEFAULT_SCENE_TIMEOUT_MS } = {}) {
+  const child = spawn(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..', '..')
+  });
+  const outcome = await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch {}
+      resolve('killed-after-timeout');
+    }, timeoutMs);
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      resolve(signal ? 'signal-' + signal : 'exit-' + code);
+    });
+    child.once('error', (err) => {
+      clearTimeout(timer);
+      resolve('spawn-error: ' + err.message);
+    });
+  });
+  // Backstop: a force-killed child never ran its own cleanup, so sweep now.
+  const swept = launcher.sweepOffscreenArtifacts();
+  try { fs.unlinkSync(scriptPath); } catch {}
+  return { outcome, swept };
 }
 
 module.exports = {
@@ -474,5 +590,5 @@ module.exports = {
   encodeFrames, cssCenter, bringIntoView, rectOf, verifyHit, clickTarget,
   interact, animateType, dragTree, caption, assertNoErrorBanners, assertTokenBar, emptyTreePoint, clampInWrap,
   captionDrag, preloadTree, openTreeZoomedOut, startCapture, encodeClip,
-  runOffscreenScene
+  runOffscreenScene, runSceneFile, DEFAULT_SCENE_TIMEOUT_MS
 };

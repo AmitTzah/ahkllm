@@ -46,6 +46,21 @@ of them. If `--cleanup` reports `Closed 0` but the app profile is still locked, 
 process (possibly a hung, windowless AHK script) holds it - do not kill AHK processes by
 guesswork; ask the user to close their scripts.
 
+The offscreen video pipeline (`scripts/videos/offscreen-pipeline.js`) has the same
+guarantees built in: every scene runs under a hard per-scene watchdog plus
+`unhandledRejection`/`uncaughtException` handlers, and one unified cleanup closes the CDP
+socket, kills spawned encoders, force-closes the mock server, tears down the app, and
+restores the real profile before an explicit `process.exit` - so a hung scene can never
+leave an orphaned node process holding its port. At the start of each scene it runs
+`launcher.sweepOffscreenArtifacts()`: kill orphaned `node.exe` processes matching this
+repo's offscreen scenes (command-line matched, never a blanket node kill), close leftover
+repo app/WebView2 processes, and remove `llm-escape-*`, `llm-webview2-*`,
+`ahkllm-frames-*`, and stale `llm-data-*` temp dirs (never the real AhkLLM profile or
+`llm-profile-bak-*`). Generated one-off scene scripts should be run through
+`pipeline.runSceneFile()` (bounded child + backstop sweep + file deletion); fixed scenes
+like `offscreen-demo.js` stay in `scripts/videos/`. `tests/headless/verify-cleanup.js`
+verifies all of this (sweep, hung-scene reaping, teardown-with-unknown-PID).
+
 Scenario ids are stable keys defined by the scenario objects in `scenarios/*.js`
 (assembled into the run list by `e2e-suite.js`); each bug entry in
 `BUG_HUNT_REPORT.md` lists the scenario that verifies it and a **Status** (reported →
@@ -142,6 +157,7 @@ The next scenario run also auto-recovers as a fallback.
 | `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
 | `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
 | `scenarios/helpers.js` | Shared helpers used by scenario bodies (probes, UI navigation) |
+| `verify-cleanup.js` | Offscreen-pipeline leak verification: self-healing sweep, hung-scene watchdog reaping, teardown with unknown PID |
 | `capture-screenshots.js` | Generates README screenshots: runs the real app off-screen, captures WebView2 pages via CDP `Page.captureScreenshot` |
 | `BUG_HUNT_REPORT.md` | Live bug list + agent workflow (start here) |
 

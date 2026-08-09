@@ -32,6 +32,7 @@ function sleepSync(ms) {
 // run). The browser processes can hold files briefly after taskkill /F, so
 // retry until nothing remains or the bounded attempt budget runs out.
 function sweepWebView2Dirs(maxAttempts = 8) {
+  let total = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let removed = 0;
     try {
@@ -41,8 +42,10 @@ function sweepWebView2Dirs(maxAttempts = 8) {
       }
     } catch {}
     if (removed === 0) break;
+    total += removed;
     sleepSync(500);
   }
+  return total;
 }
 
 function findFreePort() {
@@ -206,6 +209,72 @@ function killRepoAppProcesses() {
   spawnSync('powershell.exe', ps, { timeout: 25000, windowsHide: true });
 }
 
+// Kill every leftover node.exe running an offscreen video scene for THIS repo,
+// matched by command line: any script under scripts/videos/ (both the absolute
+// "...ahkllm\scripts\videos\foo.js" form and the relative "scripts/videos/foo.js"
+// form the orphaned runs left behind - hero-offscreen, commands-chat-offscreen,
+// branch-navigation-offscreen, diag-retry, ...). Never a blanket node kill, so
+// the user's own node processes elsewhere are untouched. excludePid defaults to
+// the caller, so a scene (or the runner) never kills itself. Covers the orphaned
+// node processes from runs that hung: they kept their mock server / CDP socket
+// alive and never exited (the offscreen-pipeline leak).
+function killOffscreenNodeProcesses(excludePid = process.pid) {
+  const ps = [
+    '-NoProfile', '-Command',
+    "$self = " + Number(excludePid) + "; $procs = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'node.exe') -and ($_.ProcessId -ne $self) -and ($_.CommandLine -match 'scripts[\\\\/]videos[\\\\/]') }; foreach ($p in $procs) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null }"
+  ];
+  spawnSync('powershell.exe', ps, { timeout: 25000, windowsHide: true });
+}
+
+// Count leftover offscreen node processes (diagnostics/verification).
+function countOffscreenNodeProcesses(excludePid = process.pid) {
+  const ps = spawnSync('powershell.exe', ['-NoProfile', '-Command',
+    // @(...) is required: a bare (...).Count on a SINGLE result performs
+    // member enumeration on the CIM object and returns empty.
+    "$self = " + Number(excludePid) + "; @(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'node.exe') -and ($_.ProcessId -ne $self) -and ($_.CommandLine -match 'scripts[\\\\/]videos[\\\\/]') }).Count"
+  ], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+  return Number((ps.stdout || '').trim()) || 0;
+}
+
+// Remove every leftover temp dir the harness/scenes create: llm-webview2-*
+// (per-run WebView2 user-data folders), llm-escape-* (E2E SQL-injection proof
+// dirs), ahkllm-frames-* (offscreen capture frames). Stale llm-data-* profile
+// sandboxes are removed too, but ONLY when the real profile is not currently
+// isolated behind a junction (deleting an active sandbox would orphan the
+// junction). Never touches the real AhkLLM profile or llm-profile-bak-*.
+function sweepTempDirs() {
+  let removed = 0;
+  removed += sweepWebView2Dirs(8);
+  const profileIsolated = isJunction(REAL_DATA_DIR);
+  try {
+    for (const name of fs.readdirSync(os.tmpdir())) {
+      if (name.startsWith('llm-escape-') || name.startsWith('ahkllm-frames-')) {
+        try { fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); removed++; } catch {}
+      } else if (!profileIsolated && name.startsWith('llm-data-')) {
+        try { fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); removed++; } catch {}
+      }
+    }
+  } catch {}
+  return removed;
+}
+
+// Self-healing sweep for the offscreen video pipeline: close leftover repo app
+// processes (AHK + WebView2, command-line matched only), kill orphaned
+// offscreen node processes, and clean our temp dirs. Safe by construction and
+// idempotent; run at the start of every offscreen run.
+function sweepOffscreenArtifacts() {
+  const parts = [];
+  const orphansBefore = countOffscreenNodeProcesses();
+  killRepoAppProcesses();
+  killOffscreenNodeProcesses();
+  const removed = sweepTempDirs();
+  const orphansAfter = countOffscreenNodeProcesses();
+  if (orphansBefore > 0 && orphansAfter === 0)
+    parts.push('killed ' + orphansBefore + ' orphaned offscreen node process(es)');
+  if (removed > 0) parts.push('removed ' + removed + ' temp dir(s)');
+  return parts.join('; ') || 'nothing to clean up';
+}
+
 // Kill the tree we spawned (Main + its ChatWindow + WebView2 children), then
 // run the repo-scoped backstop so no orphan survives even when mainPid is
 // unknown (e.g. a run that crashed before launch returned).
@@ -236,4 +305,4 @@ function teardown(mainPid) {
   activeWebView2Dir = '';
 }
 
-module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, killRepoAppProcesses, isolateProfile, resetDataDir, restoreProfile, sweepWebView2Dirs, AHK, PROBE_AHK, REPO_ROOT, listTargets };
+module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, killRepoAppProcesses, killOffscreenNodeProcesses, countOffscreenNodeProcesses, sweepTempDirs, sweepOffscreenArtifacts, isolateProfile, resetDataDir, restoreProfile, sweepWebView2Dirs, AHK, PROBE_AHK, REPO_ROOT, listTargets };
