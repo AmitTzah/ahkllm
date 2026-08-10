@@ -573,7 +573,7 @@ ForkCostSnapshot() {
     for r in forkMsgRows.rows
         copiedCostSum += Number(r.input_cost) + Number(r.cached_input_cost) + Number(r.output_cost) + Number(r.total_cost)
     Log("FORKCOST srcCost=" srcCost " forkCost=" forkCost " snapshot=" snapTotal " copiedCostSum=" copiedCostSum)
-    Log("FORKCOST verdict=" (forkCost != srcCost && copiedCostSum = 0 ? "BUG-present(cost-snapshots-dropped)" : "OK-cost-copied"))
+    Log("FORKCOST verdict=" (Abs(forkCost - srcCost) <= 0.000001 && copiedCostSum > 0 ? "OK-cost-copied" : "BUG-present(cost-snapshots-dropped)"))
     CloseDb(dbPath)
 }
 

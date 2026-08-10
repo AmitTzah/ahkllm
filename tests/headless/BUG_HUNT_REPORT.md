@@ -154,9 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **9 verified, 0 reported, 1 fix applied, 1 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
+- **Where we left off:** 2026-08-10 - bug #177 FIXED and committed (28fba1f). Bug #178 fix in progress:
+  StreamHandler now holds incomplete trailing JSON lines in a pending-line buffer across polls (+ unit test,
+  scenario 178 flipped); next: run scenario 178 + full suites, then commit.
+  Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
   migration backfill guard - scenarios 184-188 kept as regression checks). FULL SUITE GREEN: 184/184 e2e
@@ -225,7 +228,7 @@ one at a time, in rank order.
 
 **Scenario:** 177 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Chat with a model, wait for the response (cost snapshots are stored per message at the prices in
 effect), open Settings and double the model's price, then fork the conversation and compare the fork's header
@@ -243,13 +246,14 @@ INSERT column lists) vs `chat/db/MessageRepo.ahk:Insert` (bug #153 snapshot colu
 `_RecomputeCumulativeCounters` (zero-cost fallback).
 
 **Verification:** headless - `probe-bughunt-db.ahk fork-cost-snapshot` seeds a snapshotted exchange, doubles the
-model price, forks, and asserts `forkCost != srcCost` with `copiedCostSum = 0`.
+model price, forks, and asserts `forkCost != srcCost` with `copiedCostSum = 0` (flipped 2026-08-10 to assert the
+fixed behavior: `forkCost == srcCost` with `copiedCostSum > 0`).
 
 ### 178. SSE data LINES split across poll boundaries silently lose the payload
 
 **Scenario:** 178 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Have a provider write a single `data:` event in two writes with a gap longer than the 100ms stream
 poll (e.g. `data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},` then 450ms later
@@ -270,7 +274,9 @@ characters (bug #160 fix) but still advances past incomplete LINES.
 
 **Verification:** headless - new mock mode `sse-split-line` writes one event in two writes (450ms apart) with
 complete chunks around it; scenario 178 sends a message and asserts the persisted content does NOT contain
-`SPLIT-LEFT` (observed: stream never finalizes, `streamState.active=true`, assistant row NONE).
+`SPLIT-LEFT` (observed: stream never finalizes, `streamState.active=true`, assistant row NONE). Flipped
+2026-08-10 to assert the fixed behavior: the full `SPLIT-LEFT-RIGHT` payload is persisted and the stream
+finalizes.
 
 ### 179. The tray menu can be left without an Exit item (no other always-present close path)
 

@@ -949,6 +949,7 @@ scenarios.push({
   name: 'Fork copies drop the per-message COST snapshots - after a Settings price change the fork header is re-priced at CURRENT prices while the source thread keeps its snapshots (the two threads disagree)',
   mode: null,
   noApp: true,
+  regression: true, // FIXED in ec1468b: fork rows copy the call-time cost snapshots (was re-priced at CURRENT prices)
   settings: {},
   async body() {
     const os = require('node:os');
@@ -964,15 +965,16 @@ scenarios.push({
     const copyM = text.match(/copiedCostSum=([\d.]+)/);
     if (!srcM || !forkM || !copyM) throw new Error('probe output missing fields: ' + text);
     const srcCost = Number(srcM[1]), forkCost = Number(forkM[1]), copiedCostSum = Number(copyM[1]);
-    // BUG present: fork rows carry cost 0 (the snapshot columns are not in
-    // GetActivePath's SELECT nor the fork INSERTs), so _RecomputeCumulativeCounters
-    // falls back to the CURRENT (doubled) prices and forkCost != srcCost.
+    // FIXED (bug #177): the fork rows carry the per-message cost snapshots
+    // (GetActivePath selects them, the fork INSERTs copy them), so the fork's
+    // recomputed cumulative cost equals the source's even after the price
+    // change - forkCost == srcCost with copiedCostSum > 0.
     if (srcCost <= 0)
       throw new Error('control failed - source snapshot cost should be > 0: ' + text);
-    if (copiedCostSum !== 0 || forkCost === srcCost)
-      throw new Error('fork cost did not drift (bug not reproduced): srcCost=' + srcCost + ' forkCost=' + forkCost + ' copiedCostSum=' + copiedCostSum);
+    if (copiedCostSum === 0 || Math.abs(forkCost - srcCost) > 1e-9)
+      throw new Error('fork cost still drifts (fix incomplete): srcCost=' + srcCost + ' forkCost=' + forkCost + ' copiedCostSum=' + copiedCostSum);
     return 'source thread cumulative_cost=' + srcCost + ' (snapshot at call time), fork cumulative_cost=' + forkCost +
-      ' (copied rows carry cost sum ' + copiedCostSum + ', so the fork recompute used the doubled CURRENT prices) - the fork header disagrees with the source thread after a Settings price change';
+      ' with copied cost sum ' + copiedCostSum + ' - the fork carries the call-time snapshots and agrees with the source after a Settings price change';
   }
 });
 

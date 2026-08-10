@@ -706,6 +706,55 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #177): a fork must copy each message's per-message COST
+    ; SNAPSHOT (input_cost/cached_input_cost/output_cost/total_cost, bug #153
+    ; columns) so the fork's recomputed cumulative cost matches the source
+    ; thread even after a Settings price change. The old code copied only the
+    ; token fields, so the fork's recompute fell back to the CURRENT prices
+    ; and the fork header disagreed with the source thread.
+    ForkThread_CopiesCostSnapshots() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 100, token_count: 50, cached_tokens: 20})
+        srcRow := ChatDB.db.Query("SELECT cumulative_cost FROM chat_threads WHERE id=?;", threadId)
+        srcCost := Number(srcRow[1, "cumulative_cost"])
+        if srcCost <= 0
+            throw Error("control failed - source should carry a snapshot cost > 0, got " srcCost)
+        snapRow := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id=?;", a1Id)
+        snapTotal := Number(snapRow[1, "total_cost"])
+        if snapTotal <= 0
+            throw Error("control failed - a1 should carry a cost snapshot > 0, got " snapTotal)
+
+        ; Simulate a Settings price change AFTER the API call was made.
+        m := models["deepseek/deepseek-v4-flash"]
+        origInput := m.input
+        origCachedInput := m.cachedInput
+        origOutput := m.output
+        m.input := m.input * 2
+        m.cachedInput := m.cachedInput * 2
+        m.output := m.output * 2
+
+        newId := ChatDB.Msg_ForkThread(threadId, a1Id)
+        if !newId
+            throw Error("Expected new thread id from fork (cost snapshots)")
+        forkRow := ChatDB.db.Query("SELECT cumulative_cost FROM chat_threads WHERE id=?;", newId)
+        forkCost := Number(forkRow[1, "cumulative_cost"])
+        if Abs(forkCost - srcCost) > 0.000001
+            throw Error("fork cumulative_cost must equal the source's snapshot cost (bug #177): srcCost=" srcCost " forkCost=" forkCost)
+        forkSnaps := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE thread_id=?;", newId)
+        copiedSum := 0
+        for r in forkSnaps.rows
+            copiedSum += Number(r.input_cost) + Number(r.cached_input_cost) + Number(r.output_cost) + Number(r.total_cost)
+        if copiedSum = 0
+            throw Error("fork rows must carry the copied cost snapshots (bug #177), got sum 0")
+        ; Restore the model prices so later tests keep the real defaults.
+        m.input := origInput
+        m.cachedInput := origCachedInput
+        m.output := origOutput
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; Regression (bug #58): a fork must land in the source thread's folder.
     ForkThread_CopiesFolder() {
         threadId := this._setup()
