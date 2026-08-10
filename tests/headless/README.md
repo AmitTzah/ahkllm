@@ -137,6 +137,11 @@ so env-based isolation does not work. Instead the harness:
 4. Removes the junction and renames the backup back, verifying `settings.json` exists
    (the run prints "Real profile restored: yes").
 
+If several `llm-profile-bak-*` folders accumulate (e.g. after interrupted runs), every
+recovery path - `--cleanup`/next-run recovery AND a direct launch - restores the
+**newest** backup (sorted `llm-profile-bak-<timestamp>` order), so a stale backup can
+never be moved over the real profile (bug #189).
+
 If a run is interrupted, the real profile is safe in the `.bak` folder. Ctrl+C /
 SIGTERM triggers an in-process cleanup that restores it immediately; a hard kill
 (taskkill /F, IDE stop) leaves it isolated until you run `--cleanup`, which now

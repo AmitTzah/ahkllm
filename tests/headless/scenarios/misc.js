@@ -1613,25 +1613,30 @@ scenarios.push({
   id: 189,
   name: 'Harness interrupted-run recovery picks DIFFERENT backups: recoverInterruptedRun restores the LAST llm-profile-bak-* (sorted) while launch.isolateProfile restores the FIRST in readdirSync order - with multiple stale backups the next direct launch can restore an OLD profile',
   mode: null,
+  regression: true, // FIXED: both recovery paths now restore the newest sorted backup
   noApp: true,
   settings: {},
   async body() {
     const suite = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'e2e-suite.js'), 'utf8');
     const launch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'launch.js'), 'utf8');
-    // recoverInterruptedRun: filter -> sort() -> take backups[length-1] (the
-    // NEWEST llm-profile-bak-<epoch-ms>).
+    // FIXED (bug #189): BOTH recovery paths must pick the same (newest)
+    // llm-profile-bak-* - recoverInterruptedRun sorts and takes the last, and
+    // isolateProfile now does the same instead of restoring the first
+    // readdirSync entry.
     const recoverSorts = /backups\s*=\s*fs\.readdirSync\(os\.tmpdir\(\)\)\.filter\(\(n\) => n\.startsWith\('llm-profile-bak-'\)\)\.sort\(\)/.test(suite);
     const recoverLast = /backups\[backups\.length - 1\]/.test(suite);
-    // isolateProfile: iterates readdirSync order and restores the FIRST bak
-    // that can move into place (no sort) - subsequent baks are skipped once
-    // the real profile exists again.
-    const isolateReaddir = /for \(const name of fs\.readdirSync\(tmp\)\)[\s\S]{0,250}?llm-profile-bak-/.test(launch);
+    // isolateProfile: must sort + take the NEWEST backup (same selection as
+    // recoverInterruptedRun) - the old code restored the first readdirSync
+    // entry, which can be stale.
+    const isolateSorts = /backups\s*=\s*fs\.readdirSync\(tmp\)\.filter\(\(n\) => n\.startsWith\('llm-profile-bak-'\)\)\.sort\(\)/.test(launch);
+    const isolateLast = /backups\[backups\.length - 1\]/.test(launch);
     const isolateRename = /fs\.renameSync\(bak, REAL_DATA_DIR\)/.test(launch);
-    if (!recoverSorts || !recoverLast || !isolateReaddir || !isolateRename)
-      throw new Error('backup-selection contract not found (code changed): ' + JSON.stringify({ recoverSorts, recoverLast, isolateReaddir, isolateRename }));
-    // Evidence that readdirSync order and sorted order really differ: create
-    // three backups in a SAFE temp subdir (never in the real temp root, so
-    // the harness recovery can never pick them up) and compare the two orders.
+    if (!recoverSorts || !recoverLast || !isolateSorts || !isolateLast || !isolateRename)
+      throw new Error('backup-selection contract not found (fix incomplete): ' + JSON.stringify({ recoverSorts, recoverLast, isolateSorts, isolateLast, isolateRename }));
+    // Evidence that readdirSync order and sorted order can differ (so sorting
+    // actually matters): create three backups in a SAFE temp subdir (never in
+    // the real temp root, so the harness recovery can never pick them up) and
+    // compare the two orders.
     const demo = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-bak-order-demo-'));
     for (const n of ['llm-profile-bak-1000', 'llm-profile-bak-3000', 'llm-profile-bak-2000'])
       fs.mkdirSync(path.join(demo, n));
@@ -1641,14 +1646,14 @@ scenarios.push({
     const lastSorted = sorted[sorted.length - 1];
     const differ = first !== lastSorted;
     try { fs.rmSync(demo, { recursive: true, force: true }); } catch {}
-    // The BUG: with multiple backups, recoverInterruptedRun (--cleanup / next
-    // run recovery) restores the NEWEST, while isolateProfile (a direct
-    // launch) restores the FIRST in readdir order - when those disagree, the
-    // direct-launch path restores a stale profile over the newest one.
+    // With multiple backups, BOTH paths now restore the NEWEST sorted backup
+    // - readdirSync order may differ from sorted order, but neither path uses
+    // raw readdir order anymore.
     if (!differ)
-      throw new Error('demo did not show a readdir/sorted divergence (bug not reproduced): first=' + first + ' lastSorted=' + lastSorted);
-    return 'recoverInterruptedRun sorts and takes backups[length-1] (' + lastSorted + '), isolateProfile restores the first readdirSync entry (' + first +
-      ' in a 3-backup demo dir where sorted order is ' + JSON.stringify(sorted) + ') - the two recovery paths disagree, so a directly-launched next run can restore a stale profile when stale backups accumulate';
+      throw new Error('demo did not show a readdir/sorted divergence (fix assumes sorting matters): first=' + first + ' lastSorted=' + lastSorted);
+    return 'recoverInterruptedRun sorts and takes backups[length-1] (' + lastSorted + '), and isolateProfile now uses the SAME sort+last selection (' +
+      'in a 3-backup demo dir where readdir order is ' + JSON.stringify(readdirOrder) + ' and sorted order is ' + JSON.stringify(sorted) +
+      ') - both recovery paths restore the newest backup, so a directly-launched next run can never restore a stale profile';
   }
 });
 

@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #183 FIXED and committed (entry removed): SearchRepo._FTS5 builds
-  the snippet from the FTS-indexed content (message + decoded attachment text), so attachment-only hits
-  preview the matched text; scenario 183 flipped to a regression check + ChatDB unit test. Next: bug #189
-  (harness backup-restore mismatch).
+- **Where we left off:** 2026-08-10 - bug #189 FIXED and committed (entry removed): launch.isolateProfile now
+  sorts llm-profile-bak-* and restores the NEWEST backup, matching e2e-suite.recoverInterruptedRun (live
+  scenario still passes, profile restored); scenario 189 flipped to a regression check + unit test + README
+  note. Next: bug #190 (deleted-deepseek provider crash).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -225,27 +225,6 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 189. Harness interrupted-run recovery restores DIFFERENT backups (stale profile risk on direct launch)
-
-**Scenario:** 189 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Accumulate two+ `llm-profile-bak-*` dirs in temp (stale backups + an isolated/junction profile) and
-either run `--cleanup`/recovery or launch the next scenario.
-
-**Expected:** both recovery paths restore the same (newest) profile backup.
-
-**Actual:** `recoverInterruptedRun` (`e2e-suite.js`) sorts and restores `backups[backups.length - 1]` (newest),
-while `isolateProfile` (`launch.js`) restores the FIRST backup in `readdirSync` order (no sort) - when multiple
-backups exist the direct-launch path can restore a stale profile over the newest one.
-
-**Evidence:** `tests/headless/e2e-suite.js` (`recoverInterruptedRun`) vs `tests/headless/launch.js`
-(`isolateProfile` step 1).
-
-**Verification:** headless - scenario 189 statically asserts the two selection expressions differ and
-demonstrates with a temp dir that `readdirSync` order != sorted order (first != last-sorted).
-
 ### 190. Removing the deepseek provider crashes request resolution (hardcoded fallback `providers["deepseek"]`)
 
 **Scenario:** 190 (scenario code in e2e-suite.js)
@@ -296,6 +275,11 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Harness interrupted-run recovery restores DIFFERENT backups (stale profile risk on direct
+  launch)" - FIXED: launch.isolateProfile now sorts llm-profile-bak-* and restores the NEWEST backup
+  (backups[length-1]), exactly like e2e-suite.recoverInterruptedRun, so a directly-launched next run can
+  never restore a stale profile over the newest one; scenario 189 flipped to a regression check + unit test
+  + README note.
 - 2026-08-10 - "Search result snippets for attachment-text hits show the message content, not the match" -
   FIXED: SearchRepo._FTS5 now joins messages_fts and builds contentPreview from the FTS-indexed content
   (m.content + decoded attachment extracted_text, bug #165), so a term that exists only in an attachment

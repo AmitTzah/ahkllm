@@ -76,8 +76,15 @@ function isJunction(p) {
 function isolateProfile() {
   const tmp = os.tmpdir();
   // 1. Recover leftovers from an interrupted run.
-  for (const name of fs.readdirSync(tmp)) {
-    if (!name.startsWith('llm-profile-bak-')) continue;
+  // Bug #189: pick the NEWEST backup (sort + last), matching
+  // e2e-suite.recoverInterruptedRun - the old readdirSync-order iteration
+  // restored the FIRST entry, which can be a STALE backup when multiple
+  // accumulate, silently restoring an old profile over the newest one.
+  let backups = [];
+  try { backups = fs.readdirSync(tmp).filter((n) => n.startsWith('llm-profile-bak-')).sort(); } catch {}
+  const newest = backups.length ? backups[backups.length - 1] : '';
+  if (newest) {
+    const name = newest;
     const bak = path.join(tmp, name);
     if (isJunction(REAL_DATA_DIR)) {
       try { fs.unlinkSync(REAL_DATA_DIR); } catch {}
