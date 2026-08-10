@@ -157,9 +157,9 @@ How to run AHK safely:
 - **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
-  189, 190, 193). Every entry moved to History; scenarios flipped to regression checks; full e2e suite +
-  `npm run test:fast` verified green before each commit. Next: run the FULL e2e suite (`--all`) for the final
-  all-green confirmation.
+  189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
+  GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
+  tests). Next: nothing open - the bug hunt is complete.
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
