@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#21 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
+- **Where we left off:** 2026-08-10 - #1-#22 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
   25f7181, 2e4bc23, 0058836, 31056dd, 4e426f3, a046cda, 04e64e3, 4b41ce7, 1f9b377, d9d3bda, 17150ab, f7ef637,
-  f1ea763, a447e0e, 519322b, next commit). Next: bug #22 (a command with the "Default" model silently does
-  NOTHING - the dropdown's Default option is never substituted with the app default model).
+  f1ea763, a447e0e, 519322b, 1729c02, next commit). Next: bug #23 (Models tab: pasting a "$"-prefixed price and
+  blurring silently zeroes it).
 ---
 
 ## Bug entry template
@@ -213,27 +213,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model
-
-**Scenario:** 162 (scenario code in scenarios/misc.js)
-
-**Status:** fix in progress
-
-**Repro:** Settings -> Commands -> set a command's API Model to "Default" (the first dropdown option, tooltip: "or Default for the chat default model"). Run the command.
-
-**Expected:** The command uses the app default model (the tooltip's promise).
-
-**Actual:** `onCommandSelected`/`onCommandInputSend` pass `cmd.APIModels` raw (empty string for Default) into `processInitialRequest`, which does `StrSplit(RegExReplace("", "\s+", ""), ",")`. AHK's `StrSplit("")` returns an EMPTY array, so the `for i, fullAPIModelName in APIModelsArr` loop never runs: no thread is created (chat mode), no inline request is fired, no error is shown - the command is a silent no-op. The UI-side `_defaultModel` computed in commands-core.js is never substituted. (If an empty string ever reached `createJSONRequest`, `ProviderResolver.Resolve("")` falls back to deepseek and emits `{"model":""}` - a model-less request.)
-
-**Evidence:** `app/RequestProcessor.ahk` (processInitialRequest StrSplit + for-loop), `app/menu/CommandMenu.ahk` (passes cmd.APIModels raw), `webui/js/settings/sections/commands/commands-render.js` (empty "Default" option), `webui/js/settings/sections/commands/commands-core.js` (_defaultModel computed but never used for substitution).
-
-**Verification:** headless scenario 162 (probe, real code): `StrSplit("")` -> 0 entries (loop no-op) AND `createJSONRequest("")` -> `{"messages":[...],"model":""}` - the Default option never substitutes the app default.
-
-### 2. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
+### 1. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
 
 **Scenario:** 164 (scenario code in scenarios/settings.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Settings -> Models -> focus a price field, paste "$0.5" (or "$0.1400" copied from a pricing page), blur, Save. Also try clearing the field and blurring.
 
@@ -245,7 +229,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 164 (vm, real models.js): input display $0.50 -> focus -> paste "$0.5" -> blur -> saved input=0 (raw=0, display "").
 
-### 3. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
+### 2. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
 
 **Scenario:** 163 (scenario code in scenarios/usage-tokens.js)
 
@@ -261,7 +245,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 163 (vm, real usage-dashboard.js): chat row with model "openai/gpt-5,beta" -> exported row splits into 13 fields (header has 12), no quoting.
 
-### 4. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
+### 3. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
 
 **Scenario:** 165 (scenario code in scenarios/misc.js)
 
@@ -277,7 +261,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 165 (probe, real SearchRepo): attachment extracted_text contains "needle" only -> `Search("needle", tid)` returns 0 hits.
 
-### 5. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
+### 4. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
 
 **Scenario:** 166 (scenario code in scenarios/misc.js)
 
@@ -293,7 +277,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 166 (noApp static): behavior-reader scan of AssistantRepo/ChatSettings/SettingsApply/CommandMenu/ThreadSettings/model-picker finds only carry-only references; assistants.js has no isDefault UI field.
 
-### 6. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
+### 5. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
 
 **Scenario:** 167 (scenario code in scenarios/misc.js)
 
@@ -309,7 +293,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 167 (noApp static): the TrackUsage call exists after the request and the early-return guard is present with no failure fallback.
 
-### 7. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
+### 6. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
 
 **Scenario:** 168 (scenario code in scenarios/usage-tokens.js)
 
@@ -325,7 +309,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 168 (vm, real usage-dashboard.js): row provider="" + backend providers ['deepseek'] -> filter dropdown has no '' option while the chart key would be ''.
 
-### 8. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
+### 7. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
 
 **Scenario:** 174 (scenario code in scenarios/chat-tree.js)
 
@@ -341,7 +325,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 174 (live): B's updated_at bumped (2026-08-10 11:22:49 -> 11:22:52) after Next branch, but the sidebar order stays A,B - no refresh was posted.
 
-### 9. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
+### 8. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
 
 **Scenario:** 160 (scenario code in scenarios/misc.js)
 
@@ -357,7 +341,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
 
-### 10. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+### 9. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
 
 **Scenario:** 161 (scenario code in scenarios/misc.js)
 
@@ -373,7 +357,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
 
-### 11. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 10. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
@@ -393,6 +377,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "A command with the Default model (empty APIModels) silently does NOTHING" - FIXED: processInitialRequest now substitutes the app default model when APIModels is empty (the Default dropdown option), so the request loop always runs; scenario 162 flipped to a regression static check + RequestProcessor unit test.
 - 2026-08-10 - "Reasoning-only streams report ttft_ms=0 (the first-token timer only stamps content chunks, never reasoning)" - FIXED: _processChunk now stamps firstTokenTime on reasoning chunks too, so reasoning-only streams record a real TTFT (popover/dashboard/API-log latency all use it); scenario 170 flipped to a regression check + StreamHandler unit test.
 - 2026-08-10 - "Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread" - FIXED: _handleStreamCancelled now persists the cancelled partial into the thread captured at send time (_streamThreadId) like the completion path (bug #159), and _cleanupStreamState is now idempotent (Has-guarded deletes so a missing/partial stream state cannot crash the cancel path); scenario 171 flipped to a regression check + StreamError unit test.
 - 2026-08-10 - "Retry failure hides the original response (bubble gone + error banner until reload; DB row intact)" - FIXED: retryLastAssistantMessage now remembers the removed messages (_retryRemovedMessages) and the global showError path restores them on a failed retry (cleared on success/cancel via stream.js), so the original response stays visible; scenario 169 flipped to a regression check + chat-input/stream-state unit tests.

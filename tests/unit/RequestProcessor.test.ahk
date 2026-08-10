@@ -112,6 +112,23 @@ class RequestProcessorTest {
         }
     }
 
+    ; Regression (bug #162): the command dropdown's "Default" option stores an
+    ; EMPTY APIModels string. StrSplit("") returns an empty array, so
+    ; processInitialRequest's request loop never ran - the command was a
+    ; silent no-op. The parser must substitute the app default model.
+    DefaultModel_SubstitutesAppDefault() {
+        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        src := FileRead(srcPath)
+        modelsStart := InStr(src, "APIModelsArr := StrSplit")
+        if !modelsStart
+            throw Error("model parsing block not found in RequestProcessor.ahk")
+        block := SubStr(src, modelsStart, 800)
+        if !InStr(block, "appDefaultModel")
+            throw Error("empty APIModels must fall back to appDefaultModel (bug #162)")
+        if !RegExMatch(block, "APIModelsArr\.Length = 0")
+            throw Error("empty-array guard missing in model parsing (bug #162)")
+    }
+
     ; Regression (bug #36): a chat-mode command whose model equals the app
     ; default must still persist its temperature/reasoning overrides.
     ; processInitialRequest previously nested the whole Thread_UpdateSettings

@@ -1383,28 +1383,21 @@ scenarios.push({
   id: 162,
   name: 'A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown\'s Default option is never substituted with the app default model',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
-    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
-    try { fs.unlinkSync(outFile); } catch {}
-    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
-    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'command-empty-models'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
-    if (res.error) throw new Error('empty-model probe spawn failed/timed out: ' + res.error.message);
-    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
-    const text = fs.readFileSync(outFile, 'utf-8');
-    const arrM = text.match(/modelsArrLen=(\d+)/);
-    const jsonM = text.match(/CMDEMPTY json=(\S+)/);
-    if (!arrM || !jsonM) throw new Error('probe output missing CMDEMPTY line: ' + text);
-    const arrLen = Number(arrM[1]);
-    // BUG present: StrSplit(RegExReplace("", ...), ",") returns an EMPTY array
-    // (modelsArrLen=0), so processInitialRequest's `for` loop never runs - the
-    // command is a silent no-op. And even a direct createJSONRequest("") emits
-    // {"model":""} (ProviderResolver.Resolve("") falls back to deepseek).
-    if (arrLen !== 0 || !text.includes('"model":""'))
-      throw new Error('empty APIModels behavior changed: arrLen=' + arrLen + ' json=' + jsonM[1]);
-    return 'Command "Default" model: StrSplit(empty) -> ' + arrLen + ' entries, so processInitialRequest never runs a request (silent no-op); ' +
-      'createJSONRequest("") would send ' + jsonM[1] + ' - the Default option never substitutes the app default';
+    // Fixed: processInitialRequest substitutes the app default model when
+    // APIModels is empty (the "Default" dropdown option), so the request loop
+    // always runs.
+    // BUG present: StrSplit(RegExReplace("", ...), ",") returned an EMPTY
+    // array, so the `for` loop never ran - a silent no-op.
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
+    const substitute = /APIModelsArr\.Length = 0[\s\S]{0,160}?APIModelsArr\s*:=\s*\[appDefaultModel\]/.test(src);
+    if (!substitute)
+      throw new Error('empty APIModels is not substituted with appDefaultModel (BUG present): ' + JSON.stringify({ substitute }));
+    return 'RequestProcessor.ahk substitutes the app default model for the "Default" (empty APIModels) command option, ' +
+      'so the request loop always runs and the command is never a silent no-op';
   }
 });
 

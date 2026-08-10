@@ -41,6 +41,12 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
 
     ; Parse models — multiple models are collapsed to the first as a safety net
     APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
+    ; Bug #162: the command dropdown's "Default" option stores an EMPTY
+    ; APIModels string. StrSplit("") returns an empty array, so the request
+    ; loop below never ran and the command was a silent no-op. Substitute the
+    ; app default model - the dropdown's documented behavior.
+    if APIModelsArr.Length = 0 || (APIModelsArr.Length = 1 && APIModelsArr[1] = "")
+        APIModelsArr := [appDefaultModel]
     if APIModelsArr.Length > 1 {
         if isFIM {
             MsgBox "FIM does not support multiple models. Only the first model will be used.", "FIM Warning", "IconX"

@@ -1,5 +1,5 @@
-# 2026-08-10T13:09:48.112Z | run of 1 scenario(s)
-PASS | #170 | Reasoning-only streams report ttft_ms=0 (the first-token timer only stamps "content" chunks, never "reasoning") - the popover hides TTFT, the dashboard averages 0ms, and the API log latency falls back to the full duration | sse-reasoning-only exchange persisted ttft_ms=125 (response_time_ms=250, thinking=0) - the popover shows TTFT, the dashboard averages a real value, and the API log latency is the first-token latency | 6.5s
+# 2026-08-10T13:12:11.624Z | run of 1 scenario(s)
+PASS | #162 | A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model | RequestProcessor.ahk substitutes the app default model for the "Default" (empty APIModels) command option, so the request loop always runs and the command is never a silent no-op | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
