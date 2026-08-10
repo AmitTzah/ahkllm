@@ -156,9 +156,11 @@ How to run AHK safely:
 
 - **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - ALL 32 OPEN BUGS FIXED AND COMMITTED (see History). Full suite green:
-  `npm.cmd run test:fast` (AHK + JS) and `node tests/headless/e2e-suite.js --all` = 169/169 PASS. No open bugs
-  remain.
+- **Where we left off:** 2026-08-10 - ALL 32 OPEN BUGS FIXED AND COMMITTED (see History); full suite green
+  (169/169 e2e). Continuing the follow-up audit of less-exercised areas (FIM/inline commands, cross-process DB
+  concurrency, large-data paths, WebView2 teardown). INLINE COMMAND FIX: failed inline requests now surface a
+  tooltip + API-log error instead of silently doing nothing, and each request uses a unique per-request id
+  (ChatDB._UUID) instead of A_TickCount; scenario 176 added as a regression check.
 ---
 
 ## Bug entry template
@@ -216,6 +218,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Inline command failure is silent (no paste, no error, no API-log entry; per-request id uses A_TickCount which can collide)" - FIXED: InlineRequestRunner.Run now branches on result.success and calls _HandleInlineError (reads cURL stderr, shows a tooltip, logs the failed call with status error), and each request uses ChatDB._UUID() for its temp files/loading entry; scenario 176 added as a regression check + InlineRequestRunner unit tests.
 - 2026-08-10 - "Cross-thread search navigation race (_pendingSearchScrollMsgId consumed by ANY thread's initChatMode)" - FIXED: the pending search navigation now also records its target thread and onSearchCrossThreadLoaded only consumes it when the current thread matches, so unrelated loads (or a failed load followed by another navigation) can no longer drop or misroute the scroll; scenario 175 flipped to a regression check + chat-search unit tests.
 - 2026-08-10 - "Search FTS5 loses prefix matching when the query ends in an apostrophe (the trailing-* guard checks the wrong quote char)" - FIXED: _FTS5 now skips the prefix * only for a trailing "*" - terms are always double-quoted, so a trailing apostrophe query ("comp'") keeps its prefix match; scenario 161 flipped to a regression check + ChatDB unit test.
 - 2026-08-10 - "Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character" - FIXED: _readFileChunk now reads RAW bytes and only advances the byte cursor past COMPLETE UTF-8 characters (incomplete trailing bytes are re-read whole on the next poll), so split multibyte chars never become U+FFFD; scenario 160 flipped to a regression check + StreamHandler unit test + updated probe-utf8.ahk.

@@ -1566,6 +1566,27 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 176,
+  name: 'Inline command failure is silent (no paste, no error, no API-log entry) - regression: Run surfaces failures via _HandleInlineError and uses a unique per-request id',
+  mode: null,
+  regression: true,
+  noApp: true,
+  settings: {},
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'InlineRequestRunner.ahk'), 'utf8');
+    const runStart = src.indexOf('static Run(commandName');
+    if (runStart < 0) throw new Error('InlineRequestRunner.Run not found');
+    const runBlock = src.slice(runStart, runStart + 2600);
+    const branchesOnSuccess = /if result\.success\s*\{/.test(runBlock);
+    const errorPath = /_HandleInlineError\(/.test(runBlock);
+    const uniqueId = /ChatDB\._UUID\(\)/.test(runBlock);
+    if (!branchesOnSuccess || !errorPath || !uniqueId)
+      throw new Error('inline failure/unique-id path missing (BUG present): ' + JSON.stringify({ branchesOnSuccess, errorPath, uniqueId }));
+    return 'InlineRequestRunner.Run branches on result.success, surfaces failures via _HandleInlineError (tooltip + API-log error), and uses a unique per-request id - a failed inline command is no longer a silent no-op';
+  }
+});
+
 module.exports = scenarios;
 
 

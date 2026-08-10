@@ -9,7 +9,11 @@
 class InlineRequestRunner {
 
     static Run(commandName, fullAPIModelName, providerName, singleAPIModelName, captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking, thinkingLevel := "") {
-        uniqueID := A_TickCount
+        ; Bug (inline collision): A_TickCount repeats when two commands start in
+        ; the same millisecond (or wrap after ~49 days), which made concurrent
+        ; commands share temp-file names and the getActiveModels() entry - a
+        ; UUID keeps each request's files and loading entry unique.
+        uniqueID := ChatDB._UUID()
 
         files := InlineRequestRunner._BuildAndWriteRequest(commandName, fullAPIModelName, singleAPIModelName, captured, isFIM, systemMessage, temperature, maxTokens, stop, stream, thinking, thinkingLevel, uniqueID)
 
@@ -32,6 +36,12 @@ class InlineRequestRunner {
         ; Paste result if successful
         if result.success {
             InlineRequestRunner._PasteAndLogResponse(result, captured, isFIM, pasteMode, commandName, providerName, singleAPIModelName, files)
+        } else {
+            ; Bug (inline silent failure): a failed inline request used to
+            ; silently do nothing - no paste, no message, nothing in the API
+            ; log. Surface the failure (tooltip + API-log error entry) so the
+            ; user knows the command did not succeed.
+            InlineRequestRunner._HandleInlineError(result, files, commandName, providerName, singleAPIModelName, isFIM, pasteMode)
         }
 
         ; Cleanup
@@ -185,6 +195,36 @@ class InlineRequestRunner {
         FileDelete(files.curlFile)
         safeDelete(files.outputFile)
         safeDelete(files.errorFile)
+    }
+
+    ; Surface a failed inline request: read the cURL stderr for a message,
+    ; show a tooltip, and record the failed call in the API log.
+    static _HandleInlineError(result, files, commandName, providerName, singleAPIModelName, isFIM, pasteMode) {
+        errMsg := ""
+        if FileExist(files.errorFile) {
+            stderrText := Trim(FileOpen(files.errorFile, "r", "UTF-8-RAW").Read())
+            if stderrText
+                errMsg := stderrText
+        }
+        if !errMsg && result.rawJSON
+            errMsg := SubStr(result.rawJSON, 1, 300)
+        if !errMsg
+            errMsg := "Request failed. Check your API key and try again."
+        ToolTip("Command '" commandName "' failed: " errMsg, , , 19)
+        SetTimer(() => ToolTip(, , , 19), -5000)
+        ApiLogger.LogRequest({
+            timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+            commandName: commandName,
+            provider: providerName,
+            model: singleAPIModelName,
+            isFIM: isFIM,
+            endpoint: files.endpoint,
+            pasteMode: pasteMode,
+            request: files.requestJSON,
+            response: result.rawJSON ? result.rawJSON : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
+            status: "error",
+            responseTimeMs: result.responseTimeMs
+        })
     }
 
     ; ----------------------------------------------------
