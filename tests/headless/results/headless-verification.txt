@@ -1,5 +1,6 @@
-# 2026-08-10T12:29:20.220Z | run of 1 scenario(s)
-PASS | #153 | Changing a model price in Settings re-prices the thread's HISTORICAL cumulative cost in the header (both calls at the new rate) while the dashboard keeps the original per-call costs - header and dashboard disagree | exchange 1 cost=$0.036512; after doubling the model prices in Settings, exchange 2 total=$0.10953600000000001 (dashboard: 0.036512 + 0.073024 = 0.109536) and the thread cumulative_cost=0.10953600000000001 ($0.11 header) - historical costs keep their original snapshots, header and dashboard agree: "21 / 1m↑ 24  ↓ 188$0.11" | 9.9s
+# 2026-08-10T12:30:59.499Z | run of 1 scenario(s)
+PASS | #154 | "Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - no Thought Process block) | assistant branch-edit copy: DB reasoning="SECRET THINKING STEP ONE
+SECRET THINKING STEP TWO" (kept) with thinking_tokens=5 - the branch bubble shows the Thought Process block (src=1, branch=1) | 6.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

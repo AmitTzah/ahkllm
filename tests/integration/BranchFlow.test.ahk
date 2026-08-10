@@ -86,6 +86,32 @@ class BranchFlowTest {
         }
     }
 
+    ; Regression (bug #154): branch-edit of an ASSISTANT message must copy the
+    ; source's reasoning/thinking CONTENT (like fork copies do) - not just the
+    ; thinking token count, so the branch's Thought Process block and its token
+    ; popover stay consistent.
+    BranchEdit_Assistant_KeepsReasoning() {
+        global activeThreadId
+        threadId := this._setup()
+        activeThreadId := threadId
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id,
+            model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12,
+            thinking_tokens: 5, reasoning: "SECRET THINKING STEP ONE`nSECRET THINKING STEP TWO"
+        })
+        handleEdit(Map("id", a1Id, "content", "a1 (branch)", "mode", "branch"))
+        branchRow := ChatDB.db.Query("SELECT reasoning, thinking_tokens FROM messages WHERE content='a1 (branch)';")
+        if !branchRow.count
+            throw Error("branch copy missing")
+        if branchRow[1, "reasoning"] != "SECRET THINKING STEP ONE`nSECRET THINKING STEP TWO"
+            throw Error("branch copy must keep the source reasoning (bug #154), got '" branchRow[1, "reasoning"] "'")
+        if Integer(branchRow[1, "thinking_tokens"]) != 5
+            throw Error("branch copy must keep thinking_tokens=5, got " branchRow[1, "thinking_tokens"])
+        activeThreadId := ""
+        this._teardown()
+    }
+
     ; --------------------
     ; Create branch via retry mechanism
     ; --------------------

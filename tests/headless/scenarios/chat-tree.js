@@ -1253,6 +1253,7 @@ scenarios.push({
   id: 154,
   name: '"Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - no Thought Process block)',
   mode: null,
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{
@@ -1286,18 +1287,20 @@ scenarios.push({
     if (!branch.length) throw new Error('branch message not found');
     const reasoning = String(branch[0].reasoning || '');
     const thinking = Number(branch[0].thinking_tokens);
-    // BUG present: handleEdit's branch insert copies token metadata (bug
-    // #123) but omits the reasoning field, so the copy loses the thinking
-    // CONTENT while keeping the thinking token count.
-    if (reasoning !== '')
-      throw new Error('branch copy now keeps reasoning (behavior changed): ' + reasoning);
+    // Fixed: the branch insert carries the source's reasoning, so the Thought
+    // Process block and the thinking tokens stay together.
+    // BUG present: handleEdit's branch insert copied token metadata (bug #123)
+    // but omitted the reasoning field, losing the thinking CONTENT while
+    // keeping the thinking token count.
+    if (reasoning !== 'SECRET THINKING STEP ONE\nSECRET THINKING STEP TWO')
+      throw new Error('branch copy lost the source reasoning (BUG present): ' + JSON.stringify(reasoning));
     if (thinking !== 5)
       throw new Error('branch copy should keep thinking_tokens=5, got ' + thinking);
     const branchHasThinking = await cdp.eval('document.querySelectorAll("#chat-messages .msg .thinking-block").length');
-    if (branchHasThinking !== 0)
-      throw new Error('branch bubble still shows a thinking block: ' + branchHasThinking);
-    return 'assistant branch-edit copy: DB reasoning="' + reasoning + '" (len 0) while thinking_tokens=' + thinking +
-      ' - the branch bubble has NO Thought Process block (src=1, branch=0) even though the popover will claim ' + thinking + ' thinking tokens';
+    if (branchHasThinking !== 1)
+      throw new Error('branch bubble should show the copied Thought Process block: ' + branchHasThinking);
+    return 'assistant branch-edit copy: DB reasoning="' + reasoning + '" (kept) with thinking_tokens=' + thinking +
+      ' - the branch bubble shows the Thought Process block (src=1, branch=1)';
   }
 });
 

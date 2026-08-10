@@ -23,6 +23,7 @@ handleEdit(params, *) {
         role := "assistant"
         model := ""
         tokenCount := 0, promptTokens := 0, thinkingTokens := 0, cachedTokens := 0, activePathTokens := 0
+        reasoning := ""
         for i, msg in path {
             if msg.id = id {
                 parentId := msg.parent_id
@@ -42,6 +43,10 @@ handleEdit(params, *) {
                 thinkingTokens := msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
                 cachedTokens := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
                 activePathTokens := msg.HasProp("active_path_tokens") && msg.active_path_tokens != "" ? msg.active_path_tokens : 0
+                ; Bug #154: the branch copy must carry the source's reasoning/
+                ; thinking CONTENT too - the Thought Process block and the
+                ; thinking tokens must stay together (fork copies already do).
+                reasoning := msg.HasProp("reasoning") ? msg.reasoning : ""
                 break
             }
         }
@@ -58,6 +63,7 @@ handleEdit(params, *) {
             thinking_tokens: thinkingTokens,
             cached_tokens: cachedTokens,
             active_path_tokens: activePathTokens,
+            reasoning: reasoning,
             local_copy: true
         })
         ; Bug #146: copy the source message's attachments EXCEPT the ones the
