@@ -1055,4 +1055,31 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 191,
+  regression: true, // REFUTED lead (2026-08-10): _TitleGen_ParseResponse is already graceful - an AHK bare try block SWALLOWS exceptions (probe-verified), so malformed/partial title responses return an empty title instead of crashing the SetTimer callback
+  name: 'Title-generation parser stays graceful on malformed/partial responses (truncated JSON and empty-completion shapes return an empty title; a normal response still parses)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'titlegen-parse-throw'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('titlegen probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const threwM = text.match(/threw=(\d)/);
+    const ctrlM = text.match(/controlTitle='([^']*)'/);
+    const emptyM = text.match(/emptyCompletionThrew=(\d)/);
+    if (!threwM || !ctrlM || !emptyM) throw new Error('probe output missing fields: ' + text);
+    if (threwM[1] !== '0' || emptyM[1] !== '0' || ctrlM[1] !== 'Hello Title')
+      throw new Error('title-gen parser regressed (would crash the timer + Runtime Error banner): ' + text);
+    return 'real _TitleGen_ParseResponse: truncated JSON ("{"choices":[{"mes") threw=0, empty-completion shape threw=0, and a normal response yields "' + ctrlM[1] +
+      '" - the bare try swallows the parse error, so a failed title call degrades to an empty title (status failed) without a Runtime Error banner or a stuck dispatch guard';
+  }
+});
+
 module.exports = scenarios;

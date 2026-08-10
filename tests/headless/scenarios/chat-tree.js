@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const vm = require('node:vm');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, runProbe, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -1709,6 +1710,47 @@ scenarios.push({
     if (listedDangling !== 1 || listedTrashed !== 0)
       throw new Error('dangling/trashed handling regressed: listedDangling=' + listedDangling + ' listedTrashed=' + listedTrashed);
     return '301 listed threads -> ' + queries + ' SQL queries per Thread_List() refresh (' + (queries / threads).toFixed(1) + ' per thread; the badge walk climbs to the nearest assistant): a single query would be ~1. The dangling active_leaf_id thread is still listed (' + listedDangling + ', badge walk breaks cleanly - no throw/hang) and the trashed thread stays excluded (' + listedTrashed + ' listed)';
+  }
+});
+
+scenarios.push({
+  id: 192,
+  regression: true, // REFUTED lead (2026-08-10): formatRelativeDate is LOCAL-correct - it extracts local date components after the UTC parse, so a UTC-21:30 (local 00:30) message is labeled "Today"
+  name: 'Sidebar dates are local-day-correct: a message stored UTC 21:30 (local 00:30 in UTC+3) is labeled "Today, 00:30" (regression check for the UTC-vs-local family on the sidebar)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'chat-sidebar.js'), 'utf8');
+    const script = `
+      const RealDate = Date;
+      // "Now" = 2026-08-10T21:00:00Z = 2026-08-11 00:00 in Asia/Jerusalem (UTC+3).
+      const fixed = new RealDate('2026-08-10T21:00:00Z');
+      const MockDate = class extends RealDate {
+        constructor(...args) { if (args.length === 0) super(fixed.getTime()); else super(...args); }
+      };
+      global.Date = MockDate;
+      ${src}
+      // The message was stored by SQLite as UTC 2026-08-10 21:30:00
+      // (= LOCAL 2026-08-11 00:30 in UTC+3) - it should be labeled "Today".
+      console.log('LABEL ' + formatRelativeDate('2026-08-10 21:30:00'));
+    `;
+    const res = spawnSync(process.execPath, ['-e', script], {
+      encoding: 'utf8', timeout: 15000, windowsHide: true,
+      env: Object.assign({}, process.env, { TZ: 'Asia/Jerusalem' })
+    });
+    if (res.error || res.status !== 0)
+      throw new Error('sidebar date probe failed: ' + (res.error && res.error.message) + ' ' + (res.stderr || res.stdout || ''));
+    const line = String(res.stdout).split(/\r?\n/).find((l) => l.startsWith('LABEL '));
+    if (!line) throw new Error('no LABEL line in probe output: ' + String(res.stdout));
+    const label = line.slice(6);
+    // FIXED/REFUTED: formatRelativeDate builds msgDay from d.getFullYear()/
+    // getMonth()/getDate() - the LOCAL components of the UTC-instant - so the
+    // day compare is local-vs-local and the label is correct.
+    if (label.indexOf('Today') !== 0 || label.indexOf('00:30') < 0)
+      throw new Error('local-midnight message mislabeled (regression): ' + label);
+    return 'message created at LOCAL 2026-08-11 00:30 (stored UTC 2026-08-10 21:30) is labeled "' + label +
+      '" - formatRelativeDate uses the local date components after the UTC parse, so the sidebar day label matches the local calendar day';
   }
 });
 

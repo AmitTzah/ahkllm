@@ -9,6 +9,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -400,6 +401,50 @@ scenarios.push({
     return 'split-line stream: idle=' + idle + ' streamState.active=' + (diag.streamState ? diag.streamState.active : '?') +
       ', assistant persisted=' + (asst ? JSON.stringify(content) : 'NONE') +
       ' - the SPLIT-LEFT-RIGHT payload was dropped; today the partial JSON also crashes the poll (jsongo.Parse -> String -> SSEParser.ParseLine "__Item") so the stream never finalizes';
+  }
+});
+
+scenarios.push({
+  id: 193,
+  name: 'Right-rail temperature 0 is silently dropped when ANY other right-rail setting is re-sent - _sendAllSettings posts temperature: s.temperature || "" (0 is falsy in JS), so typing a system prompt or changing reasoning with a 0 override resets it to default (bug #35/#78 family on the SEND path)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'model-picker', 'model-picker.js'), 'utf8');
+    const posted = [];
+    const sandbox = {
+      console,
+      window: {
+        _currentSettings: { temperature: 0, systemMessage: '', reasoning: '', model: '', assistantName: '', codeExecution: false, webSearch: false }
+      },
+      document: {
+        addEventListener() {},
+        getElementById: () => null,
+        querySelectorAll: () => [],
+        querySelector: () => null,
+        createElement: () => ({ style: {}, appendChild() {}, addEventListener() {}, querySelectorAll: () => [], querySelector: () => null, getContext() { return {}; } })
+      },
+      Ipc: { postToHost: (action, payload) => posted.push({ action, payload }) },
+      setTimeout,
+      clearTimeout,
+      navigator: {},
+      lucide: { createIcons() {} }
+    };
+    sandbox.global = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+    // Simulate the right-rail re-send after ANY change (e.g. typing into the
+    // system prompt field) while the thread's temperature override is 0.
+    sandbox._sendAllSettings();
+    await new Promise((r) => setTimeout(r, 400));
+    const p = posted.find((x) => x.action === 'updateModelSettings');
+    if (!p) throw new Error('updateModelSettings was not posted (sandbox issue)');
+    // BUG present: temperature 0 (a valid override per bug #35/#78 - it IS
+    // preserved in _currentSettings) is serialized as "" because 0 is falsy.
+    if (p.payload.temperature !== '')
+      throw new Error('temperature 0 survived the re-send (bug not reproduced): ' + JSON.stringify(p.payload));
+    return '_sendAllSettings with a stored temperature of 0 posted updateModelSettings with temperature="" - the 0 override is silently dropped whenever any other right-rail change re-sends settings (e.g. typing a system prompt), so the next reload shows Default';
   }
 });
 

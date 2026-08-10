@@ -154,7 +154,7 @@ How to run AHK safely:
 
 ## Current state
 
-- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-10 - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
@@ -163,6 +163,11 @@ How to run AHK safely:
   scenarios PASS (`--all`) + `npm run test:fast` green (contract, load, SQL, 572 AHK, 530 JS tests); the
   intake is committed on branch `bug-hunt-2026-08-followup`. Next: fix the verified bugs in rank order
   (Phase 2), one at a time, after the user commits.
+  SECOND PASS (bug-to-bug sweep of the full app) COMPLETE: re-read every production file; 1 new verified bug
+  (entry 193 - right-rail temperature 0 dropped on any re-send) and 2 refuted leads recorded in History
+  (title-gen parser - an AHK bare try swallows parse errors; sidebar dates - local-correct). Scenarios 191-193
+  added (192/191 regression, 193 open). Next: run FULL suite + `npm run test:fast`, then fix the verified bugs
+  in rank order (Phase 2), one at a time, after the user commits.
 ---
 
 ## Bug entry template
@@ -419,10 +424,36 @@ does not exist".
 deepseek (openai + prefix only) and asserts `Resolve("deepseek/deepseek-v4-flash")` throws while the covered
 control resolves to "openai".
 
+### 193. Right-rail temperature 0 is silently dropped when any other right-rail setting is re-sent
+
+**Scenario:** 193 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Open a thread with a temperature override of 0 (the right rail shows "0.0"), then type into the
+system prompt field (or change the reasoning dropdown) - the next request uses the model's default
+temperature, and a reload shows Default.
+
+**Expected:** the stored 0 override survives every other setting change (bugs #35/#78 established 0 is a real
+override; `populateCurrentSettings` already stores it).
+
+**Actual:** `model-picker.js _sendAllSettings` posts `temperature: s.temperature || ''` - JS 0 is falsy, so a
+numeric 0 (the shape the backend sends for `temperature_override=0`) is serialized as `""` and AHK clears the
+override.
+
+**Evidence:** `webui/js/chat/model-picker/model-picker.js:_sendAllSettings` (falsy-0 send path; the fixed
+paths are `populateCurrentSettings` and the temp slider, which stores the string "0.0").
+
+**Verification:** headless - scenario 193 loads the REAL model-picker.js in a vm sandbox, sets
+`_currentSettings.temperature = 0`, calls `_sendAllSettings()`, and asserts the posted `updateModelSettings`
+carries `temperature: ""` (the bug).
+
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Sidebar dates mislabel local-midnight messages as 'Yesterday' (UTC day vs LOCAL today)" - REFUTED: `formatRelativeDate` builds `msgDay` from `d.getFullYear()/getMonth()/getDate()` - the LOCAL components of the UTC-instant - so the day compare is local-vs-local and a UTC-21:30 (local 00:30) message is correctly labeled "Today, 00:30"; scenario 192 kept as a regression check.
+- 2026-08-10 - "Title-generation response parsing crashes the SetTimer callback on malformed JSON (Runtime Error banner + stuck dispatch guard)" - REFUTED: `_TitleGen_ParseResponse` wraps jsongo in a BARE `try` block, and an AHK bare try SWALLOWS exceptions (probe-verified with `try { throw Error("BOOM") }`), so truncated JSON and empty-completion responses return an empty title (status failed, guard cleared) without any crash; scenario 191 kept as a regression check.
 - 2026-08-10 - "Hard-delete-mid-stream dangling rows (bug #172 trace) leak into FTS results, the thread map, or the dashboard" - REFUTED: the dangling message row (messages has no FK on thread_id) stays invisible to search (FTS query JOINs chat_threads) and the thread map (Thread_List reads chat_threads), and the chat_usage row is the genuinely BILLED API call (kept by design - no GC policy warranted); scenario 184 kept as a regression check.
 - 2026-08-10 - "Cross-process startup race duplicates FTS index entries / loses rows (Main + ChatWindow both run _CreateSchema/_Migrate + the FTS DELETE+INSERT rebuild on one WAL DB)" - REFUTED: two real AHK processes racing ChatDB.Open on a shared WAL DB with an empty FTS index stayed idempotent (3/3 stress runs: 150 messages = 150 FTS rows, 0 duplicated entries, user_version=6, both exited 0); scenario 185 kept as a regression check.
 - 2026-08-10 - "WebView2 teardown under rapid open/close orphans msedgewebview2 or locks the profile" - REFUTED: closing the chat window only HIDES it (OnEvent Close -> responseWindow.Hide(), no per-open WebView2 teardown); teardown happens at app exit where Main WinCloses ChatWindow gracefully before force-kill, and the harness sweeps llm-webview2-* user-data folders by marker (every e2e run exercises launch/teardown); scenario 186 kept as a regression check.

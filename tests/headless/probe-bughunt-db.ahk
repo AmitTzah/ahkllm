@@ -32,6 +32,17 @@ OnError((e, m) => (Log("ERROR: " e.Message "`nSTACK: " (e.HasProp("Stack") ? e.S
 
 #Include ..\..\lib\Config.ahk
 
+; ThreadTitleGen.ahk is normally included by ChatWindow only; the probe chain
+; lacks two identifiers its function bodies reference - stub them so the file
+; loads standalone (the load-hang rule: every referenced identifier must exist).
+#Include ..\..\chat\ThreadTitleGen.ahk
+postWebMessage(target, data := unset) {
+    return ""
+}
+_GetFolders() {
+    return []
+}
+
 ; The probe exercises repo functions that reference the chat-window global
 ; requestParams; define it (and activeThreadId) so the script can load.
 global requestParams := Map()
@@ -902,6 +913,43 @@ OpenRace() {
     Log("OPENRACE done")
 }
 
+; ------------------------------------------------------------------
+; CHECK 28 (REFUTED lead): ThreadTitleGen._TitleGen_ParseResponse must never
+; throw on a malformed / partial provider response (truncated JSON from a
+; network hiccup, proxy timeout, or provider bug). The parser wraps jsongo in
+; a BARE try with no catch - probe-verified that a bare try block in AHK v2
+; SWALLOWS exceptions (continues after the block), so the function returns an
+; empty title instead of crashing the SetTimer callback. Regression check:
+; malformed JSON and an empty-completion shape both parse gracefully, and a
+; normal response still yields the title.
+; ------------------------------------------------------------------
+TitleGenParseGraceful() {
+    q := Chr(34)
+    ; Realistic truncated title response (partial JSON body).
+    raw := "{" q "choices" q ": [{" q "mes"
+    threw := false
+    try {
+        r := _TitleGen_ParseResponse(raw)
+    } catch Error as e {
+        threw := true
+    }
+    emptyTitle := r.HasProp("title") && r.title = ""
+    ; Control: a normal response still parses to a title.
+    raw2 := "{" q "choices" q ": [{" q "message" q ": {" q "content" q ": " q "Hello Title" q "}}]}"
+    r2 := _TitleGen_ParseResponse(raw2)
+    ; Control 2: an empty-completion shape (choices[0].message without
+    ; content) must ALSO be graceful - it already is (no throw).
+    raw3 := "{" q "choices" q ": [{" q "message" q ": {}}]}"
+    threw3 := false
+    try {
+        r3 := _TitleGen_ParseResponse(raw3)
+    } catch Error as e {
+        threw3 := true
+    }
+    Log("TITLEGENPARSE threw=" (threw ? 1 : 0) " controlTitle='" r2.title "' emptyCompletionThrew=" (threw3 ? 1 : 0))
+    Log("TITLEGENPARSE verdict=" (!threw && !threw3 && emptyTitle && r2.title = "Hello Title" ? "OK-graceful" : "BUG-present(parse-throws)"))
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -931,6 +979,7 @@ switch check {
     case "provider-resolve-deleted-deepseek": ProviderResolveDeletedDeepseek()
     case "settings-edge-roundtrip": SettingsEdgeRoundtrip()
     case "open-race": OpenRace()
+    case "titlegen-parse-throw": TitleGenParseGraceful()
     default:
         Log("UNKNOWN CHECK " check)
 }
