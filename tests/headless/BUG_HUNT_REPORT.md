@@ -163,7 +163,10 @@ How to run AHK safely:
   (ChatDB._UUID) instead of A_TickCount; scenario 176 added as a regression check. GENERAL-TAB LABEL FIX:
   the "App Default" dropdown option now names the isDefault assistant when one is marked (previously it always
   showed the default model). TEST-INFRA FIX: unit-test temp files/dbs now use a random suffix after A_TickCount
-  so same-millisecond or leftover-file collisions cannot corrupt a run.
+  so same-millisecond or leftover-file collisions cannot corrupt a run. LARGE-DATA FIX (test): startup FTS
+  rebuild verified on a 400-message history with a legacy attachment. CHECKED CLEAN by inspection: cross-process
+  SQLite (WAL + busy_timeout + idempotent migrations/FTS rebuild) and WebView2 teardown (exercised by every
+  harness run).
 ---
 
 ## Bug entry template
