@@ -47,16 +47,23 @@
     return parseFloat((el.value || '').replace(/^\$/, '')) || 0;
   }
 
-  function _parseContext(el) {
-    if (!el) return 0;
-    var raw = el.getAttribute('data-context-raw');
-    if (raw !== null && raw !== '') return parseInt(raw) || 0;
-    var v = el.value || '';
+  // Parse a context string with the k/M display suffix ("128K" -> 128000,
+  // "1.5M" -> 1500000). Shared by _parseContext and the blur handler so a
+  // focus/blur round-trip never collapses the suffix (bug #158).
+  function _parseContextString(str) {
+    var v = str || '';
     if (/^\d+[kK]$/.test(v)) return parseInt(v) * 1000;
     if (/^\d+[mM]$/.test(v)) return parseInt(v) * 1000000;
     if (/^\d+(\.\d+)?[kK]$/.test(v)) return Math.round(parseFloat(v) * 1000);
     if (/^\d+(\.\d+)?[mM]$/.test(v)) return Math.round(parseFloat(v) * 1000000);
     return parseInt(v) || 0;
+  }
+
+  function _parseContext(el) {
+    if (!el) return 0;
+    var raw = el.getAttribute('data-context-raw');
+    if (raw !== null && raw !== '') return parseInt(raw) || 0;
+    return _parseContextString(el.value);
   }
 
   function parsePricingRaw(raw) {
@@ -243,7 +250,10 @@
       if (raw !== null && raw !== '') input.value = raw;
     });
     input.addEventListener('blur', function() {
-      var v = parseInt(input.value) || 0;
+      // Bug #158: parse the DISPLAY string with the k/M suffix - the old
+      // parseInt collapsed "128K" to 128 and stored that as the raw value,
+      // silently shrinking the saved context 1000x.
+      var v = _parseContextString(input.value);
       input.setAttribute('data-context-raw', v);
       input.value = formatContext(v);
     });

@@ -1,5 +1,5 @@
-# 2026-08-10T12:39:00.810Z | run of 1 scenario(s)
-PASS | #157 | Forking AT a user message under-reports the fork's "Context Used" (the user row's active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only) | fork at u2 (contribution 9, true context 30): fork leaf active_path_tokens=30 - the backfill keeps the user message's active_path_tokens in sync, so the fork header reports the full context | 0.2s
+# 2026-08-10T12:41:26.780Z | run of 1 scenario(s)
+PASS | #158 | Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt's the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x) | model context 128000 displayed as "128K"; focus+blur keeps data-context-raw=128000, display "128K", saved context=128000 (the k/M multiplier survives every focus/blur or save) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

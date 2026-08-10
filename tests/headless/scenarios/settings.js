@@ -1096,6 +1096,7 @@ scenarios.push({
   id: 158,
   name: 'Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt\'s the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1187,17 +1188,18 @@ scenarios.push({
     });
     if (contextEl.value !== '128K')
       throw new Error('setup: context display should be 128K, got ' + contextEl.value);
+    // Fixed: blur parses the k/M suffix, so the raw stays 128000.
     // BUG: merely focusing (value stays the display string) and blurring the
-    // field parseInt's "128K" -> 128 and stores it as data-context-raw; the
-    // save() then reads the raw 128 instead of 128000.
+    // field parseInt'd "128K" -> 128 and stored it as data-context-raw; the
+    // save() then read the raw 128 instead of 128000.
     contextEl.focus();
     contextEl.blur();
     const saved = mod.save();
     const savedContext = saved.models['deepseek/deepseek-v4-flash'].context;
-    if (savedContext !== 128)
-      throw new Error('context survived focus/blur (behavior changed): saved=' + savedContext + ' displayAfterBlur=' + contextEl.value);
-    return 'model context 128000 displayed as "128K"; focus+blur -> data-context-raw=128, display "128", saved context=' +
-      savedContext + ' (1000x shrink - the k/M multiplier is lost on every focus/blur or save)';
+    if (savedContext !== 128000)
+      throw new Error('context shrank on focus/blur (BUG present): saved=' + savedContext + ' displayAfterBlur=' + contextEl.value);
+    return 'model context 128000 displayed as "128K"; focus+blur keeps data-context-raw=128000, display "128K", saved context=' +
+      savedContext + ' (the k/M multiplier survives every focus/blur or save)';
   }
 });
 
