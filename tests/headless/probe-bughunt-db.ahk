@@ -849,7 +849,7 @@ ProviderResolveDeletedDeepseek() {
     }
     threw1 := InStr(r1, "THREW") > 0
     Log("PROVRES deletedDeepseekThrew=" (threw1 ? 1 : 0) " openaiControl=" r2)
-    Log("PROVRES verdict=" (threw1 && r2 = "openai" ? "BUG-present(fallback-crash)" : "OK-fallback"))
+    Log("PROVRES verdict=" (!threw1 && r2 = "openai" && r1 = "openai" ? "OK-fallback" : "BUG-present(fallback-crash)"))
 }
 
 ; ------------------------------------------------------------------

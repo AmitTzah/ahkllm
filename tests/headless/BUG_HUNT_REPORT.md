@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #189 FIXED and committed (entry removed): launch.isolateProfile now
-  sorts llm-profile-bak-* and restores the NEWEST backup, matching e2e-suite.recoverInterruptedRun (live
-  scenario still passes, profile restored); scenario 189 flipped to a regression check + unit test + README
-  note. Next: bug #190 (deleted-deepseek provider crash).
+- **Where we left off:** 2026-08-10 - bug #190 FIXED and committed (entry removed): ProviderResolver.Resolve
+  falls back to the FIRST configured provider instead of the hardcoded providers["deepseek"] (missing-key Map
+  index threw in AHK v2); scenario 190 flipped to a regression check + LLMRequestBuilder unit test. Next:
+  bug #193 (right-rail temperature 0 dropped on re-send) - the last open bug.
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -225,28 +225,6 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 190. Removing the deepseek provider crashes request resolution (hardcoded fallback `providers["deepseek"]`)
-
-**Scenario:** 190 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Providers -> Remove the DeepSeek card (the UI keeps at least one provider, so this is
-allowed), Save, then send any chat request whose model prefix is not covered by the remaining providers.
-
-**Expected:** a clean error (or another provider fallback); the request path must not crash.
-
-**Actual:** `ProviderResolver.Resolve` falls back to `providers["deepseek"]` when no prefix matches, and a
-missing-key Map index THROWS in AHK v2 - every request for an uncovered model fails with "Request failed: Key
-does not exist".
-
-**Evidence:** `api/ProviderResolver.ahk:Resolve` (final `providers["deepseek"]` without a Has check) +
-`webui/js/settings/sections/providers.js:53` (Remove keeps >=1 provider).
-
-**Verification:** headless - `probe-bughunt-db.ahk provider-resolve-deleted-deepseek` builds providers without
-deepseek (openai + prefix only) and asserts `Resolve("deepseek/deepseek-v4-flash")` throws while the covered
-control resolves to "openai".
-
 ### 193. Right-rail temperature 0 is silently dropped when any other right-rail setting is re-sent
 
 **Scenario:** 193 (scenario code in e2e-suite.js)
@@ -275,6 +253,10 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Removing the deepseek provider crashes request resolution (hardcoded fallback
+  providers[\"deepseek\"])" - FIXED: ProviderResolver.Resolve now falls back to the FIRST configured provider
+  (never indexes a missing Map key) when no prefix matches, so deleting deepseek in Settings no longer crashes
+  requests for uncovered models; scenario 190 flipped to a regression check + LLMRequestBuilder unit test.
 - 2026-08-10 - "Harness interrupted-run recovery restores DIFFERENT backups (stale profile risk on direct
   launch)" - FIXED: launch.isolateProfile now sorts llm-profile-bak-* and restores the NEWEST backup
   (backups[length-1]), exactly like e2e-suite.recoverInterruptedRun, so a directly-launched next run can

@@ -48,7 +48,15 @@ class ProviderResolver {
         if providers.Has(providerKey)
             return ProviderResolver._buildResult(providerKey, modelId, providers[providerKey])
 
-        ; Fallback to deepseek
-        return ProviderResolver._buildResult("deepseek", modelId, providers["deepseek"])
+        ; Bug #190: the old fallback was hardcoded to providers["deepseek"] -
+        ; the Settings UI lets the user DELETE the deepseek provider (>=1
+        ; provider must remain), and a missing-key Map index THROWS in AHK v2,
+        ; crashing EVERY request for a model whose prefix is not covered.
+        ; Fall back to the FIRST configured provider instead (a clean
+        ; fallback; callers still surface api-key/endpoint errors) and never
+        ; index a missing key.
+        for firstKey in providers
+            return ProviderResolver._buildResult(firstKey, modelId, providers[firstKey])
+        return { providerKey: "", modelName: modelId, apiKey: "", endpoint: "", fimEndpoint: "" }
     }
 }

@@ -1459,6 +1459,7 @@ scenarios.push({
   id: 190,
   name: 'Removing the deepseek provider crashes request resolution: ProviderResolver.Resolve falls back to the hardcoded providers["deepseek"] (a missing-key Map index THROWS in AHK v2) when no prefix matches - the Settings UI allows deleting deepseek (>=1 provider must remain), so a model with an uncovered prefix breaks every request',
   mode: null,
+  regression: true, // FIXED: fallback is the first configured provider, never a missing Map key
   noApp: true,
   settings: {},
   async body() {
@@ -1474,9 +1475,14 @@ scenarios.push({
     const ctrlM = text.match(/openaiControl=([A-Za-z0-9_-]+)/);
     if (!threwM || !ctrlM) throw new Error('probe output missing fields: ' + text);
     const threw = Number(threwM[1]), control = ctrlM[1];
-    if (threw !== 1 || control !== 'openai')
-      throw new Error('deleted-deepseek resolution did not throw (bug not reproduced): threw=' + threw + ' control=' + control);
-    return 'providers = { openai (prefixes: [openai]) } only (deepseek removed, as the Settings UI allows): ProviderResolver.Resolve("deepseek/deepseek-v4-flash") THREW (missing-key Map index providers["deepseek"]) while the covered openai control resolved to "openai" - a deleted fallback provider crashes request resolution';
+    // FIXED (bug #190): the fallback is no longer hardcoded to
+    // providers["deepseek"] - with deepseek removed, the uncovered model
+    // resolves to the FIRST configured provider (openai) instead of throwing
+    // on the missing Map key.
+    if (threw !== 0 || control !== 'openai')
+      throw new Error('deleted-deepseek resolution still throws (fix incomplete): threw=' + threw + ' control=' + control + ' text=' + text);
+    return 'providers = { openai (prefixes: [openai]) } only (deepseek removed, as the Settings UI allows): ProviderResolver.Resolve("deepseek/deepseek-v4-flash") resolved to the first configured provider "openai" (threw=' + threw +
+      ') instead of crashing on the missing providers["deepseek"] key, and the covered openai control resolved to "openai"';
   }
 });
 

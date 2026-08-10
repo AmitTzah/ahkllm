@@ -377,6 +377,33 @@ class LLMRequestBuilderTest {
             throw Error("Expected fallback to deepseek, got '" info.providerKey "'")
     }
 
+    ; Regression (bug #190): the fallback must NOT be hardcoded to
+    ; providers["deepseek"] - the Settings UI lets the user delete deepseek,
+    ; and a missing-key Map index THROWS in AHK v2. With deepseek removed,
+    ; an uncovered model must resolve to the FIRST configured provider
+    ; instead of crashing the request path.
+    ResolveProvider_DeletedDeepseek_FallsBackToFirstProvider() {
+        global providers, providerMap
+        oldProviders := providers
+        oldProviderMap := providerMap
+        providers := Map()
+        providers["openai"] := { displayName: "OpenAI", endpoint: "https://api.openai.com/v1", fimEndpoint: "", authEnvVar: "OPENAI_API_KEY", authMode: "env", apiKey: "" }
+        providerMap := Map("openai", "openai")
+        try {
+            info := ProviderResolver.Resolve("deepseek/deepseek-v4-flash")
+            if info.providerKey != "openai"
+                throw Error("uncovered model must fall back to the first configured provider (bug #190), got '" info.providerKey "'")
+            if !info.endpoint
+                throw Error("fallback result must carry the provider endpoint (bug #190)")
+            ctrl := ProviderResolver.Resolve("openai/gpt-4")
+            if ctrl.providerKey != "openai"
+                throw Error("covered provider must still resolve normally, got '" ctrl.providerKey "'")
+        } finally {
+            providers := oldProviders
+            providerMap := oldProviderMap
+        }
+    }
+
     ; ----------------------------------------------------
     ; _FixStreamBoolean tests
     ; ----------------------------------------------------
