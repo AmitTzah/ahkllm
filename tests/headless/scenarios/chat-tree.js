@@ -1338,6 +1338,7 @@ scenarios.push({
   id: 159,
   name: 'Switching threads while a request is streaming persists the response into the WRONG thread (_persistStreamResponse reads activeThreadId at completion time, not the thread that sent the request)',
   mode: 'sse-success',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [
@@ -1368,13 +1369,15 @@ scenarios.push({
     const inB = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-stream-b-159' AND role='assistant'")[0].c;
     const msgsA = seed.query(dbPath, "SELECT role, content FROM messages WHERE thread_id='t-stream-a-159' ORDER BY rowid");
     const msgsB = seed.query(dbPath, "SELECT role, content FROM messages WHERE thread_id='t-stream-b-159' ORDER BY rowid");
-    // BUG present: the streamed assistant lands in thread B (the thread
-    // switched to mid-stream) instead of thread A (the thread that sent it).
-    if (inA !== 0 || inB !== 1)
-      throw new Error('streamed response persisted to the sending thread (behavior changed): inA=' + inA + ' inB=' + inB +
+    // Fixed: the completion uses the thread captured at send time, so the
+    // response lands in thread A (the sender); thread B stays untouched.
+    // BUG present: the streamed assistant landed in thread B (the thread
+    // switched to mid-stream) instead of thread A.
+    if (inA !== 1 || inB !== 0)
+      throw new Error('streamed response did not land in the sending thread (BUG present): inA=' + inA + ' inB=' + inB +
         ' A=' + JSON.stringify(msgsA) + ' B=' + JSON.stringify(msgsB));
     return 'sent in thread A, switched to thread B mid-stream: assistant rows inA=' + inA + ' inB=' + inB +
-      ' - the "Hello from the mock LLM" response landed in thread ' + (inB ? 'B (WRONG - _persistStreamResponse used activeThreadId at completion)' : 'A') +
+      ' - the "Hello from the mock LLM" response landed in thread ' + (inB ? 'B (WRONG)' : 'A (the sender - captured at send time)') +
       '; A=' + JSON.stringify(msgsA.map((m) => m.role + ':' + String(m.content).slice(0, 30))) +
       ' B=' + JSON.stringify(msgsB.map((m) => m.role + ':' + String(m.content).slice(0, 30)));
   }

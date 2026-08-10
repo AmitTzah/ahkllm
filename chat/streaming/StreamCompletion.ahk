@@ -8,14 +8,17 @@
 _handleStreamComplete() {
     try {
         cURLState("set", 0)
+        ; Bug #159: complete into the thread that SENT the request (captured
+        ; at send time), not the currently-active thread.
+        streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
 
         chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
-        saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"])
+        saveStreamResponse(requestParams["_streamContent"], requestParams["_streamModelName"], &chatHistoryCopy, requestParams["_streamRequestStartTime"], requestParams["_streamFirstTokenTime"], requestParams["_streamUsage"], requestParams["_streamReasoning"], requestParams["_streamRawLastResponse"], requestParams["_streamProviderKey"], requestParams["_streamRawSseChunks"], streamThreadId)
 
         dbMsgData := ""
         userTokenCount := 0
-        if activeThreadId {
-            path := ChatDB.Msg_GetActivePath(activeThreadId)
+        if streamThreadId {
+            path := ChatDB.Msg_GetActivePath(streamThreadId)
             if path.Length {
                 dbMsgData := buildStructuredMessagesFromPath([path[path.Length]])[1]
                 ; Find last user message's backfilled token_count
@@ -32,7 +35,7 @@ _handleStreamComplete() {
 
         postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount })
 
-        postThreadStats(activeThreadId)
+        postThreadStats(streamThreadId)
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
         ; Bug #110: never leave the request/cURL temp files (which contain the
@@ -45,23 +48,25 @@ _handleStreamComplete() {
     }
 }
 
-_maybeGenerateTitle(path) {
+_maybeGenerateTitle(path, threadId := "") {
+    if !threadId
+        threadId := activeThreadId
     if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
         ; Bug #140: once a title request has been dispatched for this thread,
         ; never schedule another - a retry of the first exchange re-checks the
         ; same pre-insert path (length 1) with the title still "New Chat" and
         ; used to fire a duplicate API call.
         global _titleGenRequestedThreads
-        if _titleGenRequestedThreads.Has(activeThreadId) {
-            debugLog("[TITLEGEN] skip duplicate trigger thread=" activeThreadId)
+        if _titleGenRequestedThreads.Has(threadId) {
+            debugLog("[TITLEGEN] skip duplicate trigger thread=" threadId)
             return
         }
-        threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
+        threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", threadId)
         if threadInfo.count {
             currentTitle := threadInfo[1, "title"]
-            debugLog("[TITLEGEN] trigger check thread=" activeThreadId " title='" currentTitle "'")
+            debugLog("[TITLEGEN] trigger check thread=" threadId " title='" currentTitle "'")
             if currentTitle = "New Chat" || InStr(currentTitle, "(")
-                SetTimer(generateThreadTitle.Bind(activeThreadId), -200)
+                SetTimer(generateThreadTitle.Bind(threadId), -200)
         }
     }
 }
@@ -73,24 +78,29 @@ _getProviderEndpoint() {
     return APIEndpoint
 }
 
-saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "", rawLastResponse := "", providerKey := "", rawSseChunks := "") {
+saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime, firstTokenTime, usage := {}, reasoning := "", rawLastResponse := "", providerKey := "", rawSseChunks := "", streamThreadId := "") {
     if !content && !reasoning
         return
+
+    if !streamThreadId
+        streamThreadId := activeThreadId
 
     requestBeforeAppend := chatHistoryJSONRequest
     llmClient.appendToChatHistory("assistant", content, &chatHistoryJSONRequest, requestParams["chatHistoryJSONRequestFile"])
 
-    if activeThreadId {
+    if streamThreadId {
         responseTimeMs := A_TickCount - requestStartTime
         ttftMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : 0
-        _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs, ttftMs)
+        _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs, ttftMs, streamThreadId)
     }
 
     _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime)
 }
 
-_persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0) {
-    path := ChatDB.Msg_GetActivePath(activeThreadId)
+_persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0, streamThreadId := "") {
+    if !streamThreadId
+        streamThreadId := activeThreadId
+    path := ChatDB.Msg_GetActivePath(streamThreadId)
     ; Bug #147: a retry of a ROOT assistant (no parent) must insert the new
     ; response as a SIBLING with parent_id NULL - not as a CHILD of the
     ; original root (path[last] would be the original assistant itself).
@@ -110,7 +120,7 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
     promptTokens := usage.HasProp("promptTokens") ? usage.promptTokens : 0
 
     ChatDB.Msg_Insert({
-        thread_id: activeThreadId, role: "assistant", content: content, model: modelName,
+        thread_id: streamThreadId, role: "assistant", content: content, model: modelName,
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
         reasoning: reasoning,
         prompt_tokens: promptTokens,
@@ -120,7 +130,7 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         response_time_ms: responseTimeMs,
         ttft_ms: ttftMs
     })
-    _maybeGenerateTitle(path)
+    _maybeGenerateTitle(path, streamThreadId)
 }
 
 _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime) {

@@ -61,6 +61,12 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
     requestParams["_streamPID"]              := cURLPID
     requestParams["_streamCancelled"]        := false
+    ; Bug #159: capture the thread that SENT this request. The completion and
+    ; cancel handlers must persist into THIS thread even if the user navigates
+    ; (switch thread / New Chat / branch) or deletes the thread mid-stream -
+    ; reading the global activeThreadId at completion time wrote the response
+    ; into whatever thread happened to be active then.
+    requestParams["_streamThreadId"]         := activeThreadId
 
     ; Post display title to UI immediately for bubble author during streaming
     postWebMessage("streamModelName", displayName)
@@ -255,5 +261,6 @@ _cleanupStreamState() {
     requestParams.Delete("_streamChatHistoryJSONRequest")
     requestParams.Delete("_streamPID")
     requestParams.Delete("_streamCancelled")
+    requestParams.Delete("_streamThreadId")
 }
 

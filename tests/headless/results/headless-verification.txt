@@ -1,5 +1,5 @@
-# 2026-08-10T12:41:26.780Z | run of 1 scenario(s)
-PASS | #158 | Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt's the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x) | model context 128000 displayed as "128K"; focus+blur keeps data-context-raw=128000, display "128K", saved context=128000 (the k/M multiplier survives every focus/blur or save) | 0.0s
+# 2026-08-10T12:44:04.421Z | run of 1 scenario(s)
+PASS | #159 | Switching threads while a request is streaming persists the response into the WRONG thread (_persistStreamResponse reads activeThreadId at completion time, not the thread that sent the request) | sent in thread A, switched to thread B mid-stream: assistant rows inA=1 inB=0 - the "Hello from the mock LLM" response landed in thread A (the sender - captured at send time); A=["user:question for A","user:question for A","assistant:Hello from the mock LLM. This "] B=["user:question for B"] | 6.5s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

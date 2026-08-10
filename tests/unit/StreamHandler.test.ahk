@@ -73,6 +73,35 @@ class StreamHandlerTest {
         FileDelete(tmpFile)
     }
 
+    ; --------------------
+    ; _persistStreamResponse â€” captured thread (bug #159)
+    ; --------------------
+
+    PersistStreamResponse_UsesCapturedThread() {
+        global activeThreadId, requestParams
+        this._setupDb()
+        threadIdA := ChatDB.Thread_Create("Thread A")
+        threadIdB := ChatDB.Thread_Create("Thread B")
+        uA := ChatDB.Msg_Insert({thread_id: threadIdA, role: "user", content: "question for A"})
+        uB := ChatDB.Msg_Insert({thread_id: threadIdB, role: "user", content: "question for B"})
+
+        ; The user switched to thread B while A's stream was in flight:
+        activeThreadId := threadIdB
+        requestParams["_streamThreadId"] := threadIdA
+
+        _persistStreamResponse("Hello from the mock LLM", "deepseek-v4-flash", "", { promptTokens: 12, completionTokens: 9, cachedTokens: 4 }, 500, 100, threadIdA)
+
+        inA := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND role='assistant';", threadIdA)
+        inB := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND role='assistant';", threadIdB)
+        if Integer(inA[1, "c"]) != 1 || Integer(inB[1, "c"]) != 0
+            throw Error("response must land in the captured thread A (bug #159): inA=" inA[1, "c"] " inB=" inB[1, "c"])
+        row := ChatDB.db.Query("SELECT parent_id FROM messages WHERE thread_id=? AND role='assistant';", threadIdA)
+        if row[1, "parent_id"] != uA
+            throw Error("parent should be A's user message, got " row[1, "parent_id"])
+        activeThreadId := ""
+        this._teardownDb()
+    }
+
     ; --------------------------------------------------------
     ; SSEParser: null-usage investigation
     ; jsongo.Parse converts JSON null to "" (empty string).
@@ -362,7 +391,7 @@ class StreamHandlerTest {
         scPath := A_ScriptDir "\..\chat\streaming\StreamCompletion.ahk"
         sc := FileRead(scPath)
         completeIdx := InStr(sc, "_handleStreamComplete() {")
-        completeBlock := SubStr(sc, completeIdx, 2000)
+        completeBlock := SubStr(sc, completeIdx, 2600)
         if !InStr(completeBlock, "deleteTempFiles()")
             throw Error("_handleStreamComplete must delete temp files (bug #110)")
         sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"
