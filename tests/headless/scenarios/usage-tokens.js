@@ -778,6 +778,7 @@ scenarios.push({
   id: 157,
   name: 'Forking AT a user message under-reports the fork\'s "Context Used" (the user row\'s active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -792,12 +793,14 @@ scenarios.push({
     const m = text.match(/forkContext=(\d+)/);
     if (!m) throw new Error('probe output missing forkContext: ' + text);
     const forkContext = Number(m[1]);
+    // Fixed: the backfill now updates the user's active_path_tokens too
+    // (parent context + own contribution), so the fork at u2 reports 30.
     // BUG present: u2.tc=9 (backfilled), u2.apt=21 (stale - parent context
-    // only, the backfill never updated it), so the fork at u2 reports 21.
-    if (forkContext === 30)
-      throw new Error('fork context now accurate (behavior changed): forkContext=' + forkContext);
+    // only, the backfill never updated it), so the fork reported 21.
+    if (forkContext !== 30)
+      throw new Error('fork context still under-reports (BUG present): forkContext=' + forkContext);
     return 'fork at u2 (contribution 9, true context 30): fork leaf active_path_tokens=' + forkContext +
-      ' - MessageRepo.Insert computes user apt at insert time (tc=0) and the assistant backfill never updates it, so the fork header under-reports';
+      ' - the backfill keeps the user message\'s active_path_tokens in sync, so the fork header reports the full context';
   }
 });
 

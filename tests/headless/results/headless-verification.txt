@@ -1,5 +1,5 @@
-# 2026-08-10T12:37:24.914Z | run of 1 scenario(s)
-PASS | #156 | Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message's backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path) | u2 overwrite-edit re-estimates its contribution; next user backfill gives u3tc=5 (true contribution 5 = 62 prompt - 12 u1 - 9 a1 - 30 new u2 - 6 a2) - the edited message's attribution is refreshed, not stale | 0.2s
+# 2026-08-10T12:39:00.810Z | run of 1 scenario(s)
+PASS | #157 | Forking AT a user message under-reports the fork's "Context Used" (the user row's active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only) | fork at u2 (contribution 9, true context 30): fork leaf active_path_tokens=30 - the backfill keeps the user message's active_path_tokens in sync, so the fork header reports the full context | 0.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

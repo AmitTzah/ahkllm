@@ -158,6 +158,14 @@ class MessageRepo {
                     isLocalCopy := true
                 if currentTC = 0 || isLocalCopy {
                     ChatDB.db.Query("UPDATE messages SET token_count=? WHERE id=?;", new_input, path[i].id)
+                    ; Bug #157: the backfill must ALSO update the user
+                    ; message's active_path_tokens (parent context + own
+                    ; contribution). Insert computed it with token_count still
+                    ; 0, so forking AT this message under-reported the fork's
+                    ; Context Used (the fork leaf carried the parent context
+                    ; only) until a later structural recompute.
+                    parentApt := i > 1 ? (path[i - 1].HasProp("active_path_tokens") ? path[i - 1].active_path_tokens : 0) : 0
+                    ChatDB.db.Query("UPDATE messages SET active_path_tokens=? WHERE id=?;", parentApt + new_input, path[i].id)
                 }
                 break
             }

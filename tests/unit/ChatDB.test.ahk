@@ -1376,6 +1376,30 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #157): the user-token backfill must ALSO update the user
+    ; message's active_path_tokens (parent context + own contribution) - it was
+    ; computed at INSERT time with token_count still 0, so forking AT that
+    ; message under-reported the fork's Context Used.
+    Insert_Backfill_UpdatesActivePathTokens() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1Id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 30, token_count: 6})
+        u2Row := ChatDB.db.Query("SELECT token_count, active_path_tokens FROM messages WHERE id=?;", u2Id)
+        if Integer(u2Row[1, "token_count"]) != 9
+            throw Error("u2 should be backfilled to 9 (30-21), got " u2Row[1, "token_count"])
+        if Integer(u2Row[1, "active_path_tokens"]) != 30
+            throw Error("u2 active_path_tokens must include its own contribution (bug #157): expected 30, got " u2Row[1, "active_path_tokens"])
+        ; Fork AT u2: the fork's leaf is the u2 copy, so its Context Used must
+        ; report the full 30 (previously the stale 21).
+        forkId := ChatDB.Msg_ForkThread(threadId, u2Id)
+        stats := ChatDB.Msg_GetThreadStats(forkId)
+        if Integer(stats.activePathTokens) != 30
+            throw Error("fork at u2 must report context 30, got " stats.activePathTokens)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit active_path_tokens recalculation
     ; --------------------
