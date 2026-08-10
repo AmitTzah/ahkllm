@@ -386,3 +386,107 @@ describe('Models context field focus/blur keeps the k/M suffix (bug #158)', () =
         'context must survive focus/blur (128000), got ' + saved.models['deepseek/deepseek-v4-flash'].context);
   });
 });
+
+describe('Models price field "$" paste and blank blur (bug #164)', () => {
+  function loadPriceModule() {
+    const sharedSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf-8');
+
+    function makeEl(value, raw) {
+      const el = {
+        value,
+        raw: raw !== undefined ? String(raw) : null,
+        listeners: {},
+        classList: { add() {}, remove() {}, toggle() {} },
+        dataset: {}
+      };
+      el.getAttribute = (n) => (n === 'data-context-raw' || n === 'data-price-raw') ? el.raw : null;
+      el.setAttribute = (n, v) => { if (n === 'data-context-raw' || n === 'data-price-raw') el.raw = String(v); };
+      el.addEventListener = (t, fn) => { el.listeners[t] = fn; };
+      el.focus = () => { if (el.listeners.focus) el.listeners.focus(); };
+      el.blur = () => { if (el.listeners.blur) el.listeners.blur(); };
+      return el;
+    }
+
+    let trRef = null;
+    const idEl = makeEl('deepseek-v4-flash');
+    const providerEl = makeEl('deepseek');
+    const inputEl = makeEl('$0.50', '0.5');
+    const cachedEl = makeEl('', '');
+    const outputEl = makeEl('0.28', '0.28');
+    const contextEl = makeEl('');
+    const visionEl = makeEl('on', 'on');
+    const reasoningEl = makeEl('on', 'on');
+    const fields = {
+      '[data-field="id"]': idEl,
+      '[data-field="provider"]': providerEl,
+      '[data-field="input"]': inputEl,
+      '[data-field="cachedInput"]': cachedEl,
+      '[data-field="output"]': outputEl,
+      '[data-field="context"]': contextEl,
+      '[data-field="vision"]': visionEl,
+      '[data-field="reasoning"]': reasoningEl
+    };
+    const tr = {
+      dataset: {},
+      innerHTML: '',
+      querySelector: (sel) => fields[sel] || null,
+      querySelectorAll: () => Object.values(fields),
+      addEventListener() {},
+      remove() {}
+    };
+    fields['.btn-sm.danger'] = makeEl('');
+    const tbody = { innerHTML: '', appendChild(child) { trRef = child; } };
+    const registeredSections = {};
+    const sandbox = {
+      document: {
+        getElementById: (id) => (id === 'modelsTableBody' ? tbody : null),
+        querySelectorAll: (sel) => (sel === '#modelsTableBody tr' ? (trRef ? [trRef] : []) : []),
+        createElement: () => tr,
+        addEventListener: () => {}
+      },
+      window: {
+        chrome: { webview: { postMessage: () => {} } },
+        SettingsPanel: { registerSection: (name, mod) => { registeredSections[name] = mod; } },
+        addEventListener: () => {}
+      },
+      setTimeout: () => {},
+      clearTimeout: () => {},
+      console
+    };
+    sandbox.global = sandbox;
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
+    return { mod: registeredSections.models, inputEl };
+  }
+
+  it('keeps a "$"-prefixed paste as the real price (0.5, not 0)', () => {
+    const { mod, inputEl } = loadPriceModule();
+    mod.load({
+      providers: { deepseek: {} },
+      models: { 'deepseek/deepseek-v4-flash': { provider: 'deepseek', input: 0.5, cachedInput: '', output: 0.28, context: '', vision: false, reasoning: true } }
+    });
+    assert.strictEqual(inputEl.value, '$0.50');
+    inputEl.focus();
+    inputEl.value = '$0.5';
+    inputEl.blur();
+    const saved = mod.save();
+    assert.strictEqual(saved.models['deepseek/deepseek-v4-flash'].input, 0.5,
+        'the $ paste must not zero the price (bug #164)');
+  });
+
+  it('keeps a blank price blank instead of saving 0', () => {
+    const { mod, inputEl } = loadPriceModule();
+    mod.load({
+      providers: { deepseek: {} },
+      models: { 'deepseek/deepseek-v4-flash': { provider: 'deepseek', input: 0.5, cachedInput: '', output: 0.28, context: '', vision: false, reasoning: true } }
+    });
+    inputEl.focus();
+    inputEl.value = '';
+    inputEl.blur();
+    const saved = mod.save();
+    assert.strictEqual(saved.models['deepseek/deepseek-v4-flash'].input, '',
+        'a blank blur must keep the field blank, not save 0 (bug #164)');
+  });
+});

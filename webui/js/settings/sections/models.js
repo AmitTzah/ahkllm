@@ -44,7 +44,12 @@
     if (!el) return 0;
     var raw = el.getAttribute('data-price-raw');
     if (raw !== null && raw !== '') return parseFloat(raw) || 0;
-    return parseFloat((el.value || '').replace(/^\$/, '')) || 0;
+    // Bug #164: strip a leading "$" (users paste "$0.5" from pricing pages)
+    // and keep a BLANK field blank ("" = the app's blank-price semantics)
+    // instead of collapsing it to 0.
+    var v = (el.value || '').trim();
+    if (v === '') return '';
+    return parseFloat(v.replace(/^\$/, '')) || 0;
   }
 
   // Parse a context string with the k/M display suffix ("128K" -> 128000,
@@ -238,7 +243,17 @@
       if (raw !== null && raw !== '') input.value = raw;
     });
     input.addEventListener('blur', function() {
-      var v = parseFloat(input.value) || 0;
+      // Bug #164: parse the raw input like _parsePrice - strip a leading "$"
+      // ("$0.5" must stay 0.5), never silently zero a non-numeric paste, and
+      // keep a blank field blank.
+      var rawValue = String(input.value || '').trim();
+      if (rawValue === '') {
+        input.setAttribute('data-price-raw', '');
+        input.value = '';
+        return;
+      }
+      var v = parseFloat(rawValue.replace(/^\$/, ''));
+      if (isNaN(v)) return;
       input.setAttribute('data-price-raw', v);
       input.value = fmtPrice(v);
     });

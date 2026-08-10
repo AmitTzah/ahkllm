@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#22 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
+- **Where we left off:** 2026-08-10 - #1-#23 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
   25f7181, 2e4bc23, 0058836, 31056dd, 4e426f3, a046cda, 04e64e3, 4b41ce7, 1f9b377, d9d3bda, 17150ab, f7ef637,
-  f1ea763, a447e0e, 519322b, 1729c02, next commit). Next: bug #23 (Models tab: pasting a "$"-prefixed price and
-  blurring silently zeroes it).
+  f1ea763, a447e0e, 519322b, 1729c02, 7356462, next commit). Next: bug #24 (usage CSV export is unquoted - a
+  comma in model/provider shifts columns).
 ---
 
 ## Bug entry template
@@ -213,27 +213,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
-
-**Scenario:** 164 (scenario code in scenarios/settings.js)
-
-**Status:** fix in progress
-
-**Repro:** Settings -> Models -> focus a price field, paste "$0.5" (or "$0.1400" copied from a pricing page), blur, Save. Also try clearing the field and blurring.
-
-**Expected:** "$0.5" parses as 0.5; a blank field stays blank (falls back to the app's blank-price semantics), not 0.
-
-**Actual:** `_wirePriceInput`'s blur handler does `parseFloat(input.value) || 0` with no `$` stripping (only `_parsePrice` strips `$`, and only when no raw value is stored). `parseFloat("$0.5")` is NaN -> 0, and the 0 is written to `data-price-raw`, so the price is permanently zeroed even if the user re-types the number later. The same `|| 0` collapses an EMPTY field to 0 (a blank price is saved as 0 instead of staying blank), and a "1.5k"-style suffix silently becomes 1.5.
-
-**Evidence:** `webui/js/settings/sections/models.js` (_wirePriceInput blur: `parseFloat(input.value) || 0`; _parsePrice prefers the stored raw).
-
-**Verification:** headless scenario 164 (vm, real models.js): input display $0.50 -> focus -> paste "$0.5" -> blur -> saved input=0 (raw=0, display "").
-
-### 2. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
+### 1. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
 
 **Scenario:** 163 (scenario code in scenarios/usage-tokens.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Give a model id (or provider display name) a comma - e.g. "openai/gpt-5,beta" in Settings -> Models -> Save. Open Usage Dashboard -> Export.
 
@@ -245,7 +229,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 163 (vm, real usage-dashboard.js): chat row with model "openai/gpt-5,beta" -> exported row splits into 13 fields (header has 12), no quoting.
 
-### 3. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
+### 2. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
 
 **Scenario:** 165 (scenario code in scenarios/misc.js)
 
@@ -261,7 +245,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 165 (probe, real SearchRepo): attachment extracted_text contains "needle" only -> `Search("needle", tid)` returns 0 hits.
 
-### 4. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
+### 3. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
 
 **Scenario:** 166 (scenario code in scenarios/misc.js)
 
@@ -277,7 +261,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 166 (noApp static): behavior-reader scan of AssistantRepo/ChatSettings/SettingsApply/CommandMenu/ThreadSettings/model-picker finds only carry-only references; assistants.js has no isDefault UI field.
 
-### 5. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
+### 4. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
 
 **Scenario:** 167 (scenario code in scenarios/misc.js)
 
@@ -293,7 +277,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 167 (noApp static): the TrackUsage call exists after the request and the early-return guard is present with no failure fallback.
 
-### 6. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
+### 5. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
 
 **Scenario:** 168 (scenario code in scenarios/usage-tokens.js)
 
@@ -309,7 +293,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 168 (vm, real usage-dashboard.js): row provider="" + backend providers ['deepseek'] -> filter dropdown has no '' option while the chart key would be ''.
 
-### 7. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
+### 6. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
 
 **Scenario:** 174 (scenario code in scenarios/chat-tree.js)
 
@@ -325,7 +309,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 174 (live): B's updated_at bumped (2026-08-10 11:22:49 -> 11:22:52) after Next branch, but the sidebar order stays A,B - no refresh was posted.
 
-### 8. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
+### 7. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
 
 **Scenario:** 160 (scenario code in scenarios/misc.js)
 
@@ -341,7 +325,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
 
-### 9. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+### 8. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
 
 **Scenario:** 161 (scenario code in scenarios/misc.js)
 
@@ -357,7 +341,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
 
-### 10. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 9. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
@@ -377,6 +361,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Models tab: pasting a $-prefixed price (e.g. $0.5) and blurring silently zeroes it" - FIXED: the price blur handler now strips a leading $ (parseFloat("$0.5")=0.5) and keeps a blank field blank (raw=""), matching _parsePrice's blank semantics; scenario 164 flipped to a regression check + models unit tests.
 - 2026-08-10 - "A command with the Default model (empty APIModels) silently does NOTHING" - FIXED: processInitialRequest now substitutes the app default model when APIModels is empty (the Default dropdown option), so the request loop always runs; scenario 162 flipped to a regression static check + RequestProcessor unit test.
 - 2026-08-10 - "Reasoning-only streams report ttft_ms=0 (the first-token timer only stamps content chunks, never reasoning)" - FIXED: _processChunk now stamps firstTokenTime on reasoning chunks too, so reasoning-only streams record a real TTFT (popover/dashboard/API-log latency all use it); scenario 170 flipped to a regression check + StreamHandler unit test.
 - 2026-08-10 - "Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread" - FIXED: _handleStreamCancelled now persists the cancelled partial into the thread captured at send time (_streamThreadId) like the completion path (bug #159), and _cleanupStreamState is now idempotent (Has-guarded deletes so a missing/partial stream state cannot crash the cancel path); scenario 171 flipped to a regression check + StreamError unit test.

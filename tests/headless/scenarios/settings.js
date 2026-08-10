@@ -1207,6 +1207,7 @@ scenarios.push({
   id: 164,
   name: 'Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat\'s the raw string (NaN -> 0) and stores 0 as data-price-raw',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1296,17 +1297,19 @@ scenarios.push({
     });
     if (inputEl.value !== '$0.50')
       throw new Error('setup: input display should be $0.50, got ' + inputEl.value);
-    // User focuses (value becomes raw 0.5), pastes "$0.5" (the format they may
-    // copy from a pricing page), then blurs. parseFloat("$0.5") is NaN -> 0.
+    // Fixed: the blur handler strips the "$" and keeps the parsed 0.5.
+    // BUG: the user focused (value became raw 0.5), pasted "$0.5" (the format
+    // they may copy from a pricing page), then blurred; parseFloat("$0.5") was
+    // NaN -> 0 and stored as data-price-raw.
     inputEl.focus();
     inputEl.value = '$0.5';
     inputEl.blur();
     const saved = mod.save();
     const savedPrice = saved.models['deepseek/deepseek-v4-flash'].input;
-    if (savedPrice !== 0)
-      throw new Error('price survived $ paste (behavior changed): saved=' + savedPrice + ' raw=' + inputEl.raw + ' display=' + inputEl.value);
-    return 'input price $0.50 displayed; user pastes "$0.5" and blurs -> data-price-raw=0, display "", saved input=' +
-      savedPrice + ' - the "$"-prefixed paste silently zeroes the price (parseFloat("$0.5") = NaN -> 0), and blank blur also saves 0';
+    if (savedPrice !== 0.5)
+      throw new Error('$ paste still corrupts the price (BUG present): saved=' + savedPrice + ' raw=' + inputEl.raw + ' display=' + inputEl.value);
+    return 'input price $0.50 displayed; user pastes "$0.5" and blurs -> data-price-raw=0.5, display "$0.50", saved input=' +
+      savedPrice + ' - the "$"-prefixed paste survives (0.5, not 0), and a blank blur keeps the field blank';
   }
 });
 
