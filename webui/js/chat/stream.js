@@ -185,7 +185,10 @@ function _finalizeStreamContent() {
 }
 
 function _updateUserTokenCount(data) {
-  if (!(data && data.userTokenCount > 0)) return;
+  // Bug #150: a 0 contribution is a real value (e.g. a branch copy whose
+  // context already exceeds the new prompt) - it must still overwrite the
+  // stale UI token count, so only skip when the value is absent.
+  if (!(data && data.userTokenCount !== undefined && data.userTokenCount >= 0)) return;
   for (var i = chatMessages.length - 1; i >= 0; i--) {
     if (chatMessages[i].role === 'user') {
       chatMessages[i].tokenCount = data.userTokenCount;

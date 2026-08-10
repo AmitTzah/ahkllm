@@ -1,5 +1,5 @@
-# 2026-08-10T12:20:21.324Z | run of 1 scenario(s)
-PASS | #149 | Command requests with SHORT model ids (no provider prefix) silently drop the thinking config (LLMRequestBuilder still gates on models.Has(full-id)) | createJSONRequest("deepseek-v4-flash", thinking enabled/high) -> thinking fields NOW applied (ModelResolver.Lookup resolves the short id); the full id control gets thinking:{type:enabled} + reasoning_effort:high | 0.1s
+# 2026-08-10T12:23:13.978Z | run of 1 scenario(s)
+PASS | #150 | "Save as Branch" on a USER message keeps the ORIGINAL message's token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong) | branch-copied user message keeps token_count=0 (re-backfilled by the branch's own API call) and its popover shows " Token UsageInput: 0 tokens(contribution to context)" - the stale source attribution is replaced | 6.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

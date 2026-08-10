@@ -1194,6 +1194,7 @@ scenarios.push({
   id: 150,
   name: '"Save as Branch" on a USER message keeps the ORIGINAL message\'s token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong)',
   mode: 'sse-success',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{
@@ -1228,10 +1229,11 @@ scenarios.push({
     const branch = seed.query(dbPath, "SELECT id, token_count, active_path_tokens FROM messages WHERE content='edited follow-up (branch)'");
     if (!branch.length) throw new Error('branch user message not found');
     const bc = Number(branch[0].token_count);
-    // The branch's own API call used the MOCK prompt (12): the app's own
-    // backfill formula for this path would compute Max(0, 12 - (12+9+7)) = 0,
-    // but the copied 7 is never overwritten. BUG present: bc === 7.
-    if (bc !== 7) throw new Error('branch user attribution changed (behavior changed): token_count=' + bc);
+    // Fixed: the branch copy is a local_copy, so the branch's own API call
+    // (mock prompt 12) RE-backfills it: Max(0, 12 - (12+9+7)) = 0 - the stale
+    // copied 7 is replaced with the branch's real contribution.
+    // BUG present: the copied 7 was never overwritten (bc === 7 forever).
+    if (bc !== 0) throw new Error('branch user attribution still stale (BUG present): token_count=' + bc);
     const pop = await (async () => {
       const idx = await cdp.eval('chatMessages.findIndex((m) => m.content === "edited follow-up (branch)")');
       if (idx < 0) return '';
@@ -1239,11 +1241,11 @@ scenarios.push({
       await cdp.waitFor('document.querySelector(".stat-toggle.pop-open") !== null', 5000, 200, 'popover open');
       return await cdp.text('.stat-toggle.pop-open .stat-popover');
     })();
-    if (String(pop).indexOf('Input: 7 tokens') < 0)
-      throw new Error('branch user popover does not show the stale 7: ' + JSON.stringify(pop));
+    if (String(pop).indexOf('Input: 0 tokens') < 0)
+      throw new Error('branch user popover should show the re-backfilled 0: ' + JSON.stringify(pop));
     return 'branch-copied user message keeps token_count=' + bc +
-      ' (source attribution for DIFFERENT text) and its popover shows ' + JSON.stringify(pop) +
-      ' - the branch\'s own API call (mock prompt 12) never re-backfills it';
+      ' (re-backfilled by the branch\'s own API call) and its popover shows ' + JSON.stringify(pop) +
+      ' - the stale source attribution is replaced';
   }
 });
 

@@ -142,7 +142,17 @@ class MessageRepo {
         while i >= 1 {
             if path[i].role = "user" {
                 currentTC := path[i].HasProp("token_count") ? path[i].token_count : 0
-                if currentTC = 0 {
+                ; Bug #150: a local branch-edit copy carries the SOURCE
+                ; message's backfilled token_count (bug #123 copies it) - when
+                ; the branch's own real API response arrives, that stale
+                ; attribution must be REPLACED with the branch's real
+                ; contribution (otherwise the copy's token popover is wrong
+                ; forever).
+                isLocalCopy := false
+                copyRow := ChatDB.db.Query("SELECT is_local_copy FROM messages WHERE id=?;", path[i].id)
+                if copyRow.count && copyRow[1, "is_local_copy"]
+                    isLocalCopy := true
+                if currentTC = 0 || isLocalCopy {
                     ChatDB.db.Query("UPDATE messages SET token_count=? WHERE id=?;", new_input, path[i].id)
                 }
                 break

@@ -150,3 +150,31 @@ describe('onStreamDone reasoning-only responses', () => {
         assert.strictEqual(actionsAdded, 1);
     });
 });
+
+describe('_updateUserTokenCount', () => {
+    it('applies a zero contribution to the last user message (bug #150)', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', tokenCount: 12 },
+            { id: 'a1', role: 'assistant' },
+            { id: 'u2b', role: 'user', tokenCount: 7 },
+            { id: 'a2b', role: 'assistant' }
+        ];
+        ctx._updateUserTokenCount({ userTokenCount: 0 });
+        assert.strictEqual(ctx.chatMessages[2].tokenCount, 0);
+    });
+
+    it('applies a positive contribution to the last user message', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [{ id: 'u1', role: 'user', tokenCount: 7 }];
+        ctx._updateUserTokenCount({ userTokenCount: 9 });
+        assert.strictEqual(ctx.chatMessages[0].tokenCount, 9);
+    });
+
+    it('skips when userTokenCount is absent', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [{ id: 'u1', role: 'user', tokenCount: 5 }];
+        ctx._updateUserTokenCount({});
+        assert.strictEqual(ctx.chatMessages[0].tokenCount, 5);
+    });
+});

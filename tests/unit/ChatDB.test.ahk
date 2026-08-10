@@ -270,6 +270,35 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #150): a local branch-edit copy of a USER message carries
+    ; the SOURCE message's backfilled token_count (bug #123). When the branch's
+    ; own real API response arrives, the copy must be RE-backfilled with its
+    ; real contribution - the copied (stale) attribution is replaced.
+    Insert_Backfill_ReplacesLocalCopyAttribution() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "original follow-up", parent_id: a1Id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 28, token_count: 6})
+        u2tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u2Id)[1, "token_count"])
+        if u2tc != 7
+            throw Error("setup: u2 should be backfilled to 7 (28-21), got " u2tc)
+
+        ; Branch-edit copy of u2 with DIFFERENT content (local_copy carries tc 7):
+        u2bId := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "user", content: "edited follow-up (branch)",
+            parent_id: a1Id, sibling_group: "sg-150", sibling_index: 1,
+            token_count: u2tc, active_path_tokens: 21 + u2tc, local_copy: true
+        })
+        ; The branch fires a REAL request whose prompt is 12 (mock):
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2b", parent_id: u2bId, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 5})
+        u2btc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u2bId)[1, "token_count"])
+        ; True contribution = Max(0, 12 - (12 u1 + 9 a1 + 7 copied)) = 0.
+        if u2btc != 0
+            throw Error("branch copy must be re-backfilled to 0 (12 - 28), got " u2btc)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_GetActivePath
     ; --------------------
