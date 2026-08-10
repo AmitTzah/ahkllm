@@ -181,4 +181,26 @@ describe('_sendAllSettings', () => {
         assert.strictEqual(payload.codeExecution, false);
         assert.strictEqual(payload.webSearch, true);
     });
+
+    it('keeps a temperature override of 0 in the payload (bug #193)', () => {
+        const ctx = loadSettingsModule();
+        const posted = [];
+        ctx.window.chrome.webview.postMessage = (m) => posted.push(m);
+        ctx.window._currentSettings = {
+            model: '', systemMessage: '', reasoning: '', temperature: 0,
+            codeExecution: false, webSearch: false, assistantName: ''
+        };
+        ctx._sendAllSettings();
+        assert.strictEqual(posted.length, 1);
+        const payload = JSON.parse(posted[0]);
+        assert.strictEqual(payload.action, 'updateModelSettings');
+        assert.strictEqual(payload.temperature, 0, 'a numeric 0 temperature must survive the send (0 is falsy in JS)');
+
+        // A truly empty temperature must still serialize as "".
+        ctx.window._currentSettings.temperature = '';
+        posted.length = 0;
+        ctx._sendAllSettings();
+        assert.strictEqual(posted.length, 1);
+        assert.strictEqual(JSON.parse(posted[0]).temperature, '');
+    });
 });

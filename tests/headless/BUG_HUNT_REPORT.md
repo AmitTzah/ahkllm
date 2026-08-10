@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #190 FIXED and committed (entry removed): ProviderResolver.Resolve
-  falls back to the FIRST configured provider instead of the hardcoded providers["deepseek"] (missing-key Map
-  index threw in AHK v2); scenario 190 flipped to a regression check + LLMRequestBuilder unit test. Next:
-  bug #193 (right-rail temperature 0 dropped on re-send) - the last open bug.
+- **Where we left off:** 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  189, 190, 193). Every entry moved to History; scenarios flipped to regression checks; full e2e suite +
+  `npm run test:fast` verified green before each commit. Next: run the FULL e2e suite (`--all`) for the final
+  all-green confirmation.
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -225,34 +225,14 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 193. Right-rail temperature 0 is silently dropped when any other right-rail setting is re-sent
-
-**Scenario:** 193 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Open a thread with a temperature override of 0 (the right rail shows "0.0"), then type into the
-system prompt field (or change the reasoning dropdown) - the next request uses the model's default
-temperature, and a reload shows Default.
-
-**Expected:** the stored 0 override survives every other setting change (bugs #35/#78 established 0 is a real
-override; `populateCurrentSettings` already stores it).
-
-**Actual:** `model-picker.js _sendAllSettings` posts `temperature: s.temperature || ''` - JS 0 is falsy, so a
-numeric 0 (the shape the backend sends for `temperature_override=0`) is serialized as `""` and AHK clears the
-override.
-
-**Evidence:** `webui/js/chat/model-picker/model-picker.js:_sendAllSettings` (falsy-0 send path; the fixed
-paths are `populateCurrentSettings` and the temp slider, which stores the string "0.0").
-
-**Verification:** headless - scenario 193 loads the REAL model-picker.js in a vm sandbox, sets
-`_currentSettings.temperature = 0`, calls `_sendAllSettings()`, and asserts the posted `updateModelSettings`
-carries `temperature: ""` (the bug).
-
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Right-rail temperature 0 is silently dropped when any other right-rail setting is re-sent" -
+  FIXED: model-picker.js _sendAllSettings now guards the falsy-0 (only undefined/null/'' become ''), so a
+  numeric temperature 0 override survives every other right-rail change (bug #35/#78 family on the SEND
+  path); scenario 193 flipped to a regression check + chat-settings unit test.
 - 2026-08-10 - "Removing the deepseek provider crashes request resolution (hardcoded fallback
   providers[\"deepseek\"])" - FIXED: ProviderResolver.Resolve now falls back to the FIRST configured provider
   (never indexes a missing Map key) when no prefix matches, so deleting deepseek in Settings no longer crashes

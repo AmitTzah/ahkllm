@@ -13,11 +13,16 @@ function _sendAllSettings() {
     // The assistant manages the model — sending it would cause AHK to treat it
     // as an explicit model switch and clear the assistant.
     var modelToSend = s.assistantName ? '' : (s.model || '');
+    // Bug #193: temperature 0 is a REAL override (bugs #35/#78) - JS 0 is
+    // falsy, so `s.temperature || ''` serialized it as "" and cleared the
+    // override whenever any other right-rail change re-sent settings. Only
+    // truly absent/empty values become "".
+    var temperatureToSend = (s.temperature === undefined || s.temperature === null || s.temperature === '') ? '' : s.temperature;
     Ipc.postToHost('updateModelSettings', {
       model: modelToSend,
       systemMessage: s.systemMessage || '',
       reasoning: s.reasoning || '',
-      temperature: s.temperature || '',
+      temperature: temperatureToSend,
       codeExecution: !!s.codeExecution,
       webSearch: !!s.webSearch
     });

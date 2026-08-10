@@ -407,6 +407,7 @@ scenarios.push({
   id: 193,
   name: 'Right-rail temperature 0 is silently dropped when ANY other right-rail setting is re-sent - _sendAllSettings posts temperature: s.temperature || "" (0 is falsy in JS), so typing a system prompt or changing reasoning with a 0 override resets it to default (bug #35/#78 family on the SEND path)',
   mode: null,
+  regression: true, // FIXED: numeric temperature 0 survives the re-send (falsy-0 guard)
   noApp: true,
   settings: {},
   async body() {
@@ -439,11 +440,11 @@ scenarios.push({
     await new Promise((r) => setTimeout(r, 400));
     const p = posted.find((x) => x.action === 'updateModelSettings');
     if (!p) throw new Error('updateModelSettings was not posted (sandbox issue)');
-    // BUG present: temperature 0 (a valid override per bug #35/#78 - it IS
-    // preserved in _currentSettings) is serialized as "" because 0 is falsy.
-    if (p.payload.temperature !== '')
-      throw new Error('temperature 0 survived the re-send (bug not reproduced): ' + JSON.stringify(p.payload));
-    return '_sendAllSettings with a stored temperature of 0 posted updateModelSettings with temperature="" - the 0 override is silently dropped whenever any other right-rail change re-sends settings (e.g. typing a system prompt), so the next reload shows Default';
+    // FIXED (bug #193): temperature 0 (a valid override per bug #35/#78) must
+    // survive the re-send - only truly empty/absent values become "".
+    if (p.payload.temperature !== 0)
+      throw new Error('temperature 0 still dropped on re-send (fix incomplete): ' + JSON.stringify(p.payload));
+    return '_sendAllSettings with a stored temperature of 0 posted updateModelSettings with temperature=0 - the 0 override survives every other right-rail change (e.g. typing a system prompt), so the next reload keeps 0.0';
   }
 });
 
