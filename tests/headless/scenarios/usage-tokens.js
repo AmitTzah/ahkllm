@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const vm = require('node:vm');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -786,6 +787,135 @@ scenarios.push({
       throw new Error('fork context now accurate (behavior changed): forkContext=' + forkContext);
     return 'fork at u2 (contribution 9, true context 30): fork leaf active_path_tokens=' + forkContext +
       ' - MessageRepo.Insert computes user apt at insert time (tc=0) and the assistant backfill never updates it, so the fork header under-reports';
+  }
+});
+
+// Load the REAL usage-dashboard.js in a vm sandbox (same approach as
+// tests/unit/usage-dashboard.test.js) and return { window, exports: { clickHandler, els } }.
+function loadUsageDashboardSandbox() {
+  const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'usage-dashboard.js'), 'utf8');
+  const els = {};
+  const listeners = {};
+  function makeEl(id) {
+    if (els[id]) return els[id];
+    const el = {
+      id,
+      value: id === 'timeRange' ? 'all' : '',
+      innerHTML: '',
+      listeners: {},
+      style: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      dataset: {},
+      addEventListener(type, fn) { el.listeners[type] = fn; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      appendChild() {},
+      click() { if (el.listeners.click) el.listeners.click(); },
+      getContext() { return {}; }
+    };
+    els[id] = el;
+    return el;
+  }
+  const stackToggle = {
+    querySelectorAll() { return []; },
+    addEventListener() {}
+  };
+  let csvCaptured = '';
+  const sandbox = {
+    console,
+    document: {
+      getElementById: (id) => makeEl(id),
+      querySelector: (sel) => (sel === '#stackToggle' ? stackToggle : null),
+      addEventListener() {}
+    },
+    window: {
+      chrome: { webview: { postMessage: () => {} } },
+      addEventListener() {}
+    },
+    Chart: function() { return { destroy() {}, update() {} }; },
+    Blob: function(parts) { return { parts }; },
+    URL: { createObjectURL: (b) => { csvCaptured = b.parts.join(''); return 'blob:csv'; }, revokeObjectURL() {} },
+    setTimeout() {},
+    clearTimeout() {},
+    navigator: {},
+    lucide: { createIcons() {} }
+  };
+  sandbox.global = sandbox;
+  sandbox.document.createElement = () => ({
+    style: {}, innerHTML: '', classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [],
+    click() {}
+  });
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(src, ctx);
+  return { sandbox, els, getCsv: () => csvCaptured };
+}
+
+scenarios.push({
+  id: 163,
+  name: 'Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const { sandbox, els, getCsv } = loadUsageDashboardSandbox();
+    sandbox.allData = {
+      chat: [{
+        date: '2026-08-10', model: 'openai/gpt-5,beta', provider: 'openai',
+        input_tokens: 12, output_tokens: 9, thinking_tokens: 2, cached_tokens: 4,
+        cached_input_cost: 0.01, output_cost: 0.02, total_cost: 0.03, message_count: 1
+      }],
+      commands: [],
+      providers: ['openai'],
+      models: ['openai/gpt-5,beta']
+    };
+    els.exportBtn.click();
+    const csv = getCsv();
+    if (!csv) throw new Error('export did not run (csv empty)');
+    const rows = csv.trim().split('\n');
+    // BUG present: the model "openai/gpt-5,beta" is joined without quoting -
+    // the comma shifts every following column one field left, so the row has
+    // 13 fields instead of 12 and Excel/parsers misread the numbers.
+    const dataRow = rows[1].split(',');
+    const modelField = dataRow[3];
+    if (rows[1].indexOf('"openai/gpt-5,beta"') >= 0 || dataRow.length === 12)
+      throw new Error('CSV now quotes fields (behavior changed): row=' + rows[1]);
+    return 'export row: model="' + modelField + '" -> ' + dataRow.length + ' comma-split fields (header has 12) - the model name containing a comma breaks column alignment: ' + rows[1];
+  }
+});
+
+scenarios.push({
+  id: 168,
+  name: 'Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) appear in the chart under "" but are absent from the provider filter dropdown',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const { sandbox, els } = loadUsageDashboardSandbox();
+    sandbox.allData = {
+      chat: [{
+        date: '2026-08-10', model: 'gpt-5', provider: '',
+        input_tokens: 12, output_tokens: 9, thinking_tokens: 0, cached_tokens: 0,
+        cached_input_cost: 0, output_cost: 0, total_cost: 0, message_count: 1
+      }],
+      commands: [],
+      providers: ['deepseek'],
+      models: ['gpt-5']
+    };
+    els.providerFilter.innerHTML = '';
+    sandbox.populateFilters();
+    const options = els.providerFilter.innerHTML;
+    // The row's provider is '' and extractProvider('gpt-5') is also '' - the
+    // chart's provider-mode key becomes '' (renderMainChart keys by
+    // c.provider || extractProvider(c.model)), but populateFilters only lists
+    // the backend's distinct providers (['deepseek']) - no option selects ''.
+    const optionValues = [...options.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]).slice(1);
+    const hasAnyProvider = options.indexOf('deepseek') >= 0;
+    if (!hasAnyProvider) throw new Error('provider dropdown did not render (harness issue)');
+    if (optionValues.indexOf('') >= 0)
+      throw new Error('empty-provider option now appears (behavior changed): ' + options);
+    return 'chat_usage row provider="" (model gpt-5 no longer in settings): chart provider-mode key = c.provider||extractProvider(model) = "" but the filter dropdown only lists ' +
+      JSON.stringify(optionValues) + ' - the removed-model row renders under a provider key that can never be selected/isolated';
   }
 });
 

@@ -1143,7 +1143,11 @@ scenarios.push({
       dataset: {},
       innerHTML: '',
       querySelector: (sel) => fields[sel] || null,
-      querySelectorAll: (sel) => sel === 'input, select' ? Object.values(fields) : [],
+      // _wirePriceContext calls querySelectorAll('[data-price-raw]') and
+      // _wireFields may query other selectors - return every field so the
+      // wiring actually attaches to the pre-created elements (the inert
+      // innerHTML assignment never populates them).
+      querySelectorAll: () => Object.values(fields),
       addEventListener() {},
       remove() {}
     };
@@ -1192,6 +1196,113 @@ scenarios.push({
       throw new Error('context survived focus/blur (behavior changed): saved=' + savedContext + ' displayAfterBlur=' + contextEl.value);
     return 'model context 128000 displayed as "128K"; focus+blur -> data-context-raw=128, display "128", saved context=' +
       savedContext + ' (1000x shrink - the k/M multiplier is lost on every focus/blur or save)';
+  }
+});
+
+scenarios.push({
+  id: 164,
+  name: 'Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat\'s the raw string (NaN -> 0) and stores 0 as data-price-raw',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    // Run the REAL models.js in a vm sandbox (same pattern as #158) and drive
+    // the actual price focus/blur listeners + save().
+    const sharedSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf-8');
+
+    function makeEl(initial) {
+      const el = {
+        value: initial.value !== undefined ? String(initial.value) : '',
+        raw: initial.raw !== undefined ? String(initial.raw) : null,
+        checked: !!initial.checked,
+        listeners: {},
+        classList: { add() {}, remove() {}, toggle() {} },
+        dataset: {}
+      };
+      el.getAttribute = (name) => (name === 'data-context-raw' || name === 'data-price-raw') ? el.raw : null;
+      el.setAttribute = (name, v) => { if (name === 'data-context-raw' || name === 'data-price-raw') el.raw = String(v); };
+      el.addEventListener = (type, fn) => { el.listeners[type] = fn; };
+      el.focus = () => { if (el.listeners.focus) el.listeners.focus(); };
+      el.blur = () => { if (el.listeners.blur) el.listeners.blur(); };
+      return el;
+    }
+
+    let trRef = null;
+    const idEl = makeEl({ value: 'deepseek-v4-flash' });
+    const providerEl = makeEl({ value: 'deepseek' });
+    const inputEl = makeEl({ value: '$0.50', raw: '0.5' });
+    const cachedEl = makeEl({ value: '', raw: '' });
+    const outputEl = makeEl({ value: '0.28', raw: '0.28' });
+    const contextEl = makeEl({ value: '' });
+    const visionEl = makeEl({ value: 'on', checked: false });
+    const reasoningEl = makeEl({ value: 'on', checked: true });
+    const fields = {
+      '[data-field="id"]': idEl,
+      '[data-field="provider"]': providerEl,
+      '[data-field="input"]': inputEl,
+      '[data-field="cachedInput"]': cachedEl,
+      '[data-field="output"]': outputEl,
+      '[data-field="context"]': contextEl,
+      '[data-field="vision"]': visionEl,
+      '[data-field="reasoning"]': reasoningEl
+    };
+    const tr = {
+      dataset: {},
+      innerHTML: '',
+      querySelector: (sel) => fields[sel] || null,
+      // _wirePriceContext calls querySelectorAll('[data-price-raw]') - return
+      // every field so the price focus/blur wiring attaches to the pre-created
+      // elements (the inert innerHTML assignment never populates them).
+      querySelectorAll: () => Object.values(fields),
+      addEventListener() {},
+      remove() {}
+    };
+    fields['.btn-sm.danger'] = makeEl({ value: '' });
+    const tbody = {
+      innerHTML: '',
+      appendChild(child) { trRef = child; }
+    };
+    const registeredSections = {};
+    const sandbox = {
+      document: {
+        getElementById: (id) => (id === 'modelsTableBody' ? tbody : null),
+        querySelectorAll: (sel) => (sel === '#modelsTableBody tr' ? (trRef ? [trRef] : []) : []),
+        createElement: () => tr,
+        addEventListener: () => {}
+      },
+      window: {
+        chrome: { webview: { postMessage: () => {} } },
+        SettingsPanel: { registerSection: (name, mod) => { registeredSections[name] = mod; } },
+        addEventListener: () => {}
+      },
+      setTimeout: () => {},
+      clearTimeout: () => {},
+      console
+    };
+    sandbox.global = sandbox;
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
+
+    const mod = registeredSections.models;
+    mod.load({
+      providers: { deepseek: {} },
+      models: { 'deepseek/deepseek-v4-flash': { provider: 'deepseek', input: 0.5, cachedInput: '', output: 0.28, context: '', vision: false, reasoning: true } }
+    });
+    if (inputEl.value !== '$0.50')
+      throw new Error('setup: input display should be $0.50, got ' + inputEl.value);
+    // User focuses (value becomes raw 0.5), pastes "$0.5" (the format they may
+    // copy from a pricing page), then blurs. parseFloat("$0.5") is NaN -> 0.
+    inputEl.focus();
+    inputEl.value = '$0.5';
+    inputEl.blur();
+    const saved = mod.save();
+    const savedPrice = saved.models['deepseek/deepseek-v4-flash'].input;
+    if (savedPrice !== 0)
+      throw new Error('price survived $ paste (behavior changed): saved=' + savedPrice + ' raw=' + inputEl.raw + ' display=' + inputEl.value);
+    return 'input price $0.50 displayed; user pastes "$0.5" and blurs -> data-price-raw=0, display "", saved input=' +
+      savedPrice + ' - the "$"-prefixed paste silently zeroes the price (parseFloat("$0.5") = NaN -> 0), and blank blur also saves 0';
   }
 });
 

@@ -5,6 +5,10 @@
 //   json               non-stream chat completion
 //   title              non-stream short title response (max_tokens 50)
 //   sse-script         streaming with a custom chunk script (opts.script)
+//   sse-midfail        streaming: one content chunk, then the socket is
+//                      destroyed before [DONE] (mid-stream connection failure)
+//   sse-slow           streaming like sse-success but with ~700ms delays per
+//                      chunk (total ~3s) so scenarios can act mid-stream
 //   json               non-stream chat completion; FIM requests (body.prompt)
 //                      answered with choices[0].text (opts.fimText)
 //   error-json         HTTP 401 with {"error":{"message":...}}
@@ -32,18 +36,19 @@ function makeSseHandler(opts) {
       'Connection': 'keep-alive'
     });
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const chunkDelay = opts.chunkDelay || 60;
     (async () => {
       if (opts.reasoning !== false) {
         sseChunk(res, { choices: [{ delta: { reasoning_content: 'Let me reason about this step by step. ' } }] });
-        await delay(60);
+        await delay(chunkDelay);
         sseChunk(res, { choices: [{ delta: { reasoning_content: 'First, gather the facts. ' } }] });
-        await delay(60);
+        await delay(chunkDelay);
       }
       if (opts.content !== '') {
         sseChunk(res, { choices: [{ delta: { content: 'Hello from the mock LLM. ' } }] });
-        await delay(60);
+        await delay(chunkDelay);
         sseChunk(res, { choices: [{ delta: { content: 'This is the streamed answer.' } }] });
-        await delay(60);
+        await delay(chunkDelay);
       }
       sseChunk(res, {
         choices: [{ delta: {}, finish_reason: 'stop' }],
@@ -138,6 +143,29 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       }
       if (mode === 'sse-script') {
         makeScriptedSseHandler(opts.script || [])(req, res);
+        return;
+      }
+      if (mode === 'sse-midfail') {
+        // Partial content is delivered, then the connection dies before the
+        // finish/usage chunk or [DONE] - the mid-stream failure case.
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        (async () => {
+          sseChunk(res, { choices: [{ delta: { content: 'Partial answer before the connection died. ' } }] });
+          await delay(120);
+          // End the stream cleanly with an HTTP error body (realistic provider
+          // failure after partial tokens) instead of a raw socket destroy,
+          // which left cURL hanging in this environment.
+          try { res.write(JSON.stringify({ error: { message: 'upstream error after partial content' } })); res.end(); } catch {}
+        })().catch(() => { try { res.end(); } catch {} });
+        return;
+      }
+      if (mode === 'sse-slow') {
+        makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700 })(req, res);
         return;
       }
       if (mode === 'sse-success') {

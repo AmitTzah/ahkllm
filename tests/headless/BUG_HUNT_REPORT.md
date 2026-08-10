@@ -154,18 +154,32 @@ How to run AHK safely:
 
 ## Current state
 
-- **16 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **32 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - 6 NEW BUGS #154-#159 VERIFIED headlessly: #154 branch-edit
-  copies drop the reasoning/thinking CONTENT (thinking_tokens kept, reasoning column empty),
-  #155 ThreadRepo.List sidebar model badge uses the last-inserted assistant instead of the active
-  path, #156 overwrite-editing a user message leaves the stale backfilled token_count which corrupts
-  the next user's backfill/popover, #157 forking AT a user message under-reports the fork's Context
-  Used (user active_path_tokens never includes its own backfilled contribution), #158 Models-tab
-  context field "128K" -> 128 corruption on focus/blur (k/M multiplier lost on save), #159 switching
-  threads mid-stream persists the response into the WRONG thread (completion reads activeThreadId at
-  finish time). Next: keep exploring the rest of the app (attachments in complex trees, more settings
-  round-trips), verifying any new finds headlessly.
+- **Where we left off:** 2026-08-10 - 16 NEW BUGS #160-#175 VERIFIED headlessly in one intake pass:
+  #160 UTF-8 multibyte split corruption in the stream poll read, #161 FTS5 loses prefix matching for
+  trailing-apostrophe queries (wrong quote char in the * guard), #162 command "Default" model is a
+  silent no-op (empty APIModels never substitutes the app default; createJSONRequest("") would send
+  {"model":""}), #163 usage CSV export is unquoted (comma in model/provider shifts columns), #164
+  Models-tab "$0.5" paste + blur silently zeroes the price (parseFloat NaN -> 0), #165 search cannot
+  find attachment extracted_text, #166 assistant isDefault is dead metadata (carried, never read; no UI
+  field), #167 failed/usage-less title-gen calls are never tracked in the dashboard, #168 usage rows
+  with provider "" render in the chart but are absent from the provider dropdown, #169 a failed retry
+  hides the original response (bubble gone + error banner until reload, DB intact), #170 reasoning-only
+  streams persist ttft_ms=0 (first-token timer ignores reasoning chunks), #171 cancel-after-thread-switch
+  writes the partial into the WRONG thread, #172 hard-delete/empty-trash mid-stream silently DROPS the
+  billed response (no dangling row - activeThreadId is cleared, but the response is never persisted or
+  usage-tracked), #173 mid-stream failure with no usage chunk CRASHES the completion handler
+  (CostCalculator reads usage.promptTokens unguarded) after persisting the partial - UI left stuck with
+  a misleading "Request failed" banner, #174 branch navigation never refreshes the sidebar thread list,
+  #175 cross-thread search navigation race (_pendingSearchScrollMsgId consumed by ANY thread's
+  initChatMode). Refuted this pass (History): leads 13 (empty-model counters - unreachable), 14
+  (contextWindow=0 blank context - intended), 15 (settings leftovers - live re-registration/round-trips
+  verified OK), 17 (tree modal multiple roots - layout/marker correct), 20 (empty-model side-edit reset -
+  cannot overwrite a thread model), 22 (edit+fork stale apt - already tracked by #156/#157). FULL SUITE
+  GREEN: `node tests/headless/e2e-suite.js --all` = 169/169 PASS and `npm.cmd run test:fast` = 514/514
+  (report sync OK: 32 entries / 169 scenarios). Next: continue exploring remaining areas (or start the
+  fix cycle on the new verified bugs in rank order).
 ---
 
 ## Bug entry template
@@ -645,10 +659,273 @@ the global activeThreadId), `webui/js/chat/chat-sidebar.js` loadThread has no is
 mock stream -> DB read: A has 0 assistant rows (its user message unanswered), B has the "Hello from
 the mock LLM. This is the streamed answer." assistant row.
 
+### 17. A mid-stream failure with no usage chunk crashes the completion handler after persisting the partial - the UI is left STUCK with a misleading "Request failed" banner (thread unusable until reload)
+
+**Scenario:** 173 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Send a chat message, and have the API send one content chunk and then fail mid-stream WITHOUT a final usage chunk (e.g. a provider error/connection reset after the first tokens). Watch the chat window.
+
+**Expected:** The truncated response is either saved cleanly as a partial (like a cancel) or discarded with a clear error, and the UI returns to a usable state (input re-enabled, terminal state).
+
+**Actual:** `_finalizeStreaming` only routes to `_handleStreamError` when content is empty, so the partial content proceeds to `_handleStreamComplete`. The partial IS persisted (assistant row with the truncated content, prompt_tokens=0), but `_logStreamResponse` then calls `CostCalculator.ComputeTokenCosts(model, usage)` with the still-empty `_streamUsage` object, and `ComputeTokenCosts` reads `usage.promptTokens` UNGUARDED (only `cachedTokens` is guarded) - with any model priced > 0 this throws "This value of type \"Object\" has no property named \"promptTokens\"". The exception bubbles to `_handleStreamComplete`'s catch, which posts "Request failed: ..." but NEVER calls `setChatButtonsEnabled(true)`: `isLoading` stays true and `streamState.active` stays true, so the input stays disabled/Stop and the send button never recovers until reload. The persisted partial looks like a complete response with zero usage.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` (_handleStreamComplete -> saveStreamResponse -> _logStreamResponse -> CostCalculator.ComputeTokenCosts), `api/CostCalculator.ahk` (`if inputPrice > 0 && usage.promptTokens > 0` - no HasOwnProp guard), `chat/streaming/StreamHandler.ahk` (_finalizeStreaming only errors on empty content).
+
+**Verification:** headless scenario 173 (live, mock `sse-midfail`): one content chunk then an error body -> DB has the partial assistant row (prompt_tokens=0), the crash banner appears, and `isLoading=true` + `streamState.active=true` persist (UI stuck). The original "partial never persisted" hypothesis was REFUTED - the partial IS persisted; the real bug is the post-persist crash + stuck UI.
+
+### 18. Hard-deleting / empty-trashing the streaming thread mid-stream silently DROPS the completed response - the billed API call is never persisted anywhere and never usage-tracked
+
+**Scenario:** 172 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Send a message in thread A, and while the response is streaming, soft-delete A to the trash and click "Delete forever" (or Empty Trash) before the stream finishes. Wait for the stream to complete.
+
+**Expected:** Either the response completes into the deleted thread's trash (soft-delete behavior is defensible) or, for a hard delete, the user accepts the conversation is gone - but the API call that was made should not silently vanish with no trace.
+
+**Actual:** `_HandleThreadAction deleteThreadForever`/`emptyTrash` calls `ThreadRepo.Delete`, and when the deleted thread is the active one it clears `activeThreadId := ""`. When the stream completes, `saveStreamResponse`'s `if activeThreadId` guard SKIPS `_persistStreamResponse` entirely - no dangling row is created (the messages table has no FK, but the insert never runs), yet the response is also NOT persisted anywhere else: no assistant row in any thread, no `chat_usage` row, no `postThreadStats`. The billed response simply vanishes (only the API log records the call).
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` (saveStreamResponse gates persistence on `if activeThreadId`), `chat/callbacks/Sidebar.ahk` (deleteThreadForever/emptyTrash clear activeThreadId).
+
+**Verification:** headless scenario 172 (live, slow mock ~3s): delete-forever at ~1.5s while `streamState.active` was still true -> final DB: dangling messages=0, assistant rows=0, chat_usage=0. The "dangling orphan" hypothesis was REFUTED (activeThreadId is cleared, so no orphan); the actual bug is the silent total loss of the completed response + its usage accounting.
+
+### 19. Retry failure hides the original response - the retried message is spliced out of chatMessages immediately and a failed retry never restores it (bubble gone + error banner until reload; DB row intact)
+
+**Scenario:** 169 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Have an assistant response, click Retry on it, and let the retry request fail (network/provider error). Look at the conversation.
+
+**Expected:** The failed retry should leave the original response visible (it is still the current answer), or restore it when the retry errors.
+
+**Actual:** `retryLastAssistantMessage` does `chatMessages.splice(i)` (removing the retried assistant and everything after it) and re-renders BEFORE the request. On failure, `_handleStreamError` shows the error banner and re-enables the UI but never restores the removed messages - the conversation stays truncated in the UI until a reload. The DB is untouched (the original row and the leaf pointer are intact), so the user's chat looks like the exchange never happened while the data still exists.
+
+**Evidence:** `webui/js/chat/chat-input.js` (retryLastAssistantMessage splice + render before the IPC), `chat/streaming/StreamError.ahk` (_handleStreamError posts showError + setChatButtonsEnabled only).
+
+**Verification:** headless scenario 169 (live, refused endpoint): click Retry on a1 -> chatMessages drops to the user message; after the error banner, DB still has a1 (rows=1, leaf=u1) but the DOM shows only 1 bubble.
+
+### 20. Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159)
+
+**Scenario:** 171 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Send a message in thread A; while it streams, click thread B; then click Stop. Reopen thread A.
+
+**Expected:** The cancelled partial belongs to thread A (the thread that sent the request); thread B stays untouched.
+
+**Actual:** `_handleStreamCancelled` inserts the partial with `thread_id = activeThreadId` and `parent_id` from the CURRENT active path - after the switch that is thread B. The partial (and its `streamCancelled` UI payload) lands in B, while A's user message is left with no answer. This is the cancel-path sibling of bug #159 (the completion path), with the same missing in-flight guard.
+
+**Evidence:** `chat/streaming/StreamError.ahk` (_handleStreamCancelled uses activeThreadId + Msg_GetActivePath(activeThreadId)), `webui/js/chat/chat-sidebar.js` (loadThread has no isLoading guard).
+
+**Verification:** headless scenario 171 (live): send in A -> switch to B at ~40ms -> Stop at ~130ms -> DB read: A has 0 assistant rows, B has 1 partial assistant row.
+
+### 21. Reasoning-only streams report ttft_ms=0 - the first-token timer only stamps "content" chunks, never "reasoning", so the popover hides TTFT, the dashboard averages 0ms, and the API-log latency falls back to the full duration
+
+**Scenario:** 170 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Send a message to a reasoning-only model (e.g. DeepSeek R1 with empty final content, or the mock `sse-reasoning-only`). Open the assistant's token popover and the API Logs viewer.
+
+**Expected:** Time-to-first-token is measured from the first received chunk (reasoning counts as a token); the popover shows TTFT, the dashboard averages a real value, and the API log's latency is the first-token latency.
+
+**Actual:** `_processChunk` sets `state.firstTokenTime` only in the `case "content"` branch; reasoning chunks never stamp it. For a reasoning-only stream `_streamFirstTokenTime` stays 0, so `_persistStreamResponse` writes `ttft_ms=0` (popover hides the TTFT line entirely; the dashboard shows 0ms), and `_logStreamResponse`'s `responseTimeMs := firstTokenTime > 0 ? firstTokenTime - start : full duration` records the FULL duration as the latency for a stream that never produced visible content.
+
+**Evidence:** `chat/streaming/StreamHandler.ahk` (_processChunk: firstTokenTime only on content), `chat/streaming/StreamCompletion.ahk` (ttftMs = 0 when firstTokenTime=0; log latency fallback), `webui/js/chat/chat-token-tooltip.js` (TTFT row hidden when 0), `webui/js/usage-dashboard.js` (average TTFT).
+
+**Verification:** headless scenario 170 (live, `sse-reasoning-only`): the persisted assistant row has ttft_ms=0 (response_time_ms=250), confirming the first-token timer never fired on reasoning chunks.
+
+### 22. A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model
+
+**Scenario:** 162 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Commands -> set a command's API Model to "Default" (the first dropdown option, tooltip: "or Default for the chat default model"). Run the command.
+
+**Expected:** The command uses the app default model (the tooltip's promise).
+
+**Actual:** `onCommandSelected`/`onCommandInputSend` pass `cmd.APIModels` raw (empty string for Default) into `processInitialRequest`, which does `StrSplit(RegExReplace("", "\s+", ""), ",")`. AHK's `StrSplit("")` returns an EMPTY array, so the `for i, fullAPIModelName in APIModelsArr` loop never runs: no thread is created (chat mode), no inline request is fired, no error is shown - the command is a silent no-op. The UI-side `_defaultModel` computed in commands-core.js is never substituted. (If an empty string ever reached `createJSONRequest`, `ProviderResolver.Resolve("")` falls back to deepseek and emits `{"model":""}` - a model-less request.)
+
+**Evidence:** `app/RequestProcessor.ahk` (processInitialRequest StrSplit + for-loop), `app/menu/CommandMenu.ahk` (passes cmd.APIModels raw), `webui/js/settings/sections/commands/commands-render.js` (empty "Default" option), `webui/js/settings/sections/commands/commands-core.js` (_defaultModel computed but never used for substitution).
+
+**Verification:** headless scenario 162 (probe, real code): `StrSplit("")` -> 0 entries (loop no-op) AND `createJSONRequest("")` -> `{"messages":[...],"model":""}` - the Default option never substitutes the app default.
+
+### 23. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
+
+**Scenario:** 164 (scenario code in scenarios/settings.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Models -> focus a price field, paste "$0.5" (or "$0.1400" copied from a pricing page), blur, Save. Also try clearing the field and blurring.
+
+**Expected:** "$0.5" parses as 0.5; a blank field stays blank (falls back to the app's blank-price semantics), not 0.
+
+**Actual:** `_wirePriceInput`'s blur handler does `parseFloat(input.value) || 0` with no `$` stripping (only `_parsePrice` strips `$`, and only when no raw value is stored). `parseFloat("$0.5")` is NaN -> 0, and the 0 is written to `data-price-raw`, so the price is permanently zeroed even if the user re-types the number later. The same `|| 0` collapses an EMPTY field to 0 (a blank price is saved as 0 instead of staying blank), and a "1.5k"-style suffix silently becomes 1.5.
+
+**Evidence:** `webui/js/settings/sections/models.js` (_wirePriceInput blur: `parseFloat(input.value) || 0`; _parsePrice prefers the stored raw).
+
+**Verification:** headless scenario 164 (vm, real models.js): input display $0.50 -> focus -> paste "$0.5" -> blur -> saved input=0 (raw=0, display "").
+
+### 24. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
+
+**Scenario:** 163 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Give a model id (or provider display name) a comma - e.g. "openai/gpt-5,beta" in Settings -> Models -> Save. Open Usage Dashboard -> Export.
+
+**Expected:** RFC-4180 CSV: fields containing commas (or quotes) are quoted, so the row keeps 12 columns and spreadsheet/parser imports read the numbers correctly.
+
+**Actual:** `exportBtn` joins each row's fields with `Array.join(',')` and never quotes or escapes. A comma inside the model or provider name splits the row into extra fields, shifting every following column one position left - the numeric columns (input/output/costs/calls) are misread by any CSV consumer.
+
+**Evidence:** `webui/js/usage-dashboard.js` (exportBtn handler joins with commas, no quoting).
+
+**Verification:** headless scenario 163 (vm, real usage-dashboard.js): chat row with model "openai/gpt-5,beta" -> exported row splits into 13 fields (header has 12), no quoting.
+
+### 25. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
+
+**Scenario:** 165 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Attach a PDF/office file whose extracted text contains a distinctive term; the message text itself does not. Search for the term.
+
+**Expected:** The term inside the attached document's extracted_text should surface the message (the extracted text is part of the conversation context - ChatRequestBuilder sends it to the API).
+
+**Actual:** `SearchRepo.Search` (FTS5 + LIKE + title fallback) only queries `messages.content`; `message_attachments.extracted_text` is never indexed (FTS_Sync only receives message content) and never searched. The search UI says "Search chats..." with no indication that attachment text is excluded, so a user searching for something only present in an attached document finds nothing.
+
+**Evidence:** `chat/db/SearchRepo.ahk` (all queries against messages only), `chat/db/ChatDB.ahk` (FTS_Sync indexes message content only), `chat/ChatRequestBuilder.ahk` (extracted_text is part of the API context).
+
+**Verification:** headless scenario 165 (probe, real SearchRepo): attachment extracted_text contains "needle" only -> `Search("needle", tid)` returns 0 hits.
+
+### 26. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
+
+**Scenario:** 166 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Open Settings -> Assistants. Note there is no "Default" control. Inspect any code path that could use an assistant's isDefault flag.
+
+**Expected:** Either isDefault drives the default-assistant behavior (like the old "Set as Default Assistant" toggle it replaced) or it is removed as dead metadata.
+
+**Actual:** `isDefault` is written in DefaultSettings.ahk (default assistant: true), carried through SettingsApply._ApplyAssistants (bug #122 fixed the save round-trip), and preserved by assistants.js - but NOTHING reads it for behavior. The actual default comes from the top-level `newChatStartsWith` setting (General tab), which the History shows replaced the "Set as Default Assistant" toggle; `isDefault` was left behind as dead metadata with no UI to view or change it.
+
+**Evidence:** grep of production code: isDefault appears only in DefaultSettings.ahk, SettingsApply.ahk, assistants.js (write/carry), never in a condition/behavior; `webui/js/settings/sections/general.js` wires newChatStartsWith.
+
+**Verification:** headless scenario 166 (noApp static): behavior-reader scan of AssistantRepo/ChatSettings/SettingsApply/CommandMenu/ThreadSettings/model-picker finds only carry-only references; assistants.js has no isDefault UI field.
+
+### 27. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
+
+**Scenario:** 167 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Trigger title generation while the title API call fails (or returns without usage). Open Usage Dashboard -> commands section.
+
+**Expected:** Every title-generation API call (the mock/cost is billed) appears in the dashboard, with the response time recorded even when no title was produced.
+
+**Actual:** `generateThreadTitle` always calls `_TitleGen_TrackUsage(...)` after the request, but `_TitleGen_TrackUsage` returns early when `promptTokens <= 0`. A failed/usage-less response leaves promptTokens at 0, so no `CommandUsage_Upsert` row is written - the billed call and its latency never reach the dashboard (the API log does record it, so the call is known).
+
+**Evidence:** `chat/ThreadTitleGen.ahk` (_TitleGen_TrackUsage `if promptTokens <= 0 return`; _TitleGen_ParseResponse defaults to 0 on failure).
+
+**Verification:** headless scenario 167 (noApp static): the TrackUsage call exists after the request and the early-return guard is present with no failure fallback.
+
+### 28. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
+
+**Scenario:** 168 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Use a model whose provider cannot be resolved (e.g. a short-id model no longer present in Settings, or a renamed/legacy id) so `MessageRepo.Insert` stores `provider: ""` in chat_usage. Open Usage Dashboard.
+
+**Expected:** The row's cost is attributable - either listed under a real provider or visible/selectable in the provider filter.
+
+**Actual:** The chart's provider-mode key is `c.provider || extractProvider(c.model)` = "" for such rows (they render under an empty/blank key), while `populateFilters` builds the dropdown only from the backend's distinct provider list (which excludes ""), so the empty-provider cost can never be isolated or filtered; "All Providers" shows it but no provider selection can scope to it.
+
+**Evidence:** `chat/db/MessageRepo.ahk` (provider fallback leaves "" when the model is unknown), `webui/js/usage-dashboard.js` (renderMainChart key `c.provider||extractProvider(c.model)`; populateFilters iterates `allData.providers` only).
+
+**Verification:** headless scenario 168 (vm, real usage-dashboard.js): row provider="" + backend providers ['deepseek'] -> filter dropdown has no '' option while the chart key would be ''.
+
+### 29. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
+
+**Scenario:** 174 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Have two threads A (newer) and B (older, with two branches). Open B and click "Next branch" on the branched assistant. Look at the sidebar order.
+
+**Expected:** B just became the most recently active thread, so it should move to the top (and its model badge should reflect the active branch).
+
+**Actual:** `ChatDB.Msg_SwitchBranch` bumps `updated_at=datetime('now')` (the DB is correct), but `handleBranchSwitch` only posts `updateChatView` + `updateBranchInfo` + `postThreadStats` - never `_postThreadListRefresh()`. The sidebar keeps its previous order (and the previously rendered model badge from ThreadRepo.List, bug #155) until some other action (send/delete/rename/refresh) reposts the thread list. The `datetime('now')` second granularity also means rapid sends/switches within one second tie and order arbitrarily by rowid on the next refresh.
+
+**Evidence:** `chat/callbacks/Branch.ahk` (handleBranchSwitch posts no threadList), `chat/db/TreeRepo.ahk` (SwitchBranch sets updated_at), `chat/db/ThreadRepo.ahk` (List ORDER BY updated_at DESC, second-granular datetime).
+
+**Verification:** headless scenario 174 (live): B's updated_at bumped (2026-08-10 11:22:49 -> 11:22:52) after Next branch, but the sidebar order stays A,B - no refresh was posted.
+
+### 30. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
+
+**Scenario:** 160 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Stream a response whose content contains a multibyte character (accented Latin, Greek, CJK) while the 100ms poll timer reads the cURL output file at a moment the file write split the character.
+
+**Expected:** The persisted content equals the sent content byte-for-byte.
+
+**Actual:** `_readFileChunk` opens the output with `UTF-8-RAW`, seeks with `file.Pos` (byte position) and resumes at the previous EOF. When the poll boundary lands inside a multibyte character, AHK's decoder returns U+FFFD for the split sequence on BOTH sides: the first read yields "ab\uFFFD", the resumed read "\uFFFDcd", and the joined content "ab\uFFFD\uFFFDcd" is permanently mangled (11 UTF-8 bytes instead of 6) before it reaches SSEParser. Whole characters read in one poll round-trip fine, so the corruption is timing-dependent.
+
+**Evidence:** `chat/streaming/StreamHandler.ahk` (_readFileChunk FileOpen UTF-8-RAW + file.Pos byte seek).
+
+**Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
+
+### 31. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+
+**Scenario:** 161 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Search for a partial word where the query string ends in `'` (e.g. "comp'"), where the same word without the apostrophe finds results.
+
+**Expected:** "comp'" behaves like "comp" (prefix match on the last word - the code's comment says prefix matching is intentional).
+
+**Actual:** `SearchRepo._FTS5` wraps every term in double quotes via `_FTS5QuoteTerm`, then appends `*` for prefix matching UNLESS the raw query's last char is `*` or `'`. The `'` check was meant to detect "the last word is quoted" (comment), but terms are ALWAYS double-quoted - so a query whose last character is an apostrophe (e.g. "comp'") skips the `*` and matches only the literal token "comp'": "comp" finds "complete"/"compass" (1 hit), "comp'" finds 0.
+
+**Evidence:** `chat/db/SearchRepo.ahk` (_FTS5 lastChar check `!= "*" && != "'"`; _FTS5QuoteTerm always double-quotes).
+
+**Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
+
+### 32. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+
+**Scenario:** 175 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Search globally, click a result in thread A, and immediately click thread B (or let A's load fail) before the navigation completes.
+
+**Expected:** The search navigation lands on the clicked message in thread A regardless of what the user does in between.
+
+**Actual:** The cross-thread search click sets `_pendingSearchScrollMsgId = messageId` and posts loadThread(A). `initChatMode` (called on EVERY thread load) consumes the pending id unconditionally: if the user opened thread B first, B's initChatMode posts `navigateToMessage(A's msg)` while activeThreadId=B - AHK's `Msg_SetActiveLeaf(B, A-msg)` then fails (the message is not in B), so the navigation is silently dropped and the search scroll never happens. If A's load fails entirely, the pending id survives and the NEXT unrelated thread load consumes it, posting a spurious navigation for a message that isn't in that thread.
+
+**Evidence:** `webui/js/chat/chat-search.js` (_pendingSearchScrollMsgId set on cross-thread click; onSearchCrossThreadLoaded consumes it), `webui/js/chat/chat-core.js` (initChatMode calls onSearchCrossThreadLoaded for every thread), `chat/callbacks/Sidebar.ahk` (navigateToMessage -> Msg_SetActiveLeaf rejects cross-thread ids).
+
+**Verification:** headless scenario 175 (vm, real chat-search.js + chat-core.js): pending "m-A-1" consumed by thread B's initChatMode (navigateToMessage posted with activeThreadId=t-B); a failed load leaves the pending for thread C (spurious navigateToMessage("m-A-2")).
+
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-10 - "Command empty APIModels sends a model-less request" - PARTIALLY REFUTED: AHK's `StrSplit("")` returns an EMPTY array, so processInitialRequest's loop never runs and the command is a silent NO-OP (no request at all) - tracked as #162; `createJSONRequest("")` would emit `{"model":""}` if it were ever reached. `_RecomputeCumulativeCounters` skipping empty-model assistant rows (lead 13) is REFUTED as unreachable: no current flow can insert a real assistant row with model "" (the empty-model command no-ops first; cancel/error paths always carry a model). The probe check `empty-model-skip` in probe-bughunt-db.ahk documents the latent hazard only.
+- 2026-08-10 - "GetThreadStats contextWindow=0 for models with blank context" - REFUTED (intended): the header's `cw ? ' / ' + formatCompact(cw) : ''` deliberately omits the "/ total" suffix when the model has no configured context; the 1,048,576 fallback in GetThreadStats applies only when the context key is entirely absent. A blank context means "unknown total" and hiding it is consistent with the UI.
+- 2026-08-10 - "Settings leftovers (hotkeys.reload/suspend, collapseThinking, commands fields, empty SetFont, icons browse path)" - REFUTED: Main.ahk registers `SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)`, so reload/suspend re-register live (bug #4/#8 family); `collapseThinking` is applied per reasoning chunk from the current providers global; commands field round-trips were fixed in #101 (scenario 101 regression); an empty `SetFont` face is valid (falls back to the default font); icon path resolution was fixed in #18.
+- 2026-08-10 - "Tree modal with multiple roots (layout / Current marker)" - REFUTED: running the REAL `_layoutTreeNodes` in a vm with two root assistants (delete-root-user + retry shape) lays them out with the SIBLING_GAP cushion (y=60 and y=220, no overlap) and marks only the active root "(Current)" - the root-gap handling the lead suspected is present and correct.
+- 2026-08-10 - "handleModelSettingsUpdate with empty model + no assistant resets singleAPIModelName to appDefaultModel" - REFUTED: `ThreadSettings.ToThreadSettingsMessage` always sends the current effective model, `populateCurrentSettings` mirrors it into `_currentSettings.model`, and `_sendAllSettings` only sends model "" when an ASSISTANT is active (where the `activeAssistantId` guard prevents the reset). The appDefaultModel fallback fires only in the genuinely-default state and cannot overwrite a thread's model override during a side-setting edit.
+- 2026-08-10 - "Msg_Edit mid-path + fork leaves stale active_path_tokens (lead 22)" - REFUTED as a separate bug: a fork at an edited user message is the intersection of two already-tracked bugs - #156 (overwrite edit never resets the user's stale token_count) and #157 (fork-at-user copies the stale active_path_tokens). No new code path beyond those two.
 
 - 2026-08-08 - "Cancelling a stream mid-response records a fake API request and inflates the thread's cumulative input tokens (header and usage dashboard disagree)" - FIXED: _handleStreamCancelled now inserts the cancelled partial as local_copy, so MessageRepo.Insert never upserts chat_usage (no fake API request) and never recomputes the cumulative counters from the un-billed parent context; scenario 133 flipped to a regression check + StreamError unit tests.
 

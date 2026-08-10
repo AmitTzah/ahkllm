@@ -10,6 +10,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const { CDP } = require('../cdp');
 const launcher = require('../launch');
 const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -1319,6 +1320,225 @@ scenarios.push({
     if (hasReset || failurePathClears) throw new Error('guard is now cleared somewhere (behavior changed): ' + JSON.stringify({ hasReset, failurePathClears }));
     return 'ThreadTitleGen.ahk sets _titleGenRequestedThreads[threadId] before the request and never clears it on the no-title/failure path - ' +
       'a transient title-gen failure leaves the thread titled "New Chat" forever in the session (unit-verified: second attempt after a failure is blocked, runs=1)';
+  }
+});
+
+scenarios.push({
+  id: 160,
+  name: 'Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character (the File.Pos byte seek resumes inside a character and inserts replacement chars)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-utf8-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-utf8.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('utf8 probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.match(/UTF8SPLIT verdict=([^\s]+)/);
+    if (!m) throw new Error('probe output missing split verdict: ' + text);
+    const verdict = m[1];
+    const detail = text.match(/UTF8SPLIT part1=([^\n]*)/);
+    // BUG present: _readFileChunk opens the cURL output with UTF-8-RAW, seeks
+    // with file.Pos (byte position) and resumes at the previous EOF. When the
+    // poll boundary lands inside a multibyte character, the two reads produce
+    // U+FFFD replacement characters ("ab\uFFFD" + "\uFFFDcd") instead of
+    // "ab\u00E9cd" - the persisted content is permanently mangled.
+    if (verdict !== 'BUG-present(split-mangles)')
+      throw new Error('split read no longer mangles (behavior changed): ' + verdict);
+    return 'UTF-8 poll split: part1="' + (detail ? detail[1] : '?') + '" - the resumed byte seek splits the multibyte char and persists U+FFFD replacements (' + verdict + ')';
+  }
+});
+
+scenarios.push({
+  id: 161,
+  name: 'Search FTS5 loses prefix matching when the query ends in an apostrophe (the * guard tests the wrong quote char - terms are always double-quoted)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'fts5-prefix-quote'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('fts probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.match(/FTS5PREFIX plain comp hits=(\d+) comp' hits=(\d+)/);
+    if (!m) throw new Error('probe output missing FTS5PREFIX line: ' + text);
+    const plain = Number(m[1]), quote = Number(m[2]);
+    // BUG present: "comp" -> "comp"* finds "complete"/"compass"; "comp'" skips
+    // the * (lastChar = "'"), so it matches only the literal token "comp'".
+    if (!(plain > 0 && quote === 0))
+      throw new Error('FTS5 prefix behavior changed: comp=' + plain + " comp'=" + quote);
+    return "SearchRepo._FTS5: query \"comp\" finds " + plain + " message(s), but \"comp'\" finds " + quote +
+      " - the trailing-apostrophe query loses prefix matching because the * guard checks the wrong quote char (terms are always double-quoted)";
+  }
+});
+
+scenarios.push({
+  id: 162,
+  name: 'A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown\'s Default option is never substituted with the app default model',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'command-empty-models'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('empty-model probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const arrM = text.match(/modelsArrLen=(\d+)/);
+    const jsonM = text.match(/CMDEMPTY json=(\S+)/);
+    if (!arrM || !jsonM) throw new Error('probe output missing CMDEMPTY line: ' + text);
+    const arrLen = Number(arrM[1]);
+    // BUG present: StrSplit(RegExReplace("", ...), ",") returns an EMPTY array
+    // (modelsArrLen=0), so processInitialRequest's `for` loop never runs - the
+    // command is a silent no-op. And even a direct createJSONRequest("") emits
+    // {"model":""} (ProviderResolver.Resolve("") falls back to deepseek).
+    if (arrLen !== 0 || !text.includes('"model":""'))
+      throw new Error('empty APIModels behavior changed: arrLen=' + arrLen + ' json=' + jsonM[1]);
+    return 'Command "Default" model: StrSplit(empty) -> ' + arrLen + ' entries, so processInitialRequest never runs a request (silent no-op); ' +
+      'createJSONRequest("") would send ' + jsonM[1] + ' - the Default option never substitutes the app default';
+  }
+});
+
+scenarios.push({
+  id: 165,
+  name: 'Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'fts-attachment-text'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('fts-att probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.match(/FTSATT search needle hits=(\d+)/);
+    if (!m) throw new Error('probe output missing FTSATT line: ' + text);
+    const hits = Number(m[1]);
+    // BUG present: the attachment's extracted_text holds the only occurrence
+    // of "needle", and SearchRepo never queries message_attachments.
+    if (hits !== 0)
+      throw new Error('attachment text is now searchable (behavior changed): hits=' + hits);
+    return 'Message says "see attached report"; the PDF attachment\'s extracted_text contains "needle" only - Search("needle") returns ' + hits +
+      ' hits (SearchRepo queries messages.content only, never message_attachments.extracted_text)';
+  }
+});
+
+scenarios.push({
+  id: 166,
+  name: 'Assistant "isDefault" is a dead setting - persisted/carried everywhere but never read for any behavior, and the Assistants UI has no field to change it',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const files = [
+      ['chat/db/AssistantRepo.ahk', 'assistant'],
+      ['chat/ChatSettings.ahk', 'chat settings'],
+      ['app/settings/SettingsApply.ahk', 'settings apply'],
+      ['app/menu/CommandMenu.ahk', 'command menu'],
+      ['chat/ThreadSettings.ahk', 'thread settings'],
+      ['webui/js/chat/model-picker/model-picker.js', 'model picker']
+    ];
+    const reads = [];
+    for (const [rel, label] of files) {
+      const src = fs.readFileSync(path.join(launcher.REPO_ROOT, rel), 'utf8');
+      // isDefault appearing as a written/carried field (a.Has("isDefault") etc.)
+      const writes = /isDefault/.test(src);
+      // isDefault being READ for behavior: conditions, comparisons, ternaries.
+      const readsBehavior = /if\s+[^;{]*isDefault|isDefault\s*(=+|\?|&&|\|\|)|\.isDefault\b/.test(src);
+      if (writes && readsBehavior) reads.push(rel + ':behavior');
+      else if (writes) reads.push(rel + ':carry-only');
+    }
+    // DefaultSettings defines the default assistant with isDefault:true; the
+    // default that actually drives new chats is the top-level newChatStartsWith
+    // (Settings General tab), not any assistant's isDefault flag.
+    const assistantsUi = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'assistants.js'), 'utf8');
+    const uiHasDefaultField = /isDefault|Set as Default|default assistant/i.test(assistantsUi);
+    // BUG present: no consumer reads isDefault for behavior (reads empty), and
+    // the Assistants settings UI has no isDefault control (only preserve-on-save).
+    const behaviorReaders = reads.filter((r) => r.endsWith(':behavior'));
+    if (behaviorReaders.length) throw new Error('isDefault is now read for behavior: ' + behaviorReaders.join(', '));
+    return 'isDefault: carried only (' + reads.map((r) => r.split(':')[0].split('/').pop()).join(', ') +
+      ') - zero behavior readers; Assistants UI has no isDefault field (field=' + uiHasDefaultField + '); the real default comes from newChatStartsWith - the flag is dead metadata';
+  }
+});
+
+scenarios.push({
+  id: 167,
+  name: 'A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ThreadTitleGen.ahk'), 'utf8');
+    // _TitleGen_TrackUsage is invoked with the parse result after the request;
+    // the guard skips tracking whenever promptTokens is 0/absent (failure or a
+    // response without usage), while the API call was already executed.
+    const trackCall = /_TitleGen_TrackUsage\(titleGenModel,\s*providerInfo\.providerKey,\s*promptTokens,\s*completionTokens,\s*thinkingTokens,\s*titleGenStart\)/.test(src);
+    const earlyReturn = /_TitleGen_TrackUsage\([\s\S]{0,180}?if promptTokens <= 0\s*return/.test(src);
+    const fallbackTrack = /promptTokens\s*:=\s*Math\.Max|Max\(1, promptTokens\)|if\s+!raw[\s\S]{0,200}?_TitleGen_TrackUsage/.test(src);
+    if (!trackCall) throw new Error('_TitleGen_TrackUsage call missing (behavior changed)');
+    if (!earlyReturn || fallbackTrack) throw new Error('title-gen failure tracking changed: earlyReturn=' + earlyReturn + ' fallbackTrack=' + fallbackTrack);
+    return 'ThreadTitleGen.ahk calls _TitleGen_TrackUsage AFTER the request, and the function returns early on promptTokens <= 0 - a failed/usage-less title call (which was still billed) never reaches CommandUsage_Upsert, so the dashboard silently omits it';
+  }
+});
+
+scenarios.push({
+  id: 175,
+  name: 'Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread\'s initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const vm = require('node:vm');
+    const posts = [];
+    const el = () => ({ style: {}, disabled: false, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], innerHTML: '', appendChild() {} });
+    const sandbox = {
+      console,
+      document: { addEventListener() {}, getElementById: () => el(), querySelector: () => null, querySelectorAll: () => [], createElement: () => el() },
+      window: { addEventListener() {} },
+      Ipc: { postToHost: (t, d) => posts.push([t, d]) },
+      sessionStorage: { getItem: () => null, setItem() {} },
+      setTimeout() {}, clearTimeout() {},
+      renderChatMessages() {}, showTokenUsageBar() {}, hideLoadingIndicator() {},
+      updateScopedSearchState() {}, scrollToMessageById() {}
+    };
+    sandbox.global = sandbox;
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'chat-search.js'), 'utf8'), ctx);
+    vm.runInContext(fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'chat-core.js'), 'utf8'), ctx);
+    // Cross-thread search click on thread A sets the pending scroll id...
+    vm.runInContext('_pendingSearchScrollMsgId = "m-A-1"; true', ctx);
+    posts.length = 0;
+    // ...but the user quickly opens thread B; B's initChatMode consumes the
+    // pending id and posts navigateToMessage("m-A-1") while activeThreadId=B.
+    vm.runInContext('initChatMode({ messages: [], threadId: "t-B" }); true', ctx);
+    const nav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
+    const active = vm.runInContext('activeThreadId', ctx);
+    // BUG present: the navigateToMessage for thread A's message fires during
+    // thread B's load - AHK's SetActiveLeaf then rejects it (message not in B),
+    // so the search navigation is silently dropped.
+    if (!nav.length || nav[0][1].messageId !== 'm-A-1' || active !== 't-B')
+      throw new Error('search navigation race changed: nav=' + JSON.stringify(nav) + ' active=' + active);
+    // Stale-pending case: a failed load never clears the pending id, so the
+    // NEXT unrelated thread load consumes it and posts a spurious navigation.
+    vm.runInContext('_pendingSearchScrollMsgId = "m-A-2"; true', ctx);
+    posts.length = 0;
+    vm.runInContext('initChatMode({ messages: [], threadId: "t-C" }); true', ctx);
+    const staleNav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
+    if (!staleNav.length || staleNav[0][1].messageId !== 'm-A-2')
+      throw new Error('stale-pending behavior changed: ' + JSON.stringify(staleNav));
+    return 'search click on A (m-A-1) -> user opens B first: B\'s initChatMode consumed the pending id and posted navigateToMessage(m-A-1) with activeThreadId=' + active +
+      ' (SetActiveLeaf fails -> navigation silently dropped); a failed load leaves the pending for the NEXT thread (C) -> spurious navigateToMessage(m-A-2)';
   }
 });
 

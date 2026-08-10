@@ -1362,4 +1362,264 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 169,
+  name: 'Retry failure hides the original response - retryLastAssistantMessage splices the retried message out of chatMessages immediately, and a failed retry never restores it (bubble gone + error banner until reload; DB row intact)',
+  mode: null, // no mock server -> connection refused
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-retry-169', title: 'Retry Fail', active_leaf_id: 'm-169-a1' }],
+    messages: [
+      { id: 'm-169-u1', thread_id: 't-retry-169', role: 'user', content: 'original question', token_count: 7, active_path_tokens: 7 },
+      { id: 'm-169-a1', thread_id: 't-retry-169', role: 'assistant', content: 'original answer that must stay', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-169-u1', token_count: 5, prompt_tokens: 12, active_path_tokens: 19 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-169-a1"', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Click Retry on the assistant. The UI immediately removes it from chatMessages.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
+    await cdp.waitFor('chatMessages.length === 1 && chatMessages[0].role === "user"', 15000, 300, 'retried message removed from UI');
+    // The retry request hits a refused endpoint (mode null) -> error path.
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(800);
+    const dbRow = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-169-a1'")[0].c;
+    const leaf = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-retry-169'")[0].active_leaf_id;
+    const domBubbles = await cdp.eval('document.querySelectorAll("#chat-messages .msg").length');
+    const errBanner = await cdp.eval('!!document.querySelector(".error-banner") || document.body.innerText.indexOf("Request failed") >= 0');
+    // BUG present: DB row intact (a1 still there) but the UI bubble is gone
+    // (domBubbles=1) and an error banner is shown - the retry failure removed
+    // the original response from view until a reload.
+    if (dbRow !== 1 || domBubbles !== 1)
+      throw new Error('retry-failure state changed: dbRow=' + dbRow + ' domBubbles=' + domBubbles + ' leaf=' + leaf + ' banner=' + errBanner);
+    return 'retry against refused endpoint: a1 still in DB (rows=' + dbRow + ', leaf=' + leaf + ') but the bubble is gone from the DOM (bubbles=' + domBubbles +
+      ', error banner shown=' + errBanner + ') - the failed retry hides the original response until reload';
+  }
+});
+
+scenarios.push({
+  id: 170,
+  name: 'Reasoning-only streams report ttft_ms=0 (the first-token timer only stamps "content" chunks, never "reasoning") - the popover hides TTFT, the dashboard averages 0ms, and the API log latency falls back to the full duration',
+  mode: 'sse-reasoning-only',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-ttft-170', title: 'TTFT Reasoning', active_leaf_id: 'm-170-u1' }],
+    messages: [{ id: 'm-170-u1', thread_id: 't-ttft-170', role: 'user', content: 'reasoning only please', token_count: 5, active_path_tokens: 5 }]
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 1', 15000, 300, 'thread loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'reasoning only please');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1200);
+    const row = seed.query(dbPath, "SELECT ttft_ms, response_time_ms, thinking_tokens, token_count FROM messages WHERE thread_id='t-ttft-170' AND role='assistant' ORDER BY rowid DESC LIMIT 1")[0];
+    const ttft = Number(row.ttft_ms);
+    // The mock sends reasoning chunks over ~180ms before finishing, so a real
+    // first-token stamp would be > 0. Bug: _processChunk only sets
+    // firstTokenTime for "content" chunks, so ttft_ms stays 0.
+    if (ttft !== 0)
+      throw new Error('reasoning-only TTFT now recorded (behavior changed): ttft_ms=' + ttft + ' response=' + row.response_time_ms);
+    if (!fs.existsSync(mockLog)) throw new Error('mock log missing');
+    return 'sse-reasoning-only exchange persisted ttft_ms=' + ttft + ' (response_time_ms=' + row.response_time_ms + ', thinking=' + row.thinking_tokens +
+      ') - the popover hides TTFT, the dashboard averages 0ms, and _logStreamResponse falls back to the full duration for the API log latency (firstTokenTime never set on reasoning chunks)';
+  }
+});
+
+scenarios.push({
+  id: 171,
+  name: 'Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159)',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-cancel-a-171', title: 'Thread A', active_leaf_id: 'm-171-u1a' },
+      { id: 't-cancel-b-171', title: 'Thread B', active_leaf_id: 'm-171-u1b' }
+    ],
+    messages: [
+      { id: 'm-171-u1a', thread_id: 't-cancel-a-171', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-171-u1b', thread_id: 't-cancel-b-171', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-cancel-a-171"); true');
+    await cdp.waitFor('window.activeThreadId === "t-cancel-a-171"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    // Switch to thread B while A's stream is in flight.
+    await cdp.eval('window.loadThread("t-cancel-b-171"); true');
+    await cdp.waitFor('window.activeThreadId === "t-cancel-b-171"', 10000, 250, 'thread B loaded');
+    // Cancel while content has streamed (mock: reasoning at 0ms + 60ms, content at 120ms).
+    await sleep(90);
+    await cdp.eval('window.onStopStreaming(); true');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1200);
+    const inA = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-cancel-a-171' AND role='assistant'")[0].c;
+    const inB = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-cancel-b-171' AND role='assistant'")[0].c;
+    const partial = seed.query(dbPath, "SELECT content FROM messages WHERE thread_id='t-cancel-b-171' AND role='assistant'");
+    // BUG present: the cancelled partial lands in thread B (the current active
+    // thread), not thread A (the thread that sent the request).
+    if (inA !== 0 || inB !== 1)
+      throw new Error('cancel-after-switch persisted to the sending thread (behavior changed): inA=' + inA + ' inB=' + inB);
+    return 'sent in A, switched to B, cancelled mid-stream: partial assistant rows inA=' + inA + ' inB=' + inB +
+      ' (content="' + (partial.length ? String(partial[0].content).slice(0, 40) : '') + '") - _handleStreamCancelled used the CURRENT activeThreadId (B)';
+  }
+});
+
+scenarios.push({
+  id: 172,
+  name: 'Hard-deleting (deleteThreadForever/emptyTrash) the streaming thread mid-stream silently DROPS the completed response - no dangling row (activeThreadId is cleared) but the billed response is never persisted anywhere',
+  mode: 'sse-slow',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-hard-a-172', title: 'Thread A', active_leaf_id: 'm-172-u1a' },
+      { id: 't-hard-b-172', title: 'Thread B', active_leaf_id: 'm-172-u1b' }
+    ],
+    messages: [
+      { id: 'm-172-u1a', thread_id: 't-hard-a-172', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-172-u1b', thread_id: 't-hard-b-172', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-hard-a-172"); true');
+    await cdp.waitFor('window.activeThreadId === "t-hard-a-172"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    // The slow mock streams for ~2s, so the delete below is guaranteed mid-stream.
+    const activeAtStart = await cdp.eval('streamState.active === true');
+    // Soft-delete A (goes to trash) - this clears activeThreadId (A was active).
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#thread-list .chat-item')];
+      const it = items.find((el) => el.getAttribute('data-chat') === 't-hard-a-172');
+      if (!it) return false;
+      it.querySelector('.chat-action-btn.danger').click();
+      return true;
+    })()`);
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'trash confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await sleep(500);
+    // Delete forever from the trash while the stream is still in flight.
+    await cdp.waitFor('document.querySelectorAll(".trash-item").length >= 1', 10000, 250, 'trash item');
+    await cdp.click('.trash-item button.danger');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete forever confirm');
+    const activeAtHardDelete = await cdp.eval('streamState.active === true');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1200);
+    // No dangling rows: activeThreadId was cleared, so _persistStreamResponse
+    // was skipped entirely (the response is neither persisted nor orphaned).
+    const dangling = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads)')[0].c;
+    const anyAssistant = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE role='assistant'")[0].c;
+    const usage = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM chat_usage')[0].c;
+    // BUG present: the delete happened while streamState.active was still true
+    // (wasStillStreaming), the completed response is never persisted (no
+    // assistant row anywhere, no chat_usage row - the billed call is untracked),
+    // and no dangling row is created either (the insert was skipped, not orphaned).
+    if (!activeAtStart || !activeAtHardDelete) throw new Error('setup: stream finished before the delete - timing not mid-stream (' + activeAtStart + '/' + activeAtHardDelete + ')');
+    if (dangling !== 0 || anyAssistant !== 0 || usage !== 0)
+      throw new Error('hard-delete mid-stream state changed: dangling=' + dangling + ' assistantRows=' + anyAssistant + ' usage=' + usage);
+    return 'hard-delete mid-stream: thread A removed while streaming; on completion _persistStreamResponse is SKIPPED (activeThreadId="") - dangling rows=' + dangling +
+      ', any assistant row=' + anyAssistant + ', chat_usage rows=' + usage + ' (activeAtStart=' + activeAtStart + ' activeAtHardDelete=' + activeAtHardDelete + ') - the billed response vanishes with no trace (no orphan, no persistence, no usage)';
+  }
+});
+
+scenarios.push({
+  id: 173,
+  name: 'A mid-stream failure with no usage chunk crashes the completion handler (CostCalculator reads usage.promptTokens unguarded) - the partial response IS persisted but the UI is left STUCK with a misleading "Request failed" banner',
+  mode: 'sse-midfail',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-midfail-173', title: 'Mid Fail', active_leaf_id: 'm-173-u1' }],
+    messages: [{ id: 'm-173-u1', thread_id: 't-midfail-173', role: 'user', content: 'stream that dies', token_count: 5, active_path_tokens: 5 }]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 1', 15000, 300, 'thread loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'stream that dies');
+    // The mid-fail crash banner appears once the completion handler throws;
+    // the stuck state (isLoading/streamState.active both true) persists after.
+    await cdp.waitFor('document.body.innerText.indexOf("Request failed") >= 0', 15000, 200, 'crash banner');
+    await sleep(1200);
+    const rows = seed.query(dbPath, "SELECT content, token_count, prompt_tokens FROM messages WHERE thread_id='t-midfail-173' AND role='assistant'");
+    const errBanner = await cdp.eval('document.body.innerText.indexOf("Request failed") >= 0 || !!document.querySelector(".error-banner")');
+    const stuck = await cdp.eval('isLoading === true && streamState.active === true');
+    // BUG present: the partial IS persisted (rows=1) but the completion
+    // handler crashed before setChatButtonsEnabled - the UI stays stuck in
+    // the loading/Stop state (isLoading=true, streamState.active=true) and an
+    // error banner is shown, so the user cannot send again or reach a real
+    // terminal state; the truncated response is saved as a complete row.
+    if (rows.length !== 1 || !stuck || !errBanner)
+      throw new Error('mid-stream failure handling changed: rows=' + rows.length + ' stuck=' + stuck + ' errBanner=' + errBanner);
+    return 'mock sent one content chunk then ended with an error body: persisted assistant row content="' + String(rows[0].content).slice(0, 40) +
+      '" prompt_tokens=' + rows[0].prompt_tokens + ' (no usage) - then the completion handler crashed (CostCalculator.ComputeTokenCosts reads usage.promptTokens unguarded): ' +
+      'UI stuck (isLoading=' + stuck + '), error banner shown=' + errBanner + ' - the partial is saved but the thread is unusable until reload';
+  }
+});
+
+scenarios.push({
+  id: 174,
+  name: 'Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order/model badge stays stale after a branch switch',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-order-a-174', title: 'Thread A (newer)', active_leaf_id: 'm-174-a1a', updated_at: '2026-08-10 12:00:00' },
+      { id: 't-order-b-174', title: 'Thread B (older)', active_leaf_id: 'm-174-a1b2', updated_at: '2026-08-09 12:00:00' }
+    ],
+    messages: [
+      { id: 'm-174-u1a', thread_id: 't-order-a-174', role: 'user', content: 'u1a', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-174-a1a', thread_id: 't-order-a-174', role: 'assistant', content: 'a1a', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-174-u1a', token_count: 5, prompt_tokens: 10, active_path_tokens: 15 },
+      { id: 'm-174-a1a2', thread_id: 't-order-a-174', role: 'assistant', content: 'a1a retry', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-174-u1a', sibling_group: 'sg-174-a', sibling_index: 1, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 },
+      { id: 'm-174-u1b', thread_id: 't-order-b-174', role: 'user', content: 'u1b', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-174-a1b', thread_id: 't-order-b-174', role: 'assistant', content: 'a1b', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-174-u1b', sibling_group: 'sg-174-b', sibling_index: 0, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 },
+      { id: 'm-174-a1b2', thread_id: 't-order-b-174', role: 'assistant', content: 'a1b retry', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-174-u1b', sibling_group: 'sg-174-b', sibling_index: 1, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    const orderBefore = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    if (orderBefore[0] !== 't-order-a-174')
+      throw new Error('setup: thread A should be first, got ' + orderBefore.join(','));
+    // Open thread B, then branch-switch inside it (bumps B's updated_at).
+    await cdp.eval('window.loadThread("t-order-b-174"); true');
+    await cdp.waitFor('window.activeThreadId === "t-order-b-174"', 15000, 300, 'thread B loaded');
+    await sleep(600);
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-174-a1b2"', 15000, 300, 'thread B active leaf loaded');
+    const hasNext = await cdp.eval('!!document.querySelector("#chat-messages .msg:nth-child(2) .msg-action-btn[title=\'Next branch\']")');
+    if (!hasNext) throw new Error('setup: no Next branch button for the retried sibling');
+    const dbBefore = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-order-b-174'")[0].updated_at;
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Next branch"]');
+    await sleep(1000);
+    const dbAfter = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-order-b-174'")[0].updated_at;
+    const orderAfter = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    // BUG present: the DB updated_at bumped (dbAfter > dbBefore) but the
+    // sidebar order is unchanged (A still first) - no _postThreadListRefresh.
+    if (dbAfter <= dbBefore) throw new Error('setup: updated_at did not bump: ' + dbBefore + ' -> ' + dbAfter);
+    if (orderAfter[0] !== 't-order-a-174')
+      throw new Error('sidebar now refreshes after branch switch (behavior changed): ' + orderAfter.join(','));
+    return 'branch-switch bumped updated_at (' + dbBefore + ' -> ' + dbAfter + ') but the sidebar order stays ' + orderAfter.join(',') +
+      ' (A first) - handleBranchSwitch never posts threadList, so the sidebar order (and the #155 model badge) go stale after branch navigation';
+  }
+});
+
 module.exports = scenarios;

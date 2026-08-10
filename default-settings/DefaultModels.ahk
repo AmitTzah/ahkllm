@@ -316,20 +316,6 @@ models := Map(    ; -- DeepSeek --
         thinkingOff: "MINIMAL",
         input: 2, cachedInput: 0.2, output: 12, context: 131072, reasoning: true, vision: true
     },
-    "google/gemini-2.0-flash", {
-        provider: "google", api: "openai-completions",
-        compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
-        input: 0.1, cachedInput: 0.025, output: 0.4, context: 1048576, reasoning: false, vision: true
-    },
-    "google/gemini-2.0-flash-lite", {
-        provider: "google", api: "openai-completions",
-        compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
-        input: 0.075, cachedInput: 0, output: 0.3, context: 1048576, reasoning: false, vision: true
-    },
     "google/gemini-2.5-computer-use-preview-10-2025", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
@@ -427,13 +413,6 @@ models := Map(    ; -- DeepSeek --
         thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
         thinkingOff: "MINIMAL",
         input: 0.5, cachedInput: 0.05, output: 3, context: 1048576, reasoning: true, vision: true
-    },
-    "google/gemini-3-pro-preview", {
-        provider: "google", api: "openai-completions",
-        compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("low", "LOW", "high", "HIGH"),
-        thinkingOff: "LOW",
-        input: 2, cachedInput: 0.2, output: 12, context: 1048576, reasoning: true, vision: true
     },
     "google/gemini-flash-latest", {
         provider: "google", api: "openai-completions",

@@ -7,6 +7,10 @@
 ;   branch-copy-recount - cumulative counters after a local_copy + real follow-up
 ;   backfill-thinking   - user token backfill when prior assistant had thinking
 ;   branch-user-stale   - branch-copied user message keeps the source token_count
+;   fts5-prefix-quote   - FTS5 prefix matching for queries ending in a quote
+;   command-empty-models- command with empty APIModels (the "Default" dropdown)
+;   fts-attachment-text - searching attachment extracted_text finds nothing
+;   empty-model-skip    - assistant rows with empty model are skipped by counters
 #Requires AutoHotkey v2.0.18+
 #ErrorStdOut
 #SingleInstance Off
@@ -431,6 +435,101 @@ ForkAtUserStaleContext() {
     CloseDb(dbPath)
 }
 
+; ------------------------------------------------------------------
+; CHECK 14: FTS5 prefix matching checks the WRONG quote character.
+; _FTS5 wraps every term in double quotes (_FTS5QuoteTerm) and appends a
+; trailing * for prefix matching UNLESS the RAW query's last char is "*" or
+; "'". The "'" check was meant to detect "the last term is quoted", but the
+; terms are always double-quoted - so a query whose last character is a
+; single quote (e.g. "don't", "comp'") silently loses the prefix match.
+; ------------------------------------------------------------------
+Fts5PrefixQuote() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("Fts5PrefixQuote")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "complete the compass calculation"})
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "don't forget the donuts", parent_id: u1})
+
+    ; Prefix query ending in a normal char: "comp" -> "comp"* matches complete/compass.
+    hitsPlain := SearchRepo._FTS5("comp", tid)
+    plainCount := hitsPlain.Length
+    ; Prefix query ending in an apostrophe: "comp'" -> "comp'" exact-match only -
+    ; no * is appended because lastChar = "'", so complete/compass are NOT found.
+    hitsQuote := SearchRepo._FTS5("comp'", tid)
+    quoteCount := hitsQuote.Length
+    ; The observable contract: "comp'" must behave like "comp" (prefix match).
+    ; It returns 0 because the trailing-' check skips the appended *.
+    Log("FTS5PREFIX plain comp hits=" plainCount " comp' hits=" quoteCount)
+    Log("FTS5PREFIX verdict=" (quoteCount = 0 && plainCount > 0 ? "BUG-present(quote-ends-prefix)" : "OK-prefix"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 15: a command whose APIModels is empty (the UI's "Default" dropdown
+; option) sends a model-less request. StrSplit(RegExReplace("", ...), ",")
+; yields [""] (one empty entry), ProviderResolver.Resolve("") falls back to
+; the deepseek provider with modelName "", and createJSONRequest emits
+; {"model": ""} - the API is called with an EMPTY model name instead of the
+; app default the "Default" option advertises.
+; ------------------------------------------------------------------
+CommandEmptyModels() {
+    arr := StrSplit(RegExReplace("", "\s+", ""), ",")
+    json := LLMRequestBuilder.createJSONRequest("", "", "hello", "", "", "", false)
+    prov := ProviderResolver.Resolve("")
+    hasEmptyModel := InStr(json, '"model":""')
+    ; arr.Length = 0 means processInitialRequest's `for` loop never runs: the
+    ; command is a silent NO-OP (no thread, no request, no error). Either way
+    ; the "Default" option never substitutes the app default model.
+    noop := arr.Length = 0
+    Log("CMDEMPTY modelsArrLen=" arr.Length " provider=" prov.providerKey " modelName='" prov.modelName "'")
+    Log("CMDEMPTY json=" json)
+    Log("CMDEMPTY verdict=" ((noop || hasEmptyModel) ? "BUG-present(default-model-not-substituted)" : "OK-default-substituted"))
+}
+
+; ------------------------------------------------------------------
+; CHECK 16: FTS5 only indexes message content - attachment extracted_text
+; (PDF/office text extraction) is never indexed, so a term that exists ONLY
+; inside an attached document cannot be found by Search.
+; ------------------------------------------------------------------
+FtsAttachmentText() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("FtsAttachmentText")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "see attached report"})
+    ; Attach a PDF whose extracted_text contains the only occurrence of "needle":
+    ChatDB.Attachment_Insert(u1, {
+        attachment_type: "pdf",
+        file_path: "attachments/report.pdf",
+        mime_type: "application/pdf",
+        original_filename: "report.pdf",
+        file_size: 1024,
+        extracted_text: "Quarterly results mention the needle keyword only here."
+    })
+    hits := SearchRepo.Search("needle", tid)
+    Log("FTSATT search needle hits=" hits.Length)
+    Log("FTSATT verdict=" (hits.Length = 0 ? "BUG-present(extracted-text-unsearchable)" : "OK-indexed"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 17: _RecomputeCumulativeCounters skips assistant rows whose model is
+; empty (the empty-APIModels command flow inserts real assistant rows with
+; model ""), so a BILLED API response with token metadata never counts toward
+; the thread's cumulative counters or the usage dashboard.
+; ------------------------------------------------------------------
+EmptyModelSkip() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("EmptyModelSkip")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    ; Real API response row produced by the empty-APIModels flow: model "" but
+    ; prompt_tokens/token_count present (the API answered and billed).
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "", prompt_tokens: 12, token_count: 9, thinking_tokens: 2, cached_tokens: 4})
+    row := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", tid)
+    inp := Integer(row[1, "cumulative_input_tokens"]), outp := Integer(row[1, "cumulative_output_tokens"]), ckt := Integer(row[1, "cumulative_cached_tokens"])
+    usageCount := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_usage;")[1, "c"]
+    Log("EMPTYMODEL input=" inp " output=" outp " cached=" ckt " usageRows=" usageCount " (assistant row has 12/9+2/4)")
+    Log("EMPTYMODEL verdict=" (inp = 0 && outp = 0 && ckt = 0 && usageCount = 0 ? "BUG-present(empty-model-untracked)" : "OK-counted"))
+    CloseDb(dbPath)
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -446,6 +545,10 @@ switch check {
     case "switch-branch-wrap": SwitchBranchWrap()
     case "edit-user-stale-backfill": EditUserStaleBackfill()
     case "fork-at-user-stale-context": ForkAtUserStaleContext()
+    case "fts5-prefix-quote": Fts5PrefixQuote()
+    case "command-empty-models": CommandEmptyModels()
+    case "fts-attachment-text": FtsAttachmentText()
+    case "empty-model-skip": EmptyModelSkip()
     default:
         Log("UNKNOWN CHECK " check)
 }
