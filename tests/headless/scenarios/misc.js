@@ -1405,6 +1405,7 @@ scenarios.push({
   id: 165,
   name: 'Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1418,12 +1419,14 @@ scenarios.push({
     const m = text.match(/FTSATT search needle hits=(\d+)/);
     if (!m) throw new Error('probe output missing FTSATT line: ' + text);
     const hits = Number(m[1]);
-    // BUG present: the attachment's extracted_text holds the only occurrence
-    // of "needle", and SearchRepo never queries message_attachments.
-    if (hits !== 0)
-      throw new Error('attachment text is now searchable (behavior changed): hits=' + hits);
+    // Fixed: attachment extracted_text is indexed into the FTS table, so the
+    // term inside the attached PDF surfaces the message.
+    // BUG present: the attachment's extracted_text held the only occurrence of
+    // "needle" and SearchRepo never queried message_attachments.
+    if (hits !== 1)
+      throw new Error('attachment text still unsearchable (BUG present): hits=' + hits);
     return 'Message says "see attached report"; the PDF attachment\'s extracted_text contains "needle" only - Search("needle") returns ' + hits +
-      ' hits (SearchRepo queries messages.content only, never message_attachments.extracted_text)';
+      ' hit (attachment extracted_text is indexed and searchable)';
   }
 });
 

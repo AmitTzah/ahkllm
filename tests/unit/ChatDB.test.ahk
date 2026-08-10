@@ -842,6 +842,34 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #165): attachment extracted_text must be searchable - the
+    ; FTS index includes the decoded attachment text, and removing the
+    ; attachment re-indexes the message so the term stops matching.
+    SearchMessages_FindsAttachmentExtractedText() {
+        threadId := this._setup()
+        uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "see attached report"})
+        ChatDB.Attachment_Insert(uId, {
+            attachment_type: "pdf",
+            file_path: "attachments/report.pdf",
+            mime_type: "application/pdf",
+            original_filename: "report.pdf",
+            file_size: 1024,
+            extracted_text: "Quarterly results mention the needle keyword only here."
+        })
+        results := ChatDB.SearchMessages("needle", threadId)
+        if results.Length != 1
+            throw Error("search must find attachment extracted_text (bug #165), got " results.Length)
+        if results[1].messageId != uId
+            throw Error("hit should be the attachment's message, got " results[1].messageId)
+        ; Removing the attachment removes the term from the index:
+        atts := ChatDB.Attachment_GetByMessage(uId)
+        ChatDB.Attachment_DeleteOne(atts[1].id)
+        results2 := ChatDB.SearchMessages("needle", threadId)
+        if results2.Length != 0
+            throw Error("attachment text must stop matching after deletion, got " results2.Length)
+        this._teardown()
+    }
+
     ; Regression (bug #80, security): thread mutators must escape threadId - a
     ; crafted id with a single quote must not break or inject SQL.
     ThreadMutators_EscapeThreadId() {

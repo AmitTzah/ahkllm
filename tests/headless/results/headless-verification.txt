@@ -1,5 +1,5 @@
-# 2026-08-10T13:17:25.242Z | run of 1 scenario(s)
-PASS | #163 | Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns | export row: model field="openai/gpt-5,beta" -> 12 parsed fields (header has 12) - comma-containing names are quoted and columns stay aligned: 2026-08-10,chat,openai,"openai/gpt-5,beta",12,9,2,4,0.01,0.02,0.03,1 | 0.0s
+# 2026-08-10T13:21:09.780Z | run of 1 scenario(s)
+PASS | #165 | Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable | Message says "see attached report"; the PDF attachment's extracted_text contains "needle" only - Search("needle") returns 1 hit (attachment extracted_text is indexed and searchable) | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

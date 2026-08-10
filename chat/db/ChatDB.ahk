@@ -79,6 +79,11 @@ class ChatDB {
         if Integer(ftsCount[1, "cnt"]) != Integer(msgCount[1, "cnt"]) {
             ChatDB.db.Exec("DELETE FROM messages_fts;")
             ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages;")
+            ; Bug #165: the rebuild must also index attachment extracted_text
+            ; (the bulk SQL above cannot decode the base64-stored text).
+            attMsgs := ChatDB.db.Query("SELECT DISTINCT message_id FROM message_attachments WHERE extracted_text != '';")
+            for am in attMsgs.rows
+                ChatDB.FTS_ResyncForAttachments(am.message_id)
             debugLog("[DB] FTS5 rebuilt - " Integer(msgCount[1, "cnt"]) " messages indexed")
         }
 
@@ -164,12 +169,30 @@ class ChatDB {
     ; FTS5 sync - called from MessageRepo on Insert/Edit.
     ; Values are bound parameters - msg_id/content can never alter the SQL.
     static FTS_Sync(msgId, content) {
+        ; Bug #165: index attachment extracted_text too, so a term inside an
+        ; attached PDF/office file is searchable (it is part of the context
+        ; the API sees). The column stores base64 - decode it for the index.
+        attachedText := ""
+        attRows := ChatDB.db.Query("SELECT extracted_text FROM message_attachments WHERE message_id=?;", msgId)
+        for attRow in attRows.rows {
+            if attRow.extracted_text
+                attachedText .= " " AttachmentRepo._Base64ToStr(attRow.extracted_text)
+        }
+        if attachedText
+            content := content " " attachedText
         try {
             ChatDB.db.Query("DELETE FROM messages_fts WHERE msg_id=?;", msgId)
             ChatDB.db.Query("INSERT INTO messages_fts(msg_id, content) VALUES(?, ?);", msgId, content)
         } catch Error as e {
             debugLog("[FTS] Sync ERROR: " e.Message, "FTS")
         }
+    }
+
+    ; Re-index a message's FTS entry after its attachments change (bug #165).
+    static FTS_ResyncForAttachments(msgId) {
+        row := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", msgId)
+        if row.count
+            ChatDB.FTS_Sync(msgId, row[1, "content"])
     }
 
     static FTS_Remove(msgId) {
