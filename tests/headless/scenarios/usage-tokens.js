@@ -746,6 +746,7 @@ scenarios.push({
   id: 156,
   name: 'Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message\'s backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -760,13 +761,16 @@ scenarios.push({
     const m = text.match(/u3tc=(\d+)/);
     if (!m) throw new Error('probe output missing u3tc: ' + text);
     const u3tc = Number(m[1]);
-    // BUG present: u2 edited to a 30-token text keeps token_count=7; the
-    // next prompt (62 = 12+9+30+6+5) subtracts the stale 7, so u3 gets
+    // Fixed: Msg_Edit re-estimates the edited user's contribution (~1 token /
+    // 3 chars), so the next backfill subtracts the NEW value and u3 gets its
+    // true contribution.
+    // BUG present: u2 edited to a 30-token text kept token_count=7; the next
+    // prompt (62 = 12+9+30+6+5) subtracted the stale 7, so u3 got
     // 62-(12+9+7+6)=28 instead of its true 5.
-    if (u3tc === 5)
-      throw new Error('edit no longer leaves stale attribution (behavior changed): u3tc=' + u3tc);
-    return 'u2 overwrite-edit keeps token_count=7; next user backfill gives u3tc=' + u3tc +
-      ' (true contribution 5 = 62 prompt - 12 u1 - 9 a1 - 30 new u2 - 6 a2) - the edited message\'s stale attribution corrupts the next user\'s popover';
+    if (u3tc !== 5)
+      throw new Error('next user backfill still stale (BUG present): u3tc=' + u3tc);
+    return 'u2 overwrite-edit re-estimates its contribution; next user backfill gives u3tc=' + u3tc +
+      ' (true contribution 5 = 62 prompt - 12 u1 - 9 a1 - 30 new u2 - 6 a2) - the edited message\'s attribution is refreshed, not stale';
   }
 });
 

@@ -1347,6 +1347,35 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #156): overwrite-editing a USER message must refresh its
+    ; backfilled token_count (estimated from the new content), so the NEXT
+    ; user's backfill subtracts the NEW value instead of the stale one.
+    Edit_UserMessage_RefreshesAttribution() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "original follow-up", parent_id: a1Id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 28, token_count: 6})
+        u2tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u2Id)[1, "token_count"])
+        if u2tc != 7
+            throw Error("setup: u2 should be backfilled to 7 (28-21), got " u2tc)
+
+        ; Overwrite edit to a much longer text (~90 chars -> ~30 tokens):
+        newText := "this edited follow-up is now a dramatically longer message with much more text than before"
+        ChatDB.Msg_Edit(u2Id, newText)
+        u2tcAfter := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u2Id)[1, "token_count"])
+        if u2tcAfter != 30
+            throw Error("edited user message should re-estimate its contribution (bug #156), expected 30, got " u2tcAfter)
+
+        ; Next exchange: prompt for a3 = 12 + 9 + 30 + 6 + 5 = 62.
+        u3Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u3", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a2';").rows[1].id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a3", parent_id: u3Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 62, token_count: 5})
+        u3tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u3Id)[1, "token_count"])
+        if u3tc != 5
+            throw Error("next user backfill should be 5 (62 - 12 - 9 - 30 - 6), got " u3tc)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit active_path_tokens recalculation
     ; --------------------

@@ -1,5 +1,5 @@
-# 2026-08-10T12:33:07.987Z | run of 1 scenario(s)
-PASS | #155 | Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant model, not the ACTIVE path's model) | active path model=openai/gpt-5-mini and ThreadRepo.List badge=openai/gpt-5-mini (active-path model, not the last-inserted assistant) - sidebar icon/title stays correct after switching branches | 0.2s
+# 2026-08-10T12:37:24.914Z | run of 1 scenario(s)
+PASS | #156 | Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message's backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path) | u2 overwrite-edit re-estimates its contribution; next user backfill gives u3tc=5 (true contribution 5 = 62 prompt - 12 u1 - 9 a1 - 30 new u2 - 6 a2) - the edited message's attribution is refreshed, not stale | 0.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
