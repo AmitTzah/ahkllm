@@ -44,6 +44,12 @@ _handleStreamComplete() {
     } catch Error as normErr {
         debugLog("Stream completion error: " normErr.Message "`nStack: " normErr.Stack)
         postWebMessage("showError", { message: "Request failed: " normErr.Message })
+        ; Bug #173: a completion-handler failure (e.g. CostCalculator reading a
+        ; usage-less stream) must still return the UI to a usable state - the
+        ; input/Stop button stayed disabled and streamState stayed active until
+        ; reload.
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
         deleteTempFiles()
     }
 }

@@ -52,7 +52,12 @@ class CostCalculator {
             cachedTokens := usage.HasOwnProp("cachedTokens") ? usage.cachedTokens : 0
 
             ; Calculate input cost: split cached vs non-cached
-            if inputPrice > 0 && usage.promptTokens > 0 {
+            ; Bug #173: promptTokens/completionTokens must be guarded like
+            ; cachedTokens - a mid-stream failure with no usage chunk leaves
+            ; usage as an EMPTY object, and reading the missing keys threw
+            ; inside the completion handler after the partial was persisted,
+            ; leaving the UI stuck with a misleading error banner.
+            if inputPrice > 0 && usage.HasOwnProp("promptTokens") && usage.promptTokens > 0 {
                 nonCachedTokens := usage.promptTokens - cachedTokens
                 nonCachedCost := nonCachedTokens * inputPrice / 1000000
                 cachedCost := cachedTokens * cachedInputPrice / 1000000
@@ -61,7 +66,7 @@ class CostCalculator {
             }
 
             ; Calculate output cost
-            if outputPrice > 0 && usage.completionTokens > 0 {
+            if outputPrice > 0 && usage.HasOwnProp("completionTokens") && usage.completionTokens > 0 {
                 costs.outputCost := Round(usage.completionTokens * outputPrice / 1000000, 6)
             }
 

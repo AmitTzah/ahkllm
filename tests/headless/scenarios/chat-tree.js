@@ -1564,6 +1564,7 @@ scenarios.push({
   id: 173,
   name: 'A mid-stream failure with no usage chunk crashes the completion handler (CostCalculator reads usage.promptTokens unguarded) - the partial response IS persisted but the UI is left STUCK with a misleading "Request failed" banner',
   mode: 'sse-midfail',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-midfail-173', title: 'Mid Fail', active_leaf_id: 'm-173-u1' }],
@@ -1576,23 +1577,24 @@ scenarios.push({
     await cdp.waitFor('chatMessages.length === 1', 15000, 300, 'thread loaded');
     await sleep(600);
     await sendChatMessage(cdp, 'stream that dies');
-    // The mid-fail crash banner appears once the completion handler throws;
-    // the stuck state (isLoading/streamState.active both true) persists after.
-    await cdp.waitFor('document.body.innerText.indexOf("Request failed") >= 0', 15000, 200, 'crash banner');
-    await sleep(1200);
+    // The stream ends after the partial chunk (no usage). With the guard the
+    // completion handler persists the partial and returns the UI to a usable,
+    // terminal state (streamDone posted -> streamState.active false).
+    await waitStreamingIdle(cdp, 20000);
+    await sleep(800);
     const rows = seed.query(dbPath, "SELECT content, token_count, prompt_tokens FROM messages WHERE thread_id='t-midfail-173' AND role='assistant'");
     const errBanner = await cdp.eval('document.body.innerText.indexOf("Request failed") >= 0 || !!document.querySelector(".error-banner")');
-    const stuck = await cdp.eval('isLoading === true && streamState.active === true');
-    // BUG present: the partial IS persisted (rows=1) but the completion
-    // handler crashed before setChatButtonsEnabled - the UI stays stuck in
-    // the loading/Stop state (isLoading=true, streamState.active=true) and an
-    // error banner is shown, so the user cannot send again or reach a real
-    // terminal state; the truncated response is saved as a complete row.
-    if (rows.length !== 1 || !stuck || !errBanner)
-      throw new Error('mid-stream failure handling changed: rows=' + rows.length + ' stuck=' + stuck + ' errBanner=' + errBanner);
+    const usable = await cdp.eval('isLoading === false && streamState.active === false');
+    // Fixed: CostCalculator guards the missing usage fields, so the partial
+    // completes cleanly (rows=1) and the UI reaches a terminal, usable state.
+    // BUG present: the completion handler crashed after persisting the partial
+    // (isLoading=true, streamState.active=true until reload) and showed a
+    // misleading "Request failed" banner.
+    if (rows.length !== 1 || !usable)
+      throw new Error('mid-stream failure handling still broken: rows=' + rows.length + ' usable=' + usable + ' errBanner=' + errBanner);
     return 'mock sent one content chunk then ended with an error body: persisted assistant row content="' + String(rows[0].content).slice(0, 40) +
-      '" prompt_tokens=' + rows[0].prompt_tokens + ' (no usage) - then the completion handler crashed (CostCalculator.ComputeTokenCosts reads usage.promptTokens unguarded): ' +
-      'UI stuck (isLoading=' + stuck + '), error banner shown=' + errBanner + ' - the partial is saved but the thread is unusable until reload';
+      '" prompt_tokens=' + rows[0].prompt_tokens + ' (no usage) - the completion handler survives the usage-less stream: ' +
+      'UI usable (isLoading=false, streamState.active=false), error banner shown=' + errBanner + ' - the partial is saved and the thread stays usable';
   }
 });
 

@@ -8,6 +8,18 @@ class CostCalculatorTest {
         RegisterTestClass("CostCalculatorTest")
     }
 
+    ; Regression (bug #173): a mid-stream failure can leave usage as an EMPTY
+    ; object (no usage chunk). ComputeTokenCosts must not crash reading
+    ; promptTokens/completionTokens - it returns empty costs instead.
+    EmptyUsage_DoesNotCrash() {
+        usage := {}
+        costs := CostCalculator.ComputeTokenCosts("deepseek/deepseek-v4-flash", usage)
+        if costs.totalCost != ""
+            throw Error("Expected empty totalCost for usage-less call, got " costs.totalCost)
+        if costs.inputCost != "" || costs.outputCost != ""
+            throw Error("Expected empty input/output costs for usage-less call, got " costs.inputCost "/" costs.outputCost)
+    }
+
     ; --- cachedInputCost is returned ---
 
     CachedInputCost_Returned() {
