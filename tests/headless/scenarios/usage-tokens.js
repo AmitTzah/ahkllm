@@ -982,6 +982,7 @@ scenarios.push({
   id: 181,
   name: 'Overwrite-editing an ASSISTANT message leaves its OLD token_count in place - the next user backfill subtracts the stale output tokens and its token popover over-counts (stale attribution on the assistant path, bug #156 family)',
   mode: null,
+  regression: true, // FIXED: assistant edits refresh their token attribution (bug #156 family)
   noApp: true,
   settings: {},
   async body() {
@@ -997,14 +998,16 @@ scenarios.push({
     const u3M = text.match(/u3tc=(\d+)/);
     if (!a1M || !u3M) throw new Error('probe output missing fields: ' + text);
     const a1tcAfterEdit = Number(a1M[1]), u3tc = Number(u3M[1]);
-    // BUG present: MessageRepo.Edit re-estimates only role=user (bug #156);
-    // the edited assistant's token_count stays at the ORIGINAL 9 even though
-    // its content grew ~100 tokens, so the next backfill gives u3 96 instead
-    // of its true 5.
-    if (u3tc === 5)
-      throw new Error('assistant edit was re-attributed (bug not reproduced): a1tcAfterEdit=' + a1tcAfterEdit + ' u3tc=' + u3tc);
-    return 'assistant overwrite-edit kept token_count=' + a1tcAfterEdit + ' (original 9 despite ~100-token new content); the next user backfill got u3tc=' + u3tc +
-      ' (true contribution 5) - the stale assistant output-token count leaks into the next user\'s attribution, exactly like the fixed user path before bug #156';
+    // FIXED (bug #181): MessageRepo.Edit re-estimates token_count for
+    // ASSISTANT messages too (like the user path, bug #156), so the edited
+    // assistant's ~100-token content is reflected and the next user backfill
+    // gives u3 its true contribution 5 instead of 96.
+    if (u3tc !== 5)
+      throw new Error('assistant edit was not re-attributed (fix incomplete): a1tcAfterEdit=' + a1tcAfterEdit + ' u3tc=' + u3tc);
+    if (a1tcAfterEdit <= 9)
+      throw new Error('edited assistant token_count was not refreshed (fix incomplete): a1tcAfterEdit=' + a1tcAfterEdit);
+    return 'assistant overwrite-edit refreshed token_count=' + a1tcAfterEdit + ' (~100-token new content); the next user backfill got u3tc=' + u3tc +
+      ' (true contribution 5) - the edited assistant\'s output-token count no longer leaks stale attribution into the next user';
   }
 });
 

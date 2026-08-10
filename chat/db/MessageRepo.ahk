@@ -281,12 +281,15 @@ class MessageRepo {
 
         ChatDB.db.Query("UPDATE messages SET content=? WHERE id=?;", newContent, msgId)
         ChatDB.FTS_Sync(msgId, newContent)
-        ; Bug #156: overwrite-editing a USER message keeps its OLD backfilled
-        ; token_count, so the NEXT user message's backfill subtracts the stale
+        ; Bug #156/#181: overwrite-editing a message keeps its OLD token_count
+        ; in place, so the NEXT user message's backfill subtracts the stale
         ; value and its token popover over-counts. Re-estimate the edited
         ; message's contribution (~1 token per 3 characters - a documented
-        ; heuristic; the next API prompt then accounts for it exactly).
-        if role = "user" {
+        ; heuristic; the next API prompt then accounts for it exactly) for
+        ; USER messages (backfilled input attribution) and ASSISTANT messages
+        ; (their token_count feeds _BackfillUserTokens' existing_sum as
+        ; visible output).
+        if role = "user" || role = "assistant" {
             estimatedTokens := Max(1, Ceil(StrLen(newContent) / 3))
             ChatDB.db.Query("UPDATE messages SET token_count=? WHERE id=?;", estimatedTokens, msgId)
         }

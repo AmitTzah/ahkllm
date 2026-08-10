@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #180 FIXED and committed (entry removed): ThreadRepo.List now loads
-  all listed threads' message rows in ONE query and resolves each badge model with an in-memory ancestor walk
-  (301 threads -> 2 queries; dangling leaf + trashed thread handled); scenario 180 flipped to a regression
-  check + ChatDB query-count unit test. Next: bug #181 (assistant-edit stale token attribution).
+- **Where we left off:** 2026-08-10 - bug #181 FIXED and committed (entry removed): MessageRepo.Edit re-
+  estimates token_count for ASSISTANT edits too (bug #156 family), so the next user backfill is accurate;
+  scenario 181 flipped to a regression check + ChatDB unit tests. Next: bug #182 (__unknown__ sentinel
+  collision).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -224,29 +224,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 181. Overwrite-editing an ASSISTANT message leaves stale token attribution (next user backfill over-counts)
-
-**Scenario:** 181 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Edit an assistant message (overwrite mode) so its content changes drastically, then send the next
-user message and open its token popover.
-
-**Expected:** the edited message's token attribution is refreshed (like the user path, bug #156) so the next
-user's backfilled contribution is accurate.
-
-**Actual:** `MessageRepo.Edit` re-estimates `token_count` only for `role = "user"`; an edited assistant keeps
-its old `token_count`, and since `_BackfillUserTokens` sums assistant `token_count`/`thinking_tokens` into
-`existing_sum`, the next user message's backfill subtracts the stale output-token count and over-counts its
-own contribution (probe: u3 gets 96 instead of 5).
-
-**Evidence:** `chat/db/MessageRepo.ahk:Edit` (user-only re-estimate) + `_BackfillUserTokens` (assistant rows
-counted in `existing_sum`).
-
-**Verification:** headless - `probe-bughunt-db.ahk edit-assistant-stale-backfill` edits an assistant to ~100
-tokens and asserts the next user's backfilled `token_count` is 96, not its true 5.
 
 ### 182. A provider named "__unknown__" collides with the blank-provider filter sentinel
 
@@ -362,6 +339,11 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Overwrite-editing an ASSISTANT message leaves stale token attribution (next user backfill
+  over-counts)" - FIXED: MessageRepo.Edit now re-estimates token_count for role=assistant as well as role=user
+  (the assistant's token_count feeds _BackfillUserTokens' existing_sum), so an edited assistant's new content
+  is attributed and the next user's backfill is exact (probe: u3=5, not 96). Scenario 181 flipped to a
+  regression check + ChatDB unit tests.
 - 2026-08-10 - "Sidebar thread list runs a per-thread active-path walk (N+1 queries per refresh)" - FIXED:
   ThreadRepo.List now selects active_leaf_id in the main list query, loads all listed threads' message rows in
   ONE batched query, and resolves each thread's badge model with an in-memory ancestor walk (301 threads -> 2

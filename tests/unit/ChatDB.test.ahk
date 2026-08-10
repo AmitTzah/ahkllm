@@ -1601,8 +1601,42 @@ class ChatDBTest {
         ChatDB.Msg_Edit(aId, "ok")
 
         stats2 := ChatDB.Msg_GetThreadStats(threadId)
-        if stats2.activePathTokens != 10
-            throw Error("Expected activePathTokens=10 after edit, got " stats2.activePathTokens)
+        if stats2.activePathTokens != 1
+            throw Error("Expected activePathTokens=1 after edit (re-estimated 1-token assistant), got " stats2.activePathTokens)
+        aTc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", aId)[1, "token_count"])
+        if aTc != 1
+            throw Error("edited assistant should re-estimate token_count (bug #181), expected 1, got " aTc)
+        this._teardown()
+    }
+
+    ; Regression (bug #181): overwrite-editing an ASSISTANT message must
+    ; refresh its token_count (estimated from the new content) like the user
+    ; path (bug #156) - the assistant's token_count feeds
+    ; _BackfillUserTokens' existing_sum, so a stale value makes the NEXT
+    ; user's backfill over-count its own contribution.
+    Edit_AssistantMessage_RefreshesAttribution() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "SHORT", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1Id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 25, token_count: 6})
+        ; Overwrite edit to a ~300-char text -> ~100 tokens.
+        longText := ""
+        loop 300
+            longText .= "x"
+        ChatDB.Msg_Edit(a1Id, longText)
+        a1tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", a1Id)[1, "token_count"])
+        if a1tc <= 9
+            throw Error("edited assistant should re-estimate token_count (bug #181), got " a1tc)
+
+        ; Next real prompt = 12 + a1tc + 4 + 6 + 5 = 127; the backfill must
+        ; give u3 its true contribution 5 (not 127 - 12 - stale 9 - 4 - 6 = 96).
+        a2Row := ChatDB.db.Query("SELECT id FROM messages WHERE content='a2';")
+        u3Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u3", parent_id: a2Row.rows[1].id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a3", parent_id: u3Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 127, token_count: 5})
+        u3tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u3Id)[1, "token_count"])
+        if u3tc != 5
+            throw Error("next user backfill should be 5 with the refreshed assistant attribution (bug #181), got " u3tc)
         this._teardown()
     }
 
