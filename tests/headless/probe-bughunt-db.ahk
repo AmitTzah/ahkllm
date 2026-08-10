@@ -734,7 +734,7 @@ ThreadListNplus1() {
     Log("THREADLIST threads=" list.Length " queries=" queryCount " perThread=" Round(queryCount / 300, 1) " listedDangling=" listedDangling " listedTrashed=" listedTrashed)
     ; The dangling-leaf thread IS a real thread (it must still be listed - the
     ; walk just must not throw/hang); the trashed thread must be excluded.
-    Log("THREADLIST verdict=" (queryCount > 305 && listedDangling = 1 && listedTrashed = 0 ? "BUG-present(nplus1-walk)" : "OK-bounded"))
+    Log("THREADLIST verdict=" (queryCount <= 10 && listedDangling = 1 && listedTrashed = 0 ? "OK-bounded" : "BUG-present(nplus1-walk)"))
     CloseDb(dbPath)
 }
 

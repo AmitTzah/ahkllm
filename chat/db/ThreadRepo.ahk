@@ -85,10 +85,25 @@ class ThreadRepo {
 
     ; Get threads sorted by most recent first.
     static List(showTrash := false) {
-        query := "SELECT t.id, t.title, t.created_at, t.updated_at, t.folder_id, COALESCE(f.name, '') AS folder_name FROM chat_threads t LEFT JOIN chat_folders f ON t.folder_id = f.id WHERE t.is_deleted=" (showTrash ? 1 : 0)
+        query := "SELECT t.id, t.title, t.created_at, t.updated_at, t.active_leaf_id, t.folder_id, COALESCE(f.name, '') AS folder_name FROM chat_threads t LEFT JOIN chat_folders f ON t.folder_id = f.id WHERE t.is_deleted=" (showTrash ? 1 : 0)
         query .= " ORDER BY t.updated_at DESC"
         table := ChatDB.db.Exec(query)
         threads := []
+        ; Bug #180: the badge walk used to issue one active_leaf lookup plus
+        ; one SELECT per ancestor for EVERY listed thread (N+1 queries per
+        ; sidebar refresh). Load the message rows for all listed threads in a
+        ; single query and walk the ancestor chains in memory instead.
+        msgMap := Map()
+        if table.count {
+            msgTable := ChatDB.db.Query("SELECT id, parent_id, role, model FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=" (showTrash ? 1 : 0) ");")
+            for msgRow in msgTable.rows {
+                msgMap[msgRow.id] := {
+                    parent_id: msgRow.parent_id ? msgRow.parent_id : "",
+                    role: msgRow.role,
+                    model: msgRow.model ? msgRow.model : ""
+                }
+            }
+        }
         for row in table.rows {
             ; Bug #155: the sidebar badge must reflect the ACTIVE path's model
             ; (the last assistant on the path currently open), not the
@@ -96,17 +111,14 @@ class ThreadRepo {
             ; off-path branch after a retry/branch switch). Walk from the active
             ; leaf up to the nearest assistant.
             model := ""
-            leafRow := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", row.id)
-            currentId := leafRow.count ? leafRow[1, "active_leaf_id"] : ""
-            while currentId {
-                msgRow := ChatDB.db.Query("SELECT parent_id, role, model FROM messages WHERE id=?;", currentId)
-                if !msgRow.count
-                    break
-                if msgRow[1, "role"] = "assistant" && msgRow[1, "model"] {
-                    model := msgRow[1, "model"]
+            currentId := row.active_leaf_id ? row.active_leaf_id : ""
+            while currentId && msgMap.Has(currentId) {
+                msg := msgMap[currentId]
+                if msg.role = "assistant" && msg.model {
+                    model := msg.model
                     break
                 }
-                currentId := msgRow[1, "parent_id"] ? msgRow[1, "parent_id"] : ""
+                currentId := msg.parent_id
             }
             threads.Push({
                 id: row.id,

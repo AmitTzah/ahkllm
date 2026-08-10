@@ -1684,6 +1684,7 @@ scenarios.push({
   id: 180,
   name: 'Sidebar thread list runs a per-thread active-path walk (N+1): one leaf lookup + one SELECT per ancestor for EVERY listed thread, so refresh latency scales with thread count x path depth',
   mode: null,
+  regression: true, // FIXED: Thread_List batches the badge-walk data (301 threads -> 2 queries)
   settings: {},
   noApp: true,
   async body() {
@@ -1701,15 +1702,14 @@ scenarios.push({
     const trm = text.match(/listedTrashed=(\d+)/);
     if (!qm || !tm || !dm || !trm) throw new Error('probe output missing fields: ' + text);
     const queries = Number(qm[1]), threads = Number(tm[1]), listedDangling = Number(dm[1]), listedTrashed = Number(trm[1]);
-    // BUG present: the badge walk issues 2 queries per thread (leaf lookup +
-    // ancestor walk) => ~2x the thread count, i.e. hundreds of round-trips
-    // per sidebar refresh. A single-list query implementation would stay
-    // near 1.
-    if (queries <= threads + 5)
-      throw new Error('no N+1 walk (bug not reproduced): threads=' + threads + ' queries=' + queries);
+    // FIXED (bug #180): the badge walk loads all message rows for the listed
+    // threads in ONE query and walks the ancestor chains in memory, so the
+    // query count is bounded (a small constant) instead of ~2 per thread.
+    if (queries > threads + 5 || queries > 20)
+      throw new Error('thread list still issues unbounded queries (fix incomplete): threads=' + threads + ' queries=' + queries);
     if (listedDangling !== 1 || listedTrashed !== 0)
       throw new Error('dangling/trashed handling regressed: listedDangling=' + listedDangling + ' listedTrashed=' + listedTrashed);
-    return '301 listed threads -> ' + queries + ' SQL queries per Thread_List() refresh (' + (queries / threads).toFixed(1) + ' per thread; the badge walk climbs to the nearest assistant): a single query would be ~1. The dangling active_leaf_id thread is still listed (' + listedDangling + ', badge walk breaks cleanly - no throw/hang) and the trashed thread stays excluded (' + listedTrashed + ' listed)';
+    return '301 listed threads -> ' + queries + ' SQL queries per Thread_List() refresh (bounded; the badge walk now runs against one batched message query in memory). The dangling active_leaf_id thread is still listed (' + listedDangling + ', badge walk breaks cleanly - no throw/hang) and the trashed thread stays excluded (' + listedTrashed + ' listed)';
   }
 });
 

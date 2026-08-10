@@ -604,6 +604,56 @@ class ChatDBTest {
     ; Msg_ForkThread
     ; --------------------
 
+    ; Regression (bug #180): ThreadRepo.List must NOT issue a per-thread
+    ; active-path walk (one leaf lookup + one SELECT per ancestor for every
+    ; listed thread). The badge model is resolved from a single batched
+    ; message query, so a 300-thread list stays at a bounded query count.
+    ThreadList_QueryCountIsBounded() {
+        this._setup()
+        loop 30 {
+            tid := ChatDB.Thread_Create("N1T" A_Index)
+            u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+            a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash"})
+            u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2", parent_id: a1})
+            ChatDB.Msg_SetActiveLeaf(tid, u2)
+        }
+        ; A dangling active_leaf_id must not throw, and a trashed thread must
+        ; be excluded.
+        dangleId := ChatDB.Thread_Create("DanglingLeaf")
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id='ghost-missing-id' WHERE id=?;", dangleId)
+        trashId := ChatDB.Thread_Create("Trashed")
+        ChatDB.Thread_SoftDelete(trashId)
+
+        realDb := ChatDB.db
+        counter := ThreadListQueryCounter()
+        counter.count := 0
+        counter.real := realDb
+        ChatDB.db := counter
+        try {
+            list := ChatDB.Thread_List()
+        } finally {
+            ChatDB.db := realDb
+        }
+        queryCount := counter.count
+
+        if queryCount > 10
+            throw Error("Thread_List must use a bounded query count (bug #180), got " queryCount " for " list.Length " threads")
+        if list.Length != 32
+            throw Error("expected 31 live + 1 dangling = 32 listed threads, got " list.Length)
+        badgeFound := false
+        for t in list {
+            if t.id = dangleId && t.model != ""
+                throw Error("dangling-leaf thread must list with an empty badge model, got '" t.model "'")
+            if t.model = "deepseek/deepseek-v4-flash"
+                badgeFound := true
+            if t.id = trashId
+                throw Error("trashed thread must not be listed")
+        }
+        if !badgeFound
+            throw Error("badge model must resolve from the batched message map (bug #180)")
+        this._teardown()
+    }
+
     ForkThread_CreatesNewThread() {
         threadId := this._setup()
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
@@ -2274,4 +2324,19 @@ class ChatDBTest {
     
     }
 
+}
+
+; Query-counting proxy used by ThreadList_QueryCountIsBounded (bug #180) to
+; prove Thread_List does not issue per-thread queries.
+class ThreadListQueryCounter {
+    count := 0
+    real := ""
+    Exec(statement, args*) {
+        this.count++
+        return this.real.Exec(statement, args*)
+    }
+    Query(statement, args*) {
+        this.count++
+        return this.real.Query(statement, args*)
+    }
 }

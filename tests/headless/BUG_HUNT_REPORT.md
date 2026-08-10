@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #179 FIXED and committed (entry removed): _rebuildTrayMenu appends an
-  unconditional E&xit item and menu-items.js save() re-adds an exit row when the tray config has none (contract
-  scanner scoped to skip settings-section data); scenario 179 flipped to a regression check + AHK/JS unit
-  tests. Next: bug #180 (sidebar thread-list N+1 queries).
+- **Where we left off:** 2026-08-10 - bug #180 FIXED and committed (entry removed): ThreadRepo.List now loads
+  all listed threads' message rows in ONE query and resolves each badge model with an in-memory ancestor walk
+  (301 threads -> 2 queries; dangling leaf + trashed thread handled); scenario 180 flipped to a regression
+  check + ChatDB query-count unit test. Next: bug #181 (assistant-edit stale token attribution).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -224,26 +224,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 180. Sidebar thread list runs a per-thread active-path walk (N+1 queries per refresh)
-
-**Scenario:** 180 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Grow the thread list (300+ threads, multi-message paths) and trigger any sidebar refresh.
-
-**Expected:** the thread list loads with a bounded number of queries.
-
-**Actual:** `ThreadRepo.List` issues one leaf lookup plus one `SELECT ... FROM messages WHERE id=?` per ancestor
-for EVERY listed thread (the #155 badge walk), so refresh latency scales with thread count x path depth -
-measured ~2 queries per thread for a 300-thread list (901 queries for 300 threads with user leaves).
-
-**Evidence:** `chat/db/ThreadRepo.ahk:List` (per-thread `active_leaf_id` lookup + while-loop ancestor queries).
-
-**Verification:** headless - `probe-bughunt-db.ahk thread-list-nplus1` wraps `ChatDB.db` in a counting proxy
-over 300 seeded threads, asserts `queries > threads + 5`, and confirms a dangling `active_leaf_id` and a
-trashed thread neither throw nor hang the walk.
 
 ### 181. Overwrite-editing an ASSISTANT message leaves stale token attribution (next user backfill over-counts)
 
@@ -382,6 +362,11 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Sidebar thread list runs a per-thread active-path walk (N+1 queries per refresh)" - FIXED:
+  ThreadRepo.List now selects active_leaf_id in the main list query, loads all listed threads' message rows in
+  ONE batched query, and resolves each thread's badge model with an in-memory ancestor walk (301 threads -> 2
+  queries instead of ~900; dangling active_leaf_id lists cleanly, trashed threads stay excluded). Scenario 180
+  flipped to a regression check + ChatDB query-count unit test.
 - 2026-08-10 - "The tray menu can be left without an Exit item (no other always-present close path)" - FIXED:
   _rebuildTrayMenu appends an unconditional E&xit item after the user items, and menu-items.js save() re-adds
   an exit row whenever the saved tray config has none; the IPC contract scanner now skips settings-section
