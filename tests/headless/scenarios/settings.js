@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const vm = require('node:vm');
+const { spawnSync } = require('node:child_process');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, hideSettingsToChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -1310,6 +1311,174 @@ scenarios.push({
       throw new Error('$ paste still corrupts the price (BUG present): saved=' + savedPrice + ' raw=' + inputEl.raw + ' display=' + inputEl.value);
     return 'input price $0.50 displayed; user pastes "$0.5" and blurs -> data-price-raw=0.5, display "$0.50", saved input=' +
       savedPrice + ' - the "$"-prefixed paste survives (0.5, not 0), and a blank blur keeps the field blank';
+  }
+});
+
+// Load the REAL menu-items.js settings section in a vm sandbox with a minimal
+// DOM, so the actual Settings UI code (renderTable/readTable/save + the row
+// delete buttons) decides what a save can produce.
+function loadMenuItemsSandbox() {
+  const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'menu-items.js'), 'utf8');
+  let registered = null;
+  const S = {
+    dirty: false,
+    markDirty() { S.dirty = true; },
+    registerSection(name, obj) { registered = obj; }
+  };
+  function makeEl(tag) {
+    const el = {
+      tag, value: '', textContent: '', className: '', style: {}, children: [], listeners: {},
+      parent: null, selected: false, innerHTML: '',
+      appendChild(child) {
+        child.parent = el;
+        el.children.push(child);
+        if (el.tag === 'select' && child.tag === 'option') {
+          if (child.selected) el.value = child.value;
+          else if (el.children.filter((c) => c.tag === 'option').length === 1) el.value = child.value;
+        }
+      },
+      remove() { if (el.parent) { const i = el.parent.children.indexOf(el); if (i >= 0) el.parent.children.splice(i, 1); } },
+      addEventListener(type, fn) { el.listeners[type] = fn; },
+      click() { if (el.listeners.click) el.listeners.click(); },
+      querySelectorAll(sel) {
+        const tags = sel.split(',').map((s) => s.trim());
+        const out = [];
+        (function walk(node) { for (const c of node.children) { if (tags.indexOf(c.tag) >= 0) out.push(c); walk(c); } })(el);
+        return out;
+      },
+      querySelector() { return null; }
+    };
+    Object.defineProperty(el, 'innerHTML', {
+      get() { return ''; },
+      set() { el.children = []; }
+    });
+    return el;
+  }
+  const qaTbody = makeEl('tbody'), trayTbody = makeEl('tbody');
+  const els = { qaTableBody: qaTbody, trayTableBody: trayTbody, addQaRow: null, addTrayRow: null };
+  const sandbox = {
+    window: { SettingsShared: S },
+    document: {
+      getElementById: (id) => (els[id] === undefined || els[id] === null ? null : els[id]),
+      addEventListener() {},
+      createElement: (tag) => makeEl(tag)
+    },
+    console
+  };
+  sandbox.global = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(src, sandbox);
+  return { registered, S, qaTbody, trayTbody };
+}
+
+scenarios.push({
+  id: 179,
+  name: 'The tray menu can be left WITHOUT an Exit item - Settings > Menu Items lets the user delete the "E&xit" row, and _rebuildTrayMenu builds the tray exclusively from the user-editable trayMenuItems (no other always-present close path)',
+  mode: null,
+  settings: {},
+  noApp: true,
+  async body() {
+    // 1. Drive the REAL Settings UI code: load two tray rows, click the row's
+    //    delete (✕) button, and save - the UI happily produces a tray config
+    //    without any exit action (and can even empty the tray entirely).
+    const { registered, trayTbody } = loadMenuItemsSandbox();
+    if (!registered) throw new Error('menu-items section did not register (sandbox issue)');
+    registered.load({ menuItems: { quickAccess: [], tray: [{ menuText: 'E&xit', action: 'exit' }, { menuText: '&Reload Script', action: 'reload' }] } });
+    if (trayTbody.children.length !== 2) throw new Error('tray rows did not render (sandbox issue): ' + trayTbody.children.length);
+    // Delete the E&xit row via its ✕ button (tr.remove() + markDirty).
+    const exitRow = trayTbody.children[0];
+    const exitDeleteBtn = exitRow.children[2] && exitRow.children[2].children[0];
+    if (!exitDeleteBtn) throw new Error('delete button missing on the exit row (sandbox issue)');
+    exitDeleteBtn.click();
+    let saved = registered.save();
+    let trayActions = saved.menuItems.tray.map((i) => i.action);
+    if (trayActions.indexOf('exit') >= 0)
+      throw new Error('deleting the exit row did not remove it from the saved payload: ' + JSON.stringify(trayActions));
+    // The user can even delete the reload row too - the tray ends up with NO
+    // items at all (only the hardcoded Open/New Chat entries remain).
+    const reloadRow = trayTbody.children[0];
+    reloadRow.children[2].children[0].click();
+    saved = registered.save();
+    trayActions = saved.menuItems.tray.map((i) => i.action);
+    if (trayActions.length !== 0)
+      throw new Error('tray should be empty after deleting both rows: ' + JSON.stringify(trayActions));
+
+    // 2. _rebuildTrayMenu adds ONLY the hardcoded Open/New Chat entries plus
+    //    the user's trayMenuItems - there is no unconditional Exit item.
+    const tray = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayMenu.ahk'), 'utf8');
+    const exitInsideCase = /case "exit":\s*A_TrayMenu\.Add\(item\.menuText,\s*\(\*\)\s*=>\s*ExitApp\(\)\)/.test(tray);
+    const exitApps = (tray.match(/ExitApp/g) || []).length;
+    const hardcodedOpen = /A_TrayMenu\.Add\("📋 Open Chat Window"/.test(tray) || /A_TrayMenu\.Add\(".*Open Chat Window"/.test(tray);
+    if (!exitInsideCase || exitApps !== 1 || !hardcodedOpen)
+      throw new Error('_rebuildTrayMenu contract broken: exitInsideCase=' + exitInsideCase + ' exitApps=' + exitApps + ' hardcodedOpen=' + hardcodedOpen + '\n' + tray);
+
+    // 3. No other always-present close path: the chat window X only HIDES the
+    //    window (OnEvent Close -> Hide), and the command menu has no exit
+    //    action - so with the tray Exit row deleted the app cannot be closed
+    //    from the UI (only a user-configured closeWindowsHotkey / task manager).
+    const cw = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
+    const closeHides = /OnEvent\("Close",\s*\(\*\)\s*=>\s*responseWindow\.Hide\(\)\)/.test(cw);
+    const cmdMenu = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'menu', 'CommandMenu.ahk'), 'utf8');
+    const cmdHasExit = /case\s*["']exit["']|action\s*=\s*["']exit["']/i.test(cmdMenu);
+    if (!closeHides || cmdHasExit)
+      throw new Error('unexpected extra close path: closeHides=' + closeHides + ' cmdHasExit=' + cmdHasExit);
+
+    return 'Settings UI deletes the E&xit row via its ✕ button and save() persists tray actions ' + JSON.stringify(trayActions) +
+      '; _rebuildTrayMenu then renders only the hardcoded Open Chat Window / New Chat entries (ExitApp only inside the user-driven case "exit"), and the chat-window X hides rather than exits - no tray path to close the app';
+  }
+});
+
+scenarios.push({
+  id: 187,
+  regression: true, // REFUTED lead (2026-08-10): the exercised settings edge matrix round-trips cleanly (comma/quote model ids, blank cachedInput/context, cleared prefixes, dashboard filter binding)
+  name: 'Settings deep-merge edge cases round-trip cleanly: comma/quote model ids survive Save -> Load -> ApplyToGlobals and bind in the dashboard filters; blank cachedInput/context keep the CostCalculator fallbacks',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'settings-edge-roundtrip'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('settings-edge probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const savedM = text.match(/saved=(\d+)/);
+    const commaM = text.match(/commaId=(\d+)/);
+    const quoteM = text.match(/quoteId=(\d+)/);
+    const fallbackM = text.match(/cachedFallback=(\d+)/);
+    const hitsM = text.match(/filterHits=(\d+)/);
+    const applyErr = /applyErr='([^']*)'/.exec(text);
+    if (!savedM || !commaM || !quoteM || !fallbackM || !hitsM || !applyErr) throw new Error('probe output missing fields: ' + text);
+    if (savedM[1] !== '1' || commaM[1] !== '1' || quoteM[1] !== '1' || fallbackM[1] !== '1' || hitsM[1] !== '1' || applyErr[1] !== '')
+      throw new Error('settings edge matrix failed (potential bug): ' + text);
+    return 'Save -> Load -> ApplyToGlobals with a comma model id (openai/gpt-5,beta), a double-quote model id (openai/gpt-"q"x), blank cachedInput/context, and all-prefixes-cleared providers: saved=1, applyErr empty, both ids round-trip, blank cachedInput falls back to 10% (cost>0), and the comma model id binds in UsageRepo.Query (filterHits=1) - no round-trip bug in the exercised matrix';
+  }
+});
+
+scenarios.push({
+  id: 190,
+  name: 'Removing the deepseek provider crashes request resolution: ProviderResolver.Resolve falls back to the hardcoded providers["deepseek"] (a missing-key Map index THROWS in AHK v2) when no prefix matches - the Settings UI allows deleting deepseek (>=1 provider must remain), so a model with an uncovered prefix breaks every request',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'provider-resolve-deleted-deepseek'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('provider-resolve probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const threwM = text.match(/deletedDeepseekThrew=(\d)/);
+    const ctrlM = text.match(/openaiControl=([A-Za-z0-9_-]+)/);
+    if (!threwM || !ctrlM) throw new Error('probe output missing fields: ' + text);
+    const threw = Number(threwM[1]), control = ctrlM[1];
+    if (threw !== 1 || control !== 'openai')
+      throw new Error('deleted-deepseek resolution did not throw (bug not reproduced): threw=' + threw + ' control=' + control);
+    return 'providers = { openai (prefixes: [openai]) } only (deepseek removed, as the Settings UI allows): ProviderResolver.Resolve("deepseek/deepseek-v4-flash") THREW (missing-key Map index providers["deepseek"]) while the covered openai control resolved to "openai" - a deleted fallback provider crashes request resolution';
   }
 });
 

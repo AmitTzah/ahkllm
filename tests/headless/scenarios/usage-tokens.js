@@ -944,4 +944,115 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 177,
+  name: 'Fork copies drop the per-message COST snapshots - after a Settings price change the fork header is re-priced at CURRENT prices while the source thread keeps its snapshots (the two threads disagree)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'fork-cost-snapshot'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('fork-cost probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const srcM = text.match(/srcCost=([\d.]+)/);
+    const forkM = text.match(/forkCost=([\d.]+)/);
+    const copyM = text.match(/copiedCostSum=([\d.]+)/);
+    if (!srcM || !forkM || !copyM) throw new Error('probe output missing fields: ' + text);
+    const srcCost = Number(srcM[1]), forkCost = Number(forkM[1]), copiedCostSum = Number(copyM[1]);
+    // BUG present: fork rows carry cost 0 (the snapshot columns are not in
+    // GetActivePath's SELECT nor the fork INSERTs), so _RecomputeCumulativeCounters
+    // falls back to the CURRENT (doubled) prices and forkCost != srcCost.
+    if (srcCost <= 0)
+      throw new Error('control failed - source snapshot cost should be > 0: ' + text);
+    if (copiedCostSum !== 0 || forkCost === srcCost)
+      throw new Error('fork cost did not drift (bug not reproduced): srcCost=' + srcCost + ' forkCost=' + forkCost + ' copiedCostSum=' + copiedCostSum);
+    return 'source thread cumulative_cost=' + srcCost + ' (snapshot at call time), fork cumulative_cost=' + forkCost +
+      ' (copied rows carry cost sum ' + copiedCostSum + ', so the fork recompute used the doubled CURRENT prices) - the fork header disagrees with the source thread after a Settings price change';
+  }
+});
+
+scenarios.push({
+  id: 181,
+  name: 'Overwrite-editing an ASSISTANT message leaves its OLD token_count in place - the next user backfill subtracts the stale output tokens and its token popover over-counts (stale attribution on the assistant path, bug #156 family)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'edit-assistant-stale-backfill'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('edit-assistant probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const a1M = text.match(/a1tcAfterEdit=(\d+)/);
+    const u3M = text.match(/u3tc=(\d+)/);
+    if (!a1M || !u3M) throw new Error('probe output missing fields: ' + text);
+    const a1tcAfterEdit = Number(a1M[1]), u3tc = Number(u3M[1]);
+    // BUG present: MessageRepo.Edit re-estimates only role=user (bug #156);
+    // the edited assistant's token_count stays at the ORIGINAL 9 even though
+    // its content grew ~100 tokens, so the next backfill gives u3 96 instead
+    // of its true 5.
+    if (u3tc === 5)
+      throw new Error('assistant edit was re-attributed (bug not reproduced): a1tcAfterEdit=' + a1tcAfterEdit + ' u3tc=' + u3tc);
+    return 'assistant overwrite-edit kept token_count=' + a1tcAfterEdit + ' (original 9 despite ~100-token new content); the next user backfill got u3tc=' + u3tc +
+      ' (true contribution 5) - the stale assistant output-token count leaks into the next user\'s attribution, exactly like the fixed user path before bug #156';
+  }
+});
+
+scenarios.push({
+  id: 182,
+  name: 'A provider literally named "__unknown__" collides with the blank-provider filter sentinel - the dropdown carries two "__unknown__" options and selecting either returns ONLY the blank-provider rows, so the real provider is unfilterable',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    // 1. Real UsageRepo: the sentinel filter resolves to (provider='' OR NULL)
+    //    and excludes the REAL '__unknown__' provider's rows.
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'unknown-provider-sentinel'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('unknown-provider probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const realM = text.match(/realRows=(\d+)/);
+    const blankM = text.match(/blankRows=(\d+)/);
+    const listM = text.match(/providersListHas__unknown__=(\d)/);
+    if (!realM || !blankM || !listM) throw new Error('probe output missing fields: ' + text);
+    const realRows = Number(realM[1]), blankRows = Number(blankM[1]), listed = Number(listM[1]);
+    if (realRows !== 0 || blankRows < 1 || listed !== 1)
+      throw new Error('sentinel semantics not in the buggy shape (bug not reproduced): ' + text);
+
+    // 2. Real usage-dashboard.js populateFilters: both the real provider and
+    //    the "Unknown (blank)" option render with the SAME value __unknown__.
+    const { sandbox, els } = loadUsageDashboardSandbox();
+    sandbox.allData = {
+      chat: [
+        { date: '2026-08-10', model: 'real/__unknown__', provider: '__unknown__', input_tokens: 10, output_tokens: 5, thinking_tokens: 0, cached_tokens: 0, cached_input_cost: 0, output_cost: 0.2, total_cost: 0.3, message_count: 1 },
+        { date: '2026-08-10', model: 'blank-model', provider: '', input_tokens: 20, output_tokens: 10, thinking_tokens: 0, cached_tokens: 0, cached_input_cost: 0, output_cost: 0.4, total_cost: 0.6, message_count: 1 }
+      ],
+      commands: [],
+      providers: ['__unknown__', 'deepseek'],
+      models: ['real/__unknown__', 'blank-model']
+    };
+    els.providerFilter.innerHTML = '';
+    sandbox.populateFilters();
+    const options = els.providerFilter.innerHTML;
+    const unknownOptions = [...options.matchAll(/<option value="__unknown__"/g)].length;
+    if (unknownOptions < 2)
+      throw new Error('dropdown should carry TWO options with value __unknown__ (real provider + Unknown (blank)) - collision not reproduced: ' + options);
+    return 'UsageRepo.Query(provider="__unknown__") returned realRows=' + realRows + ' blankRows=' + blankRows +
+      ' while the providers list advertises __unknown__ (' + listed + '); populateFilters emitted ' + unknownOptions +
+      ' options with value __unknown__ - the real provider is unfilterable and both options resolve to the blank bucket';
+  }
+});
+
 module.exports = scenarios;

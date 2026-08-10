@@ -154,19 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - ALL 32 OPEN BUGS FIXED AND COMMITTED (see History); full suite green
-  (169/169 e2e). Continuing the follow-up audit of less-exercised areas (FIM/inline commands, cross-process DB
-  concurrency, large-data paths, WebView2 teardown). INLINE COMMAND FIX: failed inline requests now surface a
-  tooltip + API-log error instead of silently doing nothing, and each request uses a unique per-request id
-  (ChatDB._UUID) instead of A_TickCount; scenario 176 added as a regression check. GENERAL-TAB LABEL FIX:
-  the "App Default" dropdown option now names the isDefault assistant when one is marked (previously it always
-  showed the default model). TEST-INFRA FIX: unit-test temp files/dbs now use a random suffix after A_TickCount
-  so same-millisecond or leftover-file collisions cannot corrupt a run. LARGE-DATA FIX (test): startup FTS
-  rebuild verified on a 400-message history with a legacy attachment. CHECKED CLEAN by inspection: cross-process
-  SQLite (WAL + busy_timeout + idempotent migrations/FTS rebuild) and WebView2 teardown (exercised by every
-  harness run).
+- **Where we left off:** 2026-08-10 - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
+  headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
+  History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
+  migration backfill guard - scenarios 184-188 kept as regression checks). Next: fix the verified bugs in rank
+  order (Phase 2), one at a time, after the user commits.
 ---
 
 ## Bug entry template
@@ -220,10 +214,218 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
+### 177. Fork copies drop the per-message COST snapshots (header cost re-priced at CURRENT prices after a Settings price change)
+
+**Scenario:** 177 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Chat with a model, wait for the response (cost snapshots are stored per message at the prices in
+effect), open Settings and double the model's price, then fork the conversation and compare the fork's header
+cost with the source thread's.
+
+**Expected:** the fork's cumulative cost equals the source's (both carry the call-time snapshots).
+
+**Actual:** the fork's rows get cost 0 - `TreeRepo._InsertForkMessage`/`_InsertCopiedOffPathMessage` copy only
+token fields, and `GetActivePath` does not even select the cost columns - so
+`MessageRepo._RecomputeCumulativeCounters` falls back to the CURRENT model prices and the fork header
+disagrees with the source thread.
+
+**Evidence:** `chat/db/TreeRepo.ahk` (`GetActivePath` SELECT, `_InsertForkMessage`, `_InsertCopiedOffPathMessage`
+INSERT column lists) vs `chat/db/MessageRepo.ahk:Insert` (bug #153 snapshot columns) and
+`_RecomputeCumulativeCounters` (zero-cost fallback).
+
+**Verification:** headless - `probe-bughunt-db.ahk fork-cost-snapshot` seeds a snapshotted exchange, doubles the
+model price, forks, and asserts `forkCost != srcCost` with `copiedCostSum = 0`.
+
+### 178. SSE data LINES split across poll boundaries silently lose the payload
+
+**Scenario:** 178 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Have a provider write a single `data:` event in two writes with a gap longer than the 100ms stream
+poll (e.g. `data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},` then 450ms later
+`{"delta":{"content":"-RIGHT"}}]}`).
+
+**Expected:** the event's content is persisted in full.
+
+**Actual:** worse than a silent drop - `jsongo.Parse` returns an empty STRING for the truncated JSON (it does
+not throw), so `SSEParser.ParseLine`'s `parsed["choices"]` crashes the poll with "String has no property named
+__Item"; the timer is killed and the stream never finalizes (cURL stays alive, no assistant message is
+persisted, `streamState.active` stays true). Once the parser ignores the partial, the remainder still has no
+`data: ` prefix, so the payload is silently lost either way. `_readFileChunk` advances past complete UTF-8
+characters (bug #160 fix) but still advances past incomplete LINES.
+
+**Evidence:** `api/SSEParser.ahk:ParseLine` (jsongo result indexed without a String/type guard) +
+`chat/streaming/StreamHandler.ahk` (`_readFileChunk`/`_readAndProcessStream`); probe-verified that
+`jsongo.Parse('{"choices":[...')` returns `""` (String) instead of throwing.
+
+**Verification:** headless - new mock mode `sse-split-line` writes one event in two writes (450ms apart) with
+complete chunks around it; scenario 178 sends a message and asserts the persisted content does NOT contain
+`SPLIT-LEFT` (observed: stream never finalizes, `streamState.active=true`, assistant row NONE).
+
+### 179. The tray menu can be left without an Exit item (no other always-present close path)
+
+**Scenario:** 179 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Menu Items -> delete the "E&xit" tray row (the row's X button), Save.
+
+**Expected:** the app always keeps a way to close itself (Exit non-removable, or another always-present close
+path).
+
+**Actual:** `_rebuildTrayMenu` builds the tray exclusively from the user-editable `trayMenuItems` global, so
+with the Exit row deleted the tray has only the hardcoded "Open Chat Window"/"New Chat" entries. The chat
+window's X only hides the window (`OnEvent("Close", ...) => responseWindow.Hide()`), the command menu has no
+exit action, and the close hotkey is user-configurable (can be disabled) - the app cannot be closed from the UI.
+
+**Evidence:** `app/TrayMenu.ahk` (`_rebuildTrayMenu`), `webui/js/settings/sections/menu-items.js` (delete
+button + `readTable`/`save` with no guard), `chat/ChatWindow.ahk:108`.
+
+**Verification:** headless - scenario 179 loads the REAL menu-items.js in a vm sandbox, clicks the E&xit row's
+delete button, and shows `save()` persists a tray with no exit action (and even an empty tray), then statically
+asserts `_rebuildTrayMenu` has no unconditional exit item and the chat-window Close hides.
+
+### 180. Sidebar thread list runs a per-thread active-path walk (N+1 queries per refresh)
+
+**Scenario:** 180 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Grow the thread list (300+ threads, multi-message paths) and trigger any sidebar refresh.
+
+**Expected:** the thread list loads with a bounded number of queries.
+
+**Actual:** `ThreadRepo.List` issues one leaf lookup plus one `SELECT ... FROM messages WHERE id=?` per ancestor
+for EVERY listed thread (the #155 badge walk), so refresh latency scales with thread count x path depth -
+measured ~2 queries per thread for a 300-thread list (901 queries for 300 threads with user leaves).
+
+**Evidence:** `chat/db/ThreadRepo.ahk:List` (per-thread `active_leaf_id` lookup + while-loop ancestor queries).
+
+**Verification:** headless - `probe-bughunt-db.ahk thread-list-nplus1` wraps `ChatDB.db` in a counting proxy
+over 300 seeded threads, asserts `queries > threads + 5`, and confirms a dangling `active_leaf_id` and a
+trashed thread neither throw nor hang the walk.
+
+### 181. Overwrite-editing an ASSISTANT message leaves stale token attribution (next user backfill over-counts)
+
+**Scenario:** 181 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Edit an assistant message (overwrite mode) so its content changes drastically, then send the next
+user message and open its token popover.
+
+**Expected:** the edited message's token attribution is refreshed (like the user path, bug #156) so the next
+user's backfilled contribution is accurate.
+
+**Actual:** `MessageRepo.Edit` re-estimates `token_count` only for `role = "user"`; an edited assistant keeps
+its old `token_count`, and since `_BackfillUserTokens` sums assistant `token_count`/`thinking_tokens` into
+`existing_sum`, the next user message's backfill subtracts the stale output-token count and over-counts its
+own contribution (probe: u3 gets 96 instead of 5).
+
+**Evidence:** `chat/db/MessageRepo.ahk:Edit` (user-only re-estimate) + `_BackfillUserTokens` (assistant rows
+counted in `existing_sum`).
+
+**Verification:** headless - `probe-bughunt-db.ahk edit-assistant-stale-backfill` edits an assistant to ~100
+tokens and asserts the next user's backfilled `token_count` is 96, not its true 5.
+
+### 182. A provider named "__unknown__" collides with the blank-provider filter sentinel
+
+**Scenario:** 182 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Name a provider (Settings -> Providers) exactly `__unknown__`, use it, then open the Usage Dashboard
+and select that provider (or the "Unknown (blank)" option) in the filter.
+
+**Expected:** each provider - including `__unknown__` - is filterable by its own name without ambiguity.
+
+**Actual:** `populateFilters` emits BOTH the real provider option and the bug-#168 "Unknown (blank)" option
+with the same value `__unknown__`, and `UsageRepo.Query` scopes that value to `(provider='' OR provider IS
+NULL)`, so selecting either shows only the blank rows - the real provider's rows are unreachable through their
+own name.
+
+**Evidence:** `chat/db/UsageRepo.ahk:Query` (sentinel branch) + `webui/js/usage-dashboard.js:populateFilters`.
+
+**Verification:** headless - scenario 182 runs `probe-bughunt-db.ahk unknown-provider-sentinel` (sentinel
+filter returns realRows=0/blankRows=1 while the providers list advertises `__unknown__`) and loads the real
+usage-dashboard.js in a vm sandbox (two options with value `__unknown__`).
+
+### 183. Search result snippets for attachment-text hits show the message content, not the match
+
+**Scenario:** 183 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Attach a PDF whose extracted text contains a unique term, search for that term.
+
+**Expected:** the snippet previews the matched attachment text (and/or the UI indicates the match is in the
+attachment).
+
+**Actual:** bug #165 made the message FINDABLE, but `SearchRepo._FTS5` builds `contentPreview` from `m.content`
+only - `INSTR(LOWER(m.content), ...)` misses, so the preview falls back to `SUBSTR(m.content, 1, 100)`, which
+is unrelated to the match.
+
+**Evidence:** `chat/db/SearchRepo.ahk:_FTS5` (snippet expression reads `m.content`).
+
+**Verification:** headless - `probe-bughunt-db.ahk fts-attachment-snippet` seeds a message + attachment whose
+extracted text contains "needle"; scenario 183 asserts the search finds the hit but the snippet does not
+contain the match.
+
+### 189. Harness interrupted-run recovery restores DIFFERENT backups (stale profile risk on direct launch)
+
+**Scenario:** 189 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Accumulate two+ `llm-profile-bak-*` dirs in temp (stale backups + an isolated/junction profile) and
+either run `--cleanup`/recovery or launch the next scenario.
+
+**Expected:** both recovery paths restore the same (newest) profile backup.
+
+**Actual:** `recoverInterruptedRun` (`e2e-suite.js`) sorts and restores `backups[backups.length - 1]` (newest),
+while `isolateProfile` (`launch.js`) restores the FIRST backup in `readdirSync` order (no sort) - when multiple
+backups exist the direct-launch path can restore a stale profile over the newest one.
+
+**Evidence:** `tests/headless/e2e-suite.js` (`recoverInterruptedRun`) vs `tests/headless/launch.js`
+(`isolateProfile` step 1).
+
+**Verification:** headless - scenario 189 statically asserts the two selection expressions differ and
+demonstrates with a temp dir that `readdirSync` order != sorted order (first != last-sorted).
+
+### 190. Removing the deepseek provider crashes request resolution (hardcoded fallback `providers["deepseek"]`)
+
+**Scenario:** 190 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Providers -> Remove the DeepSeek card (the UI keeps at least one provider, so this is
+allowed), Save, then send any chat request whose model prefix is not covered by the remaining providers.
+
+**Expected:** a clean error (or another provider fallback); the request path must not crash.
+
+**Actual:** `ProviderResolver.Resolve` falls back to `providers["deepseek"]` when no prefix matches, and a
+missing-key Map index THROWS in AHK v2 - every request for an uncovered model fails with "Request failed: Key
+does not exist".
+
+**Evidence:** `api/ProviderResolver.ahk:Resolve` (final `providers["deepseek"]` without a Has check) +
+`webui/js/settings/sections/providers.js:53` (Remove keeps >=1 provider).
+
+**Verification:** headless - `probe-bughunt-db.ahk provider-resolve-deleted-deepseek` builds providers without
+deepseek (openai + prefix only) and asserts `Resolve("deepseek/deepseek-v4-flash")` throws while the covered
+control resolves to "openai".
+
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Hard-delete-mid-stream dangling rows (bug #172 trace) leak into FTS results, the thread map, or the dashboard" - REFUTED: the dangling message row (messages has no FK on thread_id) stays invisible to search (FTS query JOINs chat_threads) and the thread map (Thread_List reads chat_threads), and the chat_usage row is the genuinely BILLED API call (kept by design - no GC policy warranted); scenario 184 kept as a regression check.
+- 2026-08-10 - "Cross-process startup race duplicates FTS index entries / loses rows (Main + ChatWindow both run _CreateSchema/_Migrate + the FTS DELETE+INSERT rebuild on one WAL DB)" - REFUTED: two real AHK processes racing ChatDB.Open on a shared WAL DB with an empty FTS index stayed idempotent (3/3 stress runs: 150 messages = 150 FTS rows, 0 duplicated entries, user_version=6, both exited 0); scenario 185 kept as a regression check.
+- 2026-08-10 - "WebView2 teardown under rapid open/close orphans msedgewebview2 or locks the profile" - REFUTED: closing the chat window only HIDES it (OnEvent Close -> responseWindow.Hide(), no per-open WebView2 teardown); teardown happens at app exit where Main WinCloses ChatWindow gracefully before force-kill, and the harness sweeps llm-webview2-* user-data folders by marker (every e2e run exercises launch/teardown); scenario 186 kept as a regression check.
+- 2026-08-10 - "Settings deep-merge edge cases break round-trips (nested Maps/Arrays, null/empty-string values, cleared prefixes, comma/quote ids through save -> load -> dashboard filters)" - REFUTED for the exercised matrix: Save -> Load -> ApplyToGlobals round-trips comma/quote model ids, blank cachedInput/context keep the CostCalculator fallbacks, all-prefixes-cleared providers apply cleanly, and a comma model id binds in UsageRepo.Query (filterHits=1); scenario 187 kept as a regression check.
+- 2026-08-10 - "Legacy schema-v6 migration backfill applies twice (user_version guard missing)" - REFUTED: the guard holds - the one-time backfill prices a v5-era assistant row at first-open prices and a reopen after doubling the model price keeps cost1=cost2 with user_version=6 both times; known limitation (pre-upgrade rows can only be priced at first-open prices) documented; scenario 188 kept as a regression check.
 - 2026-08-10 - "General-tab App Default label always shows the default model even when an isDefault assistant is what actually starts new chats (bug #26 follow-up)" - FIXED: fillNewChatDefault now names the isDefault assistant in the App Default option when one is marked; general-settings unit test added.
 - 2026-08-10 - "Unit-test temp DB/file paths keyed by A_TickCount can collide (same millisecond or a leftover file from a crashed run)" - FIXED: every test temp path now appends a random suffix after A_TickCount (29 paths across 16 test files), eliminating same-ms and leftover-file collisions.
 - 2026-08-10 - "Inline command failure is silent (no paste, no error, no API-log entry; per-request id uses A_TickCount which can collide)" - FIXED: InlineRequestRunner.Run now branches on result.success and calls _HandleInlineError (reads cURL stderr, shows a tooltip, logs the failed call with status error), and each request uses ChatDB._UUID() for its temp files/loading entry; scenario 176 added as a regression check + InlineRequestRunner unit tests.

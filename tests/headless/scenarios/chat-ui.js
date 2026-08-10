@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, showChat, sendChatMessage } = require('./helpers');
+const { sleep, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
 
@@ -358,6 +358,48 @@ scenarios.push({
     if (String(renderedHtml).indexOf('<img') >= 0)
       throw new Error('raw <img> tag still present in rendered HTML (bug #57 not fixed): ' + JSON.stringify(renderedHtml));
     return 'assistant message <img src="x" onerror=...> rendered inert (window.__xssPwned=0); msg HTML=' + JSON.stringify(renderedHtml);
+  }
+});
+
+scenarios.push({
+  id: 178,
+  name: 'SSE `data:` LINE split across poll boundaries silently loses the payload (the remainder arrives without the `data: ` prefix, so SSEParser ignores it)',
+  mode: 'sse-split-line',
+  settings: {},
+  async body({ cdp, dbPath, mockLog }) {
+    await showChat();
+    await sendChatMessage(cdp, 'split my stream line');
+    // The bug leaves the stream active (the partial JSON crashes the poll
+    // timer), so wait with a bounded cap instead of failing on the timeout.
+    let idle = false;
+    try { await waitStreamingIdle(cdp, 25000); idle = true; } catch {}
+    await sleep(1200);
+    let msgs = [];
+    try { msgs = seed.query(dbPath, 'SELECT role, content FROM messages ORDER BY created_at'); } catch {}
+    const asst = msgs.find((m) => m.role === 'assistant');
+    const content = asst ? asst.content : '';
+    const hasNormal = content.indexOf('Hello from the mock LLM.') >= 0;
+    const hasSplit = content.indexOf('SPLIT-LEFT') >= 0;
+    const diag = await cdp.eval('({ streamState: typeof streamState !== "undefined" ? streamState : null, isLoading: typeof isLoading !== "undefined" ? isLoading : null })').catch(() => ({}));
+    const userSent = msgs.some((m) => m.role === 'user');
+    if (!userSent)
+      throw new Error('send failed (harness issue): ' + JSON.stringify(msgs));
+    // BUG present: the SPLIT-LEFT-RIGHT event (ONE `data:` line written in two
+    // writes with a >poll gap) is lost. Today the partial JSON also CRASHES
+    // the stream: jsongo.Parse returns an empty String for the truncated JSON
+    // and SSEParser.ParseLine indexes it (`parsed["choices"]` -> "String has
+    // no property named __Item"), killing the poll timer - the stream never
+    // finalizes and no assistant row is persisted. Once the parser ignores the
+    // partial instead, the stream would complete WITHOUT the split payload
+    // (the remainder has no `data: ` prefix). Either way SPLIT-LEFT must not
+    // survive in the persisted content.
+    if (hasSplit)
+      throw new Error('split payload survived (bug not reproduced): ' + JSON.stringify(content));
+    if (idle && !asst)
+      throw new Error('stream went idle but no assistant row was persisted (harness issue): ' + JSON.stringify(msgs));
+    return 'split-line stream: idle=' + idle + ' streamState.active=' + (diag.streamState ? diag.streamState.active : '?') +
+      ', assistant persisted=' + (asst ? JSON.stringify(content) : 'NONE') +
+      ' - the SPLIT-LEFT-RIGHT payload was dropped; today the partial JSON also crashes the poll (jsongo.Parse -> String -> SSEParser.ParseLine "__Item") so the stream never finalizes';
   }
 });
 

@@ -9,6 +9,11 @@
 //                      destroyed before [DONE] (mid-stream connection failure)
 //   sse-slow           streaming like sse-success but with ~700ms delays per
 //                      chunk (total ~3s) so scenarios can act mid-stream
+//   sse-split-line     streaming: one SSE event whose `data:` LINE is written
+//                      in TWO writes with a >poll-interval delay between, so
+//                      the app's 100ms stream poll consumes the partial line
+//                      and then ignores the bare remainder (the bug hunt's
+//                      "data line split across poll boundaries" case)
 //   json               non-stream chat completion; FIM requests (body.prompt)
 //                      answered with choices[0].text (opts.fimText)
 //   error-json         HTTP 401 with {"error":{"message":...}}
@@ -166,6 +171,40 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       }
       if (mode === 'sse-slow') {
         makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700 })(req, res);
+        return;
+      }
+      if (mode === 'sse-split-line') {
+        // One event whose JSON spans two writes with a gap larger than the
+        // app's 100ms poll interval: the first poll reads
+        // `data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},` (invalid
+        // JSON -> SSEParser ignores it) and the next poll reads the bare
+        // remainder `{"delta":{"content":"-RIGHT"}}]}` (no `data: ` prefix ->
+        // ignored). The payload is silently lost. Normal chunks before/after
+        // keep the stream non-empty and finalizable.
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        (async () => {
+          sseChunk(res, { choices: [{ delta: { content: 'Hello from the mock LLM. ' } }] });
+          await delay(150);
+          res.write('data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},');
+          // The partial line must sit in the output file across at least one
+          // 100ms poll before the second half arrives.
+          await delay(450);
+          res.write('{"delta":{"content":"-RIGHT"}}]}\n\n');
+          await delay(80);
+          sseChunk(res, {
+            choices: [{ delta: {}, finish_reason: 'stop' }],
+            model: 'deepseek-v4-flash',
+            usage: { prompt_tokens: 12, completion_tokens: 12, total_tokens: 24, prompt_tokens_details: { cached_tokens: 4 } }
+          });
+          await delay(40);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        })().catch(() => { try { res.end(); } catch {} });
         return;
       }
       if (mode === 'sse-success') {

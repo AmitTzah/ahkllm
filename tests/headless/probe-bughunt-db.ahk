@@ -28,7 +28,7 @@ ExitProbe(*) {
     Finish()
     ExitApp(1)
 }
-OnError((e, m) => (Log("ERROR: " e.Message), Finish(), ExitApp(1)), -1)
+OnError((e, m) => (Log("ERROR: " e.Message "`nSTACK: " (e.HasProp("Stack") ? e.Stack : "none")), Finish(), ExitApp(1)), -1)
 
 #Include ..\..\lib\Config.ahk
 
@@ -530,6 +530,378 @@ EmptyModelSkip() {
     CloseDb(dbPath)
 }
 
+; ------------------------------------------------------------------
+; CHECK 18: forking drops the per-message COST snapshots (bug #10
+; follow-up). MessageRepo.Insert snapshots input_cost/cached_input_cost/
+; output_cost/total_cost at the prices in effect (bug #153), but
+; TreeRepo._InsertForkMessage/_InsertCopiedOffPathMessage copy only token
+; fields, so fork rows carry cost 0. _RecomputeCumulativeCounters then
+; falls back to the CURRENT model prices for rows with zero costs and real
+; tokens - after a Settings price change the fork's header cost disagrees
+; with the source thread (which keeps its snapshots).
+; ------------------------------------------------------------------
+ForkCostSnapshot() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("ForkCostSnapshot")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 100, token_count: 50, cached_tokens: 20})
+    srcRow := ChatDB.db.Query("SELECT cumulative_cost FROM chat_threads WHERE id=?;", tid)
+    srcCost := Number(srcRow[1, "cumulative_cost"])
+    msgRow := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id=?;", a1)
+    snapTotal := Number(msgRow[1, "total_cost"])
+    ; Simulate a Settings price change AFTER the API call was made.
+    m := models["deepseek/deepseek-v4-flash"]
+    m.input := m.input * 2
+    m.cachedInput := m.cachedInput * 2
+    m.output := m.output * 2
+    forkId := ChatDB.Msg_ForkThread(tid, a1)
+    forkRow := ChatDB.db.Query("SELECT cumulative_cost FROM chat_threads WHERE id=?;", forkId)
+    forkCost := Number(forkRow[1, "cumulative_cost"])
+    forkMsgRows := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE thread_id=?;", forkId)
+    copiedCostSum := 0
+    for r in forkMsgRows.rows
+        copiedCostSum += Number(r.input_cost) + Number(r.cached_input_cost) + Number(r.output_cost) + Number(r.total_cost)
+    Log("FORKCOST srcCost=" srcCost " forkCost=" forkCost " snapshot=" snapTotal " copiedCostSum=" copiedCostSum)
+    Log("FORKCOST verdict=" (forkCost != srcCost && copiedCostSum = 0 ? "BUG-present(cost-snapshots-dropped)" : "OK-cost-copied"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 19: OVERWRITE-editing an ASSISTANT message leaves its OLD
+; token_count in place (MessageRepo.Edit re-estimates only role=user, bug
+; #156). The assistant's token_count feeds _BackfillUserTokens' existing_sum,
+; so the NEXT user message's backfill subtracts the stale output-token count
+; and its token popover over-counts - the same stale-attribution family as
+; the user path, on the assistant path.
+; a1 reported 12/9; a1 is overwrite-edited to a ~100-token text. The next
+; real prompt is u1(12) + NEW a1(100) + u2(4) + a2(6) + u3(5) = 127, but the
+; backfill subtracts the stale a1.tc=9: u3 gets 127-(12+9+4+6)=96 not 5.
+; ------------------------------------------------------------------
+EditAssistantStaleBackfill() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("EditAssistantStaleBackfill")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "SHORT", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2", parent_id: a1})
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2", parent_id: u2, model: "deepseek/deepseek-v4-flash", prompt_tokens: 25, token_count: 6})
+    ; Overwrite edit: assistant content grows dramatically (heuristic ~1 token
+    ; per 3 chars -> ~100 tokens for 300 chars).
+    longText := ""
+    loop 300
+        longText .= "x"
+    ChatDB.Msg_Edit(a1, longText)
+    a1tcAfterEdit := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", a1)[1, "token_count"])
+    u3 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u3", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a2';").rows[1].id})
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a3", parent_id: u3, model: "deepseek/deepseek-v4-flash", prompt_tokens: 127, token_count: 5})
+    u3tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u3)[1, "token_count"])
+    Log("EDITASSISTANT a1tcAfterEdit=" a1tcAfterEdit " u3tc=" u3tc " (true u3 contribution 5)")
+    Log("EDITASSISTANT verdict=" (u3tc = 5 ? "OK-rebackfilled" : "BUG-present(stale-assistant-attribution)"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 20: the "__unknown__" provider-filter sentinel collides with a real
+; provider literally named "__unknown__" (user-editable in Settings).
+; UsageRepo.Query scopes the sentinel to (provider='' OR provider IS NULL),
+; so selecting the filter matches ONLY blank-provider rows - the real
+; provider's rows are unreachable through their own name even though the
+; providers dropdown lists them (both options carry the same value).
+; ------------------------------------------------------------------
+UnknownProviderSentinel() {
+    dbPath := OpenDb()
+    today := FormatTime(, "yyyy-MM-dd")
+    ChatDB.ChatUsage_Upsert({date: today, model: "real/__unknown__", provider: "__unknown__", prompt_tokens: 10, completion_tokens: 5, cached_tokens: 0, input_cost: 0.1, cached_input_cost: 0, output_cost: 0.2, total_cost: 0.3, response_time_ms: 100, ttft_ms: 50})
+    ChatDB.ChatUsage_Upsert({date: today, model: "blank-model", provider: "", prompt_tokens: 20, completion_tokens: 10, cached_tokens: 0, input_cost: 0.2, cached_input_cost: 0, output_cost: 0.4, total_cost: 0.6, response_time_ms: 200, ttft_ms: 100})
+    f := Map()
+    f["timeRange"] := "all"
+    f["model"] := ""
+    f["provider"] := "__unknown__"
+    f["type"] := "all"
+    res := ChatDB.Usage_Query(f)
+    realRows := 0, blankRows := 0
+    for r in res.chat {
+        if r.provider = "__unknown__"
+            realRows++
+        if r.provider = ""
+            blankRows++
+    }
+    hasSentinelInList := false
+    for p in res.providers
+        if p = "__unknown__"
+            hasSentinelInList := true
+    Log("UNKNOWNPROV realRows=" realRows " blankRows=" blankRows " providersListHas__unknown__=" (hasSentinelInList ? 1 : 0) " totalChatRows=" res.chat.Length)
+    Log("UNKNOWNPROV verdict=" (realRows = 0 && blankRows > 0 && hasSentinelInList ? "BUG-present(sentinel-collision)" : "OK-distinct"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 21: search result snippets for attachment-text hits show the
+; message content, not the match. Bug #165 made extracted_text searchable
+; (the message IS found), but SearchRepo._FTS5 builds contentPreview from
+; m.content only - for a term that exists only in an attachment the preview
+; is the message's own text, unrelated to the match.
+; ------------------------------------------------------------------
+FtsAttachmentSnippet() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("FtsAttachmentSnippet")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "see attached report"})
+    ChatDB.Attachment_Insert(u1, {
+        attachment_type: "pdf",
+        file_path: "attachments/report.pdf",
+        mime_type: "application/pdf",
+        original_filename: "report.pdf",
+        file_size: 1024,
+        extracted_text: "Quarterly results mention the needle keyword only here."
+    })
+    hits := SearchRepo.Search("needle", tid)
+    found := hits.Length
+    preview := found ? hits[1].contentPreview : ""
+    previewHasMatch := InStr(preview, "needle") > 0
+    Log("FTSATTNEEDLE hits=" found " preview='" preview "' previewHasMatch=" (previewHasMatch ? 1 : 0))
+    Log("FTSATTNEEDLE verdict=" (found > 0 && !previewHasMatch ? "BUG-present(snippet-not-the-match)" : (found > 0 ? "OK-snippet-match" : "OK-no-hits")))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 22: Thread_List performs a per-thread active-path walk (bug #12
+; follow-up). For EVERY listed thread it issues one leaf lookup plus one
+; SELECT per ancestor until the nearest assistant - a classic N+1 that makes
+; sidebar refresh latency scale with thread count x path depth. Also
+; verifies a dangling active_leaf_id (hard-deleted message) and a trashed
+; thread do not throw or hang the walk.
+; ------------------------------------------------------------------
+; Query-counting proxy: a CLASS instance (real methods) so method calls bind
+; `this` correctly (plain-object function properties get the receiver prepended
+; as an argument in AHK v2, which would corrupt the SQL parameter list).
+class ThreadListQueryCounter {
+    static count := 0
+    static real := ""
+    Exec(statement, args*) {
+        ThreadListQueryCounter.count++
+        return ThreadListQueryCounter.real.Exec(statement, args*)
+    }
+    Query(statement, args*) {
+        ThreadListQueryCounter.count++
+        return ThreadListQueryCounter.real.Query(statement, args*)
+    }
+}
+
+ThreadListNplus1() {
+    dbPath := OpenDb()
+    loop 300 {
+        tid := ChatDB.Thread_Create("N1T" A_Index)
+        u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+        a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+        ; Active leaf = the USER message (last message sent, waiting for the
+        ; response/failed) - the badge walk must climb u2 -> a1 (2 queries).
+        u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2", parent_id: a1})
+        ChatDB.Msg_SetActiveLeaf(tid, u2)
+    }
+    ; A thread whose active_leaf_id points at a hard-deleted message.
+    dtid := ChatDB.Thread_Create("DanglingLeaf")
+    dmsg := ChatDB.Msg_Insert({thread_id: dtid, role: "user", content: "x"})
+    ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id='ghost-missing-id' WHERE id=?;", dtid)
+    ; A trashed thread that must be excluded from the list.
+    ttid := ChatDB.Thread_Create("Trashed")
+    ChatDB.Thread_SoftDelete(ttid)
+
+    realDb := ChatDB.db
+    ThreadListQueryCounter.count := 0
+    ThreadListQueryCounter.real := realDb
+    ChatDB.db := ThreadListQueryCounter()
+    list := ChatDB.Thread_List()
+    ChatDB.db := realDb
+    queryCount := ThreadListQueryCounter.count
+
+    listedDangling := 0, listedTrashed := 0
+    for t in list {
+        if t.id = dtid
+            listedDangling++
+        if t.id = ttid
+            listedTrashed++
+    }
+    Log("THREADLIST threads=" list.Length " queries=" queryCount " perThread=" Round(queryCount / 300, 1) " listedDangling=" listedDangling " listedTrashed=" listedTrashed)
+    ; The dangling-leaf thread IS a real thread (it must still be listed - the
+    ; walk just must not throw/hang); the trashed thread must be excluded.
+    Log("THREADLIST verdict=" (queryCount > 305 && listedDangling = 1 && listedTrashed = 0 ? "BUG-present(nplus1-walk)" : "OK-bounded"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 23: hard-delete-mid-stream leaves DANGLING message rows (bug #172
+; "by-design trace"): the stream completes into the captured thread id after
+; ThreadRepo.Delete removed the thread, and messages has no FK on thread_id.
+; Verify they never leak into FTS results or the thread map, and decide
+; whether the dashboard row (a genuinely billed call) is a leak.
+; ------------------------------------------------------------------
+DanglingMidstreamRows() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("MidStream")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+    ; User deletes the thread while the request is in flight.
+    ChatDB.Thread_Delete(tid)
+    ; The completion handler persists into the captured thread id (bug #159
+    ; semantics) - the row is now dangling.
+    orphanId := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "late completion", model: "deepseek/deepseek-v4-flash", prompt_tokens: 30, token_count: 15, cached_tokens: 5})
+    dangling := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads);")[1, "c"]
+    ftsRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id=?;", orphanId)[1, "c"]
+    searchHits := SearchRepo.Search("late completion").Length
+    listed := 0
+    for t in ChatDB.Thread_List()
+        if t.id = tid
+            listed++
+    usageRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_usage WHERE model='deepseek/deepseek-v4-flash';")[1, "c"]
+    Log("DANGLING rows=" dangling " ftsRows=" ftsRows " searchHits=" searchHits " threadMapListed=" listed " usageRows=" usageRows)
+    Log("DANGLING verdict=" (dangling > 0 && ftsRows = 1 && searchHits = 0 && listed = 0 && usageRows = 1 ? "OK-invisible-except-billed-usage" : "BUG-present(leak)"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 24: the v6 migration backfill (bug #10 follow-up) must apply
+; exactly ONCE per DB - PRAGMA user_version=6 guards the one-time re-price
+; of legacy rows. After a price change, a reopen must NOT re-run the
+; backfill (the costs stay at the first-open prices).
+; ------------------------------------------------------------------
+MigrationBackfillGuard() {
+    dbPath := A_Temp "\bughunt_mig_" A_TickCount ".db"
+    try FileDelete(dbPath)
+    ; Build a v5-era schema (messages WITHOUT the v6 cost columns) so the
+    ; migration path really runs; user_version=5.
+    raw := SQLite(dbPath)
+    raw.Exec("PRAGMA journal_mode=WAL;")
+    raw.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL, font_size INTEGER DEFAULT 17, advanced_toggles TEXT DEFAULT '', folder_id TEXT);")
+    raw.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
+    raw.Exec("INSERT INTO messages (id, thread_id, role, content, model, prompt_tokens, token_count, thinking_tokens, cached_tokens) VALUES ('legacy1','t1','assistant','x','deepseek/deepseek-v4-flash',100,50,0,20);")
+    raw.Exec("INSERT INTO chat_threads (id, title, active_leaf_id) VALUES ('t1','Legacy','legacy1');")
+    raw.Exec("PRAGMA user_version = 5;")
+    raw.Close()
+
+    ; First open: v6 migration backfills costs at CURRENT prices.
+    ChatDB.Open(dbPath)
+    c1 := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id='legacy1';")
+    v1 := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
+    cost1 := Number(c1[1, "total_cost"])
+    ChatDB.Close()
+
+    ; Double the price, reopen: the user_version guard must prevent a
+    ; second backfill (costs stay at the first-open prices).
+    m := models["deepseek/deepseek-v4-flash"]
+    m.input := m.input * 2
+    m.cachedInput := m.cachedInput * 2
+    m.output := m.output * 2
+    ChatDB.Open(dbPath)
+    c2 := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id='legacy1';")
+    v2 := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
+    cost2 := Number(c2[1, "total_cost"])
+    ChatDB.Close()
+    try FileDelete(dbPath)
+    try FileDelete(dbPath "-wal")
+    try FileDelete(dbPath "-shm")
+
+    Log("MIGBACK v1=" v1 " v2=" v2 " cost1=" cost1 " cost2=" cost2)
+    Log("MIGBACK verdict=" (v1 = 6 && v2 = 6 && cost1 > 0 && cost1 = cost2 ? "OK-guard" : "BUG-present(re-priced-or-migrated-twice)"))
+}
+
+; ------------------------------------------------------------------
+; CHECK 25: ProviderResolver.Resolve falls back to the HARDCODED "deepseek"
+; provider (`providers["deepseek"]`) when no prefix matches - a missing-key
+; Map index THROWS in AHK v2. The Settings Providers UI lets the user REMOVE
+; the deepseek provider (at least one provider must remain, so deleting
+; deepseek while keeping e.g. openai is allowed); any model whose prefix is
+; not covered by the remaining providers then crashes every request.
+; ------------------------------------------------------------------
+ProviderResolveDeletedDeepseek() {
+    global providers, providerMap
+    providers := Map()
+    providers["openai"] := {displayName: "OpenAI", endpoint: "https://api.openai.com/v1", fimEndpoint: "https://api.openai.com/v1", authEnvVar: "OPENAI_API_KEY", authMode: "env", apiKey: "", collapseThinking: false}
+    providerMap := Map("openai", "openai")
+    r1 := ""
+    try {
+        r1 := ProviderResolver.Resolve("deepseek/deepseek-v4-flash").providerKey
+    } catch Error as e {
+        r1 := "THREW:" e.Message
+    }
+    r2 := ""
+    try {
+        r2 := ProviderResolver.Resolve("openai/gpt-4").providerKey
+    } catch Error as e {
+        r2 := "THREW:" e.Message
+    }
+    threw1 := InStr(r1, "THREW") > 0
+    Log("PROVRES deletedDeepseekThrew=" (threw1 ? 1 : 0) " openaiControl=" r2)
+    Log("PROVRES verdict=" (threw1 && r2 = "openai" ? "BUG-present(fallback-crash)" : "OK-fallback"))
+}
+
+; ------------------------------------------------------------------
+; CHECK 26: settings round-trip edge cases - model ids containing commas and
+; double quotes survive Save -> Load -> ApplyToGlobals and bind correctly in
+; the dashboard provider/model filters; blank cachedInput/context values
+; round-trip (costs still fall back via CostCalculator); providers with all
+; prefixes cleared apply without error.
+; ------------------------------------------------------------------
+SettingsEdgeRoundtrip() {
+    tmp := A_Temp "\bughunt_settings_" A_TickCount ".json"
+    SettingsPersistence.settingsPath := tmp
+    try FileDelete(tmp)
+    settings := Map()
+    providers := Map()
+    providers["openai"] := Map("displayName", "OpenAI", "endpoint", "https://api.openai.com/v1", "fimEndpoint", "", "authEnvVar", "OPENAI_API_KEY", "authMode", "env", "apiKey", "", "collapseThinking", false, "prefixes", [])
+    settings["providers"] := providers
+    models := Map()
+    models["openai/gpt-5,beta"] := Map("provider", "openai", "input", 1.5, "cachedInput", "", "output", 3, "context", "")
+    models["openai/gpt-`"q`"x"] := Map("provider", "openai", "input", 2, "cachedInput", 0, "output", 4, "context", 0)
+    settings["models"] := models
+    saved := SettingsHandler.Save(settings)
+    loaded := SettingsHandler.Load()
+    applyErr := ""
+    try {
+        SettingsHandler.ApplyToGlobals(loaded)
+    } catch Error as e {
+        applyErr := e.Message
+    }
+    hasComma := loaded.Has("models") && loaded["models"].Has("openai/gpt-5,beta")
+    hasQuote := loaded.Has("models") && loaded["models"].Has("openai/gpt-`"q`"x")
+    ; Blank cachedInput must keep falling back to 10% of input (bug #29).
+    c1 := CostCalculator.ComputeTokenCosts("openai/gpt-5,beta", {promptTokens: 1000000, completionTokens: 500000, cachedTokens: 200000, totalTokens: 1500000})
+    cachedFallback := c1.cachedInputCost != "" && c1.cachedInputCost > 0
+    ; Dashboard filter binding with a comma-containing model id.
+    dbPath := OpenDb()
+    today := FormatTime(, "yyyy-MM-dd")
+    ChatDB.ChatUsage_Upsert({date: today, model: "openai/gpt-5,beta", provider: "openai", prompt_tokens: 10, completion_tokens: 5, cached_tokens: 0, input_cost: 0, cached_input_cost: 0, output_cost: 0, total_cost: 0, response_time_ms: 1, ttft_ms: 1})
+    qf := Map()
+    qf["timeRange"] := "all"
+    qf["model"] := "openai/gpt-5,beta"
+    qf["provider"] := "openai"
+    qf["type"] := "all"
+    qres := ChatDB.Usage_Query(qf)
+    filterHits := qres.chat.Length
+    CloseDb(dbPath)
+    Log("SETTINGSEDGE saved=" (saved ? 1 : 0) " applyErr='" applyErr "' commaId=" (hasComma ? 1 : 0) " quoteId=" (hasQuote ? 1 : 0) " cachedFallback=" (cachedFallback ? 1 : 0) " filterHits=" filterHits)
+    Log("SETTINGSEDGE verdict=" (saved && !applyErr && hasComma && hasQuote && cachedFallback && filterHits = 1 ? "OK-roundtrip" : "BUG-present(edge-case)"))
+    try FileDelete(tmp)
+}
+
+; ------------------------------------------------------------------
+; CHECK 27: cross-process startup race. Opens the SAME db path as a fresh
+; connection and runs the REAL ChatDB._CreateSchema (schema + migrations +
+; FTS rebuild) then closes - invoked CONCURRENTLY by two harness-spawned AHK
+; processes to stress the WAL/busy_timeout path the app's Main + ChatWindow
+; hit at startup. Caller passes the db path as arg 3.
+; ------------------------------------------------------------------
+OpenRace() {
+    dbPath := A_Args.Length >= 3 ? A_Args[3] : ""
+    if !dbPath {
+        Log("OPENRACE no-db-path")
+        return
+    }
+    ChatDB.Open(dbPath)
+    ; Force the FTS repair path when counts mismatch (the caller seeds
+    ; messages without FTS rows, so both processes race the rebuild).
+    ChatDB.Close()
+    Log("OPENRACE done")
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -549,6 +921,16 @@ switch check {
     case "command-empty-models": CommandEmptyModels()
     case "fts-attachment-text": FtsAttachmentText()
     case "empty-model-skip": EmptyModelSkip()
+    case "fork-cost-snapshot": ForkCostSnapshot()
+    case "edit-assistant-stale-backfill": EditAssistantStaleBackfill()
+    case "unknown-provider-sentinel": UnknownProviderSentinel()
+    case "fts-attachment-snippet": FtsAttachmentSnippet()
+    case "thread-list-nplus1": ThreadListNplus1()
+    case "dangling-midstream-rows": DanglingMidstreamRows()
+    case "migration-backfill-guard": MigrationBackfillGuard()
+    case "provider-resolve-deleted-deepseek": ProviderResolveDeletedDeepseek()
+    case "settings-edge-roundtrip": SettingsEdgeRoundtrip()
+    case "open-race": OpenRace()
     default:
         Log("UNKNOWN CHECK " check)
 }

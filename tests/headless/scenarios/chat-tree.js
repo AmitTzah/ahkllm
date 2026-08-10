@@ -1679,4 +1679,37 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 180,
+  name: 'Sidebar thread list runs a per-thread active-path walk (N+1): one leaf lookup + one SELECT per ancestor for EVERY listed thread, so refresh latency scales with thread count x path depth',
+  mode: null,
+  settings: {},
+  noApp: true,
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'thread-list-nplus1'], { timeout: 30000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('thread-list probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const qm = text.match(/queries=(\d+)/);
+    const tm = text.match(/threads=(\d+)/);
+    const dm = text.match(/listedDangling=(\d+)/);
+    const trm = text.match(/listedTrashed=(\d+)/);
+    if (!qm || !tm || !dm || !trm) throw new Error('probe output missing fields: ' + text);
+    const queries = Number(qm[1]), threads = Number(tm[1]), listedDangling = Number(dm[1]), listedTrashed = Number(trm[1]);
+    // BUG present: the badge walk issues 2 queries per thread (leaf lookup +
+    // ancestor walk) => ~2x the thread count, i.e. hundreds of round-trips
+    // per sidebar refresh. A single-list query implementation would stay
+    // near 1.
+    if (queries <= threads + 5)
+      throw new Error('no N+1 walk (bug not reproduced): threads=' + threads + ' queries=' + queries);
+    if (listedDangling !== 1 || listedTrashed !== 0)
+      throw new Error('dangling/trashed handling regressed: listedDangling=' + listedDangling + ' listedTrashed=' + listedTrashed);
+    return '301 listed threads -> ' + queries + ' SQL queries per Thread_List() refresh (' + (queries / threads).toFixed(1) + ' per thread; the badge walk climbs to the nearest assistant): a single query would be ~1. The dangling active_leaf_id thread is still listed (' + listedDangling + ', badge walk breaks cleanly - no throw/hang) and the trashed thread stays excluded (' + listedTrashed + ' listed)';
+  }
+});
+
 module.exports = scenarios;

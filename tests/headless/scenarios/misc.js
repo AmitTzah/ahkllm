@@ -1587,6 +1587,71 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 186,
+  regression: true, // REFUTED lead (2026-08-10): rapid open/close cannot orphan WebView2 - closing the chat window only HIDES it (no per-open teardown); teardown happens at app exit, where Main closes ChatWindow gracefully first and the harness force-kills + sweeps by marker
+  name: 'WebView2 teardown under rapid open/close: the chat-window X hides instead of tearing down, Main.OnExit WinCloses ChatWindow first, and the harness sweeps msedgewebview2 by user-data marker - every e2e run exercises launch/teardown',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const cw = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
+    const main = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    const launch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'launch.js'), 'utf8');
+    const closeHides = /OnEvent\("Close"[\s\S]{0,80}responseWindow\.Hide\(\)/.test(cw);
+    const onExitWired = /OnExit\(closeChatWindow\)/.test(main);
+    const gracefulClose = /WinClose\("ahk_pid " chatWindowPID\)/.test(main);
+    const teardownGracefulFirst = /Graceful close FIRST/.test(launch) && /kill-chat/.test(launch);
+    const sweepByMarker = /sweepWebView2Dirs/.test(launch) && /llm-webview2/.test(launch);
+    if (!closeHides || !onExitWired || !gracefulClose || !teardownGracefulFirst || !sweepByMarker)
+      throw new Error('teardown contract broken: ' + JSON.stringify({ closeHides, onExitWired, gracefulClose, teardownGracefulFirst, sweepByMarker }));
+    return 'chat-window Close event hides the window (no per-open WebView2 teardown to orphan); Main.OnExit WinCloses ChatWindow before force-kill; the harness closes gracefully first then sweeps every llm-webview2-* user-data folder by marker - and every one of the 170 e2e scenarios already exercises launch + teardown';
+  }
+});
+
+scenarios.push({
+  id: 189,
+  name: 'Harness interrupted-run recovery picks DIFFERENT backups: recoverInterruptedRun restores the LAST llm-profile-bak-* (sorted) while launch.isolateProfile restores the FIRST in readdirSync order - with multiple stale backups the next direct launch can restore an OLD profile',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const suite = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'e2e-suite.js'), 'utf8');
+    const launch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'launch.js'), 'utf8');
+    // recoverInterruptedRun: filter -> sort() -> take backups[length-1] (the
+    // NEWEST llm-profile-bak-<epoch-ms>).
+    const recoverSorts = /backups\s*=\s*fs\.readdirSync\(os\.tmpdir\(\)\)\.filter\(\(n\) => n\.startsWith\('llm-profile-bak-'\)\)\.sort\(\)/.test(suite);
+    const recoverLast = /backups\[backups\.length - 1\]/.test(suite);
+    // isolateProfile: iterates readdirSync order and restores the FIRST bak
+    // that can move into place (no sort) - subsequent baks are skipped once
+    // the real profile exists again.
+    const isolateReaddir = /for \(const name of fs\.readdirSync\(tmp\)\)[\s\S]{0,250}?llm-profile-bak-/.test(launch);
+    const isolateRename = /fs\.renameSync\(bak, REAL_DATA_DIR\)/.test(launch);
+    if (!recoverSorts || !recoverLast || !isolateReaddir || !isolateRename)
+      throw new Error('backup-selection contract not found (code changed): ' + JSON.stringify({ recoverSorts, recoverLast, isolateReaddir, isolateRename }));
+    // Evidence that readdirSync order and sorted order really differ: create
+    // three backups in a SAFE temp subdir (never in the real temp root, so
+    // the harness recovery can never pick them up) and compare the two orders.
+    const demo = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-bak-order-demo-'));
+    for (const n of ['llm-profile-bak-1000', 'llm-profile-bak-3000', 'llm-profile-bak-2000'])
+      fs.mkdirSync(path.join(demo, n));
+    const readdirOrder = fs.readdirSync(demo);
+    const sorted = readdirOrder.slice().sort();
+    const first = readdirOrder[0];
+    const lastSorted = sorted[sorted.length - 1];
+    const differ = first !== lastSorted;
+    try { fs.rmSync(demo, { recursive: true, force: true }); } catch {}
+    // The BUG: with multiple backups, recoverInterruptedRun (--cleanup / next
+    // run recovery) restores the NEWEST, while isolateProfile (a direct
+    // launch) restores the FIRST in readdir order - when those disagree, the
+    // direct-launch path restores a stale profile over the newest one.
+    if (!differ)
+      throw new Error('demo did not show a readdir/sorted divergence (bug not reproduced): first=' + first + ' lastSorted=' + lastSorted);
+    return 'recoverInterruptedRun sorts and takes backups[length-1] (' + lastSorted + '), isolateProfile restores the first readdirSync entry (' + first +
+      ' in a 3-backup demo dir where sorted order is ' + JSON.stringify(sorted) + ') - the two recovery paths disagree, so a directly-launched next run can restore a stale profile when stale backups accumulate';
+  }
+});
+
 module.exports = scenarios;
 
 
