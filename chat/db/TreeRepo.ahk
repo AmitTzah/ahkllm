@@ -177,7 +177,12 @@ class TreeRepo {
 
         ; Second pass: copy any siblings NOT on the active path so branch nav works,
         ; plus their full descendant subtrees (bug #113).
-        TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, path[cutoff].id)
+        ; Bug #143: only the ACTIVE continuation beyond the fork point is
+        ; excluded - off-path children of the fork point itself (alternative
+        ; continuations that already exist) are part of the conversation tree
+        ; and must be copied like off-path siblings at every other level.
+        activePathNextId := cutoff < path.Length ? path[cutoff + 1].id : ""
+        TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, path[cutoff].id, activePathNextId)
 
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, newThreadId)
@@ -268,10 +273,11 @@ class TreeRepo {
 
     ; Copy sibling messages that are NOT on the active path (so branch navigation
     ; works in forks), plus their full descendant subtrees (bug #113 - the fork
-    ; must be a faithful copy of the conversation tree so far). Children of the
-    ; fork point itself are excluded: they are the source thread's continuation
-    ; beyond the fork (scenario 126), not part of the fork's prefix.
-    static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, cutoffMsgId := "") {
+    ; must be a faithful copy of the conversation tree so far). The ACTIVE
+    ; continuation beyond the fork point is excluded: it is the source thread's
+    ; continuation beyond the fork (scenario 126), not part of the fork's
+    ; prefix. Off-path children of the fork point itself (bug #143) ARE copied.
+    static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, cutoffMsgId := "", activePathNextId := "") {
         ; First pass: direct siblings of messages already copied from the active path.
         for oldSg, newSg in sgMap {
             siblings := ChatDB.db.Query("SELECT * FROM messages WHERE sibling_group=? AND thread_id=? ORDER BY sibling_index;", oldSg, threadId)
@@ -296,8 +302,8 @@ class TreeRepo {
                     continue  ; already copied
                 if !row.parent_id || !idMap.Has(row.parent_id)
                     continue  ; parent not in the fork yet (or not forkable)
-                if cutoffMsgId && row.parent_id = cutoffMsgId
-                    continue  ; the active path's continuation beyond the fork point
+                if cutoffMsgId && row.parent_id = cutoffMsgId && row.id = activePathNextId
+                    continue  ; the ACTIVE path's continuation beyond the fork point
                 TreeRepo._InsertCopiedOffPathMessage(row, newThreadId, &idMap, &sgMap)
                 copiedAny := true
             }

@@ -1,5 +1,5 @@
-# 2026-08-10T11:56:57.533Z | run of 1 scenario(s)
-PASS | #144 | "Save as Branch" on an assistant message double-counts the copied token metadata in the thread cumulative counters after the next real exchange (header vs dashboard disagree) | assistant branch-copy + real follow-up: thread counters={"cumulative_input_tokens":24,"cumulative_output_tokens":18,"cumulative_cached_tokens":8} (24/18/8 = seeded a1 + follow-up; the local copy is NOT charged) while chat_usage={"call_count":1,"prompt_tokens":12,"completion_tokens":9,"cached_tokens":4} (1 real call, 12/9/4) - header and dashboard agree; header="21 / 1m↑ 24  ↓ 188$0.00" | 7.9s
+# 2026-08-10T12:00:34.852Z | run of 1 scenario(s)
+PASS | #143 | Forking at a message drops OFF-PATH children of the fork point itself (alternative continuations that already exist are not copied) | fork id=1dcc3d68-2753-c63a-d932-0000e2bdf437 contains 4 messages (user/u1,assistant/a1,user/u2b,assistant/a2b); off-path child subtree u2b/a2b IS copied (active leaf 1dcc3d68-7bfe-9ee4-0c95-0000d4053f69) | 6.5s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

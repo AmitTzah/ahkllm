@@ -991,6 +991,7 @@ scenarios.push({
   id: 143,
   name: 'Forking at a message drops OFF-PATH children of the fork point itself (alternative continuations that already exist are not copied)',
   mode: null,
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-fork-143', title: 'Fork Offpath Children', active_leaf_id: 'm-143-a2' }],
@@ -1018,18 +1019,20 @@ scenarios.push({
     await sleep(900);
     const forkMsgs = seed.query(dbPath, 'SELECT role, content FROM messages WHERE thread_id = ? ORDER BY created_at', [forkId]);
     const contents = forkMsgs.map((m) => m.role + '/' + m.content).join(',');
-    // BUG present: the fork only holds the active path up to a1 (u1+a1); the
-    // off-path alternative continuation u2b/a2b (a sibling of the active
-    // continuation at the fork point's child level) is silently dropped,
-    // even though off-path siblings at EVERY other level are copied with
-    // their full subtrees (bug #113).
-    if (forkMsgs.length !== 2)
+    // Fixed: the fork copies the active path up to a1 PLUS the already-existing
+    // off-path alternative continuation u2b/a2b (4 messages), exactly like
+    // off-path siblings at every other level (bug #113). Only the ACTIVE
+    // continuation beyond the fork point is excluded.
+    // BUG present: the fork only holds u1+a1; u2b/a2b is silently dropped.
+    if (forkMsgs.length !== 4)
       throw new Error('unexpected fork size ' + forkMsgs.length + ': ' + contents);
-    if (contents.indexOf('u2b') >= 0 || contents.indexOf('a2b') >= 0)
-      throw new Error('off-path children were copied (behavior changed): ' + contents);
+    if (contents.indexOf('u2b') < 0 || contents.indexOf('a2b') < 0)
+      throw new Error('off-path children of the fork point missing from fork: ' + contents);
+    if (contents.indexOf('u2/') >= 0 || contents.indexOf('a2/') >= 0)
+      throw new Error('active continuation beyond the fork point must NOT be copied: ' + contents);
     const activeLeaf = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id = ?', [forkId])[0].active_leaf_id;
     return 'fork id=' + forkId + ' contains ' + forkMsgs.length + ' messages (' + contents +
-      '); off-path child subtree u2b/a2b is MISSING from the fork (active leaf ' + activeLeaf + ')';
+      '); off-path child subtree u2b/a2b IS copied (active leaf ' + activeLeaf + ')';
   }
 });
 
