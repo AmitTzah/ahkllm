@@ -1320,6 +1320,33 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #155): Thread_List's per-thread model must follow the
+    ; ACTIVE path (the branch currently open), not the LAST-INSERTED assistant
+    ; row (which may sit on an off-path branch after a retry/branch switch).
+    Thread_List_ModelFollowsActivePath() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+        ; Active continuation (branch A) - model X:
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2A", parent_id: a1Id})
+        a2AId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2A", parent_id: u2Id, model: "openai/gpt-5-mini", prompt_tokens: 20, token_count: 8})
+        ; Off-path continuation (branch B) - model Y, inserted LATER:
+        u2bId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2B", parent_id: a1Id, sibling_group: "sg-155", sibling_index: 1})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2B", parent_id: u2bId, model: "google/gemini-2.5-flash", prompt_tokens: 25, token_count: 10})
+
+        ChatDB.Msg_SetActiveLeaf(threadId, a2AId)
+        listed := ChatDB.Thread_List()[1].model
+        if listed != "openai/gpt-5-mini"
+            throw Error("Thread_List badge must follow the ACTIVE path (bug #155): expected openai/gpt-5-mini, got '" listed "'")
+
+        ; Switch to branch B: the badge must follow.
+        ChatDB.Msg_SetActiveLeaf(threadId, ChatDB.db.Query("SELECT id FROM messages WHERE content='a2B';").rows[1].id)
+        listed2 := ChatDB.Thread_List()[1].model
+        if listed2 != "google/gemini-2.5-flash"
+            throw Error("Thread_List badge must follow the active path after switching: expected google/gemini-2.5-flash, got '" listed2 "'")
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_Edit active_path_tokens recalculation
     ; --------------------

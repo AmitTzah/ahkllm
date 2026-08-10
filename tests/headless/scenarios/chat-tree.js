@@ -1308,6 +1308,7 @@ scenarios.push({
   id: 155,
   name: 'Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant model, not the ACTIVE path\'s model)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1322,12 +1323,14 @@ scenarios.push({
     const m = text.match(/listedModel=([^\s]+)/);
     if (!m) throw new Error('probe output missing listedModel: ' + text);
     const listed = m[1];
-    // BUG present: active path uses openai/gpt-5-mini but ThreadRepo.List
-    // returns the last-inserted assistant (deepseek/deepseek-v4-flash).
-    if (listed === 'openai/gpt-5-mini')
-      throw new Error('ThreadRepo.List now returns the active-path model (behavior changed): ' + listed);
-    return 'active path model=openai/gpt-5-mini but ThreadRepo.List badge=' + listed +
-      ' (last-inserted assistant, not the active path) - sidebar icon/title is stale after switching branches';
+    // Fixed: ThreadRepo.List walks the ACTIVE path, so the badge follows the
+    // branch currently open.
+    // BUG present: active path used openai/gpt-5-mini but ThreadRepo.List
+    // returned the last-inserted assistant (deepseek/deepseek-v4-flash).
+    if (listed !== 'openai/gpt-5-mini')
+      throw new Error('ThreadRepo.List badge still stale (BUG present): listed=' + listed);
+    return 'active path model=openai/gpt-5-mini and ThreadRepo.List badge=' + listed +
+      ' (active-path model, not the last-inserted assistant) - sidebar icon/title stays correct after switching branches';
   }
 });
 

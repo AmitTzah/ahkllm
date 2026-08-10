@@ -90,10 +90,24 @@ class ThreadRepo {
         table := ChatDB.db.Exec(query)
         threads := []
         for row in table.rows {
+            ; Bug #155: the sidebar badge must reflect the ACTIVE path's model
+            ; (the last assistant on the path currently open), not the
+            ; LAST-INSERTED assistant row in the thread (which can live on an
+            ; off-path branch after a retry/branch switch). Walk from the active
+            ; leaf up to the nearest assistant.
             model := ""
-            modelTable := ChatDB.db.Query("SELECT model FROM messages WHERE thread_id=? AND role='assistant' AND model IS NOT NULL AND model != '' ORDER BY created_at DESC LIMIT 1;", row.id)
-            if modelTable.count
-                model := modelTable[1, "model"]
+            leafRow := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", row.id)
+            currentId := leafRow.count ? leafRow[1, "active_leaf_id"] : ""
+            while currentId {
+                msgRow := ChatDB.db.Query("SELECT parent_id, role, model FROM messages WHERE id=?;", currentId)
+                if !msgRow.count
+                    break
+                if msgRow[1, "role"] = "assistant" && msgRow[1, "model"] {
+                    model := msgRow[1, "model"]
+                    break
+                }
+                currentId := msgRow[1, "parent_id"] ? msgRow[1, "parent_id"] : ""
+            }
             threads.Push({
                 id: row.id,
                 title: row.title,

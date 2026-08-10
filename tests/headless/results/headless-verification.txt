@@ -1,6 +1,5 @@
-# 2026-08-10T12:30:59.499Z | run of 1 scenario(s)
-PASS | #154 | "Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - no Thought Process block) | assistant branch-edit copy: DB reasoning="SECRET THINKING STEP ONE
-SECRET THINKING STEP TWO" (kept) with thinking_tokens=5 - the branch bubble shows the Thought Process block (src=1, branch=1) | 6.1s
+# 2026-08-10T12:33:07.987Z | run of 1 scenario(s)
+PASS | #155 | Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant model, not the ACTIVE path's model) | active path model=openai/gpt-5-mini and ThreadRepo.List badge=openai/gpt-5-mini (active-path model, not the last-inserted assistant) - sidebar icon/title stays correct after switching branches | 0.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
