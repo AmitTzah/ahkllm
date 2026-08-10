@@ -89,15 +89,19 @@ _handleStreamCancelled() {
 
     _logCancelledRequest()
 
-    if activeThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
-        path := ChatDB.Msg_GetActivePath(activeThreadId)
+    ; Bug #171: cancel must persist into the thread that SENT the request
+    ; (captured at send time), not the currently-active thread - the user may
+    ; have switched threads between send and Stop.
+    streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
+    if streamThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
+        path := ChatDB.Msg_GetActivePath(streamThreadId)
         parentId := path.Length ? path[path.Length].id : ""
         retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
         retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
         if retrySiblingGroup
             requestParams.Delete("pendingRetrySiblingGroup")
         ChatDB.Msg_Insert({
-            thread_id: activeThreadId, role: "assistant",
+            thread_id: streamThreadId, role: "assistant",
             content: requestParams["_streamContent"],
             model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
             parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
@@ -110,9 +114,10 @@ _handleStreamCancelled() {
             cached_tokens: 0,
             response_time_ms: 0
         })
-        _maybeGenerateTitle(path)
-        postThreadStats(activeThreadId)
-        dbMsgData := buildStructuredMessagesFromPath([ChatDB.Msg_GetActivePath(activeThreadId)[ChatDB.Msg_GetActivePath(activeThreadId).Length]])[1]
+        _maybeGenerateTitle(path, streamThreadId)
+        postThreadStats(streamThreadId)
+        streamPath := ChatDB.Msg_GetActivePath(streamThreadId)
+        dbMsgData := buildStructuredMessagesFromPath([streamPath[streamPath.Length]])[1]
         postWebMessage("streamCancelled", { dbMsg: dbMsgData })
     } else {
         postWebMessage("streamCancelled", true)

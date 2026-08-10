@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#19 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
+- **Where we left off:** 2026-08-10 - #1-#20 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
   25f7181, 2e4bc23, 0058836, 31056dd, 4e426f3, a046cda, 04e64e3, 4b41ce7, 1f9b377, d9d3bda, 17150ab, f7ef637,
-  f1ea763, next commit). Next: bug #20 (cancelling a stream AFTER switching threads writes the partial into the
-  WRONG thread).
+  f1ea763, a447e0e, next commit). Next: bug #21 (reasoning-only streams persist ttft_ms=0 - the first-token
+  timer ignores reasoning chunks).
 ---
 
 ## Bug entry template
@@ -213,27 +213,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159)
-
-**Scenario:** 171 (scenario code in scenarios/chat-tree.js)
-
-**Status:** fix in progress
-
-**Repro:** Send a message in thread A; while it streams, click thread B; then click Stop. Reopen thread A.
-
-**Expected:** The cancelled partial belongs to thread A (the thread that sent the request); thread B stays untouched.
-
-**Actual:** `_handleStreamCancelled` inserts the partial with `thread_id = activeThreadId` and `parent_id` from the CURRENT active path - after the switch that is thread B. The partial (and its `streamCancelled` UI payload) lands in B, while A's user message is left with no answer. This is the cancel-path sibling of bug #159 (the completion path), with the same missing in-flight guard.
-
-**Evidence:** `chat/streaming/StreamError.ahk` (_handleStreamCancelled uses activeThreadId + Msg_GetActivePath(activeThreadId)), `webui/js/chat/chat-sidebar.js` (loadThread has no isLoading guard).
-
-**Verification:** headless scenario 171 (live): send in A -> switch to B at ~40ms -> Stop at ~130ms -> DB read: A has 0 assistant rows, B has 1 partial assistant row.
-
-### 2. Reasoning-only streams report ttft_ms=0 - the first-token timer only stamps "content" chunks, never "reasoning", so the popover hides TTFT, the dashboard averages 0ms, and the API-log latency falls back to the full duration
+### 1. Reasoning-only streams report ttft_ms=0 - the first-token timer only stamps "content" chunks, never "reasoning", so the popover hides TTFT, the dashboard averages 0ms, and the API-log latency falls back to the full duration
 
 **Scenario:** 170 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Send a message to a reasoning-only model (e.g. DeepSeek R1 with empty final content, or the mock `sse-reasoning-only`). Open the assistant's token popover and the API Logs viewer.
 
@@ -245,7 +229,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 170 (live, `sse-reasoning-only`): the persisted assistant row has ttft_ms=0 (response_time_ms=250), confirming the first-token timer never fired on reasoning chunks.
 
-### 3. A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model
+### 2. A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model
 
 **Scenario:** 162 (scenario code in scenarios/misc.js)
 
@@ -261,7 +245,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 162 (probe, real code): `StrSplit("")` -> 0 entries (loop no-op) AND `createJSONRequest("")` -> `{"messages":[...],"model":""}` - the Default option never substitutes the app default.
 
-### 4. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
+### 3. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
 
 **Scenario:** 164 (scenario code in scenarios/settings.js)
 
@@ -277,7 +261,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 164 (vm, real models.js): input display $0.50 -> focus -> paste "$0.5" -> blur -> saved input=0 (raw=0, display "").
 
-### 5. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
+### 4. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
 
 **Scenario:** 163 (scenario code in scenarios/usage-tokens.js)
 
@@ -293,7 +277,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 163 (vm, real usage-dashboard.js): chat row with model "openai/gpt-5,beta" -> exported row splits into 13 fields (header has 12), no quoting.
 
-### 6. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
+### 5. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
 
 **Scenario:** 165 (scenario code in scenarios/misc.js)
 
@@ -309,7 +293,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 165 (probe, real SearchRepo): attachment extracted_text contains "needle" only -> `Search("needle", tid)` returns 0 hits.
 
-### 7. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
+### 6. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
 
 **Scenario:** 166 (scenario code in scenarios/misc.js)
 
@@ -325,7 +309,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 166 (noApp static): behavior-reader scan of AssistantRepo/ChatSettings/SettingsApply/CommandMenu/ThreadSettings/model-picker finds only carry-only references; assistants.js has no isDefault UI field.
 
-### 8. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
+### 7. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
 
 **Scenario:** 167 (scenario code in scenarios/misc.js)
 
@@ -341,7 +325,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 167 (noApp static): the TrackUsage call exists after the request and the early-return guard is present with no failure fallback.
 
-### 9. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
+### 8. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
 
 **Scenario:** 168 (scenario code in scenarios/usage-tokens.js)
 
@@ -357,7 +341,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 168 (vm, real usage-dashboard.js): row provider="" + backend providers ['deepseek'] -> filter dropdown has no '' option while the chart key would be ''.
 
-### 10. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
+### 9. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
 
 **Scenario:** 174 (scenario code in scenarios/chat-tree.js)
 
@@ -373,7 +357,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 174 (live): B's updated_at bumped (2026-08-10 11:22:49 -> 11:22:52) after Next branch, but the sidebar order stays A,B - no refresh was posted.
 
-### 11. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
+### 10. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
 
 **Scenario:** 160 (scenario code in scenarios/misc.js)
 
@@ -389,7 +373,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
 
-### 12. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+### 11. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
 
 **Scenario:** 161 (scenario code in scenarios/misc.js)
 
@@ -405,7 +389,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
 
-### 13. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 12. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
@@ -425,6 +409,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread" - FIXED: _handleStreamCancelled now persists the cancelled partial into the thread captured at send time (_streamThreadId) like the completion path (bug #159), and _cleanupStreamState is now idempotent (Has-guarded deletes so a missing/partial stream state cannot crash the cancel path); scenario 171 flipped to a regression check + StreamError unit test.
 - 2026-08-10 - "Retry failure hides the original response (bubble gone + error banner until reload; DB row intact)" - FIXED: retryLastAssistantMessage now remembers the removed messages (_retryRemovedMessages) and the global showError path restores them on a failed retry (cleared on success/cancel via stream.js), so the original response stays visible; scenario 169 flipped to a regression check + chat-input/stream-state unit tests.
 - 2026-08-10 - "Hard-deleting / empty-trashing the streaming thread mid-stream silently DROPS the completed response" - FIXED: the send-time thread capture (bug #159) keeps the completion persisting into the removed thread's id (a dangling trace row) and usage-tracking the billed call instead of skipping the insert when activeThreadId is cleared; scenario 172 flipped to a regression check + StreamHandler unit test.
 - 2026-08-10 - "A mid-stream failure with no usage chunk crashes the completion handler (CostCalculator reads usage.promptTokens unguarded) - UI stuck with a misleading Request failed banner" - FIXED: CostCalculator.ComputeTokenCosts now guards promptTokens/completionTokens like cachedTokens (empty usage returns empty costs), and _handleStreamComplete's catch re-enables the input/cursor, so a usage-less partial completes cleanly and the thread stays usable; scenario 173 flipped to a regression check + CostCalculator unit test.

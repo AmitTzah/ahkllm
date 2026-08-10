@@ -1459,6 +1459,7 @@ scenarios.push({
   id: 171,
   name: 'Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159)',
   mode: 'sse-success',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [
@@ -1490,12 +1491,14 @@ scenarios.push({
     const inA = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-cancel-a-171' AND role='assistant'")[0].c;
     const inB = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-cancel-b-171' AND role='assistant'")[0].c;
     const partial = seed.query(dbPath, "SELECT content FROM messages WHERE thread_id='t-cancel-b-171' AND role='assistant'");
-    // BUG present: the cancelled partial lands in thread B (the current active
-    // thread), not thread A (the thread that sent the request).
-    if (inA !== 0 || inB !== 1)
-      throw new Error('cancel-after-switch persisted to the sending thread (behavior changed): inA=' + inA + ' inB=' + inB);
+    // Fixed: the cancel handler uses the thread captured at send time, so the
+    // partial lands in thread A (the sender); thread B stays untouched.
+    // BUG present: the cancelled partial landed in thread B (the current
+    // active thread at cancel time).
+    if (inA !== 1 || inB !== 0)
+      throw new Error('cancel-after-switch partial not in the sending thread (BUG present): inA=' + inA + ' inB=' + inB);
     return 'sent in A, switched to B, cancelled mid-stream: partial assistant rows inA=' + inA + ' inB=' + inB +
-      ' (content="' + (partial.length ? String(partial[0].content).slice(0, 40) : '') + '") - _handleStreamCancelled used the CURRENT activeThreadId (B)';
+      ' (content="' + (partial.length ? String(partial[0].content).slice(0, 40) : '') + '") - _handleStreamCancelled used the captured sending thread (A)';
   }
 });
 

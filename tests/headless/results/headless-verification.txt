@@ -1,5 +1,5 @@
-# 2026-08-10T12:53:39.405Z | run of 1 scenario(s)
-PASS | #169 | Retry failure hides the original response - retryLastAssistantMessage splices the retried message out of chatMessages immediately, and a failed retry never restores it (bubble gone + error banner until reload; DB row intact) | retry against refused endpoint: a1 still in DB (rows=1, leaf=m-169-u1) and the bubble is RESTORED in the DOM (bubbles=2, error banner shown=true) - the failed retry keeps the original response visible | 8.0s
+# 2026-08-10T12:56:49.137Z | run of 1 scenario(s)
+PASS | #171 | Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159) | sent in A, switched to B, cancelled mid-stream: partial assistant rows inA=1 inB=0 (content="") - _handleStreamCancelled used the captured sending thread (A) | 6.6s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

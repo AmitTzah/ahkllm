@@ -72,6 +72,50 @@ class StreamErrorTest {
         this._teardown()
     }
 
+    ; Regression (bug #171): _handleStreamCancelled must persist the partial
+    ; into the thread that SENT the request (captured at send time), not the
+    ; currently-active thread (the user may switch threads between send/Stop).
+    CancelAfterSwitch_UsesCapturedThread() {
+        global activeThreadId, requestParams
+        threadIdA := this._setup()
+        threadIdB := ChatDB.Thread_Create("Thread B")
+        uA := ChatDB.Msg_Insert({thread_id: threadIdA, role: "user", content: "question for A"})
+        uB := ChatDB.Msg_Insert({thread_id: threadIdB, role: "user", content: "question for B"})
+
+        ; The user switched to thread B before cancelling:
+        activeThreadId := threadIdB
+        requestParams["_streamThreadId"] := threadIdA
+        requestParams["_streamContent"] := "partial answer"
+        requestParams["_streamReasoning"] := ""
+        requestParams["_streamModelName"] := "deepseek-v4-flash"
+        requestParams["_streamDisplayName"] := "deepseek-v4-flash"
+        requestParams["_streamLastPos"] := 0
+        requestParams["_streamRequestStartTime"] := A_TickCount
+        requestParams["_streamFirstTokenTime"] := 0
+        requestParams["_streamChatHistoryJSONRequest"] := "{}"
+        requestParams["_streamProviderKey"] := "deepseek"
+        requestParams["_streamOutputFile"] := "out.txt"
+        requestParams["_streamUsage"] := {}
+        requestParams["_streamRawSseChunks"] := ""
+        requestParams["_streamRawLastResponse"] := ""
+        requestParams["_streamPollCount"] := 0
+        requestParams["_streamPID"] := 0
+        requestParams["_streamCancelled"] := false
+        requestParams["cURLErrorFile"] := ""
+
+        _handleStreamCancelled()
+
+        inA := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND role='assistant';", threadIdA)
+        inB := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND role='assistant';", threadIdB)
+        if Integer(inA[1, "c"]) != 1 || Integer(inB[1, "c"]) != 0
+            throw Error("cancelled partial must land in the captured thread A (bug #171): inA=" inA[1, "c"] " inB=" inB[1, "c"])
+        row := ChatDB.db.Query("SELECT parent_id, content FROM messages WHERE thread_id=? AND role='assistant';", threadIdA)
+        if row[1, "parent_id"] != uA || row[1, "content"] != "partial answer"
+            throw Error("cancelled partial should attach to A's user message, got parent=" row[1, "parent_id"] " content=" row[1, "content"])
+        activeThreadId := ""
+        this._teardown()
+    }
+
     ; ----------------------------------------------------
     ; Regression: Cancel without retry (no pendingRetrySiblingGroup) uses empty sibling_group
     ; ----------------------------------------------------
