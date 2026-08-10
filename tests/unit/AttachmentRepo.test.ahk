@@ -110,6 +110,41 @@ class AttachmentRepoTest {
         this._teardown()
     }
 
+    ; Regression (bug #146): CopyForMessage can exclude specific source
+    ; attachments (the ones the user removed during a branch edit) - the
+    ; excluded row is not copied to the target, and the source keeps it.
+    Attachment_CopyForMessage_ExcludesRemoved() {
+        threadId := this._setup()
+        srcMsgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "source"})
+        dstMsgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "destination", parent_id: srcMsgId})
+        keepId := ChatDB.Attachment_Insert(srcMsgId, {
+            attachment_type: "text_file",
+            file_path: "attachments\keep.txt",
+            mime_type: "text/plain",
+            original_filename: "keep.txt",
+            file_size: 10,
+            extracted_text: ""
+        })
+        removedId := ChatDB.Attachment_Insert(srcMsgId, {
+            attachment_type: "text_file",
+            file_path: "attachments\removed.txt",
+            mime_type: "text/plain",
+            original_filename: "removed.txt",
+            file_size: 20,
+            extracted_text: ""
+        })
+        ChatDB.Attachment_CopyForMessage(srcMsgId, dstMsgId, [removedId])
+        srcAtts := ChatDB.Attachment_GetByMessage(srcMsgId)
+        if srcAtts.Length != 2
+            throw Error("Source must keep BOTH attachments (bug #146), got " srcAtts.Length)
+        dstAtts := ChatDB.Attachment_GetByMessage(dstMsgId)
+        if dstAtts.Length != 1
+            throw Error("Destination must copy only the non-removed attachment, got " dstAtts.Length)
+        if dstAtts[1].original_filename != "keep.txt"
+            throw Error("Destination should hold the kept attachment, got '" dstAtts[1].original_filename "'")
+        this._teardown()
+    }
+
     Attachment_DeleteByMessage_BeforeHardDelete() {
         threadId := this._setup()
         msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "will be deleted"})

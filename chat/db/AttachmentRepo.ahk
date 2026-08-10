@@ -126,9 +126,22 @@ class AttachmentRepo {
 
     ; Copy all attachments from one message to another.
     ; Shares the same physical file (content-addressable storage) - only copies DB rows.
-    static CopyForMessage(sourceMsgId, targetMsgId) {
-        table := ChatDB.db.Query("SELECT attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id=?;", sourceMsgId)
+    ; excludeAttachmentIds: array of source attachment ids to skip (bug #146 -
+    ; "Save as Branch" must not copy attachments the user removed during the edit).
+    static CopyForMessage(sourceMsgId, targetMsgId, excludeAttachmentIds := "") {
+        table := ChatDB.db.Query("SELECT id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id=?;", sourceMsgId)
         for row in table.rows {
+            if excludeAttachmentIds {
+                skipped := false
+                for excludedId in excludeAttachmentIds {
+                    if row.id = excludedId {
+                        skipped := true
+                        break
+                    }
+                }
+                if skipped
+                    continue
+            }
             newId := ChatDB._UUID()
             mimeType := row.Has("mime_type") && row.mime_type ? row.mime_type : ""
             filename := row.Has("original_filename") && row.original_filename ? row.original_filename : ""

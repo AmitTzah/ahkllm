@@ -1,5 +1,5 @@
-# 2026-08-10T12:00:34.852Z | run of 1 scenario(s)
-PASS | #143 | Forking at a message drops OFF-PATH children of the fork point itself (alternative continuations that already exist are not copied) | fork id=1dcc3d68-2753-c63a-d932-0000e2bdf437 contains 4 messages (user/u1,assistant/a1,user/u2b,assistant/a2b); off-path child subtree u2b/a2b IS copied (active leaf 1dcc3d68-7bfe-9ee4-0c95-0000d4053f69) | 6.5s
+# 2026-08-10T12:05:44.566Z | run of 1 scenario(s)
+PASS | #146 | "Save as Branch" after removing an attachment deletes the attachment from the ORIGINAL message (the source branch loses its attachment too) | after Save-as-Branch with a removed attachment: original message attachment rows=1 (kept - the removal applies only to the branch), branch rows=0 | 6.6s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

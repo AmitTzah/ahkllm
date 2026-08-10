@@ -1040,6 +1040,7 @@ scenarios.push({
   id: 146,
   name: '"Save as Branch" after removing an attachment deletes the attachment from the ORIGINAL message (the source branch loses its attachment too)',
   mode: null,
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-att-146', title: 'Branch Attach', active_leaf_id: 'm-146-a1' }],
@@ -1080,16 +1081,16 @@ scenarios.push({
     const srcRows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE message_id='m-146-u1'")[0].c;
     const branch = seed.query(dbPath, "SELECT id FROM messages WHERE content='root without attachment (branch)'");
     const branchRows = branch.length ? seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE message_id = ?', [branch[0].id])[0].c : -1;
-    // BUG present: handleEdit runs Attachment_DeleteOne on removedAttachmentIds
-    // BEFORE copying, so the ORIGINAL message (which stays in the tree with its
-    // original content) loses its attachment too - the branch gets nothing and
-    // the original's history is rewritten.
-    if (Number(srcRows) !== 0)
-      throw new Error('source still has the attachment (behavior changed): ' + srcRows);
+    // Fixed: the removal applies only to the NEW branch - the ORIGINAL message
+    // (which stays in the tree with its original content) keeps its attachment.
+    // BUG present: handleEdit ran Attachment_DeleteOne on removedAttachmentIds
+    // BEFORE copying, so the original lost its attachment too.
+    if (Number(srcRows) !== 1)
+      throw new Error('source lost its attachment (BUG present / regression): ' + srcRows);
     if (branchRows !== 0)
       throw new Error('branch should not carry the removed attachment: ' + branchRows);
     return 'after Save-as-Branch with a removed attachment: original message attachment rows=' + srcRows +
-      ' (BUG: the original lost it), branch rows=' + branchRows;
+      ' (kept - the removal applies only to the branch), branch rows=' + branchRows;
   }
 });
 

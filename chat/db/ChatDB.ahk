@@ -184,7 +184,7 @@ class ChatDB {
     static Attachment_DeleteByMessage(msgId) => AttachmentRepo.DeleteByMessage(msgId)
     static Attachment_DeleteByThread(threadId) => AttachmentRepo.DeleteByThread(threadId)
     static Attachment_DeleteOne(attachmentId) => AttachmentRepo.DeleteOne(attachmentId)
-    static Attachment_CopyForMessage(srcMsgId, dstMsgId) => AttachmentRepo.CopyForMessage(srcMsgId, dstMsgId)
+    static Attachment_CopyForMessage(srcMsgId, dstMsgId, excludeAttachmentIds := "") => AttachmentRepo.CopyForMessage(srcMsgId, dstMsgId, excludeAttachmentIds)
 
     ; Usage operations - delegate to UsageRepo
     static Usage_Query(filters) => UsageRepo.Query(filters)

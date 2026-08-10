@@ -15,11 +15,6 @@ handleEdit(params, *) {
     attachments := params.Has("attachments") ? params["attachments"] : []
     removedIds := params.Has("removedAttachmentIds") ? params["removedAttachmentIds"] : []
 
-    ; Delete attachments explicitly removed during edit (deferred deletion)
-    for removedId in removedIds {
-        ChatDB.Attachment_DeleteOne(removedId)
-    }
-
     if mode = "branch" {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := ""
@@ -65,8 +60,11 @@ handleEdit(params, *) {
             active_path_tokens: activePathTokens,
             local_copy: true
         })
-        ; Copy attachments from old message to new branch message
-        ChatDB.Attachment_CopyForMessage(id, newMsgId)
+        ; Bug #146: copy the source message's attachments EXCEPT the ones the
+        ; user removed during the edit - the ORIGINAL message keeps its
+        ; attachment (it stays in the tree with its original content), while
+        ; the new branch is created without the removed one.
+        ChatDB.Attachment_CopyForMessage(id, newMsgId, removedIds)
         ; Save new attachments from edit (skip if already present on message)
         for att in attachments {
             if !IsObject(att)
@@ -90,6 +88,12 @@ handleEdit(params, *) {
             _BuildAndFireRequest()
         }
     } else {
+        ; Overwrite mode: delete attachments explicitly removed during edit
+        ; (deferred deletion) - the original message IS being rewritten, so the
+        ; removal applies to it.
+        for removedId in removedIds {
+            ChatDB.Attachment_DeleteOne(removedId)
+        }
         ; Append any new attachments - never delete existing ones (× button handles removal)
         for att in attachments {
             if !IsObject(att)

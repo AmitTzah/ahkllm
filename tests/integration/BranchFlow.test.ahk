@@ -29,6 +29,63 @@ class BranchFlowTest {
         }
     }
 
+    ; Regression (bug #146): "Save as Branch" after removing an attachment must
+    ; NOT delete the attachment from the ORIGINAL message - the removal applies
+    ; only to the new branch copy (the original stays in the tree with its
+    ; original content and keeps its attachment).
+    BranchEdit_RemovedAttachment_KeepsOriginal() {
+        global activeThreadId, requestParams
+        threadId := this._setup()
+        activeThreadId := threadId
+        oldParams := requestParams
+        ; _BuildAndFireRequest (fired when branch-editting a USER message) reads
+        ; requestParams; give it the standard keys and restore afterwards.
+        requestParams := Map(
+            "pasteMode", "chat", "windowTitle", "test", "providerName", "",
+            "mainScriptHiddenHwnd", "0x0", "uniqueID", "test-unique-id",
+            "singleAPIModelName", "deepseek-v4-flash", "stream", true,
+            "isFIM", false, "numberOfAPIModels", 1, "APIModelsIndex", 1,
+            "chatHistoryJSONRequestFile", "", "cURLCommandFile", "",
+            "cURLOutputFile", "", "cURLErrorFile", ""
+        )
+        srcId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root with attachment"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: srcId})
+        attId := ChatDB.Attachment_Insert(srcId, {
+            attachment_type: "text_file",
+            file_path: "attachments\branch-146.txt",
+            mime_type: "text/plain",
+            original_filename: "branch.txt",
+            file_size: 21,
+            extracted_text: ""
+        })
+
+        try {
+            ; Branch-edit the user message, removing its attachment (deferred):
+            handleEdit(Map("id", srcId, "content", "root without attachment (branch)", "mode", "branch", "removedAttachmentIds", [attId]))
+
+            ; The ORIGINAL message keeps its attachment:
+            srcAtts := ChatDB.Attachment_GetByMessage(srcId)
+            if srcAtts.Length != 1
+                throw Error("source must keep its attachment after branch-edit (bug #146), got " srcAtts.Length)
+            ; The branch copy is created WITHOUT the removed attachment:
+            branchRow := ChatDB.db.Query("SELECT id FROM messages WHERE content='root without attachment (branch)';")
+            if !branchRow.count
+                throw Error("branch copy missing")
+            branchAtts := ChatDB.Attachment_GetByMessage(branchRow[1, "id"])
+            if branchAtts.Length != 0
+                throw Error("branch must not carry the removed attachment, got " branchAtts.Length)
+            ; Overwrite mode still applies the removal to the original:
+            handleEdit(Map("id", srcId, "content", "root overwritten", "mode", "overwrite", "removedAttachmentIds", [attId]))
+            overwrittenAtts := ChatDB.Attachment_GetByMessage(srcId)
+            if overwrittenAtts.Length != 0
+                throw Error("overwrite edit must delete the removed attachment from the original, got " overwrittenAtts.Length)
+        } finally {
+            activeThreadId := ""
+            requestParams := oldParams
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Create branch via retry mechanism
     ; --------------------
