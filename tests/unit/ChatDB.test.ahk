@@ -887,6 +887,45 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Large-history sanity (follow-up audit): the startup FTS rebuild must
+    ; re-index a big messages table (rows inserted WITHOUT FTS_Sync, e.g. a
+    ; legacy/copied DB) and include attachment extracted_text, without
+    ; duplicates or gaps.
+    FTSRebuild_LargeHistory_StaysConsistent() {
+        if ChatDB.isOpen {
+            oldPath := ChatDB.dbPath
+            ChatDB.Close()
+            try FileDelete(oldPath)
+        }
+        dbPath := A_Temp "\test_large_fts_" A_TickCount "_" Random(1000, 999999) ".db"
+        ChatDB.Open(dbPath)
+        threadId := ChatDB.Thread_Create("Large")
+        parentId := ""
+        loop 200 {
+            uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "question " A_Index, parent_id: parentId})
+            aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer " A_Index, parent_id: uId, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+            parentId := aId
+        }
+        ; Insert one message + attachment entirely via raw SQL (no FTS_Sync) to
+        ; force the startup rebuild path, then close and reopen:
+        rawMsg := ChatDB._UUID()
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content) VALUES(?, ?, 'user', 'legacy content');", rawMsg, threadId)
+        ChatDB.db.Query("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES(?, ?, 'pdf', 'attachments/legacy.pdf', 'application/pdf', 'legacy.pdf', 10, ?);", ChatDB._UUID(), rawMsg, AttachmentRepo._StrToBase64("the needle lives in the legacy attachment"))
+        ChatDB.Close()
+
+        ChatDB.Open(dbPath)
+        msgCount := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages;")[1, "c"]
+        ftsCount := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages_fts;")[1, "c"]
+        if Integer(ftsCount) != Integer(msgCount)
+            throw Error("FTS rebuild must index every message: messages=" msgCount " fts=" ftsCount)
+        ; The rebuilt index must include the legacy attachment's text:
+        hits := SearchRepo.Search("needle", threadId)
+        if hits.Length != 1
+            throw Error("rebuilt FTS must include attachment extracted_text (needle), got " hits.Length)
+        ChatDB.Close()
+        try FileDelete(dbPath)
+    }
+
     ; Regression (bug #80, security): thread mutators must escape threadId - a
     ; crafted id with a single quote must not break or inject SQL.
     ThreadMutators_EscapeThreadId() {
