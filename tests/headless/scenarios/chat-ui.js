@@ -366,6 +366,7 @@ scenarios.push({
   id: 178,
   name: 'SSE `data:` LINE split across poll boundaries silently loses the payload (the remainder arrives without the `data: ` prefix, so SSEParser ignores it)',
   mode: 'sse-split-line',
+  regression: true, // FIXED: split data lines are re-formed by the pending-line buffer and all choices accumulate
   settings: {},
   async body({ cdp, dbPath, mockLog }) {
     await showChat();
@@ -385,22 +386,20 @@ scenarios.push({
     const userSent = msgs.some((m) => m.role === 'user');
     if (!userSent)
       throw new Error('send failed (harness issue): ' + JSON.stringify(msgs));
-    // BUG present: the SPLIT-LEFT-RIGHT event (ONE `data:` line written in two
-    // writes with a >poll gap) is lost. Today the partial JSON also CRASHES
-    // the stream: jsongo.Parse returns an empty String for the truncated JSON
-    // and SSEParser.ParseLine indexes it (`parsed["choices"]` -> "String has
-    // no property named __Item"), killing the poll timer - the stream never
-    // finalizes and no assistant row is persisted. Once the parser ignores the
-    // partial instead, the stream would complete WITHOUT the split payload
-    // (the remainder has no `data: ` prefix). Either way SPLIT-LEFT must not
-    // survive in the persisted content.
-    if (hasSplit)
-      throw new Error('split payload survived (bug not reproduced): ' + JSON.stringify(content));
-    if (idle && !asst)
-      throw new Error('stream went idle but no assistant row was persisted (harness issue): ' + JSON.stringify(msgs));
+    // FIXED (bug #178): the SPLIT-LEFT-RIGHT event (ONE `data:` line written
+    // in two writes with a >poll gap) is re-formed by the stream's
+    // pending-line buffer - the incomplete fragment is held across polls and
+    // joined with the remainder, so the full payload (including the bare
+    // continuation) is persisted and the stream finalizes normally.
+    if (!asst)
+      throw new Error('assistant message missing (fix incomplete): ' + JSON.stringify(msgs));
+    if (!hasSplit || content.indexOf('SPLIT-LEFT-RIGHT') < 0)
+      throw new Error('split payload did not survive in full (fix incomplete): ' + JSON.stringify(content));
+    if (diag.streamState && diag.streamState.active)
+      throw new Error('stream still active after finalize (fix incomplete): ' + JSON.stringify(diag.streamState));
     return 'split-line stream: idle=' + idle + ' streamState.active=' + (diag.streamState ? diag.streamState.active : '?') +
-      ', assistant persisted=' + (asst ? JSON.stringify(content) : 'NONE') +
-      ' - the SPLIT-LEFT-RIGHT payload was dropped; today the partial JSON also crashes the poll (jsongo.Parse -> String -> SSEParser.ParseLine "__Item") so the stream never finalizes';
+      ', assistant persisted=' + JSON.stringify(content) +
+      ' - the split data line was re-formed by the pending-line buffer and its payload survives in full';
   }
 });
 

@@ -56,6 +56,12 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     requestParams["_streamProviderKey"]      := providerInfo.providerKey
     requestParams["_streamRawSseChunks"]     := ""
     requestParams["_streamRawLastResponse"]  := ""
+    ; Bug #178: a `data:` JSON line split across poll boundaries is buffered
+    ; here (as the incomplete trailing fragment) until the next poll completes
+    ; it - the old code parsed each chunk in isolation, so the partial JSON
+    ; crashed the poll (jsongo.Parse returns a String) and the remainder
+    ; (no `data: ` prefix) was silently lost.
+    requestParams["_streamPendingLine"]      := ""
     requestParams["_streamPollCount"]        := 0
     requestParams["_streamRequestStartTime"] := requestStartTime
     requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
@@ -115,7 +121,8 @@ _StreamStateFromParams() {
         usage: requestParams["_streamUsage"],
         providerKey: requestParams["_streamProviderKey"],
         rawSseChunks: requestParams["_streamRawSseChunks"],
-        rawLastResponse: requestParams["_streamRawLastResponse"]
+        rawLastResponse: requestParams["_streamRawLastResponse"],
+        pendingLine: requestParams["_streamPendingLine"]
     }
 }
 
@@ -129,6 +136,7 @@ _ParamsFromStreamState(state) {
     requestParams["_streamUsage"] := state.usage
     requestParams["_streamRawSseChunks"] := state.rawSseChunks
     requestParams["_streamRawLastResponse"] := state.rawLastResponse
+    requestParams["_streamPendingLine"] := state.pendingLine
 }
 
 _readFileChunk(state) {
@@ -187,7 +195,25 @@ _readAndProcessStream(state, doPostMessage := false) {
     if !newContent
         return
 
-    for line in StrSplit(newContent, "`n", "`r") {
+    ; Bug #178: an incomplete JSON fragment held from the previous poll is the
+    ; head of this chunk's first line - prepend it so a `data:` line split
+    ; across poll boundaries re-forms and its payload survives in full.
+    pending := state.HasOwnProp("pendingLine") ? state.pendingLine : ""
+    lines := StrSplit(pending . newContent, "`n", "`r")
+    ; The chunk's LAST piece may itself be an incomplete line (no trailing
+    ; newline yet) - hold it for the next poll unless it is a complete JSON
+    ; event that can be processed right away.
+    lastIdx := lines.Length
+    tail := lines[lastIdx]
+    holdTail := tail != "" && !_IsCompleteJsonEvent(tail)
+    if holdTail {
+        state.pendingLine := tail
+        lines.RemoveAt(lastIdx)
+    } else {
+        state.pendingLine := ""
+    }
+
+    for line in lines {
         if (line = "")
             continue
 
@@ -202,6 +228,27 @@ _readAndProcessStream(state, doPostMessage := false) {
         chunk := SSEParser.ParseLine(line)
         _processChunk(state, chunk, doPostMessage)
     }
+}
+
+; A trailing chunk piece is only safe to process immediately when it is a
+; complete JSON event (the old code consumed newline-less complete lines). An
+; incomplete JSON fragment - whether `data:`-prefixed or a bare continuation -
+; is held in state.pendingLine until the next poll completes it (bug #178).
+_IsCompleteJsonEvent(line) {
+    dataPos := InStr(line, "data: ")
+    payload := dataPos ? SubStr(line, dataPos + 6) : line
+    if payload = "[DONE]"
+        return true
+    if !InStr("{[", SubStr(payload, 1, 1))
+        return true  ; plain text / empty - not a JSON fragment
+    try {
+        parsed := jsongo.Parse(payload)
+    } catch {
+        return false
+    }
+    ; jsongo.Parse returns an empty STRING for truncated JSON (it does not
+    ; throw) - only a Map/Array result means the event is complete.
+    return IsObject(parsed) && (Type(parsed) = "Map" || Type(parsed) = "Array")
 }
 
 ; Apply a parsed SSE chunk to the stream state, posting to WebView if needed.
@@ -314,6 +361,8 @@ _cleanupStreamState() {
         requestParams.Delete("_streamRawSseChunks")
     if requestParams.Has("_streamRawLastResponse")
         requestParams.Delete("_streamRawLastResponse")
+    if requestParams.Has("_streamPendingLine")
+        requestParams.Delete("_streamPendingLine")
     if requestParams.Has("_streamPollCount")
         requestParams.Delete("_streamPollCount")
     if requestParams.Has("_streamRequestStartTime")

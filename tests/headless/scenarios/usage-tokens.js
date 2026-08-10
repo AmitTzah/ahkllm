@@ -949,7 +949,7 @@ scenarios.push({
   name: 'Fork copies drop the per-message COST snapshots - after a Settings price change the fork header is re-priced at CURRENT prices while the source thread keeps its snapshots (the two threads disagree)',
   mode: null,
   noApp: true,
-  regression: true, // FIXED in ec1468b: fork rows copy the call-time cost snapshots (was re-priced at CURRENT prices)
+  regression: true, // FIXED in 8ca2fdb: fork rows copy the call-time cost snapshots (was re-priced at CURRENT prices)
   settings: {},
   async body() {
     const os = require('node:os');

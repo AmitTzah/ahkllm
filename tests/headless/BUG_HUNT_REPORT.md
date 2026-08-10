@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **9 verified, 0 reported, 1 fix applied, 1 fix in progress** (2026-08-10). Scenario count is enforced by
+- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #177 FIXED and committed (28fba1f). Bug #178 fix in progress:
-  StreamHandler now holds incomplete trailing JSON lines in a pending-line buffer across polls (+ unit test,
-  scenario 178 flipped); next: run scenario 178 + full suites, then commit.
+- **Where we left off:** 2026-08-10 - bug #178 FIXED and committed (entry removed): StreamHandler buffers
+  incomplete trailing JSON lines across polls and SSEParser accumulates content from every choice in an event;
+  scenario 178 flipped to a regression check + StreamHandler unit tests. Next: bug #179 (tray Exit item).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -223,60 +223,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 177. Fork copies drop the per-message COST snapshots (header cost re-priced at CURRENT prices after a Settings price change)
-
-**Scenario:** 177 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Chat with a model, wait for the response (cost snapshots are stored per message at the prices in
-effect), open Settings and double the model's price, then fork the conversation and compare the fork's header
-cost with the source thread's.
-
-**Expected:** the fork's cumulative cost equals the source's (both carry the call-time snapshots).
-
-**Actual:** the fork's rows get cost 0 - `TreeRepo._InsertForkMessage`/`_InsertCopiedOffPathMessage` copy only
-token fields, and `GetActivePath` does not even select the cost columns - so
-`MessageRepo._RecomputeCumulativeCounters` falls back to the CURRENT model prices and the fork header
-disagrees with the source thread.
-
-**Evidence:** `chat/db/TreeRepo.ahk` (`GetActivePath` SELECT, `_InsertForkMessage`, `_InsertCopiedOffPathMessage`
-INSERT column lists) vs `chat/db/MessageRepo.ahk:Insert` (bug #153 snapshot columns) and
-`_RecomputeCumulativeCounters` (zero-cost fallback).
-
-**Verification:** headless - `probe-bughunt-db.ahk fork-cost-snapshot` seeds a snapshotted exchange, doubles the
-model price, forks, and asserts `forkCost != srcCost` with `copiedCostSum = 0` (flipped 2026-08-10 to assert the
-fixed behavior: `forkCost == srcCost` with `copiedCostSum > 0`).
-
-### 178. SSE data LINES split across poll boundaries silently lose the payload
-
-**Scenario:** 178 (scenario code in e2e-suite.js)
-
-**Status:** fix in progress
-
-**Repro:** Have a provider write a single `data:` event in two writes with a gap longer than the 100ms stream
-poll (e.g. `data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},` then 450ms later
-`{"delta":{"content":"-RIGHT"}}]}`).
-
-**Expected:** the event's content is persisted in full.
-
-**Actual:** worse than a silent drop - `jsongo.Parse` returns an empty STRING for the truncated JSON (it does
-not throw), so `SSEParser.ParseLine`'s `parsed["choices"]` crashes the poll with "String has no property named
-__Item"; the timer is killed and the stream never finalizes (cURL stays alive, no assistant message is
-persisted, `streamState.active` stays true). Once the parser ignores the partial, the remainder still has no
-`data: ` prefix, so the payload is silently lost either way. `_readFileChunk` advances past complete UTF-8
-characters (bug #160 fix) but still advances past incomplete LINES.
-
-**Evidence:** `api/SSEParser.ahk:ParseLine` (jsongo result indexed without a String/type guard) +
-`chat/streaming/StreamHandler.ahk` (`_readFileChunk`/`_readAndProcessStream`); probe-verified that
-`jsongo.Parse('{"choices":[...')` returns `""` (String) instead of throwing.
-
-**Verification:** headless - new mock mode `sse-split-line` writes one event in two writes (450ms apart) with
-complete chunks around it; scenario 178 sends a message and asserts the persisted content does NOT contain
-`SPLIT-LEFT` (observed: stream never finalizes, `streamState.active=true`, assistant row NONE). Flipped
-2026-08-10 to assert the fixed behavior: the full `SPLIT-LEFT-RIGHT` payload is persisted and the stream
-finalizes.
 
 ### 179. The tray menu can be left without an Exit item (no other always-present close path)
 
@@ -458,6 +404,16 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "SSE data LINES split across poll boundaries silently lose the payload" - FIXED in
+  51fc4da: StreamHandler now holds an incomplete trailing JSON line in a per-stream pending-line buffer
+  across polls (re-forming the split `data:` line), and SSEParser.ParseLine accumulates content from EVERY
+  choice in an event instead of reading only the first; scenario 178 flipped to a regression check +
+  StreamHandler unit tests (split rejoin + multi-choice accumulation).
+- 2026-08-10 - "Fork copies drop the per-message COST snapshots (header cost re-priced at CURRENT prices after
+  a Settings price change)" - FIXED in 8ca2fdb: TreeRepo.GetActivePath now selects the bug-#153 cost snapshot
+  columns and _InsertForkMessage/_InsertCopiedOffPathMessage copy them per message, so the fork's recomputed
+  cumulative cost matches the source thread at call-time prices; scenario 177 flipped to a regression check +
+  ChatDB fork unit test.
 - 2026-08-10 - "Sidebar dates mislabel local-midnight messages as 'Yesterday' (UTC day vs LOCAL today)" - REFUTED: `formatRelativeDate` builds `msgDay` from `d.getFullYear()/getMonth()/getDate()` - the LOCAL components of the UTC-instant - so the day compare is local-vs-local and a UTC-21:30 (local 00:30) message is correctly labeled "Today, 00:30"; scenario 192 kept as a regression check.
 - 2026-08-10 - "Title-generation response parsing crashes the SetTimer callback on malformed JSON (Runtime Error banner + stuck dispatch guard)" - REFUTED: `_TitleGen_ParseResponse` wraps jsongo in a BARE `try` block, and an AHK bare try SWALLOWS exceptions (probe-verified with `try { throw Error("BOOM") }`), so truncated JSON and empty-completion responses return an empty title (status failed, guard cleared) without any crash; scenario 191 kept as a regression check.
 - 2026-08-10 - "Hard-delete-mid-stream dangling rows (bug #172 trace) leak into FTS results, the thread map, or the dashboard" - REFUTED: the dangling message row (messages has no FK on thread_id) stays invisible to search (FTS query JOINs chat_threads) and the thread map (Thread_List reads chat_threads), and the chat_usage row is the genuinely BILLED API call (kept by design - no GC policy warranted); scenario 184 kept as a regression check.

@@ -96,6 +96,33 @@ class StreamHandlerTest {
             throw Error("U+FFFD replacement char persisted (bug #160)")
     }
 
+    ; Regression (bug #178): a `data:` JSON line split across two polls (the
+    ; first chunk ends mid-JSON, the second carries the bare remainder) must
+    ; be re-formed by the pending-line buffer so the event's payload survives
+    ; in full - the old code crashed the poll on the partial (jsongo.Parse
+    ; returns a String) and silently lost the remainder (no `data: ` prefix).
+    ReadStreamChunk_SplitDataLine_RejoinsPayload() {
+        path := A_Temp "\test_sse_split_" A_TickCount "_" Random(1000, 999999) ".tmp"
+        part1 := 'data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},'
+        part2 := '{"delta":{"content":"-RIGHT"}}]}' "`n"
+        FileAppend(part1, path)
+        state := {outputFile: path, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: "", pendingLine: ""}
+        _readAndProcessStream(state, false)
+        ; The partial must be held, not consumed or dropped:
+        if state.pendingLine != part1
+            throw Error("partial line must be held in pendingLine (bug #178), got '" state.pendingLine "'")
+        if state.content != ""
+            throw Error("no content may be persisted before the line completes, got '" state.content "'")
+
+        FileAppend(part2, path)
+        _readAndProcessStream(state, false)
+        if state.content != "SPLIT-LEFT-RIGHT"
+            throw Error("split-line payload must survive in full (bug #178), got '" state.content "'")
+        if state.pendingLine != ""
+            throw Error("pendingLine must clear after the line completes, got '" state.pendingLine "'")
+        FileDelete(path)
+    }
+
     ReadStreamChunk_ParsesContent() {
         tmpFile := A_Temp "\test_sse_" A_TickCount "_" Random(1000, 999999) ".tmp"
         FileAppend('data: {"choices":[{"delta":{"content":"Hello"}}]}', tmpFile)
@@ -104,6 +131,18 @@ class StreamHandlerTest {
         if state.content != "Hello"
             throw Error("Expected content='Hello', got '" state.content "'")
         FileDelete(tmpFile)
+    }
+
+    ; Regression (bug #178): a re-joined split `data:` line can carry MORE
+    ; than one choice in a single SSE event - the parser must accumulate the
+    ; content from every choice instead of reading only the first one.
+    SSEParser_MultiChoiceEvent_AccumulatesAllContent() {
+        line := 'data: {"choices":[{"delta":{"content":"SPLIT-LEFT"}},{"delta":{"content":"-RIGHT"}}]}'
+        result := SSEParser.ParseLine(line)
+        if result.type != "content"
+            throw Error("Expected type='content', got '" result.type "'")
+        if result.content != "SPLIT-LEFT-RIGHT"
+            throw Error("Expected content='SPLIT-LEFT-RIGHT', got '" result.content "'")
     }
 
     ; --------------------

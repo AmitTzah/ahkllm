@@ -31,8 +31,32 @@ class SSEParser {
             return SSEParser._handleUsageOnlyChunk(parsed)
         }
 
-        delta := choices[1].Has("delta") ? choices[1]["delta"] : choices[1]
-        result := SSEParser._parseDeltaContent(delta)
+        ; Bug #178: an SSE event can carry MORE than one choice (a re-joined
+        ; split `data:` line, or a provider batching deltas) - accumulate the
+        ; content from EVERY choice instead of reading only the first, or the
+        ; later choices' payload is silently dropped.
+        reasoningAcc := ""
+        contentAcc := ""
+        for choice in choices {
+            if !IsObject(choice)
+                continue
+            delta := choice.Has("delta") ? choice["delta"] : choice
+            part := SSEParser._parseDeltaContent(delta)
+            if !part.HasOwnProp("type")
+                continue
+            if part.type = "reasoning"
+                reasoningAcc .= part.content
+            else if part.type = "content"
+                contentAcc .= part.content
+        }
+        result := {}
+        if reasoningAcc != "" {
+            result.type := "reasoning"
+            result.content := reasoningAcc
+        } else if contentAcc != "" {
+            result.type := "content"
+            result.content := contentAcc
+        }
 
         ; Check for finish reason (stream end) — may coexist with content
         finish := choices[1].Has("finish_reason") ? choices[1]["finish_reason"] : ""
