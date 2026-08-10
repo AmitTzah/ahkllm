@@ -154,11 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #178 FIXED and committed (entry removed): StreamHandler buffers
-  incomplete trailing JSON lines across polls and SSEParser accumulates content from every choice in an event;
-  scenario 178 flipped to a regression check + StreamHandler unit tests. Next: bug #179 (tray Exit item).
+- **Where we left off:** 2026-08-10 - bug #179 FIXED and committed (entry removed): _rebuildTrayMenu appends an
+  unconditional E&xit item and menu-items.js save() re-adds an exit row when the tray config has none (contract
+  scanner scoped to skip settings-section data); scenario 179 flipped to a regression check + AHK/JS unit
+  tests. Next: bug #180 (sidebar thread-list N+1 queries).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -223,29 +224,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 179. The tray menu can be left without an Exit item (no other always-present close path)
-
-**Scenario:** 179 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Settings -> Menu Items -> delete the "E&xit" tray row (the row's X button), Save.
-
-**Expected:** the app always keeps a way to close itself (Exit non-removable, or another always-present close
-path).
-
-**Actual:** `_rebuildTrayMenu` builds the tray exclusively from the user-editable `trayMenuItems` global, so
-with the Exit row deleted the tray has only the hardcoded "Open Chat Window"/"New Chat" entries. The chat
-window's X only hides the window (`OnEvent("Close", ...) => responseWindow.Hide()`), the command menu has no
-exit action, and the close hotkey is user-configurable (can be disabled) - the app cannot be closed from the UI.
-
-**Evidence:** `app/TrayMenu.ahk` (`_rebuildTrayMenu`), `webui/js/settings/sections/menu-items.js` (delete
-button + `readTable`/`save` with no guard), `chat/ChatWindow.ahk:108`.
-
-**Verification:** headless - scenario 179 loads the REAL menu-items.js in a vm sandbox, clicks the E&xit row's
-delete button, and shows `save()` persists a tray with no exit action (and even an empty tray), then statically
-asserts `_rebuildTrayMenu` has no unconditional exit item and the chat-window Close hides.
 
 ### 180. Sidebar thread list runs a per-thread active-path walk (N+1 queries per refresh)
 
@@ -404,6 +382,11 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "The tray menu can be left without an Exit item (no other always-present close path)" - FIXED:
+  _rebuildTrayMenu appends an unconditional E&xit item after the user items, and menu-items.js save() re-adds
+  an exit row whenever the saved tray config has none; the IPC contract scanner now skips settings-section
+  data (its action-name regex was matching `action: 'exit'` settings rows). Scenario 179 flipped to a
+  regression check + TrayMenu AHK and menu-items JS unit tests.
 - 2026-08-10 - "SSE data LINES split across poll boundaries silently lose the payload" - FIXED in
   ba9eca4: StreamHandler now holds an incomplete trailing JSON line in a per-stream pending-line buffer
   across polls (re-forming the split `data:` line), and SSEParser.ParseLine accumulates content from EVERY

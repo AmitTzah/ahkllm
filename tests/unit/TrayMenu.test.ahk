@@ -45,4 +45,19 @@ class TrayMenuTest {
         _rebuildTrayMenu()
         _rebuildTrayMenu()
     }
+
+    ; Regression (bug #179): the tray is the app's only always-present close
+    ; path, so the rebuild must add an UNCONDITIONAL Exit item even when the
+    ; user deleted the "E&xit" row from the Settings tray list.
+    Rebuild_AlwaysAddsExitItem() {
+        global trayMenuItems
+        srcPath := A_ScriptDir "\..\app\TrayMenu.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, 'A_TrayMenu.Add("E&xit", (*) => ExitApp())')
+            throw Error("rebuild must add an unconditional Exit item outside the user-item loop (bug #179)")
+        ; With NO exit action in the user's list, rebuilding must still produce
+        ; an exit path (verified here by the unconditional Add line above).
+        trayMenuItems := [{ menuText: "Reload App", action: "reload" }]
+        _rebuildTrayMenu()
+    }
 }

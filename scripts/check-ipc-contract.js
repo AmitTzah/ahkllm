@@ -15,6 +15,10 @@ const contract = require('../webui/js/shared/ipc-contract.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const VENDOR_RE = /(^|[\\/])(vendor|libs|dist)([\\/]|\.)/;
+// Settings section files define settings DATA (e.g. { action: 'exit' } tray
+// rows), which is not IPC traffic - skip them so the contract scan only sees
+// real WebView->AHK message posts.
+const SETTINGS_SECTIONS_RE = /(^|[\\/])settings[\\/]sections[\\/]/;
 
 function walk(dir, visitFile) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -40,7 +44,7 @@ function scanJsActions() {
   const found = new Set();
   walk(path.join(ROOT, 'webui', 'js'), (p) => {
     const rel = p.slice(ROOT.length + 1);
-    if (!p.endsWith('.js') || VENDOR_RE.test(rel)) return;
+    if (!p.endsWith('.js') || VENDOR_RE.test(rel) || SETTINGS_SECTIONS_RE.test(rel)) return;
     const src = fs.readFileSync(p, 'utf8');
     for (const m of src.matchAll(/action\s*:\s*'([A-Za-z]+)'/g)) found.add(m[1]);
     // All outgoing messages go through Ipc.postToHost / Ipc.request.

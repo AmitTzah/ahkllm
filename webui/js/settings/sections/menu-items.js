@@ -74,7 +74,14 @@
     S.markDirty();
   }
   function save() {
-    return { menuItems: { quickAccess: readTable('qaTableBody', ['menuText', 'command']), tray: readTable('trayTableBody', ['menuText', 'action']) } };
+    var tray = readTable('trayTableBody', ['menuText', 'action']);
+    // Bug #179: the tray menu is the app's only always-present close path, so
+    // a saved tray config must always keep an Exit item - re-add the default
+    // row if the user deleted every exit-action row (the backend also re-adds
+    // an unconditional Exit item at rebuild time, so the app can always close).
+    var hasExit = tray.some(function(item) { return item.action === 'exit'; });
+    if (!hasExit) tray.push({ menuText: 'E&xit', action: 'exit' });
+    return { menuItems: { quickAccess: readTable('qaTableBody', ['menuText', 'command']), tray: tray } };
   }
   function wire() {
     var addQA = document.getElementById('addQaRow'); if (addQA) addQA.addEventListener('click', function() { addRow('qaTableBody', ['menuText', 'command']); });

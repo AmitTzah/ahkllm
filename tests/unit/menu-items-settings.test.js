@@ -182,8 +182,27 @@ describe('Menu items settings section', () => {
 
         const empty = loadSection({});
         assert.deepStrictEqual(JSON.parse(JSON.stringify(empty.module.save())), {
-            menuItems: { quickAccess: [], tray: [] },
+            // Bug #179: the saved tray config must always keep an Exit item.
+            menuItems: { quickAccess: [], tray: [{ menuText: 'E&xit', action: 'exit' }] },
         });
+    });
+
+    it('save re-adds an Exit item when the tray rows have none (bug #179)', () => {
+        const qaBody = makeEl('tbody');
+        const trayBody = makeEl('tbody');
+        const ctx = loadSection({ els: { qaTableBody: qaBody, trayTableBody: trayBody } });
+        ctx.module.load({ menuItems: { quickAccess: [], tray: [{ menuText: '&Reload Script', action: 'reload' }] } });
+        // Delete the only row (reload) - the tray would end up empty.
+        const row = trayBody.querySelectorAll('tr')[0];
+        row.children.find((td) => td.className === 'actions').children[0].fire('click');
+        const data = JSON.parse(JSON.stringify(ctx.module.save()));
+        assert.deepStrictEqual(data.menuItems.tray, [{ menuText: 'E&xit', action: 'exit' }]);
+
+        // With a reload row present but no exit row, save must append Exit.
+        ctx.module.load({ menuItems: { quickAccess: [], tray: [{ menuText: '&Reload Script', action: 'reload' }] } });
+        const data2 = JSON.parse(JSON.stringify(ctx.module.save()));
+        assert.strictEqual(data2.menuItems.tray.length, 2);
+        assert.strictEqual(data2.menuItems.tray[1].action, 'exit');
     });
 
     it('addRow appends rows for quick access and tray and marks dirty', () => {

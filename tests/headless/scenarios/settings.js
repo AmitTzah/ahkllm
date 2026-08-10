@@ -1375,6 +1375,7 @@ scenarios.push({
   id: 179,
   name: 'The tray menu can be left WITHOUT an Exit item - Settings > Menu Items lets the user delete the "E&xit" row, and _rebuildTrayMenu builds the tray exclusively from the user-editable trayMenuItems (no other always-present close path)',
   mode: null,
+  regression: true, // FIXED: tray Exit is unconditional (backend + save() re-add)
   settings: {},
   noApp: true,
   async body() {
@@ -1390,32 +1391,29 @@ scenarios.push({
     const exitDeleteBtn = exitRow.children[2] && exitRow.children[2].children[0];
     if (!exitDeleteBtn) throw new Error('delete button missing on the exit row (sandbox issue)');
     exitDeleteBtn.click();
-    let saved = registered.save();
-    let trayActions = saved.menuItems.tray.map((i) => i.action);
-    if (trayActions.indexOf('exit') >= 0)
-      throw new Error('deleting the exit row did not remove it from the saved payload: ' + JSON.stringify(trayActions));
-    // The user can even delete the reload row too - the tray ends up with NO
-    // items at all (only the hardcoded Open/New Chat entries remain).
+    // Delete the reload row too - the user CAN delete every row, but save()
+    // must re-add an Exit item so the saved tray config always keeps a close
+    // path.
     const reloadRow = trayTbody.children[0];
     reloadRow.children[2].children[0].click();
-    saved = registered.save();
-    trayActions = saved.menuItems.tray.map((i) => i.action);
-    if (trayActions.length !== 0)
-      throw new Error('tray should be empty after deleting both rows: ' + JSON.stringify(trayActions));
+    let saved = registered.save();
+    let trayActions = saved.menuItems.tray.map((i) => i.action);
+    if (trayActions.indexOf('exit') < 0)
+      throw new Error('save() must keep an Exit item in the tray config (bug #179): ' + JSON.stringify(trayActions));
 
-    // 2. _rebuildTrayMenu adds ONLY the hardcoded Open/New Chat entries plus
-    //    the user's trayMenuItems - there is no unconditional Exit item.
+    // 2. _rebuildTrayMenu re-adds an UNCONDITIONAL Exit item after the
+    //    user-editable items, so the tray can never be left without a close
+    //    path even if a no-exit config reaches it.
     const tray = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TrayMenu.ahk'), 'utf8');
     const exitInsideCase = /case "exit":\s*A_TrayMenu\.Add\(item\.menuText,\s*\(\*\)\s*=>\s*ExitApp\(\)\)/.test(tray);
-    const exitApps = (tray.match(/ExitApp/g) || []).length;
+    const unconditionalExit = /A_TrayMenu\.Add\("E&xit",\s*\(\*\)\s*=>\s*ExitApp\(\)\)/.test(tray);
     const hardcodedOpen = /A_TrayMenu\.Add\("📋 Open Chat Window"/.test(tray) || /A_TrayMenu\.Add\(".*Open Chat Window"/.test(tray);
-    if (!exitInsideCase || exitApps !== 1 || !hardcodedOpen)
-      throw new Error('_rebuildTrayMenu contract broken: exitInsideCase=' + exitInsideCase + ' exitApps=' + exitApps + ' hardcodedOpen=' + hardcodedOpen + '\n' + tray);
+    if (!exitInsideCase || !unconditionalExit || !hardcodedOpen)
+      throw new Error('_rebuildTrayMenu contract broken: exitInsideCase=' + exitInsideCase + ' unconditionalExit=' + unconditionalExit + ' hardcodedOpen=' + hardcodedOpen + '\n' + tray);
 
-    // 3. No other always-present close path: the chat window X only HIDES the
-    //    window (OnEvent Close -> Hide), and the command menu has no exit
-    //    action - so with the tray Exit row deleted the app cannot be closed
-    //    from the UI (only a user-configured closeWindowsHotkey / task manager).
+    // 3. The chat window X still only HIDES the window and the command menu
+    //    has no exit action - the tray's unconditional Exit item is what
+    //    guarantees the app can always be closed from the UI.
     const cw = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
     const closeHides = /OnEvent\("Close",\s*\(\*\)\s*=>\s*responseWindow\.Hide\(\)\)/.test(cw);
     const cmdMenu = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'menu', 'CommandMenu.ahk'), 'utf8');
@@ -1423,8 +1421,8 @@ scenarios.push({
     if (!closeHides || cmdHasExit)
       throw new Error('unexpected extra close path: closeHides=' + closeHides + ' cmdHasExit=' + cmdHasExit);
 
-    return 'Settings UI deletes the E&xit row via its ✕ button and save() persists tray actions ' + JSON.stringify(trayActions) +
-      '; _rebuildTrayMenu then renders only the hardcoded Open Chat Window / New Chat entries (ExitApp only inside the user-driven case "exit"), and the chat-window X hides rather than exits - no tray path to close the app';
+    return 'Settings UI lets the user delete every tray row, but save() persists tray actions ' + JSON.stringify(trayActions) +
+      ' (an Exit item is always re-added); _rebuildTrayMenu also appends an unconditional E&xit item after the user items, and the chat-window X still hides - the app always keeps a close path';
   }
 });
 
