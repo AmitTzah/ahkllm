@@ -631,6 +631,7 @@ scenarios.push({
   id: 144,
   name: '"Save as Branch" on an assistant message double-counts the copied token metadata in the thread cumulative counters after the next real exchange (header vs dashboard disagree)',
   mode: 'sse-success',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{
@@ -667,20 +668,22 @@ scenarios.push({
     const usage = seed.query(dbPath, 'SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage')[0];
     // In THIS run only the follow-up is a real API call (a1 is a seeded row,
     // not a live exchange): chat_usage = 1 call, 12/9/4. The thread counters
-    // must reflect ONLY real API calls, i.e. the follow-up (12/9/4).
-    // BUG present: the recompute also charges the seeded a1 (12/9/4) AND the
-    // local branch copy (12/9/4) -> thread counters 36/27/12 (header) while the
-    // dashboard holds 1 call, 12/9/4 - header and dashboard disagree.
-    if (Number(thread.cumulative_input_tokens) !== 36 || Number(thread.cumulative_output_tokens) !== 27 || Number(thread.cumulative_cached_tokens) !== 12)
-      throw new Error('counters not double-counted (behavior changed): ' + JSON.stringify(thread));
+    // must reflect ONLY real API calls: the seeded a1 (12/9/4) + the follow-up
+    // (12/9/4) = 24/18/8. The local branch copy (a copied 12/9/4) must NOT be
+    // charged a second time.
+    // BUG present: the recompute also charges the local branch copy (12/9/4)
+    // on top -> thread counters 36/27/12 (header) while the dashboard holds 1
+    // call, 12/9/4 - header and dashboard disagree.
+    if (Number(thread.cumulative_input_tokens) !== 24 || Number(thread.cumulative_output_tokens) !== 18 || Number(thread.cumulative_cached_tokens) !== 8)
+      throw new Error('counters should be the real calls only (24/18/8), got: ' + JSON.stringify(thread));
     if (!usage || usage.call_count !== 1 || usage.prompt_tokens !== 12 || usage.completion_tokens !== 9 || usage.cached_tokens !== 4)
       throw new Error('chat_usage should hold the 1 real call only: ' + JSON.stringify(usage));
     const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
-    if (String(bar).indexOf('\u2191 36') < 0 || String(bar).indexOf('\u2193 27') < 0)
-      throw new Error('header should show the double-counted 36/27: ' + JSON.stringify(bar));
+    if (String(bar).indexOf('\u2191 24') < 0 || String(bar).indexOf('\u2193 18') < 0)
+      throw new Error('header should show the real-call totals 24/18: ' + JSON.stringify(bar));
     return 'assistant branch-copy + real follow-up: thread counters=' + JSON.stringify(thread) +
-      ' (BUG: 36/27/12 - the seeded call + the local copy are charged on top of the real one) while chat_usage=' + JSON.stringify(usage) +
-      ' (1 real call, 12/9/4) - header and dashboard disagree; header=' + JSON.stringify(bar);
+      ' (24/18/8 = seeded a1 + follow-up; the local copy is NOT charged) while chat_usage=' + JSON.stringify(usage) +
+      ' (1 real call, 12/9/4) - header and dashboard agree; header=' + JSON.stringify(bar);
   }
 });
 

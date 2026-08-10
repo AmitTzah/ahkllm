@@ -46,13 +46,14 @@ class ChatDBTest {
     Schema_IsMigratedToLatest() {
         this._setup()
         version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-        if Integer(version) != 4
-            throw Error("expected user_version 4, got " version)
+        if Integer(version) != 5
+            throw Error("expected user_version 5, got " version)
         cols := [
             { t: "chat_threads", c: "font_size" },
             { t: "chat_threads", c: "advanced_toggles" },
             { t: "chat_threads", c: "folder_id" },
             { t: "messages", c: "prompt_tokens" },
+            { t: "messages", c: "is_local_copy" },
             { t: "assistants", c: "description" }
         ]
         for item in cols {
@@ -81,8 +82,8 @@ class ChatDBTest {
         ChatDB.Open(oldDbPath)
         try {
             version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-            if Integer(version) != 4
-                throw Error("expected user_version 4 after migration, got " version)
+            if Integer(version) != 5
+                throw Error("expected user_version 5 after migration, got " version)
             hasPrompt := false
             for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
                 if row.name = "prompt_tokens"
@@ -90,6 +91,13 @@ class ChatDBTest {
             }
             if !hasPrompt
                 throw Error("migration did not add messages.prompt_tokens")
+            hasLocalCopy := false
+            for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
+                if row.name = "is_local_copy"
+                    hasLocalCopy := true
+            }
+            if !hasLocalCopy
+                throw Error("migration did not add messages.is_local_copy")
             hasFont := false
             for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows {
                 if row.name = "font_size"
@@ -192,6 +200,34 @@ class ChatDBTest {
         after := ChatDB.db.Exec("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id='" threadId "';")
         if Integer(after[1, "cumulative_input_tokens"]) != Integer(before[1, "cumulative_input_tokens"]) || Integer(after[1, "cumulative_output_tokens"]) != Integer(before[1, "cumulative_output_tokens"]) || Integer(after[1, "cumulative_cached_tokens"]) != Integer(before[1, "cumulative_cached_tokens"])
             throw Error("metadata copy must not re-charge counters: before in=" before[1, "cumulative_input_tokens"] " out=" before[1, "cumulative_output_tokens"] " ckt=" before[1, "cumulative_cached_tokens"] " after in=" after[1, "cumulative_input_tokens"] " out=" after[1, "cumulative_output_tokens"] " ckt=" after[1, "cumulative_cached_tokens"])
+        this._teardown()
+    }
+
+    ; Regression (bug #144): a local branch-edit copy carries the source's
+    ; COPIED token metadata, so a later REAL exchange's cumulative recompute
+    ; must exclude local copies - otherwise the copied prompt/output/cached
+    ; tokens are charged a second time and the header disagrees with the
+    ; dashboard. Real calls: a1 (12/9/4) + a2 (24/5+2/1) => 36/16/5; the
+    ; local copy (12/9/4) must NOT be added on top.
+    Insert_LocalCopy_ExcludedFromCumulativeRecompute() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12, cached_tokens: 4})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1 edited branch", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", sibling_group: "sg-144", sibling_index: 1, token_count: 9, prompt_tokens: 12, cached_tokens: 4, active_path_tokens: 21, local_copy: true})
+        copyRow := ChatDB.db.Query("SELECT is_local_copy FROM messages WHERE content='a1 edited branch';")
+        if Integer(copyRow[1, "is_local_copy"]) != 1
+            throw Error("local_copy flag must be persisted on the message row")
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a1 edited branch';").rows[1].id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", token_count: 5, prompt_tokens: 24, thinking_tokens: 2, cached_tokens: 1})
+        row := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", threadId)
+        ; Ground truth (real API calls only): input = 12 + 24 = 36;
+        ; output = 9 + (5 + 2) = 16; cached = 4 + 1 = 5.
+        if Integer(row[1, "cumulative_input_tokens"]) != 36
+            throw Error("cumulative input must exclude the local copy: expected 36, got " row[1, "cumulative_input_tokens"])
+        if Integer(row[1, "cumulative_output_tokens"]) != 16
+            throw Error("cumulative output must exclude the local copy: expected 16, got " row[1, "cumulative_output_tokens"])
+        if Integer(row[1, "cumulative_cached_tokens"]) != 5
+            throw Error("cumulative cached must exclude the local copy: expected 5, got " row[1, "cumulative_cached_tokens"])
         this._teardown()
     }
 

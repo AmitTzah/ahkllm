@@ -54,7 +54,7 @@ class MessageRepo {
         ; _RecomputeActivePath can restore prompt+completion after structural
         ; changes instead of reducing to a visible-token prefix sum.
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0)
 
         ; Sync FTS5 index
         ChatDB.FTS_Sync(id, msgObj.content)
@@ -194,7 +194,7 @@ class MessageRepo {
     ; actually saw. Output/cached only count assistant rows (bug #128) - user
     ; token_counts are backfilled INPUT contributions, never output.
     static _RecomputeCumulativeCounters(threadId) {
-        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE thread_id=?;", threadId)
+        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens, is_local_copy FROM messages WHERE thread_id=?;", threadId)
         rowMap := Map()
         for row in table.rows {
             rowMap[row.id] := row
@@ -204,7 +204,11 @@ class MessageRepo {
         for row in table.rows {
             ; Only assistant rows represent an API call. User/system token_counts
             ; are backfilled input contributions (bug #128).
-            if row.role != "assistant" || !row.model
+            ; Bug #144: local branch-edit copies carry COPIED token metadata
+            ; from their source but are not API calls - they must not be
+            ; charged to the thread's cumulative counters (which would make
+            ; the header disagree with the dashboard).
+            if row.role != "assistant" || !row.model || (row.Has("is_local_copy") && row.is_local_copy)
                 continue
             tc := row.token_count ? row.token_count : 0
             tht := row.thinking_tokens ? row.thinking_tokens : 0
