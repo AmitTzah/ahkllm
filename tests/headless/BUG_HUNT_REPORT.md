@@ -405,7 +405,7 @@ carries `temperature: ""` (the bug).
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 - 2026-08-10 - "SSE data LINES split across poll boundaries silently lose the payload" - FIXED in
-  51fc4da: StreamHandler now holds an incomplete trailing JSON line in a per-stream pending-line buffer
+  ba9eca4: StreamHandler now holds an incomplete trailing JSON line in a per-stream pending-line buffer
   across polls (re-forming the split `data:` line), and SSEParser.ParseLine accumulates content from EVERY
   choice in an event instead of reading only the first; scenario 178 flipped to a regression check +
   StreamHandler unit tests (split rejoin + multi-choice accumulation).
