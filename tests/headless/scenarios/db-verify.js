@@ -484,6 +484,7 @@ scenarios.push({
   id: 183,
   name: 'Search result snippets for attachment-text hits show the message content, not the match (SearchRepo._FTS5 builds the preview from m.content only - a term that exists only in an attachment\'s extracted_text yields an unrelated preview)',
   mode: null,
+  regression: true, // FIXED: snippets come from the FTS-indexed content (message + attachment text)
   noApp: true,
   settings: {},
   async body() {
@@ -499,13 +500,14 @@ scenarios.push({
     if (!hitsM || !matchM) throw new Error('probe output missing fields: ' + text);
     const hits = Number(hitsM[1]), previewHasMatch = Number(matchM[1]);
     if (hits < 1) throw new Error('control failed - the attachment text is no longer searchable (bug #165 regression): ' + text);
-    // BUG present: the message is FOUND (extracted_text is indexed) but the
-    // snippet is SUBSTR(m.content, 1, 100) because INSTR on m.content misses.
-    if (previewHasMatch === 1)
-      throw new Error('snippet now contains the match (bug not reproduced): ' + text);
+    // FIXED (bug #183): the snippet is built from the FTS-indexed content
+    // (message + decoded attachment text), so the preview shows the matched
+    // attachment text instead of the unrelated message content.
+    if (previewHasMatch !== 1)
+      throw new Error('snippet still does not contain the attachment match (fix incomplete): ' + text);
     return 'search for "needle" (only inside the PDF extracted_text) found ' + hits +
-      ' hit(s), but the snippet does not contain "needle" (previewHasMatch=' + previewHasMatch +
-      ') - the preview shows the message content instead of the matched attachment text';
+      ' hit(s) and the snippet DOES contain "needle" (previewHasMatch=' + previewHasMatch +
+      ') - the preview now shows the matched attachment text';
   }
 });
 

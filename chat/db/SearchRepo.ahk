@@ -85,12 +85,16 @@ class SearchRepo {
         ; Extract a snippet window around the first match (case-insensitive).
         ; FTS5 MATCH is case-insensitive, so use LOWER() for INSTR to match.
         ; Only add "..." prefix/suffix when content is actually truncated.
+        ; Bug #183: the snippet is built from the FTS-INDEXED content
+        ; (messages_fts.content = m.content + decoded attachment extracted_text,
+        ; bug #165) instead of m.content alone, so a hit that exists only in an
+        ; attachment previews the matched attachment text, not the message.
         firstWordLower := StrLower(firstWord)
-        snippetExpr := "CASE WHEN INSTR(LOWER(m.content), ?) > 0 THEN"
-                     . " CASE WHEN INSTR(LOWER(m.content), ?) > 31 THEN '...' ELSE '' END"
-                     . " || SUBSTR(m.content, MAX(1, INSTR(LOWER(m.content), ?) - 30), 100)"
-                     . " || CASE WHEN MAX(1, INSTR(LOWER(m.content), ?) - 30) + 99 < LENGTH(m.content) THEN '...' ELSE '' END"
-                     . " ELSE SUBSTR(m.content, 1, 100) END"
+        snippetExpr := "CASE WHEN INSTR(LOWER(fts.content), ?) > 0 THEN"
+                     . " CASE WHEN INSTR(LOWER(fts.content), ?) > 31 THEN '...' ELSE '' END"
+                     . " || SUBSTR(fts.content, MAX(1, INSTR(LOWER(fts.content), ?) - 30), 100)"
+                     . " || CASE WHEN MAX(1, INSTR(LOWER(fts.content), ?) - 30) + 99 < LENGTH(fts.content) THEN '...' ELSE '' END"
+                     . " ELSE SUBSTR(fts.content, 1, 100) END"
 
         sql := "SELECT m.id AS messageId, m.thread_id AS threadId, m.role,"
              . " " snippetExpr " AS contentPreview,"
@@ -98,6 +102,7 @@ class SearchRepo {
              . " t.title AS threadTitle"
              . " FROM messages m"
              . " JOIN chat_threads t ON m.thread_id = t.id"
+             . " JOIN messages_fts fts ON fts.msg_id = m.id"
              . " WHERE t.is_deleted=0 AND m.id IN (SELECT msg_id FROM messages_fts WHERE messages_fts MATCH ?)"
         params := [firstWordLower, firstWordLower, firstWordLower, firstWordLower, safeFTS]
         if threadId {

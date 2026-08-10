@@ -677,7 +677,7 @@ FtsAttachmentSnippet() {
     preview := found ? hits[1].contentPreview : ""
     previewHasMatch := InStr(preview, "needle") > 0
     Log("FTSATTNEEDLE hits=" found " preview='" preview "' previewHasMatch=" (previewHasMatch ? 1 : 0))
-    Log("FTSATTNEEDLE verdict=" (found > 0 && !previewHasMatch ? "BUG-present(snippet-not-the-match)" : (found > 0 ? "OK-snippet-match" : "OK-no-hits")))
+    Log("FTSATTNEEDLE verdict=" (found > 0 && previewHasMatch ? "OK-snippet-match" : "BUG-present(snippet-not-the-match)"))
     CloseDb(dbPath)
 }
 

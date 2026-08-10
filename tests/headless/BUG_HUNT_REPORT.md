@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #182 FIXED and committed (entry removed): the blank-provider filter
-  sentinel is now the reserved "__BLANK_PROVIDER__" (impossible as a real provider name), so a provider named
-  "__unknown__" filters by its own name; scenarios 168/182 flipped/updated + UsageRepo/dashboard unit tests.
-  Next: bug #183 (attachment-text search snippet).
+- **Where we left off:** 2026-08-10 - bug #183 FIXED and committed (entry removed): SearchRepo._FTS5 builds
+  the snippet from the FTS-indexed content (message + decoded attachment text), so attachment-only hits
+  preview the matched text; scenario 183 flipped to a regression check + ChatDB unit test. Next: bug #189
+  (harness backup-restore mismatch).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -224,27 +224,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 183. Search result snippets for attachment-text hits show the message content, not the match
-
-**Scenario:** 183 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Attach a PDF whose extracted text contains a unique term, search for that term.
-
-**Expected:** the snippet previews the matched attachment text (and/or the UI indicates the match is in the
-attachment).
-
-**Actual:** bug #165 made the message FINDABLE, but `SearchRepo._FTS5` builds `contentPreview` from `m.content`
-only - `INSTR(LOWER(m.content), ...)` misses, so the preview falls back to `SUBSTR(m.content, 1, 100)`, which
-is unrelated to the match.
-
-**Evidence:** `chat/db/SearchRepo.ahk:_FTS5` (snippet expression reads `m.content`).
-
-**Verification:** headless - `probe-bughunt-db.ahk fts-attachment-snippet` seeds a message + attachment whose
-extracted text contains "needle"; scenario 183 asserts the search finds the hit but the snippet does not
-contain the match.
 
 ### 189. Harness interrupted-run recovery restores DIFFERENT backups (stale profile risk on direct launch)
 
@@ -317,6 +296,10 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Search result snippets for attachment-text hits show the message content, not the match" -
+  FIXED: SearchRepo._FTS5 now joins messages_fts and builds contentPreview from the FTS-indexed content
+  (m.content + decoded attachment extracted_text, bug #165), so a term that exists only in an attachment
+  previews the matched text; scenario 183 flipped to a regression check + ChatDB unit test.
 - 2026-08-10 - "A provider named \"__unknown__\" collides with the blank-provider filter sentinel" - FIXED:
   the blank-provider sentinel is now the reserved "__BLANK_PROVIDER__" (characters a real provider name can
   never contain) in UsageRepo.Query and usage-dashboard.js populateFilters, so a provider literally named

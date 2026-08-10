@@ -969,6 +969,29 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #183): a search hit that exists ONLY in an attachment's
+    ; extracted_text must preview the MATCHED attachment text (the snippet is
+    ; built from the FTS-indexed content = message + attachment text), not the
+    ; unrelated message content.
+    SearchMessages_AttachmentHit_SnippetShowsMatch() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "see attached report"})
+        ChatDB.Attachment_Insert(u1Id, {
+            attachment_type: "pdf",
+            file_path: "attachments/report.pdf",
+            mime_type: "application/pdf",
+            original_filename: "report.pdf",
+            file_size: 1024,
+            extracted_text: "Quarterly results mention the needle keyword only here."
+        })
+        hits := ChatDB.SearchMessages("needle", threadId)
+        if hits.Length < 1
+            throw Error("control failed - attachment text must be searchable (bug #165), got " hits.Length " hits")
+        if !InStr(hits[1].contentPreview, "needle")
+            throw Error("snippet must contain the attachment match (bug #183), got '" hits[1].contentPreview "'")
+        this._teardown()
+    }
+
     ; Regression (bug #161): a query ending in an apostrophe must keep FTS5
     ; prefix matching ("comp'" behaves like "comp") - the * guard only checks
     ; for a trailing "*" (terms are ALWAYS double-quoted, so the old "'" check
@@ -2331,7 +2354,7 @@ class ChatDBTest {
     
             this._teardown()
         }
-    
+
         ; Regression: FTS5 sync must handle content with single quotes.
         ; SQLite.Escape doubles internal quotes (' → '') but does NOT wrap in quotes.
         ; The caller must add wrapping quotes: '" SQLite.Escape(val) "'
