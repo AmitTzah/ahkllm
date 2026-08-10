@@ -1,5 +1,5 @@
-# 2026-08-10T12:47:08.946Z | run of 1 scenario(s)
-PASS | #173 | A mid-stream failure with no usage chunk crashes the completion handler (CostCalculator reads usage.promptTokens unguarded) - the partial response IS persisted but the UI is left STUCK with a misleading "Request failed" banner | mock sent one content chunk then ended with an error body: persisted assistant row content="Partial answer before the connection die" prompt_tokens=0 (no usage) - the completion handler survives the usage-less stream: UI usable (isLoading=false, streamState.active=false), error banner shown=false - the partial is saved and the thread stays usable | 6.1s
+# 2026-08-10T12:49:28.997Z | run of 1 scenario(s)
+PASS | #172 | Hard-deleting (deleteThreadForever/emptyTrash) the streaming thread mid-stream silently DROPS the completed response - no dangling row (activeThreadId is cleared) but the billed response is never persisted anywhere | hard-delete mid-stream: thread A removed while streaming; on completion the captured thread id persists the response (dangling rows=1, any assistant row=1, chat_usage rows=1 (activeAtStart=true activeAtHardDelete=true) - the billed call leaves a trace and is usage-tracked | 9.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

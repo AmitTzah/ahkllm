@@ -102,6 +102,32 @@ class StreamHandlerTest {
         this._teardownDb()
     }
 
+    ; Regression (bug #172): hard-deleting the streaming thread mid-stream must
+    ; not silently DROP the billed response - the completion still persists it
+    ; (a dangling row under the removed thread id) and tracks its usage.
+    PersistStreamResponse_AfterThreadHardDelete_KeepsTrace() {
+        global activeThreadId, requestParams
+        this._setupDb()
+        threadIdA := ChatDB.Thread_Create("Thread A")
+        ChatDB.Msg_Insert({thread_id: threadIdA, role: "user", content: "question for A"})
+        ; Hard-delete the thread while its stream is in flight (wipes the
+        ; thread row + messages and clears the active thread):
+        ChatDB.Thread_Delete(threadIdA)
+        activeThreadId := ""
+        requestParams["_streamThreadId"] := threadIdA
+
+        _persistStreamResponse("Hello from the mock LLM", "deepseek/deepseek-v4-flash", "", { promptTokens: 12, completionTokens: 9, cachedTokens: 4 }, 500, 100, threadIdA)
+
+        dangling := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads);")
+        if Integer(dangling[1, "c"]) != 1
+            throw Error("billed response must persist as a dangling row (bug #172), got " dangling[1, "c"])
+        usage := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_usage;")
+        if Integer(usage[1, "c"]) != 1
+            throw Error("billed response must be usage-tracked (bug #172), got " usage[1, "c"])
+        activeThreadId := ""
+        this._teardownDb()
+    }
+
     ; --------------------------------------------------------
     ; SSEParser: null-usage investigation
     ; jsongo.Parse converts JSON null to "" (empty string).

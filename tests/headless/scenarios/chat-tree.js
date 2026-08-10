@@ -1500,6 +1500,7 @@ scenarios.push({
   id: 172,
   name: 'Hard-deleting (deleteThreadForever/emptyTrash) the streaming thread mid-stream silently DROPS the completed response - no dangling row (activeThreadId is cleared) but the billed response is never persisted anywhere',
   mode: 'sse-slow',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [
@@ -1548,15 +1549,16 @@ scenarios.push({
     const dangling = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads)')[0].c;
     const anyAssistant = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE role='assistant'")[0].c;
     const usage = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM chat_usage')[0].c;
-    // BUG present: the delete happened while streamState.active was still true
-    // (wasStillStreaming), the completed response is never persisted (no
-    // assistant row anywhere, no chat_usage row - the billed call is untracked),
-    // and no dangling row is created either (the insert was skipped, not orphaned).
+    // Fixed: the completion uses the thread captured at send time, so the
+    // billed response is persisted (as a dangling row under the removed thread
+    // id) and usage-tracked - the API call never silently vanishes.
+    // BUG present: activeThreadId was cleared, _persistStreamResponse was
+    // SKIPPED, and the billed response vanished (no persistence, no usage).
     if (!activeAtStart || !activeAtHardDelete) throw new Error('setup: stream finished before the delete - timing not mid-stream (' + activeAtStart + '/' + activeAtHardDelete + ')');
-    if (dangling !== 0 || anyAssistant !== 0 || usage !== 0)
-      throw new Error('hard-delete mid-stream state changed: dangling=' + dangling + ' assistantRows=' + anyAssistant + ' usage=' + usage);
-    return 'hard-delete mid-stream: thread A removed while streaming; on completion _persistStreamResponse is SKIPPED (activeThreadId="") - dangling rows=' + dangling +
-      ', any assistant row=' + anyAssistant + ', chat_usage rows=' + usage + ' (activeAtStart=' + activeAtStart + ' activeAtHardDelete=' + activeAtHardDelete + ') - the billed response vanishes with no trace (no orphan, no persistence, no usage)';
+    if (dangling !== 1 || anyAssistant !== 1 || usage !== 1)
+      throw new Error('billed response still lost on hard-delete mid-stream (BUG present): dangling=' + dangling + ' assistantRows=' + anyAssistant + ' usage=' + usage);
+    return 'hard-delete mid-stream: thread A removed while streaming; on completion the captured thread id persists the response (dangling rows=' + dangling +
+      ', any assistant row=' + anyAssistant + ', chat_usage rows=' + usage + ' (activeAtStart=' + activeAtStart + ' activeAtHardDelete=' + activeAtHardDelete + ') - the billed call leaves a trace and is usage-tracked';
   }
 });
 
