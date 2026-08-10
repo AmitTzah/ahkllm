@@ -1,5 +1,5 @@
-# 2026-08-10T13:42:06.359Z | run of 1 scenario(s)
-PASS | #160 | Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character (the File.Pos byte seek resumes inside a character and inserts replacement chars) | UTF-8 poll split: part1="ab part2=écd joined=abécd" - the raw-byte incremental decode round-trips the split multibyte char (OK-roundtrip) | 0.0s
+# 2026-08-10T13:43:59.063Z | run of 1 scenario(s)
+PASS | #161 | Search FTS5 loses prefix matching when the query ends in an apostrophe (the * guard tests the wrong quote char - terms are always double-quoted) | SearchRepo._FTS5: query "comp" finds 1 message(s) and "comp'" finds 1 - the trailing-apostrophe query keeps its prefix match (terms are always double-quoted, so only a trailing * disables it) | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

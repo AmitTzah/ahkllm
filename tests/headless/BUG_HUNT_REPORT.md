@@ -154,12 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#30 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
+- **Where we left off:** 2026-08-10 - #1-#31 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
   25f7181, 2e4bc23, 0058836, 31056dd, 4e426f3, a046cda, 04e64e3, 4b41ce7, 1f9b377, d9d3bda, 17150ab, f7ef637,
   f1ea763, a447e0e, 519322b, 1729c02, 7356462, 0065cdb, 1a3160d, 9d5d9ed, 4e59f44, a314464, dacc19c, afaa8df,
-  next commit). Next: bug #31 (search FTS5 loses prefix matching when the query ends in an apostrophe).
+  44ed5e9, next commit). Next: bug #32 (cross-thread search navigation race - the pending scroll msg id is
+  consumed by ANY thread's initChatMode).
 ---
 
 ## Bug entry template
@@ -213,27 +214,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
-
-**Scenario:** 161 (scenario code in scenarios/misc.js)
-
-**Status:** fix in progress
-
-**Repro:** Search for a partial word where the query string ends in `'` (e.g. "comp'"), where the same word without the apostrophe finds results.
-
-**Expected:** "comp'" behaves like "comp" (prefix match on the last word - the code's comment says prefix matching is intentional).
-
-**Actual:** `SearchRepo._FTS5` wraps every term in double quotes via `_FTS5QuoteTerm`, then appends `*` for prefix matching UNLESS the raw query's last char is `*` or `'`. The `'` check was meant to detect "the last word is quoted" (comment), but terms are ALWAYS double-quoted - so a query whose last character is an apostrophe (e.g. "comp'") skips the `*` and matches only the literal token "comp'": "comp" finds "complete"/"compass" (1 hit), "comp'" finds 0.
-
-**Evidence:** `chat/db/SearchRepo.ahk` (_FTS5 lastChar check `!= "*" && != "'"`; _FTS5QuoteTerm always double-quotes).
-
-**Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
-
-### 2. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 1. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Search globally, click a result in thread A, and immediately click thread B (or let A's load fail) before the navigation completes.
 
@@ -249,6 +234,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Search FTS5 loses prefix matching when the query ends in an apostrophe (the trailing-* guard checks the wrong quote char)" - FIXED: _FTS5 now skips the prefix * only for a trailing "*" - terms are always double-quoted, so a trailing apostrophe query ("comp'") keeps its prefix match; scenario 161 flipped to a regression check + ChatDB unit test.
 - 2026-08-10 - "Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character" - FIXED: _readFileChunk now reads RAW bytes and only advances the byte cursor past COMPLETE UTF-8 characters (incomplete trailing bytes are re-read whole on the next poll), so split multibyte chars never become U+FFFD; scenario 160 flipped to a regression check + StreamHandler unit test + updated probe-utf8.ahk.
 - 2026-08-10 - "Branch navigation never refreshes the sidebar thread list" - FIXED: handleBranchSwitch now posts _postThreadListRefresh() after the switch (it already bumped updated_at), so the sidebar order and the #155 model badge follow the newly-active branch; scenario 174 flipped to a regression check + ChatDispatch unit test.
 - 2026-08-10 - "Usage dashboard rows with an empty provider render in the chart under blank but are absent from the provider filter dropdown" - FIXED: populateFilters adds a selectable Unknown (blank) option (__unknown__) when any row's provider key resolves to empty, and UsageRepo.Query scopes the sentinel to provider=' IS NULL rows; scenario 168 flipped to a regression check + usage-dashboard/UsageTracking unit tests.

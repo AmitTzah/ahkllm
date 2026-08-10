@@ -66,10 +66,13 @@ class SearchRepo {
         if !ftsExpr
             return []
 
-        ; Append * to the last word for prefix matching
-        ; unless the query already ends with * or the last word is quoted
+        ; Append * to the last word for prefix matching unless the query
+        ; already ends with *. (Bug #161: the old guard ALSO skipped the * when
+        ; the query ended in an apostrophe, assuming that meant "the last word
+        ; is quoted" - but terms are ALWAYS double-quoted by _FTS5QuoteTerm, so
+        ; "comp'" lost its prefix match and returned 0 while "comp" worked.)
         lastChar := SubStr(query, -1)
-        if lastChar != "*" && lastChar != "'" {
+        if lastChar != "*" {
             ; Find the last word and append *
             ftsExpr := RTrim(ftsExpr)
             ftsExpr .= "*"

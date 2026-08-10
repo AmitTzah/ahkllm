@@ -870,6 +870,23 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #161): a query ending in an apostrophe must keep FTS5
+    ; prefix matching ("comp'" behaves like "comp") - the * guard only checks
+    ; for a trailing "*" (terms are ALWAYS double-quoted, so the old "'" check
+    ; wrongly disabled prefix matching for trailing-apostrophe queries).
+    SearchMessages_FTS5_TrailingApostropheKeepsPrefix() {
+        threadId := this._setup()
+        u1 := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "complete the compass calculation"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "don't forget the donuts", parent_id: u1})
+        plain := SearchRepo._FTS5("comp", threadId)
+        quote := SearchRepo._FTS5("comp'", threadId)
+        if plain.Length = 0
+            throw Error("setup: comp should prefix-match complete/compass")
+        if quote.Length != plain.Length
+            throw Error("comp' must behave like comp (bug #161): plain=" plain.Length " quote=" quote.Length)
+        this._teardown()
+    }
+
     ; Regression (bug #80, security): thread mutators must escape threadId - a
     ; crafted id with a single quote must not break or inject SQL.
     ThreadMutators_EscapeThreadId() {

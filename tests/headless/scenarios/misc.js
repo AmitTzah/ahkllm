@@ -1358,6 +1358,7 @@ scenarios.push({
   id: 161,
   name: 'Search FTS5 loses prefix matching when the query ends in an apostrophe (the * guard tests the wrong quote char - terms are always double-quoted)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1371,12 +1372,14 @@ scenarios.push({
     const m = text.match(/FTS5PREFIX plain comp hits=(\d+) comp' hits=(\d+)/);
     if (!m) throw new Error('probe output missing FTS5PREFIX line: ' + text);
     const plain = Number(m[1]), quote = Number(m[2]);
-    // BUG present: "comp" -> "comp"* finds "complete"/"compass"; "comp'" skips
-    // the * (lastChar = "'"), so it matches only the literal token "comp'".
-    if (!(plain > 0 && quote === 0))
-      throw new Error('FTS5 prefix behavior changed: comp=' + plain + " comp'=" + quote);
-    return "SearchRepo._FTS5: query \"comp\" finds " + plain + " message(s), but \"comp'\" finds " + quote +
-      " - the trailing-apostrophe query loses prefix matching because the * guard checks the wrong quote char (terms are always double-quoted)";
+    // Fixed: "comp'" behaves like "comp" - the * is only skipped for a
+    // trailing "*" (the old guard wrongly skipped it for "'").
+    // BUG present: "comp" -> "comp"* found "complete"/"compass"; "comp'" had
+    // no * (lastChar = "'") and matched only the literal token "comp'".
+    if (!(plain > 0 && quote === plain))
+      throw new Error('FTS5 trailing-apostrophe prefix still broken (BUG present): comp=' + plain + " comp'=" + quote);
+    return "SearchRepo._FTS5: query \"comp\" finds " + plain + " message(s) and \"comp'\" finds " + quote +
+      " - the trailing-apostrophe query keeps its prefix match (terms are always double-quoted, so only a trailing * disables it)";
   }
 });
 
