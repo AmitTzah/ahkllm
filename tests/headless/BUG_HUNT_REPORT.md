@@ -159,8 +159,10 @@ How to run AHK safely:
 - **Where we left off:** 2026-08-10 - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
-  migration backfill guard - scenarios 184-188 kept as regression checks). Next: fix the verified bugs in rank
-  order (Phase 2), one at a time, after the user commits.
+  migration backfill guard - scenarios 184-188 kept as regression checks). FULL SUITE GREEN: 184/184 e2e
+  scenarios PASS (`--all`) + `npm run test:fast` green (contract, load, SQL, 572 AHK, 530 JS tests); the
+  intake is committed on branch `bug-hunt-2026-08-followup`. Next: fix the verified bugs in rank order
+  (Phase 2), one at a time, after the user commits.
 ---
 
 ## Bug entry template
