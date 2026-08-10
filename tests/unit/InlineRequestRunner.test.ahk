@@ -96,18 +96,18 @@ class InlineRequestRunnerTest {
         global _mockToolTipCalls, apiLogMaxEntries
         oldLogPath := ApiLogger.logFilePath
         oldMax := apiLogMaxEntries
-        ApiLogger.logFilePath := A_Temp "\test_inline_api_log_" A_TickCount ".json"
+        ApiLogger.logFilePath := A_Temp "\test_inline_api_log_" A_TickCount "_" Random(1000, 999999) ".json"
         apiLogMaxEntries := 5
         try FileDelete(ApiLogger.logFilePath)
         _mockToolTipCalls := []
-        errFile := A_Temp "\test_inline_err_" A_TickCount ".txt"
+        errFile := A_Temp "\test_inline_err_" A_TickCount "_" Random(1000, 999999) ".txt"
         FileAppend("curl: (7) Failed to connect to 127.0.0.1 port 12345: Connection refused", errFile, "UTF-8")
         try {
             files := {
                 errorFile: errFile,
                 endpoint: "https://api.test",
                 requestJSON: "{}",
-                outputFile: A_Temp "\test_inline_out_" A_TickCount ".json"
+                outputFile: A_Temp "\test_inline_out_" A_TickCount "_" Random(1000, 999999) ".json"
             }
             InlineRequestRunner._HandleInlineError({ rawJSON: "", responseTimeMs: 123 }, files, "My Command", "deepseek", "deepseek-v4-flash", false, "replace")
             found := false

@@ -17,7 +17,7 @@ class AttachmentRepoTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        tempPath := A_Temp "\test_chatdb_" A_TickCount ".db"
+        tempPath := A_Temp "\test_chatdb_" A_TickCount "_" Random(1000, 999999) ".db"
         ChatDB.Open(tempPath)
         return ChatDB.db
     }

@@ -19,7 +19,7 @@ class ChatDBTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_chat_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_chat_" A_TickCount "_" Random(1000, 999999) ".db")
     }
 
     _closeDb() {
@@ -75,7 +75,7 @@ class ChatDBTest {
     Schema_MigratesOldDatabase() {
         if ChatDB.isOpen
             ChatDB.Close()
-        oldDbPath := A_Temp "\test_schema_old_" A_TickCount ".db"
+        oldDbPath := A_Temp "\test_schema_old_" A_TickCount "_" Random(1000, 999999) ".db"
         try FileDelete(oldDbPath)
         ; Simulate a v0 database: tables without the later columns.
         db := SQLite(oldDbPath)

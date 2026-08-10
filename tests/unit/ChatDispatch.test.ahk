@@ -78,7 +78,7 @@ class ChatDispatchTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_dispatch_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_dispatch_" A_TickCount "_" Random(1000, 999999) ".db")
     }
 
     _teardownDb() {
@@ -91,7 +91,7 @@ class ChatDispatchTest {
 
     _withTempSettingsPath() {
         oldPath := SettingsHandler.settingsPath
-        tempPath := A_Temp "\test_dispatch_settings_" A_TickCount ".json"
+        tempPath := A_Temp "\test_dispatch_settings_" A_TickCount "_" Random(1000, 999999) ".json"
         SettingsHandler.settingsPath := tempPath
         try FileDelete(tempPath)
         return { tempPath: tempPath, restore: (obj) => (SettingsHandler.settingsPath := oldPath) }

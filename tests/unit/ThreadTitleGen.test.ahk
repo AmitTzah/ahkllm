@@ -44,7 +44,7 @@ class ThreadTitleGenTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_titlegen_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_titlegen_" A_TickCount "_" Random(1000, 999999) ".db")
     }
 
     _teardownDb() {
@@ -485,7 +485,7 @@ class ThreadTitleGenTest {
         global apiLogMaxEntries
         oldLogPath := ApiLogger.logFilePath
         oldMax := apiLogMaxEntries
-        ApiLogger.logFilePath := A_Temp "\test_titlegen_api_log_" A_TickCount ".json"
+        ApiLogger.logFilePath := A_Temp "\test_titlegen_api_log_" A_TickCount "_" Random(1000, 999999) ".json"
         apiLogMaxEntries := 5
         try FileDelete(ApiLogger.logFilePath)
         try {

@@ -9,7 +9,7 @@ class SettingsHandlerTest {
     }
 
     _tempPath() {
-        return A_Temp "\test_settings_" A_TickCount ".json"
+        return A_Temp "\test_settings_" A_TickCount "_" Random(1000, 999999) ".json"
     }
 
     Load_MissingFile_ReturnsEmptyMap() {
@@ -49,7 +49,7 @@ class SettingsHandlerTest {
     ; leaves the original deleted or half-written.
     Save_IsAtomic() {
         oldPath := SettingsHandler.settingsPath
-        target := A_Temp "\test_settings_atomic_" A_TickCount ".json"
+        target := A_Temp "\test_settings_atomic_" A_TickCount "_" Random(1000, 999999) ".json"
         tmp := target ".tmp"
         SettingsHandler.settingsPath := target
         try {

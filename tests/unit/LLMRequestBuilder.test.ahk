@@ -274,7 +274,7 @@ class LLMRequestBuilderTest {
     AppendToChatHistory_AddsAssistant() {
         client := this._setup()
         request := '{"model":"test","messages":[{"role":"user","content":"hi"}]}'
-        tempFile := A_Temp "\test_append_" A_TickCount ".json"
+        tempFile := A_Temp "\test_append_" A_TickCount "_" Random(1000, 999999) ".json"
         ; Pass by ref (AHK v2 syntax)
         localRef := request
         client.appendToChatHistory("assistant", "Hello!", &localRef, tempFile)
@@ -329,7 +329,7 @@ class LLMRequestBuilderTest {
         global apiLogMaxEntries
         oldPath := ApiLogger.logFilePath
         oldLimit := apiLogMaxEntries
-        target := A_Temp "\test_api_log_" A_TickCount ".json"
+        target := A_Temp "\test_api_log_" A_TickCount "_" Random(1000, 999999) ".json"
         ApiLogger.logFilePath := target
         apiLogMaxEntries := 10
         try {

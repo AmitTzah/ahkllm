@@ -17,7 +17,7 @@ class StreamHandlerTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_strm_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_strm_" A_TickCount "_" Random(1000, 999999) ".db")
     }
 
     _teardownDb() {
@@ -41,7 +41,7 @@ class StreamHandlerTest {
 
     ReadStreamChunk_NoFile_Returns() {
         ; Should not throw when file doesn't exist
-        state := {outputFile: A_Temp "\nonexistent_" A_TickCount ".tmp", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
+        state := {outputFile: A_Temp "\nonexistent_" A_TickCount "_" Random(1000, 999999) ".tmp", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         try {
             _readAndProcessStream(state, false)
         } catch Error as err {
@@ -51,7 +51,7 @@ class StreamHandlerTest {
 
     ReadStreamChunk_EmptyFile_Returns() {
         ; Should not throw for empty file
-        tmpFile := A_Temp "\test_empty_" A_TickCount ".tmp"
+        tmpFile := A_Temp "\test_empty_" A_TickCount "_" Random(1000, 999999) ".tmp"
         FileAppend("", tmpFile)
         state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         try {
@@ -67,7 +67,7 @@ class StreamHandlerTest {
     ; character must round-trip without U+FFFD replacement characters - the
     ; raw-byte incremental decode keeps the incomplete trailing bytes pending.
     ReadStreamChunk_Utf8Split_NoReplacementChars() {
-        path := A_Temp "\test_utf8_split_" A_TickCount ".tmp"
+        path := A_Temp "\test_utf8_split_" A_TickCount "_" Random(1000, 999999) ".tmp"
         ; "ab" + U+00E9 (C3 A9) + "cd", split INSIDE the é:
         bytes := [0x61, 0x62, 0xC3, 0xA9, 0x63, 0x64]
         f := FileOpen(path, "w", "UTF-8-RAW")
@@ -97,7 +97,7 @@ class StreamHandlerTest {
     }
 
     ReadStreamChunk_ParsesContent() {
-        tmpFile := A_Temp "\test_sse_" A_TickCount ".tmp"
+        tmpFile := A_Temp "\test_sse_" A_TickCount "_" Random(1000, 999999) ".tmp"
         FileAppend('data: {"choices":[{"delta":{"content":"Hello"}}]}', tmpFile)
         state := {outputFile: tmpFile, lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "", rawSseChunks: ""}
         _readAndProcessStream(state, false)

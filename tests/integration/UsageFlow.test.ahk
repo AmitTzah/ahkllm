@@ -17,7 +17,7 @@ class UsageFlowTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_usageflow_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_usageflow_" A_TickCount "_" Random(1000, 999999) ".db")
     }
 
     _closeDb() {

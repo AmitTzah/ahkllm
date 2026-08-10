@@ -19,7 +19,7 @@ class ChatRequestBuilderTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_crb_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_crb_" A_TickCount "_" Random(1000, 999999) ".db")
     }
 
     _teardownDb() {

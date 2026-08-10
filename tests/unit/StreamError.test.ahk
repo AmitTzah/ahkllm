@@ -17,7 +17,7 @@ class StreamErrorTest {
             ChatDB.Close()
             try FileDelete(oldPath)
         }
-        ChatDB.Open(A_Temp "\test_streamerr_" A_TickCount ".db")
+        ChatDB.Open(A_Temp "\test_streamerr_" A_TickCount "_" Random(1000, 999999) ".db")
         return ChatDB.Thread_Create("StreamError Test")
     }
 
@@ -163,9 +163,9 @@ class StreamErrorTest {
         apiLogMaxEntries := 0
 
         tmpDir := A_Temp
-        errFile := tmpDir "\llm_test_stderr_" A_TickCount ".txt"
+        errFile := tmpDir "\llm_test_stderr_" A_TickCount "_" Random(1000, 999999) ".txt"
         FileAppend("curl: (7) Failed to connect to 127.0.0.1 port 12345: Connection refused", errFile)
-        outFile := tmpDir "\llm_test_nonexistent_" A_TickCount ".out"
+        outFile := tmpDir "\llm_test_nonexistent_" A_TickCount "_" Random(1000, 999999) ".out"
         if FileExist(outFile)
             FileDelete(outFile)
 
