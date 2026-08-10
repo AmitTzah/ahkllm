@@ -767,6 +767,22 @@ class ChatDispatchTest {
             throw Error("cancelStream should re-enable chat buttons")
     }
 
+    ; Regression (bug #174): handleBranchSwitch bumps the thread's updated_at,
+    ; so it must also refresh the sidebar thread list - otherwise the order
+    ; (and the #155 model badge) stay stale after branch navigation.
+    BranchSwitch_PostsThreadListRefresh() {
+        srcPath := A_ScriptDir "\..\chat\callbacks\Branch.ahk"
+        if !FileExist(srcPath)
+            throw Error("Branch.ahk not found")
+        src := FileRead(srcPath)
+        swStart := InStr(src, "handleBranchSwitch(params, *) {")
+        if !swStart
+            throw Error("handleBranchSwitch not found in Branch.ahk")
+        block := SubStr(src, swStart, 1200)
+        if !InStr(block, "_postThreadListRefresh()")
+            throw Error("handleBranchSwitch must refresh the sidebar thread list (bug #174)")
+    }
+
     Dispatch_InvalidJson_PostsShowError() {
         web := this._captureWebView()
         try {

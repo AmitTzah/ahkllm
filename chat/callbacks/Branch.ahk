@@ -15,6 +15,10 @@ handleBranchSwitch(params, *) {
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path, activeThreadId))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
+    ; Bug #174: the switch bumps the thread's updated_at - refresh the sidebar
+    ; list so the order (and the #155 model badge) follows the newly-active
+    ; branch instead of staying stale until some other action reposts it.
+    _postThreadListRefresh()
 }
 
 ; ----------------------------------------------------

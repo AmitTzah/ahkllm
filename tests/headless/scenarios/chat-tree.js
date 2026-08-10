@@ -1612,6 +1612,7 @@ scenarios.push({
   id: 174,
   name: 'Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order/model badge stays stale after a branch switch',
   mode: null,
+  regression: true,
   settings: {},
   fixtures: {
     threads: [
@@ -1641,17 +1642,40 @@ scenarios.push({
     const hasNext = await cdp.eval('!!document.querySelector("#chat-messages .msg:nth-child(2) .msg-action-btn[title=\'Next branch\']")');
     if (!hasNext) throw new Error('setup: no Next branch button for the retried sibling');
     const dbBefore = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-order-b-174'")[0].updated_at;
+    // Hook the AHK->WebView message channel so we can observe the threadList
+    // refresh (the __posted hook only records JS->AHK posts).
+    await cdp.eval(`(() => {
+      if (!window.__ahkMsgs) {
+        window.__ahkMsgs = [];
+        window.chrome.webview.addEventListener('message', (e) => {
+          try {
+            const raw = e.data;
+            const d = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+            if (d && d.target === 'threadList') window.__ahkMsgs.push(d);
+          } catch (err) {}
+        });
+      }
+      return true;
+    })()`);
     await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Next branch"]');
     await sleep(1000);
     const dbAfter = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-order-b-174'")[0].updated_at;
     const orderAfter = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    // Fixed: handleBranchSwitch posts _postThreadListRefresh(), so the sidebar
+    // re-renders from the DB after every branch switch.
     // BUG present: the DB updated_at bumped (dbAfter > dbBefore) but the
-    // sidebar order is unchanged (A still first) - no _postThreadListRefresh.
+    // sidebar was never refreshed.
     if (dbAfter <= dbBefore) throw new Error('setup: updated_at did not bump: ' + dbBefore + ' -> ' + dbAfter);
-    if (orderAfter[0] !== 't-order-a-174')
-      throw new Error('sidebar now refreshes after branch switch (behavior changed): ' + orderAfter.join(','));
-    return 'branch-switch bumped updated_at (' + dbBefore + ' -> ' + dbAfter + ') but the sidebar order stays ' + orderAfter.join(',') +
-      ' (A first) - handleBranchSwitch never posts threadList, so the sidebar order (and the #155 model badge) go stale after branch navigation';
+    const posted = await cdp.eval('(window.__ahkMsgs || []).length');
+    if (posted < 1)
+      throw new Error('branch switch did not post a threadList refresh (BUG present): posted=' + posted);
+    const dbRows = seed.query(dbPath, 'SELECT id, updated_at FROM chat_threads ORDER BY updated_at DESC');
+    const expectedOrder = dbRows.map((r) => r.id);
+    if (orderAfter.join(',') !== expectedOrder.join(','))
+      throw new Error('sidebar order does not match the refreshed DB order: got ' + orderAfter.join(',') + ' expected ' + expectedOrder.join(','));
+    return 'branch-switch bumped updated_at (' + dbBefore + ' -> ' + dbAfter + ') AND posted ' + posted +
+      ' threadList refresh(es) - the sidebar re-renders the DB order ' + orderAfter.join(',') +
+      ' (and the #155 model badge follows the active branch)';
   }
 });
 
