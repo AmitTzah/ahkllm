@@ -325,19 +325,25 @@ function extractProvider(model) {
   return idx>0 ? model.substring(0,idx) : '';
 }
 
+// Reserved sentinel for "Unknown (blank)" provider rows. "__unknown__" is NOT
+// safe as a sentinel because a real provider can be named "__unknown__" (bug
+// #182) - this value uses characters impossible in a provider name.
+var BLANK_PROVIDER_SENTINEL = '__BLANK_PROVIDER__';
+
 function populateFilters() {
   var provSel = document.getElementById('providerFilter'), curP = provSel.value;
   provSel.innerHTML = '<option value="">All Providers</option>';
   (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+escHtml(p)+'">'+escHtml(p)+'</option>'; });
-  // Bug #168: rows whose provider resolves to "" (model removed from settings)
-  // render in the chart under an empty key - give them a selectable option so
-  // that cost can be isolated (the backend scopes it via the "__unknown__"
-  // sentinel).
+  // Bug #168/#182: rows whose provider resolves to "" (model removed from
+  // settings) render in the chart under an empty key - give them a selectable
+  // option so that cost can be isolated (the backend scopes it via the
+  // reserved "__BLANK_PROVIDER__" sentinel, which can never collide with a
+  // real provider name).
   var hasUnknownProvider = false;
   ((allData.chat||[]).concat(allData.commands||[])).forEach(function(c) {
     if (!(c.provider || extractProvider(c.model))) hasUnknownProvider = true;
   });
-  if (hasUnknownProvider) provSel.innerHTML += '<option value="__unknown__">Unknown (blank)</option>';
+  if (hasUnknownProvider) provSel.innerHTML += '<option value="' + BLANK_PROVIDER_SENTINEL + '">Unknown (blank)</option>';
   provSel.value = curP;
 
   // Build model→provider map from data (backend lists don't include provider info)
@@ -353,7 +359,7 @@ function populateFilters() {
   modSel.innerHTML = '<option value="">All Models</option>';
   (allData.models||[]).forEach(function(m){
     // Filter by selected provider if one is chosen
-    if (!curP || (curP === '__unknown__' ? !modelProv[m] : modelProv[m] === curP))
+    if (!curP || (curP === BLANK_PROVIDER_SENTINEL ? !modelProv[m] : modelProv[m] === curP))
       modSel.innerHTML += '<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>';
   });
   modSel.value = curM;

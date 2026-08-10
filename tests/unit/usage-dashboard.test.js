@@ -227,7 +227,7 @@ describe('populateFilters', () => {
         assert.ok(modHTML.includes('&lt;svg'), 'escaped model label should render as text');
     });
 
-    it('adds an Unknown (blank) provider option for rows with no provider (bug #168)', () => {
+    it('adds an Unknown (blank) provider option for rows with no provider (bug #168) using a reserved sentinel (bug #182)', () => {
         const ctx = loadDashboardModule();
         ctx.allData = {
             chat: [{ date: '2026-08-10', model: 'gpt-5', provider: '', input_tokens: 12, output_tokens: 9 }],
@@ -237,8 +237,27 @@ describe('populateFilters', () => {
         };
         ctx.populateFilters();
         const provHTML = ctx.document.getElementById('providerFilter').innerHTML;
-        assert.ok(provHTML.includes('value="__unknown__"'), 'blank-provider rows must be selectable (bug #168), got ' + provHTML);
+        assert.ok(provHTML.includes('value="__BLANK_PROVIDER__"'), 'blank-provider rows must be selectable via the reserved sentinel (bug #168/#182), got ' + provHTML);
         assert.ok(provHTML.includes('Unknown'), 'the unknown option should be labeled');
+    });
+
+    it('keeps a real provider named __unknown__ selectable by its own value (bug #182)', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [{ date: '2026-08-10', model: 'real/__unknown__', provider: '__unknown__', input_tokens: 10, output_tokens: 5 }],
+            commands: [],
+            providers: ['__unknown__', 'deepseek'],
+            models: ['real/__unknown__']
+        };
+        ctx.populateFilters();
+        const provHTML = ctx.document.getElementById('providerFilter').innerHTML;
+        // The real provider renders under its own value; the blank sentinel
+        // option uses a DIFFERENT reserved value - no collision.
+        assert.ok(provHTML.includes('<option value="__unknown__">__unknown__</option>'), 'real __unknown__ provider must be selectable, got ' + provHTML);
+        const unknownCount = (provHTML.match(/value="__unknown__"/g) || []).length;
+        assert.strictEqual(unknownCount, 1, 'exactly one __unknown__ option expected (no sentinel collision), got ' + provHTML);
+        const blankCount = (provHTML.match(/value="__BLANK_PROVIDER__"/g) || []).length;
+        assert.ok(blankCount === 0, 'no blank rows here, so no sentinel option expected, got ' + provHTML);
     });
 });
 

@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - bug #181 FIXED and committed (entry removed): MessageRepo.Edit re-
-  estimates token_count for ASSISTANT edits too (bug #156 family), so the next user backfill is accurate;
-  scenario 181 flipped to a regression check + ChatDB unit tests. Next: bug #182 (__unknown__ sentinel
-  collision).
+- **Where we left off:** 2026-08-10 - bug #182 FIXED and committed (entry removed): the blank-provider filter
+  sentinel is now the reserved "__BLANK_PROVIDER__" (impossible as a real provider name), so a provider named
+  "__unknown__" filters by its own name; scenarios 168/182 flipped/updated + UsageRepo/dashboard unit tests.
+  Next: bug #183 (attachment-text search snippet).
   Prior context - follow-up bug-hunt intake COMPLETE. All 13 audit leads are now verified
   headlessly: 9 verified bugs (scenarios 177-183 + 189/190; entries below) and 5 refuted leads recorded in
   History (dangling mid-stream rows, cross-process startup race, WebView2 teardown, settings deep-merge edges,
@@ -224,28 +224,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 182. A provider named "__unknown__" collides with the blank-provider filter sentinel
-
-**Scenario:** 182 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Name a provider (Settings -> Providers) exactly `__unknown__`, use it, then open the Usage Dashboard
-and select that provider (or the "Unknown (blank)" option) in the filter.
-
-**Expected:** each provider - including `__unknown__` - is filterable by its own name without ambiguity.
-
-**Actual:** `populateFilters` emits BOTH the real provider option and the bug-#168 "Unknown (blank)" option
-with the same value `__unknown__`, and `UsageRepo.Query` scopes that value to `(provider='' OR provider IS
-NULL)`, so selecting either shows only the blank rows - the real provider's rows are unreachable through their
-own name.
-
-**Evidence:** `chat/db/UsageRepo.ahk:Query` (sentinel branch) + `webui/js/usage-dashboard.js:populateFilters`.
-
-**Verification:** headless - scenario 182 runs `probe-bughunt-db.ahk unknown-provider-sentinel` (sentinel
-filter returns realRows=0/blankRows=1 while the providers list advertises `__unknown__`) and loads the real
-usage-dashboard.js in a vm sandbox (two options with value `__unknown__`).
 
 ### 183. Search result snippets for attachment-text hits show the message content, not the match
 
@@ -339,6 +317,12 @@ carries `temperature: ""` (the bug).
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "A provider named \"__unknown__\" collides with the blank-provider filter sentinel" - FIXED:
+  the blank-provider sentinel is now the reserved "__BLANK_PROVIDER__" (characters a real provider name can
+  never contain) in UsageRepo.Query and usage-dashboard.js populateFilters, so a provider literally named
+  "__unknown__" filters by its own name and the "Unknown (blank)" option stays selectable; scenario 182
+  flipped to a regression check + UsageRepo/dashboard unit tests (scenario 168's assertion updated to the new
+  sentinel).
 - 2026-08-10 - "Overwrite-editing an ASSISTANT message leaves stale token attribution (next user backfill
   over-counts)" - FIXED: MessageRepo.Edit now re-estimates token_count for role=assistant as well as role=user
   (the assistant's token_count feeds _BackfillUserTokens' existing_sum), so an edited assistant's new content

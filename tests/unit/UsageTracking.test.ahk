@@ -89,18 +89,23 @@ class UsageTrackingTest {
         this._closeDb()
     }
 
-    ; Regression (bug #168): the "__unknown__" provider filter must scope to
-    ; rows with an EMPTY provider (model removed from settings), so the
-    ; dashboard can isolate that cost.
+    ; Regression (bug #168/#182): the reserved "__BLANK_PROVIDER__" provider
+    ; filter must scope to rows with an EMPTY provider (model removed from
+    ; settings), while a provider literally named "__unknown__" must filter by
+    ; its OWN name - the sentinel can never collide with a real provider.
     ProviderFilter_UnknownSentinel_MatchesEmptyProvider() {
         this._openDb()
         ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens) VALUES(?, ?, ?, 1, 10);", "2026-08-10", "gpt-5", "")
         ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens) VALUES(?, ?, ?, 1, 10);", "2026-08-10", "deepseek/deepseek-v4-flash", "deepseek")
-        unknown := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "__unknown__", "type", "chat"))
-        if unknown.chat.Length != 1 || unknown.chat[1].model != "gpt-5"
-            throw Error("__unknown__ filter must scope to the empty-provider row (bug #168), got " unknown.chat.Length)
+        ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens) VALUES(?, ?, ?, 1, 10);", "2026-08-10", "real/__unknown__", "__unknown__")
+        blank := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "__BLANK_PROVIDER__", "type", "chat"))
+        if blank.chat.Length != 1 || blank.chat[1].model != "gpt-5"
+            throw Error("__BLANK_PROVIDER__ filter must scope to the empty-provider row (bug #168), got " blank.chat.Length)
+        realUnknown := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "__unknown__", "type", "chat"))
+        if realUnknown.chat.Length != 1 || realUnknown.chat[1].provider != "__unknown__"
+            throw Error("a provider named __unknown__ must filter by its own name (bug #182), got " realUnknown.chat.Length)
         all := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "", "type", "chat"))
-        if all.chat.Length != 2
+        if all.chat.Length != 3
             throw Error("empty provider filter (All) must return every row, got " all.chat.Length)
         this._closeDb()
     }

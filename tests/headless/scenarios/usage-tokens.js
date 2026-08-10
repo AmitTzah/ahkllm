@@ -930,16 +930,17 @@ scenarios.push({
     sandbox.populateFilters();
     const options = els.providerFilter.innerHTML;
     // Fixed: populateFilters adds a selectable "Unknown (blank)" option
-    // (value __unknown__) when any row's provider key resolves to "".
+    // (reserved value __BLANK_PROVIDER__, bug #182: __unknown__ can be a real
+    // provider name) when any row's provider key resolves to "".
     // BUG present: the chart's provider-mode key became '' while
     // populateFilters only listed the backend's distinct providers
     // (['deepseek']) - no option could scope to the blank-provider rows.
     const optionValues = [...options.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]).slice(1);
     const hasAnyProvider = options.indexOf('deepseek') >= 0;
     if (!hasAnyProvider) throw new Error('provider dropdown did not render (harness issue)');
-    if (optionValues.indexOf('__unknown__') < 0)
+    if (optionValues.indexOf('__BLANK_PROVIDER__') < 0)
       throw new Error('blank-provider option missing (BUG present): ' + options);
-    return 'chat_usage row provider="" (model gpt-5 no longer in settings): the filter dropdown now includes a selectable "Unknown (blank)" option (value __unknown__) alongside ' +
+    return 'chat_usage row provider="" (model gpt-5 no longer in settings): the filter dropdown now includes a selectable "Unknown (blank)" option (reserved value __BLANK_PROVIDER__) alongside ' +
       JSON.stringify(optionValues) + ' - the removed-model row can be isolated/filtered';
   }
 });
@@ -1015,11 +1016,13 @@ scenarios.push({
   id: 182,
   name: 'A provider literally named "__unknown__" collides with the blank-provider filter sentinel - the dropdown carries two "__unknown__" options and selecting either returns ONLY the blank-provider rows, so the real provider is unfilterable',
   mode: null,
+  regression: true, // FIXED: blank-provider sentinel is now the reserved __BLANK_PROVIDER__ (no collision)
   noApp: true,
   settings: {},
   async body() {
-    // 1. Real UsageRepo: the sentinel filter resolves to (provider='' OR NULL)
-    //    and excludes the REAL '__unknown__' provider's rows.
+    // 1. Real UsageRepo: a provider literally named "__unknown__" must filter
+    //    by its OWN name; the reserved "__BLANK_PROVIDER__" sentinel scopes
+    //    to (provider='' OR NULL) only.
     const os = require('node:os');
     const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
     try { fs.unlinkSync(outFile); } catch {}
@@ -1030,14 +1033,18 @@ scenarios.push({
     const text = fs.readFileSync(outFile, 'utf-8');
     const realM = text.match(/realRows=(\d+)/);
     const blankM = text.match(/blankRows=(\d+)/);
+    const bRealM = text.match(/blankSentinelRealRows=(\d+)/);
+    const bBlankM = text.match(/blankSentinelBlankRows=(\d+)/);
     const listM = text.match(/providersListHas__unknown__=(\d)/);
-    if (!realM || !blankM || !listM) throw new Error('probe output missing fields: ' + text);
-    const realRows = Number(realM[1]), blankRows = Number(blankM[1]), listed = Number(listM[1]);
-    if (realRows !== 0 || blankRows < 1 || listed !== 1)
-      throw new Error('sentinel semantics not in the buggy shape (bug not reproduced): ' + text);
+    if (!realM || !blankM || !bRealM || !bBlankM || !listM) throw new Error('probe output missing fields: ' + text);
+    const realRows = Number(realM[1]), blankRows = Number(blankM[1]);
+    const bRealRows = Number(bRealM[1]), bBlankRows = Number(bBlankM[1]), listed = Number(listM[1]);
+    if (realRows !== 1 || blankRows !== 0 || bRealRows !== 0 || bBlankRows !== 1 || listed !== 1)
+      throw new Error('provider sentinel semantics wrong (fix incomplete): ' + text);
 
-    // 2. Real usage-dashboard.js populateFilters: both the real provider and
-    //    the "Unknown (blank)" option render with the SAME value __unknown__.
+    // 2. Real usage-dashboard.js populateFilters: the real provider renders
+    //    under its own value and the "Unknown (blank)" option uses the
+    //    reserved sentinel - two DISTINCT values, so both are selectable.
     const { sandbox, els } = loadUsageDashboardSandbox();
     sandbox.allData = {
       chat: [
@@ -1051,12 +1058,14 @@ scenarios.push({
     els.providerFilter.innerHTML = '';
     sandbox.populateFilters();
     const options = els.providerFilter.innerHTML;
-    const unknownOptions = [...options.matchAll(/<option value="__unknown__"/g)].length;
-    if (unknownOptions < 2)
-      throw new Error('dropdown should carry TWO options with value __unknown__ (real provider + Unknown (blank)) - collision not reproduced: ' + options);
+    const realProviderOptions = [...options.matchAll(/<option value="__unknown__"/g)].length;
+    const blankSentinelOptions = [...options.matchAll(/<option value="__BLANK_PROVIDER__"/g)].length;
+    if (realProviderOptions !== 1 || blankSentinelOptions !== 1)
+      throw new Error('dropdown must carry the real __unknown__ provider AND the Unknown (blank) sentinel as DISTINCT values: ' + options);
     return 'UsageRepo.Query(provider="__unknown__") returned realRows=' + realRows + ' blankRows=' + blankRows +
-      ' while the providers list advertises __unknown__ (' + listed + '); populateFilters emitted ' + unknownOptions +
-      ' options with value __unknown__ - the real provider is unfilterable and both options resolve to the blank bucket';
+      ' (the real provider filters by its own name); Query(provider="__BLANK_PROVIDER__") returned ' + bRealRows + ' real / ' + bBlankRows +
+      ' blank rows; populateFilters emitted ' + realProviderOptions + ' real option(s) + ' + blankSentinelOptions +
+      ' sentinel option(s) - no collision, both filterable';
   }
 });
 

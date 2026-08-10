@@ -611,12 +611,10 @@ EditAssistantStaleBackfill() {
 }
 
 ; ------------------------------------------------------------------
-; CHECK 20: the "__unknown__" provider-filter sentinel collides with a real
-; provider literally named "__unknown__" (user-editable in Settings).
-; UsageRepo.Query scopes the sentinel to (provider='' OR provider IS NULL),
-; so selecting the filter matches ONLY blank-provider rows - the real
-; provider's rows are unreachable through their own name even though the
-; providers dropdown lists them (both options carry the same value).
+; CHECK 20: the blank-provider filter sentinel must never collide with a real
+; provider name. UsageRepo.Query scopes the reserved "__BLANK_PROVIDER__"
+; sentinel to (provider='' OR provider IS NULL), while a provider literally
+; named "__unknown__" filters by its OWN name (bug #182).
 ; ------------------------------------------------------------------
 UnknownProviderSentinel() {
     dbPath := OpenDb()
@@ -636,12 +634,22 @@ UnknownProviderSentinel() {
         if r.provider = ""
             blankRows++
     }
+    ; The reserved blank sentinel must scope to ONLY blank-provider rows.
+    f["provider"] := "__BLANK_PROVIDER__"
+    resBlank := ChatDB.Usage_Query(f)
+    blankRealRows := 0, blankBlankRows := 0
+    for r in resBlank.chat {
+        if r.provider = "__unknown__"
+            blankRealRows++
+        if r.provider = ""
+            blankBlankRows++
+    }
     hasSentinelInList := false
     for p in res.providers
         if p = "__unknown__"
             hasSentinelInList := true
-    Log("UNKNOWNPROV realRows=" realRows " blankRows=" blankRows " providersListHas__unknown__=" (hasSentinelInList ? 1 : 0) " totalChatRows=" res.chat.Length)
-    Log("UNKNOWNPROV verdict=" (realRows = 0 && blankRows > 0 && hasSentinelInList ? "BUG-present(sentinel-collision)" : "OK-distinct"))
+    Log("UNKNOWNPROV realRows=" realRows " blankRows=" blankRows " blankSentinelRealRows=" blankRealRows " blankSentinelBlankRows=" blankBlankRows " providersListHas__unknown__=" (hasSentinelInList ? 1 : 0) " totalChatRows=" res.chat.Length)
+    Log("UNKNOWNPROV verdict=" (realRows = 1 && blankRows = 0 && blankRealRows = 0 && blankBlankRows = 1 && hasSentinelInList ? "OK-distinct" : "BUG-present(sentinel-collision)"))
     CloseDb(dbPath)
 }
 

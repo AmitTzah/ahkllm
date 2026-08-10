@@ -61,10 +61,13 @@ class UsageRepo {
                 chatParams.Push(modelFilter)
             }
             if providerFilter {
-                ; Bug #168: rows with an EMPTY provider (model removed from
-                ; settings) render under "" in the chart - the "__unknown__"
-                ; sentinel scopes the filter to them so they can be isolated.
-                if providerFilter = "__unknown__"
+                ; Bug #168/#182: rows with an EMPTY provider (model removed
+                ; from settings) render under "" in the chart - the reserved
+                ; "__BLANK_PROVIDER__" sentinel (which can never be a real
+                ; provider name) scopes the filter to them so they can be
+                ; isolated. A provider literally named "__unknown__" is a real
+                ; provider and must filter by its own name (bug #182).
+                if providerFilter = "__BLANK_PROVIDER__"
                     chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " (provider='' OR provider IS NULL)"
                 else {
                     chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " provider=?"
@@ -101,8 +104,9 @@ class UsageRepo {
                 cmdParams.Push(modelFilter)
             }
             if providerFilter {
-                ; Bug #168: same empty-provider sentinel for command rows.
-                if providerFilter = "__unknown__"
+                ; Bug #168/#182: same reserved empty-provider sentinel for
+                ; command rows.
+                if providerFilter = "__BLANK_PROVIDER__"
                     cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " (provider='' OR provider IS NULL)"
                 else {
                     cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " provider=?"
