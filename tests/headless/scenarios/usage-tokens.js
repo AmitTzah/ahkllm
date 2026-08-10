@@ -734,4 +734,59 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 156,
+  name: 'Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message\'s backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'edit-user-stale-backfill'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('edit-user probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.match(/u3tc=(\d+)/);
+    if (!m) throw new Error('probe output missing u3tc: ' + text);
+    const u3tc = Number(m[1]);
+    // BUG present: u2 edited to a 30-token text keeps token_count=7; the
+    // next prompt (62 = 12+9+30+6+5) subtracts the stale 7, so u3 gets
+    // 62-(12+9+7+6)=28 instead of its true 5.
+    if (u3tc === 5)
+      throw new Error('edit no longer leaves stale attribution (behavior changed): u3tc=' + u3tc);
+    return 'u2 overwrite-edit keeps token_count=7; next user backfill gives u3tc=' + u3tc +
+      ' (true contribution 5 = 62 prompt - 12 u1 - 9 a1 - 30 new u2 - 6 a2) - the edited message\'s stale attribution corrupts the next user\'s popover';
+  }
+});
+
+scenarios.push({
+  id: 157,
+  name: 'Forking AT a user message under-reports the fork\'s "Context Used" (the user row\'s active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'fork-at-user-stale-context'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('fork-at-user probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.match(/forkContext=(\d+)/);
+    if (!m) throw new Error('probe output missing forkContext: ' + text);
+    const forkContext = Number(m[1]);
+    // BUG present: u2.tc=9 (backfilled), u2.apt=21 (stale - parent context
+    // only, the backfill never updated it), so the fork at u2 reports 21.
+    if (forkContext === 30)
+      throw new Error('fork context now accurate (behavior changed): forkContext=' + forkContext);
+    return 'fork at u2 (contribution 9, true context 30): fork leaf active_path_tokens=' + forkContext +
+      ' - MessageRepo.Insert computes user apt at insert time (tc=0) and the assistant backfill never updates it, so the fork header under-reports';
+  }
+});
+
 module.exports = scenarios;

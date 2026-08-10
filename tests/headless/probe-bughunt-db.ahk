@@ -263,6 +263,174 @@ CommandThinkingShort() {
     Log("CMDTHINK verdict=" (hasThinking ? "OK-short-id-applies" : "BUG-present(short-id-drops-thinking)"))
 }
 
+; ------------------------------------------------------------------
+; CHECK 8: deleting the ROOT user message of a thread sets
+; active_leaf_id = NULL even though the thread still has messages
+; (the re-parented assistant becomes the root). GetActivePath returns
+; [] so the chat UI renders an EMPTY conversation while the DB still
+; holds the assistant + its subtree; the next send creates a SECOND
+; root because parentId comes from the empty path.
+; ------------------------------------------------------------------
+RootDeleteLeaf() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("RootDeleteLeaf")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, active_path_tokens: 21})
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2", parent_id: a1})
+    a2 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2", parent_id: u2, model: "deepseek/deepseek-v4-flash", prompt_tokens: 30, token_count: 6})
+
+    ChatDB.Msg_HardDelete(u1)
+    leaf := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", tid)[1, "active_leaf_id"]
+    path := ChatDB.Msg_GetActivePath(tid)
+    msgCount := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=?;", tid)[1, "c"]
+    rootCount := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND parent_id IS NULL;", tid)[1, "c"]
+    Log("ROOTDELETE leafIsNull=" (leaf = "" ? 1 : 0) " pathLen=" path.Length " msgCount=" msgCount " rootCount=" rootCount)
+    Log("ROOTDELETE verdict=" (leaf = "" ? "BUG-present(thread-invisible)" : "OK-leaf-kept"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 9: "Save as Branch" on an assistant message that has a
+; reasoning/thinking block copies the token metadata (bug #123) but NOT
+; the reasoning text - the DB row's reasoning column is '' and the
+; branch bubble loses the "Thought Process" section while the token
+; popover still shows thinking_tokens.
+; ------------------------------------------------------------------
+BranchDropReasoning() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("BranchDropReasoning")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1 visible", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, thinking_tokens: 5, reasoning: "THINK-STEP-1`nTHINK-STEP-2", active_path_tokens: 26})
+    ; Mirror handleEdit branch mode: same fields the callback passes, no reasoning.
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1 branch", parent_id: u1, sibling_group: "sg-reason", sibling_index: 1, model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12, thinking_tokens: 5, cached_tokens: 0, active_path_tokens: 26, local_copy: true})
+
+    src := ChatDB.db.Query("SELECT reasoning FROM messages WHERE content='a1 visible';")[1, "reasoning"]
+    copy := ChatDB.db.Query("SELECT reasoning, thinking_tokens FROM messages WHERE content='a1 branch';")
+    copyReason := copy[1, "reasoning"]
+    copyThink := Integer(copy[1, "thinking_tokens"])
+    Log("BRANCHREASON srcLen=" StrLen(src) " copyLen=" StrLen(copyReason) " copyThinking=" copyThink)
+    Log("BRANCHREASON verdict=" (copyReason = "" && copyThink > 0 ? "BUG-present(reasoning-dropped)" : "OK-reasoning-copied"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 10: the sidebar thread model badge. ThreadRepo.List picks the
+; LAST-INSERTED assistant row (ORDER BY created_at DESC LIMIT 1) instead
+; of the ACTIVE path's model, so after switching to a branch whose model
+; differs from the most recently inserted assistant, the sidebar badge
+; is stale (shows the other branch's model).
+; ------------------------------------------------------------------
+ThreadListModelStale() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("ThreadListModelStale")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+    ; Active continuation (branch A) - model X:
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2A", parent_id: a1})
+    a2A := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2A", parent_id: u2, model: "openai/gpt-5-mini", prompt_tokens: 20, token_count: 8})
+    ; Off-path continuation (branch B) - model Y, inserted LATER:
+    u2b := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2B", parent_id: a1, sibling_group: "sg-b", sibling_index: 1})
+    a2b := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2B", parent_id: u2b, model: "google/gemini-2.5-flash", prompt_tokens: 25, token_count: 10})
+    ; Active leaf is a2A (branch A); Thread_List model should be openai/gpt-5-mini.
+    ChatDB.Msg_SetActiveLeaf(tid, a2A)
+    list := ChatDB.Thread_List()
+    listedModel := list[1].model
+    activeModel := "openai/gpt-5-mini"
+    Log("THREADLIST activeModel=" activeModel " listedModel=" listedModel)
+    Log("THREADLIST verdict=" (listedModel = activeModel ? "OK-matches-active-path" : "BUG-present(stale-badge)"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 11: SwitchBranch wraps both directions and walks to the new
+; sibling's leaf (regression sanity - must keep passing).
+; ------------------------------------------------------------------
+SwitchBranchWrap() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("SwitchBranchWrap")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+    ; Three siblings under a1: u2 (idx0), u2b (idx1), u2c (idx2).
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2", parent_id: a1, sibling_group: "sg-wrap", sibling_index: 0})
+    u2b := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2b", parent_id: a1, sibling_group: "sg-wrap", sibling_index: 1})
+    u2c := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2c", parent_id: a1, sibling_group: "sg-wrap", sibling_index: 2})
+    ; Deep leaves so walking matters:
+    a2c := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2c", parent_id: u2c, model: "deepseek/deepseek-v4-flash", prompt_tokens: 15, token_count: 7})
+    ChatDB.Msg_SetActiveLeaf(tid, u2)
+    r1 := ChatDB.Msg_SwitchBranch(tid, u2, 1)   ; next -> u2b's leaf
+    r2 := ChatDB.Msg_SwitchBranch(tid, u2b, 1)  ; next -> u2c's leaf (deep)
+    r3 := ChatDB.Msg_SwitchBranch(tid, u2c, 1)  ; wrap -> u2's leaf
+    r4 := ChatDB.Msg_SwitchBranch(tid, u2, -1)  ; wrap backwards -> u2c's leaf
+    p1 := r1.path[r1.path.Length].id
+    p2 := r2.path[r2.path.Length].id
+    p3 := r3.path[r3.path.Length].id
+    p4 := r4.path[r4.path.Length].id
+    ok := (p1 = u2b && p2 = a2c && p3 = u2 && p4 = a2c)
+    Log("SWITCHWRAP p1=" p1 " p2=" p2 " p3=" p3 " p4=" p4 " expected=" u2b "," a2c "," u2 "," a2c)
+    Log("SWITCHWRAP verdict=" (ok ? "OK-wrap-and-walk" : "BUG-present(switch-navigation)"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 12: OVERWRITE-editing a user message changes its content but
+; leaves the OLD backfilled token_count in place. The next exchange's
+; backfill subtracts that stale value from the new prompt, so the NEXT
+; user message's contribution is over/under-counted (stale attribution
+; family #145/#150, but on the overwrite path - the edit does not reset
+; the attribution for re-measurement).
+; u1(12) a1(9) u2(7 backfilled from prompt 28) a2(6); then u2 is edited
+; to a 30-token text. The next API prompt is 12+9+30+6+5=62.
+; existing_sum = 12+9+7+6 = 34 (u2's stale 7), so u3 gets 62-34=28
+; instead of its true 5.
+; ------------------------------------------------------------------
+EditUserStaleBackfill() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("EditUserStaleBackfill")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "original follow-up", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a1';").rows[1].id})
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2", parent_id: u2, model: "deepseek/deepseek-v4-flash", prompt_tokens: 28, token_count: 6})
+    u2tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u2)[1, "token_count"])
+    ; Overwrite edit: content changes drastically, token_count must NOT stay 7.
+    ChatDB.Msg_Edit(u2, "this edited follow-up is now a dramatically longer message with much more text than before")
+    ; Next exchange: prompt for a3 = 12 (u1) + 9 (a1) + 30 (u2 NEW) + 6 (a2) + 5 (u3 true) = 62.
+    u3 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u3", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a2';").rows[1].id})
+    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a3", parent_id: u3, model: "deepseek/deepseek-v4-flash", prompt_tokens: 62, token_count: 5})
+    u3tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u3)[1, "token_count"])
+    Log("EDITUSER u2tcAfterEdit=" u2tc " u3tc=" u3tc " (true u3 contribution 5)")
+    Log("EDITUSER verdict=" (u3tc = 5 ? "OK-rebackfilled" : "BUG-present(stale-overwrite-attribution)"))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 13: forking AT a USER message. MessageRepo.Insert computes the
+; user row's active_path_tokens as parent.apt + token_count at INSERT
+; time (token_count is still 0); the later assistant response backfills
+; the user's token_count but NEVER updates its active_path_tokens. When
+; that user message is used as a FORK POINT, the fork's leaf (the user
+; copy) reports the STALE context (parent context only), so the fork's
+; header "Context Used" under-reports the user's own contribution.
+; ------------------------------------------------------------------
+ForkAtUserStaleContext() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("ForkAtUserStaleContext")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+    u2 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u2", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a1';").rows[1].id})
+    a2 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a2", parent_id: u2, model: "deepseek/deepseek-v4-flash", prompt_tokens: 30, token_count: 6})
+    ; u2.tc was backfilled to 30-(12+9)=9; u2.apt should be 12+9+9=30.
+    u2row := ChatDB.db.Query("SELECT token_count, active_path_tokens FROM messages WHERE id=?;", u2)
+    u2tc := Integer(u2row[1, "token_count"])
+    u2apt := Integer(u2row[1, "active_path_tokens"])
+    ; Fork AT u2 - the fork's leaf is the u2 copy.
+    forkId := ChatDB.Msg_ForkThread(tid, u2)
+    stats := ChatDB.Msg_GetThreadStats(forkId)
+    forkContext := Integer(stats.activePathTokens)
+    Log("FORKATUSER u2tc=" u2tc " u2apt=" u2apt " forkContext=" forkContext " (true context at u2 = 30)")
+    Log("FORKATUSER verdict=" (forkContext = 30 ? "OK-accurate" : "BUG-present(stale-fork-context)"))
+    CloseDb(dbPath)
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -272,6 +440,12 @@ switch check {
     case "retry-root-assistant": RetryRootAssistant()
     case "walk-to-leaf": WalkToLeafOldest()
     case "command-thinking-short": CommandThinkingShort()
+    case "root-delete-leaf": RootDeleteLeaf()
+    case "branch-drop-reasoning": BranchDropReasoning()
+    case "thread-list-model-stale": ThreadListModelStale()
+    case "switch-branch-wrap": SwitchBranchWrap()
+    case "edit-user-stale-backfill": EditUserStaleBackfill()
+    case "fork-at-user-stale-context": ForkAtUserStaleContext()
     default:
         Log("UNKNOWN CHECK " check)
 }

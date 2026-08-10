@@ -9,6 +9,8 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, runProbe, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -1232,6 +1234,131 @@ scenarios.push({
     return 'branch-copied user message keeps token_count=' + bc +
       ' (source attribution for DIFFERENT text) and its popover shows ' + JSON.stringify(pop) +
       ' - the branch\'s own API call (mock prompt 12) never re-backfills it';
+  }
+});
+
+scenarios.push({
+  id: 154,
+  name: '"Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - no Thought Process block)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{
+      id: 't-reason-154', title: 'Branch Reasoning Loss', active_leaf_id: 'm-154-a1',
+      cumulative_input_tokens: 12, cumulative_output_tokens: 14
+    }],
+    messages: [
+      { id: 'm-154-u1', thread_id: 't-reason-154', role: 'user', content: 'root', token_count: 12, active_path_tokens: 12 },
+      { id: 'm-154-a1', thread_id: 't-reason-154', role: 'assistant', content: 'answer one', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-154-u1', token_count: 9, prompt_tokens: 12, thinking_tokens: 5, reasoning: 'SECRET THINKING STEP ONE\nSECRET THINKING STEP TWO', active_path_tokens: 26 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-154-a1"', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // The source assistant bubble shows the thinking block.
+    const srcHasThinking = await cdp.eval('document.querySelectorAll("#chat-messages .msg .thinking-block").length');
+    if (srcHasThinking !== 1)
+      throw new Error('setup: source assistant should show a thinking block, got ' + srcHasThinking);
+    // Edit the assistant and save as a NEW BRANCH (local copy).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2)").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.type('#chat-messages .msg:nth-child(2) .msg-edit-textarea', 'answer one (branch)');
+    await cdp.click('#chat-messages .msg:nth-child(2) .save-branch');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer one (branch)"', 15000, 300, 'branch message created');
+    await sleep(700);
+
+    const branch = seed.query(dbPath, "SELECT reasoning, thinking_tokens, token_count FROM messages WHERE content='answer one (branch)'");
+    if (!branch.length) throw new Error('branch message not found');
+    const reasoning = String(branch[0].reasoning || '');
+    const thinking = Number(branch[0].thinking_tokens);
+    // BUG present: handleEdit's branch insert copies token metadata (bug
+    // #123) but omits the reasoning field, so the copy loses the thinking
+    // CONTENT while keeping the thinking token count.
+    if (reasoning !== '')
+      throw new Error('branch copy now keeps reasoning (behavior changed): ' + reasoning);
+    if (thinking !== 5)
+      throw new Error('branch copy should keep thinking_tokens=5, got ' + thinking);
+    const branchHasThinking = await cdp.eval('document.querySelectorAll("#chat-messages .msg .thinking-block").length');
+    if (branchHasThinking !== 0)
+      throw new Error('branch bubble still shows a thinking block: ' + branchHasThinking);
+    return 'assistant branch-edit copy: DB reasoning="' + reasoning + '" (len 0) while thinking_tokens=' + thinking +
+      ' - the branch bubble has NO Thought Process block (src=1, branch=0) even though the popover will claim ' + thinking + ' thinking tokens';
+  }
+});
+
+scenarios.push({
+  id: 155,
+  name: 'Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant model, not the ACTIVE path\'s model)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'thread-list-model-stale'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('model probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.match(/listedModel=([^\s]+)/);
+    if (!m) throw new Error('probe output missing listedModel: ' + text);
+    const listed = m[1];
+    // BUG present: active path uses openai/gpt-5-mini but ThreadRepo.List
+    // returns the last-inserted assistant (deepseek/deepseek-v4-flash).
+    if (listed === 'openai/gpt-5-mini')
+      throw new Error('ThreadRepo.List now returns the active-path model (behavior changed): ' + listed);
+    return 'active path model=openai/gpt-5-mini but ThreadRepo.List badge=' + listed +
+      ' (last-inserted assistant, not the active path) - sidebar icon/title is stale after switching branches';
+  }
+});
+
+scenarios.push({
+  id: 159,
+  name: 'Switching threads while a request is streaming persists the response into the WRONG thread (_persistStreamResponse reads activeThreadId at completion time, not the thread that sent the request)',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-stream-a-159', title: 'Thread A', active_leaf_id: 'm-159-u1a' },
+      { id: 't-stream-b-159', title: 'Thread B', active_leaf_id: 'm-159-u1b' }
+    ],
+    messages: [
+      { id: 'm-159-u1a', thread_id: 't-stream-a-159', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-159-u1b', thread_id: 't-stream-b-159', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    // Load thread A and send a message; while the mock streams (~320ms), click thread B.
+    await cdp.eval('window.loadThread("t-stream-a-159"); true');
+    await cdp.waitFor('window.activeThreadId === "t-stream-a-159"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    await cdp.eval('window.loadThread("t-stream-b-159"); true');
+    await cdp.waitFor('window.activeThreadId === "t-stream-b-159"', 10000, 250, 'thread B loaded');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1200);
+
+    const inA = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-stream-a-159' AND role='assistant'")[0].c;
+    const inB = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-stream-b-159' AND role='assistant'")[0].c;
+    const msgsA = seed.query(dbPath, "SELECT role, content FROM messages WHERE thread_id='t-stream-a-159' ORDER BY rowid");
+    const msgsB = seed.query(dbPath, "SELECT role, content FROM messages WHERE thread_id='t-stream-b-159' ORDER BY rowid");
+    // BUG present: the streamed assistant lands in thread B (the thread
+    // switched to mid-stream) instead of thread A (the thread that sent it).
+    if (inA !== 0 || inB !== 1)
+      throw new Error('streamed response persisted to the sending thread (behavior changed): inA=' + inA + ' inB=' + inB +
+        ' A=' + JSON.stringify(msgsA) + ' B=' + JSON.stringify(msgsB));
+    return 'sent in thread A, switched to thread B mid-stream: assistant rows inA=' + inA + ' inB=' + inB +
+      ' - the "Hello from the mock LLM" response landed in thread ' + (inB ? 'B (WRONG - _persistStreamResponse used activeThreadId at completion)' : 'A') +
+      '; A=' + JSON.stringify(msgsA.map((m) => m.role + ':' + String(m.content).slice(0, 30))) +
+      ' B=' + JSON.stringify(msgsB.map((m) => m.role + ':' + String(m.content).slice(0, 30)));
   }
 });
 

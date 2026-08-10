@@ -9,6 +9,8 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const vm = require('node:vm');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, hideSettingsToChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
@@ -1085,6 +1087,111 @@ scenarios.push({
     return 'exchange 1 cost=$' + usage1.total_cost + '; after doubling the model prices in Settings, exchange 2 total=$' +
       usage2.total_cost + ' (dashboard: 0.036512 + 0.073024 = 0.109536) BUT the thread cumulative_cost=' +
       thread.cumulative_cost + ' ($0.15 header) - historical costs re-priced at the new rate, header and dashboard disagree: ' + JSON.stringify(bar);
+  }
+});
+
+scenarios.push({
+  id: 158,
+  name: 'Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt\'s the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    // Run the REAL webui/js/settings/sections/models.js in a vm sandbox (the
+    // same approach as tests/unit/models-pricing-refresh.test.js) and drive
+    // the actual focus/blur listeners + save().
+    const sharedSrc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'shared', 'settings-shared.js'), 'utf-8');
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf-8');
+
+    function makeEl(initial) {
+      const el = {
+        value: initial.value !== undefined ? String(initial.value) : '',
+        raw: initial.raw !== undefined ? String(initial.raw) : null,
+        checked: !!initial.checked,
+        listeners: {},
+        classList: { add() {}, remove() {}, toggle() {} },
+        dataset: {}
+      };
+      el.getAttribute = (name) => (name === 'data-context-raw' || name === 'data-price-raw') ? el.raw : null;
+      el.setAttribute = (name, v) => { if (name === 'data-context-raw' || name === 'data-price-raw') el.raw = String(v); };
+      el.addEventListener = (type, fn) => { el.listeners[type] = fn; };
+      el.focus = () => { if (el.listeners.focus) el.listeners.focus(); };
+      el.blur = () => { if (el.listeners.blur) el.listeners.blur(); };
+      return el;
+    }
+
+    let trRef = null;
+    const idEl = makeEl({ value: 'deepseek-v4-flash' });
+    const providerEl = makeEl({ value: 'deepseek' });
+    const inputEl = makeEl({ value: '0.14', raw: '0.14' });
+    const cachedEl = makeEl({ value: '', raw: '' });
+    const outputEl = makeEl({ value: '0.28', raw: '0.28' });
+    const contextEl = makeEl({ value: '128K' });
+    const visionEl = makeEl({ value: 'on', checked: false });
+    const reasoningEl = makeEl({ value: 'on', checked: true });
+    const fields = {
+      '[data-field="id"]': idEl,
+      '[data-field="provider"]': providerEl,
+      '[data-field="input"]': inputEl,
+      '[data-field="cachedInput"]': cachedEl,
+      '[data-field="output"]': outputEl,
+      '[data-field="context"]': contextEl,
+      '[data-field="vision"]': visionEl,
+      '[data-field="reasoning"]': reasoningEl
+    };
+    const tr = {
+      dataset: {},
+      innerHTML: '',
+      querySelector: (sel) => fields[sel] || null,
+      querySelectorAll: (sel) => sel === 'input, select' ? Object.values(fields) : [],
+      addEventListener() {},
+      remove() {}
+    };
+    fields['.btn-sm.danger'] = makeEl({ value: '' });
+    const tbody = {
+      innerHTML: '',
+      appendChild(child) { trRef = child; }
+    };
+    const registeredSections = {};
+    const sandbox = {
+      document: {
+        getElementById: (id) => (id === 'modelsTableBody' ? tbody : null),
+        querySelectorAll: (sel) => (sel === '#modelsTableBody tr' ? (trRef ? [trRef] : []) : []),
+        createElement: () => tr,
+        addEventListener: () => {}
+      },
+      window: {
+        chrome: { webview: { postMessage: () => {} } },
+        SettingsPanel: { registerSection: (name, mod) => { registeredSections[name] = mod; } },
+        addEventListener: () => {}
+      },
+      setTimeout: () => {},
+      clearTimeout: () => {},
+      console
+    };
+    sandbox.global = sandbox;
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(sharedSrc, ctx);
+    vm.runInContext(src, ctx);
+
+    const mod = registeredSections.models;
+    mod.load({
+      providers: { deepseek: {} },
+      models: { 'deepseek/deepseek-v4-flash': { provider: 'deepseek', input: 0.14, cachedInput: '', output: 0.28, context: 128000, vision: false, reasoning: true } }
+    });
+    if (contextEl.value !== '128K')
+      throw new Error('setup: context display should be 128K, got ' + contextEl.value);
+    // BUG: merely focusing (value stays the display string) and blurring the
+    // field parseInt's "128K" -> 128 and stores it as data-context-raw; the
+    // save() then reads the raw 128 instead of 128000.
+    contextEl.focus();
+    contextEl.blur();
+    const saved = mod.save();
+    const savedContext = saved.models['deepseek/deepseek-v4-flash'].context;
+    if (savedContext !== 128)
+      throw new Error('context survived focus/blur (behavior changed): saved=' + savedContext + ' displayAfterBlur=' + contextEl.value);
+    return 'model context 128000 displayed as "128K"; focus+blur -> data-context-raw=128, display "128", saved context=' +
+      savedContext + ' (1000x shrink - the k/M multiplier is lost on every focus/blur or save)';
   }
 });
 

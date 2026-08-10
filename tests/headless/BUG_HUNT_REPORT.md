@@ -154,14 +154,18 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **16 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - 10 NEW BUGS #143-#153 VERIFIED headlessly (full app suite
-  143/143 PASS; #150 branch-user stale token attribution, #151 failed title-gen permanently blocks
-  auto-titles, #153 model price changes re-price the header's historical cost while the dashboard
-  keeps original costs - header/dashboard disagree - added after; #152 passed as an audit and stays
-  a regression check: provider endpoint edits ARE used by the next request). Next: keep exploring the
-  rest of the app, verifying any new finds headlessly.
+- **Where we left off:** 2026-08-10 - 6 NEW BUGS #154-#159 VERIFIED headlessly: #154 branch-edit
+  copies drop the reasoning/thinking CONTENT (thinking_tokens kept, reasoning column empty),
+  #155 ThreadRepo.List sidebar model badge uses the last-inserted assistant instead of the active
+  path, #156 overwrite-editing a user message leaves the stale backfilled token_count which corrupts
+  the next user's backfill/popover, #157 forking AT a user message under-reports the fork's Context
+  Used (user active_path_tokens never includes its own backfilled contribution), #158 Models-tab
+  context field "128K" -> 128 corruption on focus/blur (k/M multiplier lost on save), #159 switching
+  threads mid-stream persists the response into the WRONG thread (completion reads activeThreadId at
+  finish time). Next: keep exploring the rest of the app (attachments in complex trees, more settings
+  round-trips), verifying any new finds headlessly.
 ---
 
 ## Bug entry template
@@ -483,6 +487,163 @@ CostCalculator.ComputeTokenCosts with the current `models` global for every assi
 after doubling the prices in Settings, exchange 2 brings the dashboard to $0.109536 (old + new)
 while the header shows $0.15 (thread cumulative_cost = 0.146048) - reproduced with mock usage
 12/9/4 per call.
+
+### 11. "Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - the Thought Process block vanishes while the token popover still claims thinking tokens)
+
+**Scenario:** 154 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Open a thread where the assistant response has a reasoning/thinking block. Edit that
+assistant message and click "Save as Branch". Look at the new branch bubble and its token popover.
+
+**Expected:** The branch is a faithful local copy of the message - it carries the reasoning text
+(like a fork does), the thinking tokens, and the visible content.
+
+**Actual:** `handleEdit`'s branch-mode insert copies token metadata (bug #123 fixed
+prompt_tokens/token_count/thinking/cached/active_path_tokens) but NEVER passes `reasoning`, so the
+copy's `reasoning` column is '' while `thinking_tokens` stays nonzero. The branch bubble has no
+"Thought Process" block, and the token popover shows e.g. "Thinking: 5 tokens" with no way to read
+what was actually thought. Forking copies reasoning correctly
+(`_InsertForkMessage`/`_InsertCopiedOffPathMessage` pass it), so this is specific to branch-edit copies.
+
+**Evidence:** `chat/callbacks/Edit.ahk` (branch-mode Msg_Insert omits reasoning), `MessageRepo.Insert`
+defaults reasoning to ''.
+
+**Verification:** headless scenario 154 (live): seeded a1 with reasoning "SECRET THINKING STEP
+ONE/TWO" + thinking_tokens 5 -> edit -> Save as Branch -> DB read: branch reasoning='' (len 0) while
+thinking_tokens=5; UI shows 1 thinking block before and 0 on the branch bubble. Also reproduced by
+`probe-bughunt-db.ahk branch-drop-reasoning` (srcLen=25, copyLen=0, copyThinking=5).
+
+### 12. Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant's model, not the ACTIVE path's model)
+
+**Scenario:** 155 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Build a thread with two continuations that use DIFFERENT models (e.g. switch models on a
+retry/branch), then switch to the branch whose model is NOT the most recently inserted assistant row.
+Look at the sidebar chat item's provider icon (or any consumer of `Thread_List().model`).
+
+**Expected:** The sidebar badge reflects the model on the ACTIVE path (the branch currently open).
+
+**Actual:** `ThreadRepo.List` computes the per-thread model with `SELECT model FROM messages WHERE
+thread_id=? AND role='assistant' ... ORDER BY created_at DESC LIMIT 1` - the last INSERTED assistant
+in the thread, which can be on an OFF-PATH branch. After switching branches the badge stays on the
+other branch's model (and `created_at` has second granularity, so ties are arbitrary). The
+header/dashboard token pricing already follows the active path (#103); only the sidebar badge is stale.
+
+**Evidence:** `chat/db/ThreadRepo.ahk` (List model query).
+
+**Verification:** headless scenario 155 (probe, runs the real ChatDB code): active leaf =
+openai/gpt-5-mini assistant but `Thread_List()` returns deepseek/deepseek-v4-flash (the last-inserted
+off-path assistant) - `probe-bughunt-db.ahk thread-list-model-stale` prints
+`activeModel=openai/gpt-5-mini listedModel=deepseek/deepseek-v4-flash`.
+
+### 13. Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message's backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path)
+
+**Scenario:** 156 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** In a multi-turn thread, edit (Overwrite) a user message to a much longer/shorter text and
+send a follow-up. Open the NEW user message's token popover.
+
+**Expected:** The next user message's "contribution to context" is its own tokens: newPrompt -
+(u1.tc + a1.visible + a1.thinking + u2's TRUE new contribution).
+
+**Actual:** `Msg_Edit` only updates content/FTS and recomputes active_path_tokens; it never resets the
+edited user's `token_count`. `_BackfillUserTokens` then subtracts the STALE count from the next prompt.
+In the probe fixture u2 is edited from a 7-token message to a 30-token one; the next prompt is 62
+(12+9+30+6+5) and the backfill gives the new user 62-(12+9+7+6)=28 instead of its true 5 - the edited
+message's old attribution leaks into the next user's popover (the branch-switch variant is already
+tracked as #150; this is the overwrite path).
+
+**Evidence:** `chat/db/MessageRepo.ahk` (Edit leaves token_count; _BackfillUserTokens only writes when
+the target's token_count is 0).
+
+**Verification:** headless scenario 156 (probe, real ChatDB code): u2tcAfterEdit=7, u3tc=28 (true 5) -
+`probe-bughunt-db.ahk edit-user-stale-backfill`.
+
+### 14. Forking AT a user message under-reports the fork's "Context Used" (the user row's active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only)
+
+**Scenario:** 157 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** In a multi-turn thread, click Fork on a USER message (not the last assistant) and open
+the fork's header token bar.
+
+**Expected:** The fork's "Context Used" equals the conversation context at the fork point, including
+the user message's own tokens (u1 12 + a1 9 + u2 9 = 30 in the probe fixture).
+
+**Actual:** `MessageRepo.Insert` computes a user row's `active_path_tokens` at INSERT time as
+`parent.apt + token_count` while `token_count` is still 0; the later assistant response backfills
+the user's `token_count` but never updates its `active_path_tokens`. When that user message is the
+FORK POINT, `_InsertForkMessage` copies the stale value, the fork's leaf is the user copy, and
+`GetThreadStats` reports 21 instead of 30 - the fork header under-reports by the user's own
+contribution (until a later structural recompute). The user copy's popover is also stale (#150 family).
+
+**Evidence:** `chat/db/MessageRepo.ahk` (_BackfillUserTokens updates token_count only),
+`chat/db/TreeRepo.ahk` (_InsertForkMessage copies active_path_tokens verbatim, GetThreadStats reads
+the leaf's active_path_tokens).
+
+**Verification:** headless scenario 157 (probe, real ChatDB code): u2tc=9 (backfilled) but
+u2apt=21 (stale), fork at u2 -> forkContext=21 (true 30) - `probe-bughunt-db.ahk
+fork-at-user-stale-context`.
+
+### 15. Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt's the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x)
+
+**Scenario:** 158 (scenario code in scenarios/settings.js)
+
+**Status:** verified
+
+**Repro:** Settings -> Models -> click into a model's Context field (shows e.g. "128K"), click out
+(blur), then Save. The model's context window becomes 128 instead of 128000.
+
+**Expected:** The k/M display shorthand round-trips: "128K" stays 128000, "1.5M" stays 1500000.
+
+**Actual:** `models.js` renders the context display with `formatContext` ("128K") but the field has no
+`data-context-raw` until first blur. The blur handler does `parseInt(input.value) || 0`, so merely
+focusing and blurring the field (no typing) converts the DISPLAY string "128K" -> 128 and stores it
+as `data-context-raw`; `_parseContext` then reads the raw 128 at save time. Typing "256K" and
+blurring has the same 1000x shrink (`parseInt("256K")=256`). The header's context window
+("x / 128") and any context-dependent logic then use the wrong (tiny) value.
+
+**Evidence:** `webui/js/settings/sections/models.js` (_wireContextInput blur / _parseContext raw
+precedence / formatContext display).
+
+**Verification:** headless scenario 158 (noApp, runs the real models.js in a vm sandbox): load a
+model with context 128000 -> display "128K" -> focus+blur -> saved context=128 (1000x shrink).
+
+### 16. Switching threads while a request is streaming persists the response into the WRONG thread (the stream completion reads the CURRENT activeThreadId, not the thread that sent the request)
+
+**Scenario:** 159 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Open thread A, send a message, and while the response is still streaming click thread B
+in the sidebar. Wait for the stream to finish, then reopen thread A.
+
+**Expected:** The response is saved into thread A (the thread that sent it); thread B stays untouched.
+
+**Actual:** The sidebar has no in-flight guard, so `_LoadThreadAndRefreshUI(B)` swaps
+`activeThreadId` (and re-restores B's requestParams) while A's stream is still polling. When the
+stream completes, `_persistStreamResponse` inserts the assistant with `parent_id` from the CURRENT
+active path (B's last message) - the response lands in thread B with B's counters/usage charged,
+while thread A is left with its user message and no answer. The `streamDone` UI payload is also built
+from B's path, so the WebView shows the bogus message in B. The same root cause hits any navigation
+that changes the active thread/path while a request is in flight: clicking "New Chat" mid-stream
+attaches the response to the brand-new thread, and branch navigation mid-stream attaches it to the
+newly-active branch (delete/trash mid-stream is the one defensible case - the response lands in the
+soft-deleted thread's trash).
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` (_persistStreamResponse/_maybeGenerateTitle read
+the global activeThreadId), `webui/js/chat/chat-sidebar.js` loadThread has no isLoading guard.
+
+**Verification:** headless scenario 159 (live): send in thread A -> switch to B at ~40ms into the
+mock stream -> DB read: A has 0 assistant rows (its user message unanswered), B has the "Hello from
+the mock LLM. This is the streamed answer." assistant row.
 
 ## History (append-only)
 
