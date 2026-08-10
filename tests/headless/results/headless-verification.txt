@@ -1,5 +1,5 @@
-# 2026-08-10T13:21:09.780Z | run of 1 scenario(s)
-PASS | #165 | Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable | Message says "see attached report"; the PDF attachment's extracted_text contains "needle" only - Search("needle") returns 1 hit (attachment extracted_text is indexed and searchable) | 0.1s
+# 2026-08-10T13:26:15.987Z | run of 1 scenario(s)
+PASS | #166 | Assistant "isDefault" is a dead setting - persisted/carried everywhere but never read for any behavior, and the Assistants UI has no field to change it | isDefault now drives behavior (ChatSettings.ahk - _applyNewChatDefault falls back to the marked assistant) and the Assistants UI has a Default switch (field=true) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

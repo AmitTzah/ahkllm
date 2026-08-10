@@ -26,7 +26,8 @@
       '<div class="grid-2"><div class="field"><label class="field-label">Base Model</label><select data-field="baseModel">' + modelOpts + '</select></div>' +
       '<div class="field"><label class="field-label">Reasoning</label><select data-field="reasoning">' + reasoningOpts + '</select></div></div>' +
       '<div class="field"><label class="field-label">System Message</label><div class="settings-flex-row-center"><span class="sysmsg-label settings-sysmsg-label">' + S.escHtml(sysMsgLabel) + '</span><button class="btn-sm edit-sysmsg">Edit</button></div><div class="field-hint">From app defaults (default-settings/system-messages/). Create your own in AppData\\...\\system-messages\\</div></div>' +
-      '<div class="field"><label class="field-label">Description</label><input type="text" value="' + S.escHtml(a.description || '') + '" data-field="description"></div>';
+      '<div class="field"><label class="field-label">Description</label><input type="text" value="' + S.escHtml(a.description || '') + '" data-field="description"></div>' +
+      '<div class="toggle-row"><div><div class="lbl">Default assistant</div><div class="settings-text-xs-muted">Used for new chats when "New Chats Start With" is App Default</div></div><div class="switch' + (a.isDefault ? ' on' : '') + '" data-field="isDefault" data-type="radio"><div class="knob"></div></div></div>';
   }
 
   // --- Card wiring (event listeners) ---
@@ -128,10 +129,10 @@
         if (el.classList.contains('switch')) obj[el.dataset.field] = el.classList.contains('on');
         else obj[el.dataset.field] = el.value || '';
       });
-      // Bug #122: read the preserved temperature/isDefault back so the save
-      // round-trip never drops them (the UI has no fields for them).
+      // Bug #122/#166: read the preserved temperature back (no card field);
+      // isDefault now HAS a card switch, which the [data-field] loop above
+      // already reads - the old dataset preservation must not overwrite it.
       if (card.dataset.temperature) obj.temperature = card.dataset.temperature;
-      if (card.dataset.hasOwnProperty('isDefault')) obj.isDefault = card.dataset.isDefault === 'true';
       obj.systemMessage = card.dataset.systemMessage || '';
       obj.systemMessageFile = card.dataset.systemMessageFile || '';
       assistants.push(obj);

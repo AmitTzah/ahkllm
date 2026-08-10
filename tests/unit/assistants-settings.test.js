@@ -85,9 +85,22 @@ function loadModule() {
         };
         const baseSel = makeSelect('baseModel', el);
         const reasoningSel = makeSelect('reasoning', el);
+        // The "Default assistant" switch (bug #166) - its 'on' state mirrors
+        // the card's dataset.isDefault set by createCard (the innerHTML string
+        // is never parsed by the fake DOM).
+        const isDefaultSwitch = {
+          dataset: { field: 'isDefault' },
+          addEventListener: () => {},
+          classList: {
+            add: () => {},
+            remove: () => {},
+            contains: (c) => (c === 'on' && el.dataset.isDefault === 'true') || c === 'switch',
+            toggle: () => {}
+          }
+        };
         el.querySelectorAll = (sel) => {
           if (sel === 'select' || sel === 'input, select') return [baseSel, reasoningSel];
-          if (sel === '.switch') return [];
+          if (sel === '.switch' || sel === '[data-field]') return [isDefaultSwitch];
           return [];
         };
         el.querySelector = (sel) => {
@@ -224,6 +237,16 @@ describe('assistants.js reasoning dropdown', () => {
     assert.strictEqual(a.id, 'a1');
     assert.strictEqual(a.temperature, '0.7', 'temperature must survive the save round-trip (bug #122)');
     assert.strictEqual(a.isDefault, true, 'isDefault must survive the save round-trip (bug #122)');
+  });
+
+  it('renders the Default assistant switch and round-trips isDefault (bug #166)', () => {
+    const { registered, cards } = loadModule();
+    const assistants = [{ id: 'a1', name: 'A', baseModel: 'deepseek/deepseek-v4-flash', reasoning: '', systemMessage: '', isDefault: true }];
+    registered.load({ assistants: assistants, models: null });
+    assert.ok(cards[0].innerHTML.indexOf('data-field="isDefault"') >= 0, 'card must render the Default assistant switch');
+    assert.ok(cards[0].innerHTML.indexOf('Default assistant') >= 0, 'switch must be labeled');
+    const saved = registered.save();
+    assert.strictEqual(saved.assistants[0].isDefault, true, 'the switch state must drive the saved isDefault (bug #166)');
   });
 
   it('keeps a temperature of 0 as a real value through save() (bug #122)', () => {

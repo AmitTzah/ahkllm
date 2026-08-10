@@ -184,6 +184,45 @@ class ChatSettingsTest {
         }
     }
 
+    ; Regression (bug #166): when "New Chats Start With" is App Default (empty),
+    ; the assistant marked isDefault is the DEFAULT ASSISTANT - _applyNewChatDefault
+    ; must fall back to it before the app default model (restores the old
+    ; "Set as Default Assistant" toggle that newChatStartsWith replaced).
+    test_applyNewChatDefault_isDefaultAssistant_fallback() {
+        global newChatStartsWith, requestParams, assistants
+
+        oldDefault := newChatStartsWith
+        oldAsst := assistants
+        oldModel := requestParams["singleAPIModelName"]
+        oldAsstId := requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : ""
+        assistants := [
+            { id: "asst-a", name: "A", baseModel: "openai/gpt-5-mini", systemMessage: "sysA", reasoning: "", temperature: "", isDefault: false },
+            { id: "asst-b", name: "B", baseModel: "deepseek/deepseek-v4-flash", systemMessage: "sysB", reasoning: "high", temperature: "0.5", isDefault: true }
+        ]
+        newChatStartsWith := ""
+        try {
+            applied := _applyNewChatDefault()
+            if !applied
+                throw Error("isDefault assistant must apply when the default is App Default (bug #166)")
+            if requestParams["activeAssistantId"] != "asst-b"
+                throw Error("the isDefault assistant should be active, got '" requestParams["activeAssistantId"] "'")
+            if requestParams["singleAPIModelName"] != "deepseek/deepseek-v4-flash"
+                throw Error("the isDefault assistant's base model should apply")
+            if requestParams["systemOverride"] != "sysB"
+                throw Error("the isDefault assistant's system message should apply")
+        } finally {
+            newChatStartsWith := oldDefault
+            assistants := oldAsst
+            requestParams["singleAPIModelName"] := oldModel
+            if oldAsstId = ""
+                requestParams.Delete("activeAssistantId")
+            else
+                requestParams["activeAssistantId"] := oldAsstId
+            requestParams["systemOverride"] := ""
+            requestParams["temperatureOverride"] := ""
+        }
+    }
+
     test_applyNewChatDefault_assistant_applies() {
         global newChatStartsWith, requestParams, assistants
 

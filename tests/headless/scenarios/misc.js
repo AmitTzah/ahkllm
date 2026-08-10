@@ -1434,6 +1434,7 @@ scenarios.push({
   id: 166,
   name: 'Assistant "isDefault" is a dead setting - persisted/carried everywhere but never read for any behavior, and the Assistants UI has no field to change it',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1456,16 +1457,21 @@ scenarios.push({
       else if (writes) reads.push(rel + ':carry-only');
     }
     // DefaultSettings defines the default assistant with isDefault:true; the
-    // default that actually drives new chats is the top-level newChatStartsWith
-    // (Settings General tab), not any assistant's isDefault flag.
+    // flag now drives the default-assistant behavior again (bug #166).
     const assistantsUi = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'assistants.js'), 'utf8');
     const uiHasDefaultField = /isDefault|Set as Default|default assistant/i.test(assistantsUi);
-    // BUG present: no consumer reads isDefault for behavior (reads empty), and
-    // the Assistants settings UI has no isDefault control (only preserve-on-save).
+    // Fixed: _applyNewChatDefault falls back to the isDefault-marked assistant
+    // when "New Chats Start With" is App Default, and the Assistants settings
+    // card has a "Default assistant" switch (data-field="isDefault").
+    // BUG present: no consumer read isDefault for behavior and the UI had no
+    // isDefault control (only preserve-on-save).
     const behaviorReaders = reads.filter((r) => r.endsWith(':behavior'));
-    if (behaviorReaders.length) throw new Error('isDefault is now read for behavior: ' + behaviorReaders.join(', '));
-    return 'isDefault: carried only (' + reads.map((r) => r.split(':')[0].split('/').pop()).join(', ') +
-      ') - zero behavior readers; Assistants UI has no isDefault field (field=' + uiHasDefaultField + '); the real default comes from newChatStartsWith - the flag is dead metadata';
+    if (behaviorReaders.length === 0)
+      throw new Error('isDefault is still dead metadata (BUG present): ' + JSON.stringify({ behaviorReaders, uiHasDefaultField }));
+    if (!uiHasDefaultField)
+      throw new Error('Assistants UI still has no Default field (BUG present)');
+    return 'isDefault now drives behavior (' + behaviorReaders.map((r) => r.split(':')[0].split('/').pop()).join(', ') +
+      ' - _applyNewChatDefault falls back to the marked assistant) and the Assistants UI has a Default switch (field=' + uiHasDefaultField + ')';
   }
 });
 
