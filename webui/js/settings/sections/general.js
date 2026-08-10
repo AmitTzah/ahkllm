@@ -16,7 +16,11 @@
     function addOption(o) { values.push(o.value); sel.appendChild(o); }
     var opt = document.createElement('option');
     opt.value = '';
-    opt.textContent = 'App Default (deepseek/deepseek-v4-flash)';
+    // Bug #26 follow-up: when an assistant is marked isDefault, "App Default"
+    // actually starts with that assistant (_applyNewChatDefault falls back to
+    // it) - label the option honestly instead of always showing the model.
+    var defaultAsst = (assistants || []).filter(function(a) { return a.isDefault; })[0];
+    opt.textContent = 'App Default' + (defaultAsst && defaultAsst.name ? ' (' + defaultAsst.name + ')' : ' (deepseek/deepseek-v4-flash)');
     addOption(opt);
     if (assistants && assistants.length) {
       var og = document.createElement('optgroup');

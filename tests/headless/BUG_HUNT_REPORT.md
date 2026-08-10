@@ -160,7 +160,10 @@ How to run AHK safely:
   (169/169 e2e). Continuing the follow-up audit of less-exercised areas (FIM/inline commands, cross-process DB
   concurrency, large-data paths, WebView2 teardown). INLINE COMMAND FIX: failed inline requests now surface a
   tooltip + API-log error instead of silently doing nothing, and each request uses a unique per-request id
-  (ChatDB._UUID) instead of A_TickCount; scenario 176 added as a regression check.
+  (ChatDB._UUID) instead of A_TickCount; scenario 176 added as a regression check. GENERAL-TAB LABEL FIX:
+  the "App Default" dropdown option now names the isDefault assistant when one is marked (previously it always
+  showed the default model). TEST-INFRA FIX: unit-test temp files/dbs now use a random suffix after A_TickCount
+  so same-millisecond or leftover-file collisions cannot corrupt a run.
 ---
 
 ## Bug entry template
@@ -218,6 +221,8 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "General-tab App Default label always shows the default model even when an isDefault assistant is what actually starts new chats (bug #26 follow-up)" - FIXED: fillNewChatDefault now names the isDefault assistant in the App Default option when one is marked; general-settings unit test added.
+- 2026-08-10 - "Unit-test temp DB/file paths keyed by A_TickCount can collide (same millisecond or a leftover file from a crashed run)" - FIXED: every test temp path now appends a random suffix after A_TickCount (29 paths across 16 test files), eliminating same-ms and leftover-file collisions.
 - 2026-08-10 - "Inline command failure is silent (no paste, no error, no API-log entry; per-request id uses A_TickCount which can collide)" - FIXED: InlineRequestRunner.Run now branches on result.success and calls _HandleInlineError (reads cURL stderr, shows a tooltip, logs the failed call with status error), and each request uses ChatDB._UUID() for its temp files/loading entry; scenario 176 added as a regression check + InlineRequestRunner unit tests.
 - 2026-08-10 - "Cross-thread search navigation race (_pendingSearchScrollMsgId consumed by ANY thread's initChatMode)" - FIXED: the pending search navigation now also records its target thread and onSearchCrossThreadLoaded only consumes it when the current thread matches, so unrelated loads (or a failed load followed by another navigation) can no longer drop or misroute the scroll; scenario 175 flipped to a regression check + chat-search unit tests.
 - 2026-08-10 - "Search FTS5 loses prefix matching when the query ends in an apostrophe (the trailing-* guard checks the wrong quote char)" - FIXED: _FTS5 now skips the prefix * only for a trailing "*" - terms are always double-quoted, so a trailing apostrophe query ("comp'") keeps its prefix match; scenario 161 flipped to a regression check + ChatDB unit test.

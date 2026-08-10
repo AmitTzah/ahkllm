@@ -170,6 +170,27 @@ describe('General settings section', () => {
         assert.ok(groups.some((g) => g.label === 'Models'));
     });
 
+    it('labels App Default with the isDefault assistant when one is marked (bug #26 follow-up)', () => {
+        const ncs = makeEl();
+        const created = [];
+        const ctx = loadSection({ els: { newChatStartsWith: ncs } });
+        ctx.sandbox.document.createElement = (tag) => {
+            const el = makeEl();
+            el.tagName = tag;
+            created.push(el);
+            return el;
+        };
+        ctx.module.load({
+            models: { 'a-model': {} },
+            assistants: [{ id: 'asst-1', name: 'My Assistant', baseModel: 'a-model', isDefault: true }],
+            newChatStartsWith: '',
+        });
+        const opts = created.filter((el) => el.tagName === 'option');
+        assert.strictEqual(opts[0].value, '');
+        assert.ok(opts[0].textContent.indexOf('App Default (My Assistant)') >= 0,
+            'App Default must name the isDefault assistant, got ' + opts[0].textContent);
+    });
+
     it('load tolerates missing data and missing elements', () => {
         const ctx = loadSection({});
         ctx.module.load(null);
