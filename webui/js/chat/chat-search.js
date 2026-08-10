@@ -14,6 +14,7 @@ var _selectedIndex = -1;
 var _searchTimeout = null;
 var _activeSearchWrapper = null;  // the .search-wrap that owns the open dropdown
 var _pendingSearchScrollMsgId = null;  // message to scroll to after initChatMode (tree pattern)
+var _pendingSearchScrollThreadId = null;  // the thread that message belongs to (bug #175)
 
 // Initialize search inputs — called from main.js DOMContentLoaded
 function initSearch() {
@@ -221,6 +222,7 @@ function selectSearchResult(index) {
         // Cross-thread: optimistic loadThread (sidebar click pattern), then navigate+scroll
         if (typeof loadThread === 'function') loadThread(threadId);
         _pendingSearchScrollMsgId = messageId;
+        _pendingSearchScrollThreadId = threadId;
         Ipc.postToHost('sidebarAction', { subAction: 'loadThread', threadId: threadId });
         return;
     }
@@ -234,8 +236,14 @@ function selectSearchResult(index) {
 // Posts navigateToMessage + tree-pattern setTimeout scroll.
 function onSearchCrossThreadLoaded() {
     if (!_pendingSearchScrollMsgId) return;
+    // Bug #175: initChatMode runs on EVERY thread load, so only consume the
+    // pending navigation when the CURRENT thread is the one the search result
+    // belongs to - otherwise an unrelated thread (or a failed load followed by
+    // any other navigation) silently drops or misroutes the search scroll.
+    if (_pendingSearchScrollThreadId && activeThreadId !== _pendingSearchScrollThreadId) return;
     var msgId = _pendingSearchScrollMsgId;
     _pendingSearchScrollMsgId = null;
+    _pendingSearchScrollThreadId = null;
     Ipc.postToHost('sidebarAction', { subAction: 'navigateToMessage', messageId: msgId });
     setTimeout(function() { scrollToMessageById(msgId); }, 150);
 }

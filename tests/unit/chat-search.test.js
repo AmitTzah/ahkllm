@@ -420,6 +420,31 @@ describe('chat-search', function() {
             assert.ok(navMsg, 'should post sidebarAction');
             assert.strictEqual(ctx._pendingSearchScrollMsgId, null, 'should clear pending');
         });
+
+        it('does not consume the pending navigation for an unrelated thread (bug #175)', function() {
+            var ctx = loadSearchModule();
+            ctx.postedMessages.length = 0;
+            ctx.activeThreadId = 't-B';
+            ctx._pendingSearchScrollMsgId = 'msg-scroll-1';
+            ctx._pendingSearchScrollThreadId = 't-A';
+            ctx.onSearchCrossThreadLoaded();
+            assert.strictEqual(ctx.postedMessages.length, 0, 'an unrelated thread must not post navigateToMessage');
+            assert.strictEqual(ctx._pendingSearchScrollMsgId, 'msg-scroll-1', 'the pending navigation must survive');
+        });
+
+        it('consumes the pending navigation when the target thread is active (bug #175)', function() {
+            var ctx = loadSearchModule();
+            ctx.postedMessages.length = 0;
+            ctx.activeThreadId = 't-A';
+            ctx._pendingSearchScrollMsgId = 'msg-scroll-1';
+            ctx._pendingSearchScrollThreadId = 't-A';
+            ctx.onSearchCrossThreadLoaded();
+            assert.strictEqual(ctx._pendingSearchScrollMsgId, null, 'should clear pending for the target thread');
+            var navMsg = ctx.postedMessages.find(function(m) {
+                try { return JSON.parse(m).action === 'sidebarAction'; } catch(e) { return false; }
+            });
+            assert.ok(navMsg, 'the target thread should post navigateToMessage');
+        });
     });
 
     describe('handleSearchKeydown — navigation keys', function() {

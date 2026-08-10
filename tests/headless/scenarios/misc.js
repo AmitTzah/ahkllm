@@ -1506,6 +1506,7 @@ scenarios.push({
   id: 175,
   name: 'Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread\'s initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1526,29 +1527,42 @@ scenarios.push({
     const ctx = vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'chat-search.js'), 'utf8'), ctx);
     vm.runInContext(fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'chat-core.js'), 'utf8'), ctx);
-    // Cross-thread search click on thread A sets the pending scroll id...
-    vm.runInContext('_pendingSearchScrollMsgId = "m-A-1"; true', ctx);
+    // Cross-thread search click on thread A sets the pending scroll id (and,
+    // bug #175 fix, the thread it belongs to)...
+    vm.runInContext('_pendingSearchScrollMsgId = "m-A-1"; _pendingSearchScrollThreadId = "t-A"; true', ctx);
     posts.length = 0;
-    // ...but the user quickly opens thread B; B's initChatMode consumes the
-    // pending id and posts navigateToMessage("m-A-1") while activeThreadId=B.
+    // ...but the user quickly opens thread B; B's initChatMode must NOT consume
+    // the pending id (it belongs to A) - no navigation is posted.
     vm.runInContext('initChatMode({ messages: [], threadId: "t-B" }); true', ctx);
-    const nav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
+    let nav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
     const active = vm.runInContext('activeThreadId', ctx);
-    // BUG present: the navigateToMessage for thread A's message fires during
-    // thread B's load - AHK's SetActiveLeaf then rejects it (message not in B),
-    // so the search navigation is silently dropped.
-    if (!nav.length || nav[0][1].messageId !== 'm-A-1' || active !== 't-B')
-      throw new Error('search navigation race changed: nav=' + JSON.stringify(nav) + ' active=' + active);
-    // Stale-pending case: a failed load never clears the pending id, so the
-    // NEXT unrelated thread load consumes it and posts a spurious navigation.
-    vm.runInContext('_pendingSearchScrollMsgId = "m-A-2"; true', ctx);
+    // BUG present: B's initChatMode consumed the pending id and posted
+    // navigateToMessage(m-A-1) while activeThreadId=B - SetActiveLeaf rejected
+    // it (message not in B) and the navigation was silently dropped.
+    if (nav.length > 0)
+      throw new Error('unrelated thread consumed the pending search navigation (BUG present): nav=' + JSON.stringify(nav));
+    const pendingAfterB = vm.runInContext('_pendingSearchScrollMsgId', ctx);
+    if (pendingAfterB !== 'm-A-1')
+      throw new Error('pending navigation must survive an unrelated thread load: ' + pendingAfterB);
+    // A's own load consumes it and navigates:
+    vm.runInContext('initChatMode({ messages: [], threadId: "t-A" }); true', ctx);
+    nav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
+    if (!nav.length || nav[0][1].messageId !== 'm-A-1')
+      throw new Error('the search navigation must fire when the target thread loads: ' + JSON.stringify(nav));
+    // Stale-pending case: a failed load leaves the pending id, but an
+    // unrelated thread (C) must NOT consume it; A's later load still does.
+    vm.runInContext('_pendingSearchScrollMsgId = "m-A-2"; _pendingSearchScrollThreadId = "t-A"; true', ctx);
     posts.length = 0;
     vm.runInContext('initChatMode({ messages: [], threadId: "t-C" }); true', ctx);
     const staleNav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
-    if (!staleNav.length || staleNav[0][1].messageId !== 'm-A-2')
-      throw new Error('stale-pending behavior changed: ' + JSON.stringify(staleNav));
-    return 'search click on A (m-A-1) -> user opens B first: B\'s initChatMode consumed the pending id and posted navigateToMessage(m-A-1) with activeThreadId=' + active +
-      ' (SetActiveLeaf fails -> navigation silently dropped); a failed load leaves the pending for the NEXT thread (C) -> spurious navigateToMessage(m-A-2)';
+    if (staleNav.length)
+      throw new Error('unrelated thread consumed a stale pending navigation (BUG present): ' + JSON.stringify(staleNav));
+    vm.runInContext('initChatMode({ messages: [], threadId: "t-A" }); true', ctx);
+    const finalNav = posts.filter((p) => p[0] === 'sidebarAction' && p[1] && p[1].subAction === 'navigateToMessage');
+    if (!finalNav.length || finalNav[0][1].messageId !== 'm-A-2')
+      throw new Error('the target thread must still receive the stale pending navigation: ' + JSON.stringify(finalNav));
+    return 'search click on A (m-A-1) -> user opens B first: B\'s initChatMode leaves the pending id untouched (activeThreadId=' + active +
+      '), and A\'s own load posts navigateToMessage(m-A-1); a failed load leaves the pending for A only - C cannot steal it, A still gets m-A-2';
   }
 });
 
