@@ -253,6 +253,23 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #145): user token backfill must subtract the prior
+    ; assistant's THINKING tokens too - token_count holds only VISIBLE output
+    ; (thinking is stored separately), so summing token_count alone leaks the
+    ; thinking tokens into the next user's backfilled contribution.
+    Insert_BackfillSubtractsAssistantThinking() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, thinking_tokens: 5})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: ChatDB.db.Query("SELECT id FROM messages WHERE content='a1';").rows[1].id})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 30, token_count: 6})
+        u2tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", u2Id)[1, "token_count"])
+        ; True contribution = 30 prompt - 12 u1 - 9 a1 visible - 5 a1 thinking = 4.
+        if u2tc != 4
+            throw Error("u2 contribution should be 4 (thinking subtracted), got " u2tc)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_GetActivePath
     ; --------------------

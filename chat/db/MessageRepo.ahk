@@ -126,6 +126,12 @@ class MessageRepo {
         existing_sum := 0
         for msg in path {
             existing_sum += msg.HasProp("token_count") ? msg.token_count : 0
+            ; Bug #145: assistant token_count holds only VISIBLE output
+            ; (thinking is stored separately), so the prior assistant's thinking
+            ; tokens must be subtracted too - otherwise they leak into the next
+            ; user's backfilled "contribution" and its token popover over-counts.
+            if msg.role = "assistant" && msg.HasProp("thinking_tokens")
+                existing_sum += msg.thinking_tokens
         }
         new_input := Max(0, promptTokens - existing_sum)
 

@@ -218,21 +218,25 @@ class UsageTrackingTest {
             model: "deepseek/deepseek-v4-flash",
             parent_id: user2Id,
             token_count: 15, thinking_tokens: 0, cached_tokens: 0,
-            response_time_ms: 800, prompt_tokens: 45
+            ; Bug #145: the context before user2 includes a1's THINKING tokens
+            ; (5 + 30 + 70 = 105), so a consistent prompt for user2's own 10
+            ; tokens is 115 (the old 45 assumed thinking was free).
+            response_time_ms: 800, prompt_tokens: 115
         })
 
         ; Verify after turn 2
         stats2 := ChatDB.Msg_GetThreadStats(threadId)
-        if stats2.cumulativeInputTokens != 50
-            throw Error("T2: Expected cumulativeInput=50, got " stats2.cumulativeInputTokens)
+        if stats2.cumulativeInputTokens != 120
+            throw Error("T2: Expected cumulativeInput=120 (5+115), got " stats2.cumulativeInputTokens)
         if stats2.cumulativeOutputTokens != 115
             throw Error("T2: Expected cumulativeOutput=115, got " stats2.cumulativeOutputTokens)
 
-        ; Backfill check: user 2 should get new_input = 45 - 35 = 10
+        ; Backfill check: user 2 should get new_input = 115 - 105 = 10 (the
+        ; prior assistant's 70 thinking tokens are subtracted - bug #145).
         path := ChatDB.Msg_GetActivePath(threadId)
         user2 := path[4]
         if user2.token_count != 10
-            throw Error("T2: Expected user2 token_count=10 (45-35), got " user2.token_count)
+            throw Error("T2: Expected user2 token_count=10 (115-105), got " user2.token_count)
 
         this._closeDb()
     }

@@ -691,6 +691,7 @@ scenarios.push({
   id: 145,
   name: 'User message token backfill leaks the previous assistant\'s THINKING tokens into the next user\'s "contribution" (token popover over-counts)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -705,11 +706,13 @@ scenarios.push({
     const u2m = text.match(/u2tc=(\d+)/);
     if (!u2m) throw new Error('probe output missing u2tc: ' + text);
     const u2tc = Number(u2m[1]);
+    // Fixed: the backfill subtracts the prior assistant's thinking tokens too,
+    // so the user's contribution is its true value.
     // BUG present: a1 reported prompt 12 / visible 9 / thinking 5; the true
     // next prompt is 12+9+5+4=30 and the user's real contribution is 4, but
-    // the backfill subtracts only visible outputs (12+9) -> u2tc=9.
-    if (u2tc !== 9) throw new Error('backfill no longer leaks thinking (behavior changed): u2tc=' + u2tc);
-    return 'prior assistant thinking tokens leak into the next user backfill: u2tc=' + u2tc +
+    // the backfill subtracted only visible outputs (12+9) -> u2tc=9.
+    if (u2tc !== 4) throw new Error('backfill still leaks thinking (BUG present): u2tc=' + u2tc);
+    return 'user backfill is now thinking-accurate: u2tc=' + u2tc +
       ' (true contribution 4 = 30 prompt - 12 u1 - 9 visible - 5 thinking)';
   }
 });

@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **28 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **27 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#4 FIXED + committed (9a8f209, c502d8a, f05f9b2, next commit). Next:
-  bug #5 (user token backfill leaks the previous assistant's THINKING tokens into the next user's contribution).
+- **Where we left off:** 2026-08-10 - #1-#5 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, next commit).
+  Next: bug #6 (navigation to a message with multiple retries lands on the ORIGINAL, not the newest retry).
 ---
 
 ## Bug entry template
@@ -211,37 +211,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. User message token backfill leaks the previous assistant's THINKING tokens into the next user's "contribution" (token popover over-counts)
-
-**Scenario:** 145 (scenario code in scenarios/usage-tokens.js)
-
-**Status:** fix in progress
-
-**Repro:** In a thread where the first assistant response reported thinking tokens (e.g. OpenAI
-`completion_tokens_details.reasoning_tokens`), send a follow-up user message, wait for the response,
-and open the follow-up user message's token popover.
-
-**Expected:** The user message shows its own contribution: prompt2 - (u1.tc + a1.visible + a1.thinking)
-= 4 tokens in the probe fixture.
-
-**Actual:** `MessageRepo._BackfillUserTokens` computes `promptTokens - existing_sum` where
-`existing_sum` = sum of all `token_count` on the path. Assistant `token_count` holds only VISIBLE
-output (thinking is stored separately), so the previous assistant's thinking tokens are not subtracted
-and leak into the next user's backfill (9 instead of 4 in the probe fixture). The stale branch-copied
-`token_count` (bug #123) compounds this: a branch user copy is never re-backfilled because the copied
-value is nonzero.
-
-**Evidence:** `chat/db/MessageRepo.ahk` (_BackfillUserTokens sums token_count only),
-`chat/streaming/StreamCompletion.ahk` (token_count = completion - thinking).
-
-**Verification:** headless noApp scenario 145 runs `probe-bughunt-db.ahk backfill-thinking` against
-the real ChatDB code (u2tc=9 vs true 4). Also reproduced directly via the probe: u1tc=12, u2tc=9.
-
-### 2. Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry
+### 1. Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry
 
 **Scenario:** 148 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** In a thread where a user message has two assistant continuations (the original answer and
 a retry, sibling_index 0 and 1), click that user message's node in the tree modal (or navigate to it
@@ -265,7 +239,7 @@ children[children.length-1]).
 active leaf = the original answer). Also reproduced by `probe-bughunt-db.ahk walk-to-leaf` (walkLeaf =
 original, treeLastChild = original).
 
-### 3. Command requests with SHORT model ids (no provider prefix) silently drop the thinking config
+### 2. Command requests with SHORT model ids (no provider prefix) silently drop the thinking config
 
 **Scenario:** 149 (scenario code in scenarios/usage-tokens.js)
 
@@ -296,7 +270,7 @@ ModelResolver.Lookup).
 "deepseek-v4-flash"}` (no thinking fields); the full-id control adds
 `"thinking":{"type":"enabled"},"reasoning_effort":"high"`.
 
-### 4. "Save as Branch" on a USER message keeps the ORIGINAL message's token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong)
+### 3. "Save as Branch" on a USER message keeps the ORIGINAL message's token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong)
 
 **Scenario:** 150 (scenario code in scenarios/chat-tree.js)
 
@@ -322,7 +296,7 @@ for different text, while the app's own formula for the branch's mock prompt giv
 read shows the copy's token_count still 7 (source attribution) and the popover shows "Input: 7
 tokens" after the branch's own API call.
 
-### 5. A failed title-generation request permanently disables auto-titles for that thread (the bug #140 dispatch guard is never cleared on failure)
+### 4. A failed title-generation request permanently disables auto-titles for that thread (the bug #140 dispatch guard is never cleared on failure)
 
 **Scenario:** 151 (scenario code in scenarios/misc.js)
 
@@ -348,7 +322,7 @@ response: runs=1, no title; a second call with a succeeding mock response is blo
 title stays unchanged) + noApp static scenario 151 (guard set before the request; no reset/failure
 clear exists in the file).
 
-### 6. Changing a model price in Settings re-prices the thread's HISTORICAL cumulative cost in the header (both calls at the new rate) while the dashboard keeps the original per-call costs - header and dashboard disagree
+### 5. Changing a model price in Settings re-prices the thread's HISTORICAL cumulative cost in the header (both calls at the new rate) while the dashboard keeps the original per-call costs - header and dashboard disagree
 
 **Scenario:** 153 (scenario code in scenarios/settings.js)
 
@@ -376,7 +350,7 @@ after doubling the prices in Settings, exchange 2 brings the dashboard to $0.109
 while the header shows $0.15 (thread cumulative_cost = 0.146048) - reproduced with mock usage
 12/9/4 per call.
 
-### 7. "Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - the Thought Process block vanishes while the token popover still claims thinking tokens)
+### 6. "Save as Branch" on an assistant message drops the reasoning/thinking CONTENT (the branch copy keeps thinking_tokens but the DB reasoning column is empty - the Thought Process block vanishes while the token popover still claims thinking tokens)
 
 **Scenario:** 154 (scenario code in scenarios/chat-tree.js)
 
@@ -403,7 +377,7 @@ ONE/TWO" + thinking_tokens 5 -> edit -> Save as Branch -> DB read: branch reason
 thinking_tokens=5; UI shows 1 thinking block before and 0 on the branch bubble. Also reproduced by
 `probe-bughunt-db.ahk branch-drop-reasoning` (srcLen=25, copyLen=0, copyThinking=5).
 
-### 8. Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant's model, not the ACTIVE path's model)
+### 7. Sidebar thread model badge is stale after a branch switch (ThreadRepo.List shows the LAST-INSERTED assistant's model, not the ACTIVE path's model)
 
 **Scenario:** 155 (scenario code in scenarios/chat-tree.js)
 
@@ -428,7 +402,7 @@ openai/gpt-5-mini assistant but `Thread_List()` returns deepseek/deepseek-v4-fla
 off-path assistant) - `probe-bughunt-db.ahk thread-list-model-stale` prints
 `activeModel=openai/gpt-5-mini listedModel=deepseek/deepseek-v4-flash`.
 
-### 9. Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message's backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path)
+### 8. Overwrite-editing a USER message keeps its OLD backfilled token_count, so the NEXT user message's backfill subtracts the stale value and its token popover over-counts (stale attribution on the overwrite path)
 
 **Scenario:** 156 (scenario code in scenarios/usage-tokens.js)
 
@@ -453,7 +427,7 @@ the target's token_count is 0).
 **Verification:** headless scenario 156 (probe, real ChatDB code): u2tcAfterEdit=7, u3tc=28 (true 5) -
 `probe-bughunt-db.ahk edit-user-stale-backfill`.
 
-### 10. Forking AT a user message under-reports the fork's "Context Used" (the user row's active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only)
+### 9. Forking AT a user message under-reports the fork's "Context Used" (the user row's active_path_tokens never includes its own backfilled token_count, so the fork leaf shows the parent context only)
 
 **Scenario:** 157 (scenario code in scenarios/usage-tokens.js)
 
@@ -480,7 +454,7 @@ the leaf's active_path_tokens).
 u2apt=21 (stale), fork at u2 -> forkContext=21 (true 30) - `probe-bughunt-db.ahk
 fork-at-user-stale-context`.
 
-### 11. Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt's the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x)
+### 10. Models tab: focusing and blurring the Context field corrupts "128K" -> 128 (the blur handler parseInt's the DISPLAY string, so the k/M suffix is lost and the saved model context shrinks 1000x)
 
 **Scenario:** 158 (scenario code in scenarios/settings.js)
 
@@ -504,7 +478,7 @@ precedence / formatContext display).
 **Verification:** headless scenario 158 (noApp, runs the real models.js in a vm sandbox): load a
 model with context 128000 -> display "128K" -> focus+blur -> saved context=128 (1000x shrink).
 
-### 12. Switching threads while a request is streaming persists the response into the WRONG thread (the stream completion reads the CURRENT activeThreadId, not the thread that sent the request)
+### 11. Switching threads while a request is streaming persists the response into the WRONG thread (the stream completion reads the CURRENT activeThreadId, not the thread that sent the request)
 
 **Scenario:** 159 (scenario code in scenarios/chat-tree.js)
 
@@ -533,7 +507,7 @@ the global activeThreadId), `webui/js/chat/chat-sidebar.js` loadThread has no is
 mock stream -> DB read: A has 0 assistant rows (its user message unanswered), B has the "Hello from
 the mock LLM. This is the streamed answer." assistant row.
 
-### 13. A mid-stream failure with no usage chunk crashes the completion handler after persisting the partial - the UI is left STUCK with a misleading "Request failed" banner (thread unusable until reload)
+### 12. A mid-stream failure with no usage chunk crashes the completion handler after persisting the partial - the UI is left STUCK with a misleading "Request failed" banner (thread unusable until reload)
 
 **Scenario:** 173 (scenario code in scenarios/chat-tree.js)
 
@@ -549,7 +523,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 173 (live, mock `sse-midfail`): one content chunk then an error body -> DB has the partial assistant row (prompt_tokens=0), the crash banner appears, and `isLoading=true` + `streamState.active=true` persist (UI stuck). The original "partial never persisted" hypothesis was REFUTED - the partial IS persisted; the real bug is the post-persist crash + stuck UI.
 
-### 14. Hard-deleting / empty-trashing the streaming thread mid-stream silently DROPS the completed response - the billed API call is never persisted anywhere and never usage-tracked
+### 13. Hard-deleting / empty-trashing the streaming thread mid-stream silently DROPS the completed response - the billed API call is never persisted anywhere and never usage-tracked
 
 **Scenario:** 172 (scenario code in scenarios/chat-tree.js)
 
@@ -565,7 +539,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 172 (live, slow mock ~3s): delete-forever at ~1.5s while `streamState.active` was still true -> final DB: dangling messages=0, assistant rows=0, chat_usage=0. The "dangling orphan" hypothesis was REFUTED (activeThreadId is cleared, so no orphan); the actual bug is the silent total loss of the completed response + its usage accounting.
 
-### 15. Retry failure hides the original response - the retried message is spliced out of chatMessages immediately and a failed retry never restores it (bubble gone + error banner until reload; DB row intact)
+### 14. Retry failure hides the original response - the retried message is spliced out of chatMessages immediately and a failed retry never restores it (bubble gone + error banner until reload; DB row intact)
 
 **Scenario:** 169 (scenario code in scenarios/chat-tree.js)
 
@@ -581,7 +555,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 169 (live, refused endpoint): click Retry on a1 -> chatMessages drops to the user message; after the error banner, DB still has a1 (rows=1, leaf=u1) but the DOM shows only 1 bubble.
 
-### 16. Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159)
+### 15. Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159)
 
 **Scenario:** 171 (scenario code in scenarios/chat-tree.js)
 
@@ -597,7 +571,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 171 (live): send in A -> switch to B at ~40ms -> Stop at ~130ms -> DB read: A has 0 assistant rows, B has 1 partial assistant row.
 
-### 17. Reasoning-only streams report ttft_ms=0 - the first-token timer only stamps "content" chunks, never "reasoning", so the popover hides TTFT, the dashboard averages 0ms, and the API-log latency falls back to the full duration
+### 16. Reasoning-only streams report ttft_ms=0 - the first-token timer only stamps "content" chunks, never "reasoning", so the popover hides TTFT, the dashboard averages 0ms, and the API-log latency falls back to the full duration
 
 **Scenario:** 170 (scenario code in scenarios/chat-tree.js)
 
@@ -613,7 +587,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 170 (live, `sse-reasoning-only`): the persisted assistant row has ttft_ms=0 (response_time_ms=250), confirming the first-token timer never fired on reasoning chunks.
 
-### 18. A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model
+### 17. A command with the "Default" model (empty APIModels) silently does NOTHING - the dropdown's Default option is never substituted with the app default model
 
 **Scenario:** 162 (scenario code in scenarios/misc.js)
 
@@ -629,7 +603,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 162 (probe, real code): `StrSplit("")` -> 0 entries (loop no-op) AND `createJSONRequest("")` -> `{"messages":[...],"model":""}` - the Default option never substitutes the app default.
 
-### 19. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
+### 18. Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw; blank blur also saves 0
 
 **Scenario:** 164 (scenario code in scenarios/settings.js)
 
@@ -645,7 +619,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 164 (vm, real models.js): input display $0.50 -> focus -> paste "$0.5" -> blur -> saved input=0 (raw=0, display "").
 
-### 20. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
+### 19. Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns
 
 **Scenario:** 163 (scenario code in scenarios/usage-tokens.js)
 
@@ -661,7 +635,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 163 (vm, real usage-dashboard.js): chat row with model "openai/gpt-5,beta" -> exported row splits into 13 fields (header has 12), no quoting.
 
-### 21. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
+### 20. Search cannot find attachment extracted_text - FTS5/LIKE only index message content, so a term inside an attached PDF/office file is unsearchable
 
 **Scenario:** 165 (scenario code in scenarios/misc.js)
 
@@ -677,7 +651,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 165 (probe, real SearchRepo): attachment extracted_text contains "needle" only -> `Search("needle", tid)` returns 0 hits.
 
-### 22. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
+### 21. Assistant "isDefault" is a dead setting - persisted and carried everywhere but never read for any behavior, and the Assistants settings UI has no field to change it
 
 **Scenario:** 166 (scenario code in scenarios/misc.js)
 
@@ -693,7 +667,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 166 (noApp static): behavior-reader scan of AssistantRepo/ChatSettings/SettingsApply/CommandMenu/ThreadSettings/model-picker finds only carry-only references; assistants.js has no isDefault UI field.
 
-### 23. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
+### 22. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
 
 **Scenario:** 167 (scenario code in scenarios/misc.js)
 
@@ -709,7 +683,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 167 (noApp static): the TrackUsage call exists after the request and the early-return guard is present with no failure fallback.
 
-### 24. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
+### 23. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
 
 **Scenario:** 168 (scenario code in scenarios/usage-tokens.js)
 
@@ -725,7 +699,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 168 (vm, real usage-dashboard.js): row provider="" + backend providers ['deepseek'] -> filter dropdown has no '' option while the chart key would be ''.
 
-### 25. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
+### 24. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
 
 **Scenario:** 174 (scenario code in scenarios/chat-tree.js)
 
@@ -741,7 +715,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 174 (live): B's updated_at bumped (2026-08-10 11:22:49 -> 11:22:52) after Next branch, but the sidebar order stays A,B - no refresh was posted.
 
-### 26. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
+### 25. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
 
 **Scenario:** 160 (scenario code in scenarios/misc.js)
 
@@ -757,7 +731,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
 
-### 27. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+### 26. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
 
 **Scenario:** 161 (scenario code in scenarios/misc.js)
 
@@ -773,7 +747,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 **Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
 
-### 28. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 27. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
@@ -793,6 +767,7 @@ the mock LLM. This is the streamed answer." assistant row.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "User message token backfill leaks the previous assistant's THINKING tokens into the next user's contribution (token popover over-counts)" - FIXED: _BackfillUserTokens now subtracts assistant thinking_tokens (token_count holds only visible output) when computing the next user's contribution; scenario 145 flipped to a regression check + ChatDB/UsageTracking unit tests (the UsageTracking multi-turn fixture was corrected to a thinking-consistent prompt).
 - 2026-08-10 - "Retrying an assistant that has no parent (root message, e.g. after deleting the root user message) creates the retry as a CHILD of the original instead of a sibling" - FIXED: retryAction flags a root retry (pendingRetryIsRoot) and _persistStreamResponse inserts the new response with parent_id NULL (same sibling group), so the retry becomes a proper root SIBLING instead of a child of the original; scenario 147 flipped to a regression check + ChatDB unit test.
 - 2026-08-10 - "Save as Branch" after removing an attachment deletes the attachment from the ORIGINAL message (the source branch loses it permanently)" - FIXED: handleEdit now applies deferred attachment removal only in overwrite mode; branch mode copies the source attachments EXCLUDING the removed ones (Attachment_CopyForMessage gains an exclude list), so the original keeps its attachment while the new branch is created without it; scenario 146 flipped to a regression check + BranchFlow/AttachmentRepo unit tests.
 - 2026-08-10 - "Forking at a message drops OFF-PATH children of the fork point itself (existing alternative continuations are not copied)" - FIXED: TreeRepo._CopyOffPathSiblings now excludes only the ACTIVE continuation child of the fork point (previously every child of the fork point was skipped), so an already-existing off-path branch under the fork point is copied with its subtree; scenario 143 flipped to a regression check + ChatDB fork unit test.

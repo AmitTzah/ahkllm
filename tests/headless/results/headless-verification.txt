@@ -1,5 +1,5 @@
-# 2026-08-10T12:13:12.207Z | run of 1 scenario(s)
-PASS | #147 | Retrying an assistant that has no parent (root message, e.g. after deleting the root user message) creates the retry as a CHILD of the original instead of a sibling | retried root assistant: new response parent_id=null (NULL - proper root sibling, not a child of a1) sibling group count=2 | 8.3s
+# 2026-08-10T12:14:51.654Z | run of 1 scenario(s)
+PASS | #145 | User message token backfill leaks the previous assistant's THINKING tokens into the next user's "contribution" (token popover over-counts) | user backfill is now thinking-accurate: u2tc=4 (true contribution 4 = 30 prompt - 12 u1 - 9 visible - 5 thinking) | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
