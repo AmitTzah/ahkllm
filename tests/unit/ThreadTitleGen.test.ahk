@@ -279,6 +279,38 @@ class ThreadTitleGenTest {
         this._teardownDb()
     }
 
+    ; Regression (bug #167): a FAILED (usage-less) title-generation call was
+    ; still a billed API request - it must be tracked in the dashboard
+    ; (call_count + response time) even with 0 tokens.
+    Generate_Failed_StillTracksUsage() {
+        global _mockTitleGenOutput, _mockRunCalls
+        this._setupDb()
+        this._setGlobals()
+        threadId := ChatDB.Thread_Create("Fail Track")
+        sysId := ChatDB.Msg_Insert({ thread_id: threadId, role: "system", content: "sys" })
+        usrId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "Hello", parent_id: sysId })
+        ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "Hi", parent_id: usrId })
+
+        _mockTitleGenOutput := ""  ; empty response -> failure, no usage
+        _mockRunCalls := []
+        generateThreadTitle(threadId)
+        if _mockRunCalls.Length != 1
+            throw Error("expected one title request, got " _mockRunCalls.Length)
+
+        usage := ChatDB.Usage_Query(Map("timeRange", "all", "model", "", "type", "command"))
+        found := false
+        for cmd in usage.commands {
+            if cmd.command_name = "Title Generation" {
+                found := true
+                if Integer(cmd.call_count) < 1
+                    throw Error("failed title-gen must still be tracked (bug #167), call_count=" cmd.call_count)
+            }
+        }
+        if !found
+            throw Error("failed title-gen usage row not found (bug #167)")
+        this._teardownDb()
+    }
+
     ; ----------------------------------------------------
     ; Regression: title generation must post the thread's REAL folder name,
     ; not the hardcoded "Unfiled" that previously overwrote the topbar label.
@@ -421,12 +453,18 @@ class ThreadTitleGenTest {
             throw Error("Invalid JSON should return defaults")
     }
 
-    TrackUsage_SkipsZeroPromptTokens() {
+    ; Regression (bug #167): a failed/usage-less title call (promptTokens 0)
+    ; was still a billed API request - it must be recorded (call_count +
+    ; response time), not silently skipped.
+    TrackUsage_RecordsZeroPromptTokens() {
         this._setupDb()
         _TitleGen_TrackUsage("deepseek/deepseek-v4-flash", "deepseek", 0, 5, 0, A_TickCount)
         usage := ChatDB.Usage_Query(Map("timeRange", "all", "model", "", "type", "command"))
-        if usage.commands.Length != 0
-            throw Error("Zero prompt tokens should not write usage")
+        if usage.commands.Length != 1
+            throw Error("usage-less title call must still be tracked (bug #167)")
+        cmd := usage.commands[1]
+        if cmd.command_name != "Title Generation" || Integer(cmd.call_count) < 1
+            throw Error("failed title-gen usage row wrong (bug #167)")
         this._teardownDb()
     }
 

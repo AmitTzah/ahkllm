@@ -165,8 +165,9 @@ _TitleGen_CleanTitle(rawTitle) {
 
 ; Track title generation usage in the dashboard.
 _TitleGen_TrackUsage(titleModel, providerKey, promptTokens, completionTokens, thinkingTokens, titleGenStart) {
-    if promptTokens <= 0
-        return
+    ; Bug #167: a FAILED (or usage-less) title call was still a billed API
+    ; request - record it (0 tokens/cost but call_count + response time) so the
+    ; dashboard shows it instead of silently omitting the call.
     usage := { promptTokens: promptTokens, completionTokens: completionTokens, cachedTokens: 0 }
     costs := CostCalculator.ComputeTokenCosts(titleModel, usage)
     ChatDB.CommandUsage_Upsert({

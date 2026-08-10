@@ -1479,19 +1479,22 @@ scenarios.push({
   id: 167,
   name: 'A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
     const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ThreadTitleGen.ahk'), 'utf8');
     // _TitleGen_TrackUsage is invoked with the parse result after the request;
-    // the guard skips tracking whenever promptTokens is 0/absent (failure or a
-    // response without usage), while the API call was already executed.
+    // it must record the call even when promptTokens is 0/absent (failure or a
+    // response without usage) - the API call was already executed and billed.
     const trackCall = /_TitleGen_TrackUsage\(titleGenModel,\s*providerInfo\.providerKey,\s*promptTokens,\s*completionTokens,\s*thinkingTokens,\s*titleGenStart\)/.test(src);
     const earlyReturn = /_TitleGen_TrackUsage\([\s\S]{0,180}?if promptTokens <= 0\s*return/.test(src);
-    const fallbackTrack = /promptTokens\s*:=\s*Math\.Max|Max\(1, promptTokens\)|if\s+!raw[\s\S]{0,200}?_TitleGen_TrackUsage/.test(src);
     if (!trackCall) throw new Error('_TitleGen_TrackUsage call missing (behavior changed)');
-    if (!earlyReturn || fallbackTrack) throw new Error('title-gen failure tracking changed: earlyReturn=' + earlyReturn + ' fallbackTrack=' + fallbackTrack);
-    return 'ThreadTitleGen.ahk calls _TitleGen_TrackUsage AFTER the request, and the function returns early on promptTokens <= 0 - a failed/usage-less title call (which was still billed) never reaches CommandUsage_Upsert, so the dashboard silently omits it';
+    // Fixed: no early return - usage-less title calls are still upserted.
+    // BUG present: the function returned early on promptTokens <= 0, so a
+    // failed/usage-less title call never reached CommandUsage_Upsert.
+    if (earlyReturn) throw new Error('title-gen failure tracking still skipped (BUG present): earlyReturn=' + earlyReturn);
+    return 'ThreadTitleGen.ahk calls _TitleGen_TrackUsage AFTER the request with NO promptTokens guard - a failed/usage-less title call (still billed) reaches CommandUsage_Upsert (0 tokens + call_count + response time)';
   }
 });
 

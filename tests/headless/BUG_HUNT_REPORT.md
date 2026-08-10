@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#26 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
+- **Where we left off:** 2026-08-10 - #1-#27 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
   25f7181, 2e4bc23, 0058836, 31056dd, 4e426f3, a046cda, 04e64e3, 4b41ce7, 1f9b377, d9d3bda, 17150ab, f7ef637,
-  f1ea763, a447e0e, 519322b, 1729c02, 7356462, 0065cdb, 1a3160d, 9d5d9ed, next commit). Next: bug #27 (failed
-  or usage-less title-generation API calls are never tracked in the usage dashboard).
+  f1ea763, a447e0e, 519322b, 1729c02, 7356462, 0065cdb, 1a3160d, 9d5d9ed, 4e59f44, next commit). Next: bug #28
+  (usage rows with an empty provider render in the chart but are absent from the provider dropdown).
 ---
 
 ## Bug entry template
@@ -213,27 +213,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened
-
-**Scenario:** 167 (scenario code in scenarios/misc.js)
-
-**Status:** fix in progress
-
-**Repro:** Trigger title generation while the title API call fails (or returns without usage). Open Usage Dashboard -> commands section.
-
-**Expected:** Every title-generation API call (the mock/cost is billed) appears in the dashboard, with the response time recorded even when no title was produced.
-
-**Actual:** `generateThreadTitle` always calls `_TitleGen_TrackUsage(...)` after the request, but `_TitleGen_TrackUsage` returns early when `promptTokens <= 0`. A failed/usage-less response leaves promptTokens at 0, so no `CommandUsage_Upsert` row is written - the billed call and its latency never reach the dashboard (the API log does record it, so the call is known).
-
-**Evidence:** `chat/ThreadTitleGen.ahk` (_TitleGen_TrackUsage `if promptTokens <= 0 return`; _TitleGen_ParseResponse defaults to 0 on failure).
-
-**Verification:** headless scenario 167 (noApp static): the TrackUsage call exists after the request and the early-return guard is present with no failure fallback.
-
-### 2. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
+### 1. Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) render in the chart under "" but are absent from the provider filter dropdown
 
 **Scenario:** 168 (scenario code in scenarios/usage-tokens.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Use a model whose provider cannot be resolved (e.g. a short-id model no longer present in Settings, or a renamed/legacy id) so `MessageRepo.Insert` stores `provider: ""` in chat_usage. Open Usage Dashboard.
 
@@ -245,7 +229,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 168 (vm, real usage-dashboard.js): row provider="" + backend providers ['deepseek'] -> filter dropdown has no '' option while the chart key would be ''.
 
-### 3. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
+### 2. Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order (and the #155 model badge) stay stale after a branch switch
 
 **Scenario:** 174 (scenario code in scenarios/chat-tree.js)
 
@@ -261,7 +245,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 174 (live): B's updated_at bumped (2026-08-10 11:22:49 -> 11:22:52) after Next branch, but the sidebar order stays A,B - no refresh was posted.
 
-### 4. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
+### 3. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
 
 **Scenario:** 160 (scenario code in scenarios/misc.js)
 
@@ -277,7 +261,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
 
-### 5. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+### 4. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
 
 **Scenario:** 161 (scenario code in scenarios/misc.js)
 
@@ -293,7 +277,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
 
-### 6. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 5. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
@@ -313,6 +297,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "A failed (or usage-less) title-generation API call is never tracked in the usage dashboard" - FIXED: _TitleGen_TrackUsage no longer returns early on promptTokens <= 0 - failed/usage-less title calls are recorded (0 tokens + call_count + response time) since they were billed; scenario 167 flipped to a regression check + ThreadTitleGen unit tests.
 - 2026-08-10 - "Assistant isDefault is a dead setting (persisted/carried but never read; no UI field)" - FIXED: _applyNewChatDefault now falls back to the isDefault-marked assistant when New Chats Start With is App Default (restoring the old Set-as-Default behavior), and the Assistants card gained a Default assistant switch (data-field=isDefault, radio-exclusive); scenario 166 flipped to a regression check + ChatSettings/assistants-settings unit tests.
 - 2026-08-10 - "Search cannot find attachment extracted_text (FTS5/LIKE only index message content)" - FIXED: the FTS index now includes each message's decoded attachment extracted_text (FTS_Sync + FTS_ResyncForAttachments called on attachment insert/delete/copy and on the startup rebuild), so terms inside attached PDF/office files surface the message; scenario 165 flipped to a regression check + ChatDB unit test.
 - 2026-08-10 - "Usage CSV export is unquoted - a model/provider name containing a comma produces a malformed CSV with shifted columns" - FIXED: the export now RFC-4180-quotes every field (csvField - quote comma/quote/newline fields, double internal quotes), so comma-containing names keep 12 columns; scenario 163 flipped to a regression check + usage-dashboard unit test.
