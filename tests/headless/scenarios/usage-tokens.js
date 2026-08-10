@@ -721,6 +721,7 @@ scenarios.push({
   id: 149,
   name: 'Command requests with SHORT model ids (no provider prefix) silently drop the thinking config (LLMRequestBuilder still gates on models.Has(full-id))',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -732,12 +733,12 @@ scenarios.push({
     if (res.error) throw new Error('thinking probe spawn failed/timed out: ' + res.error.message);
     if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
     const text = fs.readFileSync(outFile, 'utf-8');
-    if (text.indexOf('shortHasThinking=0') < 0)
-      throw new Error('short-id command now applies thinking (behavior changed): ' + text);
+    if (text.indexOf('shortHasThinking=1') < 0)
+      throw new Error('short-id command still drops thinking (BUG present): ' + text);
     if (text.indexOf('fullHasThinking=1') < 0)
       throw new Error('control (full id) no longer applies thinking: ' + text);
-    return 'createJSONRequest("deepseek-v4-flash", thinking enabled/high) -> NO thinking fields in the payload ' +
-      '(models.Has(shortId) is false); the full id control gets thinking:{type:enabled} + reasoning_effort:high';
+    return 'createJSONRequest("deepseek-v4-flash", thinking enabled/high) -> thinking fields NOW applied ' +
+      '(ModelResolver.Lookup resolves the short id); the full id control gets thinking:{type:enabled} + reasoning_effort:high';
   }
 });
 

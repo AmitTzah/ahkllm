@@ -10,6 +10,8 @@
 ;   ResponseParser.ahk   — response parsing
 ; ----------------------------------------------------
 
+#Include ..\shared\ModelResolver.ahk
+
 class LLMRequestBuilder {
 
     __New(APIKey) {
@@ -74,8 +76,15 @@ class LLMRequestBuilder {
         else if (reasoningEffort = "disabled")
             effectiveReasoning := "none"
         global models
-        if (effectiveReasoning != "" && models.Has(APIModel))
-            OpenAIChatCompletions.ApplyThinking(&requestObj, models[APIModel], effectiveReasoning, APIModel)
+        ; Bug #149: resolve the model metadata through ModelResolver.Lookup so
+        ; SHORT ids (no provider prefix, e.g. the default commands' models) get
+        ; the same thinking config as full "provider/model" ids - the old
+        ; raw models.Has(APIModel) check only matched full-id keys and silently
+        ; dropped thinking for short ids (bug #43 fixed the chat path; this is
+        ; the command path).
+        modelMeta := ModelResolver.Lookup(models, APIModel)
+        if (effectiveReasoning != "" && modelMeta)
+            OpenAIChatCompletions.ApplyThinking(&requestObj, modelMeta, effectiveReasoning, APIModel)
         return LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
     }
 

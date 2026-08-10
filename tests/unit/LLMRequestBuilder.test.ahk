@@ -497,6 +497,18 @@ class LLMRequestBuilderTest {
             throw Error("Command enabled+high should set thinking:{type:'enabled'}, got: " jsongo.Stringify(parsed.Has("thinking") ? parsed["thinking"] : "(absent)"))
     }
 
+    ; Regression (bug #149): a SHORT model id (no provider prefix) must get the
+    ; same thinking config as the full "provider/model" id - the old
+    ; models.Has(APIModel) check only matched full-id keys.
+    CreateJSONRequest_CommandEnabled_ShortModelId_AppliesThinking() {
+        result := LLMRequestBuilder.createJSONRequest("deepseek-v4-flash", "s", "u", "", "", "", false, "enabled", "high")
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("thinking") || !parsed["thinking"].Has("type") || parsed["thinking"]["type"] != "enabled"
+            throw Error("short-id command should set thinking:{type:'enabled'}, got: " jsongo.Stringify(parsed.Has("thinking") ? parsed["thinking"] : "(absent)"))
+        if !parsed.Has("reasoning_effort") || parsed["reasoning_effort"] != "high"
+            throw Error("short-id command should set reasoning_effort='high', got: " jsongo.Stringify(parsed.Has("reasoning_effort") ? parsed["reasoning_effort"] : "(absent)"))
+    }
+
     CreateJSONRequest_CommandEnabledNoLevel_KeepsEnabled() {
         result := LLMRequestBuilder.createJSONRequest("deepseek/deepseek-v4-flash", "s", "u", "", "", "", false, "enabled", "")
         parsed := jsongo.Parse(result)

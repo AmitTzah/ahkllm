@@ -1,5 +1,5 @@
-# 2026-08-10T12:17:50.629Z | run of 1 scenario(s)
-PASS | #148 | Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry | tree-click on u2 navigated to m-148-a2b (DB leaf m-148-a2b) - the newest retry m-148-a2b | 6.3s
+# 2026-08-10T12:20:21.324Z | run of 1 scenario(s)
+PASS | #149 | Command requests with SHORT model ids (no provider prefix) silently drop the thinking config (LLMRequestBuilder still gates on models.Has(full-id)) | createJSONRequest("deepseek-v4-flash", thinking enabled/high) -> thinking fields NOW applied (ModelResolver.Lookup resolves the short id); the full id control gets thinking:{type:enabled} + reasoning_effort:high | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
