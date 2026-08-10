@@ -626,4 +626,112 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 144,
+  name: '"Save as Branch" on an assistant message double-counts the copied token metadata in the thread cumulative counters after the next real exchange (header vs dashboard disagree)',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [{
+      id: 't-dbl-144', title: 'Double Count', active_leaf_id: 'm-144-a1',
+      cumulative_input_tokens: 12, cumulative_output_tokens: 9, cumulative_cached_tokens: 4
+    }],
+    messages: [
+      { id: 'm-144-u1', thread_id: 't-dbl-144', role: 'user', content: 'root', token_count: 12, active_path_tokens: 12 },
+      { id: 'm-144-a1', thread_id: 't-dbl-144', role: 'assistant', content: 'answer one', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-144-u1', token_count: 9, prompt_tokens: 12, cached_tokens: 4, active_path_tokens: 21 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Save the assistant message as a NEW BRANCH - a LOCAL DB copy carrying the
+    // source token metadata (bug #123) but NO API call (bug #118).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2)").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.type('#chat-messages .msg:nth-child(2) .msg-edit-textarea', 'answer one (branch)');
+    await cdp.click('#chat-messages .msg:nth-child(2) .save-branch');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].content === "answer one (branch)"', 15000, 300, 'branch message created');
+    await sleep(700);
+    // The branch is now the leaf; send a REAL follow-up exchange. The new
+    // assistant insert calls _RecomputeCumulativeCounters, which sums ALL
+    // assistant rows - including the local copy's COPIED prompt_tokens.
+    await sendChatMessage(cdp, 'follow up');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const thread = seed.query(dbPath, 'SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id = ?', ['t-dbl-144'])[0];
+    const usage = seed.query(dbPath, 'SELECT call_count, prompt_tokens, completion_tokens, cached_tokens FROM chat_usage')[0];
+    // In THIS run only the follow-up is a real API call (a1 is a seeded row,
+    // not a live exchange): chat_usage = 1 call, 12/9/4. The thread counters
+    // must reflect ONLY real API calls, i.e. the follow-up (12/9/4).
+    // BUG present: the recompute also charges the seeded a1 (12/9/4) AND the
+    // local branch copy (12/9/4) -> thread counters 36/27/12 (header) while the
+    // dashboard holds 1 call, 12/9/4 - header and dashboard disagree.
+    if (Number(thread.cumulative_input_tokens) !== 36 || Number(thread.cumulative_output_tokens) !== 27 || Number(thread.cumulative_cached_tokens) !== 12)
+      throw new Error('counters not double-counted (behavior changed): ' + JSON.stringify(thread));
+    if (!usage || usage.call_count !== 1 || usage.prompt_tokens !== 12 || usage.completion_tokens !== 9 || usage.cached_tokens !== 4)
+      throw new Error('chat_usage should hold the 1 real call only: ' + JSON.stringify(usage));
+    const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    if (String(bar).indexOf('\u2191 36') < 0 || String(bar).indexOf('\u2193 27') < 0)
+      throw new Error('header should show the double-counted 36/27: ' + JSON.stringify(bar));
+    return 'assistant branch-copy + real follow-up: thread counters=' + JSON.stringify(thread) +
+      ' (BUG: 36/27/12 - the seeded call + the local copy are charged on top of the real one) while chat_usage=' + JSON.stringify(usage) +
+      ' (1 real call, 12/9/4) - header and dashboard disagree; header=' + JSON.stringify(bar);
+  }
+});
+
+scenarios.push({
+  id: 145,
+  name: 'User message token backfill leaks the previous assistant\'s THINKING tokens into the next user\'s "contribution" (token popover over-counts)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'backfill-thinking'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('backfill probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const u2m = text.match(/u2tc=(\d+)/);
+    if (!u2m) throw new Error('probe output missing u2tc: ' + text);
+    const u2tc = Number(u2m[1]);
+    // BUG present: a1 reported prompt 12 / visible 9 / thinking 5; the true
+    // next prompt is 12+9+5+4=30 and the user's real contribution is 4, but
+    // the backfill subtracts only visible outputs (12+9) -> u2tc=9.
+    if (u2tc !== 9) throw new Error('backfill no longer leaks thinking (behavior changed): u2tc=' + u2tc);
+    return 'prior assistant thinking tokens leak into the next user backfill: u2tc=' + u2tc +
+      ' (true contribution 4 = 30 prompt - 12 u1 - 9 visible - 5 thinking)';
+  }
+});
+
+scenarios.push({
+  id: 149,
+  name: 'Command requests with SHORT model ids (no provider prefix) silently drop the thinking config (LLMRequestBuilder still gates on models.Has(full-id))',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'command-thinking-short'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('thinking probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    if (text.indexOf('shortHasThinking=0') < 0)
+      throw new Error('short-id command now applies thinking (behavior changed): ' + text);
+    if (text.indexOf('fullHasThinking=1') < 0)
+      throw new Error('control (full id) no longer applies thinking: ' + text);
+    return 'createJSONRequest("deepseek-v4-flash", thinking enabled/high) -> NO thinking fields in the payload ' +
+      '(models.Has(shortId) is false); the full id control gets thinking:{type:enabled} + reasoning_effort:high';
+  }
+});
+
 module.exports = scenarios;

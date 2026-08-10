@@ -154,6 +154,7 @@ The next scenario run also auto-recovers as a fallback.
 | `launch.js` | Profile isolation (junction), app launch with WebView2 remote-debugging args, CDP discovery, teardown |
 | `probe.ahk` | Win32 checks the browser can't see: window titles, icons via `WM_GETICON` + pixel fingerprint, hotkey presses, suspend banner, input window |
 | `probe-thinking.ahk` | Standalone AHK check used by one scenario (see report) |
+| `probe-bughunt-db.ahk` | Standalone AHK check that runs the REAL ChatDB/repo code against a temp SQLite DB and prints token-accounting / tree-copy results (used by the DB-audit scenarios; see report) |
 | `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
 | `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
 | `scenarios/helpers.js` | Shared helpers used by scenario bodies (probes, UI navigation) |

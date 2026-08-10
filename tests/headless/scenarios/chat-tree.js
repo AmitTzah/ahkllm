@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, runProbe, showChat, sendChatMessage } = require('./helpers');
+const { sleep, runProbe, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
 
@@ -982,6 +982,256 @@ scenarios.push({
       throw new Error('header context after search nav wrong: ' + JSON.stringify(ctx));
     return 'searched "needle": result preview=' + JSON.stringify(preview) + ' -> navigated to leaf m-139-a2b ' +
       '(context ' + JSON.stringify(ctx) + '), DB active_leaf=' + leaf.active_leaf_id + ' (consistent)';
+  }
+});
+
+scenarios.push({
+  id: 143,
+  name: 'Forking at a message drops OFF-PATH children of the fork point itself (alternative continuations that already exist are not copied)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-fork-143', title: 'Fork Offpath Children', active_leaf_id: 'm-143-a2' }],
+    messages: [
+      { id: 'm-143-u1', thread_id: 't-fork-143', role: 'user', content: 'u1', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-143-a1', thread_id: 't-fork-143', role: 'assistant', content: 'a1', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-143-u1', token_count: 20, prompt_tokens: 10, active_path_tokens: 30 },
+      // Active continuation of a1:
+      { id: 'm-143-u2', thread_id: 't-fork-143', role: 'user', content: 'u2', parent_id: 'm-143-a1', token_count: 5, active_path_tokens: 35 },
+      { id: 'm-143-a2', thread_id: 't-fork-143', role: 'assistant', content: 'a2', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-143-u2', token_count: 30, prompt_tokens: 15, active_path_tokens: 45 },
+      // OFF-PATH alternative continuation of a1 (already exists in the tree):
+      { id: 'm-143-u2b', thread_id: 't-fork-143', role: 'user', content: 'u2b', parent_id: 'm-143-a1', sibling_group: 'sg-143', sibling_index: 1, token_count: 5, active_path_tokens: 35 },
+      { id: 'm-143-a2b', thread_id: 't-fork-143', role: 'assistant', content: 'a2b', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-143-u2b', token_count: 30, prompt_tokens: 15, active_path_tokens: 45 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[3] && chatMessages[3].id === "m-143-a2"', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Fork at a1 (message 2). The fork point a1 has an OFF-PATH child u2b/a2b.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Fork"]');
+    await cdp.waitFor('window.activeThreadId !== "t-fork-143"', 15000, 300, 'fork created');
+    const forkId = await cdp.eval('window.activeThreadId');
+    await sleep(900);
+    const forkMsgs = seed.query(dbPath, 'SELECT role, content FROM messages WHERE thread_id = ? ORDER BY created_at', [forkId]);
+    const contents = forkMsgs.map((m) => m.role + '/' + m.content).join(',');
+    // BUG present: the fork only holds the active path up to a1 (u1+a1); the
+    // off-path alternative continuation u2b/a2b (a sibling of the active
+    // continuation at the fork point's child level) is silently dropped,
+    // even though off-path siblings at EVERY other level are copied with
+    // their full subtrees (bug #113).
+    if (forkMsgs.length !== 2)
+      throw new Error('unexpected fork size ' + forkMsgs.length + ': ' + contents);
+    if (contents.indexOf('u2b') >= 0 || contents.indexOf('a2b') >= 0)
+      throw new Error('off-path children were copied (behavior changed): ' + contents);
+    const activeLeaf = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id = ?', [forkId])[0].active_leaf_id;
+    return 'fork id=' + forkId + ' contains ' + forkMsgs.length + ' messages (' + contents +
+      '); off-path child subtree u2b/a2b is MISSING from the fork (active leaf ' + activeLeaf + ')';
+  }
+});
+
+scenarios.push({
+  id: 146,
+  name: '"Save as Branch" after removing an attachment deletes the attachment from the ORIGINAL message (the source branch loses its attachment too)',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-att-146', title: 'Branch Attach', active_leaf_id: 'm-146-a1' }],
+    messages: [
+      { id: 'm-146-u1', thread_id: 't-att-146', role: 'user', content: 'root with attachment', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-146-a1', thread_id: 't-att-146', role: 'assistant', content: 'reply', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-146-u1', token_count: 5, prompt_tokens: 10, active_path_tokens: 15 }
+    ]
+  },
+  async body({ cdp, dbPath, dataDir }) {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { DatabaseSync } = require('node:sqlite');
+    const attDir = path.join(dataDir, 'attachments');
+    fs.mkdirSync(attDir, { recursive: true });
+    const filePath = 'attachments/branch-146.txt';
+    fs.writeFileSync(path.join(dataDir, filePath), 'branch attach content');
+    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    db.prepare("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES ('a-146-1','m-146-u1','text_file',?,'text/plain','branch.txt',21,'')").run(filePath);
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Open edit on the user message and remove its attachment (deferred).
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(1)").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-attachment-delete');
+    await sleep(300);
+    const hidden = await cdp.eval('(function(){ var w = document.querySelector("#chat-messages .msg:nth-child(1) .msg-attachment-image, #chat-messages .msg:nth-child(1) .msg-attachment-file"); return w ? w.style.display : "none-el"; })()');
+    if (String(hidden) !== 'none') throw new Error('attachment did not hide on remove: ' + JSON.stringify(hidden));
+    // Save as a NEW BRANCH with the edited text.
+    await cdp.type('#chat-messages .msg:nth-child(1) .msg-edit-textarea', 'root without attachment (branch)');
+    await cdp.click('#chat-messages .msg:nth-child(1) .save-branch');
+    await sleep(1200);
+
+    const srcRows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE message_id='m-146-u1'")[0].c;
+    const branch = seed.query(dbPath, "SELECT id FROM messages WHERE content='root without attachment (branch)'");
+    const branchRows = branch.length ? seed.query(dbPath, 'SELECT COUNT(*) AS c FROM message_attachments WHERE message_id = ?', [branch[0].id])[0].c : -1;
+    // BUG present: handleEdit runs Attachment_DeleteOne on removedAttachmentIds
+    // BEFORE copying, so the ORIGINAL message (which stays in the tree with its
+    // original content) loses its attachment too - the branch gets nothing and
+    // the original's history is rewritten.
+    if (Number(srcRows) !== 0)
+      throw new Error('source still has the attachment (behavior changed): ' + srcRows);
+    if (branchRows !== 0)
+      throw new Error('branch should not carry the removed attachment: ' + branchRows);
+    return 'after Save-as-Branch with a removed attachment: original message attachment rows=' + srcRows +
+      ' (BUG: the original lost it), branch rows=' + branchRows;
+  }
+});
+
+scenarios.push({
+  id: 147,
+  name: 'Retrying an assistant that has no parent (root message, e.g. after deleting the root user message) creates the retry as a CHILD of the original instead of a sibling',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-retry-147', title: 'Root Retry', active_leaf_id: 'm-147-a1' }],
+    messages: [
+      { id: 'm-147-u1', thread_id: 't-retry-147', role: 'user', content: 'root question', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-147-a1', thread_id: 't-retry-147', role: 'assistant', content: 'root answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-147-u1', token_count: 9, prompt_tokens: 12, active_path_tokens: 21 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Delete the root user message: a1 becomes the thread root (parent NULL).
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Delete"]');
+    await sleep(300);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await cdp.waitFor('chatMessages.length === 1 && chatMessages[0] && chatMessages[0].role === "assistant"', 15000, 300, 'root assistant remains');
+    await sleep(700);
+    // Retry the now-root assistant.
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Retry"]');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const newRow = seed.query(dbPath, "SELECT parent_id, sibling_group FROM messages WHERE content='Hello from the mock LLM. This is the streamed answer.'");
+    if (!newRow.length) throw new Error('retried response not found');
+    const isChild = newRow[0].parent_id === 'm-147-a1';
+    const sibCount = newRow[0].sibling_group ? seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE sibling_group = ?', [newRow[0].sibling_group])[0].c : 0;
+    // BUG present: retryAction only moves the active leaf to the parent when
+    // parentMsg exists; with no parent the new response is inserted with
+    // parent_id = the original assistant while sharing its sibling_group, so
+    // the retry is simultaneously a "sibling" and a CHILD of the original.
+    if (!isChild)
+      throw new Error('retry became a proper root sibling (behavior changed): ' + JSON.stringify(newRow[0]));
+    if (sibCount !== 2)
+      throw new Error('expected 2 messages in the retry sibling group: ' + sibCount);
+    return 'retried root assistant: new response parent_id=' + newRow[0].parent_id +
+      ' (equals the original a1 - the retry became its CHILD) sibling group count=' + sibCount;
+  }
+});
+
+scenarios.push({
+  id: 148,
+  name: 'Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-nav-148', title: 'Nav Leaf', active_leaf_id: 'm-148-a2b' }],
+    messages: [
+      { id: 'm-148-u1', thread_id: 't-nav-148', role: 'user', content: 'root', token_count: 10, active_path_tokens: 10 },
+      { id: 'm-148-a1', thread_id: 't-nav-148', role: 'assistant', content: 'answer root', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-148-u1', token_count: 20, prompt_tokens: 10, active_path_tokens: 30 },
+      { id: 'm-148-u2', thread_id: 't-nav-148', role: 'user', content: 'needle with retries', parent_id: 'm-148-a1', token_count: 5, active_path_tokens: 35 },
+      // Original answer (sibling_index 0) and a RETRY (sibling_index 1) - the
+      // retry is the active/newest continuation (scenario 125 semantics).
+      { id: 'm-148-a2', thread_id: 't-nav-148', role: 'assistant', content: 'original answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-148-u2', sibling_group: 'sg-148', sibling_index: 0, token_count: 30, prompt_tokens: 15, active_path_tokens: 45 },
+      { id: 'm-148-a2b', thread_id: 't-nav-148', role: 'assistant', content: 'retried answer (newest)', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-148-u2', sibling_group: 'sg-148', sibling_index: 1, token_count: 30, prompt_tokens: 15, active_path_tokens: 45 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[3] && chatMessages[3].id === "m-148-a2b"', 15000, 300, 'thread loaded on the retry leaf');
+    await sleep(700);
+    // Open the tree modal and click the USER message node (u2) - navigation
+    // should land on the NEWEST continuation (a2b, the active retry).
+    await cdp.click('#treeBtn');
+    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open") && document.querySelectorAll(".tree-node").length >= 4', 15000, 300, 'tree open');
+    await cdp.eval('(() => { const n = [...document.querySelectorAll(".tree-node")].find((el) => el.textContent.indexOf("needle with retries") >= 0); if (!n) return false; n.click(); return true; })()');
+    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open") === false', 15000, 300, 'tree closed');
+    await sleep(900);
+    const lastId = await cdp.eval('chatMessages.length ? chatMessages[chatMessages.length - 1].id : ""');
+    const leaf = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id = ?', ['t-nav-148'])[0].active_leaf_id;
+    // BUG present: _findDefaultLeaf picks the LAST child of the DESC-sorted
+    // children array (= min sibling_index = the ORIGINAL) and _WalkToLeaf
+    // ORDER BY sibling_index ASC agrees, so navigation lands on a2 (index 0)
+    // even though a2b (index 1) is the newest retry.
+    if (lastId !== 'm-148-a2' || leaf !== 'm-148-a2')
+      throw new Error('navigation landed on the newest retry (behavior changed): lastId=' + lastId + ' leaf=' + leaf);
+    return 'tree-click on u2 navigated to ' + lastId + ' (DB leaf ' + leaf +
+      ') - the ORIGINAL answer, not the newest retry m-148-a2b';
+  }
+});
+
+scenarios.push({
+  id: 150,
+  name: '"Save as Branch" on a USER message keeps the ORIGINAL message\'s token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong)',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [{
+      id: 't-bruser-150', title: 'Branch User Tokens', active_leaf_id: 'm-150-a2',
+      cumulative_input_tokens: 40, cumulative_output_tokens: 15
+    }],
+    messages: [
+      { id: 'm-150-u1', thread_id: 't-bruser-150', role: 'user', content: 'root', token_count: 12, active_path_tokens: 12 },
+      { id: 'm-150-a1', thread_id: 't-bruser-150', role: 'assistant', content: 'answer one', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-150-u1', token_count: 9, prompt_tokens: 12, active_path_tokens: 21 },
+      // u2's token_count 7 was BACKFILLED from a real prompt of 28 (12+9+7).
+      { id: 'm-150-u2', thread_id: 't-bruser-150', role: 'user', content: 'original follow-up', parent_id: 'm-150-a1', token_count: 7, active_path_tokens: 28 },
+      { id: 'm-150-a2', thread_id: 't-bruser-150', role: 'assistant', content: 'answer two', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-150-u2', token_count: 6, prompt_tokens: 28, active_path_tokens: 34 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 4 && chatMessages[3] && chatMessages[3].id === "m-150-a2"', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Edit the USER message (index 3) and save it as a NEW BRANCH with
+    // different text. handleEdit copies u2's token_count (7) into the branch
+    // copy and fires a REAL request; the response's backfill skips the copy
+    // because its token_count is already non-zero.
+    await cdp.click('#chat-messages .msg:nth-child(3) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(3)").classList.contains("editing")', 5000, 200, 'edit ui open');
+    await cdp.type('#chat-messages .msg:nth-child(3) .msg-edit-textarea', 'edited follow-up (branch)');
+    await cdp.click('#chat-messages .msg:nth-child(3) .save-branch');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const branch = seed.query(dbPath, "SELECT id, token_count, active_path_tokens FROM messages WHERE content='edited follow-up (branch)'");
+    if (!branch.length) throw new Error('branch user message not found');
+    const bc = Number(branch[0].token_count);
+    // The branch's own API call used the MOCK prompt (12): the app's own
+    // backfill formula for this path would compute Max(0, 12 - (12+9+7)) = 0,
+    // but the copied 7 is never overwritten. BUG present: bc === 7.
+    if (bc !== 7) throw new Error('branch user attribution changed (behavior changed): token_count=' + bc);
+    const pop = await (async () => {
+      const idx = await cdp.eval('chatMessages.findIndex((m) => m.content === "edited follow-up (branch)")');
+      if (idx < 0) return '';
+      await cdp.click('#chat-messages .msg:nth-child(' + (idx + 1) + ') .stat-btn');
+      await cdp.waitFor('document.querySelector(".stat-toggle.pop-open") !== null', 5000, 200, 'popover open');
+      return await cdp.text('.stat-toggle.pop-open .stat-popover');
+    })();
+    if (String(pop).indexOf('Input: 7 tokens') < 0)
+      throw new Error('branch user popover does not show the stale 7: ' + JSON.stringify(pop));
+    return 'branch-copied user message keeps token_count=' + bc +
+      ' (source attribution for DIFFERENT text) and its popover shows ' + JSON.stringify(pop) +
+      ' - the branch\'s own API call (mock prompt 12) never re-backfills it';
   }
 });
 

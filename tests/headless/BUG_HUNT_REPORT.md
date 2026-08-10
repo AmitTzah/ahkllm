@@ -154,10 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-08). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-08 - ALL 4 OPEN BUGS FIXED AND COMMITTED: #133 (8875847), #142 (6a2b5fc),
-  #140 (dd9a765), #138 (this commit - chat window icon follows iconOn live). No open bugs remain.
+- **Where we left off:** 2026-08-10 - 10 NEW BUGS #143-#153 VERIFIED headlessly (full app suite
+  143/143 PASS; #150 branch-user stale token attribution, #151 failed title-gen permanently blocks
+  auto-titles, #153 model price changes re-price the header's historical cost while the dashboard
+  keeps original costs - header/dashboard disagree - added after; #152 passed as an audit and stays
+  a regression check: provider endpoint edits ARE used by the next request). Next: keep exploring the
+  rest of the app, verifying any new finds headlessly.
 ---
 
 ## Bug entry template
@@ -210,6 +214,275 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 1. "Save as Branch" on an assistant message double-counts the copied token metadata in the thread cumulative counters after the next real exchange (header vs dashboard disagree)
+
+**Scenario:** 144 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Open a thread whose assistant response has token metadata (prompt_tokens/token_count/cached).
+Edit that assistant message and click "Save as Branch" (a local DB copy carrying the source's token
+metadata, bug #123). Then send a real follow-up message. Open the chat header token bar and the Usage
+Dashboard.
+
+**Expected:** The thread's cumulative counters equal the real API calls only. In scenario 144 the
+only live API call is the follow-up (mock usage 12/9/4), so the counters must be 12/9/4 (the seeded
+a1 row and the local branch copy are not API calls of this run).
+
+**Actual:** The cumulative counters become 36/27/12 — the branch copy's COPIED prompt_tokens,
+token_count and cached_tokens are charged a second time. `local_copy` is never persisted, so
+`MessageRepo._RecomputeCumulativeCounters` (run on every real insert/delete) cannot distinguish a
+real API call from a local branch copy and sums both. The header tooltip ("Cumulative Input/output
+token usage across all conversation branches") shows the inflated 36/27 while the dashboard (1 call,
+12/9/4) disagrees — the exact header-vs-dashboard mismatch class this audit targets.
+
+**Evidence:** `chat/db/MessageRepo.ahk` (Insert local_copy + _RecomputeCumulativeCounters sums every
+assistant row), `chat/callbacks/Edit.ahk` (branch mode copies prompt_tokens/token_count/cached),
+`webui/js/chat/chat-format.js` (header renders chat_threads cumulative counters).
+
+**Verification:** headless scenario 144 (live): branch-edit a1 -> send follow-up -> DB read shows
+thread counters 36/27/12 vs chat_usage 12/9/4 (1 real call) and header shows ↑36 ↓27. Also reproduced by
+`probe-bughunt-db.ahk branch-copy-recount` against the real ChatDB code (48/25/9 vs 36/16/5 with
+24/7/1 follow-up usage).
+
+### 2. Forking at a message drops OFF-PATH children of the fork point itself (existing alternative continuations are not copied)
+
+**Scenario:** 143 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Build a conversation where the fork-point message has TWO continuations: the active one
+(u2 -> a2) and an OFF-PATH alternative (u2b -> a2b) that already exists. Fork at the fork-point
+message, then open the fork's tree modal / branch navigation.
+
+**Expected:** The fork is a faithful copy of the conversation tree at the fork point — it contains
+the active path up to the fork point PLUS the already-existing off-path branches (u2b/a2b), exactly
+as bug #113 copies off-path siblings at every other level with their full subtrees.
+
+**Actual:** `TreeRepo._CopyOffPathSiblings` skips ALL children of the fork point
+(`if cutoffMsgId && row.parent_id = cutoffMsgId continue`), including off-path children that are not
+the active continuation. The fork contains only u1 + a1; the u2b/a2b branch is silently gone, so
+branch navigation in the fork cannot reach it.
+
+**Evidence:** `chat/db/TreeRepo.ahk` (_CopyOffPathSiblings second pass excludes every child of the
+cutoff message).
+
+**Verification:** headless scenario 143 (live fork + DB read: fork has 2 messages, u2b/a2b missing).
+Also reproduced by `probe-bughunt-db.ahk fork-offpath` (fork msgs=2, contents=user/u1,assistant/a1).
+
+### 3. "Save as Branch" after removing an attachment deletes the attachment from the ORIGINAL message (the source branch loses it permanently)
+
+**Scenario:** 146 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Open a user message that has an attachment. Click Edit, remove (Ã—) the attachment, type an
+edited text, and click "Save as Branch". Switch back to the original branch / reload the thread.
+
+**Expected:** The NEW branch is created without the attachment (the removal applies to the edit), while
+the ORIGINAL message — which stays in the tree with its original content — keeps its attachment.
+
+**Actual:** `handleEdit` runs `ChatDB.Attachment_DeleteOne(removedId)` BEFORE the mode check, so the
+attachment row is deleted from the ORIGINAL message in BOTH overwrite and branch modes. The branch
+copy is then made from the source's remaining attachments — the removed attachment vanishes from the
+original message too, rewriting the original exchange's history.
+
+**Evidence:** `chat/callbacks/Edit.ahk` (deferred removal runs before `mode = "branch"` branch).
+
+**Verification:** headless scenario 146 (live edit -> remove attachment -> Save as Branch -> DB read:
+source message attachment rows = 0, branch rows = 0). Also reproduced by driving the real `handleEdit`
+in the unit-test harness (source lost its attachment row).
+
+### 4. Retrying an assistant that has no parent (root message, e.g. after deleting the root user message) creates the retry as a CHILD of the original instead of a sibling
+
+**Scenario:** 147 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Delete the root user message of a thread (the assistant becomes the root), then click Retry
+on that assistant. Open the tree modal.
+
+**Expected:** The retried response is a SIBLING of the original assistant (same parent — none), like a
+normal retry.
+
+**Actual:** `retryAction` only moves the active leaf to the retry target's parent when
+`target.parentMsg` exists. With no parent the leaf stays on the original assistant, so the retried
+response is inserted with `parent_id` = the ORIGINAL assistant while sharing its sibling_group: the
+new message is simultaneously a "sibling" (GetSiblings lists both) and a CHILD (GetTree nests it under
+the original) — an inconsistent tree.
+
+**Evidence:** `chat/callbacks/Branch.ahk` (retryAction leaf-move is gated on parentMsg),
+`chat/streaming/StreamCompletion.ahk` (_persistStreamResponse uses path[last].id as parent).
+
+**Verification:** headless scenario 147 (live delete root user -> retry root assistant -> DB read:
+new response parent_id = original a1, sibling group count 2). Also reproduced by
+`probe-bughunt-db.ahk retry-root-assistant`.
+
+### 5. User message token backfill leaks the previous assistant's THINKING tokens into the next user's "contribution" (token popover over-counts)
+
+**Scenario:** 145 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** In a thread where the first assistant response reported thinking tokens (e.g. OpenAI
+`completion_tokens_details.reasoning_tokens`), send a follow-up user message, wait for the response,
+and open the follow-up user message's token popover.
+
+**Expected:** The user message shows its own contribution: prompt2 - (u1.tc + a1.visible + a1.thinking)
+= 4 tokens in the probe fixture.
+
+**Actual:** `MessageRepo._BackfillUserTokens` computes `promptTokens - existing_sum` where
+`existing_sum` = sum of all `token_count` on the path. Assistant `token_count` holds only VISIBLE
+output (thinking is stored separately), so the previous assistant's thinking tokens are not subtracted
+and leak into the next user's backfill (9 instead of 4 in the probe fixture). The stale branch-copied
+`token_count` (bug #123) compounds this: a branch user copy is never re-backfilled because the copied
+value is nonzero.
+
+**Evidence:** `chat/db/MessageRepo.ahk` (_BackfillUserTokens sums token_count only),
+`chat/streaming/StreamCompletion.ahk` (token_count = completion - thinking).
+
+**Verification:** headless noApp scenario 145 runs `probe-bughunt-db.ahk backfill-thinking` against
+the real ChatDB code (u2tc=9 vs true 4). Also reproduced directly via the probe: u1tc=12, u2tc=9.
+
+### 6. Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry
+
+**Scenario:** 148 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** In a thread where a user message has two assistant continuations (the original answer and
+a retry, sibling_index 0 and 1), click that user message's node in the tree modal (or navigate to it
+from a search result).
+
+**Expected:** Navigation lands on the NEWEST continuation (the retry, highest sibling_index), which is
+what the code comments claim ("pick the ... NEWEST continuation (min sibling_index, last-inserted
+among ties)").
+
+**Actual:** `TreeRepo._WalkToLeaf` orders children by `sibling_index ASC, rowid DESC` (the ORIGINAL
+has index 0, retries get HIGHER indexes), and the tree modal's `_findDefaultLeaf` takes the LAST child
+of the DESC-sorted GetTree children array (also the minimum sibling_index). Both land on the ORIGINAL
+answer, not the latest retry - the comments' "newest" claim is backwards (scenario 139 only exercised
+the single-child case).
+
+**Evidence:** `chat/db/TreeRepo.ahk` (_WalkToLeaf + _SortTreeChildren DESC), `chat/callbacks/Branch.ahk`
+(retry indexes: GetMaxSiblingIndex + 1), `webui/js/chat/chat-tree-modal.js` (_findDefaultLeaf takes
+children[children.length-1]).
+
+**Verification:** headless scenario 148 (live tree-modal click on the retried user message -> DB read:
+active leaf = the original answer). Also reproduced by `probe-bughunt-db.ahk walk-to-leaf` (walkLeaf =
+original, treeLastChild = original).
+
+### 7. Command requests with SHORT model ids (no provider prefix) silently drop the thinking config
+
+**Scenario:** 149 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Run any command whose APIModels is a short id (e.g. the default
+"Quick ask (V4 Flash)" = `deepseek-v4-flash`) with a thinking setting
+(`{type:"enabled", level:"high"}` or `{type:"enabled", level:"none"}`). Inspect the API request
+payload (API Logs viewer / temp request file).
+
+**Expected:** The request carries the command's thinking config
+(`thinking:{type:"enabled"}` + `reasoning_effort` for DeepSeek, or `thinking:{type:"disabled"}`
+for level none), exactly like the full-id `deepseek/deepseek-v4-flash` form.
+
+**Actual:** `LLMRequestBuilder.createJSONRequest` gates `OpenAIChatCompletions.ApplyThinking` on
+`models.Has(APIModel)` — a raw Map lookup against full-id keys. A short id never matches, so the
+request is built WITHOUT any thinking config and the model uses its default. Bug #43 fixed the CHAT
+path (ChatRequestBuilder/ThreadSettings now resolve via ModelResolver.Lookup) but the command path
+was missed. Default commands use short ids, so e.g. "thinking none" silently sends model-default
+thinking.
+
+**Evidence:** `api/LLMRequestBuilder.ahk` (createJSONRequest: `if (effectiveReasoning != "" &&
+models.Has(APIModel))`), contrast `chat/ChatRequestBuilder.ahk` (_BuildRequestObj uses
+ModelResolver.Lookup).
+
+**Verification:** headless noApp scenario 149 runs `probe-bughunt-db.ahk command-thinking-short`:
+`createJSONRequest("deepseek-v4-flash", ..., "enabled", "high")` -> `{"messages":[...],"model":
+"deepseek-v4-flash"}` (no thinking fields); the full-id control adds
+`"thinking":{"type":"enabled"},"reasoning_effort":"high"`.
+
+### 8. "Save as Branch" on a USER message keeps the ORIGINAL message's token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong)
+
+**Scenario:** 150 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** In a thread where the last user message has a backfilled token_count (from its API call),
+edit that user message with different text and click "Save as Branch". Wait for the branch's own
+response, then open the branch copy's token popover.
+
+**Expected:** The branch copy's token_count reflects ITS OWN text/context (the branch fires a real
+API call, so the backfill should attribute the new contribution to the branch copy).
+
+**Actual:** `handleEdit` branch mode copies the source message's token_count (bug #123 copies token
+metadata verbatim) and inserts the copy as `local_copy`. When the branch's real API response arrives,
+`MessageRepo._BackfillUserTokens` skips the last user message whenever its token_count is already
+non-zero - so the branch copy keeps the ORIGINAL text's attribution forever (scenario 150: 7 tokens
+for different text, while the app's own formula for the branch's mock prompt gives 0).
+
+**Evidence:** `chat/callbacks/Edit.ahk` (copies token_count into the branch insert),
+`chat/db/MessageRepo.ahk` (_BackfillUserTokens only backfills when currentTC = 0).
+
+**Verification:** headless scenario 150 (live): branch-edit a user message with different text -> DB
+read shows the copy's token_count still 7 (source attribution) and the popover shows "Input: 7
+tokens" after the branch's own API call.
+
+### 9. A failed title-generation request permanently disables auto-titles for that thread (the bug #140 dispatch guard is never cleared on failure)
+
+**Scenario:** 151 (scenario code in scenarios/misc.js)
+
+**Status:** verified
+
+**Repro:** Trigger title generation for a thread while the title API call fails (transient network
+error, provider hiccup, timeout). Fix the cause, then retry the first exchange (or wait for the next
+title-gen trigger).
+
+**Expected:** A FAILED title request should be retryable - once the transient error passes, the next
+trigger should generate the title (the thread stays "New Chat" until then).
+
+**Actual:** `generateThreadTitle` sets `_titleGenRequestedThreads[threadId] := true` BEFORE the cURL
+request and never clears it on the failure path (no title parsed). `_maybeGenerateTitle`'s guard then
+skips every later trigger for that thread in the process, so a single transient failure leaves the
+thread titled "New Chat" forever (until the app restarts). The bug #140 duplicate-request guard works
+for in-flight/success cases but is not failure-aware.
+
+**Evidence:** `chat/ThreadTitleGen.ahk` (guard set before the request, no reset on the no-title path).
+
+**Verification:** unit check via the test harness (real `generateThreadTitle` with a failing mock
+response: runs=1, no title; a second call with a succeeding mock response is blocked, runs stays 1,
+title stays unchanged) + noApp static scenario 151 (guard set before the request; no reset/failure
+clear exists in the file).
+
+### 10. Changing a model price in Settings re-prices the thread's HISTORICAL cumulative cost in the header (both calls at the new rate) while the dashboard keeps the original per-call costs - header and dashboard disagree
+
+**Scenario:** 153 (scenario code in scenarios/settings.js)
+
+**Status:** verified
+
+**Repro:** Send a chat exchange, then change the model's input/cached/output prices in Settings
+(Models tab) and send a second exchange. Compare the chat header token bar's cost with the Usage
+Dashboard's total cost.
+
+**Expected:** Historical calls keep their original prices. After doubling the prices, the dashboard
+shows old + new ($0.036512 + $0.073024 = $0.109536) and the header shows the same total.
+
+**Actual:** `MessageRepo._RecomputeCumulativeCounters` (run on the second insert) re-prices EVERY
+assistant row with the CURRENT model prices, so the thread's `cumulative_cost` (header) becomes
+2 x $0.073024 = $0.146048 ($0.15) while `chat_usage` (dashboard) keeps each call's original price
+($0.109536) - the header and dashboard permanently disagree after any price change. The per-message
+token/cost fields are not snapshotted per price, so the ledger cannot reproduce the historical rates.
+
+**Evidence:** `chat/db/MessageRepo.ahk` (_RecomputeCumulativeCounters calls
+CostCalculator.ComputeTokenCosts with the current `models` global for every assistant row),
+`api/CostCalculator.ahk`, `webui/js/chat/chat-format.js` (header shows chat_threads.cumulative_cost).
+
+**Verification:** headless scenario 153 (live): exchange 1 cost $0.036512 at the seeded prices;
+after doubling the prices in Settings, exchange 2 brings the dashboard to $0.109536 (old + new)
+while the header shows $0.15 (thread cumulative_cost = 0.146048) - reproduced with mock usage
+12/9/4 per call.
 
 ## History (append-only)
 

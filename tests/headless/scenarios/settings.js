@@ -811,7 +811,7 @@ scenarios.push({
   mode: 'sse-success',
   regression: true, // audit: General-tab settings persist, reload and apply live
   settings: {},
-  async body({ cdp, dataDir, mockLog }) {
+  async body({ cdp, dataDir, mockLog, endpoint }) {
     const os = require('node:os');
     await showChat();
     await cdp.waitFor('typeof window.assistantList !== "undefined" && window.assistantList.length > 0', 15000, 300, 'assistant list');
@@ -945,6 +945,146 @@ scenarios.push({
     return 'ui round-trip: responseFont=Georgia size=18 iwBg=0x123456 persisted + applied (--chat-font-family=' +
       JSON.stringify(fontVar) + '); reload shows ' + JSON.stringify(reloaded) + '; quick access rows before=' + rowsBefore +
       ' after=' + qa.length + ' (added &9 - Test)';
+  }
+});
+
+scenarios.push({
+  id: 152,
+  regression: true, // audit: provider endpoint edits must be used by the NEXT request
+  name: 'Changing a provider endpoint in Settings is used by the next request (live audit)',
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, dataDir, mockLog, endpoint }) {
+    await showChat();
+    // Exchange 1 hits the mock endpoint (the default deepseek endpoint).
+    await sendChatMessage(cdp, 'first message');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1000);
+    const msgsBefore = await cdp.eval('chatMessages.length');
+    if (msgsBefore < 2) throw new Error('setup: first exchange did not complete: ' + msgsBefore);
+    const mockCount1 = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean).length : 0;
+
+    // Point the deepseek provider at a CLOSED port (a just-freed port) and save.
+    const closedPort = await launcher.findFreePort();
+    const closedEndpoint = 'http://127.0.0.1:' + closedPort + '/v1/chat/completions';
+    await openSettings(cdp);
+    await openSection(cdp, 'providers');
+    await cdp.waitFor('document.querySelector("#providerGrid .provider-card input[data-field=endpoint]") !== null', 10000, 250, 'providers grid');
+    await cdp.eval(`(() => {
+      const cards = [...document.querySelectorAll('#providerGrid .provider-card')];
+      const deepseek = cards.find((c) => c.dataset.providerKey === 'deepseek');
+      if (!deepseek) return false;
+      const inp = deepseek.querySelector('input[data-field=endpoint]');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(inp, ${JSON.stringify(closedEndpoint)});
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      return inp.value;
+    })()`);
+    await saveSettings(cdp, dataDir);
+    await sleep(800);
+    const savedAfter = readJsonFile(path.join(dataDir, 'settings.json'));
+    if (savedAfter.providers.deepseek.endpoint !== closedEndpoint)
+      throw new Error('endpoint edit did not persist to settings.json: ' + JSON.stringify(savedAfter.providers.deepseek));
+    await hideSettingsToChat(cdp);
+
+    // Exchange 2 must use the NEW (closed) endpoint -> connection refused.
+    await sendChatMessage(cdp, 'second message');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1000);
+    const msgsAfter = await cdp.eval('chatMessages.length');
+    const banners = await cdp.eval('[...document.querySelectorAll(".error-banner")].map((b) => b.textContent)');
+    const mockCount2 = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean).length : 0;
+    // Diagnostic: what endpoint did the API logger record for the second request?
+    const apiLog = path.join(require('node:os').tmpdir(), 'LLM_API_Log.json');
+    let apiEntries = [];
+    try { apiEntries = JSON.parse(fs.readFileSync(apiLog, 'utf8')); } catch {}
+    // FIXED/expected behavior: the second request must use the NEW (closed)
+    // endpoint -> connection refused: the user message is appended (so the
+    // count grows by exactly 1), NO assistant message follows, and an error
+    // banner appears. The API logger must record the CLOSED endpoint for it.
+    if (msgsAfter !== msgsBefore + 1)
+      throw new Error('second exchange produced an assistant message (endpoint change not applied?): msgsBefore=' + msgsBefore + ' msgsAfter=' + msgsAfter);
+    if (!banners.length)
+      throw new Error('no error banner after the endpoint change: ' + JSON.stringify(banners));
+    const lastChat = apiEntries.find((e) => e.commandName === 'Chat');
+    if (!lastChat || lastChat.endpoint !== closedEndpoint)
+      throw new Error('second chat request did not use the closed endpoint: ' + JSON.stringify(lastChat));
+    return 'after saving deepseek endpoint -> ' + closedEndpoint + ', the next request was refused (' +
+      JSON.stringify(banners[0] || '') + ') - the edited endpoint is used live (mock requests ' + mockCount1 + '->' + mockCount2 + ')';
+  }
+});
+
+scenarios.push({
+  id: 153,
+  name: 'Changing a model price in Settings re-prices the thread\'s HISTORICAL cumulative cost in the header (both calls at the new rate) while the dashboard keeps the original per-call costs - header and dashboard disagree',
+  mode: 'sse-success',
+  settings: {
+    models: {
+      'deepseek/deepseek-v4-flash': {
+        provider: 'deepseek', api: 'openai-completions',
+        compat: { thinkingFormat: 'deepseek', supportsReasoningEffort: true, supportsUsageInStreaming: true, maxTokensField: 'max_tokens' },
+        thinkingLevelMap: { none: 'none', low: 'low', high: 'high', max: 'max' },
+        thinkingOff: 'disabled',
+        input: 1400, cachedInput: 28, output: 2800, context: 1000000, reasoning: true, vision: false
+      }
+    }
+  },
+  async body({ cdp, dataDir, dbPath }) {
+    await showChat();
+    // Exchange 1 at input 1400 / cached 28 / output 2800 ($/M):
+    // (12-4)*1400 + 4*28 + 9*2800 = 11200 + 112 + 25200 = 36512 / 1e6 = $0.036512
+    await sendChatMessage(cdp, 'first message');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1000);
+    const usage1 = seed.query(dbPath, 'SELECT total_cost, input_cost, cached_input_cost, output_cost FROM chat_usage')[0];
+    if (Math.abs(Number(usage1.total_cost) - 0.036512) > 0.00001)
+      throw new Error('setup: first call cost wrong: ' + JSON.stringify(usage1));
+
+    // Double the prices in Settings (input 2800 / cached 56 / output 5600) and save.
+    await openSettings(cdp);
+    await openSection(cdp, 'models');
+    await cdp.waitFor('document.querySelector("#modelsTableBody input[data-field=input]") !== null', 10000, 250, 'models table');
+    await cdp.eval(`(() => {
+      const rows = [...document.querySelectorAll('#modelsTableBody tr')];
+      const row = rows.find((r) => (r.querySelector('input[data-field=id]') || {}).value === 'deepseek-v4-flash');
+      const target = row || rows[0];
+      const set = (sel, v) => { const el = target.querySelector(sel); if (!el) return; const s = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; s.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('blur', { bubbles: true })); };
+      set('input[data-field=input]', '2800');
+      set('input[data-field=cachedInput]', '56');
+      set('input[data-field=output]', '5600');
+      return true;
+    })()`);
+    await saveSettings(cdp, dataDir);
+    await sleep(800);
+    const savedAfter = readJsonFile(path.join(dataDir, 'settings.json'));
+    const savedModel = savedAfter.models && savedAfter.models['deepseek/deepseek-v4-flash'];
+    if (!savedModel || Number(savedModel.input) !== 2800 || Number(savedModel.output) !== 5600)
+      throw new Error('price edit did not persist to settings.json: ' + JSON.stringify(savedModel));
+    await hideSettingsToChat(cdp);
+
+    // Exchange 2 at the doubled prices: (12-4)*2800 + 4*56 + 9*5600 =
+    // 22400 + 224 + 50400 = 73024 / 1e6 = $0.073024.
+    // The DASHBOARD (chat_usage) correctly keeps each call's ORIGINAL price:
+    // 0.036512 (old) + 0.073024 (new) = 0.109536.
+    await sendChatMessage(cdp, 'second message');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+    const usage2 = seed.query(dbPath, 'SELECT total_cost, call_count FROM chat_usage')[0];
+    if (Math.abs(Number(usage2.total_cost) - 0.109536) > 0.00001)
+      throw new Error('price change not reflected in the second call: total=' + usage2.total_cost + ' (expected 0.109536)');
+    const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
+    const thread = seed.query(dbPath, 'SELECT cumulative_cost FROM chat_threads')[0];
+    // BUG present: _RecomputeCumulativeCounters re-prices EVERY assistant row
+    // with the CURRENT model prices, so the header shows BOTH calls at the
+    // doubled rate: 2 * 0.073024 = $0.146048 -> $0.15, while the dashboard
+    // (chat_usage) keeps the original costs: $0.036512 + $0.073024 = $0.109536.
+    if (Math.abs(Number(thread.cumulative_cost) - 0.146048) > 0.00001)
+      throw new Error('header cumulative cost not re-priced (behavior changed): ' + JSON.stringify(thread));
+    if (String(bar).indexOf('$0.15') < 0)
+      throw new Error('header should show the re-priced $0.15: ' + JSON.stringify(bar));
+    return 'exchange 1 cost=$' + usage1.total_cost + '; after doubling the model prices in Settings, exchange 2 total=$' +
+      usage2.total_cost + ' (dashboard: 0.036512 + 0.073024 = 0.109536) BUT the thread cumulative_cost=' +
+      thread.cumulative_cost + ' ($0.15 header) - historical costs re-priced at the new rate, header and dashboard disagree: ' + JSON.stringify(bar);
   }
 });
 
