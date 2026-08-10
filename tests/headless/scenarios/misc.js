@@ -1328,6 +1328,7 @@ scenarios.push({
   id: 160,
   name: 'Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character (the File.Pos byte seek resumes inside a character and inserts replacement chars)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -1342,14 +1343,14 @@ scenarios.push({
     if (!m) throw new Error('probe output missing split verdict: ' + text);
     const verdict = m[1];
     const detail = text.match(/UTF8SPLIT part1=([^\n]*)/);
-    // BUG present: _readFileChunk opens the cURL output with UTF-8-RAW, seeks
-    // with file.Pos (byte position) and resumes at the previous EOF. When the
-    // poll boundary lands inside a multibyte character, the two reads produce
-    // U+FFFD replacement characters ("ab\uFFFD" + "\uFFFDcd") instead of
-    // "ab\u00E9cd" - the persisted content is permanently mangled.
-    if (verdict !== 'BUG-present(split-mangles)')
-      throw new Error('split read no longer mangles (behavior changed): ' + verdict);
-    return 'UTF-8 poll split: part1="' + (detail ? detail[1] : '?') + '" - the resumed byte seek splits the multibyte char and persists U+FFFD replacements (' + verdict + ')';
+    // Fixed: _readFileChunk reads RAW bytes and decodes incrementally (a
+    // pending tail keeps incomplete trailing bytes), so a split multibyte
+    // character round-trips exactly.
+    // BUG present: the old UTF-8-RAW byte-seek produced U+FFFD replacements
+    // ("ab\uFFFD" + "\uFFFDcd") instead of "ab\u00E9cd".
+    if (verdict !== 'OK-roundtrip')
+      throw new Error('split read still mangles (BUG present): ' + verdict);
+    return 'UTF-8 poll split: part1="' + (detail ? detail[1] : '?') + '" - the raw-byte incremental decode round-trips the split multibyte char (' + verdict + ')';
   }
 });
 

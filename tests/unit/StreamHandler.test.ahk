@@ -63,6 +63,39 @@ class StreamHandlerTest {
         FileDelete(tmpFile)
     }
 
+    ; Regression (bug #160): a poll boundary that splits a UTF-8 multibyte
+    ; character must round-trip without U+FFFD replacement characters - the
+    ; raw-byte incremental decode keeps the incomplete trailing bytes pending.
+    ReadStreamChunk_Utf8Split_NoReplacementChars() {
+        path := A_Temp "\test_utf8_split_" A_TickCount ".tmp"
+        ; "ab" + U+00E9 (C3 A9) + "cd", split INSIDE the é:
+        bytes := [0x61, 0x62, 0xC3, 0xA9, 0x63, 0x64]
+        f := FileOpen(path, "w", "UTF-8-RAW")
+        buf := Buffer(3)
+        loop 3
+            NumPut("UChar", bytes[A_Index], buf, A_Index - 1)
+        f.RawWrite(buf)
+        f.Close()
+
+        state := {outputFile: path, lastPos: 0}
+        part1 := _readFileChunk(state)
+        ; Append the remaining bytes (A9 63 64) and resume from the pending tail:
+        f := FileOpen(path, "a", "UTF-8-RAW")
+        buf2 := Buffer(3)
+        loop 3
+            NumPut("UChar", bytes[A_Index + 3], buf2, A_Index - 1)
+        f.RawWrite(buf2)
+        f.Close()
+        part2 := _readFileChunk(state)
+        FileDelete(path)
+
+        joined := part1 . part2
+        if joined != "ab" Chr(0xE9) "cd"
+            throw Error("split UTF-8 char must round-trip (bug #160): part1='" part1 "' part2='" part2 "' joined='" joined "'")
+        if InStr(joined, Chr(0xFFFD))
+            throw Error("U+FFFD replacement char persisted (bug #160)")
+    }
+
     ReadStreamChunk_ParsesContent() {
         tmpFile := A_Temp "\test_sse_" A_TickCount ".tmp"
         FileAppend('data: {"choices":[{"delta":{"content":"Hello"}}]}', tmpFile)

@@ -134,14 +134,52 @@ _ParamsFromStreamState(state) {
 _readFileChunk(state) {
     if !FileExist(state.outputFile)
         return ""
-    file := FileOpen(state.outputFile, "r", "UTF-8-RAW")
+    ; Bug #160: read the cURL output as RAW BYTES and only advance the byte
+    ; cursor past COMPLETE UTF-8 characters. A poll boundary that splits a
+    ; multibyte character leaves its leading bytes unconsumed (lastPos stays
+    ; before them), so the next poll re-reads them together with the rest and
+    ; decodes the character correctly - never U+FFFD (the old UTF-8-RAW
+    ; byte-seek decoded each chunk alone and mangled the persisted content).
+    file := FileOpen(state.outputFile, "r")
     if !file
         return ""
     file.Pos := state.lastPos
-    newContent := file.Read()
-    state.lastPos := file.Pos
+    avail := file.Length - state.lastPos
+    if avail <= 0 {
+        file.Close()
+        return ""
+    }
+    newBuf := Buffer(avail)
+    file.RawRead(newBuf, avail)
     file.Close()
-    return newContent
+
+    complete := _UTF8CompletePrefixLen(newBuf, avail)
+    state.lastPos += complete
+    return complete > 0 ? StrGet(newBuf, complete, "UTF-8") : ""
+}
+
+; Number of leading bytes that form COMPLETE UTF-8 characters (the trailing
+; bytes of an incomplete multibyte sequence are excluded so they stay pending).
+_UTF8CompletePrefixLen(buf, len) {
+    if len = 0
+        return 0
+    ; Scan back from the end to the last LEADING byte (continuation bytes have
+    ; the 10xxxxxx pattern).
+    i := len
+    while i > 1 && (NumGet(buf, i - 1, "UChar") & 0xC0) = 0x80
+        i--
+    b := NumGet(buf, i - 1, "UChar")
+    if (b & 0x80) = 0
+        charLen := 1
+    else if (b & 0xE0) = 0xC0
+        charLen := 2
+    else if (b & 0xF0) = 0xE0
+        charLen := 3
+    else if (b & 0xF8) = 0xF0
+        charLen := 4
+    else
+        return len  ; corrupt leading byte - let the decoder replace it once
+    return i + charLen - 1 <= len ? len : i - 1
 }
 
 _readAndProcessStream(state, doPostMessage := false) {

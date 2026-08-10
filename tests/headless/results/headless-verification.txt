@@ -1,5 +1,5 @@
-# 2026-08-10T13:37:15.699Z | run of 1 scenario(s)
-PASS | #174 | Branch navigation never refreshes the sidebar thread list - handleBranchSwitch bumps updated_at but posts no threadList, so the sidebar order/model badge stays stale after a branch switch | branch-switch bumped updated_at (2026-08-10 13:37:15 -> 2026-08-10 13:37:18) AND posted 1 threadList refresh(es) - the sidebar re-renders the DB order t-order-b-174,t-order-a-174 (and the #155 model badge follows the active branch) | 5.7s
+# 2026-08-10T13:42:06.359Z | run of 1 scenario(s)
+PASS | #160 | Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character (the File.Pos byte seek resumes inside a character and inserts replacement chars) | UTF-8 poll split: part1="ab part2=écd joined=abécd" - the raw-byte incremental decode round-trips the split multibyte char (OK-roundtrip) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - #1-#29 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
+- **Where we left off:** 2026-08-10 - #1-#30 FIXED + committed (9a8f209, c502d8a, f05f9b2, 6444459, c097c05,
   25f7181, 2e4bc23, 0058836, 31056dd, 4e426f3, a046cda, 04e64e3, 4b41ce7, 1f9b377, d9d3bda, 17150ab, f7ef637,
-  f1ea763, a447e0e, 519322b, 1729c02, 7356462, 0065cdb, 1a3160d, 9d5d9ed, 4e59f44, a314464, dacc19c, next
-  commit). Next: bug #30 (streamed content corrupted when a poll boundary splits a UTF-8 multibyte character).
+  f1ea763, a447e0e, 519322b, 1729c02, 7356462, 0065cdb, 1a3160d, 9d5d9ed, 4e59f44, a314464, dacc19c, afaa8df,
+  next commit). Next: bug #31 (search FTS5 loses prefix matching when the query ends in an apostrophe).
 ---
 
 ## Bug entry template
@@ -213,27 +213,11 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character - the File.Pos byte seek resumes inside a character and inserts U+FFFD replacement chars into the persisted content
-
-**Scenario:** 160 (scenario code in scenarios/misc.js)
-
-**Status:** fix in progress
-
-**Repro:** Stream a response whose content contains a multibyte character (accented Latin, Greek, CJK) while the 100ms poll timer reads the cURL output file at a moment the file write split the character.
-
-**Expected:** The persisted content equals the sent content byte-for-byte.
-
-**Actual:** `_readFileChunk` opens the output with `UTF-8-RAW`, seeks with `file.Pos` (byte position) and resumes at the previous EOF. When the poll boundary lands inside a multibyte character, AHK's decoder returns U+FFFD for the split sequence on BOTH sides: the first read yields "ab\uFFFD", the resumed read "\uFFFDcd", and the joined content "ab\uFFFD\uFFFDcd" is permanently mangled (11 UTF-8 bytes instead of 6) before it reaches SSEParser. Whole characters read in one poll round-trip fine, so the corruption is timing-dependent.
-
-**Evidence:** `chat/streaming/StreamHandler.ahk` (_readFileChunk FileOpen UTF-8-RAW + file.Pos byte seek).
-
-**Verification:** headless scenario 160 (probe mirroring the exact File calls): whole read OK; split read produces replacement chars (probe verdict BUG-present(split-mangles)).
-
-### 2. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
+### 1. Search FTS5 loses prefix matching when the query ends in an apostrophe - the trailing-* guard checks the wrong quote character (terms are always double-quoted)
 
 **Scenario:** 161 (scenario code in scenarios/misc.js)
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Search for a partial word where the query string ends in `'` (e.g. "comp'"), where the same word without the apostrophe finds results.
 
@@ -245,7 +229,7 @@ one at a time, in rank order.
 
 **Verification:** headless scenario 161 (probe, real SearchRepo): `_FTS5("comp")` hits=1 vs `_FTS5("comp'")` hits=0.
 
-### 3. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
+### 2. Cross-thread search navigation race - _pendingSearchScrollMsgId is consumed by ANY thread's initChatMode, so navigating to another thread (or a failed load) silently drops or misroutes the search navigation
 
 **Scenario:** 175 (scenario code in scenarios/misc.js)
 
@@ -265,6 +249,7 @@ one at a time, in rank order.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+- 2026-08-10 - "Streamed content is corrupted when a poll boundary splits a UTF-8 multibyte character" - FIXED: _readFileChunk now reads RAW bytes and only advances the byte cursor past COMPLETE UTF-8 characters (incomplete trailing bytes are re-read whole on the next poll), so split multibyte chars never become U+FFFD; scenario 160 flipped to a regression check + StreamHandler unit test + updated probe-utf8.ahk.
 - 2026-08-10 - "Branch navigation never refreshes the sidebar thread list" - FIXED: handleBranchSwitch now posts _postThreadListRefresh() after the switch (it already bumped updated_at), so the sidebar order and the #155 model badge follow the newly-active branch; scenario 174 flipped to a regression check + ChatDispatch unit test.
 - 2026-08-10 - "Usage dashboard rows with an empty provider render in the chart under blank but are absent from the provider filter dropdown" - FIXED: populateFilters adds a selectable Unknown (blank) option (__unknown__) when any row's provider key resolves to empty, and UsageRepo.Query scopes the sentinel to provider=' IS NULL rows; scenario 168 flipped to a regression check + usage-dashboard/UsageTracking unit tests.
 - 2026-08-10 - "A failed (or usage-less) title-generation API call is never tracked in the usage dashboard" - FIXED: _TitleGen_TrackUsage no longer returns early on promptTokens <= 0 - failed/usage-less title calls are recorded (0 tokens + call_count + response time) since they were billed; scenario 167 flipped to a regression check + ThreadTitleGen unit tests.
