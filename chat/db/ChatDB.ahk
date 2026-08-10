@@ -56,7 +56,7 @@ class ChatDB {
 
     static _CreateSchema() {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL);")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', description TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS message_attachments (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, attachment_type TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT, original_filename TEXT, file_size INTEGER DEFAULT 0, extracted_text TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE);")
@@ -118,6 +118,35 @@ class ChatDB {
         if version < 5 {
             ChatDB._AddColumnIfMissing("messages", "is_local_copy", "INTEGER DEFAULT 0")
             ChatDB.db.Exec("PRAGMA user_version = 5;")
+        }
+        ; v6: per-message COST snapshots (bug #153) - a later price change in
+        ; Settings must never re-price a thread's HISTORICAL calls. New inserts
+        ; snapshot their costs at the price in effect when the call was made;
+        ; legacy rows are backfilled once from the current model prices (best
+        ; effort - a fresh open without pricing data simply leaves them 0, and
+        ; _RecomputeCumulativeCounters falls back to current prices for those).
+        if version < 6 {
+            ChatDB._AddColumnIfMissing("messages", "input_cost", "REAL DEFAULT 0")
+            ChatDB._AddColumnIfMissing("messages", "cached_input_cost", "REAL DEFAULT 0")
+            ChatDB._AddColumnIfMissing("messages", "output_cost", "REAL DEFAULT 0")
+            ChatDB._AddColumnIfMissing("messages", "total_cost", "REAL DEFAULT 0")
+            try {
+                legacyRows := ChatDB.db.Query("SELECT id, model, token_count, prompt_tokens, thinking_tokens, cached_tokens FROM messages WHERE role='assistant' AND model IS NOT NULL AND model != '';")
+                for legacyRow in legacyRows.rows {
+                    pt := Integer(legacyRow.prompt_tokens ? legacyRow.prompt_tokens : 0)
+                    ct := Integer(legacyRow.token_count ? legacyRow.token_count : 0)
+                    tht := Integer(legacyRow.thinking_tokens ? legacyRow.thinking_tokens : 0)
+                    ckt := Integer(legacyRow.cached_tokens ? legacyRow.cached_tokens : 0)
+                    if pt = 0 && ct = 0 && tht = 0 && ckt = 0
+                        continue
+                    usage := { promptTokens: pt, completionTokens: ct + tht, totalTokens: pt + ct + tht, cachedTokens: ckt }
+                    costs := CostCalculator.ComputeTokenCosts(legacyRow.model, usage)
+                    if costs.totalCost != "" {
+                        ChatDB.db.Query("UPDATE messages SET input_cost=?, cached_input_cost=?, output_cost=?, total_cost=? WHERE id=?;", costs.inputCost != "" ? costs.inputCost : 0, costs.cachedInputCost != "" ? costs.cachedInputCost : 0, costs.outputCost != "" ? costs.outputCost : 0, costs.totalCost, legacyRow.id)
+                    }
+                }
+            }
+            ChatDB.db.Exec("PRAGMA user_version = 6;")
         }
     }
 

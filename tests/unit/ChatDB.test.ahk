@@ -46,14 +46,18 @@ class ChatDBTest {
     Schema_IsMigratedToLatest() {
         this._setup()
         version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-        if Integer(version) != 5
-            throw Error("expected user_version 5, got " version)
+        if Integer(version) != 6
+            throw Error("expected user_version 6, got " version)
         cols := [
             { t: "chat_threads", c: "font_size" },
             { t: "chat_threads", c: "advanced_toggles" },
             { t: "chat_threads", c: "folder_id" },
             { t: "messages", c: "prompt_tokens" },
             { t: "messages", c: "is_local_copy" },
+            { t: "messages", c: "input_cost" },
+            { t: "messages", c: "cached_input_cost" },
+            { t: "messages", c: "output_cost" },
+            { t: "messages", c: "total_cost" },
             { t: "assistants", c: "description" }
         ]
         for item in cols {
@@ -82,8 +86,8 @@ class ChatDBTest {
         ChatDB.Open(oldDbPath)
         try {
             version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-            if Integer(version) != 5
-                throw Error("expected user_version 5 after migration, got " version)
+            if Integer(version) != 6
+                throw Error("expected user_version 6 after migration, got " version)
             hasPrompt := false
             for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
                 if row.name = "prompt_tokens"
@@ -98,6 +102,13 @@ class ChatDBTest {
             }
             if !hasLocalCopy
                 throw Error("migration did not add messages.is_local_copy")
+            hasCost := false
+            for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
+                if row.name = "total_cost"
+                    hasCost := true
+            }
+            if !hasCost
+                throw Error("migration did not add messages cost snapshots")
             hasFont := false
             for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows {
                 if row.name = "font_size"
@@ -297,6 +308,38 @@ class ChatDBTest {
         if u2btc != 0
             throw Error("branch copy must be re-backfilled to 0 (12 - 28), got " u2btc)
         this._teardown()
+    }
+
+    ; Regression (bug #153): each assistant message snapshots its costs at the
+    ; prices in effect when the API call was made; _RecomputeCumulativeCounters
+    ; sums those snapshots, so a later price change in Settings never re-prices
+    ; historical calls (header stays equal to the dashboard).
+    Insert_SnapshotsCosts_PriceChangesDoNotRePriceHistory() {
+        global models
+        threadId := this._setup()
+        oldModels := models
+        try {
+            models := Map("deepseek/deepseek-v4-flash", { provider: "deepseek", input: 1400, cachedInput: 28, output: 2800, context: 1000000 })
+            u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+            a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, cached_tokens: 4})
+            ; a1's snapshot at the original prices: (12-4)*1400 + 4*28 + 9*2800 = 0.036512
+            a1Row := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id=?;", a1Id)
+            if Abs(Number(a1Row[1, "total_cost"]) - 0.036512) > 0.000001
+                throw Error("a1 should snapshot total_cost=0.036512, got " a1Row[1, "total_cost"])
+
+            ; Double the prices (simulates a Settings change):
+            models := Map("deepseek/deepseek-v4-flash", { provider: "deepseek", input: 2800, cachedInput: 56, output: 5600, context: 1000000 })
+            u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1Id})
+            ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a2", parent_id: u2Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, cached_tokens: 4})
+            ; a2 snapshots the doubled price (0.073024); the recompute must sum
+            ; the snapshots (0.036512 + 0.073024 = 0.109536), NOT re-price a1.
+            threadRow := ChatDB.db.Query("SELECT cumulative_cost FROM chat_threads WHERE id=?;", threadId)
+            if Abs(Number(threadRow[1, "cumulative_cost"]) - 0.109536) > 0.000001
+                throw Error("cumulative cost must keep a1's original snapshot: expected 0.109536, got " threadRow[1, "cumulative_cost"])
+        } finally {
+            models := oldModels
+            this._teardown()
+        }
     }
 
     ; --------------------

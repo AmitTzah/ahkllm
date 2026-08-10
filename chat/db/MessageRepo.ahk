@@ -54,11 +54,10 @@ class MessageRepo {
         ; _RecomputeActivePath can restore prompt+completion after structural
         ; changes instead of reducing to a visible-token prefix sum.
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0)
 
-        ; Sync FTS5 index
-        ChatDB.FTS_Sync(id, msgObj.content)
-
+        ; Bug #153: snapshot the COSTS at the prices in effect when this API
+        ; call was made, so a later price change in Settings never re-prices
+        ; historical calls in the thread's cumulative counters.
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
         if msgObj.HasProp("model") && msgObj.model {
             usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
@@ -70,6 +69,11 @@ class MessageRepo {
                 totalCost := costs.totalCost != "" ? costs.totalCost : 0
             }
         }
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0, inputCost, cachedInputCost, outputCost, totalCost)
+
+        ; Sync FTS5 index
+        ChatDB.FTS_Sync(id, msgObj.content)
+
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
 
         ; Hardening item 3: the thread's cumulative counters are DERIVED from
@@ -210,7 +214,7 @@ class MessageRepo {
     ; actually saw. Output/cached only count assistant rows (bug #128) - user
     ; token_counts are backfilled INPUT contributions, never output.
     static _RecomputeCumulativeCounters(threadId) {
-        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens, is_local_copy FROM messages WHERE thread_id=?;", threadId)
+        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE thread_id=?;", threadId)
         rowMap := Map()
         for row in table.rows {
             rowMap[row.id] := row
@@ -232,14 +236,29 @@ class MessageRepo {
             promptTotal := row.prompt_tokens ? Integer(row.prompt_tokens) : 0
             if !promptTotal && row.parent_id && rowMap.Has(row.parent_id)
                 promptTotal := Integer(rowMap[row.parent_id]["active_path_tokens"])
-            usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
-            costs := CostCalculator.ComputeTokenCosts(row.model, usage)
-            if costs.inputCost != "" {
-                inputCost += costs.inputCost
-                cachedInputCost += costs.cachedInputCost != "" ? costs.cachedInputCost : 0
-                outputCost += costs.outputCost != "" ? costs.outputCost : 0
-                totalCost += costs.totalCost != "" ? costs.totalCost : 0
+            ; Bug #153: each assistant row carries the COST SNAPSHOT taken at
+            ; insert time (the prices in effect when the API call was made), so
+            ; a later price change in Settings never re-prices history. Legacy
+            ; rows without a snapshot (all costs 0 but real tokens) fall back to
+            ; the current model prices - best effort for pre-fix data.
+            rowInputCost := row.Has("input_cost") ? Number(row.input_cost) : 0
+            rowCachedInputCost := row.Has("cached_input_cost") ? Number(row.cached_input_cost) : 0
+            rowOutputCost := row.Has("output_cost") ? Number(row.output_cost) : 0
+            rowTotalCost := row.Has("total_cost") ? Number(row.total_cost) : 0
+            if !rowInputCost && !rowCachedInputCost && !rowOutputCost && !rowTotalCost && (promptTotal > 0 || tc + tht > 0 || ckt > 0) {
+                usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
+                costs := CostCalculator.ComputeTokenCosts(row.model, usage)
+                if costs.totalCost != "" {
+                    rowInputCost := costs.inputCost != "" ? costs.inputCost : 0
+                    rowCachedInputCost := costs.cachedInputCost != "" ? costs.cachedInputCost : 0
+                    rowOutputCost := costs.outputCost != "" ? costs.outputCost : 0
+                    rowTotalCost := costs.totalCost
+                }
             }
+            inputCost += rowInputCost
+            cachedInputCost += rowCachedInputCost
+            outputCost += rowOutputCost
+            totalCost += rowTotalCost
             input += promptTotal
             output += tc + tht
             cached += ckt

@@ -1020,6 +1020,7 @@ scenarios.push({
   id: 153,
   name: 'Changing a model price in Settings re-prices the thread\'s HISTORICAL cumulative cost in the header (both calls at the new rate) while the dashboard keeps the original per-call costs - header and dashboard disagree',
   mode: 'sse-success',
+  regression: true,
   settings: {
     models: {
       'deepseek/deepseek-v4-flash': {
@@ -1076,17 +1077,18 @@ scenarios.push({
       throw new Error('price change not reflected in the second call: total=' + usage2.total_cost + ' (expected 0.109536)');
     const bar = await cdp.eval('document.getElementById("tokenBar").textContent');
     const thread = seed.query(dbPath, 'SELECT cumulative_cost FROM chat_threads')[0];
-    // BUG present: _RecomputeCumulativeCounters re-prices EVERY assistant row
-    // with the CURRENT model prices, so the header shows BOTH calls at the
-    // doubled rate: 2 * 0.073024 = $0.146048 -> $0.15, while the dashboard
-    // (chat_usage) keeps the original costs: $0.036512 + $0.073024 = $0.109536.
-    if (Math.abs(Number(thread.cumulative_cost) - 0.146048) > 0.00001)
-      throw new Error('header cumulative cost not re-priced (behavior changed): ' + JSON.stringify(thread));
-    if (String(bar).indexOf('$0.15') < 0)
-      throw new Error('header should show the re-priced $0.15: ' + JSON.stringify(bar));
+    // Fixed: each call snapshots its cost at insert time, so the recompute
+    // sums the ORIGINAL per-call costs: 0.036512 + 0.073024 = 0.109536 -
+    // the header now agrees with the dashboard.
+    // BUG present: _RecomputeCumulativeCounters re-priced EVERY assistant row
+    // with the CURRENT model prices (both at the doubled rate: $0.146048).
+    if (Math.abs(Number(thread.cumulative_cost) - 0.109536) > 0.00001)
+      throw new Error('header cumulative cost should keep the original per-call costs (BUG present?): ' + JSON.stringify(thread));
+    if (String(bar).indexOf('$0.11') < 0)
+      throw new Error('header should show the snapshot-summed $0.11: ' + JSON.stringify(bar));
     return 'exchange 1 cost=$' + usage1.total_cost + '; after doubling the model prices in Settings, exchange 2 total=$' +
-      usage2.total_cost + ' (dashboard: 0.036512 + 0.073024 = 0.109536) BUT the thread cumulative_cost=' +
-      thread.cumulative_cost + ' ($0.15 header) - historical costs re-priced at the new rate, header and dashboard disagree: ' + JSON.stringify(bar);
+      usage2.total_cost + ' (dashboard: 0.036512 + 0.073024 = 0.109536) and the thread cumulative_cost=' +
+      thread.cumulative_cost + ' ($0.11 header) - historical costs keep their original snapshots, header and dashboard agree: ' + JSON.stringify(bar);
   }
 });
 
