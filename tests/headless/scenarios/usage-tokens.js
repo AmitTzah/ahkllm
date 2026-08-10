@@ -294,10 +294,15 @@ scenarios.push({
     await sleep(600);
     const totalTokens = await cdp.text('#totalTokens');
     const totalCalls = await cdp.text('#totalCalls');
-    if (totalTokens !== '21' || totalCalls !== '1')
+    // Bug #167: the title-generation command call is ALSO tracked now, so the
+    // dashboard shows 2 calls (1 chat + 1 title-gen, which yields no tokens
+    // when the harness cannot read the title response). The chat exchange's 21
+    // tokens are unchanged.
+    if (totalTokens !== '21' || totalCalls !== '2')
       throw new Error('dashboard totals wrong: tokens=' + totalTokens + ' calls=' + totalCalls);
     return 'live exchange: chat_usage row=' + JSON.stringify(rows[0]) + ', thread counters=' + JSON.stringify(thread) +
-      ', header=' + JSON.stringify(bar) + ', popover=' + JSON.stringify(pop) + ', dashboard tokens=' + totalTokens + ' calls=' + totalCalls;
+      ', header=' + JSON.stringify(bar) + ', popover=' + JSON.stringify(pop) + ', dashboard tokens=' + totalTokens + ' calls=' + totalCalls +
+      ' (2 calls = 1 chat + 1 title-gen command, bug #167)';
   }
 });
 
@@ -590,40 +595,26 @@ scenarios.push({
   id: 140,
   regression: true, // FIXED bug kept as a regression check (retry must not re-fire title generation)
   name: 'Retrying the first exchange fires a SECOND title-generation request (no in-flight/title guard - duplicate API calls while the title is still "New Chat")',
-  mode: 'sse-success',
-  settings: { threadTitles: { enabled: true, model: 'deepseek/deepseek-v4-flash', prompt: 'Generate a short title.', maxTokens: 50 } },
-  async body({ cdp, mockLog }) {
-    const fs = require('node:fs');
-    await showChat();
-    // Exchange 1 completes; _maybeGenerateTitle(path of length 1) fires the
-    // first title request (max_tokens 50).
-    await sendChatMessage(cdp, 'first question');
-    await waitStreamingIdle(cdp, 40000);
-    await sleep(1800);
-    const titleReqs = () => {
-      if (!fs.existsSync(mockLog)) return [];
-      return fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean)
-        .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
-        .filter((r) => r.body && r.body.max_tokens === 50);
-    };
-    if (titleReqs().length !== 1)
-      throw new Error('setup: expected exactly 1 title request after exchange 1, got ' + titleReqs().length);
-
-    // Retry the first assistant. The retry response is inserted as a sibling
-    // of a1 and _maybeGenerateTitle runs again with the PRE-insert path
-    // (length 1) and the title still "New Chat", so a second title request
-    // fires even though one is already in flight / already attempted.
-    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
-    await waitStreamingIdle(cdp, 40000);
-    await sleep(1800);
-    const after = titleReqs().length;
-    // FIXED (bug #140): at most one title request per thread - the retry must
-    // NOT re-fire title generation (ThreadTitleGen/_maybeGenerateTitle now
-    // keep a per-thread dispatched-request guard).
-    if (after !== 1)
-      throw new Error('retry re-fired title generation: ' + after + ' title requests (expected 1)');
-    return 'title requests after exchange 1 = 1; after retrying the first assistant = ' + after +
-      ' (no duplicate title-gen - one request per thread)';
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    // The live harness cannot read title responses (direct-spawned cURL gets
+    // 0 bytes back - README), so a live "retry must not re-fire" check would
+    // always see the #151 failure-retry path. Verify the combined contract
+    // statically (behavior is covered by the ThreadTitleGen unit tests):
+    //   1. the per-thread dispatched-request guard is set BEFORE the request
+    //      (blocks in-flight/success duplicates - bug #140), and
+    //   2. _maybeGenerateTitle skips when the guard exists, and
+    //   3. the guard is cleared ONLY on the no-title/failure path (bug #151).
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ThreadTitleGen.ahk'), 'utf8');
+    const guardSetBeforeRequest = /_titleGenRequestedThreads\[threadId\]\s*:=\s*true[\s\S]{0,1200}?ProviderResolver\.Resolve/.test(src);
+    const guardCheckedInTrigger = /if _titleGenRequestedThreads\.Has\(threadId\)[\s\S]{0,200}?skip duplicate title request/.test(src);
+    const failureOnlyClear = /if\s+title\s*\{[\s\S]*?else\s*\{[\s\S]*?_titleGenRequestedThreads\.Delete\(threadId\)/.test(src);
+    if (!guardSetBeforeRequest || !guardCheckedInTrigger || !failureOnlyClear)
+      throw new Error('title-gen duplicate guard contract broken: set=' + guardSetBeforeRequest + ' checked=' + guardCheckedInTrigger + ' failureOnlyClear=' + failureOnlyClear);
+    return 'title-gen guard contract: dispatched-request guard set before the request and checked by _maybeGenerateTitle (one request per thread for in-flight/success - bug #140); ' +
+      'the guard is cleared only on the no-title/failure path so a transient failure stays retryable (bug #151)';
   }
 });
 

@@ -195,8 +195,15 @@ class TreeRepo {
         ; fork's totals until the next structural change.
         MessageRepo._RecomputeCumulativeCounters(newThreadId)
 
-        ; Bulk FTS sync for all copied messages in the forked thread
+        ; Bulk FTS sync for all copied messages in the forked thread. The
+        ; attachment copies above already FTS-resynced their messages (bug
+        ; #165), so DELETE first to stay idempotent, then re-index messages
+        ; WITH attachments (the bulk insert cannot decode base64 text).
+        ChatDB.db.Query("DELETE FROM messages_fts WHERE msg_id IN (SELECT id FROM messages WHERE thread_id=?);", newThreadId)
         ChatDB.db.Query("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id=?;", newThreadId)
+        forkAttMsgs := ChatDB.db.Query("SELECT DISTINCT message_id FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id=?) AND extracted_text != '';", newThreadId)
+        for fam in forkAttMsgs.rows
+            ChatDB.FTS_ResyncForAttachments(fam.message_id)
 
         return newThreadId
     }

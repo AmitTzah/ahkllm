@@ -240,9 +240,17 @@ function _findDefaultLeaf(nodeId, tree) {
         var children = current.children || [];
         while (children.length > 0) {
           // Bug #148: GetTree sorts children by sibling_index DESC (newest
-          // retry first - retries get HIGHER indexes), so the newest
-          // continuation is the FIRST child, not the last.
+          // retry first - retries get HIGHER indexes). Among EQUAL indexes
+          // (messages without a sibling_group) the array keeps rowid order,
+          // so the newest is the LAST element of the leading max-index run -
+          // exactly the child _WalkToLeaf picks (sibling_index DESC, rowid
+          // DESC).
+          var maxIdx = children[0].sibling_index || 0;
           current = children[0];
+          for (var ci = 0; ci < children.length; ci++) {
+            if ((children[ci].sibling_index || 0) === maxIdx) current = children[ci];
+            else break;
+          }
           children = current.children || [];
         }
         return current.id;

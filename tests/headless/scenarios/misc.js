@@ -885,8 +885,8 @@ scenarios.push({
     const getBinds = /static GetByMessage\(msgId\)[\s\S]{0,300}WHERE message_id=\?/.test(ar);
     const getThreadBinds = /static GetByThread\(threadId\)[\s\S]{0,300}WHERE m\.thread_id=\?/.test(ar);
     const delBinds = /static DeleteByMessage\(msgId\)[\s\S]{0,300}DELETE FROM message_attachments WHERE message_id=\?/.test(ar);
-    const copyBinds = /static CopyForMessage\(sourceMsgId, targetMsgId\)[\s\S]{0,400}WHERE message_id=\?[\s\S]{0,700}VALUES\(\?, \?, \?/.test(ar);
-    const ftsSyncBinds = /static FTS_Sync\(msgId, content\)[\s\S]{0,400}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);
+    const copyBinds = /static CopyForMessage\(sourceMsgId, targetMsgId[^)]*\)[\s\S]{0,500}WHERE message_id=\?[\s\S]{0,1300}VALUES\(\?, \?, \?/.test(ar);
+    const ftsSyncBinds = /static FTS_Sync\(msgId, content\)[\s\S]{0,900}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);
     const ftsRemoveBinds = /static FTS_Remove\(msgId\)[\s\S]{0,200}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);
     const rawWhere = /WHERE message_id='" msgId "'/.test(ar);
     if(!insertBinds || rawInsert || !getBinds || !getThreadBinds || !delBinds || !copyBinds || !ftsSyncBinds || !ftsRemoveBinds || rawWhere)
@@ -1145,7 +1145,7 @@ scenarios.push({
     const se=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","streaming","StreamError.ahk"),"utf8");
     // FIXED (bug #110): every terminal path deletes the temp files (which
     // contain the Bearer token): success, error, and cancel.
-    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,2000}deleteTempFiles/.test(sc);
+    const hasDeleteOnSuccess = /_handleStreamComplete[\s\S]{0,3200}deleteTempFiles/.test(sc);
     const hasDeleteOnError = /_handleStreamError[\s\S]{0,1200}deleteTempFiles/.test(se);
     const hasDeleteOnCancel = /_handleStreamCancelled[\s\S]{0,400}deleteTempFiles/.test(se);
     if(!hasDeleteOnSuccess || !hasDeleteOnError || !hasDeleteOnCancel)
