@@ -920,6 +920,7 @@ scenarios.push({
   id: 168,
   name: 'Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) appear in the chart under "" but are absent from the provider filter dropdown',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -937,17 +938,18 @@ scenarios.push({
     els.providerFilter.innerHTML = '';
     sandbox.populateFilters();
     const options = els.providerFilter.innerHTML;
-    // The row's provider is '' and extractProvider('gpt-5') is also '' - the
-    // chart's provider-mode key becomes '' (renderMainChart keys by
-    // c.provider || extractProvider(c.model)), but populateFilters only lists
-    // the backend's distinct providers (['deepseek']) - no option selects ''.
+    // Fixed: populateFilters adds a selectable "Unknown (blank)" option
+    // (value __unknown__) when any row's provider key resolves to "".
+    // BUG present: the chart's provider-mode key became '' while
+    // populateFilters only listed the backend's distinct providers
+    // (['deepseek']) - no option could scope to the blank-provider rows.
     const optionValues = [...options.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]).slice(1);
     const hasAnyProvider = options.indexOf('deepseek') >= 0;
     if (!hasAnyProvider) throw new Error('provider dropdown did not render (harness issue)');
-    if (optionValues.indexOf('') >= 0)
-      throw new Error('empty-provider option now appears (behavior changed): ' + options);
-    return 'chat_usage row provider="" (model gpt-5 no longer in settings): chart provider-mode key = c.provider||extractProvider(model) = "" but the filter dropdown only lists ' +
-      JSON.stringify(optionValues) + ' - the removed-model row renders under a provider key that can never be selected/isolated';
+    if (optionValues.indexOf('__unknown__') < 0)
+      throw new Error('blank-provider option missing (BUG present): ' + options);
+    return 'chat_usage row provider="" (model gpt-5 no longer in settings): the filter dropdown now includes a selectable "Unknown (blank)" option (value __unknown__) alongside ' +
+      JSON.stringify(optionValues) + ' - the removed-model row can be isolated/filtered';
   }
 });
 

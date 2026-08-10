@@ -1,5 +1,5 @@
-# 2026-08-10T13:29:21.187Z | run of 1 scenario(s)
-PASS | #167 | A failed (or usage-less) title-generation API call is never tracked in the usage dashboard - _TitleGen_TrackUsage returns early when promptTokens <= 0 although the billed call happened | ThreadTitleGen.ahk calls _TitleGen_TrackUsage AFTER the request with NO promptTokens guard - a failed/usage-less title call (still billed) reaches CommandUsage_Upsert (0 tokens + call_count + response time) | 0.0s
+# 2026-08-10T13:33:05.273Z | run of 1 scenario(s)
+PASS | #168 | Usage dashboard rows with an empty provider (model removed from settings, MessageRepo provider fallback fails) appear in the chart under "" but are absent from the provider filter dropdown | chat_usage row provider="" (model gpt-5 no longer in settings): the filter dropdown now includes a selectable "Unknown (blank)" option (value __unknown__) alongside ["deepseek","__unknown__"] - the removed-model row can be isolated/filtered | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

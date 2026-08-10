@@ -61,8 +61,15 @@ class UsageRepo {
                 chatParams.Push(modelFilter)
             }
             if providerFilter {
-                chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " provider=?"
-                chatParams.Push(providerFilter)
+                ; Bug #168: rows with an EMPTY provider (model removed from
+                ; settings) render under "" in the chart - the "__unknown__"
+                ; sentinel scopes the filter to them so they can be isolated.
+                if providerFilter = "__unknown__"
+                    chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " (provider='' OR provider IS NULL)"
+                else {
+                    chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " provider=?"
+                    chatParams.Push(providerFilter)
+                }
             }
 
             chatSql := "SELECT date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM chat_usage " chatWhere.sql " ORDER BY date DESC, model"
@@ -94,8 +101,13 @@ class UsageRepo {
                 cmdParams.Push(modelFilter)
             }
             if providerFilter {
-                cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " provider=?"
-                cmdParams.Push(providerFilter)
+                ; Bug #168: same empty-provider sentinel for command rows.
+                if providerFilter = "__unknown__"
+                    cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " (provider='' OR provider IS NULL)"
+                else {
+                    cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " provider=?"
+                    cmdParams.Push(providerFilter)
+                }
             }
 
             cmdSql := "SELECT date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM command_usage " cmdWhere.sql " ORDER BY date DESC"

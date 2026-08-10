@@ -89,6 +89,22 @@ class UsageTrackingTest {
         this._closeDb()
     }
 
+    ; Regression (bug #168): the "__unknown__" provider filter must scope to
+    ; rows with an EMPTY provider (model removed from settings), so the
+    ; dashboard can isolate that cost.
+    ProviderFilter_UnknownSentinel_MatchesEmptyProvider() {
+        this._openDb()
+        ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens) VALUES(?, ?, ?, 1, 10);", "2026-08-10", "gpt-5", "")
+        ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens) VALUES(?, ?, ?, 1, 10);", "2026-08-10", "deepseek/deepseek-v4-flash", "deepseek")
+        unknown := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "__unknown__", "type", "chat"))
+        if unknown.chat.Length != 1 || unknown.chat[1].model != "gpt-5"
+            throw Error("__unknown__ filter must scope to the empty-provider row (bug #168), got " unknown.chat.Length)
+        all := UsageRepo.Query(Map("timeRange", "all", "model", "", "provider", "", "type", "chat"))
+        if all.chat.Length != 2
+            throw Error("empty provider filter (All) must return every row, got " all.chat.Length)
+        this._closeDb()
+    }
+
     ; Regression (bug #103): pricingUnit must follow the ACTIVE model (request
     ; model -> thread override -> last assistant on the active path), never the
     ; thread's first (oldest) message.

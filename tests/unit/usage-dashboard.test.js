@@ -226,6 +226,20 @@ describe('populateFilters', () => {
         assert.ok(provHTML.includes('&lt;img'), 'escaped provider label should render as text');
         assert.ok(modHTML.includes('&lt;svg'), 'escaped model label should render as text');
     });
+
+    it('adds an Unknown (blank) provider option for rows with no provider (bug #168)', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [{ date: '2026-08-10', model: 'gpt-5', provider: '', input_tokens: 12, output_tokens: 9 }],
+            commands: [],
+            providers: ['deepseek'],
+            models: ['gpt-5']
+        };
+        ctx.populateFilters();
+        const provHTML = ctx.document.getElementById('providerFilter').innerHTML;
+        assert.ok(provHTML.includes('value="__unknown__"'), 'blank-provider rows must be selectable (bug #168), got ' + provHTML);
+        assert.ok(provHTML.includes('Unknown'), 'the unknown option should be labeled');
+    });
 });
 
 describe('renderModelSections XSS (bug #95)', () => {

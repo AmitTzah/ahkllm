@@ -329,6 +329,15 @@ function populateFilters() {
   var provSel = document.getElementById('providerFilter'), curP = provSel.value;
   provSel.innerHTML = '<option value="">All Providers</option>';
   (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+escHtml(p)+'">'+escHtml(p)+'</option>'; });
+  // Bug #168: rows whose provider resolves to "" (model removed from settings)
+  // render in the chart under an empty key - give them a selectable option so
+  // that cost can be isolated (the backend scopes it via the "__unknown__"
+  // sentinel).
+  var hasUnknownProvider = false;
+  ((allData.chat||[]).concat(allData.commands||[])).forEach(function(c) {
+    if (!(c.provider || extractProvider(c.model))) hasUnknownProvider = true;
+  });
+  if (hasUnknownProvider) provSel.innerHTML += '<option value="__unknown__">Unknown (blank)</option>';
   provSel.value = curP;
 
   // Build model→provider map from data (backend lists don't include provider info)
@@ -344,7 +353,7 @@ function populateFilters() {
   modSel.innerHTML = '<option value="">All Models</option>';
   (allData.models||[]).forEach(function(m){
     // Filter by selected provider if one is chosen
-    if (!curP || modelProv[m] === curP)
+    if (!curP || (curP === '__unknown__' ? !modelProv[m] : modelProv[m] === curP))
       modSel.innerHTML += '<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>';
   });
   modSel.value = curM;
