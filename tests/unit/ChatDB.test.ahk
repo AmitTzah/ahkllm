@@ -1905,6 +1905,22 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #148): _WalkToLeaf must descend to the NEWEST retry - the
+    ; continuation with the HIGHEST sibling_index (original 0, retries 1, 2,
+    ; ...), not the ORIGINAL answer.
+    WalkToLeaf_PicksNewestRetrySibling() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        u2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "needle", parent_id: a1Id})
+        original := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "original answer", parent_id: u2Id, sibling_group: "sg-148", sibling_index: 0})
+        retry := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "retried answer (newest)", parent_id: u2Id, sibling_group: "sg-148", sibling_index: 1})
+        leafId := TreeRepo._WalkToLeaf(u2Id)
+        if leafId != retry
+            throw Error("Expected _WalkToLeaf to pick the NEWEST retry (" retry "), got " leafId)
+        this._teardown()
+    }
+
         ; Verify FTS5 works independently (not just LIKE fallback).
         ; FTS5 finds whole-word matches; LIKE finds substrings.
         ; Test: search for a whole word → FTS5 should find it.

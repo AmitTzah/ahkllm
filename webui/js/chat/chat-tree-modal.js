@@ -239,7 +239,10 @@ function _findDefaultLeaf(nodeId, tree) {
         var current = nodes[i];
         var children = current.children || [];
         while (children.length > 0) {
-          current = children[children.length - 1];
+          // Bug #148: GetTree sorts children by sibling_index DESC (newest
+          // retry first - retries get HIGHER indexes), so the newest
+          // continuation is the FIRST child, not the last.
+          current = children[0];
           children = current.children || [];
         }
         return current.id;

@@ -175,18 +175,37 @@ describe('tree helpers', () => {
 });
 
 describe('_findDefaultLeaf', () => {
-    it('follows last-child chain to bottom', () => {
+    it('follows the NEWEST (first, DESC-sorted) child chain to bottom (bug #148)', () => {
         const ctx = loadBranchingModule();
         var tree = [
             { id: 'n1', role: 'user', content_preview: 'Q', children: [
-                { id: 'n2', role: 'assistant', content_preview: 'A1', children: [] },
-                { id: 'n3', role: 'assistant', content_preview: 'A2', children: [
-                    { id: 'n4', role: 'assistant', content_preview: 'A2a', children: [] }
+                // GetTree sorts children by sibling_index DESC (retries get
+                // HIGHER indexes), so the NEWEST continuation is first.
+                { id: 'n2', role: 'assistant', content_preview: 'A1 (retry)', sibling_index: 1, children: [] },
+                { id: 'n3', role: 'assistant', content_preview: 'A2 (original)', sibling_index: 0, children: [
+                    { id: 'n4', role: 'assistant', content_preview: 'A2a', sibling_index: 0, children: [] }
                 ] }
             ]}
         ];
-        // n3 is last child, and n4 is last child of n3
-        assert.strictEqual(ctx._findDefaultLeaf('n1', tree), 'n4');
+        // n2 is the newest continuation (highest sibling_index) and is a leaf.
+        assert.strictEqual(ctx._findDefaultLeaf('n1', tree), 'n2');
+    });
+
+    it('descends through the newest child at every level', () => {
+        const ctx = loadBranchingModule();
+        var tree = [
+            { id: 'n1', role: 'user', content_preview: 'Q', children: [
+                { id: 'n2', role: 'assistant', content_preview: 'A (newest)', sibling_index: 2, children: [
+                    { id: 'n5', role: 'user', content_preview: 'followup', children: [
+                        { id: 'n6', role: 'assistant', content_preview: 'deep leaf', sibling_index: 0, children: [] }
+                    ]}
+                ]},
+                { id: 'n3', role: 'assistant', content_preview: 'A2 (older)', sibling_index: 1, children: [
+                    { id: 'n4', role: 'assistant', content_preview: 'A2a', sibling_index: 0, children: [] }
+                ]}
+            ]}
+        ];
+        assert.strictEqual(ctx._findDefaultLeaf('n1', tree), 'n6');
     });
 
     it('returns self if no children', () => {

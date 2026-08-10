@@ -1149,6 +1149,7 @@ scenarios.push({
   id: 148,
   name: 'Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry',
   mode: null,
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-nav-148', title: 'Nav Leaf', active_leaf_id: 'm-148-a2b' }],
@@ -1177,14 +1178,15 @@ scenarios.push({
     await sleep(900);
     const lastId = await cdp.eval('chatMessages.length ? chatMessages[chatMessages.length - 1].id : ""');
     const leaf = seed.query(dbPath, 'SELECT active_leaf_id FROM chat_threads WHERE id = ?', ['t-nav-148'])[0].active_leaf_id;
-    // BUG present: _findDefaultLeaf picks the LAST child of the DESC-sorted
+    // Fixed: both _WalkToLeaf and _findDefaultLeaf pick the NEWEST
+    // continuation (highest sibling_index = the active retry a2b).
+    // BUG present: _findDefaultLeaf picked the LAST child of the DESC-sorted
     // children array (= min sibling_index = the ORIGINAL) and _WalkToLeaf
-    // ORDER BY sibling_index ASC agrees, so navigation lands on a2 (index 0)
-    // even though a2b (index 1) is the newest retry.
-    if (lastId !== 'm-148-a2' || leaf !== 'm-148-a2')
-      throw new Error('navigation landed on the newest retry (behavior changed): lastId=' + lastId + ' leaf=' + leaf);
+    // ORDER BY sibling_index ASC agreed, landing on a2 (index 0).
+    if (lastId !== 'm-148-a2b' || leaf !== 'm-148-a2b')
+      throw new Error('navigation did not land on the newest retry (BUG present?): lastId=' + lastId + ' leaf=' + leaf);
     return 'tree-click on u2 navigated to ' + lastId + ' (DB leaf ' + leaf +
-      ') - the ORIGINAL answer, not the newest retry m-148-a2b';
+      ') - the newest retry m-148-a2b';
   }
 });
 

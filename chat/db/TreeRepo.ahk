@@ -454,13 +454,12 @@ class TreeRepo {
     static _WalkToLeaf(msgId) {
         currentId := msgId
         loop {
-            ; Bug #55: pick the same child the tree modal's _findDefaultLeaf
-            ; chooses - the LAST entry of the GetTree children array, which is
-            ; the NEWEST continuation (min sibling_index, last-inserted among
-            ; ties). ORDER BY created_at picked the OLDEST child instead, so
-            ; branch-nav/search landed on a stale leaf while the tree modal
-            ; showed the newest one.
-            childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? ORDER BY sibling_index, rowid DESC LIMIT 1;", currentId)
+            ; Bug #55 + #148: pick the NEWEST continuation - retries and branch
+            ; copies get HIGHER sibling_index (original 0, retry 1, ...), so
+            ; order by sibling_index DESC (rowid DESC for ties = last-inserted).
+            ; The old ASC order picked the ORIGINAL answer instead of the most
+            ; recent retry, and ORDER BY created_at picked the OLDEST child.
+            childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? ORDER BY sibling_index DESC, rowid DESC LIMIT 1;", currentId)
             if !childTable.count
                 break
             currentId := childTable[1, "id"]

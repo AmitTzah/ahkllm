@@ -1,5 +1,5 @@
-# 2026-08-10T12:14:51.654Z | run of 1 scenario(s)
-PASS | #145 | User message token backfill leaks the previous assistant's THINKING tokens into the next user's "contribution" (token popover over-counts) | user backfill is now thinking-accurate: u2tc=4 (true contribution 4 = 30 prompt - 12 u1 - 9 visible - 5 thinking) | 0.1s
+# 2026-08-10T12:17:50.629Z | run of 1 scenario(s)
+PASS | #148 | Navigating to a message with multiple retry continuations lands on the ORIGINAL (oldest) continuation, not the most recent retry | tree-click on u2 navigated to m-148-a2b (DB leaf m-148-a2b) - the newest retry m-148-a2b | 6.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
