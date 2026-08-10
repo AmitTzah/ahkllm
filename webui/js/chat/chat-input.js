@@ -2,6 +2,11 @@
 // chat-input.js — Send, loading indicator, keyboard, retry
 // ======================================================
 
+// Bug #169: the messages removed when a retry starts (the retried assistant
+// and everything after it). If the retry FAILS, they are restored so the
+// original response stays visible instead of being lost until reload.
+var _retryRemovedMessages = null;
+
 function onChatSend() {
   var input = document.getElementById('chat-input');
   if (!input) return;
@@ -97,15 +102,22 @@ function onStopStreaming() {
 function retryLastAssistantMessage(messageId) {
   if (isLoading) return;
 
+  _retryRemovedMessages = null;
   if (messageId) {
     for (var i = 0; i < chatMessages.length; i++) {
       if (chatMessages[i].id === messageId && chatMessages[i].role === 'assistant') {
+        _retryRemovedMessages = chatMessages.slice(i);
         chatMessages.splice(i);
         break;
       }
     }
     renderChatMessages(chatMessages);
   } else {
+    var lastAssistantIdx = -1;
+    for (var j = chatMessages.length - 1; j >= 0; j--) {
+      if (chatMessages[j].role === 'assistant') { lastAssistantIdx = j; break; }
+    }
+    if (lastAssistantIdx >= 0) _retryRemovedMessages = chatMessages.slice(lastAssistantIdx);
     removeLastAssistantMessage();
   }
 
@@ -119,6 +131,17 @@ function retryLastAssistantMessage(messageId) {
   var payload = {};
   if (messageId) payload.messageId = messageId;
   Ipc.postToHost('retry', payload);
+}
+
+// Restore the retry-removed messages after a failed retry (called from the
+// global showError path). The DB row was never touched - only the UI was
+// truncated - so this brings the conversation back exactly as it was.
+function restoreRetryMessagesOnError() {
+  if (!_retryRemovedMessages || _retryRemovedMessages.length === 0) return;
+  var restored = _retryRemovedMessages;
+  _retryRemovedMessages = null;
+  for (var i = 0; i < restored.length; i++) chatMessages.push(restored[i]);
+  renderChatMessages(chatMessages);
 }
 
 // Keyboard handlers

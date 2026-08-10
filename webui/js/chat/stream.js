@@ -145,6 +145,9 @@ function onStreamDone(data) {
 
   setChatButtonsEnabled(true);
   streamState.active = false;
+  // The retry succeeded - the streamed response replaced the removed
+  // messages, so never restore them on a later error.
+  if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
 
   // Refresh thread map (right panel nav)
   if (typeof renderNavList === 'function') renderNavList();
@@ -299,6 +302,9 @@ function onStreamModelName(modelName) {
 function cancelStreaming(data) {
   if (!streamState.active) return;
   streamState.active = false;
+  // A cancelled retry keeps its partial response; the removed messages must
+  // not be restored afterwards.
+  if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
 
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
 

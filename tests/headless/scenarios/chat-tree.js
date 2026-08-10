@@ -1387,6 +1387,7 @@ scenarios.push({
   id: 169,
   name: 'Retry failure hides the original response - retryLastAssistantMessage splices the retried message out of chatMessages immediately, and a failed retry never restores it (bubble gone + error banner until reload; DB row intact)',
   mode: null, // no mock server -> connection refused
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-retry-169', title: 'Retry Fail', active_leaf_id: 'm-169-a1' }],
@@ -1411,13 +1412,15 @@ scenarios.push({
     const leaf = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-retry-169'")[0].active_leaf_id;
     const domBubbles = await cdp.eval('document.querySelectorAll("#chat-messages .msg").length');
     const errBanner = await cdp.eval('!!document.querySelector(".error-banner") || document.body.innerText.indexOf("Request failed") >= 0');
-    // BUG present: DB row intact (a1 still there) but the UI bubble is gone
-    // (domBubbles=1) and an error banner is shown - the retry failure removed
-    // the original response from view until a reload.
-    if (dbRow !== 1 || domBubbles !== 1)
+    // Fixed: the retry-removed messages are restored on the error path, so the
+    // original response stays visible (domBubbles=2: user + a1) even though
+    // the retry failed and the error banner is shown.
+    // BUG present: DB row intact but the UI bubble was gone (domBubbles=1)
+    // until reload.
+    if (dbRow !== 1 || domBubbles !== 2)
       throw new Error('retry-failure state changed: dbRow=' + dbRow + ' domBubbles=' + domBubbles + ' leaf=' + leaf + ' banner=' + errBanner);
-    return 'retry against refused endpoint: a1 still in DB (rows=' + dbRow + ', leaf=' + leaf + ') but the bubble is gone from the DOM (bubbles=' + domBubbles +
-      ', error banner shown=' + errBanner + ') - the failed retry hides the original response until reload';
+    return 'retry against refused endpoint: a1 still in DB (rows=' + dbRow + ', leaf=' + leaf + ') and the bubble is RESTORED in the DOM (bubbles=' + domBubbles +
+      ', error banner shown=' + errBanner + ') - the failed retry keeps the original response visible';
   }
 });
 

@@ -505,6 +505,9 @@ document.addEventListener('DOMContentLoaded', function () {
 function showError(data) {
   // data is { message: string }
   hideLoadingIndicator();
+  // Bug #169: a FAILED retry must restore the original response the UI
+  // removed when the retry started (the DB row was never touched).
+  if (typeof restoreRetryMessagesOnError === 'function') restoreRetryMessagesOnError();
   var msg = (typeof data === 'string') ? data : (data && data.message ? data.message : 'An error occurred');
   var chatMessages = document.getElementById('chat-messages');
   if (!chatMessages) return;

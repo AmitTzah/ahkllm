@@ -1,5 +1,5 @@
-# 2026-08-10T12:49:28.997Z | run of 1 scenario(s)
-PASS | #172 | Hard-deleting (deleteThreadForever/emptyTrash) the streaming thread mid-stream silently DROPS the completed response - no dangling row (activeThreadId is cleared) but the billed response is never persisted anywhere | hard-delete mid-stream: thread A removed while streaming; on completion the captured thread id persists the response (dangling rows=1, any assistant row=1, chat_usage rows=1 (activeAtStart=true activeAtHardDelete=true) - the billed call leaves a trace and is usage-tracked | 9.2s
+# 2026-08-10T12:53:39.405Z | run of 1 scenario(s)
+PASS | #169 | Retry failure hides the original response - retryLastAssistantMessage splices the retried message out of chatMessages immediately, and a failed retry never restores it (bubble gone + error banner until reload; DB row intact) | retry against refused endpoint: a1 still in DB (rows=1, leaf=m-169-u1) and the bubble is RESTORED in the DOM (bubbles=2, error banner shown=true) - the failed retry keeps the original response visible | 8.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

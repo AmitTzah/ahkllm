@@ -178,3 +178,21 @@ describe('_updateUserTokenCount', () => {
         assert.strictEqual(ctx.chatMessages[0].tokenCount, 5);
     });
 });
+
+describe('retry restore state cleared on success (bug #169)', () => {
+    it('onStreamDone clears the pending retry-restore messages', () => {
+        const ctx = loadStreamModule();
+        ctx._retryRemovedMessages = [{ id: 'a1', role: 'assistant' }];
+        ctx.chatMessages = [{ role: 'user', content: 'q' }];
+        ctx.streamState.active = true;
+        ctx.streamState.bubble = null;
+        ctx.streamState.contentBuffer = 'new answer';
+        ctx.streamState.thinkingBuffer = '';
+        ctx.streamState.modelName = 'm';
+        ctx.streamState.userScrolledUp = false;
+        ctx.streamState.contentDiv = null;
+        ctx.streamState.thinkingDetails = null;
+        ctx.onStreamDone({ model: 'm' });
+        assert.strictEqual(ctx._retryRemovedMessages, null);
+    });
+});

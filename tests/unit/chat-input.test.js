@@ -116,4 +116,44 @@ describe('retryLastAssistantMessage', () => {
         assert.strictEqual(payload.action, 'retry');
         assert.strictEqual(payload.messageId, 'msg-1');
     });
+
+    it('remembers the removed messages and restores them on a failed retry (bug #169)', () => {
+        const { ctx } = loadInputModule();
+        ctx.isLoading = false;
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', content: 'q' },
+            { id: 'a1', role: 'assistant', content: 'original answer' },
+            { id: 'u2', role: 'user', content: 'follow-up' },
+            { id: 'a2', role: 'assistant', content: 'answer two' }
+        ];
+        ctx.retryLastAssistantMessage('a1');
+        // The retried message and everything after it leave the view:
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1']);
+        // The failed-retry error path restores them (the DB row was intact):
+        ctx.restoreRetryMessagesOnError();
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1', 'a1', 'u2', 'a2']);
+        // A second restore is a no-op (state cleared):
+        ctx.restoreRetryMessagesOnError();
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1', 'a1', 'u2', 'a2']);
+    });
+
+    it('restores only the last assistant when retrying without a message id', () => {
+        const { ctx } = loadInputModule();
+        ctx.isLoading = false;
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', content: 'q' },
+            { id: 'a1', role: 'assistant', content: 'original answer' }
+        ];
+        // removeLastAssistantMessage lives in chat-render.js; mirror its
+        // behavior here so the retry path can be exercised.
+        ctx.removeLastAssistantMessage = () => {
+            for (var i = ctx.chatMessages.length - 1; i >= 0; i--) {
+                if (ctx.chatMessages[i].role === 'assistant') { ctx.chatMessages.splice(i, 1); break; }
+            }
+        };
+        ctx.retryLastAssistantMessage('');
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1']);
+        ctx.restoreRetryMessagesOnError();
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1', 'a1']);
+    });
 });
