@@ -1304,22 +1304,23 @@ scenarios.push({
   id: 151,
   name: 'A failed title-generation request permanently disables auto-titles for that thread (the bug #140 dispatch guard is never cleared on failure)',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
     const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ThreadTitleGen.ahk'), 'utf8');
     // The guard is set BEFORE the cURL request...
     const setBeforeRequest = /_titleGenRequestedThreads\[threadId\]\s*:=\s*true[\s\S]{0,1200}?ProviderResolver\.Resolve/.test(src);
-    // ...and there is no failure-path reset anywhere (no Delete/unset of the flag).
-    const hasReset = /_titleGenRequestedThreads\.(Delete|Clear)|_titleGenRequestedThreads\[threadId\]\s*:=\s*false/.test(src);
-    const failurePathClears = /if\s+title\s*\{[\s\S]{0,400}?else[\s\S]{0,200}?_titleGenRequestedThreads\.Delete/.test(src);
-    // BUG present: set-before-request is true, no reset exists, and the
-    // failure path never clears the flag, so one failed attempt permanently
-    // blocks title generation for the thread in this process.
-    if (!setBeforeRequest) throw new Error('guard is not set before the request (behavior changed): ' + JSON.stringify({ setBeforeRequest }));
-    if (hasReset || failurePathClears) throw new Error('guard is now cleared somewhere (behavior changed): ' + JSON.stringify({ hasReset, failurePathClears }));
-    return 'ThreadTitleGen.ahk sets _titleGenRequestedThreads[threadId] before the request and never clears it on the no-title/failure path - ' +
-      'a transient title-gen failure leaves the thread titled "New Chat" forever in the session (unit-verified: second attempt after a failure is blocked, runs=1)';
+    // ...and the no-title (failure) path now clears it so a later trigger can retry.
+    const failurePathClears = /if\s+title\s*\{[\s\S]*?else\s*\{[\s\S]*?_titleGenRequestedThreads\.Delete\(threadId\)/.test(src);
+    // Fixed: the guard still prevents duplicate in-flight/success requests, but
+    // a failed attempt is retryable.
+    // BUG present: no reset existed, so one failed attempt permanently blocked
+    // title generation for the thread in this process.
+    if (!setBeforeRequest) throw new Error('guard is not set before the request: ' + JSON.stringify({ setBeforeRequest }));
+    if (!failurePathClears) throw new Error('failure path does not clear the dispatch guard (BUG present): ' + JSON.stringify({ failurePathClears }));
+    return 'ThreadTitleGen.ahk sets _titleGenRequestedThreads[threadId] before the request and clears it on the no-title/failure path - ' +
+      'a transient title-gen failure is retryable (unit-verified: second attempt after a failure fires again and titles the thread)';
   }
 });
 

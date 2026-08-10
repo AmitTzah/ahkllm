@@ -1,5 +1,5 @@
-# 2026-08-10T12:23:13.978Z | run of 1 scenario(s)
-PASS | #150 | "Save as Branch" on a USER message keeps the ORIGINAL message's token attribution forever (the branch copy is never re-backfilled, so its token popover is stale/wrong) | branch-copied user message keeps token_count=0 (re-backfilled by the branch's own API call) and its popover shows " Token UsageInput: 0 tokens(contribution to context)" - the stale source attribution is replaced | 6.3s
+# 2026-08-10T12:25:58.205Z | run of 1 scenario(s)
+PASS | #151 | A failed title-generation request permanently disables auto-titles for that thread (the bug #140 dispatch guard is never cleared on failure) | ThreadTitleGen.ahk sets _titleGenRequestedThreads[threadId] before the request and clears it on the no-title/failure path - a transient title-gen failure is retryable (unit-verified: second attempt after a failure fires again and titles the thread) | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -244,6 +244,41 @@ class ThreadTitleGenTest {
         this._teardownDb()
     }
 
+    ; Regression (bug #151): a FAILED title request (no title parsed) must
+    ; clear the dispatch guard so a later trigger can retry once the transient
+    ; error passes - the bug #140 guard must not permanently block the thread.
+    Generate_Failed_ThenSucceeds_Retries() {
+        global _mockTitleGenOutput, _mockRunCalls
+        this._setupDb()
+        this._setGlobals()
+        threadId := ChatDB.Thread_Create("Retryable Title")
+        sysId := ChatDB.Msg_Insert({ thread_id: threadId, role: "system", content: "sys" })
+        usrId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "Hello", parent_id: sysId })
+        ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "Hi", parent_id: usrId })
+
+        ; First attempt fails (empty response -> no title):
+        _mockTitleGenOutput := ""
+        _mockRunCalls := []
+        generateThreadTitle(threadId)
+        if _mockRunCalls.Length != 1
+            throw Error("first (failed) attempt should fire one request, got " _mockRunCalls.Length)
+
+        ; Second attempt (after the transient error passes) must be allowed:
+        _mockTitleGenOutput := '{"choices":[{"message":{"content":"Retry Title"}}],"usage":{"prompt_tokens":4,"completion_tokens":2}}'
+        generateThreadTitle(threadId)
+        if _mockRunCalls.Length != 2
+            throw Error("failed attempt must not permanently block retries (bug #151): runs=" _mockRunCalls.Length)
+
+        title := ""
+        for t in ChatDB.Thread_List() {
+            if t.id = threadId
+                title := t.title
+        }
+        if title != "Retry Title"
+            throw Error("retry should title the thread, got '" title "'")
+        this._teardownDb()
+    }
+
     ; ----------------------------------------------------
     ; Regression: title generation must post the thread's REAL folder name,
     ; not the hardcoded "Unfiled" that previously overwrote the topbar label.

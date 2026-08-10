@@ -80,6 +80,14 @@ generateThreadTitle(threadId) {
         debugLog("[TITLEGEN] title='" title "' thread=" threadId
             . " dbFolderId='" dbFolderId "' resolvedFolderName='" folderName "'")
         postWebMessage("updateTopbarTitle", { text: title, folder: folderName })
+    } else {
+        ; Bug #151: a FAILED title request (no title parsed - transient network
+        ; error, provider hiccup, timeout, empty response) must NOT permanently
+        ; disable auto-titles. Clear the dispatch guard so the next trigger
+        ; (once the transient error passes) can retry - the bug #140 guard only
+        ; protects against duplicate IN-FLIGHT/success requests.
+        _titleGenRequestedThreads.Delete(threadId)
+        debugLog("[TITLEGEN] no title parsed - dispatch guard cleared thread=" threadId)
     }
 
     _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, providerInfo.endpoint, payload, raw, title, titleGenStart)
