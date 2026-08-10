@@ -181,6 +181,12 @@ _processChunk(state, chunk, doPostMessage) {
                 state.usage := chunk.usage
 
         case "reasoning":
+            ; Bug #170: a reasoning-only stream never produces a "content"
+            ; chunk, so the first-token timer must also stamp on reasoning -
+            ; otherwise ttft_ms stays 0 (popover hides TTFT, dashboard
+            ; averages 0ms, API-log latency falls back to the full duration).
+            if (state.firstTokenTime = 0)
+                state.firstTokenTime := A_TickCount
             state.reasoning .= chunk.content
             collapseFlag := false
             if state.reasoning = chunk.content {

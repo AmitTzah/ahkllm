@@ -128,6 +128,23 @@ class StreamHandlerTest {
         this._teardownDb()
     }
 
+    ; Regression (bug #170): a reasoning-only stream never emits a "content"
+    ; chunk, so _processChunk must stamp firstTokenTime on "reasoning" chunks
+    ; too - otherwise ttft_ms stays 0 forever.
+    ProcessChunk_ReasoningStampsFirstTokenTime() {
+        state := {outputFile: "", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "deepseek", rawSseChunks: "", rawLastResponse: ""}
+        _processChunk(state, { type: "reasoning", content: "thinking..." }, false)
+        if state.firstTokenTime = 0
+            throw Error("reasoning chunk must stamp firstTokenTime (bug #170)")
+        if state.reasoning != "thinking..."
+            throw Error("reasoning content must still accumulate")
+        ; A second chunk keeps the FIRST stamp:
+        firstStamp := state.firstTokenTime
+        _processChunk(state, { type: "reasoning", content: "more thinking" }, false)
+        if state.firstTokenTime != firstStamp
+            throw Error("firstTokenTime must not be re-stamped")
+    }
+
     ; --------------------------------------------------------
     ; SSEParser: null-usage investigation
     ; jsongo.Parse converts JSON null to "" (empty string).

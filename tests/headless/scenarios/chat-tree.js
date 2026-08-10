@@ -1428,6 +1428,7 @@ scenarios.push({
   id: 170,
   name: 'Reasoning-only streams report ttft_ms=0 (the first-token timer only stamps "content" chunks, never "reasoning") - the popover hides TTFT, the dashboard averages 0ms, and the API log latency falls back to the full duration',
   mode: 'sse-reasoning-only',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-ttft-170', title: 'TTFT Reasoning', active_leaf_id: 'm-170-u1' }],
@@ -1444,14 +1445,15 @@ scenarios.push({
     await sleep(1200);
     const row = seed.query(dbPath, "SELECT ttft_ms, response_time_ms, thinking_tokens, token_count FROM messages WHERE thread_id='t-ttft-170' AND role='assistant' ORDER BY rowid DESC LIMIT 1")[0];
     const ttft = Number(row.ttft_ms);
-    // The mock sends reasoning chunks over ~180ms before finishing, so a real
-    // first-token stamp would be > 0. Bug: _processChunk only sets
-    // firstTokenTime for "content" chunks, so ttft_ms stays 0.
-    if (ttft !== 0)
-      throw new Error('reasoning-only TTFT now recorded (behavior changed): ttft_ms=' + ttft + ' response=' + row.response_time_ms);
+    // Fixed: _processChunk stamps firstTokenTime on reasoning chunks too, so
+    // the reasoning-only stream records a real TTFT.
+    // Bug: _processChunk only set firstTokenTime for "content" chunks, so
+    // ttft_ms stayed 0.
+    if (ttft <= 0)
+      throw new Error('reasoning-only TTFT still 0 (BUG present): ttft_ms=' + ttft + ' response=' + row.response_time_ms);
     if (!fs.existsSync(mockLog)) throw new Error('mock log missing');
     return 'sse-reasoning-only exchange persisted ttft_ms=' + ttft + ' (response_time_ms=' + row.response_time_ms + ', thinking=' + row.thinking_tokens +
-      ') - the popover hides TTFT, the dashboard averages 0ms, and _logStreamResponse falls back to the full duration for the API log latency (firstTokenTime never set on reasoning chunks)';
+      ') - the popover shows TTFT, the dashboard averages a real value, and the API log latency is the first-token latency';
   }
 });
 

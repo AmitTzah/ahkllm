@@ -1,5 +1,5 @@
-# 2026-08-10T12:56:49.137Z | run of 1 scenario(s)
-PASS | #171 | Cancelling a stream AFTER switching threads writes the partial response into the WRONG thread (_handleStreamCancelled reads the current activeThreadId, same root cause as #159) | sent in A, switched to B, cancelled mid-stream: partial assistant rows inA=1 inB=0 (content="") - _handleStreamCancelled used the captured sending thread (A) | 6.6s
+# 2026-08-10T13:09:48.112Z | run of 1 scenario(s)
+PASS | #170 | Reasoning-only streams report ttft_ms=0 (the first-token timer only stamps "content" chunks, never "reasoning") - the popover hides TTFT, the dashboard averages 0ms, and the API log latency falls back to the full duration | sse-reasoning-only exchange persisted ttft_ms=125 (response_time_ms=250, thinking=0) - the popover shows TTFT, the dashboard averages a real value, and the API log latency is the first-token latency | 6.5s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
