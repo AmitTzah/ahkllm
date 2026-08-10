@@ -358,17 +358,26 @@ document.getElementById('providerFilter').addEventListener('change', function() 
 document.getElementById('modelFilter').addEventListener('change', loadData);
 document.getElementById('typeFilter').addEventListener('change', loadData);
 document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+// RFC-4180 CSV field escaping: quote any field containing a comma, quote, or
+// line break, doubling embedded quotes (bug #163 - model/provider names are
+// user-editable and can contain commas).
+function csvField(v) {
+  var s = String(v === undefined || v === null ? '' : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
 document.getElementById('exportBtn').addEventListener('click', function() {
   var csv = 'Date,Type,Provider,Model,Input,Output,Thinking,Cache,Cache Cost,Output Cost,Total Cost,Calls\n';
   for (var i=0; i<allData.chat.length; i++) {
     var r = allData.chat[i];
     csv += [r.date,'chat',r.provider||'—',r.model,r.input_tokens||0,r.output_tokens||0,r.thinking_tokens||0,r.cached_tokens||0,
-      r.cached_input_cost||0,r.output_cost||0,r.total_cost||0,r.message_count||0].join(',')+'\n';
+      r.cached_input_cost||0,r.output_cost||0,r.total_cost||0,r.message_count||0].map(csvField).join(',')+'\n';
   }
   for (var i=0; i<allData.commands.length; i++) {
     var r = allData.commands[i];
     csv += [r.date,'command',r.provider||'—',r.model,r.prompt_tokens||0,r.completion_tokens||0,r.thinking_tokens||0,r.cached_tokens||0,
-      r.cached_input_cost||0,r.output_cost||0,r.total_cost||0,r.call_count||0].join(',')+'\n';
+      r.cached_input_cost||0,r.output_cost||0,r.total_cost||0,r.call_count||0].map(csvField).join(',')+'\n';
   }
   var blob = new Blob([csv], {type:'text/csv'});
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'usage_export.csv'; a.click();

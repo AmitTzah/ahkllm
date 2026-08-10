@@ -869,6 +869,7 @@ scenarios.push({
   id: 163,
   name: 'Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns',
   mode: null,
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
@@ -887,14 +888,31 @@ scenarios.push({
     const csv = getCsv();
     if (!csv) throw new Error('export did not run (csv empty)');
     const rows = csv.trim().split('\n');
-    // BUG present: the model "openai/gpt-5,beta" is joined without quoting -
-    // the comma shifts every following column one field left, so the row has
-    // 13 fields instead of 12 and Excel/parsers misread the numbers.
-    const dataRow = rows[1].split(',');
-    const modelField = dataRow[3];
-    if (rows[1].indexOf('"openai/gpt-5,beta"') >= 0 || dataRow.length === 12)
-      throw new Error('CSV now quotes fields (behavior changed): row=' + rows[1]);
-    return 'export row: model="' + modelField + '" -> ' + dataRow.length + ' comma-split fields (header has 12) - the model name containing a comma breaks column alignment: ' + rows[1];
+    // Quote-aware CSV row parser (RFC-4180).
+    function splitCsvRow(row) {
+      var out = [], cur = '', inQ = false;
+      for (var i = 0; i < row.length; i++) {
+        var c = row[i];
+        if (inQ) {
+          if (c === '"') { if (row[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+          else cur += c;
+        } else if (c === '"') inQ = true;
+        else if (c === ',') { out.push(cur); cur = ''; }
+        else cur += c;
+      }
+      out.push(cur);
+      return out;
+    }
+    const dataRow = splitCsvRow(rows[1]);
+    // Fixed: comma-containing fields are RFC-4180 quoted, so the row keeps 12
+    // fields and the model name round-trips as one field.
+    // BUG present: "openai/gpt-5,beta" was joined without quoting, shifting
+    // every following column one field left (13 fields instead of 12).
+    if (rows[1].indexOf('"openai/gpt-5,beta"') < 0 || dataRow.length !== 12)
+      throw new Error('CSV fields not properly quoted (BUG present): row=' + rows[1] + ' fields=' + dataRow.length);
+    if (dataRow[3] !== 'openai/gpt-5,beta')
+      throw new Error('model field corrupted: ' + JSON.stringify(dataRow[3]));
+    return 'export row: model field="' + dataRow[3] + '" -> ' + dataRow.length + ' parsed fields (header has 12) - comma-containing names are quoted and columns stay aligned: ' + rows[1];
   }
 });
 

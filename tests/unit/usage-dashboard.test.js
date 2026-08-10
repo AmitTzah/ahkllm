@@ -261,3 +261,15 @@ describe('loadData', () => {
         assert.ok(filters.type !== undefined);
     });
 });
+
+describe('csvField (bug #163)', () => {
+    it('quotes fields containing commas, quotes, or line breaks (RFC-4180)', () => {
+        const ctx = loadDashboardModule();
+        assert.strictEqual(ctx.csvField('openai/gpt-5,beta'), '"openai/gpt-5,beta"');
+        assert.strictEqual(ctx.csvField('say "hi"'), '"say ""hi"""');
+        assert.strictEqual(ctx.csvField('a\nb'), '"a\nb"');
+        assert.strictEqual(ctx.csvField('plain'), 'plain');
+        assert.strictEqual(ctx.csvField(12), '12');
+        assert.strictEqual(ctx.csvField(null), '');
+    });
+});

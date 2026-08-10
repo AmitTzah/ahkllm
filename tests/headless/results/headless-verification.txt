@@ -1,5 +1,5 @@
-# 2026-08-10T13:15:05.251Z | run of 1 scenario(s)
-PASS | #164 | Models tab: pasting a "$"-prefixed price (e.g. "$0.5") and blurring silently zeroes it - the blur handler parseFloat's the raw string (NaN -> 0) and stores 0 as data-price-raw | input price $0.50 displayed; user pastes "$0.5" and blurs -> data-price-raw=0.5, display "$0.50", saved input=0.5 - the "$"-prefixed paste survives (0.5, not 0), and a blank blur keeps the field blank | 0.0s
+# 2026-08-10T13:17:25.242Z | run of 1 scenario(s)
+PASS | #163 | Usage CSV export is unquoted - a model/provider name containing a comma (both user-editable in Settings) produces a malformed CSV with shifted columns | export row: model field="openai/gpt-5,beta" -> 12 parsed fields (header has 12) - comma-containing names are quoted and columns stay aligned: 2026-08-10,chat,openai,"openai/gpt-5,beta",12,9,2,4,0.01,0.02,0.03,1 | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
