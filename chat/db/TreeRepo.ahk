@@ -342,6 +342,7 @@ class TreeRepo {
         TreeRepo._RecomputeActivePath(threadId)
     }
 
+
     static SwitchBranch(threadId, msgId, direction := 1) {
         siblings := TreeRepo.GetSiblings(msgId)
         if siblings.Length < 2

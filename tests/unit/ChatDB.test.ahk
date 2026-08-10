@@ -962,6 +962,52 @@ class ChatDBTest {
         }
     }
 
+    ; Regression (bug #147): retrying an assistant that has NO parent (thread
+    ; root, e.g. after deleting the root user message) must insert the retried
+    ; response as a SIBLING with parent NULL, not as a CHILD of the original.
+    ; Mirrors retryAction + _persistStreamResponse: sibling group set on the
+    ; root target, the leaf stays (so the request can be built), and the
+    ; pendingRetryIsRoot flag makes the insert use parent NULL.
+    RetryRootAssistant_InsertsSiblingNotChild() {
+        global requestParams
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", parent_id: u1Id})
+        ; Delete the root user message: a1 becomes the thread root.
+        ChatDB.Msg_HardDelete(u1Id)
+        path := ChatDB.Msg_GetActivePath(threadId)
+        if path.Length != 1 || path[1].id != a1Id
+            throw Error("setup: a1 should be the root after deleting u1, path=" path.Length)
+
+        ; retryAction: setup the sibling group on the root target and flag the
+        ; root retry (bug #147 fix) - the leaf stays on a1 so the request can
+        ; still be built from the original path.
+        sg := ChatDB._UUID()
+        ChatDB.db.Query("UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;", sg, a1Id)
+        requestParams["pendingRetryIsRoot"] := true
+
+        ; _persistStreamResponse: root retries use parent NULL regardless of
+        ; the current active path.
+        isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
+        if isRootRetry
+            requestParams.Delete("pendingRetryIsRoot")
+        path := ChatDB.Msg_GetActivePath(threadId)
+        parentId := isRootRetry ? "" : (path.Length ? path[path.Length].id : "")
+        ChatDB.Msg_Insert({
+            thread_id: threadId, role: "assistant", content: "a1 retried",
+            parent_id: parentId, sibling_group: sg,
+            sibling_index: MessageRepo.GetMaxSiblingIndex(sg) + 1,
+            model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9
+        })
+        newRow := ChatDB.db.Query("SELECT parent_id, sibling_group FROM messages WHERE content='a1 retried';")
+        if newRow[1, "parent_id"]
+            throw Error("root retry must have parent NULL (not the original a1), got '" newRow[1, "parent_id"] "'")
+        sibCount := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE sibling_group=?;", newRow[1, "sibling_group"])
+        if Integer(sibCount[1, "c"]) != 2
+            throw Error("expected 2 messages in the retry sibling group, got " sibCount[1, "c"])
+        this._teardown()
+    }
+
     ; Regression (bug #115): GetActivePath/GetTree must escape crafted thread ids
     ; (bug #109's sweep escaped the sibling call sites but missed these two).
     TreeQueries_EscapeCraftedThreadId() {

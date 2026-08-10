@@ -91,7 +91,15 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
 
 _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0) {
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    parentId := path.Length ? path[path.Length].id : ""
+    ; Bug #147: a retry of a ROOT assistant (no parent) must insert the new
+    ; response as a SIBLING with parent_id NULL - not as a CHILD of the
+    ; original root (path[last] would be the original assistant itself).
+    isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
+    if isRootRetry
+        requestParams.Delete("pendingRetryIsRoot")
+    parentId := ""
+    if !isRootRetry
+        parentId := path.Length ? path[path.Length].id : ""
     retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
     retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
     if retrySiblingGroup

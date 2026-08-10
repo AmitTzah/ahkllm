@@ -1098,6 +1098,7 @@ scenarios.push({
   id: 147,
   name: 'Retrying an assistant that has no parent (root message, e.g. after deleting the root user message) creates the retry as a CHILD of the original instead of a sibling',
   mode: 'sse-success',
+  regression: true,
   settings: {},
   fixtures: {
     threads: [{ id: 't-retry-147', title: 'Root Retry', active_leaf_id: 'm-147-a1' }],
@@ -1128,16 +1129,19 @@ scenarios.push({
     if (!newRow.length) throw new Error('retried response not found');
     const isChild = newRow[0].parent_id === 'm-147-a1';
     const sibCount = newRow[0].sibling_group ? seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE sibling_group = ?', [newRow[0].sibling_group])[0].c : 0;
-    // BUG present: retryAction only moves the active leaf to the parent when
-    // parentMsg exists; with no parent the new response is inserted with
-    // parent_id = the original assistant while sharing its sibling_group, so
-    // the retry is simultaneously a "sibling" and a CHILD of the original.
-    if (!isChild)
-      throw new Error('retry became a proper root sibling (behavior changed): ' + JSON.stringify(newRow[0]));
+    // Fixed: retrying a root assistant clears the leaf so the new response is
+    // inserted with parent_id NULL - a proper SIBLING of the original root.
+    // BUG present: with no parent the response was inserted with parent_id =
+    // the original assistant while sharing its sibling_group (simultaneously a
+    // "sibling" and a CHILD of the original).
+    if (isChild)
+      throw new Error('retry still became a child of the original (BUG present): ' + JSON.stringify(newRow[0]));
+    if (newRow[0].parent_id !== null && newRow[0].parent_id !== '')
+      throw new Error('root retry should have no parent, got ' + JSON.stringify(newRow[0]));
     if (sibCount !== 2)
       throw new Error('expected 2 messages in the retry sibling group: ' + sibCount);
     return 'retried root assistant: new response parent_id=' + newRow[0].parent_id +
-      ' (equals the original a1 - the retry became its CHILD) sibling group count=' + sibCount;
+      ' (NULL - proper root sibling, not a child of a1) sibling group count=' + sibCount;
   }
 });
 

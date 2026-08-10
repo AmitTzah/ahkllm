@@ -77,6 +77,14 @@ retryAction(messageId := "") {
         requestParams["pendingRetrySiblingGroup"] := _setupSiblingGroup(target.targetMsg)
         if target.parentMsg
             ChatDB.Msg_SetActiveLeaf(activeThreadId, target.parentMsg.id)
+        else {
+            ; Bug #147: the retry target is the thread ROOT (no parent). The
+            ; leaf must stay on the original so the request can still be built,
+            ; but the pending response must be inserted with parent_id NULL as
+            ; a SIBLING of the original - not as its CHILD. Flag it for
+            ; _persistStreamResponse.
+            requestParams["pendingRetryIsRoot"] := true
+        }
     } else if path.Length && path[path.Length].role = "user" {
         ; Chat ends with user (e.g. assistant was deleted). Clear stale retry state.
         if requestParams.Has("pendingRetrySiblingGroup")

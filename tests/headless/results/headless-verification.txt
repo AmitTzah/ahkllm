@@ -1,5 +1,5 @@
-# 2026-08-10T12:05:44.566Z | run of 1 scenario(s)
-PASS | #146 | "Save as Branch" after removing an attachment deletes the attachment from the ORIGINAL message (the source branch loses its attachment too) | after Save-as-Branch with a removed attachment: original message attachment rows=1 (kept - the removal applies only to the branch), branch rows=0 | 6.6s
+# 2026-08-10T12:13:12.207Z | run of 1 scenario(s)
+PASS | #147 | Retrying an assistant that has no parent (root message, e.g. after deleting the root user message) creates the retry as a CHILD of the original instead of a sibling | retried root assistant: new response parent_id=null (NULL - proper root sibling, not a child of a1) sibling group count=2 | 8.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
