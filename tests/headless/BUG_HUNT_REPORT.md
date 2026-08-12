@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194 and #195 verified headlessly (assistant
+- **Where we left off:** 2026-08-12 - new intake: bugs #194, #195, #196 verified headlessly (assistant
   overwrite-edit leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI
-  array). Next: verify the fresh-profile default-assistant isDefault lead (bug #196), then fix the verified
-  bugs in rank order after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  array; fresh-profile default assistant loses isDefault). Next: fix the verified bugs in rank order after the
+  user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -292,6 +292,39 @@ A and 0 in B.
 **Verification result (2026-08-12):** scenario 195 PASSED - B's chatMessages
 ended as `["user:question for B","assistant:Hello from the mock LLM. This is
 the streamed answer."]` while the DB had inA=1 / inB=0.
+
+### 196. Fresh-profile default assistant loses isDefault (defaults snapshot drops the flag)
+
+**Scenario:** 196 (scenario code in scenarios/settings.js)
+
+**Status:** verified
+
+**Repro:** On a machine with no `%APPDATA%\AhkLLM\settings.json` (fresh
+install), start the app and create a new chat with "New Chats Start With" set
+to App Default.
+
+**Expected:** the chat starts with the assistant marked `isDefault: true` in
+DefaultSettings.ahk ("Natural Conversationalist").
+
+**Actual:** `SettingsDefaults._DefaultsAssistants()` serializes each default
+assistant into a Map that omits `isDefault`. `SettingsApply._ApplyAssistants`
+then defaults every assistant to `isDefault=false`, so
+`_applyNewChatDefault()` finds no default assistant and the new chat starts
+with the app default model. The flag survives only after the user manually
+toggles the "Default assistant" switch and saves settings.
+
+**Evidence:** `app/settings/SettingsDefaults.ahk` `_DefaultsAssistants()` has no
+`isDefault` entry; `default-settings/DefaultSettings.ahk:111` marks Natural
+Conversationalist `isDefault: true`; `chat/ChatSettings.ahk` `_applyNewChatDefault`
+only honors the flag when it survived application.
+
+**Verification:** headless probe (`default-assistant-isdefault`) runs the real
+`SettingsDefaults.CacheInitialDefaults`/`GetDefaults` + `SettingsService.Apply`
+chain and counts `isDefault` flags in the defaults snapshot and the applied
+assistant globals.
+
+**Verification result (2026-08-12):** scenario 196 PASSED - the snapshot has 2
+assistants, 0 with `isDefault`, and 0 applied assistant globals carry the flag.
 
 ## History (append-only)
 

@@ -1486,4 +1486,37 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 196,
+  name: 'Fresh-profile default assistant loses isDefault - SettingsDefaults._DefaultsAssistants builds the defaults snapshot WITHOUT isDefault (DefaultSettings marks Natural Conversationalist isDefault:true), so with no settings.json the applied assistants have no default and _applyNewChatDefault falls through to the app default model',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'default-assistant-isdefault'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('default-assistant probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const countM = text.match(/defaultsCount=(\d+)/);
+    const inDefM = text.match(/isDefaultInDefaults=(\d+)/);
+    const appliedM = text.match(/appliedDefaultFlags=(\d+)/);
+    if (!countM || !inDefM || !appliedM) throw new Error('probe output missing fields: ' + text);
+    const defaultsCount = Number(countM[1]), isDefaultInDefaults = Number(inDefM[1]), appliedDefaultFlags = Number(appliedM[1]);
+    // BUG present: DefaultSettings ships two assistants, one marked
+    // isDefault:true, but the defaults snapshot serializes neither flag, so a
+    // fresh profile applies isDefault=false for every assistant and "New Chats
+    // Start With: App Default" starts with the app default model instead of
+    // the marked assistant.
+    if (!(defaultsCount > 0 && isDefaultInDefaults === 0 && appliedDefaultFlags === 0))
+      throw new Error('default assistant isDefault was not lost from the defaults snapshot (bug not reproduced): defaults=' + defaultsCount + ' inDefaults=' + isDefaultInDefaults + ' applied=' + appliedDefaultFlags);
+    return 'fresh defaults snapshot has ' + defaultsCount + ' assistant(s), isDefault flags in snapshot=' + isDefaultInDefaults +
+      ', applied assistant globals with isDefault=' + appliedDefaultFlags +
+      ' - DefaultSettings marks Natural Conversationalist isDefault:true, but the defaults builder drops it, so App Default starts with the model instead';
+  }
+});
+
 module.exports = scenarios;

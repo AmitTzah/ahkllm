@@ -639,6 +639,34 @@ EditAssistantStaleCumulative() {
 }
 
 ; ------------------------------------------------------------------
+; CHECK 30: the DEFAULT assistant's isDefault flag is dropped by the defaults
+; snapshot. DefaultSettings.ahk marks "Natural Conversationalist" isDefault:true
+; (bug #166 restored the flag's behavior), but SettingsDefaults._DefaultsAssistants
+; builds the snapshot WITHOUT isDefault, so a fresh profile (no settings.json)
+; applies assistants with isDefault=false and _applyNewChatDefault falls through
+; to the app default model instead of the marked assistant.
+; ------------------------------------------------------------------
+DefaultAssistantIsDefault() {
+    SettingsDefaults.CacheInitialDefaults()
+    d := SettingsDefaults.GetDefaults()
+    defCount := 0
+    isDefaultInDefaults := 0
+    for _, a in d["assistants"] {
+        defCount++
+        if a.Has("isDefault") && a["isDefault"]
+            isDefaultInDefaults++
+    }
+    SettingsService.Apply(d)
+    appliedDefaultFlags := 0
+    for a in assistants {
+        if a.HasProp("isDefault") && a.isDefault
+            appliedDefaultFlags++
+    }
+    Log("DEFAULTASST defaultsCount=" defCount " isDefaultInDefaults=" isDefaultInDefaults " appliedDefaultFlags=" appliedDefaultFlags)
+    Log("DEFAULTASST verdict=" (isDefaultInDefaults = 0 && appliedDefaultFlags = 0 ? "BUG-present(isdefault-lost)" : (isDefaultInDefaults = 1 && appliedDefaultFlags = 1 ? "OK-preserved" : "unexpected:" isDefaultInDefaults "/" appliedDefaultFlags)))
+}
+
+; ------------------------------------------------------------------
 ; CHECK 20: the blank-provider filter sentinel must never collide with a real
 ; provider name. UsageRepo.Query scopes the reserved "__BLANK_PROVIDER__"
 ; sentinel to (provider='' OR provider IS NULL), while a provider literally
@@ -1008,6 +1036,7 @@ switch check {
     case "fork-cost-snapshot": ForkCostSnapshot()
     case "edit-assistant-stale-backfill": EditAssistantStaleBackfill()
     case "edit-assistant-stale-cumulative": EditAssistantStaleCumulative()
+    case "default-assistant-isdefault": DefaultAssistantIsDefault()
     case "unknown-provider-sentinel": UnknownProviderSentinel()
     case "fts-attachment-snippet": FtsAttachmentSnippet()
     case "thread-list-nplus1": ThreadListNplus1()
