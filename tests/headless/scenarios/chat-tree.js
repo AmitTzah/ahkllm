@@ -1808,4 +1808,51 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 197,
+  name: 'Switching BRANCHES within the SAME thread mid-stream mis-parents the completed response - _persistStreamResponse reads ChatDB.Msg_GetActivePath(streamThreadId) at completion time instead of capturing the request\'s last user message, so after branch A sends and the user navigates to branch B, the response becomes a child of branch B\'s leaf instead of branch A\'s follow-up user message',
+  mode: 'sse-slow',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-br-197', title: 'Branch Mid-Stream', active_leaf_id: 'm-197-a2a' }],
+    messages: [
+      { id: 'm-197-u1', thread_id: 't-br-197', role: 'user', content: 'root', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-197-a1', thread_id: 't-br-197', role: 'assistant', content: 'branch A answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-197-u1', sibling_group: 'sg-197-a', sibling_index: 0, token_count: 5, prompt_tokens: 10, active_path_tokens: 10 },
+      { id: 'm-197-a1b', thread_id: 't-br-197', role: 'assistant', content: 'branch B answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-197-u1', sibling_group: 'sg-197-a', sibling_index: 1, token_count: 5, prompt_tokens: 10, active_path_tokens: 10 },
+      { id: 'm-197-u2a', thread_id: 't-br-197', role: 'user', content: 'follow A', parent_id: 'm-197-a1', token_count: 4, active_path_tokens: 14 },
+      { id: 'm-197-a2a', thread_id: 't-br-197', role: 'assistant', content: 'A leaf', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-197-u2a', token_count: 6, prompt_tokens: 20, active_path_tokens: 20 },
+      { id: 'm-197-u2b', thread_id: 't-br-197', role: 'user', content: 'follow B', parent_id: 'm-197-a1b', token_count: 4, active_path_tokens: 14 },
+      { id: 'm-197-a2b', thread_id: 't-br-197', role: 'assistant', content: 'B leaf', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-197-u2b', token_count: 6, prompt_tokens: 20, active_path_tokens: 20 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length >= 4 && chatMessages[3] && chatMessages[3].id === "m-197-a2a"', 15000, 300, 'branch A loaded');
+    await sleep(700);
+    await sendChatMessage(cdp, 'follow-up on A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(120);
+    // While A's follow-up request is streaming, switch to the sibling branch
+    // (a1 -> a1b). The branch nav arrows are on the shared assistant bubble.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Next branch"]');
+    await cdp.waitFor('chatMessages.length >= 4 && chatMessages[3] && chatMessages[3].id === "m-197-a2b"', 15000, 300, 'branch B loaded');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const newRows = seed.query(dbPath, "SELECT id, parent_id, thread_id FROM messages WHERE thread_id='t-br-197' AND content LIKE 'Hello from the mock LLM%'");
+    if (newRows.length !== 1)
+      throw new Error('setup: expected exactly one streamed response, got ' + JSON.stringify(newRows));
+    const parentId = newRows[0].parent_id;
+    const u3a = seed.query(dbPath, "SELECT id FROM messages WHERE thread_id='t-br-197' AND content='follow-up on A'")[0].id;
+    // BUG present: the response was inserted under the NEWLY active branch B
+    // leaf (a2b) instead of the user message that SENT the request (u3a).
+    if (parentId === u3a)
+      throw new Error('streamed response was correctly parented to the sending user message (bug not reproduced): parent=' + parentId);
+    return 'branch A sent "follow-up on A" (user id ' + u3a + '), switched to branch B mid-stream; the completed response was inserted with parent_id=' + parentId +
+      ' (should be ' + u3a + ') - _persistStreamResponse read the CURRENT active path instead of the request\'s own parent';
+  }
+});
+
 module.exports = scenarios;

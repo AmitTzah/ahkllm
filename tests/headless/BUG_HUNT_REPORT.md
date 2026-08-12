@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194, #195, #196 verified headlessly (assistant
+- **Where we left off:** 2026-08-12 - new intake: bugs #194, #195, #196, #197 verified headlessly (assistant
   overwrite-edit leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI
-  array; fresh-profile default assistant loses isDefault). Next: fix the verified bugs in rank order after the
-  user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  array; fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
+  response). Next: fix the verified bugs in rank order after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -325,6 +325,39 @@ assistant globals.
 
 **Verification result (2026-08-12):** scenario 196 PASSED - the snapshot has 2
 assistants, 0 with `isDefault`, and 0 applied assistant globals carry the flag.
+
+### 197. Switching branches within the same thread mid-stream mis-parents the completed response
+
+**Scenario:** 197 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** In a branched conversation on branch A, send a follow-up message.
+While it streams, use the branch arrows to navigate to branch B. After the
+response finishes, inspect the conversation tree.
+
+**Expected:** the new assistant response is a child of the user message that
+was sent (branch A's follow-up), and the active leaf lands on that response.
+
+**Actual:** `_persistStreamResponse` captures only `_streamThreadId` at send
+time (bug #159 fix), then at completion calls
+`ChatDB.Msg_GetActivePath(streamThreadId)` again and uses its CURRENT last
+message as `parentId`. A branch switch in the same thread changes that active
+path, so the completed response is inserted under branch B's leaf (or the
+currently active message) instead of the sending user message. The UI
+re-render then shows the response in the wrong place in the tree.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` `_persistStreamResponse()`
+re-reads the path at completion; no `_streamParentId` (or request snapshot) is
+stored in `sendStreamingRequest`.
+
+**Verification:** headless scenario 197 seeds a two-branch thread, sends from
+branch A, switches to branch B mid-stream (`sse-slow`), and asserts the
+completed response's `parent_id` is NOT the sending user message.
+
+**Verification result (2026-08-12):** scenario 197 PASSED - the response's
+`parent_id` was `m-197-a2b` (branch B's leaf) instead of the sending user
+message's id.
 
 ## History (append-only)
 
