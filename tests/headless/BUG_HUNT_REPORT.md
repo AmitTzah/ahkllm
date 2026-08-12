@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 2 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 reported, 3 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS) and
-  #209 (navigateToMessage leaves the sidebar stale) VERIFIED headlessly and committed; next: keep
-  hunting for new bugs.
+- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS), #209
+  (navigateToMessage leaves the sidebar stale), #210 (chat-window title stale after deleting the
+  active thread) VERIFIED headlessly and committed; next: keep hunting for new bugs.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -209,6 +209,32 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 210. Chat-window title stays stale after deleting the active thread
+
+**Scenario:** 210 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Load any chat (the window title becomes "AhkLLM - <thread title>"), then
+delete that chat from the sidebar (Delete → confirm). The chat area empties but the
+window title still shows the deleted thread's title.
+
+**Expected:** deleting the active thread resets the window title to the empty/new-chat
+state, like `_LoadThreadAndRefreshUI` keeps it in sync on load and rename.
+
+**Actual:** `_HandleThreadAction`'s `deleteThread` / `deleteThreadForever` / `emptyTrash`
+cases clear `activeThreadId` and post `loadThread` + `initChatMode` but never assign
+`chatWindow.Title` - only `renameThread` and `_LoadThreadAndRefreshUI` touch it, so the
+title bar keeps the deleted conversation's name until another thread is loaded.
+
+**Evidence:** `chat/callbacks/Sidebar.ahk` - the three deletion cases end at
+`_sendDropdownLabel()` with no `chatWindow.Title := ...` (compare `renameThread`, which
+updates the title, and `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`).
+
+**Verification:** headless scenario 210 - seeded and loaded a titled thread, deleted it
+via the sidebar confirm, then probed the live window title: it still contains the deleted
+thread's title while `activeThreadId` is empty.
 
 ### 209. Tree-modal / search navigation leaves the sidebar stale - `navigateToMessage` bumps `updated_at` but posts no `threadList` refresh (the fixed #174 branch-switch path is the only navigation that refreshes the list)
 

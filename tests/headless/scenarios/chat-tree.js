@@ -1934,6 +1934,48 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 210,
+  name: 'Chat-window title stays stale after deleting the active thread - the deleteThread/deleteThreadForever/emptyTrash paths clear activeThreadId and post loadThread+initChatMode but never reset chatWindow.Title (only renameThread and _LoadThreadAndRefreshUI touch it)',
+  mode: null,
+  regression: false,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-del-210', title: 'Stale Title Thread', active_leaf_id: 'm-del-210' }],
+    messages: [{ id: 'm-del-210', thread_id: 't-del-210', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('window.activeThreadId === "t-del-210" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(700);
+    const titleBefore = (runProbe('chat-info').title || '');
+    if (titleBefore.indexOf('Stale Title Thread') < 0)
+      throw new Error('setup: window title does not show the loaded thread: ' + JSON.stringify(titleBefore));
+    // Delete the ACTIVE chat via the sidebar (delete confirm flow).
+    await cdp.eval(`(() => {
+      const item = [...document.querySelectorAll('#thread-list .chat-item')].find(i => i.getAttribute('data-chat') === 't-del-210');
+      if (!item) return 'no-item';
+      const btn = item.querySelector('.chat-action-btn.danger');
+      if (!btn) return 'no-btn';
+      btn.click();
+      return 'clicked';
+    })()`);
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'confirm overlay');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await cdp.waitFor('window.activeThreadId === "" && chatMessages.length === 0', 10000, 250, 'chat emptied');
+    await sleep(700);
+    const titleAfter = (runProbe('chat-info').title || '');
+    // BUG #210: the deletion paths never reset chatWindow.Title, so the title
+    // bar keeps the deleted conversation's name while the chat area is empty.
+    if (titleAfter.indexOf('Stale Title Thread') < 0)
+      throw new Error('window title was reset by the delete path (bug #210 not reproduced): ' + JSON.stringify(titleAfter));
+    return 'deleted the active thread: activeThreadId="" but the window title is still "' + titleAfter +
+      '" (before: "' + titleBefore + '") - deleteThread/deleteThreadForever/emptyTrash never reset chatWindow.Title';
+  }
+});
+
+scenarios.push({
   id: 205,
   name: 'Cancelling a retry of a ROOT assistant (no parent) inserts the partial as a CHILD of the original - _handleStreamCancelled honors pendingRetrySiblingGroup but never checks pendingRetryIsRoot (unlike _persistStreamResponse, bug #147), so the cancelled retry is attached under the original root instead of as a sibling with parent NULL',
   mode: 'sse-slow',
