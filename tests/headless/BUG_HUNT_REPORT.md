@@ -154,12 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - Fix cycle COMPLETE: bugs #208-#212 all FIXED + COMMITTED on
-  branch bug-hunt-round-2 (0bd51f0, 9da8658, 65ff184, b48166d, 0330765 + the #211 load-safety
-  follow-up 27f468b). FULL SUITE GREEN: 206/206 headless scenarios (all flipped to regression checks)
-  + `npm run test:fast` green (contract/load/SQL, 594 AHK, 546 JS tests). No open bugs.
+- **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
+  bug #213 verified headlessly (font-size dropped before the first message).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -210,6 +208,29 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+### 213. Font-size adjustments made before the first message are silently dropped
+
+**Scenario:** 213 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Fresh app (no thread yet) â†’ click the font-size + button in the topbar (display becomes 18px)
+â†’ type and send the first message.
+
+**Expected:** the auto-created thread keeps the user's chosen font size (18px).
+
+**Actual:** the thread is created with the default 17px; a reload/thread-switch snaps the UI back to 17px.
+`handleUpdateFontSize` (chat/ChatSettings.ahk) only stores the size when `activeThreadId` is non-empty, so a
+pre-send adjustment never reaches `requestParams["fontSize"]`, and `handleChatSend`'s
+`_saveCurrentSettingsToThread` falls back to the default.
+
+**Evidence:** `chat/ChatSettings.ahk` â€“ `handleUpdateFontSize` wraps the whole persistence in `if activeThreadId`;
+`ThreadSettings.ToDbObject()` reads `requestParams["fontSize"]` only when set.
+
+**Verification:** headless â€“ scenario 213 launches a fresh empty profile, clicks `#btn-font-inc` (display 18px),
+sends the first message, then reads `chat_threads.font_size` from the isolated DB: it is 17 (default), not 18.
+Scenario PASS = bug reproduced.
+
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per

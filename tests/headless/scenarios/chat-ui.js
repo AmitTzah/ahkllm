@@ -611,4 +611,40 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 213,
+  name: 'Font-size adjustments made before the first message are silently dropped - handleUpdateFontSize only persists when activeThreadId exists, so a font change on a fresh (no-thread) chat never reaches requestParams and the auto-created thread saves the default 17px',
+  mode: null,
+  settings: {},
+  fixtures: {}, // no threads -> fresh empty app state
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.getElementById("font-size-display") !== null && window.activeThreadId === ""', 15000, 300, 'fresh empty chat');
+    // Bump the font size while NO thread exists (topbar controls are always
+    // visible). The + click posts updateFontSize, which handleUpdateFontSize
+    // drops because activeThreadId is empty.
+    await cdp.click('#btn-font-inc');
+    await sleep(500);
+    const displayAfter = await cdp.eval('document.getElementById("font-size-display").textContent');
+    if (displayAfter !== '18px')
+      throw new Error('setup: the + button did not bump the display to 18px: ' + JSON.stringify(displayAfter));
+    // Send the first message -> handleChatSend auto-creates the thread and
+    // calls _saveCurrentSettingsToThread, which reads requestParams["fontSize"].
+    await sendChatMessage(cdp, 'first message');
+    await cdp.waitFor('window.activeThreadId !== ""', 15000, 300, 'thread auto-created');
+    await sleep(900);
+    const threadId = await cdp.eval('window.activeThreadId');
+    const rows = seed.query(dbPath, 'SELECT font_size FROM chat_threads WHERE id=?', [threadId]);
+    if (!rows.length) throw new Error('setup: thread row missing: ' + threadId);
+    const savedFont = Number(rows[0].font_size);
+    // BUG: the pre-send 18px adjustment never reached requestParams, so the
+    // auto-created thread is saved with the default 17px. A thread reload
+    // snaps the UI back to 17px, losing the user's adjustment.
+    if (savedFont === 18)
+      throw new Error('font size was persisted on the auto-created thread (fix applied): font_size=' + savedFont);
+    return 'bumped the font to 18px with NO active thread, then sent the first message: the auto-created thread ' + threadId +
+      ' saved font_size=' + savedFont + ' (default) - the pre-send 18px adjustment was dropped by handleUpdateFontSize';
+  }
+});
+
 module.exports = scenarios;
