@@ -154,14 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
   bugs #213-#215 verified headlessly (font-size dropped before the first message; mid-stream branch
   switch re-enables the composer so a second send clobbers the first billed response; switching to an
   unanswered thread mid-stream leaves the loading indicator stuck; a failed retry restores thread A's
   messages into whatever thread is visible; deleting another message's attachment while editing defers
-  the wrong attachment to the edit commit and hard-deletes it).
+  the wrong attachment to the edit commit and hard-deletes it; switching threads mid-stream leaves a
+  mismatched composer state that lets Enter send a second clobbering request).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -326,6 +327,30 @@ when orphaned). Cancel also fails to restore it (the cancel restore only searche
 **Verification:** headless â€“ scenario 217 seeds an attachment on each of two user messages, edits message 1, clicks
 the X on message 2's attachment, commits the edit, then queries `message_attachments`: only message 1's row
 survives. Scenario PASS = bug reproduced.
+
+### 218. Switching threads mid-stream leaves a mismatched composer state (Enter can send a second request)
+
+**Scenario:** 218 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Send a message in thread A, and while it streams switch to a thread whose last message is an assistant
+(e.g. thread B), then press Enter in the composer.
+
+**Expected:** the composer stays disabled while the first request is in flight.
+
+**Actual:** `initChatMode` unconditionally re-enables the input and send button (`disabled=false`) but never
+re-wires the button, so after the switch the old stream is still active while the input is editable and
+`isLoading=false` (the button still shows Stop). Pressing Enter therefore sends a SECOND request that overwrites
+the shared `requestParams["_stream*"]` state and orphans the first billed response â€“ the same harm as bug #214,
+reached through `loadThread`/`initChatMode` instead of the branch-switch `updateChatView` path.
+
+**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` re-enables `#chat-input` and `#chat-send-btn` without
+consulting `streamState`/`isLoading`; `webui/js/chat/chat-input.js` `onChatSend` only checks `isLoading`.
+
+**Verification:** headless â€“ scenario 218 (sse-slow) sends in A, switches to assistant-ended B mid-stream, asserts
+`inputDisabled=false`, `isLoading=false`, `btnOnclick=stop` while `streamState.active=true`, then dispatches Enter
+and confirms a second stream starts. Scenario PASS = bug reproduced.
 
 ## History (append-only)
 

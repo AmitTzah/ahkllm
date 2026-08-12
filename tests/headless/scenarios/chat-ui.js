@@ -862,4 +862,62 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 218,
+  name: 'Switching THREADS mid-stream leaves a mismatched composer state - initChatMode unconditionally re-enables the input and send button (disabled=false) but never re-wires the button, so while the old stream is still active the input is editable, isLoading=false, and the button still shows Stop; pressing Enter sends a SECOND request that clobbers the first stream (same family as #214, but on the loadThread/initChatMode path)',
+  mode: 'sse-slow',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-ui-a-218', title: 'Thread A', active_leaf_id: 'm-218-u1a' },
+      { id: 't-ui-b-218', title: 'Thread B (answered)', active_leaf_id: 'm-218-a1b' }
+    ],
+    messages: [
+      { id: 'm-218-u1a', thread_id: 't-ui-a-218', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-218-u1b', thread_id: 't-ui-b-218', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-218-a1b', thread_id: 't-ui-b-218', role: 'assistant', content: 'B answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-218-u1b', token_count: 5, prompt_tokens: 10, active_path_tokens: 15 }
+    ]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-ui-a-218"); true');
+    await cdp.waitFor('window.activeThreadId === "t-ui-a-218"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(150);
+    // Switch to thread B (which ENDS WITH AN ASSISTANT) while A's stream is
+    // still in flight.
+    await cdp.eval('window.loadThread("t-ui-b-218"); true');
+    await cdp.waitFor('window.activeThreadId === "t-ui-b-218" && chatMessages.length >= 2', 15000, 300, 'thread B loaded');
+    await sleep(400);
+    const state = await cdp.eval(`(() => ({
+      streamActive: (typeof streamState !== 'undefined' && streamState.active) || false,
+      inputDisabled: document.getElementById('chat-input').disabled,
+      isLoading: (typeof isLoading !== 'undefined' && isLoading) || false,
+      btnOnclick: (function(){ var b = document.getElementById('chat-send-btn'); return b && b.onclick ? String(b.onclick).indexOf('onStopStreaming') >= 0 ? 'stop' : 'send' : 'none'; })()
+    }))()`);
+    // BUG: the old stream is still in flight, but the composer was re-enabled
+    // (input editable) AND isLoading was reset to false - a mismatched state.
+    if (!state.streamActive)
+      throw new Error('setup: first stream already finished before the state check');
+    if (state.inputDisabled || state.isLoading || state.btnOnclick !== 'stop')
+      throw new Error('composer state does not show the mismatch (fix applied): ' + JSON.stringify(state));
+    // Prove the harm: press Enter - with isLoading=false the keydown handler
+    // sends a NEW message while the first stream is still in flight.
+    await cdp.eval(`(() => {
+      const input = document.getElementById('chat-input');
+      input.value = 'second message';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'second stream active');
+    await waitStreamingIdle(cdp, 40000);
+    return 'switched to assistant-ended thread B mid-stream: state=' + JSON.stringify(state) +
+      ' (input editable + isLoading=false + Stop button while streamState.active=true); Enter then sent a second request' +
+      ' - the composer mismatch lets a second send clobber the first stream';
+  }
+});
+
 module.exports = scenarios;
