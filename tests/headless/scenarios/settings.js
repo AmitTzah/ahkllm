@@ -1491,6 +1491,7 @@ scenarios.push({
   name: 'Fresh-profile default assistant loses isDefault - SettingsDefaults._DefaultsAssistants builds the defaults snapshot WITHOUT isDefault (DefaultSettings marks Natural Conversationalist isDefault:true), so with no settings.json the applied assistants have no default and _applyNewChatDefault falls through to the app default model',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #196 kept as a regression check
   settings: {},
   async body() {
     const os = require('node:os');
@@ -1521,6 +1522,7 @@ scenarios.push({
   name: 'With zero configured providers, a chat send crashes inside the API-key error handler - ProviderResolver.Resolve returns providerKey="" and ChatRequestBuilder._ShowApiKeyError indexes providers[""] unguarded (a missing Map key THROWS in AHK v2), so the friendly "No API key configured" error never reaches the UI',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #199 kept as a regression check
   settings: {},
   async body() {
     const os = require('node:os');
@@ -1549,6 +1551,7 @@ scenarios.push({
   name: 'Assistant Reasoning dropdown ignores short-form base model ids - ReasoningLevels.levelsForModel only checks the exact models[baseModel] key, so an assistant whose baseModel is "gpt-5-mini" (instead of "openai/gpt-5-mini") falls back to the generic list and offers "None (Disabled)"/"Minimal"/"Medium" options the model does not support (the same short-form family as bugs #43/#51, on the assistant settings path)',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #201 kept as a regression check
   settings: {},
   async body() {
     const vm = require('node:vm');

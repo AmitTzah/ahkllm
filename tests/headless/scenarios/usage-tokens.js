@@ -1101,6 +1101,7 @@ scenarios.push({
   name: 'Overwrite-editing an assistant message leaves the thread\'s CUMULATIVE output tokens stale - MessageRepo.Edit re-estimates the message token_count (bug #181) and recomputes active_path_tokens, but never calls _RecomputeCumulativeCounters, so the header ledger disagrees with the per-message popover until the next API call',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #194 kept as a regression check
   settings: {},
   async body() {
     const os = require('node:os');
@@ -1131,6 +1132,7 @@ scenarios.push({
   name: 'Usage dashboard command rows with an EMPTY provider but a provider-prefixed model are unfilterable - renderMainChart keys command rows by c.provider||"" (unlike chat rows, which fall back to extractProvider(c.model)), while populateFilters only adds the "Unknown (blank)" sentinel when BOTH provider and extractProvider(model) are empty; the "" command series renders with no selectable filter',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #200 kept as a regression check
   settings: {},
   async body() {
     const { sandbox, els } = loadUsageDashboardSandbox();
@@ -1172,6 +1174,7 @@ scenarios.push({
   name: 'Forking a thread that contains a "Save as Branch" local copy re-counts the copy as a REAL API call - TreeRepo fork INSERTs do not copy is_local_copy, so _RecomputeCumulativeCounters charges the copied tokens/cost a second time and the fork header disagrees with the source thread and the dashboard',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #202 kept as a regression check
   settings: {},
   async body() {
     const os = require('node:os');

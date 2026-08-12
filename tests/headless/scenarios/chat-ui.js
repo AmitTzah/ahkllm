@@ -452,6 +452,7 @@ scenarios.push({
   id: 198,
   name: 'PDF/office attachments with a generic MIME type are misclassified as text_file - getAttachmentTypeFromMime only falls back to the extension for odt/odp/ods/rtf/epub, so a .pdf/.docx/.pptx/.xlsx with application/octet-stream is treated as plain text (no PDF/office extraction, sent as garbled text context)',
   mode: null,
+  regression: true, // FIXED bug #198 kept as a regression check
   settings: {},
   async body({ cdp }) {
     await showChat();
@@ -478,6 +479,7 @@ scenarios.push({
   name: 'A stalled stream never times out - CurlBuilder.BuildStream has --connect-timeout 30 but NO --max-time, so an API that accepts the connection and then sends nothing leaves streamState.active/isLoading true and the Stop/input UI stuck forever',
   mode: null,
   noApp: true,
+  regression: true, // FIXED bug #204 kept as a regression check
   settings: {},
   async body() {
     const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'api', 'CurlBuilder.ahk'), 'utf8');

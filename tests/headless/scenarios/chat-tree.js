@@ -1758,6 +1758,7 @@ scenarios.push({
   id: 195,
   name: 'Switching threads while a request is streaming pushes the OLD thread\'s completed response into the CURRENT thread\'s in-memory message array - _persistStreamedMessage always targets the global chatMessages, so after thread A\'s stream finishes while thread B is visible, B\'s UI array (copy/export/thread map) contains A\'s assistant message even though the DB row is correct in A',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #195 kept as a regression check
   settings: {},
   fixtures: {
     threads: [
@@ -1815,6 +1816,7 @@ scenarios.push({
   id: 197,
   name: 'Switching BRANCHES within the SAME thread mid-stream mis-parents the completed response - _persistStreamResponse reads ChatDB.Msg_GetActivePath(streamThreadId) at completion time instead of capturing the request\'s last user message, so after branch A sends and the user navigates to branch B, the response becomes a child of branch B\'s leaf instead of branch A\'s follow-up user message',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #197 kept as a regression check
   settings: {},
   fixtures: {
     threads: [{ id: 't-br-197', title: 'Branch Mid-Stream', active_leaf_id: 'm-197-a2a' }],
@@ -1863,6 +1865,7 @@ scenarios.push({
   id: 205,
   name: 'Cancelling a retry of a ROOT assistant (no parent) inserts the partial as a CHILD of the original - _handleStreamCancelled honors pendingRetrySiblingGroup but never checks pendingRetryIsRoot (unlike _persistStreamResponse, bug #147), so the cancelled retry is attached under the original root instead of as a sibling with parent NULL',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #205 kept as a regression check
   settings: {},
   fixtures: {
     threads: [{ id: 't-root-205', title: 'Root Retry Cancel', active_leaf_id: 'm-205-a1' }],
@@ -1901,6 +1904,7 @@ scenarios.push({
   id: 206,
   name: 'Switching threads mid-stream writes the OLD request\'s API-log entry with the NEW thread\'s model/provider - _logStreamResponse reads the CURRENT requestParams (singleAPIModelName/providerName) at completion instead of the values captured at send time, so the log row disagrees with the request body it logged',
   mode: 'sse-success',
+  regression: true, // FIXED bug #206 kept as a regression check
   settings: {},
   fixtures: {
     threads: [
@@ -1948,6 +1952,7 @@ scenarios.push({
   id: 207,
   name: 'Thread A\'s stream completion repaints thread B\'s header token bar with A\'s stats - _handleStreamComplete calls postThreadStats(streamThreadId) and the WebView\'s updateTokenUsage renders whatever arrives, so after switching to B mid-stream B shows A\'s Context/Cumulative numbers even though B\'s DB has only a 5-token user message',
   mode: 'sse-success',
+  regression: true, // FIXED bug #207 kept as a regression check
   settings: {},
   fixtures: {
     threads: [
