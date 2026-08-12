@@ -70,6 +70,10 @@ _HandleThreadAction(action, params) {
                     postWebMessage("initChatMode", [])
                     postCurrentSettingsToWebView()
                     _sendDropdownLabel()
+                    ; Bug #210: the title bar must follow the emptied state -
+                    ; without this the window kept the deleted thread's name
+                    ; until another thread was loaded.
+                    chatWindow.Title := AppInfo.Name
                 }
                 _postThreadListRefresh()
             }
@@ -91,6 +95,9 @@ _HandleThreadAction(action, params) {
                     postWebMessage("initChatMode", [])
                     postCurrentSettingsToWebView()
                     _sendDropdownLabel()
+                    ; Bug #210: reset the title when the active thread is
+                    ; permanently deleted.
+                    chatWindow.Title := AppInfo.Name
                 }
                 _postThreadListRefresh()
             }
@@ -110,6 +117,9 @@ _HandleThreadAction(action, params) {
                     postWebMessage("initChatMode", [])
                     postCurrentSettingsToWebView()
                     _sendDropdownLabel()
+                    ; Bug #210: reset the title when emptyTrash removes the
+                    ; active thread.
+                    chatWindow.Title := AppInfo.Name
                 }
             }
             _postThreadListRefresh()

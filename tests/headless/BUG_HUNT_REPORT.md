@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 1 verified, 0 fix in progress, 1 fix applied** (2026-08-12). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - #208, #211, #212 FIXED + COMMITTED (0bd51f0, 9da8658, 65ff184).
-  #209 FIX APPLIED: navigateToMessage now posts _postThreadListRefresh; ChatDispatch static check
-  added; scenario 209 flipped to a regression check and PASSING; fast suite green. Next: commit
-  #209, then fix #210.
+- **Where we left off:** 2026-08-12 - #208, #211, #212, #209 FIXED + COMMITTED (0bd51f0, 9da8658,
+  65ff184, b48166d). #210 FIX APPLIED: the three deletion paths reset chatWindow.Title; ChatDispatch
+  unit test added; scenario 210 flipped to a regression check and PASSING; fast suite green. Next:
+  commit #210, run the full headless suite, then move #209/#210 to History.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -246,7 +246,7 @@ loaded A, then navigated to an off-path branch via the real
 
 **Scenario:** 210 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Load any chat (the window title becomes "AhkLLM - <thread title>"), then
 delete that chat from the sidebar (Delete → confirm). The chat area empties but the

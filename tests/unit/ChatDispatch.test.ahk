@@ -692,6 +692,34 @@ class ChatDispatchTest {
         }
     }
 
+    ; Regression (bug #210): deleting the ACTIVE thread must reset the
+    ; chat-window title - the deleteThread/deleteThreadForever/emptyTrash paths
+    ; cleared activeThreadId and posted loadThread+initChatMode but left the
+    ; title bar showing the deleted thread's name until another thread loaded.
+    Dispatch_DeleteActiveThread_ResetsWindowTitle() {
+        global activeThreadId, requestParams, chatWindow
+        this._setupDb()
+        old := activeThreadId
+        oldParams := requestParams
+        oldTitle := chatWindow.Title
+        threadId := ChatDB.Thread_Create("To Delete")
+        activeThreadId := threadId
+        requestParams := Map("singleAPIModelName", "deepseek/deepseek-v4-flash")
+        chatWindow.Title := AppInfo.Name " - To Delete"
+        web := this._captureWebView()
+        try {
+            OnWebMessageReceived("", this._args('{"action":"sidebarAction","subAction":"deleteThread","threadId":"' threadId '"}'))
+            if chatWindow.Title != AppInfo.Name
+                throw Error("Deleting the active thread should reset the window title to '" AppInfo.Name "', got '" chatWindow.Title "'")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            requestParams := oldParams
+            chatWindow.Title := oldTitle
+            this._teardownDb()
+        }
+    }
+
     Dispatch_DeleteInactiveThread_KeepsRequestParams() {
         global activeThreadId, requestParams
         this._setupDb()

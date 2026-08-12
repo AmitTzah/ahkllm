@@ -1939,7 +1939,7 @@ scenarios.push({
   id: 210,
   name: 'Chat-window title stays stale after deleting the active thread - the deleteThread/deleteThreadForever/emptyTrash paths clear activeThreadId and post loadThread+initChatMode but never reset chatWindow.Title (only renameThread and _LoadThreadAndRefreshUI touch it)',
   mode: null,
-  regression: false,
+  regression: true, // FIXED bug #210 kept as a regression check (deleting the active thread resets the title)
   settings: {},
   fixtures: {
     threads: [{ id: 't-del-210', title: 'Stale Title Thread', active_leaf_id: 'm-del-210' }],
@@ -1968,12 +1968,14 @@ scenarios.push({
     await cdp.waitFor('window.activeThreadId === "" && chatMessages.length === 0', 10000, 250, 'chat emptied');
     await sleep(700);
     const titleAfter = (runProbe('chat-info').title || '');
-    // BUG #210: the deletion paths never reset chatWindow.Title, so the title
-    // bar keeps the deleted conversation's name while the chat area is empty.
-    if (titleAfter.indexOf('Stale Title Thread') < 0)
-      throw new Error('window title was reset by the delete path (bug #210 not reproduced): ' + JSON.stringify(titleAfter));
-    return 'deleted the active thread: activeThreadId="" but the window title is still "' + titleAfter +
-      '" (before: "' + titleBefore + '") - deleteThread/deleteThreadForever/emptyTrash never reset chatWindow.Title';
+    // FIXED (bug #210): the deletion paths now reset chatWindow.Title to the
+    // app name, so the title bar follows the emptied chat area.
+    if (titleAfter.indexOf('Stale Title Thread') >= 0)
+      throw new Error('window title still shows the deleted thread (fix incomplete): ' + JSON.stringify(titleAfter));
+    if (titleAfter !== 'AhkLLM')
+      throw new Error('window title should reset to the app name after deleting the active thread, got: ' + JSON.stringify(titleAfter));
+    return 'deleted the active thread: activeThreadId="" and the window title reset from "' + titleBefore +
+      '" to "' + titleAfter + '" - deleteThread/deleteThreadForever/emptyTrash now reset chatWindow.Title';
   }
 });
 

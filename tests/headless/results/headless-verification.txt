@@ -1,5 +1,5 @@
-# 2026-08-12T14:50:38.979Z | run of 1 scenario(s)
-PASS | #209 | Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps chat_threads.updated_at (SetActiveLeaf) but posts no threadList refresh, so the sidebar order/model badge stays stale after navigating to an off-path branch (the fixed #174 path only covers handleBranchSwitch) | navigated to off-path branch in A: updated_at 2026-08-10 10:00:00 -> 2026-08-12 14:50:41, posted 1 threadList refresh(es) and the sidebar now shows the DB order t-209-a,t-209-b (A moved to the top like branch-switch navigation) | 6.0s
+# 2026-08-12T14:52:32.719Z | run of 1 scenario(s)
+PASS | #210 | Chat-window title stays stale after deleting the active thread - the deleteThread/deleteThreadForever/emptyTrash paths clear activeThreadId and post loadThread+initChatMode but never reset chatWindow.Title (only renameThread and _LoadThreadAndRefreshUI touch it) | deleted the active thread: activeThreadId="" and the window title reset from "AhkLLM - Stale Title Thread" to "AhkLLM" - deleteThread/deleteThreadForever/emptyTrash now reset chatWindow.Title | 6.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
