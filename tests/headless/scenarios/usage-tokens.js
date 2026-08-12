@@ -1191,13 +1191,13 @@ scenarios.push({
     const srcIn = Number(srcM[1]), srcOut = Number(srcM[2]), srcCk = Number(srcM[3]);
     const forkIn = Number(forkM[1]), forkOut = Number(forkM[2]), forkCk = Number(forkM[3]);
     const copyFlags = Number(flagsM[1]);
-    // BUG present: the fork has 0 is_local_copy rows and its cumulative
-    // counters are HIGHER than the source (the local copy was charged again).
-    if (!(copyFlags === 0 && forkIn > srcIn))
-      throw new Error('fork did not re-count the local copy (bug not reproduced): copyFlags=' + copyFlags + ' src=' + srcIn + '/' + srcOut + '/' + srcCk + ' fork=' + forkIn + '/' + forkOut + '/' + forkCk);
+    // FIXED (bug #202): the fork preserves is_local_copy, so its cumulative
+    // counters match the source (the branch copy is never re-charged).
+    if (!(copyFlags === 1 && forkIn === srcIn && forkOut === srcOut && forkCk === srcCk))
+      throw new Error('fork still re-counts the local copy (fix incomplete): copyFlags=' + copyFlags + ' src=' + srcIn + '/' + srcOut + '/' + srcCk + ' fork=' + forkIn + '/' + forkOut + '/' + forkCk);
     return 'source thread (1 real API call 12/9/4 + 1 local copy): cumulative=' + srcIn + '/' + srcOut + '/' + srcCk +
       '; fork has ' + copyFlags + ' is_local_copy row(s) and cumulative=' + forkIn + '/' + forkOut + '/' + forkCk +
-      ' - the fork charged the branch copy as a real API call, so its header disagrees with the source and the dashboard';
+      ' - the fork preserves the local-copy flag, so its header agrees with the source and the dashboard';
   }
 });
 

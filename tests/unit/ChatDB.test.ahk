@@ -756,6 +756,30 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #202): forking a thread that contains a LOCAL branch-edit
+    ; copy must preserve is_local_copy on the fork rows, so the fork's
+    ; recomputed cumulative counters do NOT charge the copy as a real API call.
+    ForkThread_PreservesLocalCopyFlag() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "real a1", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, cached_tokens: 4})
+        a1bId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "branch copy", parent_id: u1Id, sibling_group: "sg-fork-202", sibling_index: 1, model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12, cached_tokens: 4, active_path_tokens: 21, local_copy: true})
+        src := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", threadId)
+        srcIn := Integer(src[1, "cumulative_input_tokens"]), srcOut := Integer(src[1, "cumulative_output_tokens"]), srcCk := Integer(src[1, "cumulative_cached_tokens"])
+        newId := ChatDB.Msg_ForkThread(threadId, a1bId)
+        if !newId
+            throw Error("Expected fork id")
+        fork := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", newId)
+        forkIn := Integer(fork[1, "cumulative_input_tokens"]), forkOut := Integer(fork[1, "cumulative_output_tokens"]), forkCk := Integer(fork[1, "cumulative_cached_tokens"])
+        localRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND is_local_copy=1;", newId)
+        if Integer(localRows[1, "c"]) != 1
+            throw Error("fork must preserve the local-copy flag (bug #202), got " localRows[1, "c"])
+        if forkIn != srcIn || forkOut != srcOut || forkCk != srcCk
+            throw Error("fork counters must equal the source (local copy not re-charged), got " forkIn "/" forkOut "/" forkCk " expected " srcIn "/" srcOut "/" srcCk)
+        ChatDB.Thread_Delete(newId)
+        this._teardown()
+    }
+
     ; Regression (bug #177): a fork must copy each message's per-message COST
     ; SNAPSHOT (input_cost/cached_input_cost/output_cost/total_cost, bug #153
     ; columns) so the fork's recomputed cumulative cost matches the source

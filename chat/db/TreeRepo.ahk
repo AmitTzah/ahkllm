@@ -19,7 +19,7 @@ class TreeRepo {
 
         ; Hardening item 1: threadId is a bound parameter - crafted ids can
         ; never alter the SQL text.
-        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
+        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
 
         msgMap := Map()
         for row in allTable.rows {
@@ -37,6 +37,7 @@ class TreeRepo {
                 response_time_ms: row.Has("response_time_ms") && row.response_time_ms ? Integer(row.response_time_ms) : 0,
                 ttft_ms: row.Has("ttft_ms") && row.ttft_ms ? Integer(row.ttft_ms) : 0,
                 active_path_tokens: row.Has("active_path_tokens") && row["active_path_tokens"] ? Integer(row["active_path_tokens"]) : 0,
+                is_local_copy: row.Has("is_local_copy") ? Integer(row["is_local_copy"]) : 0,
                 ; Bug #177: carry each message's cost SNAPSHOT (the prices in
                 ; effect when its API call was made) into the path so forks can
                 ; copy it - otherwise a Settings price change re-prices history.
@@ -286,7 +287,8 @@ class TreeRepo {
         ; after a Settings price change.
         costs := TreeRepo._MessageCostSnapshot(msg)
 
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
+        isLocal := msg.HasProp("is_local_copy") ? Integer(msg.is_local_copy) : 0
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, isLocal, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
     }
 
     ; Extract the per-message cost snapshot (bug #153 columns) from a source
@@ -359,11 +361,12 @@ class TreeRepo {
         sLat := row.response_time_ms ? row.response_time_ms : 0
         sTtft := row.ttft_ms ? row.ttft_ms : 0
         sApt := row.Has("active_path_tokens") && row.active_path_tokens ? Integer(row.active_path_tokens) : 0
+        sLocal := row.Has("is_local_copy") ? Integer(row.is_local_copy) : 0
         ; Bug #177: copy the cost snapshot so off-path fork rows are also
         ; priced at the original call-time prices.
         costs := TreeRepo._MessageCostSnapshot(row)
 
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt, sLocal, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
         AttachmentRepo.CopyForMessage(row.id, newId)
     }
 

@@ -370,7 +370,7 @@ assistants, 0 with `isDefault`, and 0 applied assistant globals carry the flag.
 
 **Scenario:** 198 (scenario code in scenarios/chat-ui.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Attach a `.pdf`, `.docx`, `.pptx`, or `.xlsx` file whose browser
 MIME type is generic (`application/octet-stream`, `application/x-pdf`, etc.)
@@ -520,10 +520,11 @@ only when `is_local_copy` is set.
 
 **Verification:** headless probe (`fork-local-copy`) runs the real ChatDB/repo
 code: source has one real call (12/9/4) plus one local copy; after forking, the
-fork has 0 `is_local_copy` rows and higher cumulative counters (24/18/8).
+fork has 1 `is_local_copy` row and equal cumulative counters.
 
-**Verification result (2026-08-12):** scenario 202 PASSED - source
-cumulative=12/9/4, fork cumulative=24/18/8, fork `is_local_copy` rows=0.
+**Verification result (2026-08-12):** scenario 202 PASSED after the fix - fork
+cumulative=12/9/4 (matches source), fork `is_local_copy` rows=1. Regression
+unit test added in ChatDB.test.ahk.
 
 ### 203. Chat-mode command "Stream Response" OFF is ignored (the chat branch never propagates the flag)
 
