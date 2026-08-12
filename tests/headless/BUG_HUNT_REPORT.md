@@ -158,8 +158,10 @@ How to run AHK safely:
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 2: #208-#212 VERIFIED headlessly and committed
   (one commit each); stale #21/#56 scenario assertions fixed (stream-state wait + streamCancelled
-  object contract). Full fast suite green; full headless suite 206/206 PASS. Next: nothing open in
-  round 2 - hand the verified bugs back for the fix cycle.
+  object contract). Full fast suite green; full headless suite 205/206 PASS - the only failure is
+  regression #60, which is the FIX-GUARD for open bug #212 (it asserts the typed system prompt
+  reaches the request; it will pass again once #212 is fixed). Next: hand the 5 verified bugs back
+  for the Phase 2 fix cycle (rank order).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
