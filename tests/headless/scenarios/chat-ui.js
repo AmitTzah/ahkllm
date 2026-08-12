@@ -495,4 +495,58 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 208,
+  name: 'Streaming bubble author label injects assistant/model names as raw HTML (XSS) - createStreamingBubble concatenates displayName into innerHTML without escaping, so an assistant named <img onerror=...> executes in the WebView',
+  mode: 'sse-success',
+  settings: {
+    // The assistant name carries the payload. It flows settings.json -> the
+    // AHK streamModelName post (displayName = asst.name) -> streamState.modelName
+    // -> createStreamingBubble's innerHTML.
+    assistants: [{
+      id: 'asst-xss-208',
+      name: '<img src="x" onerror="window.__xssPwned=1">',
+      baseModel: 'deepseek/deepseek-v4-flash',
+      systemMessage: '',
+      systemMessageFile: '',
+      description: '',
+      reasoning: '',
+      temperature: '',
+      isDefault: false
+    }]
+  },
+  fixtures: {
+    threads: [{ id: 't-xss-208', title: 'XSS Thread', active_leaf_id: 'm-xss-208', assistant_id: 'asst-xss-208' }],
+    messages: [{ id: 'm-xss-208', thread_id: 't-xss-208', role: 'user', content: 'hello' }]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread loaded');
+    await sleep(500); // let the assistant/thread settings round-trip finish
+    await sendChatMessage(cdp, 'stream for me');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const pwned = await cdp.eval('window.__xssPwned || 0');
+    const authorHtml = await cdp.eval(`(() => {
+      const bubbles = [...document.querySelectorAll('.msg.bot')];
+      const last = bubbles[bubbles.length - 1];
+      if (!last) return '';
+      const a = last.querySelector('.msg-author');
+      return a ? a.innerHTML : '';
+    })()`);
+    // BUG #208: the assistant name is concatenated into innerHTML unescaped,
+    // so the <img> tag is parsed and its onerror handler runs (window.__xssPwned
+    // becomes 1) and/or the raw markup is present in the rendered author label.
+    if (pwned === 1) {
+      return 'XSS executed during streaming: window.__xssPwned=1; author innerHTML=' + JSON.stringify(authorHtml);
+    }
+    if (String(authorHtml).indexOf('<img') >= 0) {
+      return 'streaming bubble author rendered raw HTML (no escaping): ' + JSON.stringify(authorHtml);
+    }
+    throw new Error('streaming bubble author label was escaped (bug #208 not reproduced): ' + JSON.stringify(authorHtml));
+  }
+});
+
 module.exports = scenarios;

@@ -154,12 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 reported, 1 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - CLEANUP COMPLETE: bugs #194-207 manually verified and committed;
-  all entries moved to History; scenarios 194-207 flipped to regression checks. FULL SUITE GREEN:
-  201 scenarios (all regression/refuted checks) + `npm run test:fast` green (contract/load/SQL, 588 AHK,
-  544 JS tests). Next: nothing open - the bug hunt is complete.
+- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS) VERIFIED
+  headlessly (scenario 208 PASS) and committed; next: keep hunting for new bugs.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -211,7 +209,35 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-_None - all verified bugs fixed and closed (see History)._
+### 208. Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)
+
+**Scenario:** 208 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Settings → Assistants → give an assistant a name containing HTML (e.g. an
+`<img src="x" onerror="...">` tag), or add a model whose short name contains HTML; make that
+assistant/model active; send any chat message and let the response stream.
+
+**Expected:** the streaming bubble's author label shows the name as inert text, escaped exactly
+like every other message bubble (`chat-render.js` escapes author names with `escHtml`).
+
+**Actual:** the streaming bubble is created with `'<span class="msg-author">' + displayName + '</span>'`
+written straight into `innerHTML`. `displayName` comes from the AHK `streamModelName` post
+(`ModelParser.Sanitize` strips the provider prefix but no HTML), or from the assistant's name when
+one is active - both are user-controlled. The markup is parsed as HTML and inline event handlers
+execute inside the WebView (which has `chrome.webview.postMessage` access), so a crafted model or
+assistant name runs script in the app.
+
+**Evidence:** `webui/js/chat/stream.js:244` - `html += '<span class="msg-author">' + displayName + '</span>';`
+(no `escHtml`), while `webui/js/chat/chat-render.js:125` escapes the same label in persisted bubbles.
+`displayName` is set from `requestParams["_streamDisplayName"]` (assistant `name` or sanitized model
+name) in `chat/streaming/StreamHandler.ahk`.
+
+**Verification:** headless scenario 208 - seeded an assistant named
+`<img src="x" onerror="window.__xssPwned=1">`, loaded a thread bound to it, sent a chat message and
+waited for the stream. The streaming bubble's `.msg-author` innerHTML contained the raw `<img>` tag
+and `window.__xssPwned` was set to 1 (the onerror handler executed).
 
 ## History (append-only)
 
