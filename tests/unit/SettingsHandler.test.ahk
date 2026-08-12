@@ -601,4 +601,26 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #196): the DEFAULTS snapshot must serialize isDefault -
+    ; DefaultSettings marks Natural Conversationalist isDefault:true, and a
+    ; fresh profile (no settings.json) applies exactly those defaults, so the
+    ; flag cannot be dropped by _DefaultsAssistants.
+    DefaultsAssistant_KeepsIsDefault() {
+        global assistants
+        oldAssistants := assistants
+        assistants := [{name: "Default Asst", baseModel: "deepseek/deepseek-v4-flash", isDefault: true}]
+        try {
+            list := SettingsDefaults._DefaultsAssistants()
+            found := false
+            for _, a in list {
+                if a.Has("isDefault") && a["isDefault"]
+                    found := true
+            }
+            if !found
+                throw Error("_DefaultsAssistants must serialize isDefault (bug #196)")
+        } finally {
+            assistants := oldAssistants
+        }
+    }
+
 }

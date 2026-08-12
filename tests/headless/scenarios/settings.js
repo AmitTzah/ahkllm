@@ -1506,16 +1506,13 @@ scenarios.push({
     const appliedM = text.match(/appliedDefaultFlags=(\d+)/);
     if (!countM || !inDefM || !appliedM) throw new Error('probe output missing fields: ' + text);
     const defaultsCount = Number(countM[1]), isDefaultInDefaults = Number(inDefM[1]), appliedDefaultFlags = Number(appliedM[1]);
-    // BUG present: DefaultSettings ships two assistants, one marked
-    // isDefault:true, but the defaults snapshot serializes neither flag, so a
-    // fresh profile applies isDefault=false for every assistant and "New Chats
-    // Start With: App Default" starts with the app default model instead of
-    // the marked assistant.
-    if (!(defaultsCount > 0 && isDefaultInDefaults === 0 && appliedDefaultFlags === 0))
-      throw new Error('default assistant isDefault was not lost from the defaults snapshot (bug not reproduced): defaults=' + defaultsCount + ' inDefaults=' + isDefaultInDefaults + ' applied=' + appliedDefaultFlags);
+    // FIXED (bug #196): the defaults snapshot and the applied globals both
+    // carry the marked assistant's isDefault flag.
+    if (!(defaultsCount > 0 && isDefaultInDefaults >= 1 && appliedDefaultFlags >= 1))
+      throw new Error('default assistant isDefault was not preserved (fix incomplete): defaults=' + defaultsCount + ' inDefaults=' + isDefaultInDefaults + ' applied=' + appliedDefaultFlags);
     return 'fresh defaults snapshot has ' + defaultsCount + ' assistant(s), isDefault flags in snapshot=' + isDefaultInDefaults +
       ', applied assistant globals with isDefault=' + appliedDefaultFlags +
-      ' - DefaultSettings marks Natural Conversationalist isDefault:true, but the defaults builder drops it, so App Default starts with the model instead';
+      ' - DefaultSettings marks Natural Conversationalist isDefault:true and the defaults builder preserves it, so App Default starts with the marked assistant';
   }
 });
 

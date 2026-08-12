@@ -1,5 +1,5 @@
-# 2026-08-12T11:36:44.683Z | run of 1 scenario(s)
-PASS | #202 | Forking a thread that contains a "Save as Branch" local copy re-counts the copy as a REAL API call - TreeRepo fork INSERTs do not copy is_local_copy, so _RecomputeCumulativeCounters charges the copied tokens/cost a second time and the fork header disagrees with the source thread and the dashboard | source thread (1 real API call 12/9/4 + 1 local copy): cumulative=12/9/4; fork has 1 is_local_copy row(s) and cumulative=12/9/4 - the fork preserves the local-copy flag, so its header agrees with the source and the dashboard | 0.2s
+# 2026-08-12T11:38:35.262Z | run of 1 scenario(s)
+PASS | #196 | Fresh-profile default assistant loses isDefault - SettingsDefaults._DefaultsAssistants builds the defaults snapshot WITHOUT isDefault (DefaultSettings marks Natural Conversationalist isDefault:true), so with no settings.json the applied assistants have no default and _applyNewChatDefault falls through to the app default model | fresh defaults snapshot has 2 assistant(s), isDefault flags in snapshot=1, applied assistant globals with isDefault=1 - DefaultSettings marks Natural Conversationalist isDefault:true and the defaults builder preserves it, so App Default starts with the marked assistant | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

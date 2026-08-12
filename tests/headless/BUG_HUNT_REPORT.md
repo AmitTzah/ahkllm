@@ -361,10 +361,11 @@ only honors the flag when it survived application.
 **Verification:** headless probe (`default-assistant-isdefault`) runs the real
 `SettingsDefaults.CacheInitialDefaults`/`GetDefaults` + `SettingsService.Apply`
 chain and counts `isDefault` flags in the defaults snapshot and the applied
-assistant globals.
+assistant globals (expects >=1 in both).
 
-**Verification result (2026-08-12):** scenario 196 PASSED - the snapshot has 2
-assistants, 0 with `isDefault`, and 0 applied assistant globals carry the flag.
+**Verification result (2026-08-12):** scenario 196 PASSED after the fix - the
+snapshot has 2 assistants, 1 with `isDefault`, and 1 applied assistant global
+carries the flag. Regression unit test added in SettingsHandler.test.ahk.
 
 ### 198. PDF/office attachments with a generic MIME type are misclassified as text_file
 

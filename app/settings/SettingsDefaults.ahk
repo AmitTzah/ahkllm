@@ -165,7 +165,12 @@ class SettingsDefaults {
                 "systemMessageFile", a.HasOwnProp("systemMessageFile") ? a.systemMessageFile : "",
                 "description", a.HasOwnProp("description") ? a.description : "",
                 "reasoning", a.HasOwnProp("reasoning") ? a.reasoning : "",
-                "temperature", a.HasOwnProp("temperature") ? a.temperature : ""
+                "temperature", a.HasOwnProp("temperature") ? a.temperature : "",
+                ; Bug #196: carry isDefault through the DEFAULTS snapshot too -
+                ; DefaultSettings marks an assistant isDefault:true, and the
+                ; fresh-profile apply path must see it (otherwise "App Default"
+                ; starts with the model instead of the marked assistant).
+                "isDefault", a.HasOwnProp("isDefault") ? a.isDefault : false
             ))
         }
         return asstList
