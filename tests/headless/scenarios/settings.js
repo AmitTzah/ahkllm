@@ -1548,4 +1548,34 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 201,
+  name: 'Assistant Reasoning dropdown ignores short-form base model ids - ReasoningLevels.levelsForModel only checks the exact models[baseModel] key, so an assistant whose baseModel is "gpt-5-mini" (instead of "openai/gpt-5-mini") falls back to the generic list and offers "None (Disabled)"/"Minimal"/"Medium" options the model does not support (the same short-form family as bugs #43/#51, on the assistant settings path)',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const vm = require('node:vm');
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'shared', 'reasoning-levels.js'), 'utf8');
+    const sandbox = { window: {}, console };
+    sandbox.global = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+    const models = {
+      'openai/gpt-5-mini': { thinkingLevelMap: { low: 'low', high: 'high' } }
+    };
+    const html = sandbox.window.ReasoningLevels.buildOptionsHtml(models, 'gpt-5-mini');
+    // BUG present: the short form "gpt-5-mini" is a known model (the map has
+    // openai/gpt-5-mini with low/high only), but levelsForModel misses it and
+    // returns the generic fallback, so the dropdown offers unsupported levels.
+    if (html.indexOf('value="none"') < 0 || html.indexOf('value="high"') < 0)
+      throw new Error('short-form assistant reasoning did not use the generic fallback (bug not reproduced): ' + html);
+    if (html.indexOf('value="low"') < 0)
+      throw new Error('setup: model-supported low option missing: ' + html);
+    return 'assistant baseModel="gpt-5-mini" (map key openai/gpt-5-mini with thinkingLevelMap {low, high}): ReasoningLevels.buildOptionsHtml returned ' +
+      JSON.stringify(html.match(/<option value="([^"]*)"/g).map((m) => m.replace(/<option value="/, '').replace(/"/, ''))) +
+      ' - the fallback list offers "none"/"minimal"/"medium" that the model does not support';
+  }
+});
+
 module.exports = scenarios;
