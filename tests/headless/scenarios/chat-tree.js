@@ -1754,4 +1754,58 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 195,
+  name: 'Switching threads while a request is streaming pushes the OLD thread\'s completed response into the CURRENT thread\'s in-memory message array - _persistStreamedMessage always targets the global chatMessages, so after thread A\'s stream finishes while thread B is visible, B\'s UI array (copy/export/thread map) contains A\'s assistant message even though the DB row is correct in A',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-ui-a-195', title: 'Thread A', active_leaf_id: 'm-195-u1a' },
+      { id: 't-ui-b-195', title: 'Thread B', active_leaf_id: 'm-195-u1b' }
+    ],
+    messages: [
+      { id: 'm-195-u1a', thread_id: 't-ui-a-195', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-195-u1b', thread_id: 't-ui-b-195', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-ui-a-195"); true');
+    await cdp.waitFor('window.activeThreadId === "t-ui-a-195"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    // Switch to thread B while A's stream is in flight (same flow as bug #159).
+    await cdp.eval('window.loadThread("t-ui-b-195"); true');
+    await cdp.waitFor('window.activeThreadId === "t-ui-b-195"', 10000, 250, 'thread B loaded');
+    // Mid-stream: B's chatMessages array must contain ONLY B's seeded user
+    // message. initChatMode replaced the array, so this is the pollution-free baseline.
+    const midLen = await cdp.eval('chatMessages.length');
+    if (midLen !== 1)
+      throw new Error('setup: B chatMessages should have 1 message after switch, got ' + midLen);
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1000);
+
+    const uiMsgs = await cdp.eval('chatMessages.map(function(m){ return m.role + ":" + String(m.content).slice(0, 60); })');
+    const inA = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-ui-a-195' AND role='assistant'")[0].c;
+    const inB = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-ui-b-195' AND role='assistant'")[0].c;
+    // The DB fix from #159 is in place: the response lands in thread A, not B.
+    if (inA !== 1 || inB !== 0)
+      throw new Error('setup: DB rows wrong (inA=' + inA + ' inB=' + inB + ') - stream/switch timing failed');
+    const polluted = uiMsgs.length > 1 && String(uiMsgs[1]).indexOf('assistant') === 0;
+    // BUG present: even though the DB row is in A, the completion handler
+    // pushed A's assistant message into the CURRENT chatMessages (thread B),
+    // so B's copy/export/thread-map UI shows a message that does not exist in
+    // B's DB path.
+    if (!polluted)
+      throw new Error('old-thread response did not leak into the current UI array (bug not reproduced): ' + JSON.stringify(uiMsgs));
+    return 'sent in A, switched to B mid-stream; DB rows inA=' + inA + ' inB=' + inB +
+      ' (correct), but the visible thread B chatMessages=' + JSON.stringify(uiMsgs) +
+      ' contains A\'s assistant response - _persistStreamedMessage targets the global chatMessages instead of the sending thread\'s UI state';
+  }
+});
+
 module.exports = scenarios;

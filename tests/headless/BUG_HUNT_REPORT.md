@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bug #194 verified headlessly (assistant overwrite-edit leaves
-  cumulative output tokens stale). Next: add more verified bugs (stream UI pollution on mid-stream thread
-  switch; fresh-profile default assistant isDefault lost from the defaults snapshot), then fix #194 in rank
-  order after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+- **Where we left off:** 2026-08-12 - new intake: bugs #194 and #195 verified headlessly (assistant
+  overwrite-edit leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI
+  array). Next: verify the fresh-profile default-assistant isDefault lead (bug #196), then fix the verified
+  bugs in rank order after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -258,6 +258,40 @@ stays 9.
 
 **Verification result (2026-08-12):** scenario 194 PASSED - probe printed
 `a1tcAfterEdit=100`, `beforeCumOut=9`, `afterCumOut=9`.
+
+### 195. Switching threads mid-stream pushes the old thread's completed response into the current thread's UI message array
+
+**Scenario:** 195 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Start a request in thread A. While it streams, click thread B in the
+sidebar. After A's stream finishes, use Copy entire chat / Export or open the
+Thread Map while B is still visible.
+
+**Expected:** thread B's UI shows only B's messages. The completed response
+belongs to thread A (the DB row is correctly persisted there after bug #159's
+fix).
+
+**Actual:** `_persistStreamedMessage` in `webui/js/chat/stream.js` always
+pushes into the global `chatMessages`, which now holds thread B. When A's
+stream completes, its assistant message is appended to B's in-memory array, so
+B's Copy/Export/Thread Map includes a message that does not exist in B's DB
+path. The bug is invisible until reload (initChatMode rebuilds the array from
+the DB), which is why #159's DB-only assertion missed it.
+
+**Evidence:** `webui/js/chat/stream.js` `_persistStreamedMessage()` reads the
+global `chatMessages` with no thread scoping; `chat-core.js initChatMode()`
+replaces the array on every thread load while the old stream is still active.
+
+**Verification:** headless scenario 195 drives the real app: send in thread A,
+switch to thread B mid-stream, then asserts B's `chatMessages` array contains
+the A response after `streamDone` while the DB correctly has 1 assistant row in
+A and 0 in B.
+
+**Verification result (2026-08-12):** scenario 195 PASSED - B's chatMessages
+ended as `["user:question for B","assistant:Hello from the mock LLM. This is
+the streamed answer."]` while the DB had inA=1 / inB=0.
 
 ## History (append-only)
 
