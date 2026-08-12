@@ -534,6 +534,23 @@ _cleanupStreamState() {
         requestParams.Delete("_streamLogModel")
     if requestParams.Has("_streamLogPasteMode")
         requestParams.Delete("_streamLogPasteMode")
+    ; Bug #211: a retry that FAILS before/without streaming must not leave
+    ; pendingRetrySiblingGroup / pendingRetryIsRoot set - they are consumed by
+    ; _persistStreamResponse / _handleStreamCancelled on the success/cancel
+    ; paths, and a stale group would be picked up by the NEXT response's
+    ; Msg_Insert, mis-grouping it with the retried message across parents.
+    _ClearPendingRetryState()
+}
+
+; Clear the pending retry state set by retryAction (bug #211). Called from the
+; stream cleanup (every terminal stream path) and from _BuildAndFireRequest's
+; failure branch (a retry rejected before any stream, e.g. the vision gate).
+_ClearPendingRetryState() {
+    global requestParams
+    if requestParams.Has("pendingRetrySiblingGroup")
+        requestParams.Delete("pendingRetrySiblingGroup")
+    if requestParams.Has("pendingRetryIsRoot")
+        requestParams.Delete("pendingRetryIsRoot")
 }
 
 ; Bug #206: the API-log/error/cancel loggers must describe the REQUEST that

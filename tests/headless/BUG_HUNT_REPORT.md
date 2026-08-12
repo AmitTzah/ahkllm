@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 4 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **0 reported, 3 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - #208 (streaming-bubble XSS) FIXED + COMMITTED in dde781f
-  (escHtml on the author label, unit tests, scenario flipped to regression). Next: fix #211 (failed
-  retry leaks pendingRetrySiblingGroup into the next response).
+- **Where we left off:** 2026-08-12 - #208 + #211 FIXED + COMMITTED (0bd51f0, c4ea1c4). Next: fix
+  #212 (first message in a fresh session discards right-rail selections - guard _applyNewChatDefault
+  in handleChatSend's auto-create branch).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -209,42 +209,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 211. A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping
-
-**Scenario:** 211 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** Start with a chat containing a user message + assistant reply. Retry the
-assistant reply and let the retry FAIL before any content arrives (network error, or
-here: a vision-gate rejection because the thread has an image and the model lacks
-vision). Then send a normal follow-up message. The follow-up's response is inserted
-with the FAILED retry's `sibling_group`, so it is grouped as a sibling of the retried
-assistant even though its parent is the new user message.
-
-**Expected:** only a retry that actually streams consumes `pendingRetrySiblingGroup` /
-`pendingRetryIsRoot`; a failed retry must clear them so the next normal response is
-inserted with no sibling group.
-
-**Actual:** `retryAction` sets `pendingRetrySiblingGroup` before firing; the keys are
-only deleted in `_persistStreamResponse` and `_handleStreamCancelled`. The error paths
-(`_handleStreamError`, `buildRequest` rejection, `_BuildAndFireRequest` failure) never
-clear them, so the next successful `Msg_Insert` reads the stale group
-(`_persistStreamResponse` picks it up) and writes `sibling_group`/`sibling_index` from
-it - the new assistant row is grouped with the retried message's siblings while its
-parent is a different message, corrupting branch navigation and the tree view.
-
-**Evidence:** `chat/callbacks/Branch.ahk` `retryAction` sets the pending keys;
-`chat/streaming/StreamCompletion.ahk` `_persistStreamResponse` consumes (and deletes)
-them only on success; `chat/streaming/StreamError.ahk` `_handleStreamError` and the
-`buildRequest` early-return paths leave them set.
-
-**Verification:** headless scenario 211 - seeded a user/assistant exchange, attached an
-image to the user message, retried the assistant (vision gate rejects it before any
-stream), removed the attachment, then sent a follow-up. The follow-up's streamed
-assistant row landed with `parent_id` = the new user message but
-`sibling_group` = the failed retry's group (the original assistant's group), while a
-clean send would have an empty sibling group.
 ### 212. The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - `handleChatSend` re-applies the "New Chats Start With" default when auto-creating the thread
 
 **Scenario:** 212 (scenario code in e2e-suite.js)
@@ -340,7 +304,9 @@ thread's title while `activeThreadId` is empty.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
-- 2026-08-12 - "Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)" - FIXED + COMMITTED in dde781f: fix(webui): escape the streaming bubble author label (bug #208). Scenario 208 flipped to a regression check + stream-state unit tests.
+- 2026-08-12 - "A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping" - FIXED + COMMITTED in c4ea1c4: fix(stream): clear pending retry state on failed retries (bug #211). Scenario 211 flipped to a regression check + StreamHandler unit tests.
+
+- 2026-08-12 - "Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)" - FIXED + COMMITTED in 0bd51f0: fix(webui): escape the streaming bubble author label (bug #208). Scenario 208 flipped to a regression check + stream-state unit tests.
 
 - 2026-08-12 - "Overwrite-editing an assistant message leaves the thread's cumulative output tokens stale" - FIXED + COMMITTED in f75013e: fix(chat): recompute cumulative counters after overwrite-editing an assistant message (bug #194). Scenario 194 flipped to a regression check + unit tests.
 - 2026-08-12 - "Switching threads mid-stream pushes the old thread's completed response into the current thread's UI message array" - FIXED + COMMITTED in a2f5a81: fix(chat): scope streamed UI to the sending thread/path so switches cannot pollute the visible conversation (bug #195). Scenario 195 flipped to a regression check + unit tests.

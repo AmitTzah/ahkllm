@@ -584,4 +584,42 @@ class StreamHandlerTest {
         if !InStr(cancelBlock, "deleteTempFiles()")
             throw Error("_handleStreamCancelled must keep deleting temp files")
     }
+
+    ; Regression (bug #211): a retry that FAILS before/without streaming (vision
+    ; gate rejection, buildRequest failure, _handleStreamError) must clear the
+    ; pending retry keys - otherwise the NEXT normal response reads the stale
+    ; sibling group and is inserted as a sibling of the retried message across
+    ; different parents (tree corruption). The stream cleanup is the single
+    ; terminal-path choke point, so it must clear both keys.
+    CleanupStreamState_ClearsPendingRetryKeys() {
+        global requestParams
+        oldParams := requestParams
+        requestParams := Map(
+            "pendingRetrySiblingGroup", "sg-211",
+            "pendingRetryIsRoot", true)
+        try {
+            _cleanupStreamState()
+            if requestParams.Has("pendingRetrySiblingGroup")
+                throw Error("_cleanupStreamState must clear pendingRetrySiblingGroup (bug #211)")
+            if requestParams.Has("pendingRetryIsRoot")
+                throw Error("_cleanupStreamState must clear pendingRetryIsRoot (bug #211)")
+        } finally {
+            requestParams := oldParams
+        }
+    }
+
+    ; Regression (bug #211): a retry rejected BEFORE any stream starts (vision
+    ; gate / API-key / endpoint error) goes through _BuildAndFireRequest's
+    ; build-failure branch - it must clear the pending retry keys there too,
+    ; because no stream ever runs to reach _cleanupStreamState.
+    BuildAndFireRequest_BuildFailureClearsPendingRetry() {
+        srcPath := A_ScriptDir "\..\chat\ChatRequestBuilder.ahk"
+        src := FileRead(srcPath)
+        fnPos := InStr(src, "_BuildAndFireRequest() {")
+        if !fnPos
+            throw Error("_BuildAndFireRequest not found in ChatRequestBuilder.ahk")
+        block := SubStr(src, fnPos, 900)
+        if !InStr(block, "_ClearPendingRetryState()")
+            throw Error("_BuildAndFireRequest must clear pending retry state when the request fails to build (bug #211)")
+    }
 }

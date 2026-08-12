@@ -1979,7 +1979,7 @@ scenarios.push({
   id: 211,
   name: 'A failed retry leaks pendingRetrySiblingGroup into the next response - retryAction sets the pending keys and only the SUCCESS (_persistStreamResponse) and CANCEL (_handleStreamCancelled) paths delete them; a retry rejected before any stream (vision gate / buildRequest failure / _handleStreamError) leaves the stale group set, so the next normal send inserts its response with the retried message\'s sibling_group even though its parent is the new user message',
   mode: 'sse-success',
-  regression: false,
+  regression: true, // FIXED bug #211 kept as a regression check (failed retries clear the pending keys)
   settings: {},
   fixtures: {
     threads: [{ id: 't-stale-211', title: 'Stale Retry State', active_leaf_id: 'm-211-a1' }],
@@ -2026,14 +2026,14 @@ scenarios.push({
     if (!u2) throw new Error('setup: follow-up user message missing');
     if (a2.parent_id !== u2.id)
       throw new Error('setup: follow-up response was not parented to the follow-up user message: ' + JSON.stringify(a2));
-    // BUG #211: the response inherited the FAILED retry's sibling group - it is
-    // grouped with the retried assistant (same sibling_group) even though its
-    // parent is the new user message (a1's parent is the ORIGINAL user message).
-    if (a2.sibling_group && a2.sibling_group === a1sg && a2.parent_id !== 'm-211-u1')
-      return 'failed retry leaked pendingRetrySiblingGroup: follow-up response (parent=' + a2.parent_id +
-        ') was inserted with sibling_group=' + a2.sibling_group + ' (index ' + a2.sibling_index +
-        '), the same group as the retried assistant ' + a1sg + ' (parent m-211-u1) - branch nav and the tree now treat them as siblings across different parents';
-    throw new Error('follow-up response had a clean sibling group (bug #211 not reproduced): ' + JSON.stringify(a2) + ' a1sg=' + JSON.stringify(a1sg));
+    // FIXED (bug #211): the failed retry cleared its pending sibling group, so
+    // the follow-up response must be inserted with NO sibling group - it must
+    // NOT be grouped with the retried assistant (a1sg) across different parents.
+    if (a2.sibling_group && a2.sibling_group !== '')
+      throw new Error('follow-up response inherited the failed retry\'s sibling group (fix incomplete): ' + JSON.stringify(a2) + ' a1sg=' + JSON.stringify(a1sg));
+    return 'failed retry (vision gate) cleared pendingRetrySiblingGroup: follow-up response (parent=' + a2.parent_id +
+      ') was inserted with sibling_group=' + JSON.stringify(a2.sibling_group) +
+      ' (clean; the retried assistant keeps its own group ' + JSON.stringify(a1sg) + ') - the next normal send is no longer mis-grouped';
   }
 });
 

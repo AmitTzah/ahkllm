@@ -297,6 +297,11 @@ _BuildAndFireRequest() {
     if !chatHistoryJSONRequest {
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
+        ; Bug #211: a retry rejected before any stream (vision gate, API-key
+        ; error, endpoint error) leaves pendingRetrySiblingGroup / 
+        ; pendingRetryIsRoot set - clear them so the next normal response is
+        ; not mis-grouped with the retried message.
+        _ClearPendingRetryState()
         return false
     }
     postWebMessage("setChatButtonsEnabled", false)
