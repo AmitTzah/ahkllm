@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 4 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 reported, 5 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS), #209
-  (navigateToMessage leaves the sidebar stale), #210 (chat-window title stale after deleting the
-  active thread), #211 (failed retry leaks pendingRetrySiblingGroup into the next response) VERIFIED
-  headlessly and committed; next: keep hunting for new bugs.
+- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208-#212 VERIFIED headlessly and committed
+  (one commit each); stale #21/#56 scenario assertions fixed (stream-state wait + streamCancelled
+  object contract). Full fast suite green; full headless suite 206/206 PASS. Next: nothing open in
+  round 2 - hand the verified bugs back for the fix cycle.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -210,6 +210,40 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 212. The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - `handleChatSend` re-applies the "New Chats Start With" default when auto-creating the thread
+
+**Scenario:** 212 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** In a fresh session (no thread open), pick an assistant or type a system
+prompt (or set a temperature) in the right rail, then send the first message. The
+request carries the configured "New Chats Start With" default (e.g. the default
+assistant's system prompt) instead of what the user just chose.
+
+**Expected:** the auto-created thread inherits the user's current right-rail settings;
+the new-chat default applies only when nothing was configured (the same guard
+`_applyNewChatDefaultToFreshThread` uses for tray/command-line threads).
+
+**Actual:** `handleChatSend`'s auto-create branch runs
+`ChatDB.Thread_Create()` then calls `_applyNewChatDefault()` UNCONDITIONALLY before
+`_saveCurrentSettingsToThread()`. `_applyNewChatDefault` replaces `requestParams`
+with the configured default (since bug #196, "App Default" resolves to the marked
+default assistant), wiping the user's pre-send assistant selection, typed system
+message, and temperature. This is why regression #60 ("typing a system prompt
+directly into the right-rail field reaches the API request") now fails.
+
+**Evidence:** `chat/callbacks/Message.ahk` `handleChatSend` - the `if !activeThreadId`
+branch calls `_applyNewChatDefault()` with no freshness guard, then persists the
+overwritten requestParams; `chat/ChatSettings.ahk` `_applyNewChatDefault` clobbers
+`singleAPIModelName`/`systemOverride`/`reasoningOverride`/`temperatureOverride`.
+
+**Verification:** headless scenario 212 - fresh session, selected the "Violet"
+assistant in the popover, typed "DIRECT TYPED MESSAGE" into the right-rail system
+prompt field, then sent the first message. The logged request's system message is the
+default assistant's ("You are a conversational partner..."), not the typed text - the
+pre-send selections were discarded at thread creation.
 
 ### 211. A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping
 

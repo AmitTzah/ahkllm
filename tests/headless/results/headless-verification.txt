@@ -1,6 +1,8 @@
-# 2026-08-12T13:54:25.404Z | run of 1 scenario(s)
-PASS | #211 | A failed retry leaks pendingRetrySiblingGroup into the next response - retryAction sets the pending keys and only the SUCCESS (_persistStreamResponse) and CANCEL (_handleStreamCancelled) paths delete them; a retry rejected before any stream (vision gate / buildRequest failure / _handleStreamError) leaves the stale group set, so the next normal send inserts its response with the retried message's sibling_group even though its parent is the new user message | failed retry leaked pendingRetrySiblingGroup: follow-up response (parent=0a3fd79d-3933-81f6-b7ff-0000fcb45a8b) was inserted with sibling_group=0a3fd460-b3df-f5c1-d3eb-00008349c62f (index 1), the same group as the retried assistant 0a3fd460-b3df-f5c1-d3eb-00008349c62f (parent m-211-u1) - branch nav and the tree now treat them as siblings across different parents | 8.2s
+# 2026-08-12T14:12:13.242Z | run of 3 scenario(s)
+PASS | #21 | Reasoning-only responses (thinking, no visible text) get no action buttons | thinking block shown, assistant message added to chatMessages, bubble has 7 action buttons | 4.4s
+PASS | #56 | Stopping a stream before the first token is a clean cancel (static check) | _finalizeStreaming checks _streamCancelled before the empty-content branch, so pressing Stop before the first token is a clean cancellation (no API-key banner) | 0.0s
+PASS | #212 | The first message in a fresh session discards right-rail selections - handleChatSend auto-creates the thread, then calls _applyNewChatDefault() UNCONDITIONALLY, so a pre-send assistant pick / typed system prompt / temperature is overwritten by the "New Chats Start With" default (since bug #196, "App Default" resolves to the marked default assistant) and the request carries the default assistant's system message | selected Violet + typed "DIRECT TYPED MESSAGE" before the first send, but the request system message is the DEFAULT assistant's ("You are a conversational partner, not an assistant performin") - handleChatSend re-applied _applyNewChatDefault() at thread creation and discarded the pre-send right-rail selections | 7.3s
 
-Summary: 1/1 scenarios PASS
+Summary: 3/3 scenarios PASS
 Real profile restored: yes
 Report sync: OK

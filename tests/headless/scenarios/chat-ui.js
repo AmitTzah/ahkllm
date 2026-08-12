@@ -203,7 +203,10 @@ scenarios.push({
   async body({ cdp }) {
     await showChat();
     await sendChatMessage(cdp, 'think only please');
-    await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active && streamState.bubble !== null', 30000, 300, 'stream done');
+    // The completed bubble stays in the DOM, but onStreamDone nulls the
+    // streamState.bubble handle, so wait on the stream being idle instead of
+    // requiring the (now-nulled) handle to survive completion.
+    await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active && !isLoading', 30000, 300, 'stream done');
     const thinking = await cdp.eval('document.querySelectorAll(".thinking-block").length');
     const lastMsgRole = await cdp.eval('chatMessages[chatMessages.length - 1].role');
     const lastBubbleActions = await cdp.eval(`(() => {
@@ -326,7 +329,10 @@ scenarios.push({
     if (cancelPos < 0 || errorPos < 0 || cancelPos > errorPos)
       throw new Error('cancel branch not before the empty-content error branch (bug #56 not fixed): cancelPos=' + cancelPos + ' errorPos=' + errorPos);
     // _handleStreamCancelled posts a clean cancellation for empty content.
-    const cleanCancel = /postWebMessage\("streamCancelled", true\)/.test(se);
+    // Bug #171 scoped the payload to the sending thread ({ threadId }),
+    // replacing the earlier bare `true` - assert the object-form post (a
+    // clean streamCancelled, never a showError banner).
+    const cleanCancel = /postWebMessage\("streamCancelled",\s*\{/.test(se);
     if (!cleanCancel)
       throw new Error('_handleStreamCancelled must post a clean streamCancelled for empty content');
     return '_finalizeStreaming checks _streamCancelled before the empty-content branch, so pressing Stop before the first token is a clean cancellation (no API-key banner)';
@@ -359,6 +365,52 @@ scenarios.push({
     if (String(renderedHtml).indexOf('<img') >= 0)
       throw new Error('raw <img> tag still present in rendered HTML (bug #57 not fixed): ' + JSON.stringify(renderedHtml));
     return 'assistant message <img src="x" onerror=...> rendered inert (window.__xssPwned=0); msg HTML=' + JSON.stringify(renderedHtml);
+  }
+});
+
+scenarios.push({
+  id: 212,
+  name: 'The first message in a fresh session discards right-rail selections - handleChatSend auto-creates the thread, then calls _applyNewChatDefault() UNCONDITIONALLY, so a pre-send assistant pick / typed system prompt / temperature is overwritten by the "New Chats Start With" default (since bug #196, "App Default" resolves to the marked default assistant) and the request carries the default assistant\'s system message',
+  mode: 'sse-success',
+  regression: false,
+  settings: {},
+  async body({ cdp, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.getElementById("modelCardTrigger") !== null && typeof window._assistantList !== "undefined"', 15000, 300, 'model card + list');
+    await cdp.click('#modelCardTrigger');
+    await cdp.waitFor('document.getElementById("modelPopover").classList.contains("open")', 5000, 200, 'popover open');
+    await cdp.waitFor('[...document.querySelectorAll("#tab-assistants .selector-item .si-name")].some(e => e.textContent === "Violet")', 10000, 250, 'violet listed');
+    await cdp.eval(`(() => {
+      const items = [...document.querySelectorAll('#tab-assistants .selector-item')];
+      const it = items.find((el) => el.querySelector('.si-name') && el.querySelector('.si-name').textContent === 'Violet');
+      if (!it) return false;
+      it.click();
+      return true;
+    })()`);
+    await sleep(1500); // switchAssistant round trip
+    // Type DIRECTLY into the mini field (no Expand modal), then send.
+    await cdp.eval('document.getElementById("sysMsgMini").value = ""');
+    await cdp.type('#sysMsgMini', 'DIRECT TYPED MESSAGE');
+    await sleep(800);
+    const railAfter = await cdp.eval('document.getElementById("sysMsgMini").value');
+    if (railAfter !== 'DIRECT TYPED MESSAGE')
+      throw new Error('typed message not visible in the rail (setup): ' + JSON.stringify(railAfter));
+    await sendChatMessage(cdp, 'hello from direct typing');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l));
+    const chatReq = lines.find((e) => e.body && e.body.stream === true);
+    if (!chatReq) throw new Error('no streaming chat request was logged; lines=' + lines.length);
+    const b = chatReq.body;
+    const sysMsg = (b.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || ''));
+    const containsTyped = sysMsg.some((c) => c.indexOf('DIRECT TYPED MESSAGE') >= 0);
+    // BUG #212: handleChatSend auto-created the thread and then re-applied the
+    // New Chats Start With default, overwriting the typed system prompt (and
+    // the Violet selection) with the default assistant's settings.
+    if (containsTyped)
+      throw new Error('typed system prompt reached the request (bug #212 not reproduced): ' + JSON.stringify(sysMsg));
+    return 'selected Violet + typed "DIRECT TYPED MESSAGE" before the first send, but the request system message is the DEFAULT assistant\'s (' +
+      JSON.stringify(sysMsg[0] ? sysMsg[0].slice(0, 60) : '(none)') + ') - handleChatSend re-applied _applyNewChatDefault() at thread creation and discarded the pre-send right-rail selections';
   }
 });
 
