@@ -1976,6 +1976,68 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 211,
+  name: 'A failed retry leaks pendingRetrySiblingGroup into the next response - retryAction sets the pending keys and only the SUCCESS (_persistStreamResponse) and CANCEL (_handleStreamCancelled) paths delete them; a retry rejected before any stream (vision gate / buildRequest failure / _handleStreamError) leaves the stale group set, so the next normal send inserts its response with the retried message\'s sibling_group even though its parent is the new user message',
+  mode: 'sse-success',
+  regression: false,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-stale-211', title: 'Stale Retry State', active_leaf_id: 'm-211-a1' }],
+    messages: [
+      { id: 'm-211-u1', thread_id: 't-stale-211', role: 'user', content: 'root question' },
+      { id: 'm-211-a1', thread_id: 't-stale-211', role: 'assistant', content: 'first answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-211-u1', token_count: 9, prompt_tokens: 12, active_path_tokens: 21 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    // Attach an image to the user message: deepseek/deepseek-v4-flash has
+    // vision:false, so the retry request is rejected by the vision gate BEFORE
+    // any stream starts (buildRequest returns ""). This is the "failed retry".
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES ('att-211', 'm-211-u1', 'image', 'attachments/img.png', 'image/png', 'img.png', 12, '')");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-211-a1"', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Retry the assistant reply - the vision gate rejects it (no stream).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
+    await cdp.waitFor('document.querySelectorAll(".error-banner").length > 0', 15000, 300, 'vision-gate error');
+    await cdp.waitFor('isLoading === false', 10000, 250, 'UI re-enabled after failed retry');
+    await sleep(500);
+    // Remove the image so the follow-up request passes the vision gate.
+    const db2 = new DatabaseSync(dbPath);
+    db2.exec("DELETE FROM message_attachments WHERE message_id='m-211-u1'");
+    db2.close();
+    // Normal follow-up send - its streamed response must NOT inherit the
+    // failed retry's sibling group.
+    await sendChatMessage(cdp, 'follow-up after failed retry');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const rows = seed.query(dbPath, "SELECT id, content FROM messages WHERE thread_id='t-stale-211' AND content LIKE 'Hello from the mock LLM%'");
+    if (rows.length !== 1)
+      throw new Error('setup: expected one streamed follow-up response, got ' + JSON.stringify(rows));
+    const a2 = seed.query(dbPath, "SELECT parent_id, sibling_group, sibling_index FROM messages WHERE id=?", [rows[0].id])[0];
+    const u2 = seed.query(dbPath, "SELECT id FROM messages WHERE content='follow-up after failed retry'")[0];
+    const a1sg = seed.query(dbPath, "SELECT sibling_group FROM messages WHERE id='m-211-a1'")[0].sibling_group;
+    if (!u2) throw new Error('setup: follow-up user message missing');
+    if (a2.parent_id !== u2.id)
+      throw new Error('setup: follow-up response was not parented to the follow-up user message: ' + JSON.stringify(a2));
+    // BUG #211: the response inherited the FAILED retry's sibling group - it is
+    // grouped with the retried assistant (same sibling_group) even though its
+    // parent is the new user message (a1's parent is the ORIGINAL user message).
+    if (a2.sibling_group && a2.sibling_group === a1sg && a2.parent_id !== 'm-211-u1')
+      return 'failed retry leaked pendingRetrySiblingGroup: follow-up response (parent=' + a2.parent_id +
+        ') was inserted with sibling_group=' + a2.sibling_group + ' (index ' + a2.sibling_index +
+        '), the same group as the retried assistant ' + a1sg + ' (parent m-211-u1) - branch nav and the tree now treat them as siblings across different parents';
+    throw new Error('follow-up response had a clean sibling group (bug #211 not reproduced): ' + JSON.stringify(a2) + ' a1sg=' + JSON.stringify(a1sg));
+  }
+});
+
+scenarios.push({
   id: 205,
   name: 'Cancelling a retry of a ROOT assistant (no parent) inserts the partial as a CHILD of the original - _handleStreamCancelled honors pendingRetrySiblingGroup but never checks pendingRetryIsRoot (unlike _persistStreamResponse, bug #147), so the cancelled retry is attached under the original root instead of as a sibling with parent NULL',
   mode: 'sse-slow',

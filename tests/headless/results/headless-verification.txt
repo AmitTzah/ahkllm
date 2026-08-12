@@ -1,5 +1,5 @@
-# 2026-08-12T13:52:26.914Z | run of 1 scenario(s)
-PASS | #210 | Chat-window title stays stale after deleting the active thread - the deleteThread/deleteThreadForever/emptyTrash paths clear activeThreadId and post loadThread+initChatMode but never reset chatWindow.Title (only renameThread and _LoadThreadAndRefreshUI touch it) | deleted the active thread: activeThreadId="" but the window title is still "AhkLLM - Stale Title Thread" (before: "AhkLLM - Stale Title Thread") - deleteThread/deleteThreadForever/emptyTrash never reset chatWindow.Title | 6.0s
+# 2026-08-12T13:54:25.404Z | run of 1 scenario(s)
+PASS | #211 | A failed retry leaks pendingRetrySiblingGroup into the next response - retryAction sets the pending keys and only the SUCCESS (_persistStreamResponse) and CANCEL (_handleStreamCancelled) paths delete them; a retry rejected before any stream (vision gate / buildRequest failure / _handleStreamError) leaves the stale group set, so the next normal send inserts its response with the retried message's sibling_group even though its parent is the new user message | failed retry leaked pendingRetrySiblingGroup: follow-up response (parent=0a3fd79d-3933-81f6-b7ff-0000fcb45a8b) was inserted with sibling_group=0a3fd460-b3df-f5c1-d3eb-00008349c62f (index 1), the same group as the retried assistant 0a3fd460-b3df-f5c1-d3eb-00008349c62f (parent m-211-u1) - branch nav and the tree now treat them as siblings across different parents | 8.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -154,11 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 3 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 reported, 4 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS), #209
   (navigateToMessage leaves the sidebar stale), #210 (chat-window title stale after deleting the
-  active thread) VERIFIED headlessly and committed; next: keep hunting for new bugs.
+  active thread), #211 (failed retry leaks pendingRetrySiblingGroup into the next response) VERIFIED
+  headlessly and committed; next: keep hunting for new bugs.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -209,6 +210,43 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 211. A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping
+
+**Scenario:** 211 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Start with a chat containing a user message + assistant reply. Retry the
+assistant reply and let the retry FAIL before any content arrives (network error, or
+here: a vision-gate rejection because the thread has an image and the model lacks
+vision). Then send a normal follow-up message. The follow-up's response is inserted
+with the FAILED retry's `sibling_group`, so it is grouped as a sibling of the retried
+assistant even though its parent is the new user message.
+
+**Expected:** only a retry that actually streams consumes `pendingRetrySiblingGroup` /
+`pendingRetryIsRoot`; a failed retry must clear them so the next normal response is
+inserted with no sibling group.
+
+**Actual:** `retryAction` sets `pendingRetrySiblingGroup` before firing; the keys are
+only deleted in `_persistStreamResponse` and `_handleStreamCancelled`. The error paths
+(`_handleStreamError`, `buildRequest` rejection, `_BuildAndFireRequest` failure) never
+clear them, so the next successful `Msg_Insert` reads the stale group
+(`_persistStreamResponse` picks it up) and writes `sibling_group`/`sibling_index` from
+it - the new assistant row is grouped with the retried message's siblings while its
+parent is a different message, corrupting branch navigation and the tree view.
+
+**Evidence:** `chat/callbacks/Branch.ahk` `retryAction` sets the pending keys;
+`chat/streaming/StreamCompletion.ahk` `_persistStreamResponse` consumes (and deletes)
+them only on success; `chat/streaming/StreamError.ahk` `_handleStreamError` and the
+`buildRequest` early-return paths leave them set.
+
+**Verification:** headless scenario 211 - seeded a user/assistant exchange, attached an
+image to the user message, retried the assistant (vision gate rejects it before any
+stream), removed the attachment, then sent a follow-up. The follow-up's streamed
+assistant row landed with `parent_id` = the new user message but
+`sibling_group` = the failed retry's group (the original assistant's group), while a
+clean send would have an empty sibling group.
 
 ### 210. Chat-window title stays stale after deleting the active thread
 
