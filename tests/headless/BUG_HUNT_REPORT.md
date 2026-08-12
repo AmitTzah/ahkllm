@@ -154,10 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
-  bug #213 verified headlessly (font-size dropped before the first message).
+  bugs #213-#214 verified headlessly (font-size dropped before the first message; mid-stream branch
+  switch re-enables the composer so a second send clobbers the first billed response).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -229,6 +230,30 @@ pre-send adjustment never reaches `requestParams["fontSize"]`, and `handleChatSe
 
 **Verification:** headless â€“ scenario 213 launches a fresh empty profile, clicks `#btn-font-inc` (display 18px),
 sends the first message, then reads `chat_threads.font_size` from the isolated DB: it is 17 (default), not 18.
+Scenario PASS = bug reproduced.
+
+### 214. Switching branches mid-stream re-enables the composer and lets a second send clobber the first stream
+
+**Scenario:** 214 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Send a message on branch A, and while it is streaming click the "Next branch" arrow to switch to a
+sibling branch, then send another message.
+
+**Expected:** the composer stays disabled/Stop while the first request is in flight; a second send is not possible.
+
+**Actual:** `updateChatMessages` calls `setChatButtonsEnabled(true)` unconditionally, so the branch switch re-enables
+the input and rewires the button to Send while stream 1 is still active. Sending again runs a SECOND request that
+overwrites the shared `requestParams["_stream*"]` state (output file, PID, content), orphaning stream 1: its cURL
+process finishes into a file nothing reads, so the billed response is never persisted, logged, or shown.
+
+**Evidence:** `webui/js/chat/chat-render.js` `updateChatMessages` â†’ `setChatButtonsEnabled(true)`;
+`chat/streaming/StreamHandler.ahk` keeps one `_stream*` context in `requestParams` shared by every request.
+
+**Verification:** headless â€“ scenario 214 (sse-slow) sends "follow-up on A", switches to branch B mid-stream,
+asserts the composer is enabled (input editable, button = Send) while `streamState.active` is true, sends "second
+message on B", then reads the DB: the second send persisted 1 assistant response, the first send persisted 0.
 Scenario PASS = bug reproduced.
 
 ## History (append-only)

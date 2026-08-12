@@ -647,4 +647,63 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 214,
+  name: 'Switching branches mid-stream re-enables the composer (setChatButtonsEnabled(true) inside updateChatMessages) - the user can send a SECOND request while the first stream is still in flight, and the second send clobbers the shared requestParams stream state so the first (billed) response is never persisted or logged',
+  mode: 'sse-slow',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-mid-214', title: 'Mid-Stream Branch', active_leaf_id: 'm-214-a1' }],
+    messages: [
+      { id: 'm-214-u1', thread_id: 't-mid-214', role: 'user', content: 'root question', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-214-a1', thread_id: 't-mid-214', role: 'assistant', content: 'branch A answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-214-u1', sibling_group: 'sg-214', sibling_index: 0, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 },
+      { id: 'm-214-a2', thread_id: 't-mid-214', role: 'assistant', content: 'branch B answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-214-u1', sibling_group: 'sg-214', sibling_index: 1, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 }
+    ]
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length >= 2 && chatMessages[1] && chatMessages[1].id === "m-214-a1"', 15000, 300, 'branch A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'follow-up on A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(150);
+    // Switch to the sibling branch while A's stream is in flight (same flow
+    // as the branch-nav arrows on the assistant bubble).
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Next branch"]');
+    await cdp.waitFor('chatMessages.length >= 2 && chatMessages[1] && chatMessages[1].id === "m-214-a2"', 15000, 300, 'branch B loaded');
+    await sleep(300);
+    // The first stream must STILL be in flight at this point.
+    const stillActive = await cdp.eval('typeof streamState !== "undefined" && streamState.active === true');
+    if (!stillActive) throw new Error('setup: first stream already finished before the state check (timing)');
+    // BUG: updateChatMessages -> setChatButtonsEnabled(true) re-enabled the
+    // composer mid-stream: the input is editable and the send button is wired
+    // to onChatSend instead of onStopStreaming.
+    const inputDisabled = await cdp.eval('document.getElementById("chat-input").disabled');
+    const btnState = await cdp.eval(`(() => {
+      const b = document.getElementById('chat-send-btn');
+      if (!b) return 'no-btn';
+      return String(b.onclick).indexOf('onChatSend') >= 0 ? 'send' : 'stop';
+    })()`);
+    if (inputDisabled && btnState === 'stop')
+      throw new Error('composer correctly stayed disabled mid-stream (fix applied): inputDisabled=' + inputDisabled + ' btn=' + btnState);
+    // Prove the harm: send a second message while stream 1 is still in flight.
+    await sendChatMessage(cdp, 'second message on B');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'second stream active');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(800);
+    // The first request's response is never persisted: no assistant row is
+    // parented to the "follow-up on A" user message (the second send
+    // overwrote requestParams["_stream*"], orphaning stream 1).
+    const followUpId = seed.query(dbPath, "SELECT id FROM messages WHERE thread_id='t-mid-214' AND content='follow-up on A'")[0];
+    const firstResp = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-mid-214' AND role='assistant' AND parent_id=?", [followUpId ? followUpId.id : 'nope'])[0].c;
+    const secondResp = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-mid-214' AND role='assistant' AND parent_id IN (SELECT id FROM messages WHERE thread_id='t-mid-214' AND content='second message on B')")[0].c;
+    return 'branch switch mid-stream left the composer enabled (inputDisabled=' + inputDisabled + ' btn=' + btnState +
+      '); a second send fired while stream 1 was still active: responses persisted for the second send=' + secondResp +
+      ', responses persisted for the first send (follow-up on A)=' + firstResp +
+      ' - the first billed response is silently lost';
+  }
+});
+
 module.exports = scenarios;
