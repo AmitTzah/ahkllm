@@ -1941,4 +1941,45 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 207,
+  name: 'Thread A\'s stream completion repaints thread B\'s header token bar with A\'s stats - _handleStreamComplete calls postThreadStats(streamThreadId) and the WebView\'s updateTokenUsage renders whatever arrives, so after switching to B mid-stream B shows A\'s Context/Cumulative numbers even though B\'s DB has only a 5-token user message',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-hdr-a-207', title: 'Thread A', active_leaf_id: 'm-207-u1a' },
+      { id: 't-hdr-b-207', title: 'Thread B', active_leaf_id: 'm-207-u1b' }
+    ],
+    messages: [
+      { id: 'm-207-u1a', thread_id: 't-hdr-a-207', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-207-u1b', thread_id: 't-hdr-b-207', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-hdr-a-207"); true');
+    await cdp.waitFor('window.activeThreadId === "t-hdr-a-207"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    await cdp.eval('window.loadThread("t-hdr-b-207"); true');
+    await cdp.waitFor('window.activeThreadId === "t-hdr-b-207"', 10000, 250, 'thread B loaded');
+    // B's own stats: context 5, cumulative 0/0.
+    const bStats = seed.query(dbPath, "SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id='t-hdr-b-207'")[0];
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1000);
+    const bar = await cdp.text('#tokenBar');
+    // BUG present: A's completion posted A's stats (context 21, cumulative
+    // 12/9) and updateTokenUsage rendered them over B's header.
+    if (String(bar).indexOf('21') < 0 || String(bar).indexOf('\u2191 12') < 0)
+      throw new Error('token bar did not show thread A stats over thread B (bug not reproduced): bar=' + JSON.stringify(bar) + ' bStats=' + JSON.stringify(bStats));
+    return 'after A completes while B is visible: B DB stats=' + JSON.stringify(bStats) +
+      ' (context 5, no API calls), but the header shows "' + String(bar).replace(/\s+/g, ' ').trim() +
+      '" (A\'s context 21 / cumulative 12/9) - postThreadStats(streamThreadId) repaints the wrong thread\'s token bar';
+  }
+});
+
 module.exports = scenarios;

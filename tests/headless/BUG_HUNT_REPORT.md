@@ -154,17 +154,17 @@ How to run AHK safely:
 
 ## Current state
 
-- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **14 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-206 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-207 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
   handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
   short-form model metadata; fork re-counts local branch copies as real API calls; chat-mode command
   "Stream Response" OFF is ignored; stalled streams never time out; cancelled root retry becomes a child of
-  the original; API-log entries pick up the new thread's model/provider after a mid-stream switch). Next:
-  keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  the original; API-log entries pick up the new thread's model/provider after a mid-stream switch; A's
+  completion repaints B's token bar). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -651,6 +651,35 @@ logged model.
 **Verification result (2026-08-12):** scenario 206 PASSED - A's request body
 used `deepseek-v4-flash` while its log row says model=`openai/gpt-5-mini`,
 provider=`deepseek`.
+
+### 207. Thread A's stream completion repaints thread B's header token bar with A's stats
+
+**Scenario:** 207 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Start a request in thread A, switch to thread B while it streams,
+and wait for A's response to finish while B is still visible.
+
+**Expected:** the header token bar keeps showing B's context/cumulative stats
+(from B's own path).
+
+**Actual:** `_handleStreamComplete` calls `postThreadStats(streamThreadId)` for
+the SENDING thread (correct DB-wise), but the WebView's `updateTokenUsage`
+renders whatever stats arrive with no thread scoping. B's initial stats (5
+tokens, 0 calls) are overwritten by A's completion stats (context 21,
+cumulative 12/9) even though B remains the active thread.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` posts A's stats after
+`_LoadThreadAndRefreshUI(B)` already ran; `webui/js/chat/chat-format.js`
+`updateTokenUsage` is a global renderer with no active-thread check.
+
+**Verification:** headless scenario 207 uses the same thread-switch flow as
+#195 and asserts the visible `#tokenBar` contains A's context (`21`) and
+cumulative input (`↑ 12`) while B's DB stats are 0/0.
+
+**Verification result (2026-08-12):** scenario 207 PASSED - B's DB stats are
+0/0, but the header shows `21 / 1m ↑ 12 ↓ 9 $0.00` (A's stats).
 
 ## History (append-only)
 
