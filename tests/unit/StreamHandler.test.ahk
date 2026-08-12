@@ -553,7 +553,7 @@ class StreamHandlerTest {
         if !InStr(errorBlock, "deleteTempFiles()")
             throw Error("_handleStreamError must delete temp files (bug #110)")
         cancelIdx := InStr(se, "_handleStreamCancelled() {")
-        cancelBlock := SubStr(se, cancelIdx, 2800)
+        cancelBlock := SubStr(se, cancelIdx, 3600)
         if !InStr(cancelBlock, "deleteTempFiles()")
             throw Error("_handleStreamCancelled must keep deleting temp files")
     }

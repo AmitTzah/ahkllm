@@ -95,7 +95,15 @@ _handleStreamCancelled() {
     streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
     if streamThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
         path := ChatDB.Msg_GetActivePath(streamThreadId)
-        parentId := path.Length ? path[path.Length].id : ""
+        ; Bug #205: mirror the completion path's root-retry handling. A retried
+        ; ROOT assistant (no parent) must insert the cancelled partial as a
+        ; SIBLING with parent_id NULL - never as a child of the original root.
+        isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
+        if isRootRetry
+            requestParams.Delete("pendingRetryIsRoot")
+        parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
+        if !isRootRetry && !parentId && path.Length
+            parentId := path[path.Length].id
         retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
         retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
         if retrySiblingGroup

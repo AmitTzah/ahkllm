@@ -271,7 +271,7 @@ StreamHandler.test.ahk.
 
 **Scenario:** 195 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Start a request in thread A. While it streams, click thread B in the
 sidebar. After A's stream finishes, use Copy entire chat / Export or open the
@@ -615,10 +615,11 @@ path) handles the root-retry flag.
 
 **Verification:** headless scenario 205 drives the real app: seed a root-only
 assistant thread, retry it, cancel mid-stream (`sse-slow`), and assert the
-partial row's `parent_id` equals the original root id.
+partial row's `parent_id` is NULL (a sibling of the original root).
 
-**Verification result (2026-08-12):** scenario 205 PASSED - the cancelled
-partial was inserted with `parent_id=m-205-a1` (child of the original root).
+**Verification result (2026-08-12):** scenario 205 PASSED after the fix - the
+cancelled partial was inserted with `parent_id=null` and the retry sibling
+group. Regression unit test added in StreamError.test.ahk.
 
 ### 206. Switching threads mid-stream writes the old request's API-log entry with the new thread's model/provider
 

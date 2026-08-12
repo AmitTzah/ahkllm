@@ -1885,13 +1885,12 @@ scenarios.push({
     if (partials.length !== 1)
       throw new Error('setup: expected one cancelled partial, got ' + JSON.stringify(partials));
     const parentId = partials[0].parent_id;
-    // BUG present: the cancelled retry was inserted with parent_id = the
-    // original root (it became a CHILD); bug #147's sibling semantics apply to
-    // the completion path only.
-    if (parentId !== 'm-205-a1')
-      throw new Error('cancelled root retry was not mis-parented (bug not reproduced): parent=' + parentId + ' rows=' + JSON.stringify(partials));
-    return 'retried the root assistant and cancelled after reasoning started: the partial row has parent_id=' + parentId +
-      ' (the original root) instead of NULL - _handleStreamCancelled ignored pendingRetryIsRoot, so the cancelled retry became a child of the original';
+    // FIXED (bug #205): the cancelled partial is a SIBLING of the original
+    // root (parent_id NULL), mirroring the completed retry path (bug #147).
+    if (parentId !== null && parentId !== '')
+      throw new Error('cancelled root retry still has a parent (fix incomplete): parent=' + parentId + ' rows=' + JSON.stringify(partials));
+    return 'retried the root assistant and cancelled after reasoning started: the partial row has parent_id=' +
+      JSON.stringify(parentId) + ' (NULL - sibling of the original root) - _handleStreamCancelled now honors pendingRetryIsRoot';
   }
 });
 

@@ -116,6 +116,52 @@ class StreamErrorTest {
         this._teardown()
     }
 
+    ; Regression (bug #205): cancelling a retry of a ROOT assistant must
+    ; insert the partial as a SIBLING with parent_id NULL, exactly like the
+    ; completed retry path (bug #147) - not as a child of the original root.
+    CancelRootRetry_ParentIsNull() {
+        global activeThreadId, requestParams
+        threadId := this._setup()
+        rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "root answer", model: "deepseek/deepseek-v4-flash", token_count: 5, prompt_tokens: 1})
+        sg := ChatDB._UUID()
+        ChatDB.db.Query("UPDATE messages SET sibling_group=? WHERE id=?;", sg, rootId)
+
+        activeThreadId := threadId
+        requestParams["_streamThreadId"] := threadId
+        requestParams["_streamParentId"] := ""
+        requestParams["pendingRetryIsRoot"] := true
+        requestParams["pendingRetrySiblingGroup"] := sg
+        requestParams["_streamContent"] := ""
+        requestParams["_streamReasoning"] := "thinking partial"
+        requestParams["_streamModelName"] := "deepseek-v4-flash"
+        requestParams["_streamDisplayName"] := "deepseek-v4-flash"
+        requestParams["_streamLastPos"] := 0
+        requestParams["_streamRequestStartTime"] := A_TickCount
+        requestParams["_streamFirstTokenTime"] := 0
+        requestParams["_streamChatHistoryJSONRequest"] := "{}"
+        requestParams["_streamProviderKey"] := "deepseek"
+        requestParams["_streamOutputFile"] := "out.txt"
+        requestParams["_streamUsage"] := {}
+        requestParams["_streamRawSseChunks"] := ""
+        requestParams["_streamRawLastResponse"] := ""
+        requestParams["_streamPollCount"] := 0
+        requestParams["_streamPID"] := 0
+        requestParams["_streamCancelled"] := false
+        requestParams["cURLErrorFile"] := ""
+
+        _handleStreamCancelled()
+
+        row := ChatDB.db.Query("SELECT parent_id, sibling_group FROM messages WHERE thread_id=? AND reasoning='thinking partial';", threadId)
+        if !row.count
+            throw Error("cancelled root retry partial was not inserted")
+        if row[1, "parent_id"] != ""
+            throw Error("cancelled root retry must have parent_id NULL (bug #205), got '" row[1, "parent_id"] "'")
+        if row[1, "sibling_group"] != sg
+            throw Error("cancelled root retry must keep the retry sibling group, got '" row[1, "sibling_group"] "'")
+        activeThreadId := ""
+        this._teardown()
+    }
+
     ; ----------------------------------------------------
     ; Regression: Cancel without retry (no pendingRetrySiblingGroup) uses empty sibling_group
     ; ----------------------------------------------------
@@ -215,7 +261,7 @@ class StreamErrorTest {
         sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"
         se := FileRead(sePath)
         cancelIdx := InStr(se, "_handleStreamCancelled() {")
-        cancelBlock := SubStr(se, cancelIdx, 2000)
+        cancelBlock := SubStr(se, cancelIdx, 3600)
         if !InStr(cancelBlock, "local_copy: true")
             throw Error("_handleStreamCancelled must insert the cancelled partial as local_copy (bug #133)")
     }

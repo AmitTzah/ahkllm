@@ -1,5 +1,5 @@
-# 2026-08-12T11:21:40.510Z | run of 1 scenario(s)
-PASS | #197 | Switching BRANCHES within the SAME thread mid-stream mis-parents the completed response - _persistStreamResponse reads ChatDB.Msg_GetActivePath(streamThreadId) at completion time instead of capturing the request's last user message, so after branch A sends and the user navigates to branch B, the response becomes a child of branch B's leaf instead of branch A's follow-up user message | branch A sent "follow-up on A" (user id 09b40472-fa49-5b7f-2acb-0000d79a6286), switched to branch B mid-stream; the completed response was inserted with parent_id=09b40472-fa49-5b7f-2acb-0000d79a6286 - _persistStreamResponse uses the parent captured at send time, so the response stays on the branch that sent it | 9.5s
+# 2026-08-12T11:23:13.829Z | run of 1 scenario(s)
+PASS | #205 | Cancelling a retry of a ROOT assistant (no parent) inserts the partial as a CHILD of the original - _handleStreamCancelled honors pendingRetrySiblingGroup but never checks pendingRetryIsRoot (unlike _persistStreamResponse, bug #147), so the cancelled retry is attached under the original root instead of as a sibling with parent NULL | retried the root assistant and cancelled after reasoning started: the partial row has parent_id=null (NULL - sibling of the original root) - _handleStreamCancelled now honors pendingRetryIsRoot | 6.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
