@@ -154,17 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **14 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 verified, 0 reported, 14 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-207 verified headlessly (assistant overwrite-edit
-  leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
-  fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
-  response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
-  handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
-  short-form model metadata; fork re-counts local branch copies as real API calls; chat-mode command
-  "Stream Response" OFF is ignored; stalled streams never time out; cancelled root retry becomes a child of
-  the original; API-log entries pick up the new thread's model/provider after a mid-stream switch; A's
-  completion repaints B's token bar). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+- **Where we left off:** 2026-08-12 - FIX CYCLE COMPLETE for bugs #194-207: all 14 flipped scenarios PASS
+  (14/14) + `npm run test:fast` green (contract/load/SQL, 588 AHK, 544 JS tests). Every fix is committed on
+  branch `bug-hunt-2026-08-new-intake` (one commit per bug) and every entry is `fix applied`; next step is
+  the user's manual verification, then the report entries move to History after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -468,7 +463,7 @@ usage-dashboard.test.js.
 
 **Scenario:** 201 (scenario code in scenarios/settings.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Create or edit an assistant whose Base Model is stored in short
 form (e.g. `gpt-5-mini` instead of `openai/gpt-5-mini`), then open the
@@ -501,7 +496,7 @@ supports low/high. Regression unit test added in assistants-settings.test.js.
 
 **Scenario:** 202 (scenario code in scenarios/usage-tokens.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** In a thread, create a branch with "Save as Branch" on an assistant
 message (a pure local DB copy — no API call). Then Fork the chat at that
@@ -533,7 +528,7 @@ unit test added in ChatDB.test.ahk.
 
 **Scenario:** 203 (scenario code in scenarios/commands.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Create or edit a command with `pasteMode: chat` and turn
 "Stream Response" OFF, then run it.
@@ -568,7 +563,7 @@ routes `stream=false` to `sendNonStreamingRequest` (plain JSON response).
 
 **Scenario:** 204 (scenario code in scenarios/chat-ui.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Send a chat message to an endpoint that accepts the connection and
 then sends no SSE bytes (a stalled upstream, proxy hang, or provider that
@@ -598,7 +593,7 @@ LLMRequestBuilder.test.ahk.
 
 **Scenario:** 205 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Delete the root user message so the conversation starts with an
 assistant message (no parent). Click Retry on that root assistant, then press
@@ -629,7 +624,7 @@ group. Regression unit test added in StreamError.test.ahk.
 
 **Scenario:** 206 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Start a request in thread A (model M_A). While it streams, switch to
 thread B (model M_B). After A's response completes, open API Logs and expand
@@ -662,7 +657,7 @@ request body used `deepseek-v4-flash` and its log row now says the same model
 
 **Scenario:** 207 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Start a request in thread A, switch to thread B while it streams,
 and wait for A's response to finish while B is still visible.

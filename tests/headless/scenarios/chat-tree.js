@@ -1757,7 +1757,7 @@ scenarios.push({
 scenarios.push({
   id: 195,
   name: 'Switching threads while a request is streaming pushes the OLD thread\'s completed response into the CURRENT thread\'s in-memory message array - _persistStreamedMessage always targets the global chatMessages, so after thread A\'s stream finishes while thread B is visible, B\'s UI array (copy/export/thread map) contains A\'s assistant message even though the DB row is correct in A',
-  mode: 'sse-success',
+  mode: 'sse-slow',
   settings: {},
   fixtures: {
     threads: [
@@ -1777,7 +1777,9 @@ scenarios.push({
     await sleep(600);
     await sendChatMessage(cdp, 'question for A');
     await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
-    await sleep(40);
+    // Let A's appendChatMessage settle before switching (the fast mock can
+    // race it against B's initChatMode under load).
+    await sleep(300);
     // Switch to thread B while A's stream is in flight (same flow as bug #159).
     await cdp.eval('window.loadThread("t-ui-b-195"); true');
     await cdp.waitFor('window.activeThreadId === "t-ui-b-195"', 10000, 250, 'thread B loaded');

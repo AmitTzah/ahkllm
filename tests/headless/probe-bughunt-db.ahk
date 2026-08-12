@@ -43,6 +43,9 @@ OnError((e, m) => (Log("ERROR: " e.Message "`nSTACK: " (e.HasProp("Stack") ? e.S
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     return ""
 }
+sendNonStreamingRequest(&chatHistoryJSONRequest) {
+    return ""
+}
 #Include ..\..\chat\ChatRequestBuilder.ahk
 postWebMessage(target, data := unset) {
     return ""
