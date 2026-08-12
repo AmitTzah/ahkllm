@@ -28,6 +28,9 @@ OnTriggerLLM(wParam, lParam, msg, hWnd) {
     global activeThreadId
     if !activeThreadId
         return
+    ; Bug #203: honor the command's Stream Response toggle (wParam=1 stream,
+    ; wParam=0 single-shot JSON) instead of always streaming.
+    requestParams["stream"] := wParam ? true : false
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     if path.Length > 0 && path[path.Length].role = "user"
         _BuildAndFireRequest()
@@ -43,6 +46,7 @@ LoadThreadIntoUI(threadId, autoFire := false) {
     _LoadThreadAndRefreshUI(threadId)
     ; Auto-trigger LLM when spawning fresh with a threadId (command-line-arg path).
     if autoFire {
+        requestParams["stream"] := true
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         if path.Length > 0 && path[path.Length].role = "user"
             _BuildAndFireRequest()

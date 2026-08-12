@@ -161,20 +161,26 @@ scenarios.push({
     const rp = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
     const cw = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
     const crb = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatRequestBuilder.ahk'), 'utf8');
+    const cm = fs.readFileSync(path.join(launcher.REPO_ROOT, 'ipc', 'CustomMessages.ahk'), 'utf8');
+    const cipc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
     const chatIdx = rp.indexOf('if pasteMode = "chat"');
     if (chatIdx < 0) throw new Error('chat branch not found (setup)');
     const chatBranch = rp.slice(chatIdx, rp.indexOf('} else {'));
     const defaultStreamTrue = /requestParams\["stream"\]\s*:=\s*true/.test(cw);
     const builderStreamsOnFlag = /if requestParams\["stream"\]\s*\{[\s\S]*?requestObj\.stream := true/.test(crb);
-    const chatBranchPropagatesStream = /requestParams\["stream"\]|stream:\s*stream|Thread_UpdateSettings[\s\S]{0,200}stream/.test(chatBranch);
-    // BUG present: the chat branch stores commandThreadSettings without any
-    // stream field, the chat process defaults stream:=true, and the builder
-    // honors that flag - so the command's Stream Response toggle is dead for
-    // pasteMode=chat and a non-streaming API response is misparsed as SSE.
-    if (!defaultStreamTrue || !builderStreamsOnFlag || chatBranchPropagatesStream)
-      throw new Error('chat-mode command stream flag is not dead (bug not reproduced): defaultStreamTrue=' + defaultStreamTrue +
-        ' builderStreamsOnFlag=' + builderStreamsOnFlag + ' chatBranchPropagatesStream=' + chatBranchPropagatesStream);
-    return 'ChatWindow defaults requestParams["stream"]=true; ChatRequestBuilder streams when that flag is set; and processInitialRequest\'s chat branch never writes the command\'s stream toggle into requestParams/thread settings - a chat-mode command with Stream Response OFF still sends stream:true and fails on JSON-only responses';
+    const commandPassesFlag = /notifyTriggerLLM\(chatWindowhWnd,\s*stream\)/.test(chatBranch);
+    const ipcCarriesFlag = /notifyTriggerLLM\(chatWindowhWnd,\s*stream\s*:=\s*true\)/.test(cm);
+    const chatProcessHonorsFlag = /requestParams\["stream"\]\s*:=\s*wParam \? true : false/.test(cipc);
+    const singleShotBranch = /if requestParams\["stream"\]\s*\{[\s\S]*?sendNonStreamingRequest\(&chatHistoryJSONRequest\)/.test(crb);
+    // FIXED (bug #203): the command's Stream Response toggle is carried from
+    // processInitialRequest -> notifyTriggerLLM wParam -> OnTriggerLLM
+    // requestParams, and sendRequestToLLM routes stream=false to the
+    // single-shot JSON path instead of the SSE handler.
+    if (!defaultStreamTrue || !builderStreamsOnFlag || !commandPassesFlag || !ipcCarriesFlag || !chatProcessHonorsFlag || !singleShotBranch)
+      throw new Error('chat-mode command stream toggle is still not propagated (fix incomplete): defaultStreamTrue=' + defaultStreamTrue +
+        ' builderStreamsOnFlag=' + builderStreamsOnFlag + ' commandPassesFlag=' + commandPassesFlag +
+        ' ipcCarriesFlag=' + ipcCarriesFlag + ' chatProcessHonorsFlag=' + chatProcessHonorsFlag + ' singleShotBranch=' + singleShotBranch);
+    return 'ChatWindow defaults stream=true (normal chat); processInitialRequest passes the command\'s stream flag through notifyTriggerLLM; OnTriggerLLM writes requestParams["stream"] from wParam; and sendRequestToLLM routes stream=false to sendNonStreamingRequest (plain JSON) - a chat-mode command with Stream Response OFF no longer sends SSE';
   }
 });
 

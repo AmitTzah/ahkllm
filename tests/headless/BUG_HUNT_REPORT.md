@@ -401,7 +401,7 @@ unit tests added in chat-attachments.test.js.
 
 **Scenario:** 199 (scenario code in scenarios/settings.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Configure `settings.json` with an empty `providers` map (or remove
 every provider so none remain), then send a chat message.
@@ -554,15 +554,15 @@ response is dropped and surfaced as a request failure.
 `chat/ChatWindow.ahk` `requestParams["stream"] := true`;
 `chat/ChatRequestBuilder.ahk` `if requestParams["stream"] { requestObj.stream := true }`.
 
-**Verification:** headless static check 203 reads the three real source files
-and asserts the chat branch contains no stream propagation while the chat
-process defaults the flag to true and the builder honors it. (Command menus
-cannot be driven by key injection in this environment, per the harness README;
-the static check pins the exact dead-toggle path.)
+**Verification:** headless static check 203 reads RequestProcessor,
+CustomMessages, ChatIPC, ChatWindow, and ChatRequestBuilder and asserts the
+command stream flag is carried end-to-end and routed to the single-shot JSON
+path when OFF. (Command menus cannot be driven by key injection in this
+environment, per the harness README.)
 
-**Verification result (2026-08-12):** scenario 203 PASSED - the chat branch
-contains no stream write, `ChatWindow` sets `stream:=true`, and the builder
-streams on that flag.
+**Verification result (2026-08-12):** scenario 203 PASSED after the fix - the
+flag reaches `requestParams["stream"]` via WM wParam and `sendRequestToLLM`
+routes `stream=false` to `sendNonStreamingRequest` (plain JSON response).
 
 ### 204. A stalled stream never times out (no --max-time on the streaming cURL command)
 

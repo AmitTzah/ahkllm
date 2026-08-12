@@ -108,6 +108,96 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     }
 }
 
+; Bug #203: single-shot (non-streaming) chat response path for chat-mode
+; commands with "Stream Response" OFF. Runs CurlBuilder.Build (plain JSON),
+; parses with ResponseParser, then feeds the result through the SAME
+; completion/error handlers as streaming (persistence, usage, API log,
+; streamDone) by populating the _stream* context keys first.
+sendNonStreamingRequest(&chatHistoryJSONRequest) {
+    try {
+        requestStartTime := A_TickCount
+        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+        if !providerInfo.endpoint {
+            _ShowEndpointError(providerInfo)
+            return
+        }
+        cURLCommand := CurlBuilder.Build(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"])
+        FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
+        Run(cURLCommand, , "Hide", &cURLPID)
+        cURLState("set", cURLPID)
+        while ProcessExist(cURLPID)
+            Sleep 100
+        cURLState("set", 0)
+
+        raw := ""
+        if FileExist(requestParams["cURLOutputFile"])
+            raw := FileOpen(requestParams["cURLOutputFile"], "r", "UTF-8-RAW").Read()
+
+        ; Populate the same _stream* context the completion/error handlers use.
+        requestParams["_streamOutputFile"] := requestParams["cURLOutputFile"]
+        requestParams["_streamLastPos"] := 0
+        requestParams["_streamContent"] := ""
+        requestParams["_streamReasoning"] := ""
+        sanitizedModel := ModelParser.Sanitize(requestParams["singleAPIModelName"])
+        requestParams["_streamModelName"] := sanitizedModel
+        if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
+            asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
+            requestParams["_streamDisplayName"] := asst && asst.name ? asst.name : sanitizedModel
+        } else {
+            requestParams["_streamDisplayName"] := sanitizedModel
+        }
+        requestParams["_streamFirstTokenTime"] := 0
+        requestParams["_streamUsage"] := {}
+        requestParams["_streamProviderKey"] := providerInfo.providerKey
+        requestParams["_streamRawSseChunks"] := ""
+        requestParams["_streamRawLastResponse"] := raw
+        requestParams["_streamPendingLine"] := ""
+        requestParams["_streamPollCount"] := 0
+        requestParams["_streamRequestStartTime"] := requestStartTime
+        requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
+        requestParams["_streamPID"] := 0
+        requestParams["_streamCancelled"] := false
+        requestParams["_streamThreadId"] := activeThreadId
+        requestParams["_streamParentId"] := ""
+        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
+        if sendPath.Length
+            requestParams["_streamParentId"] := sendPath[sendPath.Length].id
+        requestParams["_streamLogWindowTitle"] := requestParams["windowTitle"]
+        requestParams["_streamLogProviderName"] := requestParams["providerName"]
+        requestParams["_streamLogModel"] := requestParams["singleAPIModelName"]
+        requestParams["_streamLogPasteMode"] := requestParams["pasteMode"]
+
+        if raw = "" {
+            _handleStreamError()
+            _cleanupStreamState()
+            return
+        }
+        parsed := jsongo.Parse(raw)
+        response := ResponseParser.ParseChatResponse(parsed)
+        content := response.response
+        if !content {
+            requestParams["_streamContent"] := ""
+            _handleStreamError()
+            _cleanupStreamState()
+            return
+        }
+        requestParams["_streamContent"] := content
+        requestParams["_streamUsage"] := response.usage
+        if response.model != ""
+            requestParams["_streamModelName"] := ModelParser.Sanitize(response.model)
+        ; Single-shot response: first token = whole response completion time.
+        requestParams["_streamFirstTokenTime"] := A_TickCount
+        _finalizeStreaming()
+    } catch Error as e {
+        debugLog("sendNonStreamingRequest error: " e.Message)
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _cleanupStreamState()
+        deleteTempFiles()
+    }
+}
+
 _pollStreamTimer() {
     try {
         pid := requestParams["_streamPID"]

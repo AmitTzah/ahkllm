@@ -96,5 +96,7 @@ retryAction(messageId := "") {
     }
 
     if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user")
+        ; Bug #203: chat UI retries always stream.
+        requestParams["stream"] := true
         _BuildAndFireRequest()
 }

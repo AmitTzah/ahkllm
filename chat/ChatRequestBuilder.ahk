@@ -280,7 +280,14 @@ _WriteRequestFiles(requestObj, providerInfo) {
 }
 
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
-    sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
+    ; Bug #203: a chat-mode command with "Stream Response" OFF must run the
+    ; single-shot JSON path (CurlBuilder.Build + ResponseParser), not the SSE
+    ; stream handler - otherwise a JSON-only API response is dropped as an SSE
+    ; parse failure.
+    if requestParams["stream"]
+        sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
+    else
+        sendNonStreamingRequest(&chatHistoryJSONRequest)
 }
 
 ; Build request, fire to LLM, handle errors. Replaces 5 duplicate call sites.

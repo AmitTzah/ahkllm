@@ -126,7 +126,9 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
             ChatDB.Thread_UpdateSettings(threadId, commandThreadSettings)
 
             openChatWindow(threadId)
-            SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd), -100)
+            ; Bug #203: the command's Stream Response toggle must reach the
+            ; chat process - notifyTriggerLLM carries it in the WM wParam.
+            SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd, stream), -100)
             break
         } else {
             InlineRequestRunner.Run(commandName, fullAPIModelName, providerName, singleAPIModelName,

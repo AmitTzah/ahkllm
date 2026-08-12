@@ -1,5 +1,5 @@
-# 2026-08-12T11:46:15.541Z | run of 1 scenario(s)
-PASS | #201 | Assistant Reasoning dropdown ignores short-form base model ids - ReasoningLevels.levelsForModel only checks the exact models[baseModel] key, so an assistant whose baseModel is "gpt-5-mini" (instead of "openai/gpt-5-mini") falls back to the generic list and offers "None (Disabled)"/"Minimal"/"Medium" options the model does not support (the same short-form family as bugs #43/#51, on the assistant settings path) | assistant baseModel="gpt-5-mini" (map key openai/gpt-5-mini with thinkingLevelMap {low, high}): ReasoningLevels.buildOptionsHtml returned ["","low","high"] - the dropdown offers only the levels the model actually supports | 0.0s
+# 2026-08-12T11:49:48.713Z | run of 1 scenario(s)
+PASS | #119 | Live exchange: token counters, header tooltips and dashboard all agree (regression check for the usage pipeline) | live exchange: chat_usage row={"model":"deepseek-v4-flash","prompt_tokens":12,"completion_tokens":9,"cached_tokens":4,"call_count":1}, thread counters={"cumulative_input_tokens":12,"cumulative_output_tokens":9,"cumulative_cached_tokens":4}, header="21 / 1m↑ 12  ↓ 94$0.00", popover=" Token UsageOutput: 9 tokensVisible: 9 tokensThinking: 0 tokensCache: 4 tokensSpeed: 20 tok/secTTFT: 0.13sTotal time: 0.5s", dashboard tokens=21 calls=2 (2 calls = 1 chat + 1 title-gen command, bug #167) | 6.7s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

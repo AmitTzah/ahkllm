@@ -91,6 +91,8 @@ handleEdit(params, *) {
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
         if (role = "user") {
+            ; Bug #203: branch-edit auto-fire is a normal chat exchange - stream.
+            requestParams["stream"] := true
             _BuildAndFireRequest()
         }
     } else {

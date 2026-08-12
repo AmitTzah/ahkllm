@@ -58,6 +58,9 @@ handleChatSend(params, *) {
     lastMsg := structuredMessages[structuredMessages.Length]
     postWebMessage("appendChatMessage", lastMsg)
 
+    ; Bug #203: normal chat sends always stream; the command-triggered path
+    ; sets this flag via OnTriggerLLM's wParam.
+    requestParams["stream"] := true
     _BuildAndFireRequest()
 
     } catch Error as e {
