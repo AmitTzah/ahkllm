@@ -1170,4 +1170,36 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 202,
+  name: 'Forking a thread that contains a "Save as Branch" local copy re-counts the copy as a REAL API call - TreeRepo fork INSERTs do not copy is_local_copy, so _RecomputeCumulativeCounters charges the copied tokens/cost a second time and the fork header disagrees with the source thread and the dashboard',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'fork-local-copy'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('fork-local-copy probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const srcM = text.match(/src=(\d+)\/(\d+)\/(\d+)/);
+    const forkM = text.match(/fork=(\d+)\/(\d+)\/(\d+)/);
+    const flagsM = text.match(/forkLocalCopyRows=(\d+)/);
+    if (!srcM || !forkM || !flagsM) throw new Error('probe output missing fields: ' + text);
+    const srcIn = Number(srcM[1]), srcOut = Number(srcM[2]), srcCk = Number(srcM[3]);
+    const forkIn = Number(forkM[1]), forkOut = Number(forkM[2]), forkCk = Number(forkM[3]);
+    const copyFlags = Number(flagsM[1]);
+    // BUG present: the fork has 0 is_local_copy rows and its cumulative
+    // counters are HIGHER than the source (the local copy was charged again).
+    if (!(copyFlags === 0 && forkIn > srcIn))
+      throw new Error('fork did not re-count the local copy (bug not reproduced): copyFlags=' + copyFlags + ' src=' + srcIn + '/' + srcOut + '/' + srcCk + ' fork=' + forkIn + '/' + forkOut + '/' + forkCk);
+    return 'source thread (1 real API call 12/9/4 + 1 local copy): cumulative=' + srcIn + '/' + srcOut + '/' + srcCk +
+      '; fork has ' + copyFlags + ' is_local_copy row(s) and cumulative=' + forkIn + '/' + forkOut + '/' + forkCk +
+      ' - the fork charged the branch copy as a real API call, so its header disagrees with the source and the dashboard';
+  }
+});
+
 module.exports = scenarios;

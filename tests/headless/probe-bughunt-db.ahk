@@ -589,6 +589,32 @@ ForkCostSnapshot() {
 }
 
 ; ------------------------------------------------------------------
+; CHECK 32: forking a thread that contains a LOCAL branch-edit copy drops the
+; is_local_copy flag. TreeRepo._InsertForkMessage/_InsertCopiedOffPathMessage
+; do not copy is_local_copy, so the fork's copied "Save as Branch" row looks
+; like a REAL API call and _RecomputeCumulativeCounters charges its copied
+; tokens/cost a second time - the fork header disagrees with the source thread
+; and with the usage dashboard (no API call ever happened for that row).
+; ------------------------------------------------------------------
+ForkLocalCopy() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("ForkLocalCopy")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "real a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9, cached_tokens: 4})
+    ; "Save as Branch" copy of the assistant - local, no API call (bug #118).
+    a1b := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "branch copy", parent_id: u1, sibling_group: "sg-forkcopy", sibling_index: 1, model: "deepseek/deepseek-v4-flash", token_count: 9, prompt_tokens: 12, cached_tokens: 4, active_path_tokens: 21, local_copy: true})
+    srcRow := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", tid)
+    srcIn := Integer(srcRow[1, "cumulative_input_tokens"]), srcOut := Integer(srcRow[1, "cumulative_output_tokens"]), srcCk := Integer(srcRow[1, "cumulative_cached_tokens"])
+    forkId := ChatDB.Msg_ForkThread(tid, a1b)
+    forkRow := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens FROM chat_threads WHERE id=?;", forkId)
+    forkIn := Integer(forkRow[1, "cumulative_input_tokens"]), forkOut := Integer(forkRow[1, "cumulative_output_tokens"]), forkCk := Integer(forkRow[1, "cumulative_cached_tokens"])
+    copyFlags := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND is_local_copy=1;", forkId)[1, "c"]
+    Log("FORKLOCALCOPY src=" srcIn "/" srcOut "/" srcCk " fork=" forkIn "/" forkOut "/" forkCk " forkLocalCopyRows=" copyFlags)
+    Log("FORKLOCALCOPY verdict=" (copyFlags = 0 && forkIn > srcIn ? "BUG-present(local-copy-recorded-as-real)" : (copyFlags = 1 && forkIn = srcIn ? "OK-local-copy-preserved" : "unexpected:" copyFlags "/" forkIn "/" srcIn)))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
 ; CHECK 19: OVERWRITE-editing an ASSISTANT message leaves its OLD
 ; token_count in place (MessageRepo.Edit re-estimates only role=user, bug
 ; #156). The assistant's token_count feeds _BackfillUserTokens' existing_sum,
@@ -1067,6 +1093,7 @@ switch check {
     case "fts-attachment-text": FtsAttachmentText()
     case "empty-model-skip": EmptyModelSkip()
     case "fork-cost-snapshot": ForkCostSnapshot()
+    case "fork-local-copy": ForkLocalCopy()
     case "edit-assistant-stale-backfill": EditAssistantStaleBackfill()
     case "edit-assistant-stale-cumulative": EditAssistantStaleCumulative()
     case "default-assistant-isdefault": DefaultAssistantIsDefault()

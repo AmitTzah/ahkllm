@@ -154,14 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **8 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-201 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-202 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
   handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
-  short-form model metadata). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  short-form model metadata; fork re-counts local branch copies as real API calls). Next: keep sweeping for
+  further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -488,6 +489,37 @@ short-id/version fallback, unlike `shared/ModelResolver.ahk`.
 **Verification result (2026-08-12):** scenario 201 PASSED - the dropdown
 offered `["","none","minimal","low","medium","high"]` for a model whose
 thinkingLevelMap only supports low/high.
+
+### 202. Forking a thread with a "Save as Branch" local copy re-counts the copy as a real API call
+
+**Scenario:** 202 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** In a thread, create a branch with "Save as Branch" on an assistant
+message (a pure local DB copy — no API call). Then Fork the chat at that
+branch and compare the fork's header token/cost totals to the source.
+
+**Expected:** the fork's cumulative counters match the source thread: the
+local branch copy contributes nothing because no API call happened.
+
+**Actual:** `TreeRepo._InsertForkMessage` and
+`_InsertCopiedOffPathMessage` do not copy `is_local_copy`, so the copied
+branch row defaults to 0 in the fork. `_RecomputeCumulativeCounters` then
+counts its copied `prompt_tokens`/`token_count`/`cached_tokens` as a real API
+call, inflating the fork's cumulative input/output/cost and making the fork
+disagree with both the source thread and the usage dashboard.
+
+**Evidence:** `chat/db/TreeRepo.ahk` fork INSERTs omit the `is_local_copy`
+column; `chat/db/MessageRepo.ahk` `_RecomputeCumulativeCounters` skips rows
+only when `is_local_copy` is set.
+
+**Verification:** headless probe (`fork-local-copy`) runs the real ChatDB/repo
+code: source has one real call (12/9/4) plus one local copy; after forking, the
+fork has 0 `is_local_copy` rows and higher cumulative counters (24/18/8).
+
+**Verification result (2026-08-12):** scenario 202 PASSED - source
+cumulative=12/9/4, fork cumulative=24/18/8, fork `is_local_copy` rows=0.
 
 ## History (append-only)
 
