@@ -154,15 +154,16 @@ How to run AHK safely:
 
 ## Current state
 
-- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-203 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-204 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
   handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
   short-form model metadata; fork re-counts local branch copies as real API calls; chat-mode command
-  "Stream Response" OFF is ignored). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  "Stream Response" OFF is ignored; stalled streams never time out). Next: keep sweeping for further
+  uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -555,6 +556,37 @@ the static check pins the exact dead-toggle path.)
 **Verification result (2026-08-12):** scenario 203 PASSED - the chat branch
 contains no stream write, `ChatWindow` sets `stream:=true`, and the builder
 streams on that flag.
+
+### 204. A stalled stream never times out (no --max-time on the streaming cURL command)
+
+**Scenario:** 204 (scenario code in scenarios/chat-ui.js)
+
+**Status:** verified
+
+**Repro:** Send a chat message to an endpoint that accepts the connection and
+then sends no SSE bytes (a stalled upstream, proxy hang, or provider that
+never flushes).
+
+**Expected:** the app eventually gives up (like the non-streaming `--max-time
+120`), shows an error, and re-enables the composer.
+
+**Actual:** `CurlBuilder.BuildStream` only sets `--connect-timeout 30` — no
+`--max-time`. `StreamHandler._pollStreamTimer` keeps polling forever while the
+cURL process is alive, so `streamState.active`/`isLoading` stay true, the
+composer stays disabled/Stop, and the chat UI is stuck indefinitely.
+
+**Evidence:** `api/CurlBuilder.ahk` BuildStream command string omits
+`--max-time` (Build/BuildFIM include it); `chat/streaming/StreamHandler.ahk`
+only finalizes when the cURL PID exits.
+
+**Verification:** headless scenario 204 adds an `sse-hang` mock mode that sends
+SSE headers + a keepalive comment and leaves the socket open; after 8 seconds
+the real app is still `isLoading=true` with the composer disabled and the Send
+button wired to Stop (`streamState.active` stays false only because no
+parseable SSE data ever arrived — the request is still in flight).
+
+**Verification result (2026-08-12):** scenario 204 PASSED - after 8s
+`isLoading=true` and the Send button is still wired to Stop.
 
 ## History (append-only)
 

@@ -474,4 +474,30 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 204,
+  name: 'A stalled stream never times out - CurlBuilder.BuildStream has --connect-timeout 30 but NO --max-time, so an API that accepts the connection and then sends nothing leaves streamState.active/isLoading true and the Stop/input UI stuck forever',
+  mode: 'sse-hang',
+  settings: {},
+  async body({ cdp }) {
+    await showChat();
+    await sendChatMessage(cdp, 'stall please');
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 20000, 50, 'request in flight');
+    // Give the stream much longer than any sensible request timeout (the
+    // connection stays open and cURL keeps waiting).
+    await sleep(8000);
+    const state = await cdp.eval('({ loading: isLoading, inputDisabled: document.getElementById("chat-input").disabled, sendOnclick: document.getElementById("chat-send-btn").onclick ? String(document.getElementById("chat-send-btn").onclick).indexOf("onStopStreaming") >= 0 : false })');
+    // BUG present: after 8s with zero bytes the request is still in flight -
+    // no overall watchdog exists for a stalled connection (streamState.active
+    // stays false only because no parseable SSE data ever arrived; the UI is
+    // nevertheless stuck in the Stop state).
+    if (!state.loading)
+      throw new Error('stalled stream was not left stuck (bug not reproduced): ' + JSON.stringify(state));
+    return 'sse-hang mock sent headers then stayed silent: after 8s isLoading=' + state.loading +
+      ', inputDisabled=' + state.inputDisabled +
+      ', send button wired to Stop=' + state.sendOnclick +
+      ' - BuildStream has no --max-time, so a stalled API response hangs the chat UI forever';
+  }
+});
+
 module.exports = scenarios;

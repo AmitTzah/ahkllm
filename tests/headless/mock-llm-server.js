@@ -9,6 +9,9 @@
 //                      destroyed before [DONE] (mid-stream connection failure)
 //   sse-slow           streaming like sse-success but with ~700ms delays per
 //                      chunk (total ~3s) so scenarios can act mid-stream
+//   sse-hang           streaming headers + a keepalive comment, then the
+//                      socket is left OPEN forever - the "stalled stream"
+//                      case (cURL has --connect-timeout but no --max-time)
 //   sse-split-line     streaming: one SSE event whose `data:` LINE is written
 //                      in TWO writes with a >poll-interval delay between, so
 //                      the app's 100ms stream poll consumes the partial line
@@ -171,6 +174,17 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       }
       if (mode === 'sse-slow') {
         makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700 })(req, res);
+        return;
+      }
+      if (mode === 'sse-hang') {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+        res.write(': keepalive\n\n');
+        // Intentionally never end the stream - the app's stream poll has no
+        // overall timeout, so this verifies the stuck-forever behavior.
         return;
       }
       if (mode === 'sse-split-line') {

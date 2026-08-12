@@ -154,7 +154,7 @@ The next scenario run also auto-recovers as a fallback.
 | File | Purpose |
 |---|---|
 | `cdp.js` | Minimal CDP client (fetch + built-in WebSocket): evaluate, click, type, waitFor, postMessage hook |
-  | `mock-llm-server.js` | Local fake LLM (SSE / JSON / title / error / scripted / mid-fail / slow / split-line modes) so send/stream/title-gen paths are deterministic; `sse-split-line` writes one `data:` line in two writes across a poll boundary (scenario 178) |
+| `mock-llm-server.js` | Local fake LLM (SSE / JSON / title / error / scripted / mid-fail / slow / hang / split-line modes) so send/stream/title-gen paths are deterministic; `sse-split-line` writes one `data:` line in two writes across a poll boundary (scenario 178); `sse-hang` leaves the stream open forever (scenario 204) |
 | `seed.js` | Writes `settings.json` and creates/seeds the SQLite DB (schema mirrors `chat/db/ChatDB.ahk`; message fixtures support `prompt_tokens` alongside the other token fields) |
 | `launch.js` | Profile isolation (junction), app launch with WebView2 remote-debugging args, CDP discovery, teardown |
   | `probe.ahk` | Win32 checks the browser can't see: window titles, icons via `WM_GETICON` + pixel fingerprint, hotkey presses, suspend banner, input window |
