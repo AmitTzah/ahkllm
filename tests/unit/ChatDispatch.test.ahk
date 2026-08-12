@@ -802,6 +802,24 @@ class ChatDispatchTest {
             throw Error("handleChatSend must call _RequestParamsAreDefault() before _applyNewChatDefault() (bug #212)")
     }
 
+    ; Regression (bug #209): navigateToMessage (tree modal / search navigation)
+    ; bumps chat_threads.updated_at via SetActiveLeaf, so it must also refresh
+    ; the sidebar thread list - otherwise the order (and the #155 model badge)
+    ; stay stale after navigating to an off-path branch (same class as the
+    ; fixed #174, which only covered handleBranchSwitch).
+    NavigateToMessage_PostsThreadListRefresh() {
+        srcPath := A_ScriptDir "\..\chat\callbacks\Sidebar.ahk"
+        if !FileExist(srcPath)
+            throw Error("Sidebar.ahk not found")
+        src := FileRead(srcPath)
+        navPos := InStr(src, 'case "navigateToMessage":')
+        if !navPos
+            throw Error("navigateToMessage case not found in Sidebar.ahk")
+        block := SubStr(src, navPos, 800)
+        if !InStr(block, "_postThreadListRefresh()")
+            throw Error("navigateToMessage must refresh the sidebar thread list (bug #209)")
+    }
+
     Dispatch_InvalidJson_PostsShowError() {
         web := this._captureWebView()
         try {

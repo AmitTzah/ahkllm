@@ -23,6 +23,13 @@ handleSidebarAction(params, *) {
                 leafId := TreeRepo._WalkToLeaf(params["messageId"])
                 ChatDB.Msg_SetActiveLeaf(activeThreadId, leafId)
                 _LoadThreadAndRefreshUI(activeThreadId, false)
+                ; Bug #209: SetActiveLeaf bumps the thread's updated_at, so the
+                ; sidebar order (and the #155 model badge) must be refreshed -
+                ; tree-modal and search navigation both route here, and without
+                ; this post the list kept the pre-navigation order until some
+                ; unrelated action reposted it (same class as bug #174, which
+                ; was only fixed on the handleBranchSwitch path).
+                _postThreadListRefresh()
             }
         case "newChat", "deleteThread", "restoreThread", "deleteThreadForever", "emptyTrash", "renameThread":
             _HandleThreadAction(subAction, params)

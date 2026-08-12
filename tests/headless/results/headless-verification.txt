@@ -1,5 +1,5 @@
-# 2026-08-12T14:47:13.215Z | run of 1 scenario(s)
-PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 7.6s
+# 2026-08-12T14:50:38.979Z | run of 1 scenario(s)
+PASS | #209 | Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps chat_threads.updated_at (SetActiveLeaf) but posts no threadList refresh, so the sidebar order/model badge stays stale after navigating to an off-path branch (the fixed #174 path only covers handleBranchSwitch) | navigated to off-path branch in A: updated_at 2026-08-10 10:00:00 -> 2026-08-12 14:50:41, posted 1 threadList refresh(es) and the sidebar now shows the DB order t-209-a,t-209-b (A moved to the top like branch-switch navigation) | 6.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

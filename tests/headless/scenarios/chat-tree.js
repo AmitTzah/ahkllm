@@ -1758,7 +1758,7 @@ scenarios.push({
   id: 209,
   name: 'Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps chat_threads.updated_at (SetActiveLeaf) but posts no threadList refresh, so the sidebar order/model badge stays stale after navigating to an off-path branch (the fixed #174 path only covers handleBranchSwitch)',
   mode: null,
-  regression: false,
+  regression: true, // FIXED bug #209 kept as a regression check (navigateToMessage now refreshes the sidebar)
   settings: {},
   fixtures: {
     // B is NEWER (created_at/updated_at 08-11), A is older (08-10). The seed
@@ -1813,16 +1813,18 @@ scenarios.push({
     const posted = await cdp.eval('(window.__ahkMsgs || []).length');
     const dbRows = seed.query(dbPath, 'SELECT id, updated_at FROM chat_threads ORDER BY updated_at DESC');
     const dbOrder = dbRows.map((r) => r.id);
-    // BUG #209: the DB order now starts with thread A (its updated_at bumped),
-    // but navigateToMessage never posts threadList, so the sidebar keeps the
-    // pre-navigation B-first order.
+    // FIXED (bug #209): navigateToMessage now posts _postThreadListRefresh(),
+    // so the sidebar re-renders from the DB - A moves to the top (its
+    // updated_at bumped) and the list matches the DB order.
     if (dbOrder[0] !== 't-209-a')
       throw new Error('setup: DB order did not flip to A-first: ' + dbOrder.join(','));
-    if (orderAfter.join(',') === dbOrder.join(','))
-      throw new Error('sidebar was refreshed by navigateToMessage (bug #209 not reproduced): order=' + orderAfter.join(',') + ' threadList posts=' + posted);
+    if (posted < 1)
+      throw new Error('navigateToMessage did not post a threadList refresh (fix incomplete): posted=' + posted);
+    if (orderAfter.join(',') !== dbOrder.join(','))
+      throw new Error('sidebar order does not match the refreshed DB order (fix incomplete): got ' + orderAfter.join(',') + ' expected ' + dbOrder.join(','));
     return 'navigated to off-path branch in A: updated_at ' + dbBefore + ' -> ' + dbAfter +
-      ', DB order=' + dbOrder.join(',') + ' but sidebar still shows ' + orderAfter.join(',') +
-      ' with ' + posted + ' threadList post(s) - navigateToMessage never refreshes the sidebar (bug #174 family on the tree/search path)';
+      ', posted ' + posted + ' threadList refresh(es) and the sidebar now shows the DB order ' +
+      orderAfter.join(',') + ' (A moved to the top like branch-switch navigation)';
   }
 });
 

@@ -154,10 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **0 reported, 1 verified, 0 fix in progress, 1 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - #208, #211, #212 FIXED + COMMITTED (0bd51f0, 9da8658, 65ff184).
-  Next: fix #209 (navigateToMessage leaves the sidebar stale - add _postThreadListRefresh).
+  #209 FIX APPLIED: navigateToMessage now posts _postThreadListRefresh; ChatDispatch static check
+  added; scenario 209 flipped to a regression check and PASSING; fast suite green. Next: commit
+  #209, then fix #210.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -212,7 +214,7 @@ one at a time, in rank order.
 
 **Scenario:** 209 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Open any chat, then click a node in the conversation tree modal (or a
 search result) that changes the active leaf - e.g. navigate to an off-path branch.
