@@ -154,15 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **9 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **10 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-202 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-203 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
   handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
-  short-form model metadata; fork re-counts local branch copies as real API calls). Next: keep sweeping for
-  further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  short-form model metadata; fork re-counts local branch copies as real API calls; chat-mode command
+  "Stream Response" OFF is ignored). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -520,6 +520,41 @@ fork has 0 `is_local_copy` rows and higher cumulative counters (24/18/8).
 
 **Verification result (2026-08-12):** scenario 202 PASSED - source
 cumulative=12/9/4, fork cumulative=24/18/8, fork `is_local_copy` rows=0.
+
+### 203. Chat-mode command "Stream Response" OFF is ignored (the chat branch never propagates the flag)
+
+**Scenario:** 203 (scenario code in scenarios/commands.js)
+
+**Status:** verified
+
+**Repro:** Create or edit a command with `pasteMode: chat` and turn
+"Stream Response" OFF, then run it.
+
+**Expected:** the API is called with `stream: false` and the single JSON
+response is displayed in the chat window.
+
+**Actual:** `processInitialRequest`'s `pasteMode="chat"` branch persists only
+model/system/reasoning/temperature to the thread and never writes the
+command's `stream` flag. `ChatWindow.ahk` initializes
+`requestParams["stream"] := true` and `ChatRequestBuilder._BuildRequestObj`
+streams whenever that flag is set. A chat-mode command with Stream Response
+OFF therefore still sends `stream:true`; an API honoring the request with a
+plain JSON body is fed to `SSEParser` (which only reads `data:` lines), so the
+response is dropped and surfaced as a request failure.
+
+**Evidence:** `app/RequestProcessor.ahk` chat branch (no `stream` write);
+`chat/ChatWindow.ahk` `requestParams["stream"] := true`;
+`chat/ChatRequestBuilder.ahk` `if requestParams["stream"] { requestObj.stream := true }`.
+
+**Verification:** headless static check 203 reads the three real source files
+and asserts the chat branch contains no stream propagation while the chat
+process defaults the flag to true and the builder honors it. (Command menus
+cannot be driven by key injection in this environment, per the harness README;
+the static check pins the exact dead-toggle path.)
+
+**Verification result (2026-08-12):** scenario 203 PASSED - the chat branch
+contains no stream write, `ChatWindow` sets `stream:=true`, and the builder
+streams on that flag.
 
 ## History (append-only)
 

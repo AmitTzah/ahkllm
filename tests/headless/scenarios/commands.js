@@ -151,4 +151,31 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 203,
+  name: 'Chat-mode command with "Stream Response" OFF still streams - processInitialRequest\'s pasteMode="chat" branch never propagates the command\'s stream flag (it only persists model/system/reasoning/temperature), while ChatWindow.ahk initializes requestParams["stream"]:=true and ChatRequestBuilder streams whenever that flag is set; a JSON-only API response is then read by the SSE parser and shown as a request failure',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const rp = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
+    const cw = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
+    const crb = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatRequestBuilder.ahk'), 'utf8');
+    const chatIdx = rp.indexOf('if pasteMode = "chat"');
+    if (chatIdx < 0) throw new Error('chat branch not found (setup)');
+    const chatBranch = rp.slice(chatIdx, rp.indexOf('} else {'));
+    const defaultStreamTrue = /requestParams\["stream"\]\s*:=\s*true/.test(cw);
+    const builderStreamsOnFlag = /if requestParams\["stream"\]\s*\{[\s\S]*?requestObj\.stream := true/.test(crb);
+    const chatBranchPropagatesStream = /requestParams\["stream"\]|stream:\s*stream|Thread_UpdateSettings[\s\S]{0,200}stream/.test(chatBranch);
+    // BUG present: the chat branch stores commandThreadSettings without any
+    // stream field, the chat process defaults stream:=true, and the builder
+    // honors that flag - so the command's Stream Response toggle is dead for
+    // pasteMode=chat and a non-streaming API response is misparsed as SSE.
+    if (!defaultStreamTrue || !builderStreamsOnFlag || chatBranchPropagatesStream)
+      throw new Error('chat-mode command stream flag is not dead (bug not reproduced): defaultStreamTrue=' + defaultStreamTrue +
+        ' builderStreamsOnFlag=' + builderStreamsOnFlag + ' chatBranchPropagatesStream=' + chatBranchPropagatesStream);
+    return 'ChatWindow defaults requestParams["stream"]=true; ChatRequestBuilder streams when that flag is set; and processInitialRequest\'s chat branch never writes the command\'s stream toggle into requestParams/thread settings - a chat-mode command with Stream Response OFF still sends stream:true and fails on JSON-only responses';
+  }
+});
+
 module.exports = scenarios;
