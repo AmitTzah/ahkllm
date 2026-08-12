@@ -154,16 +154,16 @@ How to run AHK safely:
 
 ## Current state
 
-- **11 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-204 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-205 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
   handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
   short-form model metadata; fork re-counts local branch copies as real API calls; chat-mode command
-  "Stream Response" OFF is ignored; stalled streams never time out). Next: keep sweeping for further
-  uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  "Stream Response" OFF is ignored; stalled streams never time out; cancelled root retry becomes a child of
+  the original). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -587,6 +587,36 @@ parseable SSE data ever arrived — the request is still in flight).
 
 **Verification result (2026-08-12):** scenario 204 PASSED - after 8s
 `isLoading=true` and the Send button is still wired to Stop.
+
+### 205. Cancelling a retry of a ROOT assistant inserts the partial as a child of the original
+
+**Scenario:** 205 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Delete the root user message so the conversation starts with an
+assistant message (no parent). Click Retry on that root assistant, then press
+Stop while it streams.
+
+**Expected:** the cancelled partial is a SIBLING of the original root
+(`parent_id` NULL), exactly like the completed retry path (bug #147).
+
+**Actual:** `_handleStreamCancelled` honors `pendingRetrySiblingGroup` but never
+checks `pendingRetryIsRoot`. It reads the active path (still the original root
+for a root retry), sets `parentId` to the original root, and inserts the
+cancelled partial as its CHILD. Only `_persistStreamResponse` (the completed
+path) handles the root-retry flag.
+
+**Evidence:** `chat/streaming/StreamError.ahk` `_handleStreamCancelled()` has no
+`pendingRetryIsRoot` branch; `chat/streaming/StreamCompletion.ahk`
+`_persistStreamResponse()` has one (bug #147).
+
+**Verification:** headless scenario 205 drives the real app: seed a root-only
+assistant thread, retry it, cancel mid-stream (`sse-slow`), and assert the
+partial row's `parent_id` equals the original root id.
+
+**Verification result (2026-08-12):** scenario 205 PASSED - the cancelled
+partial was inserted with `parent_id=m-205-a1` (child of the original root).
 
 ## History (append-only)
 

@@ -1855,4 +1855,43 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 205,
+  name: 'Cancelling a retry of a ROOT assistant (no parent) inserts the partial as a CHILD of the original - _handleStreamCancelled honors pendingRetrySiblingGroup but never checks pendingRetryIsRoot (unlike _persistStreamResponse, bug #147), so the cancelled retry is attached under the original root instead of as a sibling with parent NULL',
+  mode: 'sse-slow',
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-root-205', title: 'Root Retry Cancel', active_leaf_id: 'm-205-a1' }],
+    messages: [
+      { id: 'm-205-a1', thread_id: 't-root-205', role: 'assistant', content: 'original root answer', model: 'deepseek/deepseek-v4-flash', token_count: 5, prompt_tokens: 1, active_path_tokens: 6 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length >= 1 && chatMessages[0] && chatMessages[0].id === "m-205-a1"', 15000, 300, 'root assistant loaded');
+    await sleep(600);
+    await cdp.click('#chat-messages .msg .msg-action-btn[title="Retry"]');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'retry streaming');
+    await sleep(120);
+    // Cancel mid-stream (the slow mock has already emitted reasoning).
+    await cdp.eval('window.onStopStreaming(); true');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(1200);
+
+    const partials = seed.query(dbPath, "SELECT id, parent_id, content, reasoning FROM messages WHERE thread_id='t-root-205' AND id != 'm-205-a1'");
+    if (partials.length !== 1)
+      throw new Error('setup: expected one cancelled partial, got ' + JSON.stringify(partials));
+    const parentId = partials[0].parent_id;
+    // BUG present: the cancelled retry was inserted with parent_id = the
+    // original root (it became a CHILD); bug #147's sibling semantics apply to
+    // the completion path only.
+    if (parentId !== 'm-205-a1')
+      throw new Error('cancelled root retry was not mis-parented (bug not reproduced): parent=' + parentId + ' rows=' + JSON.stringify(partials));
+    return 'retried the root assistant and cancelled after reasoning started: the partial row has parent_id=' + parentId +
+      ' (the original root) instead of NULL - _handleStreamCancelled ignored pendingRetryIsRoot, so the cancelled retry became a child of the original';
+  }
+});
+
 module.exports = scenarios;
