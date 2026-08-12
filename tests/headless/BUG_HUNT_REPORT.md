@@ -154,13 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
   bugs #213-#215 verified headlessly (font-size dropped before the first message; mid-stream branch
   switch re-enables the composer so a second send clobbers the first billed response; switching to an
   unanswered thread mid-stream leaves the loading indicator stuck; a failed retry restores thread A's
-  messages into whatever thread is visible).
+  messages into whatever thread is visible; deleting another message's attachment while editing defers
+  the wrong attachment to the edit commit and hard-deletes it).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -301,6 +302,30 @@ rows stay correct in A â€“ the same cross-thread UI pollution class as bug 
 then a JSON error body after 1.5s, so the retry fails AFTER the switch with no content). It retries a1 in A, switches
 to B, waits for the error banner, and asserts B's `chatMessages` contains A's "first answer" while the DB row stays
 in A. Scenario PASS = bug reproduced.
+
+### 217. Deleting another message's attachment while editing defers the wrong attachment to the edit commit
+
+**Scenario:** 217 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Open the editor on message 1, then click the attachment "X" on message 2, then overwrite-commit
+message 1's edit.
+
+**Expected:** only message 1's attachments are affected by the edit; message 2's attachment stays.
+
+**Actual:** the delegated attachment-delete handler pushes ANY clicked attachment id into the GLOBAL
+`_removedAttachmentIds` without checking it belongs to `_editingMessageId`. Overwrite-commit then calls
+`ChatDB.Attachment_DeleteOne` for every deferred id, permanently deleting message 2's attachment row (and its file
+when orphaned). Cancel also fails to restore it (the cancel restore only searches the edited bubble).
+
+**Evidence:** `webui/js/chat/attachments/chat-attachments-setup.js`
+`setupMessageAttachmentDeleteDelegation` (no `_editingMessageId` ownership check);
+`chat/callbacks/Edit.ahk` `handleEdit` overwrite branch deletes every `removedIds` entry.
+
+**Verification:** headless â€“ scenario 217 seeds an attachment on each of two user messages, edits message 1, clicks
+the X on message 2's attachment, commits the edit, then queries `message_attachments`: only message 1's row
+survives. Scenario PASS = bug reproduced.
 
 ## History (append-only)
 

@@ -812,4 +812,54 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 217,
+  name: 'Deleting ANOTHER message\'s attachment while editing a message defers the wrong attachment to the edit commit - setupMessageAttachmentDeleteDelegation pushes any clicked attachment id into the GLOBAL _removedAttachmentIds (never checking it belongs to _editingMessageId), so overwrite-committing message 1\'s edit hard-deletes message 2\'s attachment row from the DB',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-att-217', title: 'Attachment Edit', active_leaf_id: 'm-217-u2' }],
+    messages: [
+      { id: 'm-217-u1', thread_id: 't-att-217', role: 'user', content: 'message one' },
+      { id: 'm-217-u2', thread_id: 't-att-217', role: 'user', content: 'message two', parent_id: 'm-217-u1' }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    // Seed one attachment on EACH user message.
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES ('att-217-a', 'm-217-u1', 'text_file', 'attachments/a.txt', 'text/plain', 'a.txt', 12, ''), ('att-217-b', 'm-217-u2', 'text_file', 'attachments/b.txt', 'text/plain', 'b.txt', 12, '')");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
+    await sleep(700);
+    // Edit message 1.
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Edit"]');
+    await sleep(250);
+    // While editing message 1, click the attachment X on message 2. The
+    // delegated handler defers it into the GLOBAL _removedAttachmentIds even
+    // though it belongs to a different message.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-attachment-delete');
+    await sleep(250);
+    const removedList = await cdp.eval('JSON.stringify(window._removedAttachmentIds || [])');
+    if (String(removedList).indexOf('att-217-b') < 0)
+      throw new Error('setup: attachment delete was not deferred: ' + removedList);
+    // Commit message 1's edit (overwrite).
+    await cdp.click('#chat-messages .msg:nth-child(1) .save-overwrite');
+    await sleep(900);
+    const rows = seed.query(dbPath, "SELECT id, message_id FROM message_attachments ORDER BY id");
+    const ids = rows.map((r) => r.id);
+    // BUG: message 2's attachment (att-217-b) was deleted from the DB even
+    // though only message 1 was edited.
+    if (ids.indexOf('att-217-b') >= 0)
+      throw new Error('message 2 attachment survived the edit commit (fix applied): ' + JSON.stringify(ids));
+    return 'edited message 1, clicked the X on message 2\'s attachment (deferred into _removedAttachmentIds=' + removedList +
+      '), then overwrite-committed: the DB now holds ' + JSON.stringify(ids) +
+      ' - message 2\'s attachment was hard-deleted by message 1\'s edit commit';
+  }
+});
+
 module.exports = scenarios;
