@@ -237,7 +237,7 @@ one at a time, in rank order.
 
 **Scenario:** 197 (scenario code in scenarios/chat-tree.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** In a branched conversation on branch A, send a follow-up message.
 While it streams, use the branch arrows to navigate to branch B. After the
@@ -260,11 +260,12 @@ stored in `sendStreamingRequest`.
 
 **Verification:** headless scenario 197 seeds a two-branch thread, sends from
 branch A, switches to branch B mid-stream (`sse-slow`), and asserts the
-completed response's `parent_id` is NOT the sending user message.
+completed response's `parent_id` EQUALS the sending user message.
 
-**Verification result (2026-08-12):** scenario 197 PASSED - the response's
-`parent_id` was `m-197-a2b` (branch B's leaf) instead of the sending user
-message's id.
+**Verification result (2026-08-12):** scenario 197 PASSED after the fix - the
+response's `parent_id` was the sending user message's id (captured as
+`_streamParentId` at send time). Regression unit test added in
+StreamHandler.test.ahk.
 
 ### 195. Switching threads mid-stream pushes the old thread's completed response into the current thread's UI message array
 

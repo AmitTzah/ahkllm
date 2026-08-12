@@ -73,6 +73,24 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     ; reading the global activeThreadId at completion time wrote the response
     ; into whatever thread happened to be active then.
     requestParams["_streamThreadId"]         := activeThreadId
+    ; Bug #197: also capture the LAST message of the request path at send
+    ; time. _persistStreamResponse used to re-read the active path at
+    ; completion, so switching BRANCHES within the same thread mid-stream
+    ; attached the response to the newly-active branch's leaf. The request's
+    ; own parent is fixed at send time. A root retry has no parent (bug #147).
+    requestParams["_streamParentId"]         := ""
+    if !(requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]) {
+        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
+        if sendPath.Length
+            requestParams["_streamParentId"] := sendPath[sendPath.Length].id
+    }
+    ; Bug #206: capture the request's log metadata at send time too - the
+    ; completion/error/cancel loggers must describe the request that was sent,
+    ; not whatever thread became active before the request finished.
+    requestParams["_streamLogWindowTitle"]   := requestParams["windowTitle"]
+    requestParams["_streamLogProviderName"]  := requestParams["providerName"]
+    requestParams["_streamLogModel"]         := requestParams["singleAPIModelName"]
+    requestParams["_streamLogPasteMode"]     := requestParams["pasteMode"]
 
     ; Post display title to UI immediately for bubble author during streaming
     postWebMessage("streamModelName", displayName)
@@ -375,5 +393,15 @@ _cleanupStreamState() {
         requestParams.Delete("_streamCancelled")
     if requestParams.Has("_streamThreadId")
         requestParams.Delete("_streamThreadId")
+    if requestParams.Has("_streamParentId")
+        requestParams.Delete("_streamParentId")
+    if requestParams.Has("_streamLogWindowTitle")
+        requestParams.Delete("_streamLogWindowTitle")
+    if requestParams.Has("_streamLogProviderName")
+        requestParams.Delete("_streamLogProviderName")
+    if requestParams.Has("_streamLogModel")
+        requestParams.Delete("_streamLogModel")
+    if requestParams.Has("_streamLogPasteMode")
+        requestParams.Delete("_streamLogPasteMode")
 }
 

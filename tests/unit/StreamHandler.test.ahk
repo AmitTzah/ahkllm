@@ -160,6 +160,7 @@ class StreamHandlerTest {
         ; The user switched to thread B while A's stream was in flight:
         activeThreadId := threadIdB
         requestParams["_streamThreadId"] := threadIdA
+        requestParams["_streamParentId"] := ""
 
         _persistStreamResponse("Hello from the mock LLM", "deepseek-v4-flash", "", { promptTokens: 12, completionTokens: 9, cachedTokens: 4 }, 500, 100, threadIdA)
 
@@ -171,6 +172,42 @@ class StreamHandlerTest {
         if row[1, "parent_id"] != uA
             throw Error("parent should be A's user message, got " row[1, "parent_id"])
         activeThreadId := ""
+        requestParams.Delete("_streamParentId")
+        this._teardownDb()
+    }
+
+    ; Regression (bug #197): the response must be parented to the message that
+    ; SENT the request (_streamParentId captured at send time), NOT to the
+    ; currently-active leaf after a same-thread branch switch mid-stream.
+    PersistStreamResponse_UsesCapturedParent_NotCurrentLeaf() {
+        global activeThreadId, requestParams
+        this._setupDb()
+        threadId := ChatDB.Thread_Create("Branch Mid-Stream")
+        u1 := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        a1 := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "branch A answer", parent_id: u1, model: "deepseek/deepseek-v4-flash", sibling_group: "sg-test197", sibling_index: 0, token_count: 5, prompt_tokens: 10})
+        a1b := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "branch B answer", parent_id: u1, model: "deepseek/deepseek-v4-flash", sibling_group: "sg-test197", sibling_index: 1, token_count: 5, prompt_tokens: 10})
+        u2a := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow A", parent_id: a1})
+        a2a := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A leaf", parent_id: u2a, model: "deepseek/deepseek-v4-flash", token_count: 6, prompt_tokens: 20})
+        u2b := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "follow B", parent_id: a1b})
+        a2b := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "B leaf", parent_id: u2b, model: "deepseek/deepseek-v4-flash", token_count: 6, prompt_tokens: 20})
+
+        ; Request was sent from branch A (last message u2a), then the user
+        ; switched to branch B (active leaf now a2b) while it streamed.
+        activeThreadId := threadId
+        requestParams["_streamThreadId"] := threadId
+        requestParams["_streamParentId"] := u2a
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=? WHERE id=?;", a2b, threadId)
+
+        _persistStreamResponse("Hello from the mock LLM", "deepseek/deepseek-v4-flash", "", { promptTokens: 12, completionTokens: 9, cachedTokens: 4 }, 500, 100, threadId)
+
+        row := ChatDB.db.Query("SELECT parent_id FROM messages WHERE thread_id=? AND content='Hello from the mock LLM';", threadId)
+        if row[1, "parent_id"] != u2a
+            throw Error("response must use the captured send-time parent (bug #197): got " row[1, "parent_id"] " expected " u2a)
+        if row[1, "parent_id"] = a2b
+            throw Error("response must NOT attach to the newly-active branch leaf a2b (bug #197)")
+        activeThreadId := ""
+        requestParams.Delete("_streamParentId")
+        requestParams.Delete("_streamThreadId")
         this._teardownDb()
     }
 

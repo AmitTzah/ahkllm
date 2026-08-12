@@ -113,9 +113,17 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
     isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
     if isRootRetry
         requestParams.Delete("pendingRetryIsRoot")
-    parentId := ""
-    if !isRootRetry
-        parentId := path.Length ? path[path.Length].id : ""
+    ; Bug #197: use the parent captured at send time (the request's own last
+    ; message), NOT the current active path - a same-thread branch switch
+    ; mid-stream must not re-parent the response onto the newly-active branch.
+    parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
+    if !isRootRetry && !parentId {
+        ; Legacy/unit-test path: no captured parent, fall back to the SENDING
+        ; thread's path (not the currently-active one - bug #159 semantics).
+        sendPath := ChatDB.Msg_GetActivePath(streamThreadId)
+        if sendPath.Length
+            parentId := sendPath[sendPath.Length].id
+    }
     retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
     retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
     if retrySiblingGroup

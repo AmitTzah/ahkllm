@@ -1846,12 +1846,13 @@ scenarios.push({
       throw new Error('setup: expected exactly one streamed response, got ' + JSON.stringify(newRows));
     const parentId = newRows[0].parent_id;
     const u3a = seed.query(dbPath, "SELECT id FROM messages WHERE thread_id='t-br-197' AND content='follow-up on A'")[0].id;
-    // BUG present: the response was inserted under the NEWLY active branch B
-    // leaf (a2b) instead of the user message that SENT the request (u3a).
-    if (parentId === u3a)
-      throw new Error('streamed response was correctly parented to the sending user message (bug not reproduced): parent=' + parentId);
+    // FIXED (bug #197): the response is inserted under the user message that
+    // SENT the request (u3a), captured at send time, not the newly-active
+    // branch B leaf.
+    if (parentId !== u3a)
+      throw new Error('streamed response was not parented to the sending user message (fix incomplete): parent=' + parentId + ' expected=' + u3a);
     return 'branch A sent "follow-up on A" (user id ' + u3a + '), switched to branch B mid-stream; the completed response was inserted with parent_id=' + parentId +
-      ' (should be ' + u3a + ') - _persistStreamResponse read the CURRENT active path instead of the request\'s own parent';
+      ' - _persistStreamResponse uses the parent captured at send time, so the response stays on the branch that sent it';
   }
 });
 
