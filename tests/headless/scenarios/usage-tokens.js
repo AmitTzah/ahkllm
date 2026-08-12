@@ -1127,4 +1127,47 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 200,
+  name: 'Usage dashboard command rows with an EMPTY provider but a provider-prefixed model are unfilterable - renderMainChart keys command rows by c.provider||"" (unlike chat rows, which fall back to extractProvider(c.model)), while populateFilters only adds the "Unknown (blank)" sentinel when BOTH provider and extractProvider(model) are empty; the "" command series renders with no selectable filter',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const { sandbox, els } = loadUsageDashboardSandbox();
+    sandbox.allData = {
+      chat: [],
+      commands: [{
+        date: '2026-08-12', model: 'deepseek/gpt-5', provider: '',
+        prompt_tokens: 10, completion_tokens: 5, thinking_tokens: 0, cached_tokens: 0,
+        cached_input_cost: 0, output_cost: 0, total_cost: 0, call_count: 1
+      }],
+      providers: ['deepseek'],
+      models: ['deepseek/gpt-5']
+    };
+    els.providerFilter.innerHTML = '';
+    sandbox.document.querySelector = function(sel) {
+      return sel === '#stackToggle .active' ? { dataset: { mode: 'provider' } } : null;
+    };
+    let captured = null;
+    sandbox.Chart = function(ctx, cfg) { captured = cfg; return { destroy() {}, update() {} }; };
+    sandbox.mainChart = null;
+    sandbox.populateFilters();
+    sandbox.renderMainChart();
+    const options = els.providerFilter.innerHTML;
+    const hasBlankOption = options.indexOf('__BLANK_PROVIDER__') >= 0;
+    const chartLabels = captured ? captured.data.datasets.map((d) => d.label) : [];
+    const hasEmptySeries = chartLabels.indexOf('') >= 0;
+    // BUG present: the command row's provider-mode chart series is keyed ""
+    // (c.provider||""), but populateFilters decided no blank-provider option is
+    // needed because extractProvider("deepseek/gpt-5") is "deepseek" - so the
+    // chart contains a series no filter option can isolate.
+    if (hasBlankOption || !hasEmptySeries)
+      throw new Error('command empty-provider series was not unfilterable (bug not reproduced): blankOption=' + hasBlankOption + ' chartLabels=' + JSON.stringify(chartLabels));
+    return 'command row provider="" model="deepseek/gpt-5": provider-mode chart labels=' + JSON.stringify(chartLabels) +
+      ' (contains the empty "" series) while the provider filter options have no "Unknown (blank)" entry (hasBlankOption=' + hasBlankOption +
+      ') - the "" series is unfilterable';
+  }
+});
+
 module.exports = scenarios;

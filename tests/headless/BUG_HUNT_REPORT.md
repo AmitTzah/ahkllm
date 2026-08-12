@@ -154,14 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **7 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-199 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-200 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
-  handler crashes). Next: verify the remaining leads (command empty-provider dashboard filter, short-form
-  assistant reasoning) and keep sweeping. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  handler crashes; command empty-provider dashboard series unfilterable). Next: verify the short-form
+  assistant reasoning lead and keep sweeping. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -421,6 +421,40 @@ captures the thrown message.
 **Verification result (2026-08-12):** scenario 199 PASSED - Resolve returned
 `providerKey=""` and `_ShowApiKeyError` threw `Item has no value.` (the missing
 `providers[""]` index).
+
+### 200. Command usage rows with an empty provider and a provider-prefixed model are unfilterable
+
+**Scenario:** 200 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Run a command while no provider is resolvable (or the model was
+removed), so `command_usage.provider` is empty but the stored `model` still
+carries a `provider/` prefix. Open the Usage Dashboard in Provider chart mode.
+
+**Expected:** the empty-provider command series is either labeled by the
+model's provider prefix (like chat rows) or selectable via the "Unknown
+(blank)" filter.
+
+**Actual:** `renderMainChart` keys command rows with `c.provider || ""`, while
+chat rows use `c.provider || extractProvider(c.model)`. `populateFilters`
+decides the "Unknown (blank)" option is needed only when BOTH the provider and
+`extractProvider(model)` are empty. So a command row with `provider=""` and
+`model="deepseek/gpt-5"` renders an `""` chart series with no filter option
+that can select it.
+
+**Evidence:** `webui/js/usage-dashboard.js` renderMainChart command branch:
+`var key = mode==='provider' ? (c.provider||'') : c.model;` (no
+`extractProvider` fallback); populateFilters uses
+`!(c.provider || extractProvider(c.model))` for the sentinel.
+
+**Verification:** headless VM scenario 200 loads the real `usage-dashboard.js`,
+seeds one command row (`provider=""`, `model="deepseek/gpt-5"`), renders the
+provider-mode chart, and asserts the dataset label is `""` while no
+`__BLANK_PROVIDER__` option exists in the filter.
+
+**Verification result (2026-08-12):** scenario 200 PASSED - chart labels were
+`[""]` and `hasBlankOption=false`.
 
 ## History (append-only)
 
