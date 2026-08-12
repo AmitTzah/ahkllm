@@ -448,4 +448,30 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 198,
+  name: 'PDF/office attachments with a generic MIME type are misclassified as text_file - getAttachmentTypeFromMime only falls back to the extension for odt/odp/ods/rtf/epub, so a .pdf/.docx/.pptx/.xlsx with application/octet-stream is treated as plain text (no PDF/office extraction, sent as garbled text context)',
+  mode: null,
+  settings: {},
+  async body({ cdp }) {
+    await showChat();
+    const type = await cdp.eval(`(() => {
+      const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34])], 'report.pdf', { type: 'application/octet-stream' });
+      addAttachment(file);
+      const att = attachmentState.length ? attachmentState[0] : null;
+      return att ? JSON.stringify({ type: att.type, filename: att.filename, mimeType: att.mimeType }) : 'none';
+    })()`);
+    const att = JSON.parse(type);
+    // BUG present: the extension says PDF but getAttachmentTypeFromMime
+    // returns text_file for a generic MIME, so the app skips PDF extraction
+    // and sends the binary as a text context instead of a PDF attachment.
+    if (att.type !== 'text_file')
+      throw new Error('generic-MIME PDF was not misclassified (bug not reproduced): ' + type);
+    if (att.filename !== 'report.pdf')
+      throw new Error('setup: filename lost: ' + type);
+    return 'File "report.pdf" with MIME application/octet-stream was classified as "' + att.type +
+      '" - getAttachmentTypeFromMime has no extension fallback for pdf/docx/pptx/xlsx (only odt/odp/ods/rtf/epub), so the PDF is attached as a text file and never extracted';
+  }
+});
+
 module.exports = scenarios;

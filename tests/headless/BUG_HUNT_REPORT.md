@@ -154,12 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194, #195, #196, #197 verified headlessly (assistant
-  overwrite-edit leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI
-  array; fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
-  response). Next: fix the verified bugs in rank order after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-198 verified headlessly (assistant overwrite-edit
+  leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
+  fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
+  response; generic-MIME PDF/office attachments misclassified as text_file). Next: verify the remaining leads
+  (provider-less API-key error path, command empty-provider dashboard filter, short-form assistant reasoning)
+  and keep sweeping. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -358,6 +360,35 @@ assistant globals.
 
 **Verification result (2026-08-12):** scenario 196 PASSED - the snapshot has 2
 assistants, 0 with `isDefault`, and 0 applied assistant globals carry the flag.
+
+### 198. PDF/office attachments with a generic MIME type are misclassified as text_file
+
+**Scenario:** 198 (scenario code in scenarios/chat-ui.js)
+
+**Status:** verified
+
+**Repro:** Attach a `.pdf`, `.docx`, `.pptx`, or `.xlsx` file whose browser
+MIME type is generic (`application/octet-stream`, `application/x-pdf`, etc.)
+via drag/drop or the file picker.
+
+**Expected:** the attachment is classified by its file extension (PDF/office),
+so the app extracts text and sends it as a document context.
+
+**Actual:** `getAttachmentTypeFromMime` in
+`webui/js/chat/attachments/chat-attachments.js` only falls back to the
+extension for `odt/odp/ods/rtf/epub`. A PDF or office file with a generic MIME
+becomes `text_file`, skips PDF/office extraction entirely, and its binary is
+sent as UTF-8 text context (garbled) instead of an extracted document.
+
+**Evidence:** the MIME branch returns `text_file` before the extension
+fallback, and the fallback list omits `pdf/docx/pptx/xlsx`.
+
+**Verification:** headless scenario 198 drives the real WebView: it constructs
+a `File("report.pdf", {type: "application/octet-stream"})`, calls the real
+`addAttachment`, and observes `attachmentState[0].type === "text_file"`.
+
+**Verification result (2026-08-12):** scenario 198 PASSED - `report.pdf` with
+`application/octet-stream` was classified `text_file`.
 
 ## History (append-only)
 
