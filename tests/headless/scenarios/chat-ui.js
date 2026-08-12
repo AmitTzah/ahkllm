@@ -756,4 +756,60 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 216,
+  name: 'A failed retry restores the removed messages into WHATEVER thread is currently visible - restoreRetryMessagesOnError pushes _retryRemovedMessages (thread A\'s messages) into the global chatMessages array, so switching to thread B before the retry fails repaints A\'s assistant message into B\'s UI (the DB rows stay correct in A, the same class as bug #195 on the error path)',
+  mode: 'sse-lateerror',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-retry-a-216', title: 'Thread A', active_leaf_id: 'm-216-a1' },
+      { id: 't-retry-b-216', title: 'Thread B', active_leaf_id: 'm-216-u1b' }
+    ],
+    messages: [
+      { id: 'm-216-u1', thread_id: 't-retry-a-216', role: 'user', content: 'root question', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-216-a1', thread_id: 't-retry-a-216', role: 'assistant', content: 'first answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-216-u1', token_count: 9, prompt_tokens: 12, active_path_tokens: 21 },
+      { id: 'm-216-u1b', thread_id: 't-retry-b-216', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-retry-a-216"); true');
+    await cdp.waitFor('window.activeThreadId === "t-retry-a-216" && chatMessages.length >= 2', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    // Retry the assistant message: the UI removes a1 from A's array and
+    // stashes it in _retryRemovedMessages; the retry request starts streaming
+    // against the mock (sse-lateerror) and will fail ~1.5s later.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
+    await cdp.waitFor('chatMessages.length === 1 && chatMessages[0].id === "m-216-u1"', 15000, 300, 'retry removed a1');
+    // The retry request is dispatched (buttons disabled / isLoading). The mock
+    // mode sse-lateerror never emits content, so streamState.active stays
+    // false - the failure arrives ~1.5s later with no content/reasoning.
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 20000, 50, 'retry in flight');
+    // Switch to thread B BEFORE the retry fails.
+    await cdp.eval('window.loadThread("t-retry-b-216"); true');
+    await cdp.waitFor('window.activeThreadId === "t-retry-b-216"', 15000, 300, 'thread B loaded');
+    await sleep(300);
+    // Wait for the retry to fail (showError arrives; the retry's stream had no
+    // content, so _handleStreamError posts the error banner).
+    await cdp.waitFor('document.querySelector(".error-banner") !== null', 20000, 200, 'retry error banner');
+    await sleep(600);
+    const uiMsgs = await cdp.eval('chatMessages.map(function(m){ return m.id + ":" + m.content; })');
+    const stillOnB = await cdp.eval('window.activeThreadId === "t-retry-b-216"');
+    const a1inB = String(uiMsgs.join('|')).indexOf('first answer') >= 0;
+    // BUG: the restored thread-A message is visible in thread B's UI.
+    if (!a1inB)
+      throw new Error('restored messages did not pollute thread B (fix applied): ui=' + JSON.stringify(uiMsgs));
+    if (!stillOnB)
+      throw new Error('setup: not on thread B anymore: ' + stillOnB);
+    // Sanity: the DB row for a1 still belongs to thread A only.
+    const a1Rows = seed.query(dbPath, "SELECT thread_id FROM messages WHERE content='first answer'");
+    const dbThreads = a1Rows.map((r) => r.thread_id);
+    return 'retried a1 in A, switched to B, then the retry failed: B\'s UI array is ' + JSON.stringify(uiMsgs) +
+      ' (A\'s "first answer" was restored into the VISIBLE thread B) while the DB row stays in ' +
+      JSON.stringify(dbThreads) + ' - restoreRetryMessagesOnError repaints the wrong thread';
+  }
+});
+
 module.exports = scenarios;

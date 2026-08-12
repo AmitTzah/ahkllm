@@ -154,12 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
   bugs #213-#215 verified headlessly (font-size dropped before the first message; mid-stream branch
   switch re-enables the composer so a second send clobbers the first billed response; switching to an
-  unanswered thread mid-stream leaves the loading indicator stuck).
+  unanswered thread mid-stream leaves the loading indicator stuck; a failed retry restores thread A's
+  messages into whatever thread is visible).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -277,6 +278,29 @@ when A's stream completes, `onStreamDone` is scoped away for the non-current thr
 
 **Verification:** headless â€“ scenario 215 (sse-slow) sends in A, switches to unanswered B mid-stream, waits for
 `streamState.active=false`, and asserts `#chat-loading` is still in the DOM in B. Scenario PASS = bug reproduced.
+
+### 216. A failed retry restores the removed messages into whatever thread is currently visible
+
+**Scenario:** 216 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Retry an assistant message in thread A, and while the retry request is in flight switch to thread B;
+let the retry fail.
+
+**Expected:** the original thread-A messages reappear in thread A's UI when the retry fails.
+
+**Actual:** `restoreRetryMessagesOnError` pushes `_retryRemovedMessages` (thread A's messages) into the GLOBAL
+`chatMessages` array and re-renders, so thread B's visible conversation shows thread A's assistant message. The DB
+rows stay correct in A â€“ the same cross-thread UI pollution class as bug #195, on the error path.
+
+**Evidence:** `webui/js/chat/chat-input.js` `restoreRetryMessagesOnError` (no thread/path scoping);
+`webui/js/main.js` `showError` calls it for every error banner.
+
+**Verification:** headless â€“ scenario 216 uses the new `sse-lateerror` mock mode (streaming headers + keepalive,
+then a JSON error body after 1.5s, so the retry fails AFTER the switch with no content). It retries a1 in A, switches
+to B, waits for the error banner, and asserts B's `chatMessages` contains A's "first answer" while the DB row stays
+in A. Scenario PASS = bug reproduced.
 
 ## History (append-only)
 

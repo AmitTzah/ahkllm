@@ -7,6 +7,9 @@
 //   sse-script         streaming with a custom chunk script (opts.script)
 //   sse-midfail        streaming: one content chunk, then the socket is
 //                      destroyed before [DONE] (mid-stream connection failure)
+//   sse-lateerror      streaming headers + keepalive, then a JSON error body
+//                      after a delay (a request that starts streaming and then
+//                      fails BEFORE any content/reasoning chunk arrives)
 //   sse-slow           streaming like sse-success but with ~700ms delays per
 //                      chunk (total ~3s) so scenarios can act mid-stream
 //   sse-hang           streaming headers + a keepalive comment, then the
@@ -169,6 +172,28 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           // failure after partial tokens) instead of a raw socket destroy,
           // which left cURL hanging in this environment.
           try { res.write(JSON.stringify({ error: { message: 'upstream error after partial content' } })); res.end(); } catch {}
+        })().catch(() => { try { res.end(); } catch {} });
+        return;
+      }
+      if (mode === 'sse-lateerror') {
+        // Streaming-looking headers + keepalive, then a JSON error body after
+        // a delay. The app's poll sees no content/reasoning before the cURL
+        // exits, so _finalizeStreaming takes the error path (_handleStreamError)
+        // - unlike sse-midfail, whose content chunk routes to the completion
+        // handler. Used by scenario 216 to fail a retry AFTER a thread switch.
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        (async () => {
+          res.write(': keepalive\n\n');
+          await delay(opts.lateErrorDelay || 1500);
+          try {
+            res.write(JSON.stringify({ error: { message: 'late stream failure (mock)' } }));
+            res.end();
+          } catch {}
         })().catch(() => { try { res.end(); } catch {} });
         return;
       }
