@@ -156,7 +156,7 @@ How to run AHK safely:
 
 - **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - #208, #211, #212 FIXED + COMMITTED (0bd51f0, 9da8658, e125c79).
+- **Where we left off:** 2026-08-12 - #208, #211, #212 FIXED + COMMITTED (0bd51f0, 9da8658, 65ff184).
   Next: fix #209 (navigateToMessage leaves the sidebar stale - add _postThreadListRefresh).
 ## Bug entry template
 
@@ -270,7 +270,7 @@ thread's title while `activeThreadId` is empty.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
-- 2026-08-12 - "The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - handleChatSend re-applies the \"New Chats Start With\" default when auto-creating the thread" - FIXED + COMMITTED in e125c79: fix(chat): only apply the new-chat default to pristine requestParams (bug #212). Scenario 212 flipped to a regression check (fix-guard #60 passes again) + ChatSettings/ChatDispatch unit tests.
+- 2026-08-12 - "The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - handleChatSend re-applies the \"New Chats Start With\" default when auto-creating the thread" - FIXED + COMMITTED in 65ff184: fix(chat): only apply the new-chat default to pristine requestParams (bug #212). Scenario 212 flipped to a regression check (fix-guard #60 passes again) + ChatSettings/ChatDispatch unit tests.
 
 - 2026-08-12 - "A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping" - FIXED + COMMITTED in 9da8658: fix(stream): clear pending retry state on failed retries (bug #211). Scenario 211 flipped to a regression check + StreamHandler unit tests.
 
