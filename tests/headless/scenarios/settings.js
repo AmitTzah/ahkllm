@@ -1535,13 +1535,12 @@ scenarios.push({
     const threwM = text.match(/threw='([^']*)'/);
     if (!keyM || !threwM) throw new Error('probe output missing fields: ' + text);
     const providerKey = keyM[1], threw = threwM[1];
-    // BUG present: with no providers, Resolve gives providerKey="" and
-    // _ShowApiKeyError throws instead of posting the friendly key error.
-    if (providerKey !== '' || threw === '')
-      throw new Error('provider-less error path did not crash (bug not reproduced): key=' + providerKey + ' threw=' + threw);
+    // FIXED (bug #199): the error handler no longer indexes providers[""],
+    // so the friendly key error survives the empty-provider state.
+    if (providerKey !== '' || threw !== '')
+      throw new Error('provider-less error path still crashes (fix incomplete): key=' + providerKey + ' threw=' + threw);
     return 'providers={}, providerMap={}: ProviderResolver.Resolve returned providerKey="' + providerKey +
-      '" and _ShowApiKeyError threw "' + threw +
-      '" - the missing providers[""] Map index crashes the error handler before the friendly message is posted';
+      '" and _ShowApiKeyError completed without throwing - the friendly key error reaches the UI';
   }
 });
 

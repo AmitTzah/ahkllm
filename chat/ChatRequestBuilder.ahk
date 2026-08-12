@@ -60,8 +60,13 @@ buildRequest() {
 
 ; Show API key error and return "" so caller aborts.
 _ShowApiKeyError(providerInfo) {
-    pInfo := providers[providerInfo.providerKey]
-    envVar := pInfo ? pInfo.authEnvVar : providerInfo.providerKey
+    ; Bug #199: ProviderResolver can return providerKey="" when NO providers
+    ; are configured - a bare providers[""] Map index THROWS in AHK v2 and
+    ; crashes the error handler before the friendly message is posted.
+    pInfo := ""
+    if providers.Has(providerInfo.providerKey)
+        pInfo := providers[providerInfo.providerKey]
+    envVar := pInfo && pInfo.HasOwnProp("authEnvVar") ? pInfo.authEnvVar : providerInfo.providerKey
     errorMsg := "No API key configured for " providerInfo.providerKey ". Set " envVar " environment variable."
     postWebMessage("showError", { message: errorMsg })
     postWebMessage("setChatButtonsEnabled", true)

@@ -423,11 +423,11 @@ fallback when the providers map is empty.
 
 **Verification:** headless probe (`provider-empty-api-key-error`) runs the real
 `ProviderResolver.Resolve` + `_ShowApiKeyError` with `providers := Map()` and
-captures the thrown message.
+captures the thrown message (expects none).
 
-**Verification result (2026-08-12):** scenario 199 PASSED - Resolve returned
-`providerKey=""` and `_ShowApiKeyError` threw `Item has no value.` (the missing
-`providers[""]` index).
+**Verification result (2026-08-12):** scenario 199 PASSED after the fix -
+Resolve returned `providerKey=""` and `_ShowApiKeyError` completed without
+throwing. Regression unit test added in ChatRequestBuilder.test.ahk.
 
 ### 200. Command usage rows with an empty provider and a provider-prefixed model are unfilterable
 

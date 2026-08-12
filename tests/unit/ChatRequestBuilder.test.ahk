@@ -453,4 +453,29 @@ class ChatRequestBuilderTest {
             this._teardownDb()
         }
     }
+
+    ; Regression (bug #199): with NO configured providers,
+    ; ProviderResolver.Resolve returns providerKey="", and _ShowApiKeyError
+    ; must NOT index providers[""] (a missing Map key THROWS in AHK v2). The
+    ; friendly key error path has to survive the empty-provider state.
+    ShowApiKeyError_EmptyProviders_DoesNotThrow() {
+        global providers, providerMap, requestParams
+        oldProviders := providers
+        oldProviderMap := providerMap
+        providers := Map()
+        providerMap := Map()
+        providerInfo := ProviderResolver.Resolve("deepseek/deepseek-v4-flash")
+        requestParams["uniqueID"] := "test-empty-providers"
+        requestParams["mainScriptHiddenHwnd"] := 0
+        threw := ""
+        try {
+            _ShowApiKeyError(providerInfo)
+        } catch Error as e {
+            threw := e.Message
+        }
+        if threw != ""
+            throw Error("_ShowApiKeyError must not throw with zero providers (bug #199): " threw)
+        providers := oldProviders
+        providerMap := oldProviderMap
+    }
 }

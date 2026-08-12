@@ -1,5 +1,5 @@
-# 2026-08-12T11:40:08.815Z | run of 1 scenario(s)
-PASS | #198 | PDF/office attachments with a generic MIME type are misclassified as text_file - getAttachmentTypeFromMime only falls back to the extension for odt/odp/ods/rtf/epub, so a .pdf/.docx/.pptx/.xlsx with application/octet-stream is treated as plain text (no PDF/office extraction, sent as garbled text context) | File "report.pdf" with MIME application/octet-stream was classified as "pdf" - getAttachmentTypeFromMime now falls back to the extension for pdf/docx/pptx/xlsx, so the PDF is attached as a PDF and extracted | 3.9s
+# 2026-08-12T11:41:57.170Z | run of 1 scenario(s)
+PASS | #199 | With zero configured providers, a chat send crashes inside the API-key error handler - ProviderResolver.Resolve returns providerKey="" and ChatRequestBuilder._ShowApiKeyError indexes providers[""] unguarded (a missing Map key THROWS in AHK v2), so the friendly "No API key configured" error never reaches the UI | providers={}, providerMap={}: ProviderResolver.Resolve returned providerKey="" and _ShowApiKeyError completed without throwing - the friendly key error reaches the UI | 0.1s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
