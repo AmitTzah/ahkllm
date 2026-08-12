@@ -154,14 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 5 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 reported, 4 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208-#212 VERIFIED headlessly and committed
-  (one commit each); stale #21/#56 scenario assertions fixed (stream-state wait + streamCancelled
-  object contract). Full fast suite green; full headless suite 205/206 PASS - the only failure is
-  regression #60, which is the FIX-GUARD for open bug #212 (it asserts the typed system prompt
-  reaches the request; it will pass again once #212 is fixed). Next: hand the 5 verified bugs back
-  for the Phase 2 fix cycle (rank order).
+- **Where we left off:** 2026-08-12 - #208 (streaming-bubble XSS) FIXED + COMMITTED in dde781f
+  (escHtml on the author label, unit tests, scenario flipped to regression). Next: fix #211 (failed
+  retry leaks pendingRetrySiblingGroup into the next response).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -212,41 +209,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 212. The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - `handleChatSend` re-applies the "New Chats Start With" default when auto-creating the thread
-
-**Scenario:** 212 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** In a fresh session (no thread open), pick an assistant or type a system
-prompt (or set a temperature) in the right rail, then send the first message. The
-request carries the configured "New Chats Start With" default (e.g. the default
-assistant's system prompt) instead of what the user just chose.
-
-**Expected:** the auto-created thread inherits the user's current right-rail settings;
-the new-chat default applies only when nothing was configured (the same guard
-`_applyNewChatDefaultToFreshThread` uses for tray/command-line threads).
-
-**Actual:** `handleChatSend`'s auto-create branch runs
-`ChatDB.Thread_Create()` then calls `_applyNewChatDefault()` UNCONDITIONALLY before
-`_saveCurrentSettingsToThread()`. `_applyNewChatDefault` replaces `requestParams`
-with the configured default (since bug #196, "App Default" resolves to the marked
-default assistant), wiping the user's pre-send assistant selection, typed system
-message, and temperature. This is why regression #60 ("typing a system prompt
-directly into the right-rail field reaches the API request") now fails.
-
-**Evidence:** `chat/callbacks/Message.ahk` `handleChatSend` - the `if !activeThreadId`
-branch calls `_applyNewChatDefault()` with no freshness guard, then persists the
-overwritten requestParams; `chat/ChatSettings.ahk` `_applyNewChatDefault` clobbers
-`singleAPIModelName`/`systemOverride`/`reasoningOverride`/`temperatureOverride`.
-
-**Verification:** headless scenario 212 - fresh session, selected the "Violet"
-assistant in the popover, typed "DIRECT TYPED MESSAGE" into the right-rail system
-prompt field, then sent the first message. The logged request's system message is the
-default assistant's ("You are a conversational partner..."), not the typed text - the
-pre-send selections were discarded at thread creation.
-
 ### 211. A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping
 
 **Scenario:** 211 (scenario code in e2e-suite.js)
@@ -283,33 +245,39 @@ stream), removed the attachment, then sent a follow-up. The follow-up's streamed
 assistant row landed with `parent_id` = the new user message but
 `sibling_group` = the failed retry's group (the original assistant's group), while a
 clean send would have an empty sibling group.
+### 212. The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - `handleChatSend` re-applies the "New Chats Start With" default when auto-creating the thread
 
-### 210. Chat-window title stays stale after deleting the active thread
-
-**Scenario:** 210 (scenario code in e2e-suite.js)
+**Scenario:** 212 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
-**Repro:** Load any chat (the window title becomes "AhkLLM - <thread title>"), then
-delete that chat from the sidebar (Delete → confirm). The chat area empties but the
-window title still shows the deleted thread's title.
+**Repro:** In a fresh session (no thread open), pick an assistant or type a system
+prompt (or set a temperature) in the right rail, then send the first message. The
+request carries the configured "New Chats Start With" default (e.g. the default
+assistant's system prompt) instead of what the user just chose.
 
-**Expected:** deleting the active thread resets the window title to the empty/new-chat
-state, like `_LoadThreadAndRefreshUI` keeps it in sync on load and rename.
+**Expected:** the auto-created thread inherits the user's current right-rail settings;
+the new-chat default applies only when nothing was configured (the same guard
+`_applyNewChatDefaultToFreshThread` uses for tray/command-line threads).
 
-**Actual:** `_HandleThreadAction`'s `deleteThread` / `deleteThreadForever` / `emptyTrash`
-cases clear `activeThreadId` and post `loadThread` + `initChatMode` but never assign
-`chatWindow.Title` - only `renameThread` and `_LoadThreadAndRefreshUI` touch it, so the
-title bar keeps the deleted conversation's name until another thread is loaded.
+**Actual:** `handleChatSend`'s auto-create branch runs
+`ChatDB.Thread_Create()` then calls `_applyNewChatDefault()` UNCONDITIONALLY before
+`_saveCurrentSettingsToThread()`. `_applyNewChatDefault` replaces `requestParams`
+with the configured default (since bug #196, "App Default" resolves to the marked
+default assistant), wiping the user's pre-send assistant selection, typed system
+message, and temperature. This is why regression #60 ("typing a system prompt
+directly into the right-rail field reaches the API request") now fails.
 
-**Evidence:** `chat/callbacks/Sidebar.ahk` - the three deletion cases end at
-`_sendDropdownLabel()` with no `chatWindow.Title := ...` (compare `renameThread`, which
-updates the title, and `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`).
+**Evidence:** `chat/callbacks/Message.ahk` `handleChatSend` - the `if !activeThreadId`
+branch calls `_applyNewChatDefault()` with no freshness guard, then persists the
+overwritten requestParams; `chat/ChatSettings.ahk` `_applyNewChatDefault` clobbers
+`singleAPIModelName`/`systemOverride`/`reasoningOverride`/`temperatureOverride`.
 
-**Verification:** headless scenario 210 - seeded and loaded a titled thread, deleted it
-via the sidebar confirm, then probed the live window title: it still contains the deleted
-thread's title while `activeThreadId` is empty.
-
+**Verification:** headless scenario 212 - fresh session, selected the "Violet"
+assistant in the popover, typed "DIRECT TYPED MESSAGE" into the right-rail system
+prompt field, then sent the first message. The logged request's system message is the
+default assistant's ("You are a conversational partner..."), not the typed text - the
+pre-send selections were discarded at thread creation.
 ### 209. Tree-modal / search navigation leaves the sidebar stale - `navigateToMessage` bumps `updated_at` but posts no `threadList` refresh (the fixed #174 branch-switch path is the only navigation that refreshes the list)
 
 **Scenario:** 209 (scenario code in e2e-suite.js)
@@ -342,41 +310,37 @@ loaded A, then navigated to an off-path branch via the real
 `sidebarAction:navigateToMessage` IPC. The DB order flips to A-first
 (`updated_at` bumped), while the sidebar DOM still renders B-first and zero
 `threadList` messages arrive on the AHK->WebView channel.
+### 210. Chat-window title stays stale after deleting the active thread
 
-### 208. Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)
-
-**Scenario:** 208 (scenario code in e2e-suite.js)
+**Scenario:** 210 (scenario code in e2e-suite.js)
 
 **Status:** verified
 
-**Repro:** Settings → Assistants → give an assistant a name containing HTML (e.g. an
-`<img src="x" onerror="...">` tag), or add a model whose short name contains HTML; make that
-assistant/model active; send any chat message and let the response stream.
+**Repro:** Load any chat (the window title becomes "AhkLLM - <thread title>"), then
+delete that chat from the sidebar (Delete → confirm). The chat area empties but the
+window title still shows the deleted thread's title.
 
-**Expected:** the streaming bubble's author label shows the name as inert text, escaped exactly
-like every other message bubble (`chat-render.js` escapes author names with `escHtml`).
+**Expected:** deleting the active thread resets the window title to the empty/new-chat
+state, like `_LoadThreadAndRefreshUI` keeps it in sync on load and rename.
 
-**Actual:** the streaming bubble is created with `'<span class="msg-author">' + displayName + '</span>'`
-written straight into `innerHTML`. `displayName` comes from the AHK `streamModelName` post
-(`ModelParser.Sanitize` strips the provider prefix but no HTML), or from the assistant's name when
-one is active - both are user-controlled. The markup is parsed as HTML and inline event handlers
-execute inside the WebView (which has `chrome.webview.postMessage` access), so a crafted model or
-assistant name runs script in the app.
+**Actual:** `_HandleThreadAction`'s `deleteThread` / `deleteThreadForever` / `emptyTrash`
+cases clear `activeThreadId` and post `loadThread` + `initChatMode` but never assign
+`chatWindow.Title` - only `renameThread` and `_LoadThreadAndRefreshUI` touch it, so the
+title bar keeps the deleted conversation's name until another thread is loaded.
 
-**Evidence:** `webui/js/chat/stream.js:244` - `html += '<span class="msg-author">' + displayName + '</span>';`
-(no `escHtml`), while `webui/js/chat/chat-render.js:125` escapes the same label in persisted bubbles.
-`displayName` is set from `requestParams["_streamDisplayName"]` (assistant `name` or sanitized model
-name) in `chat/streaming/StreamHandler.ahk`.
+**Evidence:** `chat/callbacks/Sidebar.ahk` - the three deletion cases end at
+`_sendDropdownLabel()` with no `chatWindow.Title := ...` (compare `renameThread`, which
+updates the title, and `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`).
 
-**Verification:** headless scenario 208 - seeded an assistant named
-`<img src="x" onerror="window.__xssPwned=1">`, loaded a thread bound to it, sent a chat message and
-waited for the stream. The streaming bubble's `.msg-author` innerHTML contained the raw `<img>` tag
-and `window.__xssPwned` was set to 1 (the onerror handler executed).
-
+**Verification:** headless scenario 210 - seeded and loaded a titled thread, deleted it
+via the sidebar confirm, then probed the live window title: it still contains the deleted
+thread's title while `activeThreadId` is empty.
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-12 - "Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)" - FIXED + COMMITTED in dde781f: fix(webui): escape the streaming bubble author label (bug #208). Scenario 208 flipped to a regression check + stream-state unit tests.
 
 - 2026-08-12 - "Overwrite-editing an assistant message leaves the thread's cumulative output tokens stale" - FIXED + COMMITTED in f75013e: fix(chat): recompute cumulative counters after overwrite-editing an assistant message (bug #194). Scenario 194 flipped to a regression check + unit tests.
 - 2026-08-12 - "Switching threads mid-stream pushes the old thread's completed response into the current thread's UI message array" - FIXED + COMMITTED in a2f5a81: fix(chat): scope streamed UI to the sending thread/path so switches cannot pollute the visible conversation (bug #195). Scenario 195 flipped to a regression check + unit tests.

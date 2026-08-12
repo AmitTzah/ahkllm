@@ -52,6 +52,78 @@ describe('streamState defaults', () => {
     });
 });
 
+describe('createStreamingBubble author label escaping (bug #208)', () => {
+    // Bug #208: the streaming bubble's author label used to be concatenated
+    // into innerHTML without escaping, so an assistant/model name containing
+    // HTML (e.g. <img onerror=...>) was parsed and its handlers executed.
+    // Load stream.js with a document mock that captures the bubble HTML.
+    function loadBubbleHarness() {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'stream.js'), 'utf-8');
+        let capturedHtml = '';
+        const fakeContentDiv = { innerHTML: '' };
+        const fakeBubble = {
+            dataset: {},
+            querySelector: (sel) => (sel === '.msg-content' ? fakeContentDiv : null),
+            querySelectorAll: () => [],
+            insertBefore: () => {},
+        };
+        const template = {
+            set innerHTML(v) { capturedHtml = String(v); },
+            get innerHTML() { return capturedHtml; },
+            firstElementChild: fakeBubble,
+        };
+        const sandbox = {
+            document: {
+                getElementById: (id) => (id === 'chat-messages' ? { appendChild: () => {} } : null),
+                createElement: () => template,
+                querySelectorAll: () => [],
+                querySelector: () => null,
+                addEventListener: () => {},
+            },
+            window: { addEventListener: () => {} },
+            console,
+            md: { render: (c) => c },
+            setTimeout,
+            clearTimeout,
+            chatMessages: [],
+            sessionStorage: { getItem: () => null, setItem: () => {} },
+            // Same escape helper chat-core.js provides in the real page.
+            escHtml: (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+            hideLoadingIndicator: () => {},
+            setChatButtonsEnabled: () => {},
+        };
+        sandbox.global = sandbox;
+        vm.runInContext(src, vm.createContext(sandbox));
+        // stream.js declares `var streamState = {...}` at load, which replaces
+        // the sandbox value - set the display name the way onStreamModelName
+        // does before the bubble is created.
+        sandbox.streamState.modelName = '<img src="x" onerror="window.__xssPwned=1">';
+        return { sandbox, html: () => capturedHtml };
+    }
+
+    it('escapes the author label so markup in a model/assistant name cannot execute', () => {
+        const h = loadBubbleHarness();
+        const bubble = h.sandbox.createStreamingBubble();
+        const html = h.html();
+        // The injected name must be rendered as inert text: no raw <img> tag,
+        // and the escaped entity must be present in the author span.
+        assert.strictEqual(html.indexOf('<img'), -1, 'raw <img> must not appear in the bubble HTML');
+        assert.ok(html.indexOf('&lt;img') >= 0, 'author name must be HTML-escaped: ' + html);
+        assert.ok(html.indexOf('window.__xssPwned=1') >= 0, 'the payload text should still be visible as text');
+        // The author span's textContent (once parsed) is the original name.
+        assert.ok(typeof bubble === 'object', 'createStreamingBubble should still return the bubble');
+    });
+
+    it('keeps a plain assistant name unchanged', () => {
+        const h = loadBubbleHarness();
+        h.sandbox.streamState.modelName = 'DeepSeek V4 Flash';
+        h.sandbox.createStreamingBubble();
+        const html = h.html();
+        assert.ok(html.indexOf('>DeepSeek V4 Flash<') >= 0, 'plain names must render as-is: ' + html);
+        assert.strictEqual(html.indexOf('&lt;'), -1, 'plain names must not be over-escaped');
+    });
+});
+
 describe('_persistStreamedMessage dedup', () => {
     it('adds message to chatMessages', () => {
         const ctx = loadStreamModule();

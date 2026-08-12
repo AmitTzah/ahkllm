@@ -551,6 +551,7 @@ scenarios.push({
   id: 208,
   name: 'Streaming bubble author label injects assistant/model names as raw HTML (XSS) - createStreamingBubble concatenates displayName into innerHTML without escaping, so an assistant named <img onerror=...> executes in the WebView',
   mode: 'sse-success',
+  regression: true, // FIXED bug #208 kept as a regression check (the author label is now escHtml'd)
   settings: {
     // The assistant name carries the payload. It flows settings.json -> the
     // AHK streamModelName post (displayName = asst.name) -> streamState.modelName
@@ -588,16 +589,25 @@ scenarios.push({
       const a = last.querySelector('.msg-author');
       return a ? a.innerHTML : '';
     })()`);
-    // BUG #208: the assistant name is concatenated into innerHTML unescaped,
-    // so the <img> tag is parsed and its onerror handler runs (window.__xssPwned
-    // becomes 1) and/or the raw markup is present in the rendered author label.
-    if (pwned === 1) {
-      return 'XSS executed during streaming: window.__xssPwned=1; author innerHTML=' + JSON.stringify(authorHtml);
-    }
-    if (String(authorHtml).indexOf('<img') >= 0) {
-      return 'streaming bubble author rendered raw HTML (no escaping): ' + JSON.stringify(authorHtml);
-    }
-    throw new Error('streaming bubble author label was escaped (bug #208 not reproduced): ' + JSON.stringify(authorHtml));
+    const authorText = await cdp.eval(`(() => {
+      const bubbles = [...document.querySelectorAll('.msg.bot')];
+      const last = bubbles[bubbles.length - 1];
+      if (!last) return '';
+      const a = last.querySelector('.msg-author');
+      return a ? a.textContent : '';
+    })()`);
+    // FIXED (bug #208): the assistant name is escaped before innerHTML, so
+    // the <img> tag is inert text - the onerror handler must NOT run, no raw
+    // <img> may appear in the author label, and the name is still visible as
+    // text (textContent carries the literal markup).
+    if (pwned !== 0)
+      throw new Error('inline handler still executed (bug #208 not fixed): pwned=' + pwned);
+    if (String(authorHtml).indexOf('<img') >= 0)
+      throw new Error('raw <img> tag still present in the author label (bug #208 not fixed): ' + JSON.stringify(authorHtml));
+    if (String(authorText).indexOf('<img') < 0)
+      throw new Error('author label lost the name text (should render as inert text): ' + JSON.stringify(authorText));
+    return 'assistant name <img src="x" onerror=...> rendered inert in the streaming bubble (window.__xssPwned=0); author innerHTML=' + JSON.stringify(authorHtml) +
+      ' textContent=' + JSON.stringify(authorText) + ' - the author label is escaped like every other bubble';
   }
 });
 

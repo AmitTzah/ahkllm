@@ -241,7 +241,11 @@ function createStreamingBubble() {
   var html = '<div class="msg bot" id="streaming-bubble">';
   html += '<div class="msg-body">';
   html += '<div class="msg-head">';
-  html += '<span class="msg-author">' + displayName + '</span>';
+  // Bug #208: displayName comes from the AHK streamModelName post (assistant
+  // name or sanitized model name) and is user-controlled - escape it like
+  // createMessageBubble does, or markup in the name is parsed as HTML and
+  // inline handlers execute inside the WebView.
+  html += '<span class="msg-author">' + escHtml(displayName) + '</span>';
   html += '<span class="msg-meta"></span>';
   html += '</div>';
   html += '<div class="msg-content"></div>';
