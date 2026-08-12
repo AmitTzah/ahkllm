@@ -187,7 +187,11 @@ function renderMainChart() {
   }
   for (var i=0; i<allData.commands.length; i++) {
     var c = allData.commands[i], d = c.date;
-    var key = mode==='provider' ? (c.provider||'') : c.model;
+    // Bug #200: command rows must use the same provider fallback as chat rows
+    // (extractProvider(c.model)) - otherwise a command row with provider=""
+    // and model="deepseek/gpt-5" charts under an "" series that no filter
+    // option can select.
+    var key = mode==='provider' ? (c.provider||extractProvider(c.model)) : c.model;
     if (!days[d]) days[d] = {};
     if (!days[d][key]) days[d][key] = 0;
     days[d][key] += (c.total_cost||0);

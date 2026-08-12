@@ -1157,15 +1157,13 @@ scenarios.push({
     const hasBlankOption = options.indexOf('__BLANK_PROVIDER__') >= 0;
     const chartLabels = captured ? captured.data.datasets.map((d) => d.label) : [];
     const hasEmptySeries = chartLabels.indexOf('') >= 0;
-    // BUG present: the command row's provider-mode chart series is keyed ""
-    // (c.provider||""), but populateFilters decided no blank-provider option is
-    // needed because extractProvider("deepseek/gpt-5") is "deepseek" - so the
-    // chart contains a series no filter option can isolate.
-    if (hasBlankOption || !hasEmptySeries)
-      throw new Error('command empty-provider series was not unfilterable (bug not reproduced): blankOption=' + hasBlankOption + ' chartLabels=' + JSON.stringify(chartLabels));
+    // FIXED (bug #200): the command row charts under its model's provider
+    // prefix (deepseek), exactly like chat rows, so the existing provider
+    // filter option can select it - no unfilterable "" series exists.
+    if (hasEmptySeries || chartLabels.indexOf('deepseek') < 0)
+      throw new Error('command empty-provider series still unfilterable (fix incomplete): chartLabels=' + JSON.stringify(chartLabels));
     return 'command row provider="" model="deepseek/gpt-5": provider-mode chart labels=' + JSON.stringify(chartLabels) +
-      ' (contains the empty "" series) while the provider filter options have no "Unknown (blank)" entry (hasBlankOption=' + hasBlankOption +
-      ') - the "" series is unfilterable';
+      ' (charts under "deepseek", matching the filter options) - no unfilterable "" series remains';
   }
 });
 

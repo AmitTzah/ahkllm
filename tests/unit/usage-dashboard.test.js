@@ -261,6 +261,32 @@ describe('populateFilters', () => {
     });
 });
 
+describe('renderMainChart provider mode (bug #200)', () => {
+    it('keys command rows by the model provider when provider is empty', () => {
+        const sandbox = loadDashboardModule();
+        let captured = null;
+        sandbox.Chart = function(ctx, cfg) { captured = cfg; return { destroy: function() {}, update: function() {} }; };
+        sandbox.document.querySelector = function() {
+            return { dataset: { mode: 'provider' }, classList: { add: function() {}, remove: function() {} }, querySelectorAll: function() { return []; }, addEventListener: function() {} };
+        };
+        sandbox.allData = {
+            chat: [],
+            commands: [{
+                date: '2026-08-12', model: 'deepseek/gpt-5', provider: '',
+                prompt_tokens: 10, completion_tokens: 5, cached_tokens: 0,
+                total_cost: 0.5
+            }],
+            providers: ['deepseek'],
+            models: ['deepseek/gpt-5']
+        };
+        sandbox.mainChart = null;
+        sandbox.renderMainChart();
+        const labels = captured.data.datasets.map((d) => d.label);
+        assert.ok(labels.indexOf('deepseek') >= 0, 'command row should chart under its model provider prefix: ' + JSON.stringify(labels));
+        assert.ok(labels.indexOf('') < 0, 'empty provider must not create an unfilterable "" series (bug #200): ' + JSON.stringify(labels));
+    });
+});
+
 describe('renderModelSections XSS (bug #95)', () => {
     it('escapes the model heading', () => {
         const ctx = loadDashboardModule();

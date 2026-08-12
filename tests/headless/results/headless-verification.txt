@@ -1,5 +1,5 @@
-# 2026-08-12T11:41:57.170Z | run of 1 scenario(s)
-PASS | #199 | With zero configured providers, a chat send crashes inside the API-key error handler - ProviderResolver.Resolve returns providerKey="" and ChatRequestBuilder._ShowApiKeyError indexes providers[""] unguarded (a missing Map key THROWS in AHK v2), so the friendly "No API key configured" error never reaches the UI | providers={}, providerMap={}: ProviderResolver.Resolve returned providerKey="" and _ShowApiKeyError completed without throwing - the friendly key error reaches the UI | 0.1s
+# 2026-08-12T11:45:01.750Z | run of 1 scenario(s)
+PASS | #200 | Usage dashboard command rows with an EMPTY provider but a provider-prefixed model are unfilterable - renderMainChart keys command rows by c.provider||"" (unlike chat rows, which fall back to extractProvider(c.model)), while populateFilters only adds the "Unknown (blank)" sentinel when BOTH provider and extractProvider(model) are empty; the "" command series renders with no selectable filter | command row provider="" model="deepseek/gpt-5": provider-mode chart labels=["deepseek"] (charts under "deepseek", matching the filter options) - no unfilterable "" series remains | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

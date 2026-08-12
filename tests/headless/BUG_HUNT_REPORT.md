@@ -457,11 +457,12 @@ that can select it.
 
 **Verification:** headless VM scenario 200 loads the real `usage-dashboard.js`,
 seeds one command row (`provider=""`, `model="deepseek/gpt-5"`), renders the
-provider-mode chart, and asserts the dataset label is `""` while no
-`__BLANK_PROVIDER__` option exists in the filter.
+provider-mode chart, and asserts the dataset label is `deepseek` (no `""`
+series).
 
-**Verification result (2026-08-12):** scenario 200 PASSED - chart labels were
-`[""]` and `hasBlankOption=false`.
+**Verification result (2026-08-12):** scenario 200 PASSED after the fix - chart
+labels are `["deepseek"]`. Regression unit test added in
+usage-dashboard.test.js.
 
 ### 201. Assistant Reasoning dropdown drops short-form base model metadata
 
