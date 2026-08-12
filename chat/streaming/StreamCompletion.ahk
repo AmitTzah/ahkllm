@@ -176,9 +176,9 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
 
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        commandName: requestParams["windowTitle"], provider: requestParams["providerName"],
-        model: requestParams["singleAPIModelName"], isFIM: false, endpoint: _getProviderEndpoint(),
-        pasteMode: requestParams["pasteMode"], request: requestBeforeAppend,
+        commandName: _streamLogWindowTitle(), provider: _streamLogProviderName(),
+        model: _streamLogModel(), isFIM: false, endpoint: _getProviderEndpoint(),
+        pasteMode: _streamLogPasteMode(), request: requestBeforeAppend,
         response: responseStr,
         status: "success", responseTimeMs: responseTimeMs
     })

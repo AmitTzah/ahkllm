@@ -211,6 +211,33 @@ class StreamHandlerTest {
         this._teardownDb()
     }
 
+    ; Regression (bug #206): the API-log metadata helpers must return the
+    ; values captured at send time, even after requestParams changed because
+    ; the user switched threads while the request was in flight.
+    StreamLogHelpers_UseCapturedRequestMetadata() {
+        global requestParams
+        requestParams["_streamLogModel"] := "deepseek/deepseek-v4-flash"
+        requestParams["_streamLogProviderName"] := "deepseek"
+        requestParams["_streamLogWindowTitle"] := "Chat"
+        requestParams["_streamLogPasteMode"] := "chat"
+        requestParams["singleAPIModelName"] := "openai/gpt-5-mini"
+        requestParams["providerName"] := "openai"
+        requestParams["windowTitle"] := "Other Thread"
+        requestParams["pasteMode"] := "replace"
+        if _streamLogModel() != "deepseek/deepseek-v4-flash"
+            throw Error("_streamLogModel must use the captured value (bug #206)")
+        if _streamLogProviderName() != "deepseek"
+            throw Error("_streamLogProviderName must use the captured value (bug #206)")
+        if _streamLogWindowTitle() != "Chat"
+            throw Error("_streamLogWindowTitle must use the captured value (bug #206)")
+        if _streamLogPasteMode() != "chat"
+            throw Error("_streamLogPasteMode must use the captured value (bug #206)")
+        requestParams.Delete("_streamLogModel")
+        requestParams.Delete("_streamLogProviderName")
+        requestParams.Delete("_streamLogWindowTitle")
+        requestParams.Delete("_streamLogPasteMode")
+    }
+
     ; Regression (bug #172): hard-deleting the streaming thread mid-stream must
     ; not silently DROP the billed response - the completion still persists it
     ; (a dangling row under the removed thread id) and tracks its usage.

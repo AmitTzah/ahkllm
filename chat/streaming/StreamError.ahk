@@ -56,12 +56,12 @@ _handleStreamError() {
         : 0
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        commandName: requestParams["windowTitle"],
-        provider: requestParams["providerName"],
-        model: requestParams["singleAPIModelName"],
+        commandName: _streamLogWindowTitle(),
+        provider: _streamLogProviderName(),
+        model: _streamLogModel(),
         isFIM: false,
         endpoint: _getProviderEndpoint(),
-        pasteMode: requestParams["pasteMode"],
+        pasteMode: _streamLogPasteMode(),
         request: requestParams.Has("_streamChatHistoryJSONRequest") ? requestParams["_streamChatHistoryJSONRequest"] : "{}",
         response: rawOutput ? rawOutput : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
         status: "error",
@@ -170,7 +170,7 @@ _logCancelledRequest() {
     logEntry := {
         choices: [{ message: { content: requestParams["_streamContent"] }, finish_reason: "cancelled" }],
         model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
-        model_full: requestParams["singleAPIModelName"]
+        model_full: _streamLogModel()
     }
     if requestParams["_streamReasoning"]
         logEntry.choices[1].message.reasoning_content := requestParams["_streamReasoning"]
@@ -182,12 +182,12 @@ _logCancelledRequest() {
     }
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-        commandName: requestParams["windowTitle"],
-        provider: requestParams["providerName"],
-        model: requestParams["singleAPIModelName"],
+        commandName: _streamLogWindowTitle(),
+        provider: _streamLogProviderName(),
+        model: _streamLogModel(),
         isFIM: false,
         endpoint: _getProviderEndpoint(),
-        pasteMode: requestParams["pasteMode"],
+        pasteMode: _streamLogPasteMode(),
         request: requestParams["_streamChatHistoryJSONRequest"],
         response: jsongo.Stringify(logEntry),
         status: "cancelled",

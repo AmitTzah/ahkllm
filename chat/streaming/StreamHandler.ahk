@@ -405,3 +405,19 @@ _cleanupStreamState() {
         requestParams.Delete("_streamLogPasteMode")
 }
 
+; Bug #206: the API-log/error/cancel loggers must describe the REQUEST that
+; was sent, not the thread that happens to be active when it finished. The
+; values are captured in sendStreamingRequest and fall back to current
+; requestParams only for legacy/unit-test flows.
+_streamLogWindowTitle() {
+    return requestParams.Has("_streamLogWindowTitle") ? requestParams["_streamLogWindowTitle"] : requestParams["windowTitle"]
+}
+_streamLogProviderName() {
+    return requestParams.Has("_streamLogProviderName") ? requestParams["_streamLogProviderName"] : requestParams["providerName"]
+}
+_streamLogModel() {
+    return requestParams.Has("_streamLogModel") ? requestParams["_streamLogModel"] : requestParams["singleAPIModelName"]
+}
+_streamLogPasteMode() {
+    return requestParams.Has("_streamLogPasteMode") ? requestParams["_streamLogPasteMode"] : requestParams["pasteMode"]
+}

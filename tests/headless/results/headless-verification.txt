@@ -1,5 +1,5 @@
-# 2026-08-12T11:23:13.829Z | run of 1 scenario(s)
-PASS | #205 | Cancelling a retry of a ROOT assistant (no parent) inserts the partial as a CHILD of the original - _handleStreamCancelled honors pendingRetrySiblingGroup but never checks pendingRetryIsRoot (unlike _persistStreamResponse, bug #147), so the cancelled retry is attached under the original root instead of as a sibling with parent NULL | retried the root assistant and cancelled after reasoning started: the partial row has parent_id=null (NULL - sibling of the original root) - _handleStreamCancelled now honors pendingRetryIsRoot | 6.8s
+# 2026-08-12T11:27:22.820Z | run of 1 scenario(s)
+PASS | #206 | Switching threads mid-stream writes the OLD request's API-log entry with the NEW thread's model/provider - _logStreamResponse reads the CURRENT requestParams (singleAPIModelName/providerName) at completion instead of the values captured at send time, so the log row disagrees with the request body it logged | sent in A (request body model=deepseek-v4-flash), switched to B mid-stream; the API-log entry for A's request says model=deepseek/deepseek-v4-flash, provider=deepseek - loggers use the request metadata captured at send time | 6.2s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

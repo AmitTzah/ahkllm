@@ -305,7 +305,7 @@ the streamed answer."]` while the DB had inA=1 / inB=0.
 
 **Scenario:** 194 (scenario code in scenarios/usage-tokens.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Load a thread with an assistant response. Click the assistant's Edit
 button, change the text to something much longer, and click Overwrite. Then
@@ -647,12 +647,12 @@ send-time snapshot of request metadata).
 
 **Verification:** headless scenario 206 seeds A (deepseek) and B
 (openai/gpt-5-mini), sends in A, switches to B mid-stream, then parses
-`LLM_API_Log.json` and asserts the entry for A's request body has a DIFFERENT
+`LLM_API_Log.json` and asserts the entry for A's request body MATCHES the
 logged model.
 
-**Verification result (2026-08-12):** scenario 206 PASSED - A's request body
-used `deepseek-v4-flash` while its log row says model=`openai/gpt-5-mini`,
-provider=`deepseek`.
+**Verification result (2026-08-12):** scenario 206 PASSED after the fix - A's
+request body used `deepseek-v4-flash` and its log row now says the same model
+(loggers use `_streamLogModel`/`_streamLogProviderName` captured at send time).
 
 ### 207. Thread A's stream completion repaints thread B's header token bar with A's stats
 

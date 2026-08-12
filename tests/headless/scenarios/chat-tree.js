@@ -1931,13 +1931,13 @@ scenarios.push({
     if (!entry) throw new Error('setup: no API-log entry for thread A request: ' + raw.slice(0, 500));
     const reqObj = JSON.parse(String(entry.request));
     const reqModel = reqObj.model;
-    // BUG present: the logged model/provider came from the CURRENT
-    // requestParams (thread B) while the request body itself used thread A's
-    // model.
-    if (entry.model === reqModel)
-      throw new Error('API-log model matches the request body (bug not reproduced): entry.model=' + entry.model + ' reqModel=' + reqModel);
+    // FIXED (bug #206): the log entry must describe the SENDING thread's
+    // model (full id, as the logger has always stored), not the thread that
+    // became active mid-stream.
+    if (entry.model !== 'deepseek/deepseek-v4-flash' || entry.provider !== 'deepseek')
+      throw new Error('API-log entry still uses the wrong thread metadata (fix incomplete): entry.model=' + entry.model + ' provider=' + entry.provider + ' reqModel=' + reqModel);
     return 'sent in A (request body model=' + reqModel + '), switched to B mid-stream; the API-log entry for A\'s request says model=' + entry.model +
-      ', provider=' + entry.provider + ' - _logStreamResponse read the current requestParams instead of the sending request\'s model/provider';
+      ', provider=' + entry.provider + ' - loggers use the request metadata captured at send time';
   }
 });
 
