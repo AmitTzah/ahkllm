@@ -160,7 +160,7 @@ The next scenario run also auto-recovers as a fallback.
   | `probe.ahk` | Win32 checks the browser can't see: window titles, icons via `WM_GETICON` + pixel fingerprint, hotkey presses, suspend banner, input window |
   | `probe-thinking.ahk` | Standalone AHK check used by one scenario (see report) |
   | `probe-utf8.ahk` | Standalone AHK check for `_readFileChunk`'s UTF-8-RAW byte-seek semantics (multibyte poll-split corruption, scenario 160) |
-| `probe-bughunt-db.ahk` | Standalone AHK check that runs the REAL ChatDB/repo code against a temp SQLite DB and prints token-accounting / tree-copy / cost-snapshot / provider-resolution / edit-cumulative / default-assistant results (used by the DB-audit scenarios; see report). `open-race <dbPath>` opens a shared DB so two spawned processes can race the startup schema/FTS-rebuild path (scenario 185) |
+| `probe-bughunt-db.ahk` | Standalone AHK check that runs the REAL ChatDB/repo code against a temp SQLite DB and prints token-accounting / tree-copy / cost-snapshot / provider-resolution / edit-cumulative / default-assistant / fork-local-copy / provider-empty results (used by the DB-audit scenarios; see report). `open-race <dbPath>` opens a shared DB so two spawned processes can race the startup schema/FTS-rebuild path (scenario 185) |
 | `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
 | `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
 | `scenarios/helpers.js` | Shared helpers used by scenario bodies (probes, UI navigation) |
