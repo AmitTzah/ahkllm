@@ -33,7 +33,7 @@ _handleStreamComplete() {
             }
         }
 
-        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount })
+        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount, threadId: streamThreadId })
 
         postThreadStats(streamThreadId)
         postWebMessage("setChatButtonsEnabled", true)

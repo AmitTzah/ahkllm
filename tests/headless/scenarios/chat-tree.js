@@ -1795,16 +1795,17 @@ scenarios.push({
     // The DB fix from #159 is in place: the response lands in thread A, not B.
     if (inA !== 1 || inB !== 0)
       throw new Error('setup: DB rows wrong (inA=' + inA + ' inB=' + inB + ') - stream/switch timing failed');
-    const polluted = uiMsgs.length > 1 && String(uiMsgs[1]).indexOf('assistant') === 0;
-    // BUG present: even though the DB row is in A, the completion handler
-    // pushed A's assistant message into the CURRENT chatMessages (thread B),
-    // so B's copy/export/thread-map UI shows a message that does not exist in
-    // B's DB path.
-    if (!polluted)
-      throw new Error('old-thread response did not leak into the current UI array (bug not reproduced): ' + JSON.stringify(uiMsgs));
+    const hasStreamBubble = await cdp.eval('document.getElementById("streaming-bubble") !== null');
+    // FIXED (bug #195): A's stream is suppressed/persisted only for its own
+    // thread; B's UI array keeps exactly B's user message and no stray
+    // streaming bubble appears in B.
+    if (uiMsgs.length !== 1 || String(uiMsgs[0]).indexOf('assistant') === 0)
+      throw new Error('old-thread response leaked into the current UI array (fix incomplete): ' + JSON.stringify(uiMsgs));
+    if (hasStreamBubble)
+      throw new Error('old-thread streaming bubble leaked into thread B UI (fix incomplete)');
     return 'sent in A, switched to B mid-stream; DB rows inA=' + inA + ' inB=' + inB +
-      ' (correct), but the visible thread B chatMessages=' + JSON.stringify(uiMsgs) +
-      ' contains A\'s assistant response - _persistStreamedMessage targets the global chatMessages instead of the sending thread\'s UI state';
+      ' (correct), and the visible thread B chatMessages=' + JSON.stringify(uiMsgs) +
+      ' has no A response and no streaming bubble - stream messages are scoped to the sending thread/path';
   }
 });
 

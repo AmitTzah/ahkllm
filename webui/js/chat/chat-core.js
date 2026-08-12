@@ -23,6 +23,17 @@ function initChatMode(data) {
   var messages = Array.isArray(data) ? data : (data && data.messages ? data.messages : []);
   chatMessages = messages;
 
+  // Bug #195: if an in-flight stream is being re-shown (thread/branch switch
+  // back to its sender), drop the old incremental UI buffers - the AHK layer
+  // re-posts the full accumulated partial via _RepostActiveStreamForThread.
+  if (typeof streamState !== 'undefined' && streamState.active) {
+    streamState.contentBuffer = '';
+    streamState.thinkingBuffer = '';
+    streamState.bubble = null;
+    streamState.thinkingDetails = null;
+    streamState.contentDiv = null;
+  }
+
   // Reset persisted thinking-block states when loading a new thread
   if (typeof _persistedThinkingStates !== 'undefined') {
     _persistedThinkingStates = {};

@@ -126,9 +126,9 @@ _handleStreamCancelled() {
         postThreadStats(streamThreadId)
         streamPath := ChatDB.Msg_GetActivePath(streamThreadId)
         dbMsgData := buildStructuredMessagesFromPath([streamPath[streamPath.Length]])[1]
-        postWebMessage("streamCancelled", { dbMsg: dbMsgData })
+        postWebMessage("streamCancelled", { dbMsg: dbMsgData, threadId: streamThreadId })
     } else {
-        postWebMessage("streamCancelled", true)
+        postWebMessage("streamCancelled", { threadId: streamThreadId })
     }
 
     _cleanupStreamState()

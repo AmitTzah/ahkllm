@@ -36,7 +36,10 @@ function startStreaming() {
 }
 
 // Called when streaming content arrives (token by token)
-function onStreamContent(text) {
+function onStreamContent(text, threadId) {
+  // Bug #195: a stream that belongs to another thread/branch must never paint
+  // into the currently-visible conversation.
+  if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!streamState.active) startStreaming();
 
   streamState.contentBuffer += text;
@@ -54,7 +57,8 @@ function onStreamContent(text) {
 
 // Called when reasoning/thinking content arrives.
 // Accepts either a string (legacy) or {content, collapsed} object.
-function onStreamReasoning(data) {
+function onStreamReasoning(data, threadId) {
+  if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!streamState.active) startStreaming();
 
   var text = typeof data === 'string' ? data : (data.content || '');
@@ -118,39 +122,67 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
   }
 }
 
+// Bug #195: a streamed response may only be persisted into the CURRENT UI
+// array when that array is actually the request's own path. The DB row is the
+// source of truth; the completion/cancel message carries the sending
+// thread id and the persisted message's parent id.
+function _streamBelongsToCurrentPath(dbMsg) {
+  if (!dbMsg) return false;
+  // Legacy/unit-test payloads without a parent id are treated as current;
+  // production dbMsg always carries parentId (bug #195).
+  if (dbMsg.parentId === undefined) return true;
+  if (!dbMsg.parentId) {
+    // Root retry (or a response with no parent): only valid when the UI path
+    // was emptied for the retry (or is the same root).
+    var last0 = chatMessages.length ? chatMessages[chatMessages.length - 1] : null;
+    return chatMessages.length === 0 || (last0 && last0.id === dbMsg.id);
+  }
+  var last = chatMessages.length ? chatMessages[chatMessages.length - 1] : null;
+  return !!last && last.id === dbMsg.parentId;
+}
+
 // Called when streaming is complete
 function onStreamDone(data) {
   var modelName = typeof data === 'string' ? data : (data && data.model ? data.model : '');
   var displayName = (data && data.displayName) ? data.displayName : modelName;
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
+  var isCurrent = _streamBelongsToCurrentPath(dbMsg) &&
+    (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
 
   streamState.userScrolledUp = false;
   var container = document.getElementById('chat-messages');
   if (container) container.scrollTop = container.scrollHeight;
   streamState.modelName = displayName;
 
-  _finalizeStreamBubble(displayName, modelName, dbMsg);
-  _finalizeThinkingBlock();
-  _finalizeStreamContent();
+  if (isCurrent) {
+    _finalizeStreamBubble(displayName, modelName, dbMsg);
+    _finalizeThinkingBlock();
+    _finalizeStreamContent();
+  }
 
   // Persist and add action buttons even when the final content is empty but
   // reasoning was streamed (reasoning-only responses) - otherwise the message
   // never lands in chatMessages and the bubble has no Copy/Retry/etc until reload.
-  if (streamState.contentBuffer || streamState.thinkingBuffer) {
+  if (isCurrent && (streamState.contentBuffer || streamState.thinkingBuffer)) {
     _persistStreamedMessage(streamState.contentBuffer, modelName, dbMsg);
     if (streamState.bubble) addStreamingActions(streamState.bubble, chatMessages.length - 1);
   }
 
-  _updateUserTokenCount(data);
+  if (isCurrent) _updateUserTokenCount(data);
 
   setChatButtonsEnabled(true);
   streamState.active = false;
+  streamState.contentBuffer = '';
+  streamState.thinkingBuffer = '';
+  streamState.bubble = null;
+  streamState.thinkingDetails = null;
+  streamState.contentDiv = null;
   // The retry succeeded - the streamed response replaced the removed
   // messages, so never restore them on a later error.
   if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
 
   // Refresh thread map (right panel nav)
-  if (typeof renderNavList === 'function') renderNavList();
+  if (isCurrent && typeof renderNavList === 'function') renderNavList();
 }
 
 function _finalizeStreamBubble(displayName, modelName, dbMsg) {
@@ -270,13 +302,13 @@ function createThinkingBlock(collapsed) {
 function handleStreamMessage(target, data) {
   switch (target) {
     case 'streamContent':
-      onStreamContent(data);
+      onStreamContent(typeof data === 'string' ? data : (data && data.text ? data.text : data), data && data.threadId);
       break;
     case 'streamReasoning':
-      onStreamReasoning(data);
+      onStreamReasoning(data, data && data.threadId);
       break;
     case 'streamModelName':
-      onStreamModelName(data);
+      onStreamModelName(typeof data === 'string' ? data : (data && data.name ? data.name : data), data && data.threadId);
       break;
     case 'streamDone':
       onStreamDone(data);
@@ -288,7 +320,8 @@ function handleStreamMessage(target, data) {
 }
 
 // Update the streaming bubble's author to the actual model name as soon as it's known
-function onStreamModelName(modelName) {
+function onStreamModelName(modelName, threadId) {
+  if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!modelName) return;
   streamState.modelName = modelName;
 
@@ -307,14 +340,16 @@ function cancelStreaming(data) {
   if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
 
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
+  var isCurrent = _streamBelongsToCurrentPath(dbMsg) &&
+    (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
 
   // Remove blinking cursor from partial content
-  if (streamState.contentDiv) {
+  if (isCurrent && streamState.contentDiv) {
     streamState.contentDiv.innerHTML = md.render(streamState.contentBuffer || '');
   }
 
   // Update thinking block to show it was cancelled
-  if (streamState.thinkingDetails) {
+  if (isCurrent && streamState.thinkingDetails) {
     var summary = streamState.thinkingDetails.querySelector('summary');
     var pulse = streamState.thinkingDetails.querySelector('.thinking-pulse');
     if (pulse) pulse.remove();
@@ -324,7 +359,7 @@ function cancelStreaming(data) {
   }
 
   // Update bubble label to model name if we have it
-  if (streamState.bubble && streamState.modelName) {
+  if (isCurrent && streamState.bubble && streamState.modelName) {
     var label = streamState.bubble.querySelector('.message-label');
     if (label) label.textContent = streamState.modelName;
   }
@@ -332,7 +367,7 @@ function cancelStreaming(data) {
   // Add to chatMessages and render action buttons if we have DB data.
   // Must also render when only thinking content exists (no text yet) —
   // otherwise Stop during reasoning leaves no action bar.
-  if (dbMsg && (streamState.contentBuffer || streamState.thinkingBuffer)) {
+  if (isCurrent && dbMsg && (streamState.contentBuffer || streamState.thinkingBuffer)) {
     _persistStreamedMessage(streamState.contentBuffer, streamState.modelName, dbMsg);
     if (streamState.bubble) {
       addStreamingActions(streamState.bubble, chatMessages.length - 1);
@@ -340,6 +375,11 @@ function cancelStreaming(data) {
   }
 
   setChatButtonsEnabled(true);
+  streamState.contentBuffer = '';
+  streamState.thinkingBuffer = '';
+  streamState.bubble = null;
+  streamState.thinkingDetails = null;
+  streamState.contentDiv = null;
 }
 
 // Add action buttons to a streaming bubble after completion

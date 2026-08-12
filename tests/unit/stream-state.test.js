@@ -96,6 +96,26 @@ describe('_persistStreamedMessage dedup', () => {
     });
 });
 
+describe('_streamBelongsToCurrentPath (bug #195)', () => {
+    it('rejects a response whose parent is not the current last message', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [{ id: 'b-last', role: 'user', content: 'B' }];
+        assert.strictEqual(ctx._streamBelongsToCurrentPath({ id: 'a-msg', parentId: 'a-parent' }), false);
+    });
+
+    it('accepts a response whose parent is the current last message', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [{ id: 'a-parent', role: 'user', content: 'A' }];
+        assert.strictEqual(ctx._streamBelongsToCurrentPath({ id: 'a-msg', parentId: 'a-parent' }), true);
+    });
+
+    it('accepts a root retry when the UI path was emptied', () => {
+        const ctx = loadStreamModule();
+        ctx.chatMessages = [];
+        assert.strictEqual(ctx._streamBelongsToCurrentPath({ id: 'root-retry', parentId: '' }), true);
+    });
+});
+
 describe('cancelStreaming state', () => {
     it('does nothing when not active', () => {
         const ctx = loadStreamModule();
@@ -111,6 +131,25 @@ describe('cancelStreaming state', () => {
         ctx.streamState.contentDiv = { innerHTML: '' };
         ctx.cancelStreaming({});
         assert.strictEqual(ctx.streamState.active, false);
+    });
+});
+
+describe('onStreamDone thread scoping (bug #195)', () => {
+    it('does not persist another thread/branch response into the current array', () => {
+        const ctx = loadStreamModule();
+        ctx.activeThreadId = 't-B';
+        ctx.chatMessages = [{ id: 'b-user', role: 'user', content: 'B question' }];
+        ctx.streamState.active = true;
+        ctx.streamState.bubble = null;
+        ctx.streamState.contentBuffer = 'A answer';
+        ctx.streamState.thinkingBuffer = '';
+        ctx.streamState.modelName = 'm';
+        ctx.streamState.userScrolledUp = false;
+        ctx.streamState.contentDiv = null;
+        ctx.streamState.thinkingDetails = null;
+        ctx.onStreamDone({ model: 'm', threadId: 't-A', dbMsg: { id: 'a-msg', parentId: 'a-user' } });
+        assert.strictEqual(ctx.chatMessages.length, 1, 'wrong-thread response must not be pushed into chatMessages');
+        assert.strictEqual(ctx.streamState.active, false, 'stream state still cleans up');
     });
 });
 

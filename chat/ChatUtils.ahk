@@ -114,6 +114,7 @@ buildStructuredMessagesFromPath(path, threadId := "") {
     structuredMessages := []
     for msg in path {
         msgObj := { role: msg.role, content: msg.content, id: msg.id,
+            parentId: msg.HasProp("parent_id") ? msg.parent_id : "",
             tokenCount: msg.HasProp("token_count") ? msg.token_count : 0,
             thinkingTokens: msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0,
             cachedTokens: msg.HasProp("cached_tokens") ? msg.cached_tokens : 0,
@@ -160,6 +161,9 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
         _sendDropdownLabel()
     ; Push per-thread settings (model, assistant, font size, etc.) to WebView
     postCurrentSettingsToWebView()
+    ; Bug #195: if the loaded thread has an in-flight stream, re-paint its
+    ; accumulated partial content now that its UI is visible again.
+    _RepostActiveStreamForThread(activeThreadId)
     ; Bug #38: keep the window title in sync with the active thread. Only
     ; renameThread updated chatWindow.Title before, so switching threads left
     ; the previously renamed thread's title in the title bar.

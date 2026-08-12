@@ -1,5 +1,5 @@
-# 2026-08-12T11:29:34.283Z | run of 1 scenario(s)
-PASS | #207 | Thread A's stream completion repaints thread B's header token bar with A's stats - _handleStreamComplete calls postThreadStats(streamThreadId) and the WebView's updateTokenUsage renders whatever arrives, so after switching to B mid-stream B shows A's Context/Cumulative numbers even though B's DB has only a 5-token user message | after A completes while B is visible: B DB stats={"cumulative_input_tokens":0,"cumulative_output_tokens":0} (context 5, no API calls); the header shows B's stats "5 / 1m↑ 0 ↓ 00$0.00" - updateTokenUsage ignores stats whose threadId does not match the active thread | 6.4s
+# 2026-08-12T11:33:05.091Z | run of 1 scenario(s)
+PASS | #195 | Switching threads while a request is streaming pushes the OLD thread's completed response into the CURRENT thread's in-memory message array - _persistStreamedMessage always targets the global chatMessages, so after thread A's stream finishes while thread B is visible, B's UI array (copy/export/thread map) contains A's assistant message even though the DB row is correct in A | sent in A, switched to B mid-stream; DB rows inA=1 inB=0 (correct), and the visible thread B chatMessages=["user:question for B"] has no A response and no streaming bubble - stream messages are scoped to the sending thread/path | 6.4s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

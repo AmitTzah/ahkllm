@@ -93,7 +93,11 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     requestParams["_streamLogPasteMode"]     := requestParams["pasteMode"]
 
     ; Post display title to UI immediately for bubble author during streaming
-    postWebMessage("streamModelName", displayName)
+    ; (only when this request belongs to the currently-visible path - bug
+    ; #195: a mid-stream thread/branch switch must not paint A's stream into
+    ; B's UI).
+    if _shouldPostStreamToUI()
+        postWebMessage("streamModelName", displayName)
 
     SetTimer(_pollStreamTimer, 100)
     } catch Error as e {
@@ -123,8 +127,45 @@ _pollStreamTimer() {
 
 _readStreamChunkFromParams() {
     state := _StreamStateFromParams()
-    _readAndProcessStream(state, true)
+    _readAndProcessStream(state, _shouldPostStreamToUI())
     _ParamsFromStreamState(state)
+}
+
+; Bug #195/#197: stream content/reasoning/model posts are only painted into
+; the WebView when the CURRENT active path is the one that sent the request.
+; The DB completion still runs for the captured thread regardless.
+_shouldPostStreamToUI() {
+    if !requestParams.Has("_streamThreadId")
+        return false
+    if activeThreadId != requestParams["_streamThreadId"]
+        return false
+    ; Root retries have no request parent (bug #147) - always current while
+    ; the thread is still the active one.
+    if requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
+        return true
+    if !requestParams.Has("_streamParentId")
+        return true ; legacy flows without a captured parent
+    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    if !path.Length
+        return false
+    return path[path.Length].id = requestParams["_streamParentId"]
+}
+
+; When the user navigates BACK to the sending thread/branch while its stream is
+; still in flight, re-paint the accumulated partial so the UI is not blank.
+_RepostActiveStreamForThread(threadId) {
+    if !requestParams.Has("_streamThreadId") || requestParams["_streamThreadId"] != threadId
+        return
+    if !_shouldPostStreamToUI()
+        return
+    if requestParams.Has("_streamDisplayName") && requestParams["_streamDisplayName"]
+        postWebMessage("streamModelName", requestParams["_streamDisplayName"])
+    reasoning := requestParams.Has("_streamReasoning") ? requestParams["_streamReasoning"] : ""
+    content := requestParams.Has("_streamContent") ? requestParams["_streamContent"] : ""
+    if reasoning != ""
+        postWebMessage("streamReasoning", { content: reasoning, collapsed: false })
+    if content != ""
+        postWebMessage("streamContent", content)
 }
 
 ; Build a stream state Map from requestParams.

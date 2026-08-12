@@ -294,12 +294,13 @@ replaces the array on every thread load while the old stream is still active.
 
 **Verification:** headless scenario 195 drives the real app: send in thread A,
 switch to thread B mid-stream, then asserts B's `chatMessages` array contains
-the A response after `streamDone` while the DB correctly has 1 assistant row in
-A and 0 in B.
+ONLY B's user message after `streamDone` (no A response, no stray streaming
+bubble) while the DB correctly has 1 assistant row in A and 0 in B.
 
-**Verification result (2026-08-12):** scenario 195 PASSED - B's chatMessages
-ended as `["user:question for B","assistant:Hello from the mock LLM. This is
-the streamed answer."]` while the DB had inA=1 / inB=0.
+**Verification result (2026-08-12):** scenario 195 PASSED after the fix - B's
+chatMessages stays `["user:question for B"]` and no streaming bubble appears,
+while the DB had inA=1 / inB=0. Regression unit tests added in
+stream-state.test.js.
 
 ### 194. Overwrite-editing an assistant message leaves the thread's cumulative output tokens stale
 
