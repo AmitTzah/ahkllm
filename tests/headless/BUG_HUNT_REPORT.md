@@ -154,14 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-198 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-199 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
-  response; generic-MIME PDF/office attachments misclassified as text_file). Next: verify the remaining leads
-  (provider-less API-key error path, command empty-provider dashboard filter, short-form assistant reasoning)
-  and keep sweeping. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
+  handler crashes). Next: verify the remaining leads (command empty-provider dashboard filter, short-form
+  assistant reasoning) and keep sweeping. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -389,6 +389,38 @@ a `File("report.pdf", {type: "application/octet-stream"})`, calls the real
 
 **Verification result (2026-08-12):** scenario 198 PASSED - `report.pdf` with
 `application/octet-stream` was classified `text_file`.
+
+### 199. Zero configured providers crashes the API-key error handler
+
+**Scenario:** 199 (scenario code in scenarios/settings.js)
+
+**Status:** verified
+
+**Repro:** Configure `settings.json` with an empty `providers` map (or remove
+every provider so none remain), then send a chat message.
+
+**Expected:** the UI shows the friendly "No API key configured for ..." error
+and the composer is re-enabled.
+
+**Actual:** `ProviderResolver.Resolve` returns `providerKey: ""` when no
+provider matches, then `ChatRequestBuilder._ShowApiKeyError` executes
+`providers[providerInfo.providerKey]` — an AHK v2 Map index of a missing `""`
+key, which THROWS. The error handler itself crashes, so `_BuildAndFireRequest`'
+s catch surfaces a generic "Request failed" instead, and the friendly
+per-provider key guidance is lost.
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` `_ShowApiKeyError()`:
+`pInfo := providers[providerInfo.providerKey]` (no `Has()` guard);
+`api/ProviderResolver.ahk` returns `{providerKey: "", ...}` from its final
+fallback when the providers map is empty.
+
+**Verification:** headless probe (`provider-empty-api-key-error`) runs the real
+`ProviderResolver.Resolve` + `_ShowApiKeyError` with `providers := Map()` and
+captures the thrown message.
+
+**Verification result (2026-08-12):** scenario 199 PASSED - Resolve returned
+`providerKey=""` and `_ShowApiKeyError` threw `Item has no value.` (the missing
+`providers[""]` index).
 
 ## History (append-only)
 

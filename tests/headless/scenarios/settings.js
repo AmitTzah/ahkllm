@@ -1519,4 +1519,33 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 199,
+  name: 'With zero configured providers, a chat send crashes inside the API-key error handler - ProviderResolver.Resolve returns providerKey="" and ChatRequestBuilder._ShowApiKeyError indexes providers[""] unguarded (a missing Map key THROWS in AHK v2), so the friendly "No API key configured" error never reaches the UI',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'provider-empty-api-key-error'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('provider-empty probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const keyM = text.match(/providerKey='([^']*)'/);
+    const threwM = text.match(/threw='([^']*)'/);
+    if (!keyM || !threwM) throw new Error('probe output missing fields: ' + text);
+    const providerKey = keyM[1], threw = threwM[1];
+    // BUG present: with no providers, Resolve gives providerKey="" and
+    // _ShowApiKeyError throws instead of posting the friendly key error.
+    if (providerKey !== '' || threw === '')
+      throw new Error('provider-less error path did not crash (bug not reproduced): key=' + providerKey + ' threw=' + threw);
+    return 'providers={}, providerMap={}: ProviderResolver.Resolve returned providerKey="' + providerKey +
+      '" and _ShowApiKeyError threw "' + threw +
+      '" - the missing providers[""] Map index crashes the error handler before the friendly message is posted';
+  }
+});
+
 module.exports = scenarios;

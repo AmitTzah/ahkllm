@@ -36,7 +36,18 @@ OnError((e, m) => (Log("ERROR: " e.Message "`nSTACK: " (e.HasProp("Stack") ? e.S
 ; lacks two identifiers its function bodies reference - stub them so the file
 ; loads standalone (the load-hang rule: every referenced identifier must exist).
 #Include ..\..\chat\ThreadTitleGen.ahk
+; ChatRequestBuilder.ahk calls sendStreamingRequest(), which lives in
+; chat/streaming/StreamHandler.ahk (not part of the probe chain). Without a
+; definition, #Warn All flags the call as an unassigned LOCAL VARIABLE and pops
+; a modal warning that hangs the headless run - stub it before the include.
+sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
+    return ""
+}
+#Include ..\..\chat\ChatRequestBuilder.ahk
 postWebMessage(target, data := unset) {
+    return ""
+}
+startLoadingCursor(status) {
     return ""
 }
 _GetFolders() {
@@ -667,6 +678,28 @@ DefaultAssistantIsDefault() {
 }
 
 ; ------------------------------------------------------------------
+; CHECK 31: with NO configured providers (settings.json providers={} or all
+; providers removed), ProviderResolver.Resolve returns providerKey="" and
+; buildRequest reaches _ShowApiKeyError, which indexes providers[""] without a
+; guard. AHK v2 Map indexing a missing key THROWS, so the "No API key
+; configured" friendly error is replaced by a generic Request failed crash.
+; ------------------------------------------------------------------
+ProviderEmptyApiKeyError() {
+    global providers, providerMap
+    providers := Map()
+    providerMap := Map()
+    r := ProviderResolver.Resolve("deepseek/deepseek-v4-flash")
+    threw := ""
+    try {
+        _ShowApiKeyError(r)
+    } catch Error as e {
+        threw := e.Message
+    }
+    Log("PROVEMPTY providerKey='" r.providerKey "' threw='" threw "'")
+    Log("PROVEMPTY verdict=" (threw != "" ? "BUG-present(error-path-crash)" : "OK-friendly-error"))
+}
+
+; ------------------------------------------------------------------
 ; CHECK 20: the blank-provider filter sentinel must never collide with a real
 ; provider name. UsageRepo.Query scopes the reserved "__BLANK_PROVIDER__"
 ; sentinel to (provider='' OR provider IS NULL), while a provider literally
@@ -1037,6 +1070,7 @@ switch check {
     case "edit-assistant-stale-backfill": EditAssistantStaleBackfill()
     case "edit-assistant-stale-cumulative": EditAssistantStaleCumulative()
     case "default-assistant-isdefault": DefaultAssistantIsDefault()
+    case "provider-empty-api-key-error": ProviderEmptyApiKeyError()
     case "unknown-provider-sentinel": UnknownProviderSentinel()
     case "fts-attachment-snippet": FtsAttachmentSnippet()
     case "thread-list-nplus1": ThreadListNplus1()
