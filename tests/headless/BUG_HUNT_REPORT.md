@@ -154,16 +154,17 @@ How to run AHK safely:
 
 ## Current state
 
-- **12 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **13 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - new intake: bugs #194-205 verified headlessly (assistant overwrite-edit
+- **Where we left off:** 2026-08-12 - new intake: bugs #194-206 verified headlessly (assistant overwrite-edit
   leaves cumulative output stale; mid-stream thread switch pollutes the current thread's UI array;
   fresh-profile default assistant loses isDefault; same-thread branch switch mid-stream mis-parents the
   response; generic-MIME PDF/office attachments misclassified as text_file; provider-less API-key error
   handler crashes; command empty-provider dashboard series unfilterable; assistant reasoning dropdown drops
   short-form model metadata; fork re-counts local branch copies as real API calls; chat-mode command
   "Stream Response" OFF is ignored; stalled streams never time out; cancelled root retry becomes a child of
-  the original). Next: keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+  the original; API-log entries pick up the new thread's model/provider after a mid-stream switch). Next:
+  keep sweeping for further uncovered bugs. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -617,6 +618,39 @@ partial row's `parent_id` equals the original root id.
 
 **Verification result (2026-08-12):** scenario 205 PASSED - the cancelled
 partial was inserted with `parent_id=m-205-a1` (child of the original root).
+
+### 206. Switching threads mid-stream writes the old request's API-log entry with the new thread's model/provider
+
+**Scenario:** 206 (scenario code in scenarios/chat-tree.js)
+
+**Status:** verified
+
+**Repro:** Start a request in thread A (model M_A). While it streams, switch to
+thread B (model M_B). After A's response completes, open API Logs and expand
+A's entry.
+
+**Expected:** the log row's Model/Provider columns match the request body that
+was actually sent for A (M_A).
+
+**Actual:** `_logStreamResponse` reads the CURRENT `requestParams`
+(`singleAPIModelName`, `providerName`, `windowTitle`) at completion time. A
+mid-stream thread switch has already replaced those with thread B's values, so
+the log entry for A's request is labeled with B's model/provider while the
+logged request JSON shows A's model. Same root cause family as #159/#171 (no
+send-time snapshot of request metadata).
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` `_logStreamResponse()` uses
+`requestParams["singleAPIModelName"]` and `requestParams["providerName"]`; only
+`_streamThreadId` is captured at send time.
+
+**Verification:** headless scenario 206 seeds A (deepseek) and B
+(openai/gpt-5-mini), sends in A, switches to B mid-stream, then parses
+`LLM_API_Log.json` and asserts the entry for A's request body has a DIFFERENT
+logged model.
+
+**Verification result (2026-08-12):** scenario 206 PASSED - A's request body
+used `deepseek-v4-flash` while its log row says model=`openai/gpt-5-mini`,
+provider=`deepseek`.
 
 ## History (append-only)
 

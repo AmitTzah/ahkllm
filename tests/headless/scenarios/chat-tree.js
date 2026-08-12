@@ -1894,4 +1894,51 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 206,
+  name: 'Switching threads mid-stream writes the OLD request\'s API-log entry with the NEW thread\'s model/provider - _logStreamResponse reads the CURRENT requestParams (singleAPIModelName/providerName) at completion instead of the values captured at send time, so the log row disagrees with the request body it logged',
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-log-a-206', title: 'Thread A', active_leaf_id: 'm-206-u1a' },
+      { id: 't-log-b-206', title: 'Thread B', active_leaf_id: 'm-206-u1b', model_override: 'openai/gpt-5-mini' }
+    ],
+    messages: [
+      { id: 'm-206-u1a', thread_id: 't-log-a-206', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-206-u1b', thread_id: 't-log-b-206', role: 'user', content: 'question for B', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    const logFile = path.join(os.tmpdir(), 'LLM_API_Log.json');
+    try { fs.unlinkSync(logFile); } catch {}
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-log-a-206"); true');
+    await cdp.waitFor('window.activeThreadId === "t-log-a-206"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(40);
+    await cdp.eval('window.loadThread("t-log-b-206"); true');
+    await cdp.waitFor('window.activeThreadId === "t-log-b-206"', 10000, 250, 'thread B loaded');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(1000);
+
+    const raw = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : '';
+    const logs = JSON.parse(raw || '[]');
+    const entry = logs.find((e) => e.request && String(e.request).indexOf('question for A') >= 0);
+    if (!entry) throw new Error('setup: no API-log entry for thread A request: ' + raw.slice(0, 500));
+    const reqObj = JSON.parse(String(entry.request));
+    const reqModel = reqObj.model;
+    // BUG present: the logged model/provider came from the CURRENT
+    // requestParams (thread B) while the request body itself used thread A's
+    // model.
+    if (entry.model === reqModel)
+      throw new Error('API-log model matches the request body (bug not reproduced): entry.model=' + entry.model + ' reqModel=' + reqModel);
+    return 'sent in A (request body model=' + reqModel + '), switched to B mid-stream; the API-log entry for A\'s request says model=' + entry.model +
+      ', provider=' + entry.provider + ' - _logStreamResponse read the current requestParams instead of the sending request\'s model/provider';
+  }
+});
+
 module.exports = scenarios;
