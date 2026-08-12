@@ -706,4 +706,54 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 215,
+  name: 'Switching to an unanswered thread mid-stream leaves the loading indicator stuck after the stream completes - initChatMode shows the dots for the visible thread\'s trailing user message (isLoading is still true), and onStreamDone (scoped away by bug #195 for a non-current thread) never calls hideLoadingIndicator',
+  mode: 'sse-slow',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-ui-a-215', title: 'Thread A', active_leaf_id: 'm-215-u1a' },
+      { id: 't-ui-b-215', title: 'Thread B (unanswered)', active_leaf_id: 'm-215-u1b' }
+    ],
+    messages: [
+      { id: 'm-215-u1a', thread_id: 't-ui-a-215', role: 'user', content: 'question for A', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-215-u1b', thread_id: 't-ui-b-215', role: 'user', content: 'question for B (no answer yet)', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-ui-a-215"); true');
+    await cdp.waitFor('window.activeThreadId === "t-ui-a-215"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await sendChatMessage(cdp, 'question for A');
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
+    await sleep(150);
+    // Switch to thread B (which ends with an unanswered USER message) while
+    // A's stream is still in flight.
+    await cdp.eval('window.loadThread("t-ui-b-215"); true');
+    await cdp.waitFor('window.activeThreadId === "t-ui-b-215"', 15000, 300, 'thread B loaded');
+    await sleep(400);
+    // BUG: initChatMode sees isLoading=true and B's last message is a user
+    // message, so it shows the loading dots in B's message list.
+    const dotsDuring = await cdp.eval('document.getElementById("chat-loading") !== null');
+    if (!dotsDuring)
+      throw new Error('setup: loading dots not shown in B mid-stream (timing/flow changed): ' + dotsDuring);
+    // Wait for A's stream to finish. B is not the sending thread, so
+    // onStreamDone is scoped away (bug #195) and never hides the indicator.
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(700);
+    const dotsAfter = await cdp.eval('document.getElementById("chat-loading") !== null');
+    const streamIdle = await cdp.eval('typeof streamState !== "undefined" && !streamState.active');
+    if (!streamIdle) throw new Error('setup: stream never went idle');
+    // BUG: the loading dots are still visible in B after the stream ended.
+    if (!dotsAfter)
+      throw new Error('loading indicator was hidden after the stream completed (fix applied)');
+    return 'switched to unanswered thread B mid-stream: loading dots shown=' + dotsDuring +
+      ', after A\'s stream completed (streamState.active=false) the dots are STILL visible in B=' + dotsAfter +
+      ' - onStreamDone for the non-current thread never calls hideLoadingIndicator';
+  }
+});
+
 module.exports = scenarios;

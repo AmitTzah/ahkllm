@@ -154,11 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
-  bugs #213-#214 verified headlessly (font-size dropped before the first message; mid-stream branch
-  switch re-enables the composer so a second send clobbers the first billed response).
+  bugs #213-#215 verified headlessly (font-size dropped before the first message; mid-stream branch
+  switch re-enables the composer so a second send clobbers the first billed response; switching to an
+  unanswered thread mid-stream leaves the loading indicator stuck).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -255,6 +256,27 @@ process finishes into a file nothing reads, so the billed response is never pers
 asserts the composer is enabled (input editable, button = Send) while `streamState.active` is true, sends "second
 message on B", then reads the DB: the second send persisted 1 assistant response, the first send persisted 0.
 Scenario PASS = bug reproduced.
+
+### 215. Switching to an unanswered thread mid-stream leaves the loading indicator stuck
+
+**Scenario:** 215 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Send a message in thread A, and while it streams switch to thread B whose last message is an
+unanswered user message; wait for A's stream to finish.
+
+**Expected:** the loading dots in B disappear once the in-flight request completes.
+
+**Actual:** `initChatMode` shows the dots because `isLoading` is still true and B's last message is a user message;
+when A's stream completes, `onStreamDone` is scoped away for the non-current thread (bug #195) and never calls
+`hideLoadingIndicator`, so B keeps an eternal "..." indicator until the next render/navigation.
+
+**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` (showLoadingIndicator branch);
+`webui/js/chat/stream.js` `onStreamDone` hides nothing when `isCurrent` is false.
+
+**Verification:** headless â€“ scenario 215 (sse-slow) sends in A, switches to unanswered B mid-stream, waits for
+`streamState.active=false`, and asserts `#chat-loading` is still in the DOM in B. Scenario PASS = bug reproduced.
 
 ## History (append-only)
 
