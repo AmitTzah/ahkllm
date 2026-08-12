@@ -154,9 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-10). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
+- **Where we left off:** 2026-08-12 - new intake: bug #194 verified headlessly (assistant overwrite-edit leaves
+  cumulative output tokens stale). Next: add more verified bugs (stream UI pollution on mid-stream thread
+  switch; fresh-profile default assistant isDefault lost from the defaults snapshot), then fix #194 in rank
+  order after the user commits. Prior context - 2026-08-10 - ALL OPEN BUGS FIXED AND COMMITTED (177, 178, 179, 180, 181, 182, 183,
   189, 190, 193). Every entry moved to History; scenarios flipped to regression checks. FINAL VERIFICATION
   GREEN: 187/187 e2e scenarios PASS (`--all`) + `npm run test:fast` green (contract/load/SQL, 580 AHK, 535 JS
   tests). Next: nothing open - the bug hunt is complete.
@@ -224,6 +227,37 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 194. Overwrite-editing an assistant message leaves the thread's cumulative output tokens stale
+
+**Scenario:** 194 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Load a thread with an assistant response. Click the assistant's Edit
+button, change the text to something much longer, and click Overwrite. Then
+open the message's token popover and look at the header token bar.
+
+**Expected:** the header's cumulative output total matches the edited
+message's refreshed token count (and the per-message popover).
+
+**Actual:** `MessageRepo.Edit` re-estimates the assistant's `token_count`
+(bug #181) and calls `TreeRepo._RecomputeActivePath`, but never calls
+`MessageRepo._RecomputeCumulativeCounters`, so `chat_threads.cumulative_output_tokens`
+keeps the pre-edit value until the next real API call forces a recompute. The
+header ledger and the per-message popover disagree after every assistant edit.
+
+**Evidence:** `chat/db/MessageRepo.ahk` Edit() updates `token_count` then calls
+only `_RecomputeActivePath`; `_RecomputeCumulativeCounters` is the sole
+derivation of the thread ledger and is not invoked.
+
+**Verification:** headless DB probe (`edit-assistant-stale-cumulative`) runs the
+REAL ChatDB/repo code: inserts a 9-token assistant response, overwrite-edits it
+to ~100 tokens, and observes token_count=100 while cumulative_output_tokens
+stays 9.
+
+**Verification result (2026-08-12):** scenario 194 PASSED - probe printed
+`a1tcAfterEdit=100`, `beforeCumOut=9`, `afterCumOut=9`.
 
 ## History (append-only)
 

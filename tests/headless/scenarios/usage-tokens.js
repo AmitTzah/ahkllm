@@ -1096,4 +1096,35 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 194,
+  name: 'Overwrite-editing an assistant message leaves the thread\'s CUMULATIVE output tokens stale - MessageRepo.Edit re-estimates the message token_count (bug #181) and recomputes active_path_tokens, but never calls _RecomputeCumulativeCounters, so the header ledger disagrees with the per-message popover until the next API call',
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const os = require('node:os');
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'edit-assistant-stale-cumulative'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('edit-assistant-cumulative probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const a1M = text.match(/a1tcAfterEdit=(\d+)/);
+    const beforeM = text.match(/beforeCumOut=(\d+)/);
+    const afterM = text.match(/afterCumOut=(\d+)/);
+    if (!a1M || !beforeM || !afterM) throw new Error('probe output missing fields: ' + text);
+    const a1tc = Number(a1M[1]), beforeCumOut = Number(beforeM[1]), afterCumOut = Number(afterM[1]);
+    // BUG present: Msg_Edit refreshed token_count to ~100 but left
+    // cumulative_output_tokens at the pre-edit 9, so the header shows the old
+    // output total while the message popover shows the new count.
+    if (!(a1tc > 9 && beforeCumOut === 9 && afterCumOut === 9))
+      throw new Error('assistant edit cumulative ledger is not stale (bug not reproduced): a1tc=' + a1tc + ' before=' + beforeCumOut + ' after=' + afterCumOut);
+    return 'assistant overwrite-edit refreshed token_count=' + a1tc +
+      ' but chat_threads.cumulative_output_tokens stayed ' + afterCumOut +
+      ' (was ' + beforeCumOut + ' before the edit) - the header ledger and the per-message token count disagree until the next API call';
+  }
+});
+
 module.exports = scenarios;

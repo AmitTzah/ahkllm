@@ -611,6 +611,34 @@ EditAssistantStaleBackfill() {
 }
 
 ; ------------------------------------------------------------------
+; CHECK 29: OVERWRITE-editing an assistant message refreshes the message's
+; token_count (bug #181) but NEVER recomputes the thread's CUMULATIVE
+; counters. MessageRepo.Edit calls TreeRepo._RecomputeActivePath (active_path
+; context) but not MessageRepo._RecomputeCumulativeCounters, so the header's
+; "Cumulative Output" and the per-message token popover disagree after the
+; edit until the next real API call forces a recompute.
+; ------------------------------------------------------------------
+EditAssistantStaleCumulative() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("EditAssistantStaleCumulative")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "SHORT", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+    beforeRow := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id=?;", tid)
+    beforeOut := Integer(beforeRow[1, "cumulative_output_tokens"])
+    ; Overwrite edit: assistant content grows to ~100 tokens (1 token / 3 chars).
+    longText := ""
+    loop 300
+        longText .= "x"
+    ChatDB.Msg_Edit(a1, longText)
+    a1tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", a1)[1, "token_count"])
+    afterRow := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id=?;", tid)
+    afterOut := Integer(afterRow[1, "cumulative_output_tokens"])
+    Log("EDITCUM a1tcAfterEdit=" a1tc " beforeCumOut=" beforeOut " afterCumOut=" afterOut " (token_count was refreshed but the cumulative ledger was not recomputed)")
+    Log("EDITCUM verdict=" (a1tc > 9 && afterOut = 9 && beforeOut = 9 ? "BUG-present(stale-cumulative)" : (a1tc > 9 && afterOut = a1tc ? "OK-recomputed" : "unexpected:" a1tc "/" afterOut)))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
 ; CHECK 20: the blank-provider filter sentinel must never collide with a real
 ; provider name. UsageRepo.Query scopes the reserved "__BLANK_PROVIDER__"
 ; sentinel to (provider='' OR provider IS NULL), while a provider literally
@@ -979,6 +1007,7 @@ switch check {
     case "empty-model-skip": EmptyModelSkip()
     case "fork-cost-snapshot": ForkCostSnapshot()
     case "edit-assistant-stale-backfill": EditAssistantStaleBackfill()
+    case "edit-assistant-stale-cumulative": EditAssistantStaleCumulative()
     case "unknown-provider-sentinel": UnknownProviderSentinel()
     case "fts-attachment-snippet": FtsAttachmentSnippet()
     case "thread-list-nplus1": ThreadListNplus1()
