@@ -1972,13 +1972,15 @@ scenarios.push({
     await waitStreamingIdle(cdp, 30000);
     await sleep(1000);
     const bar = await cdp.text('#tokenBar');
-    // BUG present: A's completion posted A's stats (context 21, cumulative
-    // 12/9) and updateTokenUsage rendered them over B's header.
-    if (String(bar).indexOf('21') < 0 || String(bar).indexOf('\u2191 12') < 0)
-      throw new Error('token bar did not show thread A stats over thread B (bug not reproduced): bar=' + JSON.stringify(bar) + ' bStats=' + JSON.stringify(bStats));
+    // FIXED (bug #207): A's completion stats carry threadId=A and are ignored
+    // while B is active, so the header keeps B's own stats (context 5, 0/0).
+    if (String(bar).indexOf('21') >= 0 || String(bar).indexOf('\u2191 12') >= 0)
+      throw new Error('token bar still shows thread A stats over thread B (fix incomplete): bar=' + JSON.stringify(bar) + ' bStats=' + JSON.stringify(bStats));
+    if (String(bar).indexOf('5') < 0)
+      throw new Error('token bar lost thread B\'s own context (fix incomplete): bar=' + JSON.stringify(bar) + ' bStats=' + JSON.stringify(bStats));
     return 'after A completes while B is visible: B DB stats=' + JSON.stringify(bStats) +
-      ' (context 5, no API calls), but the header shows "' + String(bar).replace(/\s+/g, ' ').trim() +
-      '" (A\'s context 21 / cumulative 12/9) - postThreadStats(streamThreadId) repaints the wrong thread\'s token bar';
+      ' (context 5, no API calls); the header shows B\'s stats "' + String(bar).replace(/\s+/g, ' ').trim() +
+      '" - updateTokenUsage ignores stats whose threadId does not match the active thread';
   }
 });
 

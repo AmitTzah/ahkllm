@@ -473,4 +473,31 @@ describe('updateTokenUsage with data', () => {
         assert.ok(barHTML.indexOf(' / ') === -1, 'should not show divider when contextWindow is 0/absent');
         ctx.document.getElementById = origGetEl;
     });
+
+    it('ignores stats for a thread that is no longer active (bug #207)', () => {
+        let barHTML = '';
+        const bar = {
+            get innerHTML() { return barHTML; },
+            set innerHTML(v) { barHTML = v; }
+        };
+        const origGetEl = ctx.document.getElementById;
+        const origActive = ctx.activeThreadId;
+        ctx.activeThreadId = 't-B';
+        ctx.document.getElementById = (id) => id === 'tokenBar' ? bar : null;
+        ctx.updateTokenUsage({
+            threadId: 't-A',
+            activePathTokens: 21000,
+            contextWindow: 1000000,
+            cumulativeInputTokens: 12000,
+            cumulativeOutputTokens: 9000,
+            cumulativeCachedTokens: 4000,
+            cumulativeCost: 1,
+            cumulativeInputCost: 1,
+            cumulativeCachedInputCost: 0,
+            cumulativeOutputCost: 0
+        });
+        assert.strictEqual(barHTML, '', 'stats from the inactive thread must not touch the token bar (bug #207)');
+        ctx.document.getElementById = origGetEl;
+        ctx.activeThreadId = origActive;
+    });
 });

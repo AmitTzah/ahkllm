@@ -70,6 +70,10 @@ postThreadStats(threadId := "") {
     if !threadId
         return
     stats := ChatDB.Msg_GetThreadStats(threadId)
+    ; Bug #207: scope the token-bar payload to the thread it belongs to. The
+    ; WebView ignores stats for a thread that is no longer active, so a
+    ; completion in thread A can never repaint thread B's header.
+    stats.threadId := threadId
     postWebMessage("updateTokenUsage", stats)
 }
 

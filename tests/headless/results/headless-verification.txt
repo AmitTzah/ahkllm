@@ -1,5 +1,5 @@
-# 2026-08-12T11:27:22.820Z | run of 1 scenario(s)
-PASS | #206 | Switching threads mid-stream writes the OLD request's API-log entry with the NEW thread's model/provider - _logStreamResponse reads the CURRENT requestParams (singleAPIModelName/providerName) at completion instead of the values captured at send time, so the log row disagrees with the request body it logged | sent in A (request body model=deepseek-v4-flash), switched to B mid-stream; the API-log entry for A's request says model=deepseek/deepseek-v4-flash, provider=deepseek - loggers use the request metadata captured at send time | 6.2s
+# 2026-08-12T11:29:34.283Z | run of 1 scenario(s)
+PASS | #207 | Thread A's stream completion repaints thread B's header token bar with A's stats - _handleStreamComplete calls postThreadStats(streamThreadId) and the WebView's updateTokenUsage renders whatever arrives, so after switching to B mid-stream B shows A's Context/Cumulative numbers even though B's DB has only a 5-token user message | after A completes while B is visible: B DB stats={"cumulative_input_tokens":0,"cumulative_output_tokens":0} (context 5, no API calls); the header shows B's stats "5 / 1m↑ 0 ↓ 00$0.00" - updateTokenUsage ignores stats whose threadId does not match the active thread | 6.4s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -216,6 +216,10 @@ function updateTokenUsage(data) {
   var bar = document.getElementById('tokenBar');
   if (!bar) return;
 
+  // Bug #207: stats are posted with their owning thread id; a completion in
+  // thread A must not repaint thread B's header while B is the active thread.
+  if (data && data.threadId && activeThreadId && data.threadId !== activeThreadId) return;
+
   var cu = data.activePathTokens || 0;
   var cw = data.contextWindow || 0;
   var pt = data.cumulativeInputTokens || 0;

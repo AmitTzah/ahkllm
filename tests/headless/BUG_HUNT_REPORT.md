@@ -336,7 +336,7 @@ stays 9.
 
 **Scenario:** 196 (scenario code in scenarios/settings.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** On a machine with no `%APPDATA%\AhkLLM\settings.json` (fresh
 install), start the app and create a new chat with "New Chats Start With" set
@@ -677,11 +677,13 @@ cumulative 12/9) even though B remains the active thread.
 `updateTokenUsage` is a global renderer with no active-thread check.
 
 **Verification:** headless scenario 207 uses the same thread-switch flow as
-#195 and asserts the visible `#tokenBar` contains A's context (`21`) and
-cumulative input (`↑ 12`) while B's DB stats are 0/0.
+#195 and asserts the visible `#tokenBar` does NOT contain A's stats while B is
+active.
 
-**Verification result (2026-08-12):** scenario 207 PASSED - B's DB stats are
-0/0, but the header shows `21 / 1m ↑ 12 ↓ 9 $0.00` (A's stats).
+**Verification result (2026-08-12):** scenario 207 PASSED after the fix - B's
+DB stats are 0/0 and the header keeps B's own context (5), because
+`updateTokenUsage` ignores payloads whose `threadId` does not match
+`activeThreadId`. Regression unit test added in chat-format.test.js.
 
 ## History (append-only)
 
