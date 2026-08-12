@@ -1755,6 +1755,78 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 209,
+  name: 'Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps chat_threads.updated_at (SetActiveLeaf) but posts no threadList refresh, so the sidebar order/model badge stays stale after navigating to an off-path branch (the fixed #174 path only covers handleBranchSwitch)',
+  mode: null,
+  regression: false,
+  settings: {},
+  fixtures: {
+    // B is NEWER (created_at/updated_at 08-11), A is older (08-10). The seed
+    // mirrors created_at into updated_at, so the sidebar starts B-first.
+    threads: [
+      { id: 't-209-a', title: 'Thread A (older)', active_leaf_id: 'm-209-a2', created_at: '2026-08-10 10:00:00' },
+      { id: 't-209-b', title: 'Thread B (newer)', active_leaf_id: 'm-209-b1', created_at: '2026-08-11 10:00:00' }
+    ],
+    messages: [
+      { id: 'm-209-u1', thread_id: 't-209-a', role: 'user', content: 'root question', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-209-a1', thread_id: 't-209-a', role: 'assistant', content: 'branch one answer', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-209-u1', sibling_group: 'sg-209', sibling_index: 0, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 },
+      { id: 'm-209-a2', thread_id: 't-209-a', role: 'assistant', content: 'branch two answer (active)', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-209-u1', sibling_group: 'sg-209', sibling_index: 1, token_count: 5, prompt_tokens: 10, active_path_tokens: 15 },
+      { id: 'm-209-b1', thread_id: 't-209-b', role: 'user', content: 'thread B hello', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    const orderBefore = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    if (orderBefore[0] !== 't-209-b' || orderBefore[1] !== 't-209-a')
+      throw new Error('setup: sidebar should start B-first (B newer), got ' + orderBefore.join(','));
+    // Hook the AHK->WebView channel to count threadList refreshes (the
+    // __posted hook only records JS->AHK posts).
+    await cdp.eval(`(() => {
+      if (!window.__ahkMsgs) {
+        window.__ahkMsgs = [];
+        window.chrome.webview.addEventListener('message', (e) => {
+          try {
+            const raw = e.data;
+            const d = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+            if (d && d.target === 'threadList') window.__ahkMsgs.push(d);
+          } catch (err) {}
+        });
+      }
+      return true;
+    })()`);
+    // Open thread A (older) - same flow as clicking its sidebar item.
+    await cdp.eval('window.loadThread("t-209-a"); true');
+    await cdp.waitFor('window.activeThreadId === "t-209-a"', 15000, 300, 'thread A loaded');
+    await sleep(600);
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1] && chatMessages[1].id === "m-209-a2"', 15000, 300, 'branch two loaded');
+    const dbBefore = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-209-a'")[0].updated_at;
+    await cdp.eval(`(() => { window.__ahkMsgs.length = 0; return true; })()`);
+    // Navigate to the OFF-PATH sibling (branch one) - the exact IPC the tree
+    // modal and the search dropdown send (chat-tree-modal.js / chat-search.js).
+    await cdp.eval(`Ipc.postToHost('sidebarAction', { subAction: 'navigateToMessage', messageId: 'm-209-a1' }); true`);
+    await sleep(1200);
+    const dbAfter = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-209-a'")[0].updated_at;
+    if (dbAfter <= dbBefore)
+      throw new Error('setup: updated_at did not bump: ' + dbBefore + ' -> ' + dbAfter);
+    const orderAfter = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    const posted = await cdp.eval('(window.__ahkMsgs || []).length');
+    const dbRows = seed.query(dbPath, 'SELECT id, updated_at FROM chat_threads ORDER BY updated_at DESC');
+    const dbOrder = dbRows.map((r) => r.id);
+    // BUG #209: the DB order now starts with thread A (its updated_at bumped),
+    // but navigateToMessage never posts threadList, so the sidebar keeps the
+    // pre-navigation B-first order.
+    if (dbOrder[0] !== 't-209-a')
+      throw new Error('setup: DB order did not flip to A-first: ' + dbOrder.join(','));
+    if (orderAfter.join(',') === dbOrder.join(','))
+      throw new Error('sidebar was refreshed by navigateToMessage (bug #209 not reproduced): order=' + orderAfter.join(',') + ' threadList posts=' + posted);
+    return 'navigated to off-path branch in A: updated_at ' + dbBefore + ' -> ' + dbAfter +
+      ', DB order=' + dbOrder.join(',') + ' but sidebar still shows ' + orderAfter.join(',') +
+      ' with ' + posted + ' threadList post(s) - navigateToMessage never refreshes the sidebar (bug #174 family on the tree/search path)';
+  }
+});
+
+scenarios.push({
   id: 195,
   name: 'Switching threads while a request is streaming pushes the OLD thread\'s completed response into the CURRENT thread\'s in-memory message array - _persistStreamedMessage always targets the global chatMessages, so after thread A\'s stream finishes while thread B is visible, B\'s UI array (copy/export/thread map) contains A\'s assistant message even though the DB row is correct in A',
   mode: 'sse-slow',

@@ -1,5 +1,5 @@
-# 2026-08-12T13:47:53.654Z | run of 1 scenario(s)
-PASS | #208 | Streaming bubble author label injects assistant/model names as raw HTML (XSS) - createStreamingBubble concatenates displayName into innerHTML without escaping, so an assistant named <img onerror=...> executes in the WebView | XSS executed during streaming: window.__xssPwned=1; author innerHTML="&lt;img src=\"x\" onerror=\"window.__xssPwned=1\"&gt;" | 5.9s
+# 2026-08-12T13:49:45.673Z | run of 1 scenario(s)
+PASS | #209 | Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps chat_threads.updated_at (SetActiveLeaf) but posts no threadList refresh, so the sidebar order/model badge stays stale after navigating to an off-path branch (the fixed #174 path only covers handleBranchSwitch) | navigated to off-path branch in A: updated_at 2026-08-10 10:00:00 -> 2026-08-12 13:49:48, DB order=t-209-a,t-209-b but sidebar still shows t-209-b,t-209-a with 0 threadList post(s) - navigateToMessage never refreshes the sidebar (bug #174 family on the tree/search path) | 5.8s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

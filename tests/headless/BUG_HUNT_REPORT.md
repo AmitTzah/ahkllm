@@ -154,10 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 1 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
+- **0 reported, 2 verified, 0 fix applied, 0 fix in progress** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS) VERIFIED
-  headlessly (scenario 208 PASS) and committed; next: keep hunting for new bugs.
+- **Where we left off:** 2026-08-12 - Bug hunt round 2: #208 (streaming-bubble author XSS) and
+  #209 (navigateToMessage leaves the sidebar stale) VERIFIED headlessly and committed; next: keep
+  hunting for new bugs.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -208,6 +209,39 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 209. Tree-modal / search navigation leaves the sidebar stale - `navigateToMessage` bumps `updated_at` but posts no `threadList` refresh (the fixed #174 branch-switch path is the only navigation that refreshes the list)
+
+**Scenario:** 209 (scenario code in e2e-suite.js)
+
+**Status:** verified
+
+**Repro:** Open any chat, then click a node in the conversation tree modal (or a
+search result) that changes the active leaf - e.g. navigate to an off-path branch.
+The sidebar order and the #155 model badge stay as they were, even though the DB
+just bumped the thread's `updated_at`.
+
+**Expected:** navigating to a message refreshes the sidebar (the thread moves to
+its new position / the badge follows the active branch), exactly like a branch
+switch does since bug #174.
+
+**Actual:** `handleSidebarAction`'s `navigateToMessage` calls
+`ChatDB.Msg_SetActiveLeaf(activeThreadId, leafId)` (which sets
+`updated_at=datetime('now')`) and then `_LoadThreadAndRefreshUI(activeThreadId, false)`
+- neither posts `threadList`. The tree modal and the search dropdown both route
+through this action (chat-tree-modal.js / chat-search.js), so the sidebar keeps
+the pre-navigation order/badge until some unrelated action reposts the list.
+
+**Evidence:** `chat/callbacks/Sidebar.ahk` - the `navigateToMessage` case never
+calls `_postThreadListRefresh()` (compare the fixed `handleBranchSwitch` in
+`chat/callbacks/Branch.ahk`, which posts it after `Msg_SwitchBranch`); the bump
+happens in `chat/db/TreeRepo.ahk` `SetActiveLeaf`.
+
+**Verification:** headless scenario 209 - seeded two threads (B newer, A older),
+loaded A, then navigated to an off-path branch via the real
+`sidebarAction:navigateToMessage` IPC. The DB order flips to A-first
+(`updated_at` bumped), while the sidebar DOM still renders B-first and zero
+`threadList` messages arrive on the AHK->WebView channel.
 
 ### 208. Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)
 
