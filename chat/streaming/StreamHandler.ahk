@@ -539,14 +539,10 @@ _cleanupStreamState() {
     ; _persistStreamResponse / _handleStreamCancelled on the success/cancel
     ; paths, and a stale group would be picked up by the NEXT response's
     ; Msg_Insert, mis-grouping it with the retried message across parents.
-    _ClearPendingRetryState()
-}
-
-; Clear the pending retry state set by retryAction (bug #211). Called from the
-; stream cleanup (every terminal stream path) and from _BuildAndFireRequest's
-; failure branch (a retry rejected before any stream, e.g. the vision gate).
-_ClearPendingRetryState() {
-    global requestParams
+    ; The deletes are INLINED (no helper call) so this file loads standalone
+    ; in every include context - AHK v2 treats a call whose callee is only
+    ; defined in a later #Include as an unassigned local variable and pops a
+    ; #Warn modal that hangs the run.
     if requestParams.Has("pendingRetrySiblingGroup")
         requestParams.Delete("pendingRetrySiblingGroup")
     if requestParams.Has("pendingRetryIsRoot")

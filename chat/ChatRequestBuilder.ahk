@@ -300,8 +300,15 @@ _BuildAndFireRequest() {
         ; Bug #211: a retry rejected before any stream (vision gate, API-key
         ; error, endpoint error) leaves pendingRetrySiblingGroup / 
         ; pendingRetryIsRoot set - clear them so the next normal response is
-        ; not mis-grouped with the retried message.
-        _ClearPendingRetryState()
+        ; not mis-grouped with the retried message. The deletes are INLINED
+        ; (no helper call) because ChatRequestBuilder.ahk is #Included by the
+        ; headless DB-audit probe WITHOUT the chat-process modules - AHK v2
+        ; treats a call whose callee is only defined in a later #Include as an
+        ; unassigned local variable and pops a #Warn modal that hangs the run.
+        if requestParams.Has("pendingRetrySiblingGroup")
+            requestParams.Delete("pendingRetrySiblingGroup")
+        if requestParams.Has("pendingRetryIsRoot")
+            requestParams.Delete("pendingRetryIsRoot")
         return false
     }
     postWebMessage("setChatButtonsEnabled", false)

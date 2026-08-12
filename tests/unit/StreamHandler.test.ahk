@@ -618,8 +618,11 @@ class StreamHandlerTest {
         fnPos := InStr(src, "_BuildAndFireRequest() {")
         if !fnPos
             throw Error("_BuildAndFireRequest not found in ChatRequestBuilder.ahk")
-        block := SubStr(src, fnPos, 900)
-        if !InStr(block, "_ClearPendingRetryState()")
+        block := SubStr(src, fnPos, 1400)
+        ; The deletes are inlined (a helper call would be an unresolved
+        ; identifier when ChatRequestBuilder.ahk is #Included by the headless
+        ; DB-audit probe without the chat-process modules).
+        if !InStr(block, "pendingRetrySiblingGroup") || !InStr(block, "pendingRetryIsRoot") || !InStr(block, "Delete(")
             throw Error("_BuildAndFireRequest must clear pending retry state when the request fails to build (bug #211)")
     }
 }
