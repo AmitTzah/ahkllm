@@ -490,12 +490,12 @@ short-id/version fallback, unlike `shared/ModelResolver.ahk`.
 
 **Verification:** headless VM scenario 201 runs the real
 `ReasoningLevels.buildOptionsHtml(models, "gpt-5-mini")` with
-`openai/gpt-5-mini` in the models map and asserts the fallback's unsupported
-`none` option is present.
+`openai/gpt-5-mini` in the models map and asserts only the model-supported
+levels are present.
 
-**Verification result (2026-08-12):** scenario 201 PASSED - the dropdown
-offered `["","none","minimal","low","medium","high"]` for a model whose
-thinkingLevelMap only supports low/high.
+**Verification result (2026-08-12):** scenario 201 PASSED after the fix - the
+dropdown offered `["","low","high"]` for a model whose thinkingLevelMap only
+supports low/high. Regression unit test added in assistants-settings.test.js.
 
 ### 202. Forking a thread with a "Save as Branch" local copy re-counts the copy as a real API call
 

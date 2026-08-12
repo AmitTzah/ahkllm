@@ -1561,16 +1561,15 @@ scenarios.push({
       'openai/gpt-5-mini': { thinkingLevelMap: { low: 'low', high: 'high' } }
     };
     const html = sandbox.window.ReasoningLevels.buildOptionsHtml(models, 'gpt-5-mini');
-    // BUG present: the short form "gpt-5-mini" is a known model (the map has
-    // openai/gpt-5-mini with low/high only), but levelsForModel misses it and
-    // returns the generic fallback, so the dropdown offers unsupported levels.
-    if (html.indexOf('value="none"') < 0 || html.indexOf('value="high"') < 0)
-      throw new Error('short-form assistant reasoning did not use the generic fallback (bug not reproduced): ' + html);
-    if (html.indexOf('value="low"') < 0)
-      throw new Error('setup: model-supported low option missing: ' + html);
+    const values = (html.match(/<option value="([^"]*)"/g) || []).map((m) => m.replace(/<option value="/, '').replace(/"/, ''));
+    // FIXED (bug #201): the short id resolves to openai/gpt-5-mini, so only
+    // its supported levels (low/high) are offered - no generic fallback.
+    if (values.indexOf('none') >= 0 || values.indexOf('minimal') >= 0 || values.indexOf('medium') >= 0)
+      throw new Error('short-form assistant reasoning still offers unsupported generic levels (fix incomplete): ' + JSON.stringify(values));
+    if (values.indexOf('low') < 0 || values.indexOf('high') < 0)
+      throw new Error('short-form assistant reasoning missing model-supported levels (fix incomplete): ' + JSON.stringify(values));
     return 'assistant baseModel="gpt-5-mini" (map key openai/gpt-5-mini with thinkingLevelMap {low, high}): ReasoningLevels.buildOptionsHtml returned ' +
-      JSON.stringify(html.match(/<option value="([^"]*)"/g).map((m) => m.replace(/<option value="/, '').replace(/"/, ''))) +
-      ' - the fallback list offers "none"/"minimal"/"medium" that the model does not support';
+      JSON.stringify(values) + ' - the dropdown offers only the levels the model actually supports';
   }
 });
 

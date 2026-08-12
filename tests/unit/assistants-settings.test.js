@@ -151,6 +151,21 @@ describe('assistants.js reasoning dropdown', () => {
     assert.ok(html.indexOf('<option value="none">') < 0, '"none" must NOT be offered for gemma (unsupported)');
   });
 
+  it('resolves a short-form base model to its full id before building levels (bug #201)', () => {
+    const { registered, cards } = loadModule();
+    const models = {
+      'openai/gpt-5-mini': { thinkingLevelMap: { low: 'low', high: 'high' } }
+    };
+    const assistants = [{ id: 'a1', name: 'A', baseModel: 'gpt-5-mini', reasoning: 'high', systemMessage: '', isDefault: false }];
+    registered.load({ assistants: assistants, models: models });
+    assert.ok(cards.length === 1, 'expected one rendered assistant card');
+    const html = reasoningSelectHtml(cards[0].innerHTML);
+    assert.ok(html.indexOf('<option value="low">Low</option>') >= 0, 'short-form model must offer its supported low level (bug #201)');
+    assert.ok(html.indexOf('<option value="high">High</option>') >= 0, 'short-form model must offer its supported high level (bug #201)');
+    assert.ok(html.indexOf('<option value="none">') < 0, 'short-form model must not fall back to unsupported generic levels (bug #201)');
+    assert.ok(html.indexOf('<option value="minimal">') < 0, 'short-form model must not fall back to unsupported minimal level (bug #201)');
+  });
+
   it('falls back to the common list when model metadata is missing', () => {
     const { registered, cards } = loadModule();
     const assistants = [{ id: 'a1', name: 'A', baseModel: 'unknown/model', reasoning: '', systemMessage: '', isDefault: false }];

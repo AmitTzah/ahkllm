@@ -23,6 +23,19 @@ window.ReasoningLevels = (function() {
     if (models && baseModel && models[baseModel] && models[baseModel].thinkingLevelMap) {
       return Object.keys(models[baseModel].thinkingLevelMap);
     }
+    // Bug #201: the model map is keyed by FULL ids ("openai/gpt-5-mini"), but
+    // assistants/commands can store a SHORT base model ("gpt-5-mini"). Resolve
+    // the short id to its full entry before falling back to the generic list,
+    // matching ModelResolver.Lookup on the AHK side (bugs #43/#51 family).
+    if (models && baseModel && baseModel.indexOf('/') < 0) {
+      var keys = Object.keys(models);
+      for (var i = 0; i < keys.length; i++) {
+        var short = keys[i].indexOf('/') >= 0 ? keys[i].split('/')[1] : keys[i];
+        if (short === baseModel && models[keys[i]].thinkingLevelMap) {
+          return Object.keys(models[keys[i]].thinkingLevelMap);
+        }
+      }
+    }
     return FALLBACK.slice();
   }
 
