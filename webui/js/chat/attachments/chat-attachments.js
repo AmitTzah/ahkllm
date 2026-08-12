@@ -197,6 +197,14 @@ function getAttachmentTypeFromMime(mimeType, filename) {
     if (mimeType.indexOf('spreadsheet') !== -1) return 'xlsx';
     // Fall back to extension-based detection for formats with generic MIME types
     var ext = (filename || '').split('.').pop().toLowerCase();
+    // Bug #198: PDF/office files often arrive with a GENERIC MIME type
+    // (application/octet-stream, application/x-pdf, ...) - fall back to the
+    // extension exactly like the ODT/ODP/ODS/RTF/EPUB branch below, or they
+    // would be misclassified as text_file (no extraction, garbled text).
+    if (ext === 'pdf') return 'pdf';
+    if (ext === 'docx') return 'docx';
+    if (ext === 'pptx') return 'pptx';
+    if (ext === 'xlsx') return 'xlsx';
     if (ext === 'odt') return 'odt';
     if (ext === 'odp') return 'odp';
     if (ext === 'ods') return 'ods';

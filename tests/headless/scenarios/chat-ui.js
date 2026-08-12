@@ -462,15 +462,14 @@ scenarios.push({
       return att ? JSON.stringify({ type: att.type, filename: att.filename, mimeType: att.mimeType }) : 'none';
     })()`);
     const att = JSON.parse(type);
-    // BUG present: the extension says PDF but getAttachmentTypeFromMime
-    // returns text_file for a generic MIME, so the app skips PDF extraction
-    // and sends the binary as a text context instead of a PDF attachment.
-    if (att.type !== 'text_file')
-      throw new Error('generic-MIME PDF was not misclassified (bug not reproduced): ' + type);
+    // FIXED (bug #198): the extension fallback classifies the generic-MIME
+    // PDF as pdf so the app extracts text and sends it as a PDF context.
+    if (att.type !== 'pdf')
+      throw new Error('generic-MIME PDF was not classified by extension (fix incomplete): ' + type);
     if (att.filename !== 'report.pdf')
       throw new Error('setup: filename lost: ' + type);
     return 'File "report.pdf" with MIME application/octet-stream was classified as "' + att.type +
-      '" - getAttachmentTypeFromMime has no extension fallback for pdf/docx/pptx/xlsx (only odt/odp/ods/rtf/epub), so the PDF is attached as a text file and never extracted';
+      '" - getAttachmentTypeFromMime now falls back to the extension for pdf/docx/pptx/xlsx, so the PDF is attached as a PDF and extracted';
   }
 });
 

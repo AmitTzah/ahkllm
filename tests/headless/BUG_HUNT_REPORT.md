@@ -391,10 +391,11 @@ fallback, and the fallback list omits `pdf/docx/pptx/xlsx`.
 
 **Verification:** headless scenario 198 drives the real WebView: it constructs
 a `File("report.pdf", {type: "application/octet-stream"})`, calls the real
-`addAttachment`, and observes `attachmentState[0].type === "text_file"`.
+`addAttachment`, and observes `attachmentState[0].type === "pdf"`.
 
-**Verification result (2026-08-12):** scenario 198 PASSED - `report.pdf` with
-`application/octet-stream` was classified `text_file`.
+**Verification result (2026-08-12):** scenario 198 PASSED after the fix -
+`report.pdf` with `application/octet-stream` was classified `pdf`. Regression
+unit tests added in chat-attachments.test.js.
 
 ### 199. Zero configured providers crashes the API-key error handler
 

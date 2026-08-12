@@ -77,6 +77,15 @@ describe('getAttachmentTypeFromMime', () => {
     it('falls back to extension for RTF with generic MIME', () => {
         assert.strictEqual(ctx.getAttachmentTypeFromMime('application/octet-stream', 'doc.rtf'), 'rtf');
     });
+    it('falls back to extension for PDF with generic MIME (bug #198)', () => {
+        assert.strictEqual(ctx.getAttachmentTypeFromMime('application/octet-stream', 'report.pdf'), 'pdf');
+        assert.strictEqual(ctx.getAttachmentTypeFromMime('application/x-pdf', 'report.pdf'), 'pdf');
+    });
+    it('falls back to extension for DOCX/PPTX/XLSX with generic MIME (bug #198)', () => {
+        assert.strictEqual(ctx.getAttachmentTypeFromMime('application/octet-stream', 'notes.docx'), 'docx');
+        assert.strictEqual(ctx.getAttachmentTypeFromMime('application/octet-stream', 'slides.pptx'), 'pptx');
+        assert.strictEqual(ctx.getAttachmentTypeFromMime('application/octet-stream', 'sheet.xlsx'), 'xlsx');
+    });
 
     it('returns text_file for plain text', () => {
         assert.strictEqual(ctx.getAttachmentTypeFromMime('text/plain', 'readme.txt'), 'text_file');
