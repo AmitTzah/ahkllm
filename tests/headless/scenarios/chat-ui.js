@@ -372,7 +372,7 @@ scenarios.push({
   id: 212,
   name: 'The first message in a fresh session discards right-rail selections - handleChatSend auto-creates the thread, then calls _applyNewChatDefault() UNCONDITIONALLY, so a pre-send assistant pick / typed system prompt / temperature is overwritten by the "New Chats Start With" default (since bug #196, "App Default" resolves to the marked default assistant) and the request carries the default assistant\'s system message',
   mode: 'sse-success',
-  regression: false,
+  regression: true, // FIXED bug #212 kept as a regression check (the default only applies to pristine requestParams)
   settings: {},
   async body({ cdp, mockLog }) {
     await showChat();
@@ -404,13 +404,13 @@ scenarios.push({
     const b = chatReq.body;
     const sysMsg = (b.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || ''));
     const containsTyped = sysMsg.some((c) => c.indexOf('DIRECT TYPED MESSAGE') >= 0);
-    // BUG #212: handleChatSend auto-created the thread and then re-applied the
-    // New Chats Start With default, overwriting the typed system prompt (and
-    // the Violet selection) with the default assistant's settings.
-    if (containsTyped)
-      throw new Error('typed system prompt reached the request (bug #212 not reproduced): ' + JSON.stringify(sysMsg));
-    return 'selected Violet + typed "DIRECT TYPED MESSAGE" before the first send, but the request system message is the DEFAULT assistant\'s (' +
-      JSON.stringify(sysMsg[0] ? sysMsg[0].slice(0, 60) : '(none)') + ') - handleChatSend re-applied _applyNewChatDefault() at thread creation and discarded the pre-send right-rail selections';
+    // FIXED (bug #212): handleChatSend only applies the New Chats Start With
+    // default when requestParams are pristine, so the typed system prompt (and
+    // the Violet selection) survive thread creation and reach the request.
+    if (!containsTyped)
+      throw new Error('typed system prompt did not reach the request (fix incomplete): ' + JSON.stringify(sysMsg));
+    return 'selected Violet + typed "DIRECT TYPED MESSAGE" before the first send; the request system message is the typed text (' +
+      JSON.stringify(sysMsg[0] ? sysMsg[0].slice(0, 60) : '(none)') + ') - pre-send right-rail selections survive thread creation';
   }
 });
 

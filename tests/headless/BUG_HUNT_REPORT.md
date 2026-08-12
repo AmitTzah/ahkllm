@@ -154,11 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 3 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - #208 + #211 FIXED + COMMITTED (0bd51f0, c4ea1c4). Next: fix
-  #212 (first message in a fresh session discards right-rail selections - guard _applyNewChatDefault
-  in handleChatSend's auto-create branch).
+- **Where we left off:** 2026-08-12 - #208, #211, #212 FIXED + COMMITTED (0bd51f0, 9da8658, e125c79).
+  Next: fix #209 (navigateToMessage leaves the sidebar stale - add _postThreadListRefresh).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -209,39 +208,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 212. The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - `handleChatSend` re-applies the "New Chats Start With" default when auto-creating the thread
-
-**Scenario:** 212 (scenario code in e2e-suite.js)
-
-**Status:** verified
-
-**Repro:** In a fresh session (no thread open), pick an assistant or type a system
-prompt (or set a temperature) in the right rail, then send the first message. The
-request carries the configured "New Chats Start With" default (e.g. the default
-assistant's system prompt) instead of what the user just chose.
-
-**Expected:** the auto-created thread inherits the user's current right-rail settings;
-the new-chat default applies only when nothing was configured (the same guard
-`_applyNewChatDefaultToFreshThread` uses for tray/command-line threads).
-
-**Actual:** `handleChatSend`'s auto-create branch runs
-`ChatDB.Thread_Create()` then calls `_applyNewChatDefault()` UNCONDITIONALLY before
-`_saveCurrentSettingsToThread()`. `_applyNewChatDefault` replaces `requestParams`
-with the configured default (since bug #196, "App Default" resolves to the marked
-default assistant), wiping the user's pre-send assistant selection, typed system
-message, and temperature. This is why regression #60 ("typing a system prompt
-directly into the right-rail field reaches the API request") now fails.
-
-**Evidence:** `chat/callbacks/Message.ahk` `handleChatSend` - the `if !activeThreadId`
-branch calls `_applyNewChatDefault()` with no freshness guard, then persists the
-overwritten requestParams; `chat/ChatSettings.ahk` `_applyNewChatDefault` clobbers
-`singleAPIModelName`/`systemOverride`/`reasoningOverride`/`temperatureOverride`.
-
-**Verification:** headless scenario 212 - fresh session, selected the "Violet"
-assistant in the popover, typed "DIRECT TYPED MESSAGE" into the right-rail system
-prompt field, then sent the first message. The logged request's system message is the
-default assistant's ("You are a conversational partner..."), not the typed text - the
-pre-send selections were discarded at thread creation.
 ### 209. Tree-modal / search navigation leaves the sidebar stale - `navigateToMessage` bumps `updated_at` but posts no `threadList` refresh (the fixed #174 branch-switch path is the only navigation that refreshes the list)
 
 **Scenario:** 209 (scenario code in e2e-suite.js)
@@ -304,7 +270,9 @@ thread's title while `activeThreadId` is empty.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
-- 2026-08-12 - "A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping" - FIXED + COMMITTED in c4ea1c4: fix(stream): clear pending retry state on failed retries (bug #211). Scenario 211 flipped to a regression check + StreamHandler unit tests.
+- 2026-08-12 - "The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - handleChatSend re-applies the \"New Chats Start With\" default when auto-creating the thread" - FIXED + COMMITTED in e125c79: fix(chat): only apply the new-chat default to pristine requestParams (bug #212). Scenario 212 flipped to a regression check (fix-guard #60 passes again) + ChatSettings/ChatDispatch unit tests.
+
+- 2026-08-12 - "A failed retry leaks `pendingRetrySiblingGroup` into the next response's tree grouping" - FIXED + COMMITTED in 9da8658: fix(stream): clear pending retry state on failed retries (bug #211). Scenario 211 flipped to a regression check + StreamHandler unit tests.
 
 - 2026-08-12 - "Streaming assistant-bubble author label renders assistant/model names as raw HTML (XSS in the WebView)" - FIXED + COMMITTED in 0bd51f0: fix(webui): escape the streaming bubble author label (bug #208). Scenario 208 flipped to a regression check + stream-state unit tests.
 

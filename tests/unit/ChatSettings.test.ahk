@@ -547,4 +547,44 @@ class ChatSettingsTest {
             this._closeDb()
         }
     }
+
+    ; Regression (bug #212): handleChatSend must only apply the "New Chats
+    ; Start With" default when the right-rail requestParams are pristine - an
+    ; unconditional apply wiped the user's pre-send selections (assistant pick,
+    ; typed system prompt, temperature, model) when the first message
+    ; auto-created the thread.
+    test_requestParamsAreDefault_guardsNewChatDefault() {
+        global requestParams, appDefaultModel
+
+        oldParams := requestParams
+        try {
+            requestParams := Map("singleAPIModelName", appDefaultModel)
+            if !_RequestParamsAreDefault()
+                throw Error("pristine requestParams should be default")
+
+            requestParams := Map("singleAPIModelName", appDefaultModel, "activeAssistantId", "asst-1")
+            if _RequestParamsAreDefault()
+                throw Error("an active assistant must make requestParams non-default")
+
+            requestParams := Map("singleAPIModelName", appDefaultModel, "systemOverride", "custom sys")
+            if _RequestParamsAreDefault()
+                throw Error("a typed system prompt must make requestParams non-default")
+
+            requestParams := Map("singleAPIModelName", appDefaultModel, "reasoningOverride", "high")
+            if _RequestParamsAreDefault()
+                throw Error("a reasoning override must make requestParams non-default")
+
+            ; Temperature 0 is a REAL override (bugs #35/#78 family) - it must
+            ; keep the thread from being re-defaulted.
+            requestParams := Map("singleAPIModelName", appDefaultModel, "temperatureOverride", 0)
+            if _RequestParamsAreDefault()
+                throw Error("temperature 0 must make requestParams non-default")
+
+            requestParams := Map("singleAPIModelName", "openai/gpt-5-mini")
+            if _RequestParamsAreDefault()
+                throw Error("a non-default model must make requestParams non-default")
+        } finally {
+            requestParams := oldParams
+        }
+    }
 }

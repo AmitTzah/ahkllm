@@ -16,8 +16,14 @@ handleChatSend(params, *) {
         activeThreadId := ChatDB.Thread_Create("New Chat")
         postWebMessage("loadThread", activeThreadId)
         debugLog("[THREAD] Created — id=" activeThreadId " title=New Chat")
-        ; Start new chats with the configured default assistant/model.
-        _applyNewChatDefault()
+        ; Start new chats with the configured default assistant/model ONLY when
+        ; the user has not already configured the right rail before the first
+        ; send (bug #212): an unconditional apply overwrote a pre-send
+        ; assistant pick / typed system prompt / temperature / model with the
+        ; default, so the request carried the default's system message instead
+        ; of what the user chose.
+        if _RequestParamsAreDefault()
+            _applyNewChatDefault()
         _saveCurrentSettingsToThread(activeThreadId)
         _postThreadListRefresh()
     }

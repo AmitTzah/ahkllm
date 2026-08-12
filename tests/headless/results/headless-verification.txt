@@ -1,5 +1,5 @@
-# 2026-08-12T14:44:23.892Z | run of 1 scenario(s)
-PASS | #211 | A failed retry leaks pendingRetrySiblingGroup into the next response - retryAction sets the pending keys and only the SUCCESS (_persistStreamResponse) and CANCEL (_handleStreamCancelled) paths delete them; a retry rejected before any stream (vision gate / buildRequest failure / _handleStreamError) leaves the stale group set, so the next normal send inserts its response with the retried message's sibling_group even though its parent is the new user message | failed retry (vision gate) cleared pendingRetrySiblingGroup: follow-up response (parent=0a6d9804-49e9-f07b-deaa-0000a9d0c5b2) was inserted with sibling_group=null (clean; the retried assistant keeps its own group "0a6d94b8-1483-9471-e2ec-0000a53482d8") - the next normal send is no longer mis-grouped | 7.9s
+# 2026-08-12T14:47:13.215Z | run of 1 scenario(s)
+PASS | #60 | Typing a system prompt directly into the right-rail field never reaches the API request | typed directly into the rail field; the sent request carries "DIRECT TYPED MESSAGE" (head="DIRECT TYPED MESSAGE") | 7.6s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -783,6 +783,25 @@ class ChatDispatchTest {
             throw Error("handleBranchSwitch must refresh the sidebar thread list (bug #174)")
     }
 
+    ; Regression (bug #212): handleChatSend's auto-create branch must apply the
+    ; "New Chats Start With" default ONLY when the right-rail requestParams are
+    ; pristine - an unconditional apply overwrote a pre-send assistant pick /
+    ; typed system prompt / temperature / model with the default.
+    ChatSend_AutoCreateThread_GuardsNewChatDefault() {
+        srcPath := A_ScriptDir "\..\chat\callbacks\Message.ahk"
+        if !FileExist(srcPath)
+            throw Error("Message.ahk not found")
+        src := FileRead(srcPath)
+        autoCreatePos := InStr(src, "if !activeThreadId {")
+        if !autoCreatePos
+            throw Error("handleChatSend auto-create branch not found in Message.ahk")
+        block := SubStr(src, autoCreatePos, 900)
+        guardPos := InStr(block, "_RequestParamsAreDefault()")
+        applyPos := InStr(block, "_applyNewChatDefault()")
+        if !guardPos || !applyPos || guardPos > applyPos
+            throw Error("handleChatSend must call _RequestParamsAreDefault() before _applyNewChatDefault() (bug #212)")
+    }
+
     Dispatch_InvalidJson_PostsShowError() {
         web := this._captureWebView()
         try {

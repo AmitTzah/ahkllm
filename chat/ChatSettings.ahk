@@ -94,6 +94,26 @@ _applyNewChatDefault() {
     return true
 }
 
+; Bug #212: is the current right-rail state still pristine (no assistant, no
+; overrides, the app default model)? Only then may the "New Chats Start With"
+; default be applied when a thread is auto-created - an unconditional apply in
+; handleChatSend's first-send path wiped the user's pre-send selections
+; (assistant pick, typed system prompt, temperature, model) with the default.
+_RequestParamsAreDefault() {
+    global requestParams, appDefaultModel
+    if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"]
+        return false
+    if requestParams.Has("systemOverride") && requestParams["systemOverride"]
+        return false
+    if requestParams.Has("reasoningOverride") && requestParams["reasoningOverride"]
+        return false
+    if requestParams.Has("temperatureOverride") && requestParams["temperatureOverride"] != ""
+        return false
+    if requestParams.Has("singleAPIModelName") && requestParams["singleAPIModelName"] != appDefaultModel
+        return false
+    return true
+}
+
 ; Bug #41: apply the configured "New Chats Start With" default (assistant or
 ; model, plus the default font size) to a brand-new thread that has no messages
 ; and no stored settings yet. Mirrors _HandleThreadAction's newChat case; used
