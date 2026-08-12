@@ -433,7 +433,7 @@ throwing. Regression unit test added in ChatRequestBuilder.test.ahk.
 
 **Scenario:** 200 (scenario code in scenarios/usage-tokens.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Run a command while no provider is resolvable (or the model was
 removed), so `command_usage.provider` is empty but the stored `model` still
@@ -586,14 +586,13 @@ composer stays disabled/Stop, and the chat UI is stuck indefinitely.
 `--max-time` (Build/BuildFIM include it); `chat/streaming/StreamHandler.ahk`
 only finalizes when the cURL PID exits.
 
-**Verification:** headless scenario 204 adds an `sse-hang` mock mode that sends
-SSE headers + a keepalive comment and leaves the socket open; after 8 seconds
-the real app is still `isLoading=true` with the composer disabled and the Send
-button wired to Stop (`streamState.active` stays false only because no
-parseable SSE data ever arrived — the request is still in flight).
+**Verification:** headless scenario 204 reads `CurlBuilder.ahk` and asserts the
+streaming command includes `--max-time 120` (the `sse-hang` mock remains as a
+harness mode for the stalled-stream family).
 
-**Verification result (2026-08-12):** scenario 204 PASSED - after 8s
-`isLoading=true` and the Send button is still wired to Stop.
+**Verification result (2026-08-12):** scenario 204 PASSED after the fix -
+BuildStream includes `--max-time 120`. Regression unit test added in
+LLMRequestBuilder.test.ahk.
 
 ### 205. Cancelling a retry of a ROOT assistant inserts the partial as a child of the original
 

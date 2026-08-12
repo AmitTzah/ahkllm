@@ -267,6 +267,15 @@ class LLMRequestBuilderTest {
             throw Error("BuildFIM should use the FIM endpoint when configured")
     }
 
+    ; Regression (bug #204): the streaming cURL command must carry an overall
+    ; --max-time so a stalled upstream cannot hang the chat UI forever.
+    CurlBuilderBuildStream_HasMaxTime() {
+        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "", apiKey: "sk-test-key" }
+        cmd := CurlBuilder.BuildStream(pi, "req.json", "out.json", "err.txt")
+        if !InStr(cmd, "--max-time 120")
+            throw Error("BuildStream must include --max-time 120 (bug #204), got: " cmd)
+    }
+
     ; --------------------
     ; appendToChatHistory
     ; --------------------

@@ -36,7 +36,11 @@ class CurlBuilder {
         ; Bug #112: same empty-endpoint guard as Build.
         if !providerInfo.endpoint
             return ""
-        return 'cURL.exe -s --no-buffer --connect-timeout 30 -X POST '
+        ; Bug #204: the streaming command MUST have an overall --max-time -
+        ; a stalled upstream that accepts the connection and then sends
+        ; nothing would otherwise hang the chat UI forever (the non-streaming
+        ; Build already had one).
+        return 'cURL.exe -s --no-buffer --connect-timeout 30 --max-time 120 -X POST '
             . providerInfo.endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '

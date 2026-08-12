@@ -1,5 +1,5 @@
-# 2026-08-12T11:49:48.713Z | run of 1 scenario(s)
-PASS | #119 | Live exchange: token counters, header tooltips and dashboard all agree (regression check for the usage pipeline) | live exchange: chat_usage row={"model":"deepseek-v4-flash","prompt_tokens":12,"completion_tokens":9,"cached_tokens":4,"call_count":1}, thread counters={"cumulative_input_tokens":12,"cumulative_output_tokens":9,"cumulative_cached_tokens":4}, header="21 / 1m↑ 12  ↓ 94$0.00", popover=" Token UsageOutput: 9 tokensVisible: 9 tokensThinking: 0 tokensCache: 4 tokensSpeed: 20 tok/secTTFT: 0.13sTotal time: 0.5s", dashboard tokens=21 calls=2 (2 calls = 1 chat + 1 title-gen command, bug #167) | 6.7s
+# 2026-08-12T11:51:21.462Z | run of 1 scenario(s)
+PASS | #204 | A stalled stream never times out - CurlBuilder.BuildStream has --connect-timeout 30 but NO --max-time, so an API that accepts the connection and then sends nothing leaves streamState.active/isLoading true and the Stop/input UI stuck forever | CurlBuilder.BuildStream now includes --max-time 120 alongside --connect-timeout 30 - a stalled upstream cannot hang the chat UI forever | 0.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
