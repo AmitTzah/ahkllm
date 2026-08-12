@@ -1,5 +1,5 @@
-# 2026-08-12T11:33:05.091Z | run of 1 scenario(s)
-PASS | #195 | Switching threads while a request is streaming pushes the OLD thread's completed response into the CURRENT thread's in-memory message array - _persistStreamedMessage always targets the global chatMessages, so after thread A's stream finishes while thread B is visible, B's UI array (copy/export/thread map) contains A's assistant message even though the DB row is correct in A | sent in A, switched to B mid-stream; DB rows inA=1 inB=0 (correct), and the visible thread B chatMessages=["user:question for B"] has no A response and no streaming bubble - stream messages are scoped to the sending thread/path | 6.4s
+# 2026-08-12T11:34:53.802Z | run of 1 scenario(s)
+PASS | #194 | Overwrite-editing an assistant message leaves the thread's CUMULATIVE output tokens stale - MessageRepo.Edit re-estimates the message token_count (bug #181) and recomputes active_path_tokens, but never calls _RecomputeCumulativeCounters, so the header ledger disagrees with the per-message popover until the next API call | assistant overwrite-edit refreshed token_count=100 and chat_threads.cumulative_output_tokens followed to 100 (was 9 before the edit) - header ledger and per-message token count agree | 0.3s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

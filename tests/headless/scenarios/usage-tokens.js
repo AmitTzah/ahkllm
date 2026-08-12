@@ -1116,14 +1116,13 @@ scenarios.push({
     const afterM = text.match(/afterCumOut=(\d+)/);
     if (!a1M || !beforeM || !afterM) throw new Error('probe output missing fields: ' + text);
     const a1tc = Number(a1M[1]), beforeCumOut = Number(beforeM[1]), afterCumOut = Number(afterM[1]);
-    // BUG present: Msg_Edit refreshed token_count to ~100 but left
-    // cumulative_output_tokens at the pre-edit 9, so the header shows the old
-    // output total while the message popover shows the new count.
-    if (!(a1tc > 9 && beforeCumOut === 9 && afterCumOut === 9))
-      throw new Error('assistant edit cumulative ledger is not stale (bug not reproduced): a1tc=' + a1tc + ' before=' + beforeCumOut + ' after=' + afterCumOut);
+    // FIXED (bug #194): Msg_Edit recomputes the cumulative ledger, so the
+    // header output total follows the refreshed message token count.
+    if (!(a1tc > 9 && beforeCumOut === 9 && afterCumOut === a1tc))
+      throw new Error('assistant edit cumulative ledger was not recomputed (fix incomplete): a1tc=' + a1tc + ' before=' + beforeCumOut + ' after=' + afterCumOut);
     return 'assistant overwrite-edit refreshed token_count=' + a1tc +
-      ' but chat_threads.cumulative_output_tokens stayed ' + afterCumOut +
-      ' (was ' + beforeCumOut + ' before the edit) - the header ledger and the per-message token count disagree until the next API call';
+      ' and chat_threads.cumulative_output_tokens followed to ' + afterCumOut +
+      ' (was ' + beforeCumOut + ' before the edit) - header ledger and per-message token count agree';
   }
 });
 

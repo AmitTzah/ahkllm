@@ -297,6 +297,12 @@ class MessageRepo {
 
         if threadId
             TreeRepo._RecomputeActivePath(threadId)
+        ; Bug #194: the edited message's token_count changed, so the thread's
+        ; CUMULATIVE ledger must be derived again - otherwise the header
+        ; keeps the pre-edit output total while the message popover shows the
+        ; refreshed count (until the next API call forces a recompute).
+        if threadId
+            MessageRepo._RecomputeCumulativeCounters(threadId)
     }
 
     static GetMaxSiblingIndex(siblingGroup) {

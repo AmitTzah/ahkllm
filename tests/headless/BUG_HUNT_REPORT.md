@@ -327,11 +327,11 @@ derivation of the thread ledger and is not invoked.
 
 **Verification:** headless DB probe (`edit-assistant-stale-cumulative`) runs the
 REAL ChatDB/repo code: inserts a 9-token assistant response, overwrite-edits it
-to ~100 tokens, and observes token_count=100 while cumulative_output_tokens
-stays 9.
+to ~100 tokens, and observes token_count=100 AND cumulative_output_tokens=100.
 
 **Verification result (2026-08-12):** scenario 194 PASSED - probe printed
-`a1tcAfterEdit=100`, `beforeCumOut=9`, `afterCumOut=9`.
+`a1tcAfterEdit=100`, `beforeCumOut=9`, `afterCumOut=100` after the fix.
+Regression unit test added in ChatDB.test.ahk.
 
 ### 196. Fresh-profile default assistant loses isDefault (defaults snapshot drops the flag)
 

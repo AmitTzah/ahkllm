@@ -1663,6 +1663,30 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #194): overwrite-editing an assistant message must
+    ; recompute the thread's CUMULATIVE counters too - token_count is
+    ; refreshed, so cumulative_output_tokens must follow immediately instead
+    ; of staying at the pre-edit value until the next API call.
+    Edit_AssistantMessage_RecomputesCumulativeCounters() {
+        threadId := this._setup()
+        u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "SHORT", parent_id: u1Id, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
+        before := Integer(ChatDB.db.Query("SELECT cumulative_output_tokens FROM chat_threads WHERE id=?;", threadId)[1, "cumulative_output_tokens"])
+        if before != 9
+            throw Error("setup: expected cumulative_output=9 before edit, got " before)
+        longText := ""
+        loop 300
+            longText .= "x"
+        ChatDB.Msg_Edit(a1Id, longText)
+        a1tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", a1Id)[1, "token_count"])
+        after := Integer(ChatDB.db.Query("SELECT cumulative_output_tokens FROM chat_threads WHERE id=?;", threadId)[1, "cumulative_output_tokens"])
+        if a1tc <= 9
+            throw Error("setup: edited assistant token_count should be refreshed (bug #181), got " a1tc)
+        if after != a1tc
+            throw Error("assistant edit must recompute cumulative_output_tokens (bug #194): message=" a1tc " thread=" after)
+        this._teardown()
+    }
+
     ; ----------------------------------------------------
     ; Assistant CRUD tests
     ; ----------------------------------------------------
