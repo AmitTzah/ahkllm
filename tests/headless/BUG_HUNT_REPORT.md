@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-12). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - #208, #211, #212, #209 FIXED + COMMITTED (0bd51f0, 9da8658,
-  65ff184, b48166d). #210 FIX APPLIED: the three deletion paths reset chatWindow.Title; ChatDispatch
-  unit test added; scenario 210 flipped to a regression check and PASSING; fast suite green. Next:
-  commit #210, run the full headless suite, then move #209/#210 to History.
+- **Where we left off:** 2026-08-12 - Fix cycle COMPLETE: bugs #208-#212 all FIXED + COMMITTED on
+  branch bug-hunt-round-2 (0bd51f0, 9da8658, 65ff184, b48166d, 0330765 + the #211 load-safety
+  follow-up 27f468b). FULL SUITE GREEN: 206/206 headless scenarios (all flipped to regression checks)
+  + `npm run test:fast` green (contract/load/SQL, 594 AHK, 546 JS tests). No open bugs.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -210,67 +210,13 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 209. Tree-modal / search navigation leaves the sidebar stale - `navigateToMessage` bumps `updated_at` but posts no `threadList` refresh (the fixed #174 branch-switch path is the only navigation that refreshes the list)
-
-**Scenario:** 209 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Open any chat, then click a node in the conversation tree modal (or a
-search result) that changes the active leaf - e.g. navigate to an off-path branch.
-The sidebar order and the #155 model badge stay as they were, even though the DB
-just bumped the thread's `updated_at`.
-
-**Expected:** navigating to a message refreshes the sidebar (the thread moves to
-its new position / the badge follows the active branch), exactly like a branch
-switch does since bug #174.
-
-**Actual:** `handleSidebarAction`'s `navigateToMessage` calls
-`ChatDB.Msg_SetActiveLeaf(activeThreadId, leafId)` (which sets
-`updated_at=datetime('now')`) and then `_LoadThreadAndRefreshUI(activeThreadId, false)`
-- neither posts `threadList`. The tree modal and the search dropdown both route
-through this action (chat-tree-modal.js / chat-search.js), so the sidebar keeps
-the pre-navigation order/badge until some unrelated action reposts the list.
-
-**Evidence:** `chat/callbacks/Sidebar.ahk` - the `navigateToMessage` case never
-calls `_postThreadListRefresh()` (compare the fixed `handleBranchSwitch` in
-`chat/callbacks/Branch.ahk`, which posts it after `Msg_SwitchBranch`); the bump
-happens in `chat/db/TreeRepo.ahk` `SetActiveLeaf`.
-
-**Verification:** headless scenario 209 - seeded two threads (B newer, A older),
-loaded A, then navigated to an off-path branch via the real
-`sidebarAction:navigateToMessage` IPC. The DB order flips to A-first
-(`updated_at` bumped), while the sidebar DOM still renders B-first and zero
-`threadList` messages arrive on the AHK->WebView channel.
-### 210. Chat-window title stays stale after deleting the active thread
-
-**Scenario:** 210 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Load any chat (the window title becomes "AhkLLM - <thread title>"), then
-delete that chat from the sidebar (Delete → confirm). The chat area empties but the
-window title still shows the deleted thread's title.
-
-**Expected:** deleting the active thread resets the window title to the empty/new-chat
-state, like `_LoadThreadAndRefreshUI` keeps it in sync on load and rename.
-
-**Actual:** `_HandleThreadAction`'s `deleteThread` / `deleteThreadForever` / `emptyTrash`
-cases clear `activeThreadId` and post `loadThread` + `initChatMode` but never assign
-`chatWindow.Title` - only `renameThread` and `_LoadThreadAndRefreshUI` touch it, so the
-title bar keeps the deleted conversation's name until another thread is loaded.
-
-**Evidence:** `chat/callbacks/Sidebar.ahk` - the three deletion cases end at
-`_sendDropdownLabel()` with no `chatWindow.Title := ...` (compare `renameThread`, which
-updates the title, and `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI`).
-
-**Verification:** headless scenario 210 - seeded and loaded a titled thread, deleted it
-via the sidebar confirm, then probed the live window title: it still contains the deleted
-thread's title while `activeThreadId` is empty.
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-12 - "Chat-window title stays stale after deleting the active thread" - FIXED + COMMITTED in 0330765: fix(chat): reset the chat-window title when the active thread is deleted (bug #210). Scenario 210 flipped to a regression check + ChatDispatch unit test.
+- 2026-08-12 - "Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps updated_at but posts no threadList refresh" - FIXED + COMMITTED in b48166d: fix(chat): refresh the sidebar after navigateToMessage (bug #209). Scenario 209 flipped to a regression check + ChatDispatch static check.
 
 - 2026-08-12 - "The first message in a fresh session discards right-rail selections (assistant / system prompt / temperature) - handleChatSend re-applies the \"New Chats Start With\" default when auto-creating the thread" - FIXED + COMMITTED in 65ff184: fix(chat): only apply the new-chat default to pristine requestParams (bug #212). Scenario 212 flipped to a regression check (fix-guard #60 passes again) + ChatSettings/ChatDispatch unit tests.
 
