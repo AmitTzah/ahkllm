@@ -228,36 +228,38 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 194. Overwrite-editing an assistant message leaves the thread's cumulative output tokens stale
+### 197. Switching branches within the same thread mid-stream mis-parents the completed response
 
-**Scenario:** 194 (scenario code in scenarios/usage-tokens.js)
+**Scenario:** 197 (scenario code in scenarios/chat-tree.js)
 
 **Status:** verified
 
-**Repro:** Load a thread with an assistant response. Click the assistant's Edit
-button, change the text to something much longer, and click Overwrite. Then
-open the message's token popover and look at the header token bar.
+**Repro:** In a branched conversation on branch A, send a follow-up message.
+While it streams, use the branch arrows to navigate to branch B. After the
+response finishes, inspect the conversation tree.
 
-**Expected:** the header's cumulative output total matches the edited
-message's refreshed token count (and the per-message popover).
+**Expected:** the new assistant response is a child of the user message that
+was sent (branch A's follow-up), and the active leaf lands on that response.
 
-**Actual:** `MessageRepo.Edit` re-estimates the assistant's `token_count`
-(bug #181) and calls `TreeRepo._RecomputeActivePath`, but never calls
-`MessageRepo._RecomputeCumulativeCounters`, so `chat_threads.cumulative_output_tokens`
-keeps the pre-edit value until the next real API call forces a recompute. The
-header ledger and the per-message popover disagree after every assistant edit.
+**Actual:** `_persistStreamResponse` captures only `_streamThreadId` at send
+time (bug #159 fix), then at completion calls
+`ChatDB.Msg_GetActivePath(streamThreadId)` again and uses its CURRENT last
+message as `parentId`. A branch switch in the same thread changes that active
+path, so the completed response is inserted under branch B's leaf (or the
+currently active message) instead of the sending user message. The UI
+re-render then shows the response in the wrong place in the tree.
 
-**Evidence:** `chat/db/MessageRepo.ahk` Edit() updates `token_count` then calls
-only `_RecomputeActivePath`; `_RecomputeCumulativeCounters` is the sole
-derivation of the thread ledger and is not invoked.
+**Evidence:** `chat/streaming/StreamCompletion.ahk` `_persistStreamResponse()`
+re-reads the path at completion; no `_streamParentId` (or request snapshot) is
+stored in `sendStreamingRequest`.
 
-**Verification:** headless DB probe (`edit-assistant-stale-cumulative`) runs the
-REAL ChatDB/repo code: inserts a 9-token assistant response, overwrite-edits it
-to ~100 tokens, and observes token_count=100 while cumulative_output_tokens
-stays 9.
+**Verification:** headless scenario 197 seeds a two-branch thread, sends from
+branch A, switches to branch B mid-stream (`sse-slow`), and asserts the
+completed response's `parent_id` is NOT the sending user message.
 
-**Verification result (2026-08-12):** scenario 194 PASSED - probe printed
-`a1tcAfterEdit=100`, `beforeCumOut=9`, `afterCumOut=9`.
+**Verification result (2026-08-12):** scenario 197 PASSED - the response's
+`parent_id` was `m-197-a2b` (branch B's leaf) instead of the sending user
+message's id.
 
 ### 195. Switching threads mid-stream pushes the old thread's completed response into the current thread's UI message array
 
@@ -293,6 +295,37 @@ A and 0 in B.
 ended as `["user:question for B","assistant:Hello from the mock LLM. This is
 the streamed answer."]` while the DB had inA=1 / inB=0.
 
+### 194. Overwrite-editing an assistant message leaves the thread's cumulative output tokens stale
+
+**Scenario:** 194 (scenario code in scenarios/usage-tokens.js)
+
+**Status:** verified
+
+**Repro:** Load a thread with an assistant response. Click the assistant's Edit
+button, change the text to something much longer, and click Overwrite. Then
+open the message's token popover and look at the header token bar.
+
+**Expected:** the header's cumulative output total matches the edited
+message's refreshed token count (and the per-message popover).
+
+**Actual:** `MessageRepo.Edit` re-estimates the assistant's `token_count`
+(bug #181) and calls `TreeRepo._RecomputeActivePath`, but never calls
+`MessageRepo._RecomputeCumulativeCounters`, so `chat_threads.cumulative_output_tokens`
+keeps the pre-edit value until the next real API call forces a recompute. The
+header ledger and the per-message popover disagree after every assistant edit.
+
+**Evidence:** `chat/db/MessageRepo.ahk` Edit() updates `token_count` then calls
+only `_RecomputeActivePath`; `_RecomputeCumulativeCounters` is the sole
+derivation of the thread ledger and is not invoked.
+
+**Verification:** headless DB probe (`edit-assistant-stale-cumulative`) runs the
+REAL ChatDB/repo code: inserts a 9-token assistant response, overwrite-edits it
+to ~100 tokens, and observes token_count=100 while cumulative_output_tokens
+stays 9.
+
+**Verification result (2026-08-12):** scenario 194 PASSED - probe printed
+`a1tcAfterEdit=100`, `beforeCumOut=9`, `afterCumOut=9`.
+
 ### 196. Fresh-profile default assistant loses isDefault (defaults snapshot drops the flag)
 
 **Scenario:** 196 (scenario code in scenarios/settings.js)
@@ -325,39 +358,6 @@ assistant globals.
 
 **Verification result (2026-08-12):** scenario 196 PASSED - the snapshot has 2
 assistants, 0 with `isDefault`, and 0 applied assistant globals carry the flag.
-
-### 197. Switching branches within the same thread mid-stream mis-parents the completed response
-
-**Scenario:** 197 (scenario code in scenarios/chat-tree.js)
-
-**Status:** verified
-
-**Repro:** In a branched conversation on branch A, send a follow-up message.
-While it streams, use the branch arrows to navigate to branch B. After the
-response finishes, inspect the conversation tree.
-
-**Expected:** the new assistant response is a child of the user message that
-was sent (branch A's follow-up), and the active leaf lands on that response.
-
-**Actual:** `_persistStreamResponse` captures only `_streamThreadId` at send
-time (bug #159 fix), then at completion calls
-`ChatDB.Msg_GetActivePath(streamThreadId)` again and uses its CURRENT last
-message as `parentId`. A branch switch in the same thread changes that active
-path, so the completed response is inserted under branch B's leaf (or the
-currently active message) instead of the sending user message. The UI
-re-render then shows the response in the wrong place in the tree.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk` `_persistStreamResponse()`
-re-reads the path at completion; no `_streamParentId` (or request snapshot) is
-stored in `sendStreamingRequest`.
-
-**Verification:** headless scenario 197 seeds a two-branch thread, sends from
-branch A, switches to branch B mid-stream (`sse-slow`), and asserts the
-completed response's `parent_id` is NOT the sending user message.
-
-**Verification result (2026-08-12):** scenario 197 PASSED - the response's
-`parent_id` was `m-197-a2b` (branch B's leaf) instead of the sending user
-message's id.
 
 ## History (append-only)
 
