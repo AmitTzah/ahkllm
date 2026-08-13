@@ -154,15 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 5 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 6 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#223 VERIFIED headlessly
-  (scenarios 219-223 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
+- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#224 VERIFIED headlessly
+  (scenarios 219-224 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
   error event crashes the parser and wedges the composer; #220 = folder-delete confirm
   double-escapes the folder name; #221 = two quick chat-mode commands lose the first response;
   #222 = single-newline paragraph breaks render as one block; #223 = the #221 race leaks the
-  first request's Bearer-key temp files; next: verify #224 (user bubble paragraph collapse).
-  No fixes started yet.
+  first request's Bearer-key temp files; #224 = user bubbles collapse single-newline paragraphs
+  (mirror of #222). No fixes started yet.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -213,7 +213,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response) · 4 = #222 (single-newline paragraphs render as one block) · 5 = #223 (two-command race leaks the Bearer-key temp files)
+1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response) · 4 = #222 (single-newline paragraphs render as one block) · 5 = #223 (two-command race leaks the Bearer-key temp files) · 6 = #224 (user bubble collapses single-newline paragraphs)
 
 ### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
 
@@ -338,6 +338,27 @@ Scenario 110 guards the success/error/cancel cleanup paths but not this race.
 **Verification:** headless PASS (2026-08-13) — scenario 223 reproduces the bug #221 race (probe `load-thread` + `trigger-llm` on two seeded threads,
 second fired while the first sse-slow stream is in flight), snapshots `%TEMP%` before/after, and observed 3 NEW leftover `ChatWindow_*` files after both
 streams settled, including 1 cURL command file still containing `Authorization: Bearer` (the scenario then deleted only the files it created).
+
+### 224. User message bubbles also collapse single-newline paragraphs (mirror of #222)
+
+**Scenario:** 224 (scenario code in e2e-suite.js)
+
+**Status:** verified — open (rank 6)
+
+**Repro:** Send (or paste) a multi-paragraph message whose paragraphs are separated by SINGLE newlines. The user's own bubble shows the text as one block.
+
+**Expected:** paragraph breaks in the message stay visible (separate paragraphs or line breaks), like the original text.
+
+**Actual:** user content goes through `_prepUserContent`, which only converts runs of 3+ newlines to `<br>`; a single `\n` stays a markdown soft break
+inside one `<p>` and the `.msg-content` CSS collapses it to a space. So the user-side mirror of bug #222: multi-paragraph text displays as a block (the
+original text whose paragraphs the summarize flow is supposed to preserve is itself shown collapsed).
+
+**Evidence:** `webui/js/chat/chat-format.js` `_prepUserContent` (only `\n{3,}` → `<br>`; single `\n` untouched) + `webui/js/chat/chat-render.js`
+`createMessageBubble` user branch; same markdown-it soft-break collapse verified for #222.
+
+**Verification:** headless PASS (2026-08-13) — scenario 224 sends a 3-paragraph message (single newlines) through the real UI and observed the user
+bubble contains exactly ONE `<p>` (no `<br>`), `innerText` = "First paragraph of the selection. Second paragraph of the selection. Third paragraph of the
+selection." — the paragraphs collapsed into a single block.
 
 ## History (append-only)
 

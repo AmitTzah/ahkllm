@@ -950,6 +950,31 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 224,
+  name: 'User message bubbles also collapse SINGLE-newline paragraph breaks - _prepUserContent only converts 3+ newlines to <br>, so a multi-paragraph message (or a pasted selection) whose paragraphs are separated by single newlines renders as ONE block in the user\'s own bubble (the mirror of bug #222 on the user side)',
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp }) {
+    await cdp.type('#chat-input', 'First paragraph of the selection.\nSecond paragraph of the selection.\nThird paragraph of the selection.');
+    await cdp.click('#chat-send-btn');
+    // The user bubble renders as soon as the message is appended.
+    await cdp.waitFor('document.querySelector(".msg.you .msg-content") !== null', 10000, 250, 'user bubble');
+    await sleep(400);
+    const pCount = await cdp.eval('document.querySelectorAll(".msg.you .msg-content p").length');
+    const innerText = await cdp.eval('document.querySelector(".msg.you .msg-content").innerText');
+    const html = await cdp.eval('document.querySelector(".msg.you .msg-content").innerHTML');
+    // Buggy behavior (PASS = reproduced): the three paragraphs collapsed into
+    // ONE <p> (soft breaks rendered as spaces), so the multi-paragraph message
+    // displays as a block instead of maintaining the paragraphs.
+    if (pCount !== 1)
+      throw new Error('user paragraphs were NOT collapsed into one block (bug not reproduced): pCount=' + pCount + ' html=' + JSON.stringify(html));
+    return 'user sent 3 paragraphs separated by single newlines; user bubble pCount=' + pCount +
+      ' innerText=' + JSON.stringify(String(innerText).replace(/\s+/g, ' ')) +
+      ' - the multi-paragraph message displays as ONE block';
+  }
+});
+
+scenarios.push({
   id: 222,
   name: 'Assistant responses whose paragraphs are separated by SINGLE newlines render as ONE block - chat-render.js md.render() never normalizes assistant content (unlike _prepUserContent for users), and markdown-it emits one <p> with soft breaks that CSS collapses to spaces, so a summarize-style response split into paragraphs by single newlines displays as a block of text',
   mode: 'sse-paragraphs',
