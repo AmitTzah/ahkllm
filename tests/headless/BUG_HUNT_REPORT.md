@@ -154,15 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 5: #225/#226 REFUTED by user
-  decision ("New Chat" intentionally starts fresh with the configured defaults; both
-  scenarios converted to regression checks). #227 FIXED: Main.ahk now resolves its
-  own window with `A_ScriptHwnd` (both prewarm + _spawnChatWindow), scenario 227
-  flipped to a regression check, new MainWindowHandle AHK tests added. Verified:
-  `--scenarios=227` PASS, full headless suite 221/221 PASS (incl. #120), `npm run
-  test:fast` green (606 AHK + 571 JS). Next: commit, close the entry in History.
+- **Where we left off:** 2026-08-13 - Bug hunt round 5 COMPLETE: #225/#226 refuted
+  (New Chat resets are expected; scenarios converted to regression checks), #227
+  fixed + committed (92e6ade) and closed in History. Final verification green:
+  full headless suite 221/221 PASS and `npm run test:fast` (606 AHK + 571 JS).
+  Next round: fresh intake when the user asks.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -213,28 +211,14 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 227. Settings saves (and all Main-bound IPC) are silently dropped when another AHK script's window shadows Main's own â€" Main resolves its hidden window with `WinExist("ahk_class AutoHotkey")` instead of `A_ScriptHwnd`
-
-**Scenario:** 227
-
-**Status:** fix applied
-
-**Repro:** Run the app while the user has any other AutoHotkey v2 script running (this machine runs `Volume_Scroll_Control.ahk`, `Scribblemate_taskpane_hotkeys.ahk`, `RandomSongChrome.ahk`, `QuickLauncher.ahk`). Open Settings, lower Trash Retention, save. Repeat until the window-enumeration order at Main startup picks another script's window.
-
-**Expected:** Main always receives the settings-updated notification and applies changes live (e.g. lowering Trash Retention purges expired trash immediately â€" bug #120's guarantee).
-
-**Actual:** `Main.ahk` passes `WinExist("ahk_class AutoHotkey")` â€" the first window of ANY AutoHotkey v2 script â€" as `mainScriptHiddenHwnd` to ChatWindow. With the user's own scripts running, that lookup can return THEIR window: instrumented runs showed Main's own `A_ScriptHwnd` = 55380772 but ChatWindow posted `WM_SETTINGS_UPDATED` to hwnd 198372 (the user's `Volume_Scroll_Control.ahk`, pid 6924). The message is silently dropped, so Main never reloads: the trash-retention purge hook, hotkey/icon/tray/suspend-banner live updates, the loading cursor, "Open Chat Window", "Reload Script" and "Show API Logs" IPC all silently stop working. Scenario 120 (trash-retention purge) fails intermittently as the observable symptom.
-
-**Evidence:** `Main.ahk` â€" `mainScriptHiddenHwnd := WinExist("ahk_class AutoHotkey")` in both the prewarm spawn and `_spawnChatWindow` (the fix is `A_ScriptHwnd`); `chat/callbacks/Dispatch.ahk` posts `notifySettingsUpdated(requestParams["mainScriptHiddenHwnd"])` with no error path for a wrong target.
-
-**Verification:** headless â€" live runs of scenario 120 fail ("trashed thread was NOT purged after saving retention 1") exactly when the misrouting occurs, and a passing run's debug log enumerated all five AutoHotkey windows (Main + the user's four scripts). Instrumented runs proved the mismatch: Main `A_ScriptHwnd`=55380772 vs posted hwnd=198372=`Volume_Scroll_Control.ahk`, and Main's settings-updated handler never logged. Scenario 227 is a static check (noApp) that PASSes while Main.ahk resolves the handle via the ambiguous class lookup and Dispatch posts to that value.
+*No open bugs.*
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-13 - "Settings saves (and all Main-bound IPC) are silently dropped when another AHK script's window shadows Main's own" - FIXED + COMMITTED in 92e6ade: fix(main): Main.ahk now resolves its own window with A_ScriptHwnd in the prewarm spawn and _spawnChatWindow (was the ambiguous WinExist("ahk_class AutoHotkey") class lookup, which could return one of the user's other AHK scripts' windows). Scenario 227 flipped to a regression check + new MainWindowHandle AHK unit tests; full headless suite 221/221 PASS and test:fast green (606 AHK + 571 JS).
 - 2026-08-13 - "Sidebar New Chat discards right-rail selections made before the first message" - REFUTED: clicking New Chat is explicitly "start fresh with the configured defaults" (user-confirmed expected behavior), so pre-send selections are reset by design. Scenario 226 kept as a regression check (regression: true) guarding the reset behavior.
 - 2026-08-13 - "Sidebar New Chat drops the pre-send font-size adjustment" - REFUTED: a new chat intentionally starts at the configured default font (user-confirmed expected behavior). Scenario 225 kept as a regression check (regression: true) guarding the reset behavior.
 
