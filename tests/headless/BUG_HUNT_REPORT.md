@@ -154,13 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 1 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4 COMPLETE: all six open bugs
-  (#219-#224) fixed and committed (one commit per root cause: #219, #220, #221+#223,
-  #222+#224 - the pairs share a root cause). Final verification green: `npm run
-  test:fast` (AHK + 571 JS tests) and the FULL headless suite (218/218 scenarios PASS,
-  `--all`). Entries closed in History below. Next round: fresh intake when the user asks.
+- **Where we left off:** 2026-08-13 - Bug hunt round 5 INTAKE: verified #226 (sidebar
+  New Chat discards pre-send right-rail selections), scenario 226 PASS headlessly.
+  Root cause: `_HandleThreadAction`'s newChat case unconditionally resets
+  requestParams, unlike the #212 fix on the first-send auto-create path. Next:
+  user picks the highest-ranked verified bug for the fix cycle.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -211,7 +211,22 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-*No open bugs.*
+
+### 226. Sidebar "New Chat" discards right-rail selections made before the first message (assistant/model/system prompt/temperature â€" mirror of #212 on the newChat path)
+
+**Scenario:** 226
+
+**Status:** verified
+
+**Repro:** In a fresh session (no thread yet), pick a model and type a system prompt in the right rail, then click "New Chat" in the sidebar, then send the first message.
+
+**Expected:** the first request uses the selected model and system prompt â€" same as the auto-create path since bug #212 (`handleChatSend` only applies the new-chat default when `_RequestParamsAreDefault()`).
+
+**Actual:** the `newChat` case unconditionally calls `_resetToDefaultSettings()` + `_applyNewChatDefault()`, wiping the pre-send right-rail selections and replacing them with the "New Chats Start With" default (e.g. the `isDefault`-marked assistant), so the first request carries the default's model/system message instead of what the user chose.
+
+**Evidence:** `chat/callbacks/Message.ahk` (`_HandleThreadAction` "newChat": `_resetToDefaultSettings()` then `_applyNewChatDefault()`) vs `chat/callbacks/Message.ahk` `handleChatSend`'s `if _RequestParamsAreDefault()` guard (bug #212 fix). Same class as #212/#213 but on the sidebar New Chat path.
+
+**Verification:** headless â€" scenario 226 set `openai/gpt-5-mini` + a unique system prompt via the right rail with no thread, clicked `#new-chat-btn`, sent a message, and inspected the mock server's request: the sent model was the default assistant's and the pre-send system prompt was absent (PASS = bug reproduced).
 
 ## History (append-only)
 

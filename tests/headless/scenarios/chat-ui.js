@@ -1056,4 +1056,46 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 226,
+  name: "Sidebar New Chat discards right-rail selections made before the first message - the newChat case unconditionally runs _resetToDefaultSettings()+_applyNewChatDefault(), unlike handleChatSend's auto-create path fixed in bug #212, so a pre-send model/system prompt never reaches the first request",
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.getElementById("modelCardTrigger") !== null && window.activeThreadId === ""', 15000, 300, 'fresh empty chat');
+    // Pick a NON-default model + typed system prompt in the right rail while
+    // NO thread exists (the exact pre-send state bug #212 fixed on the send
+    // path; here the chat is started with the sidebar New Chat button).
+    await cdp.eval(`(() => {
+      Ipc.postToHost('updateModelSettings', {
+        model: 'openai/gpt-5-mini',
+        systemMessage: 'PRE-SEND SYSTEM PROMPT 226',
+        reasoning: '', temperature: '', codeExecution: false, webSearch: false
+      });
+      return true;
+    })()`);
+    await sleep(800);
+    const picked = await cdp.eval('({ model: window._currentSettings.model, sys: window._currentSettings.systemMessage })');
+    if (picked.model !== 'openai/gpt-5-mini')
+      throw new Error('setup: right-rail model pick did not land: ' + JSON.stringify(picked));
+    await cdp.click('#new-chat-btn');
+    await cdp.waitFor('window.activeThreadId !== ""', 15000, 300, 'new thread created');
+    await sleep(700);
+    await sendChatMessage(cdp, 'first message after new chat');
+    await waitStreamingIdle(cdp, 30000);
+    const lines = fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean);
+    const last = JSON.parse(lines[lines.length - 1]);
+    const sentModel = last.body.model;
+    const sysMsgs = (last.body.messages || []).filter(function(m) { return m.role === 'system'; })
+      .map(function(m) { return m.content; });
+    // BUG: the first request uses the default (assistant) model and never
+    // carries the pre-send selection.
+    if (sentModel === 'gpt-5-mini' || sysMsgs.some(function(s) { return String(s).indexOf('PRE-SEND SYSTEM PROMPT 226') >= 0; }))
+      throw new Error('bug not reproduced: the pre-send selection survived New Chat (model=' + sentModel + ')');
+    return 'picked openai/gpt-5-mini + system prompt pre-send, clicked New Chat, sent: request used model=' + sentModel +
+      ' system=' + JSON.stringify(sysMsgs) + ' - the pre-send selection was discarded';
+  }
+});
+
 module.exports = scenarios;
