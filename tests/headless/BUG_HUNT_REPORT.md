@@ -156,15 +156,11 @@ How to run AHK safely:
 
 - **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bugs #222 + #224 FIXED + committed in ONE commit
-  (same root cause): markdown-it now renders soft breaks (single newlines) as `<br>`
-  (breaks:true), `_prepUserContent` is reduced to CRLF/CR -> LF normalization (the old
-  3+ newline `<br>` injection was escaped into literal text by html:false), and assistant
-  content runs through the same normalization as user content - paragraph breaks in
-  both bubbles stay visible. Scenarios 222 + 224 flipped to regression checks +
-  main/chat-render unit tests (including a REAL markdown-it rendering test). All 6 open
-  bugs from round 4 are now fixed and committed; remaining: final full-suite verification
-  (`npm run test:fast` + FULL headless `--all`) and the History bookkeeping commit.
+- **Where we left off:** 2026-08-13 - Bug hunt round 4 COMPLETE: all six open bugs
+  (#219-#224) fixed and committed (one commit per root cause: #219, #220, #221+#223,
+  #222+#224 - the pairs share a root cause). Final verification green: `npm run
+  test:fast` (AHK + 571 JS tests) and the FULL headless suite (218/218 scenarios PASS,
+  `--all`). Entries closed in History below. Next round: fresh intake when the user asks.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -222,6 +218,12 @@ one at a time, in rank order.
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
 
+- 2026-08-13 - "User message bubbles also collapse single-newline paragraphs (mirror of #222)" - FIXED + COMMITTED in 9c84ddb: fix(chat): keep single-newline paragraph breaks visible in assistant and user bubbles (bugs #222 + #224). Scenario 224 flipped to a regression check + main/chat-render unit tests (real markdown-it breaks:true rendering test).
+- 2026-08-13 - "Summarize-style responses with single-newline paragraphs render as one block" - FIXED + COMMITTED in 9c84ddb: fix(chat): keep single-newline paragraph breaks visible in assistant and user bubbles (bugs #222 + #224). Scenario 222 flipped to a regression check + main/chat-render unit tests.
+- 2026-08-13 - "Two quick chat-mode commands leak the first request's temp files (Bearer key stays in %TEMP%)" - FIXED + COMMITTED in 99c1546: fix(stream): give every in-flight request its own stream state so concurrent chat-mode commands both complete and clean up (bugs #221 + #223). Scenario 223 flipped to a regression check + StreamHandler/stream-state unit tests.
+- 2026-08-13 - "Two quick chat-mode commands lose the first command's response (shared stream state clobbered)" - FIXED + COMMITTED in 99c1546: fix(stream): give every in-flight request its own stream state so concurrent chat-mode commands both complete and clean up (bugs #221 + #223). Scenario 221 flipped to a regression check + StreamHandler/stream-state unit tests.
+- 2026-08-13 - "Folder-delete confirmation double-escapes the folder name" - FIXED + COMMITTED in 1ce7dc2: fix(chat): pass the raw folder name to the delete confirmation (bug #220). Scenario 220 flipped to a regression check + chat-sidebar unit test.
+- 2026-08-13 - "Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)" - FIXED + COMMITTED in 37808c3: fix(stream): surface mid-stream SSE error events cleanly and un-wedge the composer (bug #219). Scenario 219 flipped to a regression check + StreamHandler/chat-input unit tests.
 - 2026-08-13 - "Switching threads mid-stream leaves a mismatched composer state (Enter can send a second request)" - FIXED + COMMITTED in 27e6d9d: fix(chat): keep the composer in Stop mode after switching threads mid-stream (bug #218). Scenario 218 flipped to a regression check + chat-core/chat-input unit tests.
 - 2026-08-13 - "Deleting another message's attachment while editing defers the wrong attachment to the edit commit" - FIXED + COMMITTED in 23ab4c0: fix(chat): scope deferred attachment deletes to the edited message (bug #217). Scenario 217 flipped to a regression check + chat-attachments-setup unit tests.
 - 2026-08-13 - "A failed retry restores the removed messages into whatever thread is currently visible" - FIXED + COMMITTED in 4cf2256: fix(chat): scope the failed-retry message restore to the retry thread (bug #216). Scenario 216 flipped to a regression check + chat-input/stream unit tests.
