@@ -1098,4 +1098,36 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 225,
+  name: "Sidebar New Chat drops the pre-send font-size adjustment - _HandleThreadAction's newChat case calls _resetToDefaultSettings() which deletes requestParams[\"fontSize\"], then saves the GLOBAL default (responseWindowFontSize) instead of the user's bumped size, unlike the first-send auto-create path fixed in bug #213",
+  mode: null,
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.getElementById("font-size-display") !== null && window.activeThreadId === ""', 15000, 300, 'fresh empty chat');
+    // Bump the font size while NO thread exists (same pre-send state as
+    // scenario 213, but this time start the chat via the sidebar New Chat
+    // button instead of sending the first message).
+    await cdp.click('#btn-font-inc');
+    await sleep(500);
+    const before = await cdp.eval('document.getElementById("font-size-display").textContent');
+    if (before !== '18px')
+      throw new Error('setup: font + did not bump the display to 18px: ' + JSON.stringify(before));
+    await cdp.click('#new-chat-btn');
+    await cdp.waitFor('window.activeThreadId !== ""', 15000, 300, 'new thread created');
+    await sleep(700);
+    const after = await cdp.eval('document.getElementById("font-size-display").textContent');
+    const threadId = await cdp.eval('window.activeThreadId');
+    const rows = seed.query(dbPath, 'SELECT font_size FROM chat_threads WHERE id=?', [threadId]);
+    const savedFont = rows.length ? Number(rows[0].font_size) : -1;
+    // BUG: the pre-send 18px adjustment is dropped - the new thread is saved
+    // with the global default (17px) and the display snaps back to 17px.
+    if (after !== '17px' || savedFont !== 17)
+      throw new Error('bug not reproduced (pre-send font size survived New Chat): display=' + JSON.stringify(after) + ' db=' + savedFont);
+    return 'bumped the font to 18px pre-send, clicked New Chat: thread ' + threadId + ' saved font_size=' + savedFont +
+      ' and the display reset to ' + after + ' - the pre-send 18px adjustment was dropped';
+  }
+});
+
 module.exports = scenarios;
