@@ -141,6 +141,7 @@ RegisterTestClass(className) {
 #Include unit\InputWindow.test.ahk
 #Include unit\ThreadTitleGen.test.ahk
 #Include unit\ChatDispatch.test.ahk
+#Include unit\MainWindowHandle.test.ahk
 #Include unit\CommandThinkingMap.test.ahk
 
 ; -----------------------------------------------------------

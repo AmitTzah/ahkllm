@@ -154,16 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 1 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-13 - Bug hunt round 5: #225/#226 REFUTED by user
   decision ("New Chat" intentionally starts fresh with the configured defaults; both
-  scenarios converted to regression checks). VERIFIED #227: Main.ahk resolves its own
-  hidden window via `WinExist("ahk_class AutoHotkey")` (matches ANY AHK v2 script
-  window), so with the user's other scripts running, ChatWindow's settings-updated/
-  loading/reload IPC is posted to the wrong process and silently dropped (scenario
-  120 fails intermittently as the symptom; scenario 227 static check PASSes). Next:
-  user picks #227 for the fix cycle (replace the class lookup with `A_ScriptHwnd`).
+  scenarios converted to regression checks). #227 FIXED: Main.ahk now resolves its
+  own window with `A_ScriptHwnd` (both prewarm + _spawnChatWindow), scenario 227
+  flipped to a regression check, new MainWindowHandle AHK tests added. Verified:
+  `--scenarios=227` PASS, full headless suite 221/221 PASS (incl. #120), `npm run
+  test:fast` green (606 AHK + 571 JS). Next: commit, close the entry in History.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -219,7 +218,7 @@ one at a time, in rank order.
 
 **Scenario:** 227
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Run the app while the user has any other AutoHotkey v2 script running (this machine runs `Volume_Scroll_Control.ahk`, `Scribblemate_taskpane_hotkeys.ahk`, `RandomSongChrome.ahk`, `QuickLauncher.ahk`). Open Settings, lower Trash Retention, save. Repeat until the window-enumeration order at Main startup picks another script's window.
 

@@ -77,7 +77,12 @@ global chatWindowhWnd := 0
 
 ; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
 ; The "prewarm" arg tells ChatWindow to stay hidden after init
-mainScriptHiddenHwnd := WinExist("ahk_class AutoHotkey")
+; Bug #227: resolve Main's OWN script window, not just "any AutoHotkey v2
+; script window" - the user may run other AHK scripts, and WinExist on the
+; class alone can return one of THEIR windows, so ChatWindow's settings-
+; updated/loading/reload IPC would be posted to the wrong process and
+; silently dropped.
+mainScriptHiddenHwnd := A_ScriptHwnd
 Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , "Hide", &chatWindowPID)
 
 ; ----------------------------------------------------
@@ -86,7 +91,8 @@ Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ah
 
 _spawnChatWindow(threadId := "") {
     global chatWindowPID
-    mainScriptHiddenHwnd := WinExist("ahk_class AutoHotkey")
+    ; Bug #227: same as the prewarm spawn - A_ScriptHwnd is Main's own window.
+    mainScriptHiddenHwnd := A_ScriptHwnd
     if threadId
         Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, threadId), , , &chatWindowPID)
     else

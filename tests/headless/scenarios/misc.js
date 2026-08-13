@@ -1663,27 +1663,25 @@ scenarios.push({
 
 scenarios.push({
   id: 227,
-  name: "Main.ahk resolves its own hidden window with WinExist(\"ahk_class AutoHotkey\") - with ANY other AHK v2 script running, that class lookup can return ANOTHER script's window, so ChatWindow's settings-updated/loading/reload IPC is posted to the wrong process and silently dropped (observed: posted to the user's Volume_Scroll_Control.ahk instead of Main; scenario 120 fails intermittently as the symptom)",
+  name: "Main.ahk resolves its own hidden window with A_ScriptHwnd (fixed #227): the ambiguous WinExist(\"ahk_class AutoHotkey\") class lookup - which could return another AHK script's window and silently drop ChatWindow's settings-updated/loading/reload IPC - must not be used for mainScriptHiddenHwnd",
+  regression: true,
   mode: null,
   noApp: true,
   async body() {
     const mainAhk = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
-    // BUG: the main-script window handle is resolved by CLASS, which matches
-    // every AHK v2 script window (this machine runs 4 of the user's own
-    // scripts). When the enumeration lands on one of them, every
-    // CustomMessages post from ChatWindow is delivered to that unrelated
-    // script and silently dropped.
+    // FIXED: Main must pass ITS OWN script window (A_ScriptHwnd), never a
+    // class-lookup result that can match the user's other AHK scripts.
     const usesClassLookup = /mainScriptHiddenHwnd\s*:=\s*WinExist\("ahk_class AutoHotkey"\)/.test(mainAhk);
-    const usesOwnHwnd = /mainScriptHiddenHwnd\s*:=\s*A_ScriptHwnd/.test(mainAhk);
-    if (!usesClassLookup || usesOwnHwnd)
-      throw new Error('bug not present: mainScriptHiddenHwnd no longer uses the ambiguous WinExist("ahk_class AutoHotkey") lookup');
-    // The passed handle is what ChatWindow posts settings-updated/loading
-    // notifications to - a wrong value is silently dropped (no error path).
+    const usesOwnHwnd = (mainAhk.match(/mainScriptHiddenHwnd\s*:=\s*A_ScriptHwnd/g) || []).length;
+    if (usesClassLookup)
+      throw new Error('regression: mainScriptHiddenHwnd still uses the ambiguous WinExist("ahk_class AutoHotkey") lookup (bug #227 not fixed)');
+    if (usesOwnHwnd !== 2)
+      throw new Error('regression: expected BOTH mainScriptHiddenHwnd resolutions (prewarm + _spawnChatWindow) to use A_ScriptHwnd, found ' + usesOwnHwnd);
     const dispatch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'callbacks', 'Dispatch.ahk'), 'utf8');
     const postsToPassedHwnd = /CustomMessages\.notifySettingsUpdated\(requestParams\["mainScriptHiddenHwnd"\]\)/.test(dispatch);
     if (!postsToPassedHwnd)
-      throw new Error('Dispatch.ahk no longer posts settings-updated to the passed mainScriptHiddenHwnd');
-    return 'Main.ahk resolves mainScriptHiddenHwnd via WinExist("ahk_class AutoHotkey") (matches ANY AHK script window) and Dispatch posts settings-updated to that value - with other AHK scripts running, the message can be posted to the wrong process and silently dropped';
+      throw new Error('regression: Dispatch.ahk no longer posts settings-updated to the passed mainScriptHiddenHwnd');
+    return 'Main.ahk resolves mainScriptHiddenHwnd with A_ScriptHwnd in both the prewarm spawn and _spawnChatWindow (no ambiguous class lookup), and Dispatch posts settings-updated to that value - the IPC always targets Main itself';
   }
 });
 
