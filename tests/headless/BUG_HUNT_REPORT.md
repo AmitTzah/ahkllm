@@ -162,7 +162,11 @@ How to run AHK safely:
   double-escapes the folder name; #221 = two quick chat-mode commands lose the first response;
   #222 = single-newline paragraph breaks render as one block; #223 = the #221 race leaks the
   first request's Bearer-key temp files; #224 = user bubbles collapse single-newline paragraphs
-  (mirror of #222). No fixes started yet.
+  (mirror of #222). Full verification pass: `npm run test:fast` green (560/560: IPC contract,
+  AHK load, SQL interpolation, AHK + JS unit suites) and the FULL headless suite green
+  (218/218 scenarios PASS, `--all`); two stale-harness setup flakes fixed along the way
+  (scenario 175 sandbox missing initChatMode's setChatButtonsEnabled stub, scenario 195 switch
+  not waiting for B's initChatMode). No fixes started yet.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
