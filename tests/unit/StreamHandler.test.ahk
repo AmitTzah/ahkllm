@@ -536,7 +536,9 @@ class StreamHandlerTest {
         finalizePos := InStr(src, "_finalizeStreaming() {")
         if !finalizePos
             throw Error("_finalizeStreaming not found in StreamHandler.ahk")
-        block := SubStr(src, finalizePos, 1500)
+        ; The window is generous because the bug #219 mid-stream-error branch
+        ; sits between the cancel branch and the empty-content branch.
+        block := SubStr(src, finalizePos, 2200)
         cancelPos := InStr(block, "_handleStreamCancelled()")
         errorPos := InStr(block, "_handleStreamError()")
         if !cancelPos || !errorPos || cancelPos > errorPos
@@ -576,7 +578,9 @@ class StreamHandlerTest {
         sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"
         se := FileRead(sePath)
         errorIdx := InStr(se, "_handleStreamError() {")
-        errorBlock := SubStr(se, errorIdx, 2600)
+        ; The window is generous because the bug #219 last-SSE-event error
+        ; extraction sits between the file reads and the cleanup.
+        errorBlock := SubStr(se, errorIdx, 3400)
         if !InStr(errorBlock, "deleteTempFiles()")
             throw Error("_handleStreamError must delete temp files (bug #110)")
         cancelIdx := InStr(se, "_handleStreamCancelled() {")
@@ -624,5 +628,54 @@ class StreamHandlerTest {
         ; DB-audit probe without the chat-process modules).
         if !InStr(block, "pendingRetrySiblingGroup") || !InStr(block, "pendingRetryIsRoot") || !InStr(block, "Delete(")
             throw Error("_BuildAndFireRequest must clear pending retry state when the request fails to build (bug #211)")
+    }
+
+    ; Regression (bug #219): a real OpenAI-style SSE error event
+    ; (`data: {"error": {"message": ...}}`) is valid JSON WITHOUT a "choices"
+    ; key - the old parsed["choices"] Map index THREW in AHK v2 and crashed
+    ; the poll. ParseLine must surface the provider message as an "error"
+    ; chunk instead.
+    SSEParser_ErrorEvent_ReturnsErrorChunk() {
+        result := SSEParser.ParseLine('data: {"error":{"message":"upstream exploded (mock)"}}')
+        if result.type != "error"
+            throw Error("expected type='error', got '" result.type "'")
+        if result.message != "upstream exploded (mock)"
+            throw Error("expected provider message, got '" result.message "'")
+    }
+
+    ; Regression (bug #219): valid JSON with NEITHER "choices" NOR "error"
+    ; (e.g. a provider keepalive/ping object) must be ignored, not crash.
+    SSEParser_MissingChoicesNoError_ReturnsIgnore() {
+        result := SSEParser.ParseLine('data: {"foo":"bar"}')
+        if result.type != "ignore"
+            throw Error("expected type='ignore', got '" result.type "'")
+    }
+
+    ; Regression (bug #219): the poll's chunk processor must remember the
+    ; error message so finalization can surface it and keep the partial.
+    ProcessChunk_ErrorEvent_StoresErrorMessage() {
+        state := {outputFile: "", lastPos: 0, content: "", reasoning: "", modelName: "", firstTokenTime: 0, usage: {}, providerKey: "deepseek", rawSseChunks: "", rawLastResponse: "", pendingLine: "", errorMessage: ""}
+        _processChunk(state, { type: "error", message: "upstream exploded (mock)" }, false)
+        if state.errorMessage != "upstream exploded (mock)"
+            throw Error("error event must be stored in state.errorMessage (bug #219), got '" state.errorMessage "'")
+    }
+
+    ; Regression (bug #219): _finalizeStreaming must handle a mid-stream error
+    ; event BEFORE the empty-content branch (which would misreport it as a
+    ; connection failure and drop the partial response).
+    FinalizeStreaming_ChecksMidStreamErrorBeforeEmptyContent() {
+        srcPath := A_ScriptDir "\..\chat\streaming\StreamHandler.ahk"
+        src := FileRead(srcPath)
+        finalizePos := InStr(src, "_finalizeStreaming() {")
+        if !finalizePos
+            throw Error("_finalizeStreaming not found in StreamHandler.ahk")
+        block := SubStr(src, finalizePos, 2200)
+        errorPos := InStr(block, "_handleMidStreamError()")
+        emptyPos := InStr(block, "_handleStreamError()")
+        cancelPos := InStr(block, "_handleStreamCancelled()")
+        if !errorPos || !emptyPos || errorPos > emptyPos
+            throw Error("_finalizeStreaming must check _streamErrorMessage before the empty-content error branch (bug #219): midStreamErrorPos=" errorPos " emptyErrorPos=" emptyPos)
+        if !cancelPos || cancelPos > errorPos
+            throw Error("_finalizeStreaming must keep the cancelled check before the error branch (bug #56/#219): cancelPos=" cancelPos " midStreamErrorPos=" errorPos)
     }
 }

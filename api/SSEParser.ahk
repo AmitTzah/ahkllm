@@ -26,6 +26,20 @@ class SSEParser {
             return { type: "ignore" }
         }
 
+        ; Bug #219: a real OpenAI-style SSE error event (`data: {"error": ...}`)
+        ; is valid JSON WITHOUT a "choices" key - bracket-indexing a Map for a
+        ; missing key THROWS in AHK v2 and crashed the poll. Surface the
+        ; provider message as an "error" chunk so the stream fails cleanly
+        ; (error surfaced, partial content kept) instead of dying with an
+        ; internal parser error.
+        if parsed.Has("error") && IsObject(parsed["error"]) && parsed["error"].Has("message") && parsed["error"]["message"] != "" {
+            return { type: "error", message: parsed["error"]["message"] }
+        }
+
+        if !parsed.Has("choices") {
+            return SSEParser._handleUsageOnlyChunk(parsed)
+        }
+
         choices := parsed["choices"]
         if !choices || choices.Length = 0 {
             return SSEParser._handleUsageOnlyChunk(parsed)

@@ -100,6 +100,20 @@ function setChatButtonsEnabled(enabled) {
   }
   if (input) input.disabled = !enabled;
   if (enabled) {
+    // Bug #219: re-enabling the composer is the "no request in flight"
+    // signal, so it must fully reset the stream state. Before this fix, a
+    // mid-stream provider error (real SSE `data: {"error": ...}` event) only
+    // posted setChatButtonsEnabled(true) - isLoading cleared but
+    // streamState.active stayed true, leaving the Send button wired to Stop
+    // and every subsequent Send swallowed as cancelStream until reload.
+    if (typeof streamState !== 'undefined') {
+      streamState.active = false;
+      streamState.bubble = null;
+      streamState.contentDiv = null;
+      streamState.thinkingDetails = null;
+      streamState.contentBuffer = '';
+      streamState.thinkingBuffer = '';
+    }
     // Bug #215: enabling the composer means no request is in flight, so any
     // visible loading dots must clear. This matters when a stream completes
     // (or fails/cancels) while a DIFFERENT thread is visible: onStreamDone is

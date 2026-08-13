@@ -154,19 +154,16 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 6 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 5 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#224 VERIFIED headlessly
-  (scenarios 219-224 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
-  error event crashes the parser and wedges the composer; #220 = folder-delete confirm
-  double-escapes the folder name; #221 = two quick chat-mode commands lose the first response;
-  #222 = single-newline paragraph breaks render as one block; #223 = the #221 race leaks the
-  first request's Bearer-key temp files; #224 = user bubbles collapse single-newline paragraphs
-  (mirror of #222). Full verification pass: `npm run test:fast` green (560/560: IPC contract,
-  AHK load, SQL interpolation, AHK + JS unit suites) and the FULL headless suite green
-  (218/218 scenarios PASS, `--all`); two stale-harness setup flakes fixed along the way
-  (scenario 175 sandbox missing initChatMode's setChatButtonsEnabled stub, scenario 195 switch
-  not waiting for B's initChatMode). No fixes started yet.
+- **Where we left off:** 2026-08-13 - Bug #219 FIXED + committed: SSEParser now surfaces a
+  real SSE error event as an "error" chunk (no more Map "choices" crash), the mid-stream
+  error path keeps the partial response + posts streamCancelled, the provider message is
+  extracted from the last `data:` event, and setChatButtonsEnabled(true) fully resets the
+  WebView stream state (composer un-wedges; the next Send works). Scenario 219 flipped +
+  StreamHandler/chat-input regression tests; `npm run test:fast` green (AHK 604/604, JS
+  561/561) and the FULL headless suite green (218/218). Next: fix #220 (folder-delete
+  confirm double-escape), still in rank order, one commit per bug.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -217,34 +214,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response) · 4 = #222 (single-newline paragraphs render as one block) · 5 = #223 (two-command race leaks the Bearer-key temp files) · 6 = #224 (user bubble collapses single-newline paragraphs)
-
-### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
-
-**Scenario:** 219 (scenario code in e2e-suite.js)
-
-**Status:** verified — open (rank 1)
-
-**Repro:** Send a chat message against an upstream that streams a few content tokens and then fails mid-flight with a real OpenAI-style SSE error event
-(`data: {"error":{"message":"..."}}`) before closing the stream.
-
-**Expected:** the stream fails cleanly — the error message is surfaced, the partial content is kept (or at least the UI returns to a usable Send state),
-and the next Send works.
-
-**Actual:** `SSEParser.ParseLine` does `parsed["choices"]` on the JSON-parsed Map, and a Map index for a missing key THROWS in AHK v2. The error event (valid
-JSON, no `choices` key) crashes the poll timer, `_finalizeStreaming` re-reads the same bytes (the read state was never written back) and crashes again, so
-the user sees an internal parser error (`Request failed: Item has no value.` — verified) instead of the provider message. The partial streamed content is
-never persisted (the `_streamContent` buffer was not flushed back to requestParams), and the WebView's `streamState.active` is never cleared (no
-`streamDone`/`streamCancelled` is posted), so the composer stays in Stop mode and every subsequent Send is swallowed as `cancelStream` until the chat
-window reloads.
-
-**Evidence:** `api/SSEParser.ahk` `ParseLine` indexes `parsed["choices"]` without a guard; `_readAndProcessStream`/`_pollStreamTimer` only handle throws by
-finalizing; `chat/streaming/StreamHandler.ahk` `_finalizeStreaming` catch posts `showError` but no `streamCancelled`; `webui/js/chat/stream.js`
-`setChatButtonsEnabled(true)` does not reset `streamState.active`.
-
-**Verification:** headless PASS (2026-08-13) — new mock mode `sse-error-event` streams one content chunk then `data: {"error":...}` and ends; scenario 219
-sends a message through the real UI and observed: error banner `Request failed: Item has no value.`, `streamState.active=true` (composer wedged),
-`chatMessages=1` (user message only) and `assistantRowsInDb=0` — the partial answer is lost everywhere.
+1 = #220 (folder-delete confirm double-escapes the name) · 2 = #221 (quick chat-mode commands lose the first response) · 3 = #222 (single-newline paragraphs render as one block) · 4 = #223 (two-command race leaks the Bearer-key temp files) · 5 = #224 (user bubble collapses single-newline paragraphs)
 
 ### 220. Folder-delete confirmation double-escapes the folder name
 

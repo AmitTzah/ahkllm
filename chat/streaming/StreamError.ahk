@@ -34,7 +34,17 @@ _handleStreamError() {
     if FileExist(requestParams["_streamOutputFile"]) {
         rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
         debugLog("[STREAM] Error — output: " SubStr(rawOutput, 1, 500))
-        errMsg := _extractErrorMsg(rawOutput)
+        ; Bug #219: a mid-stream SSE error event's message lives in the LAST
+        ; `data:` JSON event (tracked by the stream reader as
+        ; _streamRawLastResponse) - the output FILE holds multiple SSE events,
+        ; so jsongo.Parse on the whole file fails and the provider message
+        ; would be lost. Try the last event first, then the whole file (the
+        ; non-streaming JSON error bodies still parse as a whole).
+        lastEvent := requestParams.Has("_streamRawLastResponse") ? requestParams["_streamRawLastResponse"] : ""
+        if lastEvent
+            errMsg := _extractErrorMsg(lastEvent)
+        if !errMsg
+            errMsg := _extractErrorMsg(rawOutput)
     }
 
     ; Surface the failure and re-enable the UI regardless of whether the
@@ -81,6 +91,56 @@ _handleStreamError() {
     }
 }
 
+; Persist a partial streamed response (user cancel or mid-stream error) into
+; the thread that SENT the request, using the parent/retry metadata captured
+; at send time (same semantics as the completion path - bugs #159/#197/#205).
+; Returns the dbMsg payload for the streamCancelled post ("" when there is
+; nothing to persist or no thread). Shared by _handleStreamCancelled and the
+; bug #219 mid-stream error path.
+_persistPartialStreamContent() {
+    content := requestParams.Has("_streamContent") ? requestParams["_streamContent"] : ""
+    reasoning := requestParams.Has("_streamReasoning") ? requestParams["_streamReasoning"] : ""
+    if !content && !reasoning
+        return ""
+    streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
+    if !streamThreadId
+        return ""
+    path := ChatDB.Msg_GetActivePath(streamThreadId)
+    ; Bug #205: mirror the completion path's root-retry handling. A retried
+    ; ROOT assistant (no parent) must insert the cancelled partial as a
+    ; SIBLING with parent_id NULL - never as a child of the original root.
+    isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
+    if isRootRetry
+        requestParams.Delete("pendingRetryIsRoot")
+    parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
+    if !isRootRetry && !parentId && path.Length
+        parentId := path[path.Length].id
+    retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
+    retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
+    if retrySiblingGroup
+        requestParams.Delete("pendingRetrySiblingGroup")
+    ChatDB.Msg_Insert({
+        thread_id: streamThreadId, role: "assistant",
+        content: content,
+        model: requestParams.Has("_streamModelName") && requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
+        parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
+        reasoning: reasoning,
+        ; Bug #133: a cancelled stream never reported usage - LOCAL row:
+        ; local_copy skips the chat_usage upsert + cumulative recompute.
+        local_copy: true,
+        token_count: 0,
+        thinking_tokens: 0,
+        cached_tokens: 0,
+        response_time_ms: 0
+    })
+    _maybeGenerateTitle(path, streamThreadId)
+    postThreadStats(streamThreadId)
+    streamPath := ChatDB.Msg_GetActivePath(streamThreadId)
+    if !streamPath.Length
+        return ""
+    return buildStructuredMessagesFromPath([streamPath[streamPath.Length]])[1]
+}
+
 _handleStreamCancelled() {
     try {
     contentLen := StrLen(requestParams.Has("_streamContent") ? requestParams["_streamContent"] : "")
@@ -114,7 +174,7 @@ _handleStreamCancelled() {
             model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
             parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
             reasoning: requestParams["_streamReasoning"],
-            ; Bug #133: cancelled stream never reported usage - LOCAL row:
+            ; Bug #133: a cancelled stream never reported usage - LOCAL row:
             ; local_copy skips the chat_usage upsert + cumulative recompute.
             local_copy: true,
             token_count: 0,

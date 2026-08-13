@@ -271,7 +271,8 @@ _StreamStateFromParams() {
         providerKey: requestParams["_streamProviderKey"],
         rawSseChunks: requestParams["_streamRawSseChunks"],
         rawLastResponse: requestParams["_streamRawLastResponse"],
-        pendingLine: requestParams["_streamPendingLine"]
+        pendingLine: requestParams["_streamPendingLine"],
+        errorMessage: requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
     }
 }
 
@@ -286,6 +287,11 @@ _ParamsFromStreamState(state) {
     requestParams["_streamRawSseChunks"] := state.rawSseChunks
     requestParams["_streamRawLastResponse"] := state.rawLastResponse
     requestParams["_streamPendingLine"] := state.pendingLine
+    if state.HasOwnProp("errorMessage") && state.errorMessage != "" {
+        requestParams["_streamErrorMessage"] := state.errorMessage
+    } else if requestParams.Has("_streamErrorMessage") {
+        requestParams.Delete("_streamErrorMessage")
+    }
 }
 
 _readFileChunk(state) {
@@ -440,6 +446,14 @@ _processChunk(state, chunk, doPostMessage) {
                 state.usage := chunk.usage
 
         case "done":
+
+        case "error":
+            ; Bug #219: a mid-stream provider error event (`data: {"error":
+            ; {"message":"..."}}`) - remember the message so finalization can
+            ; surface it and keep the partial content instead of crashing on
+            ; the missing "choices" key.
+            if chunk.HasOwnProp("message") && chunk.message != ""
+                state.errorMessage := chunk.message
     }
 }
 
@@ -463,6 +477,18 @@ _finalizeStreaming() {
             ; next send. The call is idempotent (_handleStreamCancelled also
             ; cleans up internally), but _finalizeStreaming must not rely on
             ; that transitive cleanup.
+            _cleanupStreamState()
+            return
+        }
+
+        ; Bug #219: a mid-stream SSE error event (`data: {"error": ...}`) is a
+        ; real provider failure AFTER partial tokens - surface the provider
+        ; message, persist the partial response (like a cancellation), and
+        ; post streamCancelled so the bubble finalizes and the composer is not
+        ; wedged in Stop mode. This must run BEFORE the empty-content error
+        ; branch so the partial is never misread as a connection failure.
+        if requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"] {
+            _handleMidStreamError()
             _cleanupStreamState()
             return
         }
@@ -512,6 +538,8 @@ _cleanupStreamState() {
         requestParams.Delete("_streamRawLastResponse")
     if requestParams.Has("_streamPendingLine")
         requestParams.Delete("_streamPendingLine")
+    if requestParams.Has("_streamErrorMessage")
+        requestParams.Delete("_streamErrorMessage")
     if requestParams.Has("_streamPollCount")
         requestParams.Delete("_streamPollCount")
     if requestParams.Has("_streamRequestStartTime")
@@ -547,6 +575,21 @@ _cleanupStreamState() {
         requestParams.Delete("pendingRetrySiblingGroup")
     if requestParams.Has("pendingRetryIsRoot")
         requestParams.Delete("pendingRetryIsRoot")
+}
+
+; Bug #219: a mid-stream SSE error event is a real provider failure after
+; partial tokens - keep the partial response (mirroring the cancel path) and
+; post streamCancelled so the WebView finalizes the bubble, then surface the
+; provider error via the standard error handler (which reads the cURL
+; output/stderr files, logs the failure, deletes the request's temp files,
+; and re-enables the UI). Order matters: streamCancelled first so the UI
+; finalizes the partial before setChatButtonsEnabled(true) resets the
+; composer.
+_handleMidStreamError() {
+    dbMsgData := _persistPartialStreamContent()
+    streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
+    postWebMessage("streamCancelled", { dbMsg: dbMsgData, threadId: streamThreadId })
+    _handleStreamError()
 }
 
 ; Bug #206: the API-log/error/cancel loggers must describe the REQUEST that

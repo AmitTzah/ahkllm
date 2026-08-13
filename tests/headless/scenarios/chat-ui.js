@@ -1005,6 +1005,7 @@ scenarios.push({
   id: 219,
   name: 'Mid-stream SSE error event (`data: {"error": ...}`) crashes SSEParser.ParseLine - parsed["choices"] throws on a Map without a "choices" key, so the partial streamed response is never persisted, the user sees an internal Key "choices" error, and streamState.active stays true: every subsequent Send is swallowed as cancelStream (the composer is wedged until reload)',
   mode: 'sse-error-event',
+  regression: true, // FIXED bug #219 kept as a regression check (provider error surfaced, partial kept, composer un-wedged)
   settings: {},
   async body({ cdp, dbPath }) {
     await sendChatMessage(cdp, 'trigger an upstream stream error');
@@ -1018,19 +1019,38 @@ scenarios.push({
     const uiMsgCount = await cdp.eval('chatMessages.length');
     const asstRows = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE role='assistant'");
     const partialInDb = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE content LIKE '%Partial answer%'");
-    // Buggy behavior (PASS = reproduced): the internal parser crash leaves
-    // streamState.active true - the composer stays in Stop mode and every
-    // subsequent send is swallowed as cancelStream. The partial stream is also
-    // lost (never persisted, never in chatMessages).
-    if (!stillActive)
-      throw new Error('streamState.active is false after the error event - composer not wedged (bug not reproduced): banner=' + JSON.stringify(banner));
-    const showsInternal = String(banner).indexOf('choices') >= 0;
+    // FIXED (bug #219): the provider's error message is surfaced (not an
+    // internal "choices"/"Item has no value" parser crash), the partial
+    // streamed content is persisted, and the composer is back in Send mode.
+    if (stillActive)
+      throw new Error('streamState.active is still true after the error event - composer wedged (bug #219 not fixed): banner=' + JSON.stringify(banner));
+    if (isLoadingNow)
+      throw new Error('isLoading is still true after the error event (bug #219 not fixed)');
+    const showsInternal = String(banner).indexOf('choices') >= 0 || String(banner).indexOf('Item has no value') >= 0;
+    if (showsInternal)
+      throw new Error('internal parser error still surfaced instead of the provider message (bug #219 not fixed): banner=' + JSON.stringify(banner));
+    if (String(banner).indexOf('upstream exploded (mock)') < 0)
+      throw new Error('provider error message not surfaced (bug #219 not fixed): banner=' + JSON.stringify(banner));
+    if (asstRows[0].cnt < 1 || partialInDb[0].cnt < 1)
+      throw new Error('partial streamed content was not persisted (bug #219 not fixed): assistantRows=' + asstRows[0].cnt + ' partialRows=' + partialInDb[0].cnt);
+    // The next Send must actually send (not be swallowed as cancelStream).
+    const uiCountBefore = await cdp.eval('chatMessages.length');
+    await sendChatMessage(cdp, 'follow-up after the error');
+    await sleep(800);
+    const posted = await cdp.eval('(window.__posted || []).slice()');
+    const chatSendPosted = posted.some((m) => String(m).indexOf('"chatSend"') >= 0 || String(m).indexOf('chatSend') >= 0);
+    const cancelPosted = posted.some((m) => String(m).indexOf('cancelStream') >= 0);
+    const uiCountAfter = await cdp.eval('chatMessages.length');
+    if (!chatSendPosted || cancelPosted || uiCountAfter <= uiCountBefore)
+      throw new Error('follow-up Send was swallowed as cancelStream (bug #219 not fixed): posted=' + JSON.stringify(posted));
+    // Let the follow-up settle (the mock errors again; the UI must return to
+    // Send mode once more).
+    await waitStreamingIdle(cdp, 25000);
     return 'banner=' + JSON.stringify(banner) +
       ' streamState.active=' + stillActive + ' isLoading=' + isLoadingNow +
       ' chatMessages=' + uiMsgCount + ' assistantRowsInDb=' + asstRows[0].cnt +
       ' partialRowsInDb=' + partialInDb[0].cnt +
-      (showsInternal ? ' (internal "choices" parser error surfaced)' : '') +
-      ' - the partial stream is lost and the composer stays in Stop mode (every Send becomes cancelStream)';
+      ' - provider error surfaced, partial kept, composer un-wedged, follow-up Send posted chatSend';
   }
 });
 

@@ -99,6 +99,27 @@ describe('onChatSend — payload construction', () => {
         assert.strictEqual(hidden, 1, 'enabling the composer must remove any visible loading dots');
     });
 
+    it('fully resets the stream state when the composer is enabled (bug #219)', () => {
+        const { ctx } = loadInputModule();
+        // A mid-stream provider error posts only setChatButtonsEnabled(true);
+        // the stale stream state used to keep the composer wedged in Stop mode.
+        ctx.streamState = {
+            active: true,
+            bubble: { dataset: {} },
+            contentDiv: {},
+            thinkingDetails: {},
+            contentBuffer: 'partial',
+            thinkingBuffer: 'thinking'
+        };
+        ctx.setChatButtonsEnabled(true);
+        assert.strictEqual(ctx.streamState.active, false, 'streamState.active must reset');
+        assert.strictEqual(ctx.streamState.bubble, null);
+        assert.strictEqual(ctx.streamState.contentDiv, null);
+        assert.strictEqual(ctx.streamState.thinkingDetails, null);
+        assert.strictEqual(ctx.streamState.contentBuffer, '');
+        assert.strictEqual(ctx.streamState.thinkingBuffer, '');
+    });
+
     it('does nothing when input is empty and there are no attachments (bug #77)', () => {
         const { ctx, postedMessages } = loadInputModule();
         ctx.isLoading = false;
