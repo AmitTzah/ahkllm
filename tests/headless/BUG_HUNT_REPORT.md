@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 1 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4 intake: bug #219 (mid-stream SSE error
-  event crashes the parser and wedges the composer) VERIFIED headlessly (scenario 219 PASS);
-  next: verify bug #220 (folder-delete confirm double-escape), then commit each verified bug
-  on branch bug-hunt-round4.
+- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219 (mid-stream SSE error event
+  crashes the parser and wedges the composer) and #220 (folder-delete confirm double-escapes
+  the folder name) VERIFIED headlessly (scenarios 219 + 220 PASS) and committed on branch
+  bug-hunt-round4; no fixes started yet (next step is a fix cycle when the user asks).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -238,6 +238,27 @@ finalizing; `chat/streaming/StreamHandler.ahk` `_finalizeStreaming` catch posts 
 **Verification:** headless PASS (2026-08-13) — new mock mode `sse-error-event` streams one content chunk then `data: {"error":...}` and ends; scenario 219
 sends a message through the real UI and observed: error banner `Request failed: Item has no value.`, `streamState.active=true` (composer wedged),
 `chatMessages=1` (user message only) and `assistantRowsInDb=0` — the partial answer is lost everywhere.
+
+### 220. Folder-delete confirmation double-escapes the folder name
+
+**Scenario:** 220 (scenario code in e2e-suite.js)
+
+**Status:** verified — open (rank 2)
+
+**Repro:** Create a folder whose name contains characters that HTML-escape (e.g. `A&B<C>`), then click the folder's trash button in the sidebar.
+
+**Expected:** the confirmation reads `Delete folder "A&B<C>"? Chats will become unfiled.`
+
+**Actual:** the name renders as HTML entities: `Delete folder "A&amp;B&lt;C&gt;"? ...` (verified — the DOM shows the escaped entities, not the raw
+characters). `_buildFolderSection` passes `'Delete folder "' + escHtml(folder.name) + '"?'` into `_showChatConfirm`, which escapes the whole message a
+second time (`escHtml(message)`), so the pre-escaped name is escaped again.
+
+**Evidence:** `webui/js/chat/chat-sidebar.js` `_buildFolderSection` (delete button) and `webui/js/chat/chat-core.js` `_showChatConfirm`
+(`escHtml(message)`); every other confirm call passes a plain string and is unaffected.
+
+**Verification:** headless PASS (2026-08-13) — scenario 220 seeds a folder named `A&B<C>` (with one thread in it), clicks the folder delete button
+through the real UI, and observed the confirm text `Delete folder "A&amp;B&lt;C&gt;"? Chats will become unfiled.` — the name displays as HTML entities
+instead of the raw characters.
 
 ## History (append-only)
 

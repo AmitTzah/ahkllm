@@ -2172,4 +2172,29 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 220,
+  name: 'Folder-delete confirmation double-escapes the folder name - _buildFolderSection passes escHtml(folder.name) into _showChatConfirm, which escapes the whole message again, so a folder named "A&B<C>" confirms as "A&amp;amp;B&amp;lt;C&amp;gt;" instead of showing the raw characters',
+  fixtures: {
+    folders: [{ id: 'f-220', name: 'A&B<C>' }],
+    threads: [{ id: 't-220', title: 'Thread in folder', folder_id: 'f-220' }]
+  },
+  async body({ cdp }) {
+    await cdp.waitFor('document.querySelector("#thread-list .folder") !== null', 15000, 300, 'folder section rendered');
+    await cdp.click('#thread-list .folder .folder-delete-btn');
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 10000, 200, 'confirm overlay');
+    const text = await cdp.text('#customConfirmOverlay');
+    // Buggy behavior (PASS = reproduced): the name arrives pre-escaped from
+    // _buildFolderSection and _showChatConfirm escapes it AGAIN, so the raw
+    // characters are replaced by their HTML entities in the visible message.
+    const doubleEscaped = String(text).indexOf('&amp;') >= 0;
+    if (!doubleEscaped)
+      throw new Error('folder name is not double-escaped in the confirm dialog: ' + JSON.stringify(text));
+    // Dismiss the dialog so the run ends in a clean state.
+    await cdp.click('#customConfirmOverlay .cancel-confirm-btn');
+    return 'confirm text: ' + JSON.stringify(String(text).replace(/\s+/g, ' ').trim()) +
+      ' - the folder name renders as HTML entities instead of "A&B<C>" (escHtml applied twice)';
+  }
+});
+
 module.exports = scenarios;
