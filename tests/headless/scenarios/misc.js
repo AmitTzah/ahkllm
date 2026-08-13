@@ -1661,6 +1661,32 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 227,
+  name: "Main.ahk resolves its own hidden window with WinExist(\"ahk_class AutoHotkey\") - with ANY other AHK v2 script running, that class lookup can return ANOTHER script's window, so ChatWindow's settings-updated/loading/reload IPC is posted to the wrong process and silently dropped (observed: posted to the user's Volume_Scroll_Control.ahk instead of Main; scenario 120 fails intermittently as the symptom)",
+  mode: null,
+  noApp: true,
+  async body() {
+    const mainAhk = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    // BUG: the main-script window handle is resolved by CLASS, which matches
+    // every AHK v2 script window (this machine runs 4 of the user's own
+    // scripts). When the enumeration lands on one of them, every
+    // CustomMessages post from ChatWindow is delivered to that unrelated
+    // script and silently dropped.
+    const usesClassLookup = /mainScriptHiddenHwnd\s*:=\s*WinExist\("ahk_class AutoHotkey"\)/.test(mainAhk);
+    const usesOwnHwnd = /mainScriptHiddenHwnd\s*:=\s*A_ScriptHwnd/.test(mainAhk);
+    if (!usesClassLookup || usesOwnHwnd)
+      throw new Error('bug not present: mainScriptHiddenHwnd no longer uses the ambiguous WinExist("ahk_class AutoHotkey") lookup');
+    // The passed handle is what ChatWindow posts settings-updated/loading
+    // notifications to - a wrong value is silently dropped (no error path).
+    const dispatch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'callbacks', 'Dispatch.ahk'), 'utf8');
+    const postsToPassedHwnd = /CustomMessages\.notifySettingsUpdated\(requestParams\["mainScriptHiddenHwnd"\]\)/.test(dispatch);
+    if (!postsToPassedHwnd)
+      throw new Error('Dispatch.ahk no longer posts settings-updated to the passed mainScriptHiddenHwnd');
+    return 'Main.ahk resolves mainScriptHiddenHwnd via WinExist("ahk_class AutoHotkey") (matches ANY AHK script window) and Dispatch posts settings-updated to that value - with other AHK scripts running, the message can be posted to the wrong process and silently dropped';
+  }
+});
+
 module.exports = scenarios;
 
 
