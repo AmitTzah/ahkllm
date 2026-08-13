@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 2 verified, 0 fix in progress, 4 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 1 verified, 0 fix in progress, 5 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #216 FIX APPLIED:
-  the failed-retry restore is scoped to the retry thread/path; scenario 216 flipped and PASSING;
-  fast suite green. Next: commit #216, then fix #217.
+- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #217 FIX APPLIED:
+  the delegated attachment-delete only defers the edited message's own attachments; scenario 217
+  flipped and PASSING; fast suite green. Next: commit #217, then close out the round.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -304,7 +304,7 @@ in A. Scenario PASS = bug reproduced.
 
 **Scenario:** 217 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Open the editor on message 1, then click the attachment "X" on message 2, then overwrite-commit
 message 1's edit.

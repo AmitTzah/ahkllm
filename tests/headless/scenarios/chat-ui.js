@@ -831,6 +831,7 @@ scenarios.push({
   id: 217,
   name: 'Deleting ANOTHER message\'s attachment while editing a message defers the wrong attachment to the edit commit - setupMessageAttachmentDeleteDelegation pushes any clicked attachment id into the GLOBAL _removedAttachmentIds (never checking it belongs to _editingMessageId), so overwrite-committing message 1\'s edit hard-deletes message 2\'s attachment row from the DB',
   mode: null,
+  regression: true, // FIXED bug #217 kept as a regression check (only the edited message's attachments defer)
   settings: {},
   fixtures: {
     threads: [{ id: 't-att-217', title: 'Attachment Edit', active_leaf_id: 'm-217-u2' }],
@@ -855,25 +856,31 @@ scenarios.push({
     await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Edit"]');
     await sleep(250);
     // While editing message 1, click the attachment X on message 2. The
-    // delegated handler defers it into the GLOBAL _removedAttachmentIds even
-    // though it belongs to a different message.
+    // delegated handler must scope the deferral to the edited message: an X
+    // on a different bubble is neither deferred nor deleted (bug #217).
     await cdp.click('#chat-messages .msg:nth-child(2) .msg-attachment-delete');
     await sleep(250);
     const removedList = await cdp.eval('JSON.stringify(window._removedAttachmentIds || [])');
-    if (String(removedList).indexOf('att-217-b') < 0)
-      throw new Error('setup: attachment delete was not deferred: ' + removedList);
+    if (String(removedList).indexOf('att-217-b') >= 0)
+      throw new Error('setup: another message\'s attachment was still deferred: ' + removedList);
     // Commit message 1's edit (overwrite).
     await cdp.click('#chat-messages .msg:nth-child(1) .save-overwrite');
     await sleep(900);
     const rows = seed.query(dbPath, "SELECT id, message_id FROM message_attachments ORDER BY id");
     const ids = rows.map((r) => r.id);
-    // BUG: message 2's attachment (att-217-b) was deleted from the DB even
-    // though only message 1 was edited.
-    if (ids.indexOf('att-217-b') >= 0)
-      throw new Error('message 2 attachment survived the edit commit (fix applied): ' + JSON.stringify(ids));
-    return 'edited message 1, clicked the X on message 2\'s attachment (deferred into _removedAttachmentIds=' + removedList +
-      '), then overwrite-committed: the DB now holds ' + JSON.stringify(ids) +
-      ' - message 2\'s attachment was hard-deleted by message 1\'s edit commit';
+    // FIXED (bug #217): the X on message 2's attachment is scoped out of the
+    // edit - it is neither deferred into _removedAttachmentIds nor deleted,
+    // so overwrite-committing message 1's edit leaves message 2's attachment
+    // row untouched.
+    if (String(removedList).indexOf('att-217-b') >= 0)
+      throw new Error('another message\'s attachment was still deferred into the edit (bug #217 not fixed): ' + removedList);
+    if (ids.indexOf('att-217-b') < 0)
+      throw new Error('message 2 attachment was deleted by message 1\'s edit commit (bug #217 not fixed): ' + JSON.stringify(ids));
+    if (ids.indexOf('att-217-a') < 0)
+      throw new Error('message 1 attachment unexpectedly deleted: ' + JSON.stringify(ids));
+    return 'edited message 1, clicked the X on message 2\'s attachment (deferred list stays ' + removedList +
+      '), then overwrite-committed: the DB still holds ' + JSON.stringify(ids) +
+      ' - only the edited message\'s attachments are affected by the edit';
   }
 });
 

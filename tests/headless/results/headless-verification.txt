@@ -1,5 +1,5 @@
-# 2026-08-13T09:52:43.261Z | run of 1 scenario(s)
-PASS | #216 | A failed retry restores the removed messages into WHATEVER thread is currently visible - restoreRetryMessagesOnError pushes _retryRemovedMessages (thread A's messages) into the global chatMessages array, so switching to thread B before the retry fails repaints A's assistant message into B's UI (the DB rows stay correct in A, the same class as bug #195 on the error path) | retried a1 in A, switched to B, then the retry failed: B's UI array is ["m-216-u1b:question for B"] (thread A's "first answer" is NOT in the visible thread B) while the DB row stays in ["t-retry-a-216"] - restoreRetryMessagesOnError is scoped to the retry thread | 7.4s
+# 2026-08-13T09:56:56.339Z | run of 1 scenario(s)
+PASS | #217 | Deleting ANOTHER message's attachment while editing a message defers the wrong attachment to the edit commit - setupMessageAttachmentDeleteDelegation pushes any clicked attachment id into the GLOBAL _removedAttachmentIds (never checking it belongs to _editingMessageId), so overwrite-committing message 1's edit hard-deletes message 2's attachment row from the DB | edited message 1, clicked the X on message 2's attachment (deferred list stays []), then overwrite-committed: the DB still holds ["att-217-a","att-217-b"] - only the edited message's attachments are affected by the edit | 6.5s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
