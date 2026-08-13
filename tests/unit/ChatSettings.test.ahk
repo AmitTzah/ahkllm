@@ -587,4 +587,66 @@ class ChatSettingsTest {
             requestParams := oldParams
         }
     }
+
+    ; Regression (bug #213): a font-size adjustment made BEFORE the first
+    ; message (no active thread yet) used to be dropped - handleUpdateFontSize
+    ; wrapped the whole persistence in `if activeThreadId`, so requestParams
+    ; never carried the size and the auto-created thread saved the default
+    ; 17px. The size must be stored in requestParams unconditionally so
+    ; _saveCurrentSettingsToThread persists it when the thread is created.
+    test_updateFontSize_beforeFirstMessage_survivesThreadCreate() {
+        global requestParams, activeThreadId
+
+        this._openDb()
+        oldParams := requestParams
+        oldActive := activeThreadId
+        activeThreadId := ""
+
+        try {
+            handleUpdateFontSize(jsongo.Parse('{"fontSize":18}'))
+
+            ; The adjustment must reach requestParams even with no thread.
+            if !requestParams.Has("fontSize") || requestParams["fontSize"] != 18
+                throw Error("font size was dropped without an active thread: '" (requestParams.Has("fontSize") ? requestParams["fontSize"] : "<missing>") "'")
+
+            ; Mirror handleChatSend's auto-create path: the thread is created
+            ; and _saveCurrentSettingsToThread persists current requestParams.
+            threadId := ChatDB.Thread_Create("Fresh Font Thread")
+            activeThreadId := threadId
+            _saveCurrentSettingsToThread(threadId)
+
+            saved := ChatDB.Thread_GetSettings(threadId)
+            if saved.fontSize != 18
+                throw Error("auto-created thread saved the default font size, got '" saved.fontSize "' expected 18")
+        } finally {
+            requestParams := oldParams
+            activeThreadId := oldActive
+            this._closeDb()
+        }
+    }
+
+    ; The active-thread path must keep persisting immediately (and the new
+    ; unconditional requestParams write must not break it).
+    test_updateFontSize_withActiveThread_persistsImmediately() {
+        global requestParams, activeThreadId
+
+        this._openDb()
+        oldParams := requestParams
+        oldActive := activeThreadId
+
+        try {
+            threadId := ChatDB.Thread_Create("Active Font Thread")
+            activeThreadId := threadId
+            handleUpdateFontSize(jsongo.Parse('{"fontSize":20}'))
+            saved := ChatDB.Thread_GetSettings(threadId)
+            if saved.fontSize != 20
+                throw Error("active-thread font size was not persisted, got '" saved.fontSize "' expected 20")
+            if !requestParams.Has("fontSize") || requestParams["fontSize"] != 20
+                throw Error("active-thread font size was not stored in requestParams")
+        } finally {
+            requestParams := oldParams
+            activeThreadId := oldActive
+            this._closeDb()
+        }
+    }
 }

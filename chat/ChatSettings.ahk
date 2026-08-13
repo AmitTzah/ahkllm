@@ -273,11 +273,14 @@ SendAssistantsDelayed() {
 }
 
 ; Handle per-chat font size update from the header +/- buttons.
+; Bug #213: the size is stored in requestParams even when NO thread exists
+; yet (fresh chat before the first message), so the auto-created thread keeps
+; the user's adjustment via _saveCurrentSettingsToThread. Only the DB write
+; needs an active thread.
 handleUpdateFontSize(parsed) {
     global activeThreadId
     fontSize := parsed.Get("fontSize", 17)
-    if activeThreadId {
-        requestParams["fontSize"] := fontSize
+    requestParams["fontSize"] := fontSize
+    if activeThreadId
         ChatDB.Thread_UpdateSettings(activeThreadId, { fontSize: fontSize })
-    }
 }

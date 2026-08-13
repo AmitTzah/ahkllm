@@ -615,6 +615,7 @@ scenarios.push({
   id: 213,
   name: 'Font-size adjustments made before the first message are silently dropped - handleUpdateFontSize only persists when activeThreadId exists, so a font change on a fresh (no-thread) chat never reaches requestParams and the auto-created thread saves the default 17px',
   mode: null,
+  regression: true, // FIXED bug #213 kept as a regression check (pre-send font size survives thread creation)
   settings: {},
   fixtures: {}, // no threads -> fresh empty app state
   async body({ cdp, dbPath }) {
@@ -637,13 +638,13 @@ scenarios.push({
     const rows = seed.query(dbPath, 'SELECT font_size FROM chat_threads WHERE id=?', [threadId]);
     if (!rows.length) throw new Error('setup: thread row missing: ' + threadId);
     const savedFont = Number(rows[0].font_size);
-    // BUG: the pre-send 18px adjustment never reached requestParams, so the
-    // auto-created thread is saved with the default 17px. A thread reload
-    // snaps the UI back to 17px, losing the user's adjustment.
-    if (savedFont === 18)
-      throw new Error('font size was persisted on the auto-created thread (fix applied): font_size=' + savedFont);
+    // FIXED (bug #213): handleUpdateFontSize stores the size in requestParams
+    // even with no active thread, so the auto-created thread keeps the
+    // user's pre-send 18px adjustment instead of falling back to 17px.
+    if (savedFont !== 18)
+      throw new Error('font size was dropped on the auto-created thread (bug #213 not fixed): font_size=' + savedFont + ' expected 18');
     return 'bumped the font to 18px with NO active thread, then sent the first message: the auto-created thread ' + threadId +
-      ' saved font_size=' + savedFont + ' (default) - the pre-send 18px adjustment was dropped by handleUpdateFontSize';
+      ' saved font_size=' + savedFont + ' - the pre-send 18px adjustment survives thread creation';
   }
 });
 

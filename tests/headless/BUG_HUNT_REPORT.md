@@ -154,15 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-12). Scenario count is enforced by
+- **0 reported, 5 verified, 0 fix in progress, 1 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-12 - Bug hunt round 3 (branch bug-hunt-round-3) intake in progress:
-  bugs #213-#215 verified headlessly (font-size dropped before the first message; mid-stream branch
-  switch re-enables the composer so a second send clobbers the first billed response; switching to an
-  unanswered thread mid-stream leaves the loading indicator stuck; a failed retry restores thread A's
-  messages into whatever thread is visible; deleting another message's attachment while editing defers
-  the wrong attachment to the edit commit and hard-deletes it; switching threads mid-stream leaves a
-  mismatched composer state that lets Enter send a second clobbering request).
+- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #213 FIX APPLIED:
+  handleUpdateFontSize stores the size in requestParams before a thread exists; ChatSettings AHK unit
+  tests added; scenario 213 flipped to a regression check and PASSING; fast suite green. Next: commit
+  #213, then fix #214.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -217,7 +214,7 @@ one at a time, in rank order.
 
 **Scenario:** 213 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Fresh app (no thread yet) â†’ click the font-size + button in the topbar (display becomes 18px)
 â†’ type and send the first message.
