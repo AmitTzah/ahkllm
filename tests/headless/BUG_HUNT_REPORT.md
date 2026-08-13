@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 1 verified, 0 fix in progress, 5 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #217 FIX APPLIED:
-  the delegated attachment-delete only defers the edited message's own attachments; scenario 217
-  flipped and PASSING; fast suite green. Next: commit #217, then close out the round.
+- **Where we left off:** 2026-08-13 - Bug hunt round 3 COMPLETE: bugs #213-#218 all fixed and
+  committed (67fad6b, 75dacd4, 27e6d9d, c8568fc, 4cf2256, 23ab4c0); all six scenarios flipped to
+  regression checks and passing; full AHK + JS suites green; entries moved to History.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -209,149 +209,19 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 213. Font-size adjustments made before the first message are silently dropped
-
-**Scenario:** 213 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Fresh app (no thread yet) â†’ click the font-size + button in the topbar (display becomes 18px)
-â†’ type and send the first message.
-
-**Expected:** the auto-created thread keeps the user's chosen font size (18px).
-
-**Actual:** the thread is created with the default 17px; a reload/thread-switch snaps the UI back to 17px.
-`handleUpdateFontSize` (chat/ChatSettings.ahk) only stores the size when `activeThreadId` is non-empty, so a
-pre-send adjustment never reaches `requestParams["fontSize"]`, and `handleChatSend`'s
-`_saveCurrentSettingsToThread` falls back to the default.
-
-**Evidence:** `chat/ChatSettings.ahk` â€“ `handleUpdateFontSize` wraps the whole persistence in `if activeThreadId`;
-`ThreadSettings.ToDbObject()` reads `requestParams["fontSize"]` only when set.
-
-**Verification:** headless â€“ scenario 213 launches a fresh empty profile, clicks `#btn-font-inc` (display 18px),
-sends the first message, then reads `chat_threads.font_size` from the isolated DB: it is 17 (default), not 18.
-Scenario PASS = bug reproduced.
-
-### 214. Switching branches mid-stream re-enables the composer and lets a second send clobber the first stream
-
-**Scenario:** 214 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Send a message on branch A, and while it is streaming click the "Next branch" arrow to switch to a
-sibling branch, then send another message.
-
-**Expected:** the composer stays disabled/Stop while the first request is in flight; a second send is not possible.
-
-**Actual:** `updateChatMessages` calls `setChatButtonsEnabled(true)` unconditionally, so the branch switch re-enables
-the input and rewires the button to Send while stream 1 is still active. Sending again runs a SECOND request that
-overwrites the shared `requestParams["_stream*"]` state (output file, PID, content), orphaning stream 1: its cURL
-process finishes into a file nothing reads, so the billed response is never persisted, logged, or shown.
-
-**Evidence:** `webui/js/chat/chat-render.js` `updateChatMessages` â†’ `setChatButtonsEnabled(true)`;
-`chat/streaming/StreamHandler.ahk` keeps one `_stream*` context in `requestParams` shared by every request.
-
-**Verification:** headless â€“ scenario 214 (sse-slow) sends "follow-up on A", switches to branch B mid-stream,
-asserts the composer is enabled (input editable, button = Send) while `streamState.active` is true, sends "second
-message on B", then reads the DB: the second send persisted 1 assistant response, the first send persisted 0.
-Scenario PASS = bug reproduced.
-
-### 215. Switching to an unanswered thread mid-stream leaves the loading indicator stuck
-
-**Scenario:** 215 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Send a message in thread A, and while it streams switch to thread B whose last message is an
-unanswered user message; wait for A's stream to finish.
-
-**Expected:** the loading dots in B disappear once the in-flight request completes.
-
-**Actual:** `initChatMode` shows the dots because `isLoading` is still true and B's last message is a user message;
-when A's stream completes, `onStreamDone` is scoped away for the non-current thread (bug #195) and never calls
-`hideLoadingIndicator`, so B keeps an eternal "..." indicator until the next render/navigation.
-
-**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` (showLoadingIndicator branch);
-`webui/js/chat/stream.js` `onStreamDone` hides nothing when `isCurrent` is false.
-
-**Verification:** headless â€“ scenario 215 (sse-slow) sends in A, switches to unanswered B mid-stream, waits for
-`streamState.active=false`, and asserts `#chat-loading` is still in the DOM in B. Scenario PASS = bug reproduced.
-
-### 216. A failed retry restores the removed messages into whatever thread is currently visible
-
-**Scenario:** 216 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Retry an assistant message in thread A, and while the retry request is in flight switch to thread B;
-let the retry fail.
-
-**Expected:** the original thread-A messages reappear in thread A's UI when the retry fails.
-
-**Actual:** `restoreRetryMessagesOnError` pushes `_retryRemovedMessages` (thread A's messages) into the GLOBAL
-`chatMessages` array and re-renders, so thread B's visible conversation shows thread A's assistant message. The DB
-rows stay correct in A â€“ the same cross-thread UI pollution class as bug #195, on the error path.
-
-**Evidence:** `webui/js/chat/chat-input.js` `restoreRetryMessagesOnError` (no thread/path scoping);
-`webui/js/main.js` `showError` calls it for every error banner.
-
-**Verification:** headless â€“ scenario 216 uses the new `sse-lateerror` mock mode (streaming headers + keepalive,
-then a JSON error body after 1.5s, so the retry fails AFTER the switch with no content). It retries a1 in A, switches
-to B, waits for the error banner, and asserts B's `chatMessages` contains A's "first answer" while the DB row stays
-in A. Scenario PASS = bug reproduced.
-
-### 217. Deleting another message's attachment while editing defers the wrong attachment to the edit commit
-
-**Scenario:** 217 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Open the editor on message 1, then click the attachment "X" on message 2, then overwrite-commit
-message 1's edit.
-
-**Expected:** only message 1's attachments are affected by the edit; message 2's attachment stays.
-
-**Actual:** the delegated attachment-delete handler pushes ANY clicked attachment id into the GLOBAL
-`_removedAttachmentIds` without checking it belongs to `_editingMessageId`. Overwrite-commit then calls
-`ChatDB.Attachment_DeleteOne` for every deferred id, permanently deleting message 2's attachment row (and its file
-when orphaned). Cancel also fails to restore it (the cancel restore only searches the edited bubble).
-
-**Evidence:** `webui/js/chat/attachments/chat-attachments-setup.js`
-`setupMessageAttachmentDeleteDelegation` (no `_editingMessageId` ownership check);
-`chat/callbacks/Edit.ahk` `handleEdit` overwrite branch deletes every `removedIds` entry.
-
-**Verification:** headless â€“ scenario 217 seeds an attachment on each of two user messages, edits message 1, clicks
-the X on message 2's attachment, commits the edit, then queries `message_attachments`: only message 1's row
-survives. Scenario PASS = bug reproduced.
-
-### 218. Switching threads mid-stream leaves a mismatched composer state (Enter can send a second request)
-
-**Scenario:** 218 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Send a message in thread A, and while it streams switch to a thread whose last message is an assistant
-(e.g. thread B), then press Enter in the composer.
-
-**Expected:** the composer stays disabled while the first request is in flight.
-
-**Actual:** `initChatMode` unconditionally re-enables the input and send button (`disabled=false`) but never
-re-wires the button, so after the switch the old stream is still active while the input is editable and
-`isLoading=false` (the button still shows Stop). Pressing Enter therefore sends a SECOND request that overwrites
-the shared `requestParams["_stream*"]` state and orphans the first billed response â€“ the same harm as bug #214,
-reached through `loadThread`/`initChatMode` instead of the branch-switch `updateChatView` path.
-
-**Evidence:** `webui/js/chat/chat-core.js` `initChatMode` re-enables `#chat-input` and `#chat-send-btn` without
-consulting `streamState`/`isLoading`; `webui/js/chat/chat-input.js` `onChatSend` only checks `isLoading`.
-
-**Verification:** headless â€“ scenario 218 (sse-slow) sends in A, switches to assistant-ended B mid-stream, asserts
-`inputDisabled=false`, `isLoading=false`, `btnOnclick=stop` while `streamState.active=true`, then dispatches Enter
-and confirms a second stream starts. Scenario PASS = bug reproduced.
+*(none — round 3 fully closed, all entries moved to History)*
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-13 - "Switching threads mid-stream leaves a mismatched composer state (Enter can send a second request)" - FIXED + COMMITTED in 27e6d9d: fix(chat): keep the composer in Stop mode after switching threads mid-stream (bug #218). Scenario 218 flipped to a regression check + chat-core/chat-input unit tests.
+- 2026-08-13 - "Deleting another message's attachment while editing defers the wrong attachment to the edit commit" - FIXED + COMMITTED in 23ab4c0: fix(chat): scope deferred attachment deletes to the edited message (bug #217). Scenario 217 flipped to a regression check + chat-attachments-setup unit tests.
+- 2026-08-13 - "A failed retry restores the removed messages into whatever thread is currently visible" - FIXED + COMMITTED in 4cf2256: fix(chat): scope the failed-retry message restore to the retry thread (bug #216). Scenario 216 flipped to a regression check + chat-input/stream unit tests.
+- 2026-08-13 - "Switching to an unanswered thread mid-stream leaves the loading indicator stuck" - FIXED + COMMITTED in c8568fc: fix(chat): clear the stuck loading indicator when a non-current stream completes (bug #215). Scenario 215 flipped to a regression check + chat-input/stream unit tests.
+- 2026-08-13 - "Switching branches mid-stream re-enables the composer and lets a second send clobber the first stream" - FIXED + COMMITTED in 75dacd4: fix(chat): keep the composer disabled while a request is in flight (bug #214). Scenario 214 flipped to a regression check + chat-render/chat-input unit tests.
+- 2026-08-13 - "Font-size adjustments made before the first message are silently dropped" - FIXED + COMMITTED in 67fad6b: fix(chat): keep pre-send font-size adjustments on the auto-created thread (bug #213). Scenario 213 flipped to a regression check + ChatSettings AHK unit tests.
 
 - 2026-08-12 - "Chat-window title stays stale after deleting the active thread" - FIXED + COMMITTED in 0330765: fix(chat): reset the chat-window title when the active thread is deleted (bug #210). Scenario 210 flipped to a regression check + ChatDispatch unit test.
 - 2026-08-12 - "Tree-modal / search navigation leaves the sidebar stale - navigateToMessage bumps updated_at but posts no threadList refresh" - FIXED + COMMITTED in b48166d: fix(chat): refresh the sidebar after navigateToMessage (bug #209). Scenario 209 flipped to a regression check + ChatDispatch static check.
