@@ -1852,14 +1852,18 @@ scenarios.push({
     await sleep(600);
     await sendChatMessage(cdp, 'question for A');
     await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'streaming active');
-    // Let A's appendChatMessage settle before switching (the fast mock can
-    // race it against B's initChatMode under load).
-    await sleep(300);
+    // Make sure A's appendChatMessage post has actually landed in the UI
+    // array BEFORE switching - under load the post can lag past B's
+    // initChatMode and leave B's array with A's message (a setup flake, not
+    // the bug under test).
+    await cdp.waitFor('chatMessages.length === 2 && chatMessages[1].role === "user"', 10000, 100, 'A append settled');
     // Switch to thread B while A's stream is in flight (same flow as bug #159).
     await cdp.eval('window.loadThread("t-ui-b-195"); true');
-    await cdp.waitFor('window.activeThreadId === "t-ui-b-195"', 10000, 250, 'thread B loaded');
-    // Mid-stream: B's chatMessages array must contain ONLY B's seeded user
-    // message. initChatMode replaced the array, so this is the pollution-free baseline.
+    // loadThread sets activeThreadId synchronously in JS, but B's initChatMode
+    // (AHK round trip) replaces chatMessages afterwards - wait for B's OWN
+    // messages to arrive before asserting the pollution-free baseline (a
+    // setup flake under load, not the bug under test).
+    await cdp.waitFor('window.activeThreadId === "t-ui-b-195" && chatMessages.length === 1 && chatMessages[0] && chatMessages[0].id === "m-195-u1b"', 15000, 100, 'thread B loaded with its own messages');
     const midLen = await cdp.eval('chatMessages.length');
     if (midLen !== 1)
       throw new Error('setup: B chatMessages should have 1 message after switch, got ' + midLen);
