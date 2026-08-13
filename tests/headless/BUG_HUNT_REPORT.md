@@ -154,12 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 3 verified, 0 fix in progress, 3 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 2 verified, 0 fix in progress, 4 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #215 FIX APPLIED:
-  enabling the composer clears the loading dots even when the completing stream belongs to a
-  non-current thread; scenario 215 flipped and PASSING; fast suite green. Next: commit #215, then
-  fix #216.
+- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #216 FIX APPLIED:
+  the failed-retry restore is scoped to the retry thread/path; scenario 216 flipped and PASSING;
+  fast suite green. Next: commit #216, then fix #217.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -282,7 +281,7 @@ when A's stream completes, `onStreamDone` is scoped away for the non-current thr
 
 **Scenario:** 216 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Retry an assistant message in thread A, and while the retry request is in flight switch to thread B;
 let the retry fail.

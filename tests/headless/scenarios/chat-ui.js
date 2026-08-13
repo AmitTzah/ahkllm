@@ -770,6 +770,7 @@ scenarios.push({
   id: 216,
   name: 'A failed retry restores the removed messages into WHATEVER thread is currently visible - restoreRetryMessagesOnError pushes _retryRemovedMessages (thread A\'s messages) into the global chatMessages array, so switching to thread B before the retry fails repaints A\'s assistant message into B\'s UI (the DB rows stay correct in A, the same class as bug #195 on the error path)',
   mode: 'sse-lateerror',
+  regression: true, // FIXED bug #216 kept as a regression check (restore is scoped to the retry thread/path)
   settings: {},
   fixtures: {
     threads: [
@@ -808,17 +809,21 @@ scenarios.push({
     const uiMsgs = await cdp.eval('chatMessages.map(function(m){ return m.id + ":" + m.content; })');
     const stillOnB = await cdp.eval('window.activeThreadId === "t-retry-b-216"');
     const a1inB = String(uiMsgs.join('|')).indexOf('first answer') >= 0;
-    // BUG: the restored thread-A message is visible in thread B's UI.
-    if (!a1inB)
-      throw new Error('restored messages did not pollute thread B (fix applied): ui=' + JSON.stringify(uiMsgs));
+    // FIXED (bug #216): the restore is scoped to the retry's thread/path, so
+    // thread A's messages must NOT appear in thread B's visible UI.
     if (!stillOnB)
       throw new Error('setup: not on thread B anymore: ' + stillOnB);
+    if (a1inB)
+      throw new Error('restored thread-A messages still pollute thread B (bug #216 not fixed): ui=' + JSON.stringify(uiMsgs));
     // Sanity: the DB row for a1 still belongs to thread A only.
     const a1Rows = seed.query(dbPath, "SELECT thread_id FROM messages WHERE content='first answer'");
     const dbThreads = a1Rows.map((r) => r.thread_id);
+    const a1OnlyInA = dbThreads.length === 1 && dbThreads[0] === 't-retry-a-216';
+    if (!a1OnlyInA)
+      throw new Error('DB sanity failed: "first answer" must live in thread A only: ' + JSON.stringify(dbThreads));
     return 'retried a1 in A, switched to B, then the retry failed: B\'s UI array is ' + JSON.stringify(uiMsgs) +
-      ' (A\'s "first answer" was restored into the VISIBLE thread B) while the DB row stays in ' +
-      JSON.stringify(dbThreads) + ' - restoreRetryMessagesOnError repaints the wrong thread';
+      ' (thread A\'s "first answer" is NOT in the visible thread B) while the DB row stays in ' +
+      JSON.stringify(dbThreads) + ' - restoreRetryMessagesOnError is scoped to the retry thread';
   }
 });
 

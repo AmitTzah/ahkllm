@@ -180,6 +180,8 @@ function onStreamDone(data) {
   // The retry succeeded - the streamed response replaced the removed
   // messages, so never restore them on a later error.
   if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
+  if (typeof _retryThreadId !== 'undefined') _retryThreadId = null;
+  if (typeof _retryAnchorId !== 'undefined') _retryAnchorId = null;
 
   // Refresh thread map (right panel nav)
   if (isCurrent && typeof renderNavList === 'function') renderNavList();
@@ -342,6 +344,8 @@ function cancelStreaming(data) {
   // A cancelled retry keeps its partial response; the removed messages must
   // not be restored afterwards.
   if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
+  if (typeof _retryThreadId !== 'undefined') _retryThreadId = null;
+  if (typeof _retryAnchorId !== 'undefined') _retryAnchorId = null;
 
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
   var isCurrent = _streamBelongsToCurrentPath(dbMsg) &&

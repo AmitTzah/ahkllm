@@ -24,6 +24,7 @@ function loadInputModule() {
         setTimeout: setTimeout, clearTimeout: clearTimeout,
         chatMessages: [],
         isLoading: false,
+        activeThreadId: '',
         streamState: { active: false },
         attachmentState: [],
         sessionStorage: { getItem: () => null, setItem: () => {} },
@@ -172,6 +173,61 @@ describe('retryLastAssistantMessage', () => {
         };
         ctx.retryLastAssistantMessage('');
         assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1']);
+        ctx.restoreRetryMessagesOnError();
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1', 'a1']);
+    });
+
+    it('does not restore thread A messages into thread B UI when the retry fails (bug #216)', () => {
+        const { ctx } = loadInputModule();
+        ctx.isLoading = false;
+        ctx.activeThreadId = 't-A';
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', content: 'q' },
+            { id: 'a1', role: 'assistant', content: 'first answer' }
+        ];
+        ctx.retryLastAssistantMessage('a1');
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1'], 'retry truncates the UI path');
+        // Switch to thread B while the retry is in flight - its array replaces
+        // the global chatMessages (what initChatMode does on loadThread).
+        ctx.activeThreadId = 't-B';
+        ctx.chatMessages = [{ id: 'u1b', role: 'user', content: 'question for B' }];
+        ctx.restoreRetryMessagesOnError();
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1b'],
+            'thread B UI must NOT gain thread A messages on the failed retry');
+        assert.strictEqual(ctx._retryRemovedMessages, null, 'pending restore state must be cleared');
+    });
+
+    it('skips the restore when the retry thread was reloaded from the DB (anchor mismatch)', () => {
+        const { ctx } = loadInputModule();
+        ctx.isLoading = false;
+        ctx.activeThreadId = 't-A';
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', content: 'q' },
+            { id: 'a1', role: 'assistant', content: 'first answer' }
+        ];
+        ctx.retryLastAssistantMessage('a1');
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1']);
+        // A reload from the DB repopulates the full path (including a1).
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', content: 'q' },
+            { id: 'a1', role: 'assistant', content: 'first answer' }
+        ];
+        ctx.restoreRetryMessagesOnError();
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1', 'a1'],
+            'restoring again after a DB reload must not duplicate the messages');
+    });
+
+    it('restores into the same thread/path when the retry fails there (bug #216 regression)', () => {
+        const { ctx } = loadInputModule();
+        ctx.isLoading = false;
+        ctx.activeThreadId = 't-A';
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user', content: 'q' },
+            { id: 'a1', role: 'assistant', content: 'first answer' }
+        ];
+        ctx.retryLastAssistantMessage('a1');
+        assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1']);
+        // Retry fails while the user is still on thread A's truncated path.
         ctx.restoreRetryMessagesOnError();
         assert.deepStrictEqual(ctx.chatMessages.map((m) => m.id), ['u1', 'a1']);
     });

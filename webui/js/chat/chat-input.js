@@ -6,6 +6,12 @@
 // and everything after it). If the retry FAILS, they are restored so the
 // original response stays visible instead of being lost until reload.
 var _retryRemovedMessages = null;
+// Bug #216: the retry restore must land back in the SAME thread/path the
+// messages were removed from. _retryThreadId records the thread, and
+// _retryAnchorId the id of the last remaining message after truncation (the
+// anchor of the truncated path; null for a root retry that emptied the UI).
+var _retryThreadId = null;
+var _retryAnchorId = null;
 
 function onChatSend() {
   var input = document.getElementById('chat-input');
@@ -114,6 +120,8 @@ function retryLastAssistantMessage(messageId) {
   if (isLoading) return;
 
   _retryRemovedMessages = null;
+  _retryThreadId = typeof activeThreadId !== 'undefined' ? activeThreadId : '';
+  _retryAnchorId = null;
   if (messageId) {
     for (var i = 0; i < chatMessages.length; i++) {
       if (chatMessages[i].id === messageId && chatMessages[i].role === 'assistant') {
@@ -131,6 +139,7 @@ function retryLastAssistantMessage(messageId) {
     if (lastAssistantIdx >= 0) _retryRemovedMessages = chatMessages.slice(lastAssistantIdx);
     removeLastAssistantMessage();
   }
+  _retryAnchorId = chatMessages.length ? chatMessages[chatMessages.length - 1].id : null;
 
   isLoading = true;
   showLoadingIndicator();
@@ -147,10 +156,34 @@ function retryLastAssistantMessage(messageId) {
 // Restore the retry-removed messages after a failed retry (called from the
 // global showError path). The DB row was never touched - only the UI was
 // truncated - so this brings the conversation back exactly as it was.
+// Bug #216: the restore may ONLY repaint the array it came from - the same
+// thread AND the same visible path (anchored by the last remaining message).
+// A failed retry while another thread/branch is visible must not push thread
+// A's messages into thread B's UI; the DB rows are intact, so the correct
+// messages reappear the next time the retry thread/path loads.
 function restoreRetryMessagesOnError() {
   if (!_retryRemovedMessages || _retryRemovedMessages.length === 0) return;
+  if (typeof activeThreadId !== 'undefined' && activeThreadId !== _retryThreadId) {
+    _retryRemovedMessages = null;
+    _retryThreadId = null;
+    _retryAnchorId = null;
+    return;
+  }
+  var last = chatMessages.length ? chatMessages[chatMessages.length - 1] : null;
+  var stillOnRetryPath = _retryAnchorId ? (last && last.id === _retryAnchorId) : chatMessages.length === 0;
+  if (!stillOnRetryPath) {
+    // The visible path no longer matches the truncated retry path (another
+    // branch was loaded, or the thread was reloaded from the DB, which
+    // already contains the original messages) - never restore here.
+    _retryRemovedMessages = null;
+    _retryThreadId = null;
+    _retryAnchorId = null;
+    return;
+  }
   var restored = _retryRemovedMessages;
   _retryRemovedMessages = null;
+  _retryThreadId = null;
+  _retryAnchorId = null;
   for (var i = 0; i < restored.length; i++) chatMessages.push(restored[i]);
   renderChatMessages(chatMessages);
 }
