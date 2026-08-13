@@ -210,7 +210,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-*(pending verification)*
+1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name)
 
 ### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
 

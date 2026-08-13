@@ -1,6 +1,7 @@
-# 2026-08-13T09:56:56.339Z | run of 1 scenario(s)
-PASS | #217 | Deleting ANOTHER message's attachment while editing a message defers the wrong attachment to the edit commit - setupMessageAttachmentDeleteDelegation pushes any clicked attachment id into the GLOBAL _removedAttachmentIds (never checking it belongs to _editingMessageId), so overwrite-committing message 1's edit hard-deletes message 2's attachment row from the DB | edited message 1, clicked the X on message 2's attachment (deferred list stays []), then overwrite-committed: the DB still holds ["att-217-a","att-217-b"] - only the edited message's attachments are affected by the edit | 6.5s
+# 2026-08-13T11:49:39.103Z | run of 2 scenario(s)
+PASS | #219 | Mid-stream SSE error event (`data: {"error": ...}`) crashes SSEParser.ParseLine - parsed["choices"] throws on a Map without a "choices" key, so the partial streamed response is never persisted, the user sees an internal Key "choices" error, and streamState.active stays true: every subsequent Send is swallowed as cancelStream (the composer is wedged until reload) | banner="Request failed: Item has no value.×" streamState.active=true isLoading=false chatMessages=1 assistantRowsInDb=0 partialRowsInDb=0 - the partial stream is lost and the composer stays in Stop mode (every Send becomes cancelStream) | 4.9s
+PASS | #220 | Folder-delete confirmation double-escapes the folder name - _buildFolderSection passes escHtml(folder.name) into _showChatConfirm, which escapes the whole message again, so a folder named "A&B<C>" confirms as "A&amp;amp;B&amp;lt;C&amp;gt;" instead of showing the raw characters | confirm text: "Delete folder \"A&amp;B&lt;C&gt;\"? Chats will become unfiled.CancelDelete" - the folder name renders as HTML entities instead of "A&B<C>" (escHtml applied twice) | 3.7s
 
-Summary: 1/1 scenarios PASS
+Summary: 2/2 scenarios PASS
 Real profile restored: yes
 Report sync: OK
