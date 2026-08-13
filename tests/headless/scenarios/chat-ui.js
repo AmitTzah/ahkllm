@@ -950,6 +950,33 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 222,
+  name: 'Assistant responses whose paragraphs are separated by SINGLE newlines render as ONE block - chat-render.js md.render() never normalizes assistant content (unlike _prepUserContent for users), and markdown-it emits one <p> with soft breaks that CSS collapses to spaces, so a summarize-style response split into paragraphs by single newlines displays as a block of text',
+  mode: 'sse-paragraphs',
+  settings: {},
+  async body({ cdp }) {
+    await sendChatMessage(cdp, 'Please summarize this article.');
+    // The mock streams three chunks whose paragraph breaks are SINGLE
+    // newlines (a common summarize-style LLM output shape).
+    await cdp.waitFor('document.querySelector(".msg.bot .msg-content") !== null', 30000, 300, 'assistant bubble rendered');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const pCount = await cdp.eval('document.querySelectorAll(".msg.bot .msg-content p").length');
+    const innerText = await cdp.eval('document.querySelector(".msg.bot .msg-content").innerText');
+    const html = await cdp.eval('document.querySelector(".msg.bot .msg-content").innerHTML');
+    // Buggy behavior (PASS = reproduced): the three paragraphs collapsed into
+    // ONE <p> (soft breaks rendered as spaces), so the summary displays as a
+    // block of text instead of three paragraphs.
+    if (pCount !== 1)
+      throw new Error('paragraphs were NOT collapsed into one block (bug not reproduced): pCount=' + pCount + ' html=' + JSON.stringify(html));
+    const hasBreak = /<br\s*\/?>/i.test(String(html));
+    return 'mock returned 3 paragraphs separated by single newlines; rendered pCount=' + pCount +
+      (hasBreak ? ' (with <br>)' : ' (no <br>)') + ' innerText=' + JSON.stringify(String(innerText).replace(/\s+/g, ' ')) +
+      ' - the summary displays as ONE block instead of maintaining the paragraphs';
+  }
+});
+
+scenarios.push({
   id: 219,
   name: 'Mid-stream SSE error event (`data: {"error": ...}`) crashes SSEParser.ParseLine - parsed["choices"] throws on a Map without a "choices" key, so the partial streamed response is never persisted, the user sees an internal Key "choices" error, and streamState.active stays true: every subsequent Send is swallowed as cancelStream (the composer is wedged until reload)',
   mode: 'sse-error-event',

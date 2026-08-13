@@ -154,13 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 3 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 4 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#221 VERIFIED headlessly
-  (scenarios 219-221 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
+- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#222 VERIFIED headlessly
+  (scenarios 219-222 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
   error event crashes the parser and wedges the composer; #220 = folder-delete confirm
   double-escapes the folder name; #221 = two quick chat-mode commands lose the first response;
-  next: verify report "summarize sends a block of text" (#222). No fixes started yet.
+  #222 = single-newline paragraph breaks render as one block. No fixes started yet.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -211,7 +211,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response)
+1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response) · 4 = #222 (single-newline paragraphs render as one block)
 
 ### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
 
@@ -287,6 +287,30 @@ completes — the reproducible half of the report is the LOST first command.)
 `load-thread` + `trigger-llm`, mirroring `openChatWindow` + `notifyTriggerLLM`) for thread A, then again for thread B ~300ms later while A's sse-slow
 stream is still in flight. After both streams settle: thread A assistant rows=0 (first command LOST), thread B assistant rows=1 (second completed),
 UI idle. The first command's response is gone from the DB and its chat is left with only the user message.
+
+### 222. Summarize-style responses with single-newline paragraphs render as one block
+
+**Scenario:** 222 (scenario code in e2e-suite.js)
+
+**Status:** verified — open (rank 4)
+
+**Repro:** Run Summarize (or any command) on multi-paragraph text. When the response splits paragraphs with SINGLE newlines (a common LLM output shape),
+the chat renders the whole summary as one solid block instead of keeping the paragraph breaks.
+
+**Expected:** paragraph breaks in the response stay visible (separate paragraphs or line breaks), like the original text.
+
+**Actual:** `createMessageBubble` renders assistant content straight through `md.render()` (user content gets `_prepUserContent`, assistant content gets
+nothing). markdown-it treats a single `\n` as a soft break and emits ONE `<p>`; the app's `.msg-content` CSS (`white-space` default) collapses those
+breaks to spaces, so the message displays as a block of text. The same collapse applies to the live streaming bubble (`stream.js` renders
+`md.render(streamState.contentBuffer)`).
+
+**Evidence:** `webui/js/chat/chat-render.js` `createMessageBubble` (assistant branch has no `_prepUserContent`), `webui/js/chat/chat-format.js`
+`_prepUserContent` (only used for users), `webui/js/chat/stream.js` `onStreamContent`/`_finalizeStreamContent`; verified statically that
+markdown-it renders `"A\nB"` as one `<p>` while `"A\n\nB"` produces two.
+
+**Verification:** headless PASS (2026-08-13) — scenario 222 uses new mock mode `sse-paragraphs` (three content chunks whose breaks are single newlines)
+and observed: after streaming, the assistant bubble contains exactly ONE `<p>` (no `<br>`) and `innerText` reads "First paragraph of the summary. Second
+paragraph of the summary. Third paragraph of the summary." — the paragraphs collapsed into a single block.
 
 ## History (append-only)
 

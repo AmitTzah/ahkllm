@@ -17,6 +17,11 @@
 //                      stream ends - providers emit exactly this when a stream
 //                      fails mid-flight (rate limit / upstream error after
 //                      partial tokens)
+//   sse-paragraphs     streaming: three content chunks whose paragraph breaks
+//                      are SINGLE newlines (a common summarize-style LLM
+//                      output shape) - used to verify the chat renderer keeps
+//                      the paragraph breaks visible instead of collapsing
+//                      them into one block
 //   sse-hang           streaming headers + a keepalive comment, then the
 //                      socket is left OPEN forever - the "stalled stream"
 //                      case (cURL has --connect-timeout but no --max-time)
@@ -221,6 +226,35 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           await delay(150);
           res.write('data: {"error":{"message":"upstream exploded (mock)"}}\n\n');
           await delay(40);
+          res.end();
+        })().catch(() => { try { res.end(); } catch {} });
+        return;
+      }
+      if (mode === 'sse-paragraphs') {
+        // Summarize-style output: paragraphs separated by single \n (soft
+        // breaks). markdown-it puts all of them in ONE <p>, and the app's CSS
+        // collapses the soft breaks to spaces - the renderer loses the
+        // paragraph structure the model returned.
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        (async () => {
+          sseChunk(res, { choices: [{ delta: { content: 'First paragraph of the summary.\n' } }] });
+          await delay(60);
+          sseChunk(res, { choices: [{ delta: { content: 'Second paragraph of the summary.\n' } }] });
+          await delay(60);
+          sseChunk(res, { choices: [{ delta: { content: 'Third paragraph of the summary.' } }] });
+          await delay(40);
+          sseChunk(res, {
+            choices: [{ delta: {}, finish_reason: 'stop' }],
+            model: 'deepseek-v4-flash',
+            usage: { prompt_tokens: 8, completion_tokens: 12, total_tokens: 20, prompt_tokens_details: { cached_tokens: 2 } }
+          });
+          await delay(40);
+          res.write('data: [DONE]\n\n');
           res.end();
         })().catch(() => { try { res.end(); } catch {} });
         return;
