@@ -9,6 +9,15 @@
 #Include StreamCompletion.ahk
 #Include StreamError.ahk
 
+; Bug #221/#223: every in-flight request owns its own stream record (output
+; file, cURL PID, accumulated content, temp-file paths, ...). Two chat-mode
+; commands can be streaming at once - the shared requestParams _stream* keys
+; are only a WINDOW onto whichever stream is being processed right now (the
+; poll timer swaps per request), so a second command can never clobber the
+; first request's state or temp files.
+_activeStreams := []
+_currentStreamKey := ""
+
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     debugLog("[STREAM] Started — thread=" activeThreadId)
     try {
@@ -35,12 +44,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     Run(cURLCommand, , "Hide", &cURLPID)
     cURLState("set", cURLPID)
 
-    requestParams["_streamOutputFile"]       := requestParams["cURLOutputFile"]
-    requestParams["_streamLastPos"]          := 0
-    requestParams["_streamContent"]          := ""
-    requestParams["_streamReasoning"]        := ""
     sanitizedModel := ModelParser.Sanitize(requestParams["singleAPIModelName"])
-    requestParams["_streamModelName"]        := sanitizedModel
 
     ; Use assistant name as display title when active
     if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
@@ -49,48 +53,15 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     } else {
         displayName := sanitizedModel
     }
-    requestParams["_streamDisplayName"] := displayName
 
-    requestParams["_streamFirstTokenTime"]   := 0
-    requestParams["_streamUsage"]            := {}
-    requestParams["_streamProviderKey"]      := providerInfo.providerKey
-    requestParams["_streamRawSseChunks"]     := ""
-    requestParams["_streamRawLastResponse"]  := ""
-    ; Bug #178: a `data:` JSON line split across poll boundaries is buffered
-    ; here (as the incomplete trailing fragment) until the next poll completes
-    ; it - the old code parsed each chunk in isolation, so the partial JSON
-    ; crashed the poll (jsongo.Parse returns a String) and the remainder
-    ; (no `data: ` prefix) was silently lost.
-    requestParams["_streamPendingLine"]      := ""
-    requestParams["_streamPollCount"]        := 0
-    requestParams["_streamRequestStartTime"] := requestStartTime
-    requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
-    requestParams["_streamPID"]              := cURLPID
-    requestParams["_streamCancelled"]        := false
-    ; Bug #159: capture the thread that SENT this request. The completion and
-    ; cancel handlers must persist into THIS thread even if the user navigates
-    ; (switch thread / New Chat / branch) or deletes the thread mid-stream -
-    ; reading the global activeThreadId at completion time wrote the response
-    ; into whatever thread happened to be active then.
-    requestParams["_streamThreadId"]         := activeThreadId
-    ; Bug #197: also capture the LAST message of the request path at send
-    ; time. _persistStreamResponse used to re-read the active path at
-    ; completion, so switching BRANCHES within the same thread mid-stream
-    ; attached the response to the newly-active branch's leaf. The request's
-    ; own parent is fixed at send time. A root retry has no parent (bug #147).
-    requestParams["_streamParentId"]         := ""
-    if !(requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]) {
-        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
-        if sendPath.Length
-            requestParams["_streamParentId"] := sendPath[sendPath.Length].id
-    }
-    ; Bug #206: capture the request's log metadata at send time too - the
-    ; completion/error/cancel loggers must describe the request that was sent,
-    ; not whatever thread became active before the request finished.
-    requestParams["_streamLogWindowTitle"]   := requestParams["windowTitle"]
-    requestParams["_streamLogProviderName"]  := requestParams["providerName"]
-    requestParams["_streamLogModel"]         := requestParams["singleAPIModelName"]
-    requestParams["_streamLogPasteMode"]     := requestParams["pasteMode"]
+    ; Bug #221/#223: register THIS request's own stream record (its output
+    ; file, cURL PID, accumulated content, temp-file paths, retry metadata -
+    ; everything the completion/error/cancel handlers read) BEFORE any other
+    ; request can overwrite the shared requestParams keys, then load it into
+    ; the params window.
+    stream := _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, sanitizedModel, requestStartTime)
+    _activeStreams.Push(stream)
+    _LoadStreamIntoParams(stream)
 
     ; Post display title to UI immediately for bubble author during streaming
     ; (only when this request belongs to the currently-visible path - bug
@@ -115,6 +86,12 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 ; streamDone) by populating the _stream* context keys first.
 sendNonStreamingRequest(&chatHistoryJSONRequest) {
     try {
+        global _currentStreamKey
+        ; Bug #221: the single-shot path runs synchronously and is NOT tracked
+        ; in _activeStreams - clear the current-stream marker so the
+        ; _finalizeStreaming cleanup below does not remove another request's
+        ; in-flight stream, then restore that stream afterwards.
+        _currentStreamKey := ""
         requestStartTime := A_TickCount
         providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
         if !providerInfo.endpoint {
@@ -199,19 +176,39 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
 }
 
 _pollStreamTimer() {
-    try {
-        pid := requestParams["_streamPID"]
-        if !ProcessExist(pid) {
+    ; Bug #221: poll EVERY in-flight request - a second chat-mode command can
+    ; fire while the first is still streaming, and each request owns its own
+    ; output file / cURL PID / accumulated content. The shared requestParams
+    ; keys are swapped per stream via _LoadStreamIntoParams.
+    if !_activeStreams.Length {
+        SetTimer(, 0)
+        return
+    }
+    snapshot := _activeStreams.Clone()
+    for stream in snapshot {
+        if !_StreamIsActive(stream.key)
+            continue
+        _LoadStreamIntoParams(stream)
+        try {
+            pid := requestParams["_streamPID"]
+            if !ProcessExist(pid) {
+                SetTimer(, 0)
+                _finalizeStreaming()
+            } else {
+                _readStreamChunkFromParams()
+                requestParams["_streamPollCount"]++
+                _SaveStreamFromParams(stream)
+            }
+        } catch Error as e {
+            debugLog("_pollStreamTimer error: " e.Message)
             SetTimer(, 0)
             _finalizeStreaming()
-            return
         }
-        _readStreamChunkFromParams()
-        requestParams["_streamPollCount"]++
-    } catch Error as e {
-        debugLog("_pollStreamTimer error: " e.Message)
+    }
+    if _activeStreams.Length = 0 {
         SetTimer(, 0)
-        _finalizeStreaming()
+    } else {
+        SetTimer(_pollStreamTimer, 100)
     }
 }
 
@@ -244,18 +241,215 @@ _shouldPostStreamToUI() {
 ; When the user navigates BACK to the sending thread/branch while its stream is
 ; still in flight, re-paint the accumulated partial so the UI is not blank.
 _RepostActiveStreamForThread(threadId) {
-    if !requestParams.Has("_streamThreadId") || requestParams["_streamThreadId"] != threadId
+    ; Bug #221: find the NEWEST in-flight stream that sent a request for this
+    ; thread (multiple commands can be streaming at once).
+    stream := _FindLatestStreamForThread(threadId)
+    if !stream
         return
+    _LoadStreamIntoParams(stream)
     if !_shouldPostStreamToUI()
         return
-    if requestParams.Has("_streamDisplayName") && requestParams["_streamDisplayName"]
-        postWebMessage("streamModelName", requestParams["_streamDisplayName"])
-    reasoning := requestParams.Has("_streamReasoning") ? requestParams["_streamReasoning"] : ""
-    content := requestParams.Has("_streamContent") ? requestParams["_streamContent"] : ""
+    if stream.displayName != ""
+        postWebMessage("streamModelName", stream.displayName)
+    reasoning := stream.reasoning
+    content := stream.content
     if reasoning != ""
         postWebMessage("streamReasoning", { content: reasoning, collapsed: false })
     if content != ""
         postWebMessage("streamContent", content)
+}
+
+; Build the per-request stream record (bug #221/#223). Captures every field
+; the completion/error/cancel handlers read from requestParams["_stream*"],
+; plus the request's OWN temp-file paths, cURL PID, and retry metadata, so a
+; second concurrent request can never clobber the first one's state.
+_BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, sanitizedModel, requestStartTime) {
+    retryIsRoot := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
+    retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
+    stream := {
+        key: A_TickCount "_" Random(1000, 999999),
+        outputFile: requestParams["cURLOutputFile"],
+        lastPos: 0,
+        content: "",
+        reasoning: "",
+        modelName: sanitizedModel,
+        displayName: displayName,
+        firstTokenTime: 0,
+        usage: {},
+        providerKey: providerInfo.providerKey,
+        rawSseChunks: "",
+        rawLastResponse: "",
+        ; Bug #178: a `data:` JSON line split across poll boundaries is buffered
+        ; here (as the incomplete trailing fragment) until the next poll
+        ; completes it.
+        pendingLine: "",
+        errorMessage: "",
+        pollCount: 0,
+        requestStartTime: requestStartTime,
+        chatHistoryJSONRequest: chatHistoryJSONRequest,
+        pid: cURLPID,
+        cancelled: false,
+        ; Bug #159: capture the thread that SENT this request.
+        threadId: activeThreadId,
+        parentId: "",
+        ; Bug #206: capture the request's log metadata at send time too.
+        logWindowTitle: requestParams["windowTitle"],
+        logProviderName: requestParams["providerName"],
+        logModel: requestParams["singleAPIModelName"],
+        logPasteMode: requestParams["pasteMode"],
+        retryIsRoot: retryIsRoot,
+        retrySiblingGroup: retrySiblingGroup,
+        ; The request's OWN temp files (bug #223: deleteTempFiles must delete
+        ; THESE, not whatever request started later).
+        requestFile: requestParams["chatHistoryJSONRequestFile"],
+        cURLCommandFile: requestParams["cURLCommandFile"],
+        errorFile: requestParams["cURLErrorFile"]
+    }
+    ; Bug #197: capture the LAST message of the request path at send time. A
+    ; root retry has no parent (bug #147).
+    if !retryIsRoot {
+        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
+        if sendPath.Length
+            stream.parentId := sendPath[sendPath.Length].id
+    }
+    return stream
+}
+
+; Load a per-request stream record into the shared requestParams window so the
+; existing read/completion/error/cancel handlers keep working unchanged. Also
+; swaps in THIS request's temp-file paths (deleteTempFiles and
+; appendToChatHistory must act on this request's files - bug #223) and its
+; retry metadata (bug #211/#205 semantics preserved per request).
+_LoadStreamIntoParams(stream) {
+    global _currentStreamKey
+    requestParams["_streamOutputFile"]       := stream.outputFile
+    requestParams["_streamLastPos"]          := stream.lastPos
+    requestParams["_streamContent"]          := stream.content
+    requestParams["_streamReasoning"]        := stream.reasoning
+    requestParams["_streamModelName"]        := stream.modelName
+    requestParams["_streamDisplayName"]      := stream.displayName
+    requestParams["_streamFirstTokenTime"]   := stream.firstTokenTime
+    requestParams["_streamUsage"]            := stream.usage
+    requestParams["_streamProviderKey"]      := stream.providerKey
+    requestParams["_streamRawSseChunks"]     := stream.rawSseChunks
+    requestParams["_streamRawLastResponse"]  := stream.rawLastResponse
+    requestParams["_streamPendingLine"]      := stream.pendingLine
+    requestParams["_streamErrorMessage"]     := stream.errorMessage
+    requestParams["_streamPollCount"]        := stream.pollCount
+    requestParams["_streamRequestStartTime"] := stream.requestStartTime
+    requestParams["_streamChatHistoryJSONRequest"] := stream.chatHistoryJSONRequest
+    requestParams["_streamPID"]              := stream.pid
+    requestParams["_streamCancelled"]        := stream.cancelled
+    requestParams["_streamThreadId"]         := stream.threadId
+    requestParams["_streamParentId"]         := stream.parentId
+    requestParams["_streamLogWindowTitle"]   := stream.logWindowTitle
+    requestParams["_streamLogProviderName"]  := stream.logProviderName
+    requestParams["_streamLogModel"]         := stream.logModel
+    requestParams["_streamLogPasteMode"]     := stream.logPasteMode
+    requestParams["chatHistoryJSONRequestFile"] := stream.requestFile
+    requestParams["cURLCommandFile"]         := stream.cURLCommandFile
+    requestParams["cURLOutputFile"]          := stream.outputFile
+    requestParams["cURLErrorFile"]           := stream.errorFile
+    if stream.retryIsRoot
+        requestParams["pendingRetryIsRoot"] := true
+    else if requestParams.Has("pendingRetryIsRoot")
+        requestParams.Delete("pendingRetryIsRoot")
+    if stream.retrySiblingGroup != ""
+        requestParams["pendingRetrySiblingGroup"] := stream.retrySiblingGroup
+    else if requestParams.Has("pendingRetrySiblingGroup")
+        requestParams.Delete("pendingRetrySiblingGroup")
+    _currentStreamKey := stream.key
+}
+
+; Copy the mutable poll/read fields back from the requestParams window into
+; the per-request record.
+_SaveStreamFromParams(stream) {
+    stream.lastPos          := requestParams["_streamLastPos"]
+    stream.content          := requestParams["_streamContent"]
+    stream.reasoning        := requestParams["_streamReasoning"]
+    stream.modelName        := requestParams["_streamModelName"]
+    stream.firstTokenTime   := requestParams["_streamFirstTokenTime"]
+    stream.usage            := requestParams["_streamUsage"]
+    stream.rawSseChunks     := requestParams["_streamRawSseChunks"]
+    stream.rawLastResponse  := requestParams["_streamRawLastResponse"]
+    stream.pendingLine      := requestParams["_streamPendingLine"]
+    stream.errorMessage     := requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
+    stream.pollCount        := requestParams["_streamPollCount"]
+    stream.cancelled        := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
+}
+
+_StreamIsActive(key) {
+    for stream in _activeStreams
+        if stream.key = key
+            return true
+    return false
+}
+
+_RemoveStreamFromActive(key) {
+    if !key
+        return
+    for i, stream in _activeStreams {
+        if stream.key = key {
+            _activeStreams.RemoveAt(i)
+            return
+        }
+    }
+}
+
+; After a request finalizes, reload the last remaining stream's state into
+; requestParams so its next poll (and any non-timer code) sees the right data.
+_RestoreLastActiveStream() {
+    global _currentStreamKey
+    if _activeStreams.Length {
+        _LoadStreamIntoParams(_activeStreams[_activeStreams.Length])
+    } else {
+        _currentStreamKey := ""
+    }
+}
+
+; Bug #221: is another request still streaming besides the one currently
+; loaded in requestParams? The composer must stay in Stop mode while ANY
+; request is in flight, so setChatButtonsEnabled(true) is only posted when the
+; finishing request is the LAST one.
+_HasOtherActiveStreams() {
+    current := _currentStreamKey
+    count := 0
+    for stream in _activeStreams
+        if stream.key != current
+            count++
+    return count > 0
+}
+
+; The newest in-flight stream that SENT a request for this thread.
+_FindLatestStreamForThread(threadId) {
+    found := ""
+    for stream in _activeStreams
+        if stream.threadId = threadId
+            found := stream
+    return found
+}
+
+; Kill the cURL process of the CURRENTLY loaded stream without touching
+; another concurrent request's PID (the old single global cURLState would
+; close the wrong process once two commands can stream at once - bug #221).
+_CloseCurrentStreamPID() {
+    if !requestParams.Has("_streamPID")
+        return
+    pid := requestParams["_streamPID"]
+    if pid && ProcessExist(pid)
+        ProcessClose(pid)
+    if cURLState("get") = pid
+        cURLState("set", 0)
+}
+
+; Clear the global cURLState only when it still tracks the CURRENT stream's
+; PID - never clobber another concurrent request's PID (bug #221).
+_ClearCurrentStreamPID() {
+    if !requestParams.Has("_streamPID")
+        return
+    pid := requestParams["_streamPID"]
+    if cURLState("get") = pid
+        cURLState("set", 0)
 }
 
 ; Build a stream state Map from requestParams.
@@ -478,6 +672,7 @@ _finalizeStreaming() {
             ; cleans up internally), but _finalizeStreaming must not rely on
             ; that transitive cleanup.
             _cleanupStreamState()
+            _FinishStreamFinalize()
             return
         }
 
@@ -490,24 +685,39 @@ _finalizeStreaming() {
         if requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"] {
             _handleMidStreamError()
             _cleanupStreamState()
+            _FinishStreamFinalize()
             return
         }
 
         if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
             _handleStreamError()
             _cleanupStreamState()
+            _FinishStreamFinalize()
             return
         }
 
         _handleStreamComplete()
         _cleanupStreamState()
+        _FinishStreamFinalize()
     } catch Error as e {
         debugLog("_finalizeStreaming error: " e.Message)
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
+        ; Bug #221: only re-enable the composer when NO other request is still
+        ; streaming.
+        if !_HasOtherActiveStreams() {
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+        }
         postWebMessage("showError", { message: "Request failed: " e.Message })
         _cleanupStreamState()
+        _FinishStreamFinalize()
     }
+}
+
+; Bug #221: drop the finalized request from the in-flight list and restore the
+; next stream's state into requestParams.
+_FinishStreamFinalize() {
+    _RemoveStreamFromActive(_currentStreamKey)
+    _RestoreLastActiveStream()
 }
 
 _cleanupStreamState() {

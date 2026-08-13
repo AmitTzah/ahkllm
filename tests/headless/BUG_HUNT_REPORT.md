@@ -154,14 +154,17 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 4 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug #220 FIXED + committed: the folder-delete
-  confirmation now receives the RAW folder name and `_showChatConfirm` escapes it exactly
-  once, so `A&B<C>` confirms as raw characters (scenario 220 flipped to a regression check
-  + chat-sidebar static unit test; `npm run test:fast` green). Next: fix #221 (two quick
-  chat-mode commands lose the first response - per-request stream state so concurrent
-  command streams each complete into their own thread), still in rank order.
+- **Where we left off:** 2026-08-13 - Bugs #221 + #223 FIXED + committed in ONE commit
+  (same root cause): each in-flight request now owns its own stream record (output file,
+  cURL PID, accumulated content, temp-file paths, retry metadata); the poll timer swaps
+  per request, completion/error/cancel clean up the request's OWN files, the composer
+  re-enables only when NO request remains, and non-current stream events no longer clear
+  the current view's streaming state. Scenarios 221 + 223 flipped to regression checks;
+  streaming-adjacent scenarios (56/98/110/133/147/150/159/171/172/178/195/203/205/206/
+  208/211/214/215/216/218/219) all green; `npm run test:fast` green. Next: fix #222
+  (single-newline paragraphs in assistant bubbles), then #224 (user bubble mirror).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -212,34 +215,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #221 (quick chat-mode commands lose the first response) · 2 = #222 (single-newline paragraphs render as one block) · 3 = #223 (two-command race leaks the Bearer-key temp files) · 4 = #224 (user bubble collapses single-newline paragraphs)
-
-### 221. Two quick chat-mode commands lose the first command's response (shared stream state clobbered)
-
-**Scenario:** 221 (scenario code in e2e-suite.js)
-
-**Status:** verified — open (rank 3)
-
-**Repro:** Launch two chat-mode commands (e.g. Summarize) in quick succession — the second while the first is still streaming — so the second command
-switches the chat window to its own thread and fires its request before the first response finishes.
-
-**Expected:** each command finishes streaming into its own chat; both responses are persisted, even when commands are launched back-to-back or the user
-switches chats mid-stream.
-
-**Actual:** both command requests share one `requestParams` Map in the ChatWindow process. The second `_BuildAndFireRequest`/`sendStreamingRequest`
-overwrites the first request's `_streamOutputFile`/`_streamPID`/`_streamContent`/`_streamThreadId` keys and the shared cURL temp-file paths while the
-first cURL is still running, so the poll timer only ever reads the SECOND request's output file. The first response is never read or persisted — its chat
-keeps only the user message (the first command is lost), and its temp files are never cleaned up. (In the verified ordering the second command still
-completes — the reproducible half of the report is the LOST first command.)
-
-**Evidence:** `chat/ChatRequestBuilder.ahk` `_WriteRequestFiles` and `chat/streaming/StreamHandler.ahk` `sendStreamingRequest` both read/write the same
-`requestParams["cURLOutputFile"]`/`_stream*` keys with no in-flight-request guard; the command path (`app/RequestProcessor.ahk` pasteMode "chat" +
-`CustomMessages.notifyTriggerLLM`) can fire a second request while the first is streaming because it bypasses the WebView composer guard.
-
-**Verification:** headless PASS (2026-08-13) — scenario 221 seeds two threads each ending in a user message, drives the REAL command IPC (probe
-`load-thread` + `trigger-llm`, mirroring `openChatWindow` + `notifyTriggerLLM`) for thread A, then again for thread B ~300ms later while A's sse-slow
-stream is still in flight. After both streams settle: thread A assistant rows=0 (first command LOST), thread B assistant rows=1 (second completed),
-UI idle. The first command's response is gone from the DB and its chat is left with only the user message.
+1 = #222 (single-newline paragraphs render as one block) · 2 = #224 (user bubble collapses single-newline paragraphs)
 
 ### 222. Summarize-style responses with single-newline paragraphs render as one block
 
@@ -264,31 +240,6 @@ markdown-it renders `"A\nB"` as one `<p>` while `"A\n\nB"` produces two.
 **Verification:** headless PASS (2026-08-13) — scenario 222 uses new mock mode `sse-paragraphs` (three content chunks whose breaks are single newlines)
 and observed: after streaming, the assistant bubble contains exactly ONE `<p>` (no `<br>`) and `innerText` reads "First paragraph of the summary. Second
 paragraph of the summary. Third paragraph of the summary." — the paragraphs collapsed into a single block.
-
-### 223. Two quick chat-mode commands leak the first request's temp files (Bearer key stays in %TEMP%)
-
-**Scenario:** 223 (scenario code in e2e-suite.js)
-
-**Status:** verified — open (rank 5)
-
-**Repro:** Launch two chat-mode commands in quick succession (the second while the first is still streaming, the bug #221 race), then check `%TEMP%`
-for the first request's `ChatWindow_Req_*`/`ChatWindow_cURL_*`/`ChatWindow_Out_*`/`ChatWindow_Err_*` files.
-
-**Expected:** every request's temp files (which contain the `Authorization: Bearer` API key in the cURL command) are deleted when the request
-completes/errors/cancels — the bug #110 guarantee.
-
-**Actual:** the second request overwrites `requestParams["chatHistoryJSONRequestFile"]`/`["cURLCommandFile"]`/`["cURLOutputFile"]`/`["cURLErrorFile"]`
-while the first request is still running, so the first request's cleanup (`deleteTempFiles()`) — which only ever reads those shared keys — can never find
-its own files. The first request's request/cURL/output/error files stay in `%TEMP%` forever, including the cURL command with the live API key (a real
-credential leak; 214 such files were already found accumulated on the verification machine).
-
-**Evidence:** `chat/ChatRequestBuilder.ahk` `_WriteRequestFiles` + `chat/streaming/StreamHandler.ahk` `sendStreamingRequest` share the same
-`requestParams` file-path keys with no per-request tracking; `chat/ChatUtils.ahk` `deleteTempFiles()` deletes only the CURRENT values of those keys.
-Scenario 110 guards the success/error/cancel cleanup paths but not this race.
-
-**Verification:** headless PASS (2026-08-13) — scenario 223 reproduces the bug #221 race (probe `load-thread` + `trigger-llm` on two seeded threads,
-second fired while the first sse-slow stream is in flight), snapshots `%TEMP%` before/after, and observed 3 NEW leftover `ChatWindow_*` files after both
-streams settled, including 1 cURL command file still containing `Authorization: Bearer` (the scenario then deleted only the files it created).
 
 ### 224. User message bubbles also collapse single-newline paragraphs (mirror of #222)
 

@@ -69,6 +69,15 @@ debugLog("[CHAT] Settings loaded" (settings.Count ? " from settings.json" : " fr
 _ChatWindowOnExit(*) {
     try ChatDB.Close()
     try {
+        ; Bug #221: close EVERY in-flight cURL process - two chat-mode
+        ; commands can be streaming at once, so the single global cURLState
+        ; PID is not enough.
+        if IsSet(_activeStreams) {
+            for stream in _activeStreams {
+                if stream.HasOwnProp("pid") && stream.pid && ProcessExist(stream.pid)
+                    ProcessClose(stream.pid)
+            }
+        }
         if IsSet(cURLState) {
             pid := cURLState("get")
             if pid && ProcessExist(pid)

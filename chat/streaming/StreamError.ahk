@@ -58,8 +58,13 @@ _handleStreamError() {
     if !errMsg
         errMsg := "Request failed. Check your API key and try again."
     postWebMessage("showError", { message: errMsg })
-    postWebMessage("setChatButtonsEnabled", true)
-    startLoadingCursor(false)
+    ; Bug #221: only re-enable the composer/loading cursor when NO other
+    ; request is still streaming - a concurrent command stream must keep
+    ; Stop mode.
+    if !_HasOtherActiveStreams() {
+        postWebMessage("setChatButtonsEnabled", true)
+        startLoadingCursor(false)
+    }
 
     responseTimeMs := requestParams["_streamRequestStartTime"] > 0
         ? A_TickCount - requestParams["_streamRequestStartTime"]
@@ -85,8 +90,10 @@ _handleStreamError() {
     } catch Error as e {
         debugLog("_handleStreamError crashed: " e.Message "`n" e.Stack, "ErrorHandler")
         postWebMessage("showError", { message: "Request failed: " e.Message })
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
+        if !_HasOtherActiveStreams() {
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+        }
         deleteTempFiles()
     }
 }
@@ -145,7 +152,7 @@ _handleStreamCancelled() {
     try {
     contentLen := StrLen(requestParams.Has("_streamContent") ? requestParams["_streamContent"] : "")
     debugLog("[STREAM] Cancelled — partial=" contentLen "chars")
-    cURLState("close")
+    _CloseCurrentStreamPID()
 
     _logCancelledRequest()
 
@@ -153,55 +160,25 @@ _handleStreamCancelled() {
     ; (captured at send time), not the currently-active thread - the user may
     ; have switched threads between send and Stop.
     streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
-    if streamThreadId && (requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "") {
-        path := ChatDB.Msg_GetActivePath(streamThreadId)
-        ; Bug #205: mirror the completion path's root-retry handling. A retried
-        ; ROOT assistant (no parent) must insert the cancelled partial as a
-        ; SIBLING with parent_id NULL - never as a child of the original root.
-        isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
-        if isRootRetry
-            requestParams.Delete("pendingRetryIsRoot")
-        parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
-        if !isRootRetry && !parentId && path.Length
-            parentId := path[path.Length].id
-        retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
-        retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
-        if retrySiblingGroup
-            requestParams.Delete("pendingRetrySiblingGroup")
-        ChatDB.Msg_Insert({
-            thread_id: streamThreadId, role: "assistant",
-            content: requestParams["_streamContent"],
-            model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
-            parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
-            reasoning: requestParams["_streamReasoning"],
-            ; Bug #133: a cancelled stream never reported usage - LOCAL row:
-            ; local_copy skips the chat_usage upsert + cumulative recompute.
-            local_copy: true,
-            token_count: 0,
-            thinking_tokens: 0,
-            cached_tokens: 0,
-            response_time_ms: 0
-        })
-        _maybeGenerateTitle(path, streamThreadId)
-        postThreadStats(streamThreadId)
-        streamPath := ChatDB.Msg_GetActivePath(streamThreadId)
-        dbMsgData := buildStructuredMessagesFromPath([streamPath[streamPath.Length]])[1]
-        postWebMessage("streamCancelled", { dbMsg: dbMsgData, threadId: streamThreadId })
-    } else {
-        postWebMessage("streamCancelled", { threadId: streamThreadId })
-    }
+    dbMsgData := _persistPartialStreamContent()
+    postWebMessage("streamCancelled", { dbMsg: dbMsgData, threadId: streamThreadId })
 
     _cleanupStreamState()
     deleteTempFiles()
-    startLoadingCursor(false)
-    postWebMessage("setChatButtonsEnabled", true)
+    ; Bug #221: only re-enable when NO other request is still streaming.
+    if !_HasOtherActiveStreams() {
+        startLoadingCursor(false)
+        postWebMessage("setChatButtonsEnabled", true)
+    }
 
     } catch Error as e {
         debugLog("_handleStreamCancelled crashed: " e.Message "`n" e.Stack, "ErrorHandler")
         _cleanupStreamState()
         deleteTempFiles()
-        startLoadingCursor(false)
-        postWebMessage("setChatButtonsEnabled", true)
+        if !_HasOtherActiveStreams() {
+            startLoadingCursor(false)
+            postWebMessage("setChatButtonsEnabled", true)
+        }
         postWebMessage("showError", { message: "Cancellation error: " e.Message })
     }
 }
@@ -211,15 +188,34 @@ _handleStreamCancelled() {
 ; poll timer will detect the flag on its next tick and finalize.
 handleCancelStream() {
     try {
-    curlPID := cURLState("get")
-    if curlPID && ProcessExist(curlPID) {
-        cURLState("close")
+    ; Bug #221: cancel the request that belongs to the CURRENT thread - with
+    ; concurrent command streams there is no single global cURL PID. Fall back
+    ; to the most recent stream for legacy flows.
+    stream := _FindLatestStreamForThread(activeThreadId)
+    if !stream && _activeStreams.Length
+        stream := _activeStreams[_activeStreams.Length]
+    if !stream {
+        if !_HasOtherActiveStreams()
+            postWebMessage("setChatButtonsEnabled", true)
+        return
+    }
+    _LoadStreamIntoParams(stream)
+    pid := requestParams["_streamPID"]
+    if pid && ProcessExist(pid) {
+        ProcessClose(pid)
+        if cURLState("get") = pid
+            cURLState("set", 0)
     }
     requestParams["_streamCancelled"] := true
-    postWebMessage("setChatButtonsEnabled", true)
+    stream.cancelled := true
+    ; The Stop button re-wires to Send immediately, but the composer itself
+    ; only re-enables when no OTHER request is still streaming.
+    if !_HasOtherActiveStreams()
+        postWebMessage("setChatButtonsEnabled", true)
     } catch Error as e {
         debugLog("handleCancelStream error: " e.Message "`n" e.Stack, "ErrorHandler")
-        postWebMessage("setChatButtonsEnabled", true)
+        if !_HasOtherActiveStreams()
+            postWebMessage("setChatButtonsEnabled", true)
     }
 }
 

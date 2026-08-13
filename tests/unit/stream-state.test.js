@@ -28,8 +28,21 @@ function loadStreamModule() {
         handleStreamMessage: undefined, addStreamingActions: undefined,
         hideLoadingIndicator: () => {},
         // Mirrors production: enabling the composer clears any visible
-        // loading dots (bug #215) - the stream-level tests below rely on it.
-        setChatButtonsEnabled: (enabled) => { if (enabled) sandbox.hideLoadingIndicator(); },
+        // loading dots (bug #215) and fully resets the stream state (bug
+        // #219) - the stream-level tests below rely on it.
+        setChatButtonsEnabled: (enabled) => {
+            if (enabled) {
+                sandbox.hideLoadingIndicator();
+                if (sandbox.streamState) {
+                    sandbox.streamState.active = false;
+                    sandbox.streamState.bubble = null;
+                    sandbox.streamState.contentDiv = null;
+                    sandbox.streamState.thinkingDetails = null;
+                    sandbox.streamState.contentBuffer = '';
+                    sandbox.streamState.thinkingBuffer = '';
+                }
+            }
+        },
         addMessageActions: () => {},
     };
     sandbox.global = sandbox;
@@ -224,10 +237,15 @@ describe('onStreamDone thread scoping (bug #195)', () => {
         ctx.streamState.thinkingDetails = null;
         ctx.onStreamDone({ model: 'm', threadId: 't-A', dbMsg: { id: 'a-msg', parentId: 'a-user' } });
         assert.strictEqual(ctx.chatMessages.length, 1, 'wrong-thread response must not be pushed into chatMessages');
-        assert.strictEqual(ctx.streamState.active, false, 'stream state still cleans up');
+        // Bug #221: a NON-current stream's completion must NOT clear the
+        // current view's stream state - the current thread may still have its
+        // own stream in flight (two chat-mode commands can stream at once).
+        // The composer reset arrives via setChatButtonsEnabled(true), which
+        // AHK posts only when NO request remains.
+        assert.strictEqual(ctx.streamState.active, true, 'non-current completion must not clear the current thread stream state');
     });
 
-    it('hides the loading indicator when a NON-current stream completes (bug #215)', () => {
+    it('does not hide the loading indicator for a non-current completion - setChatButtonsEnabled(true) does (bugs #215/#221)', () => {
         const ctx = loadStreamModule();
         ctx.activeThreadId = 't-B';
         ctx.chatMessages = [{ id: 'b-user', role: 'user', content: 'B question' }];
@@ -243,8 +261,53 @@ describe('onStreamDone thread scoping (bug #195)', () => {
         ctx.hideLoadingIndicator = () => { hidden++; };
         ctx.onStreamDone({ model: 'm', threadId: 't-A', dbMsg: { id: 'a-msg', parentId: 'a-user' } });
         assert.strictEqual(ctx.chatMessages.length, 1, 'wrong-thread response must not be pushed into chatMessages');
+        assert.strictEqual(ctx.streamState.active, true, 'non-current completion must leave the current stream state untouched');
+        assert.strictEqual(hidden, 0, 'the non-current streamDone itself must not clear the loading dots');
+        // AHK posts setChatButtonsEnabled(true) once NO request remains - that
+        // is the signal that clears the dots and resets the composer.
+        ctx.setChatButtonsEnabled(true);
         assert.strictEqual(ctx.streamState.active, false);
-        assert.ok(hidden > 0, 'completing the non-current stream must clear the visible loading dots');
+        assert.ok(hidden > 0, 'enabling the composer must clear the visible loading dots');
+    });
+});
+
+describe('concurrent command streams (bug #221)', () => {
+    it('keeps the current thread stream state when a NON-current stream completes', () => {
+        const ctx = loadStreamModule();
+        ctx.activeThreadId = 't-B';
+        ctx.chatMessages = [{ id: 'b-user', role: 'user', content: 'B question' }];
+        // B's own stream is in flight (current view):
+        ctx.streamState.active = true;
+        ctx.streamState.bubble = { dataset: {} };
+        ctx.streamState.contentBuffer = 'B partial answer';
+        ctx.streamState.thinkingBuffer = '';
+        ctx.streamState.modelName = 'm';
+        ctx.streamState.userScrolledUp = false;
+        ctx.streamState.contentDiv = null;
+        ctx.streamState.thinkingDetails = null;
+        // A's (non-current) stream completes first:
+        ctx.onStreamDone({ model: 'm', threadId: 't-A', dbMsg: { id: 'a-msg', parentId: 'a-user' } });
+        assert.strictEqual(ctx.streamState.active, true, 'A completing must not clear B\'s in-flight stream state');
+        assert.strictEqual(ctx.streamState.contentBuffer, 'B partial answer', 'B\'s accumulated content must survive A\'s completion');
+        assert.strictEqual(ctx.chatMessages.length, 1, 'A\'s response must not be persisted into B\'s UI array');
+    });
+
+    it('does not clear the current stream state when a NON-current stream is cancelled/errors', () => {
+        const ctx = loadStreamModule();
+        ctx.activeThreadId = 't-B';
+        ctx.chatMessages = [{ id: 'b-user', role: 'user', content: 'B question' }];
+        ctx.streamState.active = true;
+        ctx.streamState.bubble = { dataset: {} };
+        ctx.streamState.contentBuffer = 'B partial answer';
+        ctx.streamState.thinkingBuffer = '';
+        ctx.streamState.modelName = 'm';
+        ctx.streamState.userScrolledUp = false;
+        ctx.streamState.contentDiv = null;
+        ctx.streamState.thinkingDetails = null;
+        // A's stream cancels/errors while B is still streaming:
+        ctx.cancelStreaming({ threadId: 't-A', dbMsg: { id: 'a-partial', parentId: 'a-user' } });
+        assert.strictEqual(ctx.streamState.active, true, 'A\'s cancel must not clear B\'s in-flight stream state');
+        assert.strictEqual(ctx.streamState.contentBuffer, 'B partial answer');
     });
 });
 

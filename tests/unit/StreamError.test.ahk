@@ -260,10 +260,17 @@ class StreamErrorTest {
     CancelPartial_InsertMarksLocalCopy() {
         sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"
         se := FileRead(sePath)
-        cancelIdx := InStr(se, "_handleStreamCancelled() {")
-        cancelBlock := SubStr(se, cancelIdx, 3600)
-        if !InStr(cancelBlock, "local_copy: true")
-            throw Error("_handleStreamCancelled must insert the cancelled partial as local_copy (bug #133)")
+        ; Bug #221 moved the insert into the shared _persistPartialStreamContent
+        ; helper (used by both the cancel path and the mid-stream error path) -
+        ; the local_copy guarantee is on the helper's insert now.
+        helperIdx := InStr(se, "_persistPartialStreamContent() {")
+        if !helperIdx
+            throw Error("_persistPartialStreamContent not found (bug #221 refactor)")
+        helperBlock := SubStr(se, helperIdx, 2200)
+        if !InStr(helperBlock, "local_copy: true")
+            throw Error("_persistPartialStreamContent must insert the cancelled partial as local_copy (bug #133)")
+        if !InStr(se, "_handleStreamCancelled() {") || !InStr(se, "_persistPartialStreamContent()")
+            throw Error("_handleStreamCancelled must delegate the partial insert to _persistPartialStreamContent (bug #221)")
     }
 
     CancelPartial_LocalCopy_DoesNotBillUsage() {

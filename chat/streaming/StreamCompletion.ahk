@@ -7,7 +7,7 @@
 
 _handleStreamComplete() {
     try {
-        cURLState("set", 0)
+        _ClearCurrentStreamPID()
         ; Bug #159: complete into the thread that SENT the request (captured
         ; at send time), not the currently-active thread.
         streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
@@ -36,8 +36,13 @@ _handleStreamComplete() {
         postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount, threadId: streamThreadId })
 
         postThreadStats(streamThreadId)
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
+        ; Bug #221: only re-enable the composer/loading cursor when NO other
+        ; request is still streaming - a concurrent command stream must keep
+        ; Stop mode.
+        if !_HasOtherActiveStreams() {
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+        }
         ; Bug #110: never leave the request/cURL temp files (which contain the
         ; Authorization Bearer token) on disk after a successful stream.
         deleteTempFiles()
@@ -48,8 +53,10 @@ _handleStreamComplete() {
         ; usage-less stream) must still return the UI to a usable state - the
         ; input/Stop button stayed disabled and streamState stayed active until
         ; reload.
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
+        if !_HasOtherActiveStreams() {
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+        }
         deleteTempFiles()
     }
 }

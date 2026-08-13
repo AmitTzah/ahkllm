@@ -157,6 +157,7 @@ scenarios.push({
   id: 223,
   name: 'Two quick chat-mode commands leak the FIRST request\'s temp files - deleteTempFiles() only ever reads requestParams\' CURRENT paths (the second request\'s), so the clobbered first request\'s cURL command file (which embeds the Authorization: Bearer API key) plus its request/output/error files stay in %TEMP% forever: the bug #110 cleanup guarantee is broken by the bug #221 race',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #223 kept as a regression check (per-request cleanup: no leftover ChatWindow_* temp files)
   fixtures: {
     threads: [
       { id: 't-223-a', title: 'Cmd A', active_leaf_id: 'm-223-u1a' },
@@ -187,15 +188,14 @@ scenarios.push({
     const withBearer = leftover.filter((n) => {
       try { return fs.readFileSync(path.join(tmp, n), 'utf8').includes('Authorization: Bearer'); } catch { return false; }
     });
-    // Buggy behavior (PASS = reproduced): the first request's temp files -
-    // including the cURL command with the API key - are never deleted because
-    // deleteTempFiles() only sees the second request's overwritten paths.
-    if (withBearer.length === 0)
-      throw new Error('no leftover credential-bearing temp file (bug not reproduced): newLeftovers=' + JSON.stringify(leftover));
-    // Clean up ONLY the files this run created (they contain the Bearer key).
-    for (const n of leftover) { try { fs.unlinkSync(path.join(tmp, n)); } catch {} }
+    // FIXED (bug #223): each request's own temp files (including the cURL
+    // command with the Authorization: Bearer key) are deleted when that
+    // request completes - the per-request stream state loads THIS request's
+    // paths into requestParams before deleteTempFiles runs.
+    if (leftover.length > 0 || withBearer.length > 0)
+      throw new Error('request temp files still leak after the two-command race (bug #223 not fixed): newLeftovers=' + JSON.stringify(leftover) + ' withBearer=' + withBearer.length);
     return 'after the two-command race: ' + leftover.length + ' new leftover ChatWindow_* temp files, ' + withBearer.length +
-      ' cURL command(s) still containing "Authorization: Bearer" - deleteTempFiles only removed the second request\'s paths, so the first request\'s files (with the API key) stay in %TEMP%';
+      ' cURL command(s) still containing "Authorization: Bearer" - every request\'s temp files (including the API-key-bearing cURL command) were deleted';
   }
 });
 
@@ -203,6 +203,7 @@ scenarios.push({
   id: 221,
   name: 'Two quick chat-mode commands (second triggered while the first is still streaming) - the second _BuildAndFireRequest overwrites the shared requestParams _stream* keys, cURL PID and temp-file paths, so the FIRST command response is never persisted: the first chat is left hanging with only its user message (loses the first chat command)',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #221 kept as a regression check (per-request stream state: both command responses persist)
   fixtures: {
     threads: [
       { id: 't-221-a', title: 'Cmd A', active_leaf_id: 'm-221-u1a' },
@@ -232,16 +233,18 @@ scenarios.push({
     const bAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-b' AND role='assistant'");
     const aContent = seed.query(dbPath, "SELECT content FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
     const uiState = await cdp.eval('({ active: streamState.active, loading: isLoading, msgs: chatMessages.length })');
-    // Buggy behavior (PASS = reproduced): the first command's response never
-    // reached the DB - the second request overwrote the shared _stream* keys,
-    // cURL PID and temp-file paths before the first stream completed, and no
-    // code ever re-reads the first cURL's output file.
-    if (aAsst[0].cnt !== 0)
-      throw new Error('first command response WAS persisted (bug not reproduced): thread A assistant rows=' + aAsst[0].cnt + ' content=' + JSON.stringify(aContent));
+    // FIXED (bug #221): each request owns its own stream state (output file,
+    // cURL PID, content, temp files), so both command responses persist into
+    // their own threads even when the second fires mid-stream.
+    if (aAsst[0].cnt < 1 || bAsst[0].cnt < 1)
+      throw new Error('a command response was still lost (bug #221 not fixed): thread A assistant rows=' + aAsst[0].cnt +
+        ' thread B assistant rows=' + bAsst[0].cnt + ' content=' + JSON.stringify(aContent));
+    if (uiState.active || uiState.loading)
+      throw new Error('UI not idle after both streams settled (bug #221 not fixed): ' + JSON.stringify(uiState));
     return 'command A triggered first, command B ~300ms later while A was still streaming: thread A assistant rows=' + aAsst[0].cnt +
-      ' (first command LOST) thread B assistant rows=' + bAsst[0].cnt +
+      ' thread B assistant rows=' + bAsst[0].cnt +
       ' ui={active:' + uiState.active + ', loading:' + uiState.loading + ', msgs:' + uiState.msgs + '}' +
-      ' - the second request clobbered the shared requestParams _stream* state (files, PID, content) before the first stream finished';
+      ' - both command responses persisted into their own threads (per-request stream state)';
   }
 });
 

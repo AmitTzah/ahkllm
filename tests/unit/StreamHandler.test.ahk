@@ -554,11 +554,13 @@ class StreamHandlerTest {
         finalizePos := InStr(src, "_finalizeStreaming() {")
         if !finalizePos
             throw Error("_finalizeStreaming not found in StreamHandler.ahk")
-        block := SubStr(src, finalizePos, 1200)
+        block := SubStr(src, finalizePos, 2000)
         cancelPos := InStr(block, "if wasCancelled {")
         if !cancelPos
             throw Error("wasCancelled branch not found")
-        branch := SubStr(block, cancelPos, 500)
+        ; The window is generous because the bug #221 _FinishStreamFinalize
+        ; call sits between _cleanupStreamState and the return.
+        branch := SubStr(block, cancelPos, 900)
         cleanupPos := InStr(branch, "_cleanupStreamState()")
         retPos := InStr(branch, "return")
         if !InStr(branch, "_handleStreamCancelled()") || !cleanupPos || !retPos || cleanupPos > retPos
@@ -677,5 +679,98 @@ class StreamHandlerTest {
             throw Error("_finalizeStreaming must check _streamErrorMessage before the empty-content error branch (bug #219): midStreamErrorPos=" errorPos " emptyErrorPos=" emptyPos)
         if !cancelPos || cancelPos > errorPos
             throw Error("_finalizeStreaming must keep the cancelled check before the error branch (bug #56/#219): cancelPos=" cancelPos " midStreamErrorPos=" errorPos)
+    }
+
+    ; Regression (bug #221): a per-request stream record must round-trip
+    ; through the shared requestParams window - every field the
+    ; completion/error/cancel handlers read, including the request's OWN
+    ; temp-file paths and retry metadata.
+    LoadStreamIntoParams_RoundTripsStreamState() {
+        global requestParams, _activeStreams, _currentStreamKey
+        oldParams := requestParams
+        oldStreams := _activeStreams
+        oldKey := _currentStreamKey
+        requestParams := Map()
+        _activeStreams := []
+        stream := {key: "k-221", outputFile: "out.json", lastPos: 3, content: "partial", reasoning: "think", modelName: "m", displayName: "M", firstTokenTime: 5, usage: {completionTokens: 1}, providerKey: "deepseek", rawSseChunks: "data", rawLastResponse: "{}", pendingLine: "", errorMessage: "", pollCount: 2, requestStartTime: 1, chatHistoryJSONRequest: "{}", pid: 42, cancelled: false, threadId: "t-221", parentId: "p-221", logWindowTitle: "Chat", logProviderName: "deepseek", logModel: "m", logPasteMode: "chat", retryIsRoot: true, retrySiblingGroup: "sg-221", requestFile: "req.json", cURLCommandFile: "curl.txt", errorFile: "err.txt"}
+        try {
+            _LoadStreamIntoParams(stream)
+            if requestParams["_streamThreadId"] != "t-221" || requestParams["_streamPID"] != 42
+                throw Error("stream identity fields not loaded (bug #221)")
+            if requestParams["chatHistoryJSONRequestFile"] != "req.json" || requestParams["cURLCommandFile"] != "curl.txt" || requestParams["cURLOutputFile"] != "out.json" || requestParams["cURLErrorFile"] != "err.txt"
+                throw Error("the request's OWN temp-file paths must load into requestParams (bug #221/#223)")
+            if requestParams["pendingRetryIsRoot"] != true || requestParams["pendingRetrySiblingGroup"] != "sg-221"
+                throw Error("the request's own retry metadata must load into requestParams (bug #221)")
+            if _currentStreamKey != "k-221"
+                throw Error("current stream key not set (bug #221)")
+            _SaveStreamFromParams(stream)
+            if stream.lastPos != 3 || stream.content != "partial" || stream.pollCount != 2
+                throw Error("_SaveStreamFromParams must round-trip mutable fields (bug #221)")
+        } finally {
+            requestParams := oldParams
+            _activeStreams := oldStreams
+            _currentStreamKey := oldKey
+        }
+    }
+
+    ; Regression (bug #221): the composer re-enable gate must detect another
+    ; in-flight request besides the one being finalized.
+    HasOtherActiveStreams_CountsConcurrentRequests() {
+        global _activeStreams, _currentStreamKey
+        oldStreams := _activeStreams
+        oldKey := _currentStreamKey
+        try {
+            _activeStreams := [
+                {key: "a", threadId: "t-a"},
+                {key: "b", threadId: "t-b"}
+            ]
+            _currentStreamKey := "a"
+            if !_HasOtherActiveStreams()
+                throw Error("must detect the concurrent stream b (bug #221)")
+            _currentStreamKey := "b"
+            if !_HasOtherActiveStreams()
+                throw Error("must detect the concurrent stream a (bug #221)")
+            _activeStreams := [{key: "only", threadId: "t-a"}]
+            _currentStreamKey := "only"
+            if _HasOtherActiveStreams()
+                throw Error("the last finishing stream must re-enable the composer (bug #221)")
+        } finally {
+            _activeStreams := oldStreams
+            _currentStreamKey := oldKey
+        }
+    }
+
+    ; Regression (bug #221): removing a finalized stream must only remove the
+    ; matching key and never touch another concurrent request's record.
+    RemoveStreamFromActive_OnlyRemovesMatchingKey() {
+        global _activeStreams
+        oldStreams := _activeStreams
+        try {
+            _activeStreams := [{key: "a", threadId: "t-a"}, {key: "b", threadId: "t-b"}]
+            _RemoveStreamFromActive("a")
+            if _activeStreams.Length != 1 || _activeStreams[1].key != "b"
+                throw Error("_RemoveStreamFromActive must remove only the matching stream (bug #221)")
+            _RemoveStreamFromActive("nope")
+            if _activeStreams.Length != 1
+                throw Error("removing an unknown key must be a no-op (bug #221)")
+            _RemoveStreamFromActive("")
+            if _activeStreams.Length != 1
+                throw Error("removing an empty key must be a no-op (bug #221)")
+        } finally {
+            _activeStreams := oldStreams
+        }
+    }
+
+    ; Regression (bug #221): the poll timer must iterate EVERY in-flight
+    ; request and sendStreamingRequest must register a per-request record.
+    PollTimer_IteratesAllActiveStreams() {
+        srcPath := A_ScriptDir "\..\chat\streaming\StreamHandler.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "for stream in snapshot")
+            throw Error("_pollStreamTimer must iterate a snapshot of all active streams (bug #221)")
+        if !InStr(src, "_activeStreams.Push(stream)")
+            throw Error("sendStreamingRequest must register a per-request stream record (bug #221)")
+        if !InStr(src, "_LoadStreamIntoParams(stream)")
+            throw Error("each polled stream must be loaded into the requestParams window (bug #221)")
     }
 }

@@ -146,7 +146,10 @@ function onStreamDone(data) {
   var modelName = typeof data === 'string' ? data : (data && data.model ? data.model : '');
   var displayName = (data && data.displayName) ? data.displayName : modelName;
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
-  var isCurrent = _streamBelongsToCurrentPath(dbMsg) &&
+  // Legacy payloads without a dbMsg are treated as current (they carry no
+  // thread/parent scoping info); production payloads always carry dbMsg +
+  // threadId, so a non-current stream can be scoped away (bugs #195/#221).
+  var isCurrent = (!dbMsg || _streamBelongsToCurrentPath(dbMsg)) &&
     (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
 
   streamState.userScrolledUp = false;
@@ -170,21 +173,28 @@ function onStreamDone(data) {
 
   if (isCurrent) _updateUserTokenCount(data);
 
-  setChatButtonsEnabled(true);
-  streamState.active = false;
-  streamState.contentBuffer = '';
-  streamState.thinkingBuffer = '';
-  streamState.bubble = null;
-  streamState.thinkingDetails = null;
-  streamState.contentDiv = null;
   // The retry succeeded - the streamed response replaced the removed
   // messages, so never restore them on a later error.
   if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
   if (typeof _retryThreadId !== 'undefined') _retryThreadId = null;
   if (typeof _retryAnchorId !== 'undefined') _retryAnchorId = null;
 
+  // Bug #221: a NON-current stream's completion must not clear the global
+  // stream state - the CURRENT thread may still have its own stream in flight
+  // (two chat-mode commands can stream at once). AHK posts
+  // setChatButtonsEnabled(true) only once NO request remains, and that
+  // (handled in setChatButtonsEnabled) is the signal to reset the composer.
+  if (!isCurrent) return;
+
+  streamState.active = false;
+  streamState.contentBuffer = '';
+  streamState.thinkingBuffer = '';
+  streamState.bubble = null;
+  streamState.thinkingDetails = null;
+  streamState.contentDiv = null;
+
   // Refresh thread map (right panel nav)
-  if (isCurrent && typeof renderNavList === 'function') renderNavList();
+  if (typeof renderNavList === 'function') renderNavList();
 }
 
 function _finalizeStreamBubble(displayName, modelName, dbMsg) {
@@ -340,7 +350,6 @@ function onStreamModelName(modelName, threadId) {
 // data may be {dbMsg: {...}} with DB message info for action buttons.
 function cancelStreaming(data) {
   if (!streamState.active) return;
-  streamState.active = false;
   // A cancelled retry keeps its partial response; the removed messages must
   // not be restored afterwards.
   if (typeof _retryRemovedMessages !== 'undefined') _retryRemovedMessages = null;
@@ -348,16 +357,22 @@ function cancelStreaming(data) {
   if (typeof _retryAnchorId !== 'undefined') _retryAnchorId = null;
 
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
-  var isCurrent = _streamBelongsToCurrentPath(dbMsg) &&
+  var isCurrent = (!dbMsg || _streamBelongsToCurrentPath(dbMsg)) &&
     (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
+  // Bug #221: a NON-current stream's cancel/error must not clear the current
+  // view's streaming state - the current thread may still be streaming its
+  // own response (two chat-mode commands can stream at once).
+  if (!isCurrent) return;
+
+  streamState.active = false;
 
   // Remove blinking cursor from partial content
-  if (isCurrent && streamState.contentDiv) {
+  if (streamState.contentDiv) {
     streamState.contentDiv.innerHTML = md.render(streamState.contentBuffer || '');
   }
 
   // Update thinking block to show it was cancelled
-  if (isCurrent && streamState.thinkingDetails) {
+  if (streamState.thinkingDetails) {
     var summary = streamState.thinkingDetails.querySelector('summary');
     var pulse = streamState.thinkingDetails.querySelector('.thinking-pulse');
     if (pulse) pulse.remove();
@@ -367,7 +382,7 @@ function cancelStreaming(data) {
   }
 
   // Update bubble label to model name if we have it
-  if (isCurrent && streamState.bubble && streamState.modelName) {
+  if (streamState.bubble && streamState.modelName) {
     var label = streamState.bubble.querySelector('.message-label');
     if (label) label.textContent = streamState.modelName;
   }
@@ -375,14 +390,17 @@ function cancelStreaming(data) {
   // Add to chatMessages and render action buttons if we have DB data.
   // Must also render when only thinking content exists (no text yet) —
   // otherwise Stop during reasoning leaves no action bar.
-  if (isCurrent && dbMsg && (streamState.contentBuffer || streamState.thinkingBuffer)) {
+  if (dbMsg && (streamState.contentBuffer || streamState.thinkingBuffer)) {
     _persistStreamedMessage(streamState.contentBuffer, streamState.modelName, dbMsg);
     if (streamState.bubble) {
       addStreamingActions(streamState.bubble, chatMessages.length - 1);
     }
   }
 
-  setChatButtonsEnabled(true);
+  // Bug #221: the composer re-enable is AHK's job (it posts
+  // setChatButtonsEnabled(true) only when NO other request is still in
+  // flight) - calling it here would un-wedge the composer while another
+  // concurrent command stream is still running.
   streamState.contentBuffer = '';
   streamState.thinkingBuffer = '';
   streamState.bubble = null;
