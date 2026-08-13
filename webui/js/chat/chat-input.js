@@ -93,7 +93,15 @@ function setChatButtonsEnabled(enabled) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   if (input) input.disabled = !enabled;
-  if (enabled && input) input.focus();
+  if (enabled) {
+    // Bug #215: enabling the composer means no request is in flight, so any
+    // visible loading dots must clear. This matters when a stream completes
+    // (or fails/cancels) while a DIFFERENT thread is visible: onStreamDone is
+    // scoped away for the non-current thread and never reaches the indicator
+    // through the normal render path, leaving the dots stuck forever.
+    hideLoadingIndicator();
+    if (input) input.focus();
+  }
 }
 
 // Cancel streaming — sends cancel message to AHK

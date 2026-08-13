@@ -90,6 +90,14 @@ describe('onChatSend — payload construction', () => {
             'Enter/click during an active stream must cancel, not send a second request');
     });
 
+    it('clears the loading indicator when the composer is enabled (bug #215)', () => {
+        const { ctx } = loadInputModule();
+        let hidden = 0;
+        ctx.hideLoadingIndicator = () => { hidden++; };
+        ctx.setChatButtonsEnabled(true);
+        assert.strictEqual(hidden, 1, 'enabling the composer must remove any visible loading dots');
+    });
+
     it('does nothing when input is empty and there are no attachments (bug #77)', () => {
         const { ctx, postedMessages } = loadInputModule();
         ctx.isLoading = false;

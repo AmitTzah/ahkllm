@@ -26,7 +26,10 @@ function loadStreamModule() {
         onStreamDone: undefined, cancelStreaming: undefined,
         createStreamingBubble: undefined, createThinkingBlock: undefined,
         handleStreamMessage: undefined, addStreamingActions: undefined,
-        hideLoadingIndicator: () => {}, setChatButtonsEnabled: () => {},
+        hideLoadingIndicator: () => {},
+        // Mirrors production: enabling the composer clears any visible
+        // loading dots (bug #215) - the stream-level tests below rely on it.
+        setChatButtonsEnabled: (enabled) => { if (enabled) sandbox.hideLoadingIndicator(); },
         addMessageActions: () => {},
     };
     sandbox.global = sandbox;
@@ -222,6 +225,26 @@ describe('onStreamDone thread scoping (bug #195)', () => {
         ctx.onStreamDone({ model: 'm', threadId: 't-A', dbMsg: { id: 'a-msg', parentId: 'a-user' } });
         assert.strictEqual(ctx.chatMessages.length, 1, 'wrong-thread response must not be pushed into chatMessages');
         assert.strictEqual(ctx.streamState.active, false, 'stream state still cleans up');
+    });
+
+    it('hides the loading indicator when a NON-current stream completes (bug #215)', () => {
+        const ctx = loadStreamModule();
+        ctx.activeThreadId = 't-B';
+        ctx.chatMessages = [{ id: 'b-user', role: 'user', content: 'B question' }];
+        ctx.streamState.active = true;
+        ctx.streamState.bubble = null;
+        ctx.streamState.contentBuffer = 'A answer';
+        ctx.streamState.thinkingBuffer = '';
+        ctx.streamState.modelName = 'm';
+        ctx.streamState.userScrolledUp = false;
+        ctx.streamState.contentDiv = null;
+        ctx.streamState.thinkingDetails = null;
+        let hidden = 0;
+        ctx.hideLoadingIndicator = () => { hidden++; };
+        ctx.onStreamDone({ model: 'm', threadId: 't-A', dbMsg: { id: 'a-msg', parentId: 'a-user' } });
+        assert.strictEqual(ctx.chatMessages.length, 1, 'wrong-thread response must not be pushed into chatMessages');
+        assert.strictEqual(ctx.streamState.active, false);
+        assert.ok(hidden > 0, 'completing the non-current stream must clear the visible loading dots');
     });
 });
 

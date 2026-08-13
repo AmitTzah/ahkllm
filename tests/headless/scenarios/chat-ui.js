@@ -717,6 +717,7 @@ scenarios.push({
   id: 215,
   name: 'Switching to an unanswered thread mid-stream leaves the loading indicator stuck after the stream completes - initChatMode shows the dots for the visible thread\'s trailing user message (isLoading is still true), and onStreamDone (scoped away by bug #195 for a non-current thread) never calls hideLoadingIndicator',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #215 kept as a regression check (completion clears the stuck dots)
   settings: {},
   fixtures: {
     threads: [
@@ -754,12 +755,14 @@ scenarios.push({
     const dotsAfter = await cdp.eval('document.getElementById("chat-loading") !== null');
     const streamIdle = await cdp.eval('typeof streamState !== "undefined" && !streamState.active');
     if (!streamIdle) throw new Error('setup: stream never went idle');
-    // BUG: the loading dots are still visible in B after the stream ended.
-    if (!dotsAfter)
-      throw new Error('loading indicator was hidden after the stream completed (fix applied)');
-    return 'switched to unanswered thread B mid-stream: loading dots shown=' + dotsDuring +
-      ', after A\'s stream completed (streamState.active=false) the dots are STILL visible in B=' + dotsAfter +
-      ' - onStreamDone for the non-current thread never calls hideLoadingIndicator';
+    // FIXED (bug #215): once the stream completes, no request is in flight -
+    // the composer is re-enabled and the visible loading dots must clear,
+    // even though onStreamDone was scoped away for the non-current thread.
+    if (dotsAfter)
+      throw new Error('loading indicator is still visible after the stream completed (bug #215 not fixed)');
+    return 'switched to unanswered thread B mid-stream: loading dots shown while streaming=' + dotsDuring +
+      ', after A\'s stream completed (streamState.active=false) the dots are hidden in B=' + !dotsAfter +
+      ' - completion of the non-current stream clears the stuck indicator';
   }
 });
 

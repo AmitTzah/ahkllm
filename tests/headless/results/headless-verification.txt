@@ -1,5 +1,5 @@
-# 2026-08-13T09:45:45.463Z | run of 1 scenario(s)
-PASS | #218 | Switching THREADS mid-stream leaves a mismatched composer state - initChatMode unconditionally re-enables the input and send button (disabled=false) but never re-wires the button, so while the old stream is still active the input is editable, isLoading=false, and the button still shows Stop; pressing Enter sends a SECOND request that clobbers the first stream (same family as #214, but on the loadThread/initChatMode path) | switched to assistant-ended thread B mid-stream: composer stayed disabled (inputDisabled=true isLoading=true btn=stop); a forced Enter keydown posted ["{\"action\":\"cancelStream\",\"reqId\":\"r8\"}"] (cancel, never chatSend) - the mismatch cannot fire a second send | 5.9s
+# 2026-08-13T09:49:26.343Z | run of 1 scenario(s)
+PASS | #215 | Switching to an unanswered thread mid-stream leaves the loading indicator stuck after the stream completes - initChatMode shows the dots for the visible thread's trailing user message (isLoading is still true), and onStreamDone (scoped away by bug #195 for a non-current thread) never calls hideLoadingIndicator | switched to unanswered thread B mid-stream: loading dots shown while streaming=true, after A's stream completed (streamState.active=false) the dots are hidden in B=true - completion of the non-current stream clears the stuck indicator | 8.6s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes
