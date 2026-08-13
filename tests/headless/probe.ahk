@@ -398,6 +398,36 @@ switch command {
             Send("{Esc}")
         Write(Map("open", open))
 
+    case "load-thread":
+        ; Mirror CustomMessages.notifyLoadThread (Main -> ChatWindow): write the
+        ; thread id to the shared temp file, then post WM_LOAD_THREAD (0x502) to
+        ; the chat window. Used by the chat-command race scenarios to reproduce
+        ; the command path (processInitialRequest -> openChatWindow) without
+        ; touching the real menu.
+        hwnd := ChatHwnd()
+        threadId := A_Args.Length > 2 ? A_Args[3] : ""
+        ok := 0
+        if hwnd && threadId {
+            FileOpen(A_Temp "\chat_load_thread.txt", "w", "UTF-8-RAW").Write(threadId)
+            PostMessage(0x502, 0, 0, , "ahk_id " hwnd)
+            ok := 1
+        }
+        Write(Map("hwnd", hwnd ? hwnd : 0, "threadId", threadId, "posted", ok))
+
+    case "trigger-llm":
+        ; Mirror CustomMessages.notifyTriggerLLM (Main -> ChatWindow): post
+        ; WM_TRIGGER_LLM (0x504) with wParam = the command's stream flag
+        ; (1 = stream, 0 = single-shot JSON). Used by the chat-command race
+        ; scenarios to reproduce the command trigger exactly.
+        hwnd := ChatHwnd()
+        streamFlag := A_Args.Length > 2 && A_Args[3] = "1" ? 1 : 0
+        ok := 0
+        if hwnd {
+            PostMessage(0x504, streamFlag, 0, , "ahk_id " hwnd)
+            ok := 1
+        }
+        Write(Map("hwnd", hwnd ? hwnd : 0, "stream", streamFlag, "posted", ok))
+
     case "close-test":
         ; MANUAL DEBUGGING ONLY — activates the chat window and sends keys.
         hwnd := ChatHwnd()

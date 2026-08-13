@@ -154,12 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 3 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219 (mid-stream SSE error event
-  crashes the parser and wedges the composer) and #220 (folder-delete confirm double-escapes
-  the folder name) VERIFIED headlessly (scenarios 219 + 220 PASS) and committed on branch
-  bug-hunt-round4; no fixes started yet (next step is a fix cycle when the user asks).
+- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#221 VERIFIED headlessly
+  (scenarios 219-221 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
+  error event crashes the parser and wedges the composer; #220 = folder-delete confirm
+  double-escapes the folder name; #221 = two quick chat-mode commands lose the first response;
+  next: verify report "summarize sends a block of text" (#222). No fixes started yet.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -210,7 +211,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name)
+1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response)
 
 ### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
 
@@ -259,6 +260,33 @@ second time (`escHtml(message)`), so the pre-escaped name is escaped again.
 **Verification:** headless PASS (2026-08-13) — scenario 220 seeds a folder named `A&B<C>` (with one thread in it), clicks the folder delete button
 through the real UI, and observed the confirm text `Delete folder "A&amp;B&lt;C&gt;"? Chats will become unfiled.` — the name displays as HTML entities
 instead of the raw characters.
+
+### 221. Two quick chat-mode commands lose the first command's response (shared stream state clobbered)
+
+**Scenario:** 221 (scenario code in e2e-suite.js)
+
+**Status:** verified — open (rank 3)
+
+**Repro:** Launch two chat-mode commands (e.g. Summarize) in quick succession — the second while the first is still streaming — so the second command
+switches the chat window to its own thread and fires its request before the first response finishes.
+
+**Expected:** each command finishes streaming into its own chat; both responses are persisted, even when commands are launched back-to-back or the user
+switches chats mid-stream.
+
+**Actual:** both command requests share one `requestParams` Map in the ChatWindow process. The second `_BuildAndFireRequest`/`sendStreamingRequest`
+overwrites the first request's `_streamOutputFile`/`_streamPID`/`_streamContent`/`_streamThreadId` keys and the shared cURL temp-file paths while the
+first cURL is still running, so the poll timer only ever reads the SECOND request's output file. The first response is never read or persisted — its chat
+keeps only the user message (the first command is lost), and its temp files are never cleaned up. (In the verified ordering the second command still
+completes — the reproducible half of the report is the LOST first command.)
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` `_WriteRequestFiles` and `chat/streaming/StreamHandler.ahk` `sendStreamingRequest` both read/write the same
+`requestParams["cURLOutputFile"]`/`_stream*` keys with no in-flight-request guard; the command path (`app/RequestProcessor.ahk` pasteMode "chat" +
+`CustomMessages.notifyTriggerLLM`) can fire a second request while the first is streaming because it bypasses the WebView composer guard.
+
+**Verification:** headless PASS (2026-08-13) — scenario 221 seeds two threads each ending in a user message, drives the REAL command IPC (probe
+`load-thread` + `trigger-llm`, mirroring `openChatWindow` + `notifyTriggerLLM`) for thread A, then again for thread B ~300ms later while A's sse-slow
+stream is still in flight. After both streams settle: thread A assistant rows=0 (first command LOST), thread B assistant rows=1 (second completed),
+UI idle. The first command's response is gone from the DB and its chat is left with only the user message.
 
 ## History (append-only)
 

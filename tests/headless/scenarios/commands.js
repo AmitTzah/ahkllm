@@ -10,7 +10,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const launcher = require('../launch');
-const { sleep, runThinkingProbe, openSettings, openSection } = require('./helpers');
+const seed = require('../seed');
+const { sleep, runProbe, runThinkingProbe, openSettings, openSection } = require('./helpers');
 
 const scenarios = [];
 
@@ -148,6 +149,52 @@ scenarios.push({
         ' resolverSearchesDefaults=' + resolverSearchesDefaults + ' resolverSearchesAppData=' + resolverSearchesAppData +
         ' cmdDelegates=' + cmdDelegates + ' assistantDelegates=' + assistantDelegates + ' missingAtRoot=' + missingAtRoot.length);
     return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); SystemMessageResolver searches default-settings/system-messages/ + AppData, and both command and assistant paths delegate to it';
+  }
+});
+
+scenarios.push({
+  id: 221,
+  name: 'Two quick chat-mode commands (second triggered while the first is still streaming) - the second _BuildAndFireRequest overwrites the shared requestParams _stream* keys, cURL PID and temp-file paths, so the FIRST command response is never persisted: the first chat is left hanging with only its user message (loses the first chat command)',
+  mode: 'sse-slow',
+  fixtures: {
+    threads: [
+      { id: 't-221-a', title: 'Cmd A', active_leaf_id: 'm-221-u1a' },
+      { id: 't-221-b', title: 'Cmd B', active_leaf_id: 'm-221-u1b' }
+    ],
+    messages: [
+      { id: 'm-221-u1a', thread_id: 't-221-a', role: 'user', content: 'first command request', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-221-u1b', thread_id: 't-221-b', role: 'user', content: 'second command request', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await sleep(500);
+    // Command 1: load thread A and trigger the LLM - mirrors the command path
+    // processInitialRequest -> openChatWindow(threadId) + notifyTriggerLLM(1).
+    const p1 = runProbe('load-thread', ['t-221-a']);
+    if (!p1.posted) throw new Error('setup: load-thread probe did not post to the chat window: ' + JSON.stringify(p1));
+    runProbe('trigger-llm', ['1']);
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 10000, 200, 'first command in flight');
+    // The first stream is still running (sse-slow delivers chunks over ~3s).
+    await sleep(300);
+    // Command 2: load thread B and trigger while command 1 is still streaming.
+    runProbe('load-thread', ['t-221-b']);
+    runProbe('trigger-llm', ['1']);
+    // Let both streams settle (sse-slow total ~3s; generous margin).
+    await sleep(9000);
+    const aAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
+    const bAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-b' AND role='assistant'");
+    const aContent = seed.query(dbPath, "SELECT content FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
+    const uiState = await cdp.eval('({ active: streamState.active, loading: isLoading, msgs: chatMessages.length })');
+    // Buggy behavior (PASS = reproduced): the first command's response never
+    // reached the DB - the second request overwrote the shared _stream* keys,
+    // cURL PID and temp-file paths before the first stream completed, and no
+    // code ever re-reads the first cURL's output file.
+    if (aAsst[0].cnt !== 0)
+      throw new Error('first command response WAS persisted (bug not reproduced): thread A assistant rows=' + aAsst[0].cnt + ' content=' + JSON.stringify(aContent));
+    return 'command A triggered first, command B ~300ms later while A was still streaming: thread A assistant rows=' + aAsst[0].cnt +
+      ' (first command LOST) thread B assistant rows=' + bAsst[0].cnt +
+      ' ui={active:' + uiState.active + ', loading:' + uiState.loading + ', msgs:' + uiState.msgs + '}' +
+      ' - the second request clobbered the shared requestParams _stream* state (files, PID, content) before the first stream finished';
   }
 });
 
