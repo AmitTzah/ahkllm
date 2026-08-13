@@ -154,13 +154,15 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 4 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 5 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#222 VERIFIED headlessly
-  (scenarios 219-222 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
+- **Where we left off:** 2026-08-13 - Bug hunt round 4: bugs #219-#223 VERIFIED headlessly
+  (scenarios 219-223 PASS, one commit per bug on branch bug-hunt-round4). #219 = mid-stream SSE
   error event crashes the parser and wedges the composer; #220 = folder-delete confirm
   double-escapes the folder name; #221 = two quick chat-mode commands lose the first response;
-  #222 = single-newline paragraph breaks render as one block. No fixes started yet.
+  #222 = single-newline paragraph breaks render as one block; #223 = the #221 race leaks the
+  first request's Bearer-key temp files; next: verify #224 (user bubble paragraph collapse).
+  No fixes started yet.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -211,7 +213,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response) · 4 = #222 (single-newline paragraphs render as one block)
+1 = #219 (SSE stream error crashes the parser and wedges the composer) · 2 = #220 (folder-delete confirm double-escapes the name) · 3 = #221 (quick chat-mode commands lose the first response) · 4 = #222 (single-newline paragraphs render as one block) · 5 = #223 (two-command race leaks the Bearer-key temp files)
 
 ### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
 
@@ -311,6 +313,31 @@ markdown-it renders `"A\nB"` as one `<p>` while `"A\n\nB"` produces two.
 **Verification:** headless PASS (2026-08-13) — scenario 222 uses new mock mode `sse-paragraphs` (three content chunks whose breaks are single newlines)
 and observed: after streaming, the assistant bubble contains exactly ONE `<p>` (no `<br>`) and `innerText` reads "First paragraph of the summary. Second
 paragraph of the summary. Third paragraph of the summary." — the paragraphs collapsed into a single block.
+
+### 223. Two quick chat-mode commands leak the first request's temp files (Bearer key stays in %TEMP%)
+
+**Scenario:** 223 (scenario code in e2e-suite.js)
+
+**Status:** verified — open (rank 5)
+
+**Repro:** Launch two chat-mode commands in quick succession (the second while the first is still streaming, the bug #221 race), then check `%TEMP%`
+for the first request's `ChatWindow_Req_*`/`ChatWindow_cURL_*`/`ChatWindow_Out_*`/`ChatWindow_Err_*` files.
+
+**Expected:** every request's temp files (which contain the `Authorization: Bearer` API key in the cURL command) are deleted when the request
+completes/errors/cancels — the bug #110 guarantee.
+
+**Actual:** the second request overwrites `requestParams["chatHistoryJSONRequestFile"]`/`["cURLCommandFile"]`/`["cURLOutputFile"]`/`["cURLErrorFile"]`
+while the first request is still running, so the first request's cleanup (`deleteTempFiles()`) — which only ever reads those shared keys — can never find
+its own files. The first request's request/cURL/output/error files stay in `%TEMP%` forever, including the cURL command with the live API key (a real
+credential leak; 214 such files were already found accumulated on the verification machine).
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` `_WriteRequestFiles` + `chat/streaming/StreamHandler.ahk` `sendStreamingRequest` share the same
+`requestParams` file-path keys with no per-request tracking; `chat/ChatUtils.ahk` `deleteTempFiles()` deletes only the CURRENT values of those keys.
+Scenario 110 guards the success/error/cancel cleanup paths but not this race.
+
+**Verification:** headless PASS (2026-08-13) — scenario 223 reproduces the bug #221 race (probe `load-thread` + `trigger-llm` on two seeded threads,
+second fired while the first sse-slow stream is in flight), snapshots `%TEMP%` before/after, and observed 3 NEW leftover `ChatWindow_*` files after both
+streams settled, including 1 cURL command file still containing `Authorization: Bearer` (the scenario then deleted only the files it created).
 
 ## History (append-only)
 

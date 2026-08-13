@@ -9,6 +9,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const launcher = require('../launch');
 const seed = require('../seed');
 const { sleep, runProbe, runThinkingProbe, openSettings, openSection } = require('./helpers');
@@ -149,6 +150,52 @@ scenarios.push({
         ' resolverSearchesDefaults=' + resolverSearchesDefaults + ' resolverSearchesAppData=' + resolverSearchesAppData +
         ' cmdDelegates=' + cmdDelegates + ' assistantDelegates=' + assistantDelegates + ' missingAtRoot=' + missingAtRoot.length);
     return 'modal saves bare filenames (' + bareFiles.length + ' app-default files); SystemMessageResolver searches default-settings/system-messages/ + AppData, and both command and assistant paths delegate to it';
+  }
+});
+
+scenarios.push({
+  id: 223,
+  name: 'Two quick chat-mode commands leak the FIRST request\'s temp files - deleteTempFiles() only ever reads requestParams\' CURRENT paths (the second request\'s), so the clobbered first request\'s cURL command file (which embeds the Authorization: Bearer API key) plus its request/output/error files stay in %TEMP% forever: the bug #110 cleanup guarantee is broken by the bug #221 race',
+  mode: 'sse-slow',
+  fixtures: {
+    threads: [
+      { id: 't-223-a', title: 'Cmd A', active_leaf_id: 'm-223-u1a' },
+      { id: 't-223-b', title: 'Cmd B', active_leaf_id: 'm-223-u1b' }
+    ],
+    messages: [
+      { id: 'm-223-u1a', thread_id: 't-223-a', role: 'user', content: 'first command request', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-223-u1b', thread_id: 't-223-b', role: 'user', content: 'second command request', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp }) {
+    const tmp = os.tmpdir();
+    const isChatTemp = (n) => /^ChatWindow_(Req|cURL|Out|Err)_\d+\.(json|txt)$/.test(n);
+    // Snapshot the pre-existing temp files (this machine already has leftovers
+    // from earlier runs; only NEW files created by this run count as leaks).
+    const before = new Set(fs.readdirSync(tmp).filter(isChatTemp));
+    await sleep(500);
+    // Command 1, then command 2 while command 1 is still streaming (bug #221 race).
+    runProbe('load-thread', ['t-223-a']);
+    runProbe('trigger-llm', ['1']);
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 10000, 200, 'first command in flight');
+    await sleep(300);
+    runProbe('load-thread', ['t-223-b']);
+    runProbe('trigger-llm', ['1']);
+    // Let both streams settle (sse-slow total ~3s; generous margin).
+    await sleep(9000);
+    const leftover = fs.readdirSync(tmp).filter((n) => isChatTemp(n) && !before.has(n));
+    const withBearer = leftover.filter((n) => {
+      try { return fs.readFileSync(path.join(tmp, n), 'utf8').includes('Authorization: Bearer'); } catch { return false; }
+    });
+    // Buggy behavior (PASS = reproduced): the first request's temp files -
+    // including the cURL command with the API key - are never deleted because
+    // deleteTempFiles() only sees the second request's overwritten paths.
+    if (withBearer.length === 0)
+      throw new Error('no leftover credential-bearing temp file (bug not reproduced): newLeftovers=' + JSON.stringify(leftover));
+    // Clean up ONLY the files this run created (they contain the Bearer key).
+    for (const n of leftover) { try { fs.unlinkSync(path.join(tmp, n)); } catch {} }
+    return 'after the two-command race: ' + leftover.length + ' new leftover ChatWindow_* temp files, ' + withBearer.length +
+      ' cURL command(s) still containing "Authorization: Bearer" - deleteTempFiles only removed the second request\'s paths, so the first request\'s files (with the API key) stay in %TEMP%';
   }
 });
 
