@@ -1521,6 +1521,10 @@ scenarios.push({
       sessionStorage: { getItem: () => null, setItem() {} },
       setTimeout() {}, clearTimeout() {},
       renderChatMessages() {}, showTokenUsageBar() {}, hideLoadingIndicator() {},
+      // Bug #214/#218: initChatMode now syncs the composer to the in-flight
+      // state via setChatButtonsEnabled (unconditional call) - the sandbox
+      // must provide it or every initChatMode invocation throws.
+      setChatButtonsEnabled() {},
       updateScopedSearchState() {}, scrollToMessageById() {}
     };
     sandbox.global = sandbox;
