@@ -11,8 +11,11 @@ function onChatSend() {
   var input = document.getElementById('chat-input');
   if (!input) return;
 
-  // If streaming, treat click as "Stop"
-  if (isLoading) {
+  // If streaming, treat click as "Stop". streamState.active is checked in
+  // addition to isLoading so a mismatched composer (bugs #214/#218: input
+  // re-enabled / isLoading reset while the first stream is still in flight)
+  // can never fire a second send that clobbers the first stream.
+  if (isLoading || (typeof streamState !== 'undefined' && streamState.active)) {
     onStopStreaming();
     return;
   }

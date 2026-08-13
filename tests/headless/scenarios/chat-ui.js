@@ -652,6 +652,7 @@ scenarios.push({
   id: 214,
   name: 'Switching branches mid-stream re-enables the composer (setChatButtonsEnabled(true) inside updateChatMessages) - the user can send a SECOND request while the first stream is still in flight, and the second send clobbers the shared requestParams stream state so the first (billed) response is never persisted or logged',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #214 kept as a regression check (composer stays disabled mid-stream)
   settings: {},
   fixtures: {
     threads: [{ id: 't-mid-214', title: 'Mid-Stream Branch', active_leaf_id: 'm-214-a1' }],
@@ -676,34 +677,39 @@ scenarios.push({
     await cdp.waitFor('chatMessages.length >= 2 && chatMessages[1] && chatMessages[1].id === "m-214-a2"', 15000, 300, 'branch B loaded');
     await sleep(300);
     // The first stream must STILL be in flight at this point.
-    const stillActive = await cdp.eval('typeof streamState !== "undefined" && streamState.active === true');
-    if (!stillActive) throw new Error('setup: first stream already finished before the state check (timing)');
-    // BUG: updateChatMessages -> setChatButtonsEnabled(true) re-enabled the
-    // composer mid-stream: the input is editable and the send button is wired
-    // to onChatSend instead of onStopStreaming.
-    const inputDisabled = await cdp.eval('document.getElementById("chat-input").disabled');
-    const btnState = await cdp.eval(`(() => {
-      const b = document.getElementById('chat-send-btn');
-      if (!b) return 'no-btn';
-      return String(b.onclick).indexOf('onChatSend') >= 0 ? 'send' : 'stop';
-    })()`);
-    if (inputDisabled && btnState === 'stop')
-      throw new Error('composer correctly stayed disabled mid-stream (fix applied): inputDisabled=' + inputDisabled + ' btn=' + btnState);
-    // Prove the harm: send a second message while stream 1 is still in flight.
-    await sendChatMessage(cdp, 'second message on B');
-    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'second stream active');
+    const state = await cdp.eval(`(() => ({
+      streamActive: (typeof streamState !== 'undefined' && streamState.active) || false,
+      inputDisabled: document.getElementById('chat-input').disabled,
+      isLoading: (typeof isLoading !== 'undefined' && isLoading) || false,
+      btnOnclick: (function(){ var b = document.getElementById('chat-send-btn'); return b && b.onclick ? String(b.onclick).indexOf('onStopStreaming') >= 0 ? 'stop' : 'send' : 'none'; })()
+    }))()`);
+    if (!state.streamActive)
+      throw new Error('setup: first stream already finished before the state check (timing)');
+    // FIXED (bug #214): updateChatMessages must NOT re-enable the composer
+    // mid-stream - the input stays disabled, isLoading stays true, and the
+    // button stays wired to Stop, so a second send is impossible.
+    if (!state.inputDisabled || !state.isLoading || state.btnOnclick !== 'stop')
+      throw new Error('composer was re-enabled after the branch switch mid-stream (bug #214 not fixed): ' + JSON.stringify(state));
+    // The first stream must now complete untouched (no second request ever
+    // fired), and its billed response must be persisted.
     await waitStreamingIdle(cdp, 40000);
     await sleep(800);
-    // The first request's response is never persisted: no assistant row is
-    // parented to the "follow-up on A" user message (the second send
-    // overwrote requestParams["_stream*"], orphaning stream 1).
+    const reEnabled = await cdp.eval('document.getElementById("chat-input").disabled === false && (typeof isLoading !== "undefined" && !isLoading)');
+    if (!reEnabled)
+      throw new Error('composer was not re-enabled after the stream completed: ' + reEnabled);
+    // Regression: the first request's response IS persisted - an assistant
+    // row is parented to the "follow-up on A" user message, and no "second
+    // message on B" was ever created.
     const followUpId = seed.query(dbPath, "SELECT id FROM messages WHERE thread_id='t-mid-214' AND content='follow-up on A'")[0];
     const firstResp = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-mid-214' AND role='assistant' AND parent_id=?", [followUpId ? followUpId.id : 'nope'])[0].c;
     const secondResp = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-mid-214' AND role='assistant' AND parent_id IN (SELECT id FROM messages WHERE thread_id='t-mid-214' AND content='second message on B')")[0].c;
-    return 'branch switch mid-stream left the composer enabled (inputDisabled=' + inputDisabled + ' btn=' + btnState +
-      '); a second send fired while stream 1 was still active: responses persisted for the second send=' + secondResp +
-      ', responses persisted for the first send (follow-up on A)=' + firstResp +
-      ' - the first billed response is silently lost';
+    if (firstResp !== 1)
+      throw new Error('the first streamed response was not persisted (bug #214 not fixed): firstResp=' + firstResp);
+    if (secondResp !== 0)
+      throw new Error('a second message was sent while the first stream was in flight (bug #214 not fixed): secondResp=' + secondResp);
+    return 'branch switch mid-stream kept the composer disabled (inputDisabled=' + state.inputDisabled +
+      ' isLoading=' + state.isLoading + ' btn=' + state.btnOnclick + '); the first stream completed and its ' +
+      'response was persisted (firstResp=' + firstResp + '), no second message was created (secondResp=' + secondResp + ')';
   }
 });
 

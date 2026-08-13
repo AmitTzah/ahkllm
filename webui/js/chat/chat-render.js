@@ -104,7 +104,14 @@ function updateChatMessages(newMessages) {
   var prevScrollHeight = container.scrollHeight;
   replaceMessagesAfter(divIdx, newMessages, divIdx);
   chatMessages = newMessages;
-  setChatButtonsEnabled(true);
+  // Bug #214: a branch switch (or any updateChatView rebuild) while a request
+  // is in flight must NOT re-enable the composer - a second send would
+  // overwrite the shared requestParams["_stream*"] state, orphaning the first
+  // billed response. Keep the composer in Stop mode for the whole in-flight
+  // window (isLoading covers the pre-stream phase, streamState.active the
+  // streaming phase); only re-enable when idle.
+  var requestInFlight = isLoading || (typeof streamState !== 'undefined' && streamState.active);
+  setChatButtonsEnabled(!requestInFlight);
   if (typeof renderNavList === 'function') renderNavList();
   if (prevScrollHeight > 0) {
     var scrollEl = document.getElementById('chat-scroll') || container.parentElement;

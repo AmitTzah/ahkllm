@@ -96,6 +96,9 @@ function loadRenderModule() {
         },
         console: console,
         chatMessages: [],
+        isLoading: false,
+        streamState: { active: false },
+        setChatButtonsEnabled: (enabled) => { sandbox._lastButtonsEnabled = enabled; },
         md: { render: (c) => '<p>' + c + '</p>' },
         sessionStorage: { getItem: () => null, setItem: () => {} },
         addMessageActions: (container, msg, idx) => {},
@@ -542,5 +545,30 @@ describe('replaceMessagesAfter preserves thinking block state', () => {
         ];
         ctx.renderChatMessages(ctx.chatMessages);
         ctx.replaceMessagesAfter(0, [], 0);
+    });
+});
+
+describe('updateChatMessages composer state (bug #214)', () => {
+    it('keeps the composer disabled while a stream is in flight', () => {
+        const ctx = loadRenderModule();
+        ctx.streamState = { active: true };
+        ctx.updateChatMessages([{ role: 'user', content: 'q', id: 'u1' }]);
+        assert.strictEqual(ctx._lastButtonsEnabled, false, 'a branch switch mid-stream must not re-enable the composer');
+    });
+
+    it('keeps the composer disabled during the pre-stream phase (isLoading, no stream content yet)', () => {
+        const ctx = loadRenderModule();
+        ctx.streamState = { active: false };
+        ctx.isLoading = true;
+        ctx.updateChatMessages([{ role: 'user', content: 'q', id: 'u1' }]);
+        assert.strictEqual(ctx._lastButtonsEnabled, false, 'an in-flight request must keep the composer disabled');
+    });
+
+    it('re-enables the composer when idle', () => {
+        const ctx = loadRenderModule();
+        ctx.streamState = { active: false };
+        ctx.isLoading = false;
+        ctx.updateChatMessages([{ role: 'user', content: 'q', id: 'u1' }]);
+        assert.strictEqual(ctx._lastButtonsEnabled, true);
     });
 });

@@ -156,10 +156,10 @@ How to run AHK safely:
 
 - **0 reported, 5 verified, 0 fix in progress, 1 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #213 FIX APPLIED:
-  handleUpdateFontSize stores the size in requestParams before a thread exists; ChatSettings AHK unit
-  tests added; scenario 213 flipped to a regression check and PASSING; fast suite green. Next: commit
-  #213, then fix #214.
+- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #214 FIX APPLIED:
+  updateChatMessages keeps the composer in Stop mode while a request is in flight and onChatSend
+  cancels instead of sending; unit tests + scenario 214 flipped and PASSING; fast suite green. Next:
+  commit #214, then fix #215.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -237,7 +237,7 @@ Scenario PASS = bug reproduced.
 
 **Scenario:** 214 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Send a message on branch A, and while it is streaming click the "Next branch" arrow to switch to a
 sibling branch, then send another message.

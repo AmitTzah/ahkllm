@@ -24,6 +24,7 @@ function loadInputModule() {
         setTimeout: setTimeout, clearTimeout: clearTimeout,
         chatMessages: [],
         isLoading: false,
+        streamState: { active: false },
         attachmentState: [],
         sessionStorage: { getItem: () => null, setItem: () => {} },
         renderChatMessages: () => {},
@@ -77,6 +78,16 @@ describe('onChatSend — payload construction', () => {
         ctx.onChatSend();
         assert.strictEqual(postedMessages.length, 1);
         assert.strictEqual(JSON.parse(postedMessages[0]).action, 'cancelStream');
+    });
+
+    it('never sends while a stream is active even if isLoading was reset (bug #214/#218)', () => {
+        const { ctx, postedMessages } = loadInputModule();
+        ctx.isLoading = false;               // mismatched composer state
+        ctx.streamState = { active: true };  // the first stream is still in flight
+        ctx.onChatSend();
+        assert.strictEqual(postedMessages.length, 1, 'no chatSend may be posted mid-stream');
+        assert.strictEqual(JSON.parse(postedMessages[0]).action, 'cancelStream',
+            'Enter/click during an active stream must cancel, not send a second request');
     });
 
     it('does nothing when input is empty and there are no attachments (bug #77)', () => {
