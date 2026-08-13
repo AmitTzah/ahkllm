@@ -154,12 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 5 verified, 0 fix in progress, 1 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 4 verified, 0 fix in progress, 2 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #214 FIX APPLIED:
-  updateChatMessages keeps the composer in Stop mode while a request is in flight and onChatSend
-  cancels instead of sending; unit tests + scenario 214 flipped and PASSING; fast suite green. Next:
-  commit #214, then fix #215.
+- **Where we left off:** 2026-08-13 - Fix cycle round 3 (branch bug-hunt-round-3): #218 FIX APPLIED:
+  initChatMode syncs the composer to the in-flight state; scenario 218 flipped and PASSING; fast
+  suite green. Next: commit #218, then fix #215.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -329,7 +328,7 @@ survives. Scenario PASS = bug reproduced.
 
 **Scenario:** 218 (scenario code in e2e-suite.js)
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Send a message in thread A, and while it streams switch to a thread whose last message is an assistant
 (e.g. thread B), then press Enter in the composer.

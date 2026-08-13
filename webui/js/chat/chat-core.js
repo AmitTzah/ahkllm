@@ -51,17 +51,22 @@ function initChatMode(data) {
 
   renderChatMessages(chatMessages);
   showTokenUsageBar();
-  // Re-enable chat input in case it was disabled from trash view
-  var chatInput = document.getElementById('chat-input');
-  if (chatInput) chatInput.disabled = false;
-  var sendBtn = document.getElementById('chat-send-btn');
-  if (sendBtn) sendBtn.disabled = false;
+  // Bug #218: a thread switch while a request is in flight used to
+  // unconditionally re-enable the input and reset isLoading to false while
+  // the old stream was still active (editable input + Send path + Stop
+  // button), letting Enter fire a second request that clobbers the first
+  // stream. Sync the composer to the in-flight state instead: Stop mode
+  // (disabled input, isLoading stays true) for the whole window (isLoading
+  // covers the pre-stream phase, streamState.active the streaming phase),
+  // Send mode otherwise. setChatButtonsEnabled also re-enables the
+  // input/button when coming back from trash view.
+  var requestInFlight = isLoading || (typeof streamState !== 'undefined' && streamState.active);
+  setChatButtonsEnabled(!requestInFlight);
 
   // Only show loading if a request is already in-flight AND last message isn't assistant
   if (isLoading && chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role !== 'assistant') {
     showLoadingIndicator();
   } else {
-    isLoading = false;
     hideLoadingIndicator();
   }
 

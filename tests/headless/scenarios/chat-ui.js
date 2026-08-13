@@ -873,6 +873,7 @@ scenarios.push({
   id: 218,
   name: 'Switching THREADS mid-stream leaves a mismatched composer state - initChatMode unconditionally re-enables the input and send button (disabled=false) but never re-wires the button, so while the old stream is still active the input is editable, isLoading=false, and the button still shows Stop; pressing Enter sends a SECOND request that clobbers the first stream (same family as #214, but on the loadThread/initChatMode path)',
   mode: 'sse-slow',
+  regression: true, // FIXED bug #218 kept as a regression check (composer stays in Stop mode mid-stream)
   settings: {},
   fixtures: {
     threads: [
@@ -905,25 +906,31 @@ scenarios.push({
       isLoading: (typeof isLoading !== 'undefined' && isLoading) || false,
       btnOnclick: (function(){ var b = document.getElementById('chat-send-btn'); return b && b.onclick ? String(b.onclick).indexOf('onStopStreaming') >= 0 ? 'stop' : 'send' : 'none'; })()
     }))()`);
-    // BUG: the old stream is still in flight, but the composer was re-enabled
-    // (input editable) AND isLoading was reset to false - a mismatched state.
+    // FIXED (bug #218): initChatMode must keep the composer in Stop mode
+    // while the first request is in flight - input disabled, isLoading stays
+    // true, button wired to Stop.
     if (!state.streamActive)
       throw new Error('setup: first stream already finished before the state check');
-    if (state.inputDisabled || state.isLoading || state.btnOnclick !== 'stop')
-      throw new Error('composer state does not show the mismatch (fix applied): ' + JSON.stringify(state));
-    // Prove the harm: press Enter - with isLoading=false the keydown handler
-    // sends a NEW message while the first stream is still in flight.
+    if (!state.inputDisabled || !state.isLoading || state.btnOnclick !== 'stop')
+      throw new Error('composer mismatch after thread switch (bug #218 not fixed): ' + JSON.stringify(state));
+    // Prove Enter cannot send a second request: even if a keydown reaches the
+    // handler, the stream-active guard cancels instead of sending.
+    await cdp.eval('if (window.__posted) window.__posted.length = 0;');
     await cdp.eval(`(() => {
       const input = document.getElementById('chat-input');
       input.value = 'second message';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
       return true;
     })()`);
-    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 50, 'second stream active');
+    await sleep(500);
+    const posted = await cdp.eval('(window.__posted || []).slice()');
+    const secondSendPosted = posted.some((m) => String(m).indexOf('"chatSend"') >= 0 || String(m).indexOf('chatSend') >= 0);
+    if (secondSendPosted)
+      throw new Error('Enter sent a second request while the first stream was in flight (bug #218 not fixed): ' + JSON.stringify(posted));
     await waitStreamingIdle(cdp, 40000);
-    return 'switched to assistant-ended thread B mid-stream: state=' + JSON.stringify(state) +
-      ' (input editable + isLoading=false + Stop button while streamState.active=true); Enter then sent a second request' +
-      ' - the composer mismatch lets a second send clobber the first stream';
+    return 'switched to assistant-ended thread B mid-stream: composer stayed disabled (inputDisabled=' + state.inputDisabled +
+      ' isLoading=' + state.isLoading + ' btn=' + state.btnOnclick + '); a forced Enter keydown posted ' +
+      JSON.stringify(posted) + ' (cancel, never chatSend) - the mismatch cannot fire a second send';
   }
 });
 

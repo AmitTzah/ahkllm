@@ -71,6 +71,15 @@ function loadModule() {
         chatMessages: [],
         isChatMode: false,
         isLoading: false,
+        streamState: { active: false },
+        setChatButtonsEnabled: function(enabled) {
+            sandbox._lastButtonsEnabled = enabled;
+            sandbox.isLoading = !enabled;
+            var sendBtn = sandbox.document.getElementById('chat-send-btn');
+            var input = sandbox.document.getElementById('chat-input');
+            if (sendBtn) sendBtn.disabled = false;
+            if (input) input.disabled = !enabled;
+        },
         activeThreadId: '',
         sessionStorage: { getItem: function() { return null; }, setItem: function() {} },
         md: { render: function(c) { return '<p>' + c + '</p>'; } },
@@ -265,7 +274,37 @@ describe('initChatMode', () => {
         ctx.hideLoadingIndicator = function() { loadingHidden = true; };
         ctx.initChatMode([{ role: 'assistant', content: 'a', id: 'a1' }]);
         assert.ok(loadingHidden, 'loading indicator should be hidden');
-        assert.strictEqual(ctx.isLoading, false);
+        // Bug #218: a request is still in flight, so the composer must stay
+        // disabled even though the visible thread ends with an assistant.
+        assert.strictEqual(ctx.isLoading, true, 'isLoading must stay true while a request is in flight');
+    });
+
+    it('keeps the composer in Stop mode when switching threads mid-stream (bug #218)', () => {
+        const ctx = loadModule();
+        ctx.streamState = { active: true };
+        ctx.isLoading = false;
+        const chatInput = { disabled: false, style: {}, focus: () => {} };
+        const sendBtn = { disabled: false, onclick: null };
+        ctx._elementCache['chat-input'] = chatInput;
+        ctx._elementCache['chat-send-btn'] = sendBtn;
+        ctx.initChatMode([{ role: 'assistant', content: 'a', id: 'a1' }]);
+        assert.strictEqual(ctx._lastButtonsEnabled, false, 'the composer must stay disabled mid-stream');
+        assert.strictEqual(chatInput.disabled, true, 'the input must stay disabled mid-stream');
+        assert.strictEqual(ctx.isLoading, true, 'isLoading must stay true mid-stream');
+    });
+
+    it('keeps the composer disabled during the pre-stream phase (isLoading, no stream content yet)', () => {
+        const ctx = loadModule();
+        ctx.streamState = { active: false };
+        ctx.isLoading = true;
+        const chatInput = { disabled: false, style: {}, focus: () => {} };
+        const sendBtn = { disabled: false, onclick: null };
+        ctx._elementCache['chat-input'] = chatInput;
+        ctx._elementCache['chat-send-btn'] = sendBtn;
+        ctx.initChatMode([{ role: 'user', content: 'q', id: 'u1' }]);
+        assert.strictEqual(ctx._lastButtonsEnabled, false, 'an in-flight request must keep the composer disabled');
+        assert.strictEqual(chatInput.disabled, true);
+        assert.strictEqual(ctx.isLoading, true);
     });
 
     it('sets sessionStorage isChatMode', () => {
