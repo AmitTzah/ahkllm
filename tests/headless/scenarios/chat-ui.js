@@ -949,4 +949,37 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 219,
+  name: 'Mid-stream SSE error event (`data: {"error": ...}`) crashes SSEParser.ParseLine - parsed["choices"] throws on a Map without a "choices" key, so the partial streamed response is never persisted, the user sees an internal Key "choices" error, and streamState.active stays true: every subsequent Send is swallowed as cancelStream (the composer is wedged until reload)',
+  mode: 'sse-error-event',
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await sendChatMessage(cdp, 'trigger an upstream stream error');
+    // The mock streams one content chunk, then a REAL OpenAI-style
+    // `data: {"error": {...}}` SSE event, then ends the response.
+    await cdp.waitFor('document.querySelector(".error-banner") !== null', 25000, 200, 'error banner');
+    await sleep(800);
+    const banner = await cdp.text('.error-banner');
+    const stillActive = await cdp.eval('typeof streamState !== "undefined" && streamState.active');
+    const isLoadingNow = await cdp.eval('typeof isLoading !== "undefined" && isLoading');
+    const uiMsgCount = await cdp.eval('chatMessages.length');
+    const asstRows = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE role='assistant'");
+    const partialInDb = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE content LIKE '%Partial answer%'");
+    // Buggy behavior (PASS = reproduced): the internal parser crash leaves
+    // streamState.active true - the composer stays in Stop mode and every
+    // subsequent send is swallowed as cancelStream. The partial stream is also
+    // lost (never persisted, never in chatMessages).
+    if (!stillActive)
+      throw new Error('streamState.active is false after the error event - composer not wedged (bug not reproduced): banner=' + JSON.stringify(banner));
+    const showsInternal = String(banner).indexOf('choices') >= 0;
+    return 'banner=' + JSON.stringify(banner) +
+      ' streamState.active=' + stillActive + ' isLoading=' + isLoadingNow +
+      ' chatMessages=' + uiMsgCount + ' assistantRowsInDb=' + asstRows[0].cnt +
+      ' partialRowsInDb=' + partialInDb[0].cnt +
+      (showsInternal ? ' (internal "choices" parser error surfaced)' : '') +
+      ' - the partial stream is lost and the composer stays in Stop mode (every Send becomes cancelStream)';
+  }
+});
+
 module.exports = scenarios;

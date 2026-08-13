@@ -12,6 +12,11 @@
 //                      fails BEFORE any content/reasoning chunk arrives)
 //   sse-slow           streaming like sse-success but with ~700ms delays per
 //                      chunk (total ~3s) so scenarios can act mid-stream
+//   sse-error-event    streaming: one content chunk, then a REAL OpenAI-style
+//                      SSE error event (`data: {"error": {...}}`) before the
+//                      stream ends - providers emit exactly this when a stream
+//                      fails mid-flight (rate limit / upstream error after
+//                      partial tokens)
 //   sse-hang           streaming headers + a keepalive comment, then the
 //                      socket is left OPEN forever - the "stalled stream"
 //                      case (cURL has --connect-timeout but no --max-time)
@@ -199,6 +204,25 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       }
       if (mode === 'sse-slow') {
         makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700 })(req, res);
+        return;
+      }
+      if (mode === 'sse-error-event') {
+        // A streaming response that delivers real content and then fails with
+        // a proper SSE `data: {"error": ...}` event (the same shape OpenAI
+        // sends when a stream errors after partial tokens).
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        (async () => {
+          sseChunk(res, { choices: [{ delta: { content: 'Partial answer before the error event. ' } }] });
+          await delay(150);
+          res.write('data: {"error":{"message":"upstream exploded (mock)"}}\n\n');
+          await delay(40);
+          res.end();
+        })().catch(() => { try { res.end(); } catch {} });
         return;
       }
       if (mode === 'sse-hang') {

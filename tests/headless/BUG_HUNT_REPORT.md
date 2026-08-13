@@ -154,11 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 1 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 3 COMPLETE: bugs #213-#218 all fixed and
-  committed (67fad6b, 75dacd4, 27e6d9d, c8568fc, 4cf2256, 23ab4c0); all six scenarios flipped to
-  regression checks and passing; full AHK + JS suites green; entries moved to History.
+- **Where we left off:** 2026-08-13 - Bug hunt round 4 intake: bug #219 (mid-stream SSE error
+  event crashes the parser and wedges the composer) VERIFIED headlessly (scenario 219 PASS);
+  next: verify bug #220 (folder-delete confirm double-escape), then commit each verified bug
+  on branch bug-hunt-round4.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -209,7 +210,34 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-*(none — round 3 fully closed, all entries moved to History)*
+*(pending verification)*
+
+### 219. Mid-stream SSE error event crashes the stream parser and wedges the composer (partial response lost)
+
+**Scenario:** 219 (scenario code in e2e-suite.js)
+
+**Status:** verified — open (rank 1)
+
+**Repro:** Send a chat message against an upstream that streams a few content tokens and then fails mid-flight with a real OpenAI-style SSE error event
+(`data: {"error":{"message":"..."}}`) before closing the stream.
+
+**Expected:** the stream fails cleanly — the error message is surfaced, the partial content is kept (or at least the UI returns to a usable Send state),
+and the next Send works.
+
+**Actual:** `SSEParser.ParseLine` does `parsed["choices"]` on the JSON-parsed Map, and a Map index for a missing key THROWS in AHK v2. The error event (valid
+JSON, no `choices` key) crashes the poll timer, `_finalizeStreaming` re-reads the same bytes (the read state was never written back) and crashes again, so
+the user sees an internal parser error (`Request failed: Item has no value.` — verified) instead of the provider message. The partial streamed content is
+never persisted (the `_streamContent` buffer was not flushed back to requestParams), and the WebView's `streamState.active` is never cleared (no
+`streamDone`/`streamCancelled` is posted), so the composer stays in Stop mode and every subsequent Send is swallowed as `cancelStream` until the chat
+window reloads.
+
+**Evidence:** `api/SSEParser.ahk` `ParseLine` indexes `parsed["choices"]` without a guard; `_readAndProcessStream`/`_pollStreamTimer` only handle throws by
+finalizing; `chat/streaming/StreamHandler.ahk` `_finalizeStreaming` catch posts `showError` but no `streamCancelled`; `webui/js/chat/stream.js`
+`setChatButtonsEnabled(true)` does not reset `streamState.active`.
+
+**Verification:** headless PASS (2026-08-13) — new mock mode `sse-error-event` streams one content chunk then `data: {"error":...}` and ends; scenario 219
+sends a message through the real UI and observed: error banner `Request failed: Item has no value.`, `streamState.active=true` (composer wedged),
+`chatMessages=1` (user message only) and `assistantRowsInDb=0` — the partial answer is lost everywhere.
 
 ## History (append-only)
 
