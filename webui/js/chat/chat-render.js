@@ -120,9 +120,15 @@ function updateChatMessages(newMessages) {
 }
 
 
-// Build message HTML from the shared bubble template, substituting dynamic values
+// Normalize message line endings before markdown rendering. Bugs #222/#224:
+// the old code only converted runs of 3+ newlines to a literal <br> tag -
+// which html:false markdown-it ESCAPES into "&lt;br&gt;" - and left single
+// newlines as markdown soft breaks that the .msg-content CSS collapsed to
+// spaces, so single-newline paragraph breaks rendered as one block. markdown-it
+// is now configured with breaks:true (soft break -> <br>), so the only
+// normalization needed here is CRLF/CR -> LF.
 function _prepUserContent(content) {
-  return (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n{3,}/g, '\n\n<br>\n\n');
+  return (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 function _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml) {
@@ -155,7 +161,10 @@ function createMessageBubble(msg, index) {
   } else if (role === 'assistant') {
     roleClass = 'bot';
     authorName = msg.model || 'Assistant';
-    contentHtml = md.render(msg.content || '');
+    // Bug #222: assistant content must get the same line-ending normalization
+    // as user content - markdown-it's breaks:true then keeps single-newline
+    // paragraph breaks visible instead of collapsing them into one block.
+    contentHtml = md.render(_prepUserContent(msg.content));
     middleHtml = _buildReasoningHtml(msg);
     editUiHtml = _buildEditUiHtml(msg);
   } else {

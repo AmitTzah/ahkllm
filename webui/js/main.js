@@ -11,6 +11,13 @@ var md = window.markdownit({
   // execute in the WebView (it has chrome.webview.postMessage access). With
   // html:false markdown-it escapes inline HTML so it renders as inert text.
   html: false,
+  // Bug #222/#224: a SINGLE newline is a markdown soft break, which the app's
+  // .msg-content CSS collapses to a space - so LLM responses (and pasted
+  // user messages) whose paragraphs are separated by single newlines rendered
+  // as one solid block. breaks:true turns every soft break into an explicit
+  // <br>, keeping the paragraph breaks visible. Code blocks, lists and tables
+  // are unaffected (their internal newlines stay structural).
+  breaks: true,
   linkify: true,
   typographer: true,
   highlight: function (str, lang) {

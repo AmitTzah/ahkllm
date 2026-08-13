@@ -239,6 +239,56 @@ describe('_buildMetaText', () => {
     });
 });
 
+describe('_prepUserContent line-ending normalization (bugs #222/#224)', () => {
+    it('normalizes CRLF and CR to LF', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._prepUserContent('a\r\nb\rc'), 'a\nb\nc');
+    });
+
+    it('keeps single newlines untouched (markdown-it breaks:true turns them into <br>)', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._prepUserContent('First paragraph.\nSecond paragraph.'), 'First paragraph.\nSecond paragraph.');
+    });
+
+    it('no longer injects a literal <br> tag for 3+ newlines (html:false would escape it)', () => {
+        const ctx = loadRenderModule();
+        const out = ctx._prepUserContent('a\n\n\n\nb');
+        assert.strictEqual(out.indexOf('<br>'), -1, '_prepUserContent must not inject raw <br> into markdown source');
+        assert.strictEqual(out, 'a\n\n\n\nb');
+    });
+
+    it('normalizes empty/undefined content', () => {
+        const ctx = loadRenderModule();
+        assert.strictEqual(ctx._prepUserContent(''), '');
+        assert.strictEqual(ctx._prepUserContent(undefined), '');
+    });
+});
+
+describe('assistant content single-newline rendering (bug #222)', () => {
+    it('createMessageBubble runs assistant content through the same line-ending normalization as user content', () => {
+        const chatDir = path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat');
+        const src = fs.readFileSync(path.join(chatDir, 'chat-render.js'), 'utf-8');
+        const asstIdx = src.indexOf("role === 'assistant'");
+        assert.ok(asstIdx >= 0, 'assistant branch not found');
+        const branch = src.slice(asstIdx, asstIdx + 500);
+        assert.ok(branch.indexOf('_prepUserContent(msg.content)') >= 0,
+            'assistant content must be normalized before md.render so single-newline paragraphs stay visible (bug #222)');
+    });
+
+    it('markdown-it with breaks:true keeps single newlines as <br> and leaves code blocks intact', () => {
+        // Uses the REAL vendored markdown-it with the app's production options
+        // (html:false, breaks:true) - the DOM-mocked unit harness can't show
+        // the actual rendered HTML, so this guards the rendering contract.
+        const mdFactory = require(path.resolve(__dirname, '..', '..', 'webui', 'js', 'vendor', 'markdown-it.min.js'));
+        const md = mdFactory({ html: false, breaks: true, linkify: true, typographer: true });
+        const html = md.render('First paragraph of the summary.\nSecond paragraph of the summary.\nThird paragraph of the summary.');
+        assert.ok(/<br\s*\/?>/i.test(html), 'single newlines must render as <br>: ' + html);
+        const code = md.render('```js\nconst a = 1;\nconst b = 2;\n```\nDone\nNext');
+        assert.ok(/<pre>[\s\S]*const a = 1;\nconst b = 2;[\s\S]*<\/pre>/.test(code), 'fenced code blocks must keep their internal newlines: ' + code);
+        assert.ok(/<br\s*\/?>/i.test(code), 'the paragraph AFTER the code block must still get its soft break');
+    });
+});
+
 describe('_buildReasoningHtml', () => {
     it('returns empty for no reasoning', () => {
         const ctx = loadRenderModule();

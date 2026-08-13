@@ -154,17 +154,17 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bugs #221 + #223 FIXED + committed in ONE commit
-  (same root cause): each in-flight request now owns its own stream record (output file,
-  cURL PID, accumulated content, temp-file paths, retry metadata); the poll timer swaps
-  per request, completion/error/cancel clean up the request's OWN files, the composer
-  re-enables only when NO request remains, and non-current stream events no longer clear
-  the current view's streaming state. Scenarios 221 + 223 flipped to regression checks;
-  streaming-adjacent scenarios (56/98/110/133/147/150/159/171/172/178/195/203/205/206/
-  208/211/214/215/216/218/219) all green; `npm run test:fast` green. Next: fix #222
-  (single-newline paragraphs in assistant bubbles), then #224 (user bubble mirror).
+- **Where we left off:** 2026-08-13 - Bugs #222 + #224 FIXED + committed in ONE commit
+  (same root cause): markdown-it now renders soft breaks (single newlines) as `<br>`
+  (breaks:true), `_prepUserContent` is reduced to CRLF/CR -> LF normalization (the old
+  3+ newline `<br>` injection was escaped into literal text by html:false), and assistant
+  content runs through the same normalization as user content - paragraph breaks in
+  both bubbles stay visible. Scenarios 222 + 224 flipped to regression checks +
+  main/chat-render unit tests (including a REAL markdown-it rendering test). All 6 open
+  bugs from round 4 are now fixed and committed; remaining: final full-suite verification
+  (`npm run test:fast` + FULL headless `--all`) and the History bookkeeping commit.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -215,52 +215,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #222 (single-newline paragraphs render as one block) · 2 = #224 (user bubble collapses single-newline paragraphs)
-
-### 222. Summarize-style responses with single-newline paragraphs render as one block
-
-**Scenario:** 222 (scenario code in e2e-suite.js)
-
-**Status:** verified — open (rank 4)
-
-**Repro:** Run Summarize (or any command) on multi-paragraph text. When the response splits paragraphs with SINGLE newlines (a common LLM output shape),
-the chat renders the whole summary as one solid block instead of keeping the paragraph breaks.
-
-**Expected:** paragraph breaks in the response stay visible (separate paragraphs or line breaks), like the original text.
-
-**Actual:** `createMessageBubble` renders assistant content straight through `md.render()` (user content gets `_prepUserContent`, assistant content gets
-nothing). markdown-it treats a single `\n` as a soft break and emits ONE `<p>`; the app's `.msg-content` CSS (`white-space` default) collapses those
-breaks to spaces, so the message displays as a block of text. The same collapse applies to the live streaming bubble (`stream.js` renders
-`md.render(streamState.contentBuffer)`).
-
-**Evidence:** `webui/js/chat/chat-render.js` `createMessageBubble` (assistant branch has no `_prepUserContent`), `webui/js/chat/chat-format.js`
-`_prepUserContent` (only used for users), `webui/js/chat/stream.js` `onStreamContent`/`_finalizeStreamContent`; verified statically that
-markdown-it renders `"A\nB"` as one `<p>` while `"A\n\nB"` produces two.
-
-**Verification:** headless PASS (2026-08-13) — scenario 222 uses new mock mode `sse-paragraphs` (three content chunks whose breaks are single newlines)
-and observed: after streaming, the assistant bubble contains exactly ONE `<p>` (no `<br>`) and `innerText` reads "First paragraph of the summary. Second
-paragraph of the summary. Third paragraph of the summary." — the paragraphs collapsed into a single block.
-
-### 224. User message bubbles also collapse single-newline paragraphs (mirror of #222)
-
-**Scenario:** 224 (scenario code in e2e-suite.js)
-
-**Status:** verified — open (rank 6)
-
-**Repro:** Send (or paste) a multi-paragraph message whose paragraphs are separated by SINGLE newlines. The user's own bubble shows the text as one block.
-
-**Expected:** paragraph breaks in the message stay visible (separate paragraphs or line breaks), like the original text.
-
-**Actual:** user content goes through `_prepUserContent`, which only converts runs of 3+ newlines to `<br>`; a single `\n` stays a markdown soft break
-inside one `<p>` and the `.msg-content` CSS collapses it to a space. So the user-side mirror of bug #222: multi-paragraph text displays as a block (the
-original text whose paragraphs the summarize flow is supposed to preserve is itself shown collapsed).
-
-**Evidence:** `webui/js/chat/chat-format.js` `_prepUserContent` (only `\n{3,}` → `<br>`; single `\n` untouched) + `webui/js/chat/chat-render.js`
-`createMessageBubble` user branch; same markdown-it soft-break collapse verified for #222.
-
-**Verification:** headless PASS (2026-08-13) — scenario 224 sends a 3-paragraph message (single newlines) through the real UI and observed the user
-bubble contains exactly ONE `<p>` (no `<br>`), `innerText` = "First paragraph of the selection. Second paragraph of the selection. Third paragraph of the
-selection." — the paragraphs collapsed into a single block.
+*No open bugs.*
 
 ## History (append-only)
 

@@ -78,6 +78,11 @@ describe('handleWebMessage routing', () => {
         assert.ok(!/html:\s*true/.test(src), 'markdown-it must NOT enable raw HTML');
     });
 
+    it('keeps single-newline paragraph breaks visible (markdown-it breaks:true, bugs #222/#224)', () => {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'main.js'), 'utf-8');
+        assert.ok(src.includes('breaks: true'), 'markdown-it must render soft breaks (single newlines) as <br> so paragraph breaks stay visible');
+    });
+
     it('routes initChatMode', () => {
         const ctx = loadMainModule();
         const testData = [{ id: '1', role: 'user', content: 'hi' }];
