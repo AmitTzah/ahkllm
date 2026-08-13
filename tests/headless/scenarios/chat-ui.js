@@ -1058,7 +1058,8 @@ scenarios.push({
 
 scenarios.push({
   id: 226,
-  name: "Sidebar New Chat discards right-rail selections made before the first message - the newChat case unconditionally runs _resetToDefaultSettings()+_applyNewChatDefault(), unlike handleChatSend's auto-create path fixed in bug #212, so a pre-send model/system prompt never reaches the first request",
+  name: "Sidebar New Chat starts fresh with the configured defaults: pre-send right-rail selections are intentionally reset (refuted #226 - expected behavior, kept as a regression check)",
+  regression: true,
   mode: 'sse-success',
   settings: {},
   async body({ cdp, mockLog }) {
@@ -1089,18 +1090,20 @@ scenarios.push({
     const sentModel = last.body.model;
     const sysMsgs = (last.body.messages || []).filter(function(m) { return m.role === 'system'; })
       .map(function(m) { return m.content; });
-    // BUG: the first request uses the default (assistant) model and never
-    // carries the pre-send selection.
+    // EXPECTED: a new chat starts with the configured defaults - the first
+    // request uses the default (assistant) model and never carries the
+    // pre-send selection.
     if (sentModel === 'gpt-5-mini' || sysMsgs.some(function(s) { return String(s).indexOf('PRE-SEND SYSTEM PROMPT 226') >= 0; }))
-      throw new Error('bug not reproduced: the pre-send selection survived New Chat (model=' + sentModel + ')');
+      throw new Error('regression: the pre-send selection survived New Chat (model=' + sentModel + ') - New Chat must reset to defaults');
     return 'picked openai/gpt-5-mini + system prompt pre-send, clicked New Chat, sent: request used model=' + sentModel +
-      ' system=' + JSON.stringify(sysMsgs) + ' - the pre-send selection was discarded';
+      ' system=' + JSON.stringify(sysMsgs) + ' - New Chat correctly reset to the configured defaults';
   }
 });
 
 scenarios.push({
   id: 225,
-  name: "Sidebar New Chat drops the pre-send font-size adjustment - _HandleThreadAction's newChat case calls _resetToDefaultSettings() which deletes requestParams[\"fontSize\"], then saves the GLOBAL default (responseWindowFontSize) instead of the user's bumped size, unlike the first-send auto-create path fixed in bug #213",
+  name: "Sidebar New Chat starts fresh at the configured default font size: the pre-send font adjustment is intentionally reset (refuted #225 - expected behavior, kept as a regression check)",
+  regression: true,
   mode: null,
   settings: {},
   async body({ cdp, dbPath }) {
@@ -1121,12 +1124,13 @@ scenarios.push({
     const threadId = await cdp.eval('window.activeThreadId');
     const rows = seed.query(dbPath, 'SELECT font_size FROM chat_threads WHERE id=?', [threadId]);
     const savedFont = rows.length ? Number(rows[0].font_size) : -1;
-    // BUG: the pre-send 18px adjustment is dropped - the new thread is saved
-    // with the global default (17px) and the display snaps back to 17px.
+    // EXPECTED: a new chat starts at the configured default font - the new
+    // thread is saved with the global default (17px) and the display snaps
+    // back to 17px, discarding the pre-send 18px adjustment.
     if (after !== '17px' || savedFont !== 17)
-      throw new Error('bug not reproduced (pre-send font size survived New Chat): display=' + JSON.stringify(after) + ' db=' + savedFont);
+      throw new Error('regression: the pre-send font size survived New Chat (display=' + JSON.stringify(after) + ' db=' + savedFont + ') - New Chat must reset to the default font');
     return 'bumped the font to 18px pre-send, clicked New Chat: thread ' + threadId + ' saved font_size=' + savedFont +
-      ' and the display reset to ' + after + ' - the pre-send 18px adjustment was dropped';
+      ' and the display reset to ' + after + ' - New Chat correctly reset to the default font';
   }
 });
 

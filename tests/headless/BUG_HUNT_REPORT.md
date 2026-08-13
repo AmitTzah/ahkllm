@@ -154,14 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 2 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug hunt round 5 INTAKE: verified #226 (sidebar
-  New Chat discards pre-send right-rail selections) and #225 (sidebar New Chat drops
-  the pre-send font-size adjustment), scenarios 225/226 PASS headlessly. Both share
-  the same root cause family (_HandleThreadAction's newChat case unconditionally
-  resets requestParams, unlike the #212/#213 fixes on the first-send auto-create
-  path). Next: user picks the highest-ranked verified bug for the fix cycle.
+- **Where we left off:** 2026-08-13 - Bug hunt round 5: #225/#226 REFUTED by user
+  decision ("New Chat" intentionally starts fresh with the configured defaults, so
+  pre-send right-rail/font state is reset by design). Both scenarios converted to
+  regression checks guarding the expected reset behavior. Continuing the sweep for
+  objective bugs (data correctness, crashes, broken behavior).
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -212,43 +211,15 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 226. Sidebar "New Chat" discards right-rail selections made before the first message (assistant/model/system prompt/temperature â€" mirror of #212 on the newChat path)
-
-**Scenario:** 226
-
-**Status:** verified
-
-**Repro:** In a fresh session (no thread yet), pick a model and type a system prompt in the right rail, then click "New Chat" in the sidebar, then send the first message.
-
-**Expected:** the first request uses the selected model and system prompt â€" same as the auto-create path since bug #212 (`handleChatSend` only applies the new-chat default when `_RequestParamsAreDefault()`).
-
-**Actual:** the `newChat` case unconditionally calls `_resetToDefaultSettings()` + `_applyNewChatDefault()`, wiping the pre-send right-rail selections and replacing them with the "New Chats Start With" default (e.g. the `isDefault`-marked assistant), so the first request carries the default's model/system message instead of what the user chose.
-
-**Evidence:** `chat/callbacks/Message.ahk` (`_HandleThreadAction` "newChat": `_resetToDefaultSettings()` then `_applyNewChatDefault()`) vs `chat/callbacks/Message.ahk` `handleChatSend`'s `if _RequestParamsAreDefault()` guard (bug #212 fix). Same class as #212/#213 but on the sidebar New Chat path.
-
-**Verification:** headless â€" scenario 226 set `openai/gpt-5-mini` + a unique system prompt via the right rail with no thread, clicked `#new-chat-btn`, sent a message, and inspected the mock server's request: the sent model was the default assistant's and the pre-send system prompt was absent (PASS = bug reproduced).
-
-### 225. Sidebar "New Chat" drops the pre-send font-size adjustment (the #213 fix only covers the first-send auto-create path)
-
-**Scenario:** 225
-
-**Status:** verified
-
-**Repro:** In a fresh session (no thread yet), click the font-size + button once (17 â†' 18), then click "New Chat" in the sidebar, then type the first message.
-
-**Expected:** the new thread keeps the 18px adjustment â€" same as sending the first message directly (bug #213's fixed path, where `_saveCurrentSettingsToThread` reads `requestParams["fontSize"]`).
-
-**Actual:** `_HandleThreadAction`'s `newChat` case runs `_resetToDefaultSettings()` first, and `ThreadSettings._ClearOverrides()` deletes `requestParams["fontSize"]`; the new thread is then saved with the GLOBAL default (`responseWindowFontSize`, 17px), so the pre-send adjustment is silently dropped and the composer/DB snap back to 17px.
-
-**Evidence:** `chat/callbacks/Message.ahk` (`_HandleThreadAction` "newChat" case, `_resetToDefaultSettings()` before the font-size save) and `chat/ThreadSettings.ahk` (`_ClearOverrides` deletes `fontSize`). The auto-create path in `handleChatSend` was fixed for exactly this state (bug #213, scenario 213) but the sidebar New Chat path was not.
-
-**Verification:** headless â€" scenario 225 clicked `#btn-font-inc` with no active thread (display "18px"), clicked `#new-chat-btn`, and observed the display reset to "17px" with `chat_threads.font_size` = 17 in the new thread (PASS = bug reproduced).
+*No open bugs.*
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-13 - "Sidebar New Chat discards right-rail selections made before the first message" - REFUTED: clicking New Chat is explicitly "start fresh with the configured defaults" (user-confirmed expected behavior), so pre-send selections are reset by design. Scenario 226 kept as a regression check (regression: true) guarding the reset behavior.
+- 2026-08-13 - "Sidebar New Chat drops the pre-send font-size adjustment" - REFUTED: a new chat intentionally starts at the configured default font (user-confirmed expected behavior). Scenario 225 kept as a regression check (regression: true) guarding the reset behavior.
 
 - 2026-08-13 - "User message bubbles also collapse single-newline paragraphs (mirror of #222)" - FIXED + COMMITTED in 9c84ddb: fix(chat): keep single-newline paragraph breaks visible in assistant and user bubbles (bugs #222 + #224). Scenario 224 flipped to a regression check + main/chat-render unit tests (real markdown-it breaks:true rendering test).
 - 2026-08-13 - "Summarize-style responses with single-newline paragraphs render as one block" - FIXED + COMMITTED in 9c84ddb: fix(chat): keep single-newline paragraph breaks visible in assistant and user bubbles (bugs #222 + #224). Scenario 222 flipped to a regression check + main/chat-render unit tests.
