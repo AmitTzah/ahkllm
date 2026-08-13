@@ -154,16 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 5 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
+- **0 reported, 4 verified, 0 fix in progress, 0 fix applied** (2026-08-13). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-13 - Bug #219 FIXED + committed: SSEParser now surfaces a
-  real SSE error event as an "error" chunk (no more Map "choices" crash), the mid-stream
-  error path keeps the partial response + posts streamCancelled, the provider message is
-  extracted from the last `data:` event, and setChatButtonsEnabled(true) fully resets the
-  WebView stream state (composer un-wedges; the next Send works). Scenario 219 flipped +
-  StreamHandler/chat-input regression tests; `npm run test:fast` green (AHK 604/604, JS
-  561/561) and the FULL headless suite green (218/218). Next: fix #220 (folder-delete
-  confirm double-escape), still in rank order, one commit per bug.
+- **Where we left off:** 2026-08-13 - Bug #220 FIXED + committed: the folder-delete
+  confirmation now receives the RAW folder name and `_showChatConfirm` escapes it exactly
+  once, so `A&B<C>` confirms as raw characters (scenario 220 flipped to a regression check
+  + chat-sidebar static unit test; `npm run test:fast` green). Next: fix #221 (two quick
+  chat-mode commands lose the first response - per-request stream state so concurrent
+  command streams each complete into their own thread), still in rank order.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -214,28 +212,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-1 = #220 (folder-delete confirm double-escapes the name) · 2 = #221 (quick chat-mode commands lose the first response) · 3 = #222 (single-newline paragraphs render as one block) · 4 = #223 (two-command race leaks the Bearer-key temp files) · 5 = #224 (user bubble collapses single-newline paragraphs)
-
-### 220. Folder-delete confirmation double-escapes the folder name
-
-**Scenario:** 220 (scenario code in e2e-suite.js)
-
-**Status:** verified — open (rank 2)
-
-**Repro:** Create a folder whose name contains characters that HTML-escape (e.g. `A&B<C>`), then click the folder's trash button in the sidebar.
-
-**Expected:** the confirmation reads `Delete folder "A&B<C>"? Chats will become unfiled.`
-
-**Actual:** the name renders as HTML entities: `Delete folder "A&amp;B&lt;C&gt;"? ...` (verified — the DOM shows the escaped entities, not the raw
-characters). `_buildFolderSection` passes `'Delete folder "' + escHtml(folder.name) + '"?'` into `_showChatConfirm`, which escapes the whole message a
-second time (`escHtml(message)`), so the pre-escaped name is escaped again.
-
-**Evidence:** `webui/js/chat/chat-sidebar.js` `_buildFolderSection` (delete button) and `webui/js/chat/chat-core.js` `_showChatConfirm`
-(`escHtml(message)`); every other confirm call passes a plain string and is unaffected.
-
-**Verification:** headless PASS (2026-08-13) — scenario 220 seeds a folder named `A&B<C>` (with one thread in it), clicks the folder delete button
-through the real UI, and observed the confirm text `Delete folder "A&amp;B&lt;C&gt;"? Chats will become unfiled.` — the name displays as HTML entities
-instead of the raw characters.
+1 = #221 (quick chat-mode commands lose the first response) · 2 = #222 (single-newline paragraphs render as one block) · 3 = #223 (two-command race leaks the Bearer-key temp files) · 4 = #224 (user bubble collapses single-newline paragraphs)
 
 ### 221. Two quick chat-mode commands lose the first command's response (shared stream state clobbered)
 

@@ -235,7 +235,11 @@ function _buildFolderSection(folder, threads) {
   });
   head.querySelector('.folder-delete-btn').addEventListener('click', function(e) {
     e.stopPropagation();
-    _showChatConfirm('Delete folder "' + escHtml(folder.name) + '"? Chats will become unfiled.', function() {
+    // Bug #220: pass the RAW folder name - _showChatConfirm escapes the whole
+    // message once (escHtml), so a pre-escaped name would be double-escaped
+    // and the confirm dialog would show HTML entities instead of characters
+    // like "A&B<C>".
+    _showChatConfirm('Delete folder "' + folder.name + '"? Chats will become unfiled.', function() {
     Ipc.postToHost('sidebarAction', { subAction: 'deleteFolder', folderId: folder.id });
     });
   });

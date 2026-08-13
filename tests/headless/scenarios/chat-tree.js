@@ -2179,6 +2179,7 @@ scenarios.push({
 scenarios.push({
   id: 220,
   name: 'Folder-delete confirmation double-escapes the folder name - _buildFolderSection passes escHtml(folder.name) into _showChatConfirm, which escapes the whole message again, so a folder named "A&B<C>" confirms as "A&amp;amp;B&amp;lt;C&amp;gt;" instead of showing the raw characters',
+  regression: true, // FIXED bug #220 kept as a regression check (raw name, escaped exactly once)
   fixtures: {
     folders: [{ id: 'f-220', name: 'A&B<C>' }],
     threads: [{ id: 't-220', title: 'Thread in folder', folder_id: 'f-220' }]
@@ -2188,16 +2189,19 @@ scenarios.push({
     await cdp.click('#thread-list .folder .folder-delete-btn');
     await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 10000, 200, 'confirm overlay');
     const text = await cdp.text('#customConfirmOverlay');
-    // Buggy behavior (PASS = reproduced): the name arrives pre-escaped from
-    // _buildFolderSection and _showChatConfirm escapes it AGAIN, so the raw
-    // characters are replaced by their HTML entities in the visible message.
+    // FIXED (bug #220): _buildFolderSection passes the RAW name and
+    // _showChatConfirm escapes the whole message exactly once, so the visible
+    // text reads the raw characters "A&B<C>", not the HTML entities.
     const doubleEscaped = String(text).indexOf('&amp;') >= 0;
-    if (!doubleEscaped)
-      throw new Error('folder name is not double-escaped in the confirm dialog: ' + JSON.stringify(text));
+    if (doubleEscaped)
+      throw new Error('folder name is still double-escaped in the confirm dialog (bug #220 not fixed): ' + JSON.stringify(text));
+    const normalized = String(text).replace(/\s+/g, ' ').trim();
+    if (normalized.indexOf('Delete folder "A&B<C>"? Chats will become unfiled.') < 0)
+      throw new Error('confirm text does not show the raw folder name (bug #220 not fixed): ' + JSON.stringify(normalized));
     // Dismiss the dialog so the run ends in a clean state.
     await cdp.click('#customConfirmOverlay .cancel-confirm-btn');
-    return 'confirm text: ' + JSON.stringify(String(text).replace(/\s+/g, ' ').trim()) +
-      ' - the folder name renders as HTML entities instead of "A&B<C>" (escHtml applied twice)';
+    return 'confirm text: ' + JSON.stringify(normalized) +
+      ' - the folder name renders raw ("A&B<C>"), escaped exactly once';
   }
 });
 

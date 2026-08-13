@@ -223,6 +223,17 @@ describe('_showChatConfirm', () => {
     });
 });
 
+describe('folder-delete confirm (bug #220)', () => {
+    it('passes the RAW folder name - _showChatConfirm escapes the whole message once', () => {
+        const chatDir = path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat');
+        const src = fs.readFileSync(path.join(chatDir, 'chat-sidebar.js'), 'utf-8');
+        const m = src.match(/_showChatConfirm\('Delete folder "' \+ ([^+]+) \+ '"\? Chats will become unfiled\.'/);
+        assert.ok(m, 'folder-delete confirm must call _showChatConfirm with the folder name');
+        assert.ok(m[1].indexOf('escHtml') < 0,
+            'the folder name must NOT be pre-escaped - _showChatConfirm escapes the whole message once, so a pre-escaped name would double-escape "A&B<C>" into "A&amp;B&lt;C&gt;" (bug #220)');
+    });
+});
+
 describe('updateTopbarTitle', () => {
     it('does not throw with empty data', () => {
         const ctx = loadModules();
