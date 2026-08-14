@@ -46,12 +46,13 @@ class ChatDBTest {
     Schema_IsMigratedToLatest() {
         this._setup()
         version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-        if Integer(version) != 6
-            throw Error("expected user_version 6, got " version)
+        if Integer(version) != 7
+            throw Error("expected user_version 7, got " version)
         cols := [
             { t: "chat_threads", c: "font_size" },
             { t: "chat_threads", c: "advanced_toggles" },
             { t: "chat_threads", c: "folder_id" },
+            { t: "chat_threads", c: "is_locked" },
             { t: "messages", c: "prompt_tokens" },
             { t: "messages", c: "is_local_copy" },
             { t: "messages", c: "input_cost" },
@@ -69,6 +70,8 @@ class ChatDBTest {
             if !found
                 throw Error("column " item.t "." item.c " missing after schema creation")
         }
+        if !ChatDB.db.Exec("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_locks';").count
+            throw Error("chat_locks table missing after schema creation")
         this._teardown()
     }
 
@@ -83,11 +86,11 @@ class ChatDBTest {
         db.Exec("CREATE TABLE messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0);")
         db.Exec("CREATE TABLE assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0);")
         db.Close()
-        ChatDB.Open(oldDbPath)
-        try {
-            version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-            if Integer(version) != 6
-                throw Error("expected user_version 6 after migration, got " version)
+          ChatDB.Open(oldDbPath)
+          try {
+              version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
+              if Integer(version) != 7
+                  throw Error("expected user_version 7 after migration, got " version)
             hasPrompt := false
             for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
                 if row.name = "prompt_tokens"
@@ -114,8 +117,15 @@ class ChatDBTest {
                 if row.name = "font_size"
                     hasFont := true
             }
-            if !hasFont
-                throw Error("migration did not add chat_threads.font_size")
+              if !hasFont
+                  throw Error("migration did not add chat_threads.font_size")
+              hasLock := false
+              for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows {
+                  if row.name = "is_locked"
+                      hasLock := true
+              }
+              if !hasLock
+                  throw Error("migration did not add chat_threads.is_locked")
         } finally {
             ChatDB.Close()
             try FileDelete(oldDbPath)

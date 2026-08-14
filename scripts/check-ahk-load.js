@@ -43,6 +43,16 @@ const standaloneTargets = [
   },
   { name: 'chat/db/AssistantRepo', file: path.join(REPO_ROOT, 'chat', 'db', 'AssistantRepo.ahk') },
   {
+    name: 'chat/db/ThreadLockRepo',
+    file: path.join(REPO_ROOT, 'chat', 'db', 'ThreadLockRepo.ahk'),
+    stubs: 'class ChatDB {\n    static db := ""\n}\n'
+  },
+  {
+    name: 'chat/locks/ThreadLockService',
+    file: path.join(REPO_ROOT, 'chat', 'locks', 'ThreadLockService.ahk'),
+    stubs: 'class ChatDB {\n    static db := ""\n}\n'
+  },
+  {
     name: 'app/TrayIcon',
     file: path.join(REPO_ROOT, 'app', 'TrayIcon.ahk'),
     stubs: 'global iconOn := "icons\\IconOn.ico"\nglobal iconOff := "icons\\IconOff.ico"\n'

@@ -104,6 +104,7 @@ RegisterTestClass(className) {
 
 #Include unit\AttachmentUtils.test.ahk
 #Include unit\ChatDB.test.ahk
+#Include unit\ThreadLockRepo.test.ahk
 #Include unit\AttachmentRepo.test.ahk
 #Include unit\ImageUtils.test.ahk
 #Include unit\SQLiteEscape.test.ahk

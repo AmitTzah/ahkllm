@@ -1,4 +1,10 @@
 ;--------------------------------------------------
+; Chat lock enforcement (Tier-1 password gate)
+;--------------------------------------------------
+
+#Include locks\ThreadLockService.ahk
+
+;--------------------------------------------------
 ; cURL process management
 ;--------------------------------------------------
 
@@ -152,11 +158,32 @@ buildStructuredMessagesFromPath(path, threadId := "") {
 _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     global activeThreadId
     activeThreadId := threadId
+    ; Locked-chat gate: a locked thread's content (messages, tree, stats,
+    ; per-thread settings) must never reach the WebView until it is unlocked
+    ; in this session. Every load path converges here - sidebar clicks,
+    ; navigateToMessage, WM_LOAD_THREAD, the command-line argument, and the
+    ; webViewReady reload.
+    if ThreadLockService.IsLocked(threadId) && !ThreadLockService.IsUnlockedInSession(threadId) {
+        _postLockedThreadState(threadId)
+        _postThreadListRefresh()
+        return
+    }
     _restoreThreadSettings(activeThreadId)
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("initChatMode", { messages: buildStructuredMessagesFromPath(path, activeThreadId), threadId: activeThreadId })
     postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
     postThreadStats(activeThreadId)
+    ; Lock metadata for an unlocked-but-locked chat: the lock modal needs the
+    ; stored salt/iterations to derive the CURRENT password hash when
+    ; changing or removing the lock.
+    if ThreadLockService.IsLocked(threadId) {
+        lockData := ThreadLockService.GetLockData(threadId)
+        postWebMessage("threadLockInfo", {
+            threadId: threadId,
+            salt: lockData ? lockData.salt : "",
+            iterations: lockData ? lockData.iterations : ThreadLockService.DEFAULT_ITERATIONS
+        })
+    }
     if includeDropdownLabel
         _sendDropdownLabel()
     ; Push per-thread settings (model, assistant, font size, etc.) to WebView
@@ -177,6 +204,20 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
         threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
     if threadInfo.count
         chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
+}
+
+; Swap the chat pane for the lock overlay and reveal nothing about the
+; thread (no title, no messages, no settings).
+_postLockedThreadState(threadId) {
+    global chatWindow
+    lockData := ThreadLockService.GetLockData(threadId)
+    postWebMessage("threadLocked", {
+        threadId: threadId,
+        salt: lockData ? lockData.salt : "",
+        iterations: lockData ? lockData.iterations : ThreadLockService.DEFAULT_ITERATIONS
+    })
+    if IsSet(chatWindow) && chatWindow
+        chatWindow.Title := AppInfo.Name " - Locked chat"
 }
 
 ; Refresh thread list and trash list in the sidebar WebView.

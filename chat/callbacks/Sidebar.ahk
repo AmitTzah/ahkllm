@@ -59,6 +59,9 @@ _HandleThreadAction(action, params) {
         case "deleteThread":
             if params.Has("threadId") {
                 threadId := params["threadId"]
+                ; Locked chats must be unlocked before they can be deleted
+                ; (a lock is worthless if the delete button can destroy it).
+                ThreadLockService.RequireUnlocked(threadId)
                 ChatDB.Thread_SoftDelete(threadId)
                 if activeThreadId = threadId {
                     activeThreadId := ""
@@ -87,6 +90,7 @@ _HandleThreadAction(action, params) {
         case "deleteThreadForever":
             if params.Has("threadId") {
                 threadId := params["threadId"]
+                ThreadLockService.RequireUnlocked(threadId)
                 ChatDB.Thread_Delete(threadId)
                 if activeThreadId = threadId {
                     activeThreadId := ""

@@ -69,7 +69,7 @@ _handleStreamError() {
     responseTimeMs := requestParams["_streamRequestStartTime"] > 0
         ? A_TickCount - requestParams["_streamRequestStartTime"]
         : 0
-    ApiLogger.LogRequest({
+    logEntry := {
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: _streamLogWindowTitle(),
         provider: _streamLogProviderName(),
@@ -81,7 +81,12 @@ _handleStreamError() {
         response: rawOutput ? rawOutput : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
         status: "error",
         responseTimeMs: responseTimeMs
-    })
+    }
+    if ThreadLockService.ShouldRedactContent(activeThreadId) {
+        logEntry.request := "<hidden: locked chat>"
+        logEntry.response := "<hidden: locked chat>"
+    }
+    ApiLogger.LogRequest(logEntry)
 
     ; Bug #110: the error path must also delete the temp request/cURL files
     ; (they contain the Bearer token) once the diagnostics have been read.
@@ -240,7 +245,7 @@ _logCancelledRequest() {
         total_tokens: 0,
         prompt_cache_hit_tokens: 0
     }
-    ApiLogger.LogRequest({
+    cancelLogEntry := {
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: _streamLogWindowTitle(),
         provider: _streamLogProviderName(),
@@ -252,5 +257,10 @@ _logCancelledRequest() {
         response: jsongo.Stringify(logEntry),
         status: "cancelled",
         responseTimeMs: responseTimeMs
-    })
+    }
+    if ThreadLockService.ShouldRedactContent(activeThreadId) {
+        cancelLogEntry.request := "<hidden: locked chat>"
+        cancelLogEntry.response := "<hidden: locked chat>"
+    }
+    ApiLogger.LogRequest(cancelLogEntry)
 }

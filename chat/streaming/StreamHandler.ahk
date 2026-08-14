@@ -226,6 +226,12 @@ _shouldPostStreamToUI() {
         return false
     if activeThreadId != requestParams["_streamThreadId"]
         return false
+    ; Locked chats: an in-flight stream's partial content must not be painted
+    ; into the UI while the thread is locked (the DB completion still runs -
+    ; unlocking later re-paints it via _RepostActiveStreamForThread).
+    if ThreadLockService.IsLocked(requestParams["_streamThreadId"]) &&
+        !ThreadLockService.IsUnlockedInSession(requestParams["_streamThreadId"])
+        return false
     ; Root retries have no request parent (bug #147) - always current while
     ; the thread is still the active one.
     if requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]

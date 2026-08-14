@@ -85,7 +85,7 @@ class ThreadRepo {
 
     ; Get threads sorted by most recent first.
     static List(showTrash := false) {
-        query := "SELECT t.id, t.title, t.created_at, t.updated_at, t.active_leaf_id, t.folder_id, COALESCE(f.name, '') AS folder_name FROM chat_threads t LEFT JOIN chat_folders f ON t.folder_id = f.id WHERE t.is_deleted=" (showTrash ? 1 : 0)
+        query := "SELECT t.id, t.title, t.created_at, t.updated_at, t.active_leaf_id, t.folder_id, t.is_locked, COALESCE(f.name, '') AS folder_name FROM chat_threads t LEFT JOIN chat_folders f ON t.folder_id = f.id WHERE t.is_deleted=" (showTrash ? 1 : 0)
         query .= " ORDER BY t.updated_at DESC"
         table := ChatDB.db.Exec(query)
         threads := []
@@ -120,9 +120,14 @@ class ThreadRepo {
                 }
                 currentId := msg.parent_id
             }
+            ; Bug (locked chats): a locked thread's real title can leak intent
+            ; (e.g. "Salary negotiation", "therapy notes"), so it is redacted
+            ; everywhere the list renders - sidebar AND trash.
+            isLocked := Integer(row.is_locked ? row.is_locked : 0)
             threads.Push({
                 id: row.id,
-                title: row.title,
+                title: isLocked ? "Locked chat" : row.title,
+                is_locked: isLocked,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 model: model,

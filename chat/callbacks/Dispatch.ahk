@@ -16,6 +16,7 @@ _SurfaceError(context, err) {
 }
 
 OnWebMessageReceived(sender, args) {
+    global activeThreadId
     reqId := ""
     try {
         msg := args.TryGetWebMessageAsString()
@@ -27,6 +28,15 @@ OnWebMessageReceived(sender, args) {
         ; carries a reqId; the dispatch answers with an ack carrying the same
         ; id so the WebView can resolve promises and surface failures.
         reqId := parsed.Get("reqId", "")
+        ; Locked-chat gate: actions that read or mutate the ACTIVE thread are
+        ; rejected while it is locked (and not unlocked in this session).
+        ; Content can never be reached through a side channel like the tree
+        ; modal or the right-rail settings, and global search is filtered at
+        ; the SQL level instead.
+        ; ChatDB.isOpen guards the test harness (stale activeThreadId with a
+        ; closed DB); production always has the DB open, so behavior is unchanged.
+        if _IsLockedThreadContentAction(action, parsed) && IsSet(activeThreadId) && ChatDB.isOpen
+            ThreadLockService.RequireUnlocked(activeThreadId)
         switch action {
             case "chatSend":
                 handleChatSend(parsed)
@@ -80,12 +90,37 @@ OnWebMessageReceived(sender, args) {
                 debugLog(parsed.Get("message", ""), "WebUI")
             case "updateFontSize":
                 handleUpdateFontSize(parsed)
+            case "unlockThread":
+                handleUnlockThread(parsed)
+            case "setThreadLock":
+                handleSetThreadLock(parsed)
         }
         _AckWebMessage(reqId, action, true, "")
     } catch Error as e {
         _SurfaceError("Dispatch." (IsSet(action) ? action : "unknown"), e)
         _AckWebMessage(reqId, IsSet(action) ? action : "unknown", false, e.Message)
     }
+}
+
+; True for actions whose handler reads or mutates the active thread's
+; content/settings and must therefore be blocked while it is locked.
+_IsLockedThreadContentAction(action, parsed) {
+    switch action {
+        case "chatSend", "retry", "editMessage", "deleteMessage", "deleteAttachment",
+             "forkChat", "switchBranch", "updateModelSettings", "switchAssistant",
+             "updateFontSize", "requestCurrentSettings":
+            return true
+        case "searchMessages":
+            ; Global search is filtered at the SQL level (locked chats never
+            ; match); scoped search of a locked thread is blocked.
+            return parsed.Has("threadId")
+        case "sidebarAction":
+            sub := parsed.Has("subAction") ? parsed["subAction"] : ""
+            ; loadTree renders the ACTIVE thread's tree; navigateToMessage and
+            ; loadThread are already gated by _LoadThreadAndRefreshUI.
+            return sub = "loadTree"
+    }
+    return false
 }
 
 ; Acknowledge a WebView request. Only sent when the request carried a reqId
@@ -243,3 +278,4 @@ _HandleBrowseIcon(parsed) {
 #Include Branch.ahk
 #Include Sidebar.ahk
 #Include Search.ahk
+#Include Lock.ahk

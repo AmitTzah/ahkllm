@@ -36,6 +36,8 @@
     'updateTokenUsage': { dir: 'ahk->web', data: 'object' },
     'renderChatTree': { dir: 'ahk->web', data: 'any' },
     'threadList': { dir: 'ahk->web', fields: ['threads', 'folders'], required: ['threads', 'folders'] },
+    'threadLocked': { dir: 'ahk->web', fields: ['threadId', 'salt', 'iterations'], required: ['threadId'] },
+    'threadLockInfo': { dir: 'ahk->web', fields: ['threadId', 'salt', 'iterations'], required: ['threadId'] },
     'trashList': { dir: 'ahk->web', data: 'array' },
     'loadThread': { dir: 'ahk->web', data: 'string' },
     'threadForked': { dir: 'ahk->web', fields: ['newThreadId'], required: ['newThreadId'] },
@@ -80,6 +82,8 @@
     'debugLog': { dir: 'web->ahk', fields: ['message'], required: ['message'] },
     'webViewReady': { dir: 'web->ahk', data: 'any' },
     'browseIcon': { dir: 'web->ahk', fields: ['field'], required: ['field'] },
+    'unlockThread': { dir: 'web->ahk', fields: ['threadId', 'passwordHash'], required: ['threadId', 'passwordHash'] },
+    'setThreadLock': { dir: 'web->ahk', fields: ['threadId', 'mode', 'passwordHash', 'salt', 'iterations', 'currentPasswordHash'], required: ['threadId', 'mode', 'passwordHash', 'salt', 'iterations'] },
     'reloadScript': { dir: 'web->ahk', data: 'any' },
     'updateFontSize': { dir: 'web->ahk', fields: ['fontSize'], required: ['fontSize'] }
   };

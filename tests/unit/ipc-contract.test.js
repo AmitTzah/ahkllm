@@ -34,9 +34,13 @@ describe('ipc-contract registry integrity', () => {
 describe('ipc-contract validate', () => {
   it('accepts valid messages in both directions', () => {
     assert.deepStrictEqual(contract.validate('initChatMode', { messages: [], threadId: 't1' }, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('threadLocked', { threadId: 't1', salt: 'ab', iterations: 1000 }, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('threadLockInfo', { threadId: 't1' }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('streamDone', { model: 'm', displayName: '', dbMsg: '', userTokenCount: 0 }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('setChatButtonsEnabled', true, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi' }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('unlockThread', { threadId: 't1', passwordHash: 'h' }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('setThreadLock', { threadId: 't1', mode: 'set', passwordHash: 'h', salt: 's', iterations: 1000, currentPasswordHash: '' }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi', attachments: [] }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('updateModelSettings', { model: 'm', systemMessage: '', reasoning: '', temperature: '', codeExecution: false, webSearch: false }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('sidebarAction', { subAction: 'moveToFolder', threadId: 't', folderId: 'f' }, 'web->ahk'), []);

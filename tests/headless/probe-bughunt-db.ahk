@@ -955,7 +955,7 @@ MigrationBackfillGuard() {
     try FileDelete(dbPath "-shm")
 
     Log("MIGBACK v1=" v1 " v2=" v2 " cost1=" cost1 " cost2=" cost2)
-    Log("MIGBACK verdict=" (v1 = 6 && v2 = 6 && cost1 > 0 && cost1 = cost2 ? "OK-guard" : "BUG-present(re-priced-or-migrated-twice)"))
+    Log("MIGBACK verdict=" (v1 = 7 && v2 = 7 && cost1 > 0 && cost1 = cost2 ? "OK-guard" : "BUG-present(re-priced-or-migrated-twice)"))
 }
 
 ; ------------------------------------------------------------------

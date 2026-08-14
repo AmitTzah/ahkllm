@@ -82,6 +82,7 @@ function handleWebMessage(event) {
 
     switch (target) {
       case 'initChatMode':
+        if (typeof clearThreadLockOverlay === 'function') clearThreadLockOverlay();
         initChatMode(data);
         renderNavList();
         // Switch to chat view if currently on settings/dashboard
@@ -138,6 +139,14 @@ function handleWebMessage(event) {
 
       case 'loadThread':
         loadThread(data);
+        break;
+
+      case 'threadLocked':
+        if (typeof handleThreadLocked === 'function') handleThreadLocked(data);
+        break;
+
+      case 'threadLockInfo':
+        if (typeof handleThreadLockInfo === 'function') handleThreadLockInfo(data);
         break;
 
       case 'threadForked':

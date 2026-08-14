@@ -1,0 +1,54 @@
+; ======================================================
+; Lock.ahk - Locked-chat callbacks (unlock + set/change/remove)
+;
+; Tier-1 app-level chat lock. The WebView derives PBKDF2
+; hashes (Web Crypto) from the typed password; only the
+; derived hash crosses the IPC boundary. AHK compares it
+; constant-time against the stored hash and never sees the
+; raw password.
+; ======================================================
+
+; Verify a derived hash and, on success, load the thread normally.
+handleUnlockThread(parsed) {
+    threadId := parsed.Get("threadId", "")
+    passwordHash := parsed.Get("passwordHash", "")
+    if !threadId || !passwordHash
+        throw Error("Unlock requires a thread id and password hash.", "ThreadLockInput")
+
+    block := ThreadLockService.GetBlockRemaining(threadId)
+    if block > 0
+        throw Error("Too many failed attempts. Try again in " block "s.", "ThreadLockBlocked")
+    if !ThreadLockService.VerifyHash(threadId, passwordHash)
+        throw Error("Incorrect password.", "ThreadLockFailed")
+
+    ThreadLockService.Unlock(threadId)
+    _LoadThreadAndRefreshUI(threadId)
+}
+
+; Set / change / remove a chat lock.
+handleSetThreadLock(parsed) {
+    threadId := parsed.Get("threadId", "")
+    mode := parsed.Get("mode", "")
+    if !threadId || (mode != "set" && mode != "change" && mode != "remove")
+        throw Error("Invalid lock request.", "ThreadLockInput")
+
+    switch mode {
+        case "set":
+            ThreadLockService.SetPassword(threadId,
+                parsed.Get("salt", ""),
+                parsed.Get("passwordHash", ""),
+                parsed.Get("iterations", 0))
+        case "change":
+            if !ThreadLockService.VerifyHash(threadId, parsed.Get("currentPasswordHash", ""))
+                throw Error("Current password is incorrect.", "ThreadLockFailed")
+            ThreadLockService.ChangePassword(threadId,
+                parsed.Get("salt", ""),
+                parsed.Get("passwordHash", ""),
+                parsed.Get("iterations", 0))
+        case "remove":
+            if !ThreadLockService.VerifyHash(threadId, parsed.Get("currentPasswordHash", ""))
+                throw Error("Current password is incorrect.", "ThreadLockFailed")
+            ThreadLockService.RemovePassword(threadId)
+    }
+    _postThreadListRefresh()
+}

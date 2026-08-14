@@ -187,13 +187,22 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
         }
     }
 
-    ApiLogger.LogRequest({
+    ; Locked chats: never persist full request/response bodies for a thread
+    ; that is locked and not unlocked in this session - the API log file
+    ; (%TEMP%\LLM_API_Log.json) is a plaintext sink outside the chat DB.
+    logEntry := {
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: _streamLogWindowTitle(), provider: _streamLogProviderName(),
         model: _streamLogModel(), isFIM: false, endpoint: _getProviderEndpoint(),
-        pasteMode: _streamLogPasteMode(), request: requestBeforeAppend,
+        pasteMode: _streamLogPasteMode(),
+        request: requestBeforeAppend,
         response: responseStr,
         status: "success", responseTimeMs: responseTimeMs
-    })
+    }
+    if ThreadLockService.ShouldRedactContent(activeThreadId) {
+        logEntry.request := "<hidden: locked chat>"
+        logEntry.response := "<hidden: locked chat>"
+    }
+    ApiLogger.LogRequest(logEntry)
 }
 

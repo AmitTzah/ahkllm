@@ -14,6 +14,7 @@
 #Include SearchRepo.ahk
 #Include AttachmentRepo.ahk
 #Include UsageRepo.ahk
+#Include ThreadLockRepo.ahk
 #Include ..\..\shared\AppInfo.ahk
 
 class ChatDB {
@@ -59,10 +60,12 @@ class ChatDB {
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', description TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_locks (thread_id TEXT PRIMARY KEY REFERENCES chat_threads(id) ON DELETE CASCADE, kdf TEXT NOT NULL DEFAULT 'pbkdf2-sha256', salt TEXT NOT NULL, hash TEXT NOT NULL, iterations INTEGER NOT NULL DEFAULT 600000, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS message_attachments (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, attachment_type TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT, original_filename TEXT, file_size INTEGER DEFAULT 0, extracted_text TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE);")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS command_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, command_name TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider, command_name));")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider));")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_attachments_message ON message_attachments(message_id);")
+        ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_chat_locks_thread ON chat_locks(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
@@ -153,6 +156,13 @@ class ChatDB {
             }
             ChatDB.db.Exec("PRAGMA user_version = 6;")
         }
+        ; v7: locked chats - app-level password gate (Tier 1). The lock
+        ; secrets live in chat_locks; is_locked is the fast user-visible
+        ; flag used by the sidebar and every access gate.
+        if version < 7 {
+            ChatDB._AddColumnIfMissing("chat_threads", "is_locked", "INTEGER DEFAULT 0")
+            ChatDB.db.Exec("PRAGMA user_version = 7;")
+        }
     }
 
     ; Add a column only when it is missing (table/column names are trusted
@@ -215,6 +225,13 @@ class ChatDB {
     static Thread_PurgeExpired() => ThreadRepo.PurgeExpired()
     static Thread_Delete(threadId) => ThreadRepo.Delete(threadId)
     static Thread_Update(threadId, title, updateTimestamp := true) => ThreadRepo.Update(threadId, title, updateTimestamp)
+
+    ; Chat lock operations - delegate to ThreadLockRepo
+    static ThreadLock_IsLocked(threadId) => ThreadLockRepo.IsLocked(threadId)
+    static ThreadLock_Get(threadId) => ThreadLockRepo.Get(threadId)
+    static ThreadLock_Set(threadId, salt, hash, iterations) => ThreadLockRepo.Set(threadId, salt, hash, iterations)
+    static ThreadLock_Update(threadId, salt, hash, iterations) => ThreadLockRepo.Update(threadId, salt, hash, iterations)
+    static ThreadLock_Remove(threadId) => ThreadLockRepo.Remove(threadId)
 
     ; Message operations - delegate to MessageRepo
     static Msg_Insert(msgObj) => MessageRepo.Insert(msgObj)

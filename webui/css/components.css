@@ -67,3 +67,27 @@
   padding: 16px; text-align: center;
   color: var(--text-tertiary); font-size: 13px;
 }
+
+/* Chat lock (password-protected chats) */
+.thread-lock-overlay {
+  position: fixed; inset: 0; background: rgba(17, 24, 39, 0.45);
+  backdrop-filter: blur(3px); display: flex; align-items: center;
+  justify-content: center; z-index: 190;
+}
+.thread-lock-box {
+  background: var(--bg-panel); border: 1px solid var(--border-main);
+  border-radius: 12px; padding: 28px; width: 340px;
+  box-shadow: var(--shadow-modal); text-align: center; box-sizing: border-box;
+}
+.thread-lock-icon { width: 44px; height: 44px; margin: 0 auto 12px; color: var(--accent-primary); }
+.thread-lock-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+.thread-lock-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.45; }
+.thread-lock-input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border-main);
+  border-radius: 8px; background: var(--bg-main); color: var(--text-primary);
+  font-size: 14px; box-sizing: border-box;
+}
+.thread-lock-input:focus { outline: none; border-color: var(--accent-primary); }
+.thread-lock-error { color: var(--danger); font-size: 12px; min-height: 16px; margin-top: 8px; text-align: left; }
+.thread-lock-row { display: flex; gap: 8px; margin-top: 12px; }
+.thread-lock-row button { flex: 1; }

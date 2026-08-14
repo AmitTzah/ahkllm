@@ -103,7 +103,7 @@ class SearchRepo {
              . " FROM messages m"
              . " JOIN chat_threads t ON m.thread_id = t.id"
              . " JOIN messages_fts fts ON fts.msg_id = m.id"
-             . " WHERE t.is_deleted=0 AND m.id IN (SELECT msg_id FROM messages_fts WHERE messages_fts MATCH ?)"
+             . " WHERE t.is_deleted=0 AND t.is_locked=0 AND m.id IN (SELECT msg_id FROM messages_fts WHERE messages_fts MATCH ?)"
         params := [firstWordLower, firstWordLower, firstWordLower, firstWordLower, safeFTS]
         if threadId {
             sql .= " AND m.thread_id=?"
@@ -142,7 +142,7 @@ class SearchRepo {
              . " t.title AS threadTitle"
              . " FROM messages m"
              . " JOIN chat_threads t ON m.thread_id = t.id"
-             . " WHERE t.is_deleted=0 AND m.content LIKE '%' || ? || '%' ESCAPE '\'"
+             . " WHERE t.is_deleted=0 AND t.is_locked=0 AND m.content LIKE '%' || ? || '%' ESCAPE '\'"
         params := [query, query, query, query, likeQuery]
         if threadId {
             sql .= " AND m.thread_id=?"
@@ -161,7 +161,7 @@ class SearchRepo {
              . " '' AS contentPreview, '' AS model, t.created_at AS createdAt,"
              . " t.title AS threadTitle"
              . " FROM chat_threads t"
-             . " WHERE t.is_deleted=0"
+             . " WHERE t.is_deleted=0 AND t.is_locked=0"
              . " AND t.title LIKE '%' || ? || '%' ESCAPE '\'"
              . " ORDER BY t.updated_at DESC"
              . " LIMIT 10"
