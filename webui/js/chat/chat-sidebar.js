@@ -134,9 +134,11 @@ function createChatItem(t) {
       '<div class="chat-item-bottom">' +
         '<div class="chat-date">' + dateStr + '</div>' +
         '<div class="chat-actions">' +
-          '<button class="chat-action-btn" title="Rename"><i data-lucide="edit-2"></i></button>' +
+          (t.is_locked && t.title === 'Locked chat'
+            ? ''
+            : '<button class="chat-action-btn" title="Rename"><i data-lucide="edit-2"></i></button>') +
           '<button class="chat-action-btn" title="Move to folder"><i data-lucide="folder"></i></button>' +
-          '<button class="chat-action-btn" title="' + (t.is_locked ? 'Change lock' : 'Lock chat') + '"><i data-lucide="' + (t.is_locked ? 'unlock' : 'lock') + '"></i></button>' +
+          '<button class="chat-action-btn" title="Lock options"><i data-lucide="lock"></i></button>' +
           '<button class="chat-action-btn danger" title="Delete"><i data-lucide="trash-2"></i></button>' +
         '</div>' +
       '</div>' +
@@ -147,15 +149,16 @@ function createChatItem(t) {
     loadThread(t.id);
   });
 
-  _wireRenameHandler(item, t);
+  if (item.querySelector('.chat-action-btn[title="Rename"]'))
+    _wireRenameHandler(item, t);
   _wireMoveToFolderHandler(item, t);
 
-  // Lock / change-lock button
-  item.querySelector('.chat-action-btn[title="' + (t.is_locked ? 'Change lock' : 'Lock chat') + '"]')
+  // Lock options menu (Lock Chat / Unlock Chat / Change password)
+  item.querySelector('.chat-action-btn[title="Lock options"]')
     .addEventListener('click', function(e) {
       e.stopPropagation();
-      if (typeof openThreadLockModal === 'function')
-        openThreadLockModal(t.id, t.is_locked ? 'change' : 'set');
+      if (typeof openLockMenu === 'function')
+        openLockMenu(t.id, this, t);
     });
 
   // Delete

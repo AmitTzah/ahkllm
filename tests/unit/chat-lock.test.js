@@ -16,18 +16,21 @@ function loadModules(rejectActions) {
       tagName: tag, id: id || '', className: '', innerHTML: '', textContent: '', title: '',
       value: '', disabled: false, style: {}, children: [], parentNode: null,
       _handlers: {},
+      _attrs: {},
       get firstChild() { return this; },
       classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
       addEventListener(evt, fn) { (this._handlers[evt] = this._handlers[evt] || []).push(fn); },
       dispatch(evt, arg) { (this._handlers[evt] || []).forEach(function(fn) { fn(arg); }); },
       appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+      contains(child) { return child === this || this.children.indexOf(child) >= 0; },
+      getBoundingClientRect() { return { left: 0, top: 0, bottom: 12, width: 30 }; },
       focus() {},
       remove() { if (this.id && els[this.id] === this) delete els[this.id]; },
+      closest(sel) { return this.className.indexOf(sel.replace('.', '')) >= 0 ? this : null; },
       querySelector() { return makeEl('div'); },
       querySelectorAll() { return []; },
-      closest() { return null; },
-      getAttribute() { return null; },
-      setAttribute() {}
+      getAttribute(k) { return this._attrs[k] || null; },
+      setAttribute(k, v) { this._attrs[k] = String(v); }
     };
   }
   const doc = {
@@ -75,6 +78,11 @@ function loadModules(rejectActions) {
     }
   };
   sandbox.global = sandbox;
+  sandbox.escHtml = function(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  };
+  sandbox.loadThread = function(id) { sandbox.loadedThread = id; };
   vm.runInContext(src, vm.createContext(sandbox));
   return { sandbox, posted, doc, els };
 }
@@ -179,6 +187,18 @@ describe('unlock flow', () => {
   });
 });
 
+describe('lock overlay dismissal', () => {
+  it('Cancel posts dismissLockedThread, removes the overlay and resets the active thread', () => {
+    const { sandbox, posted, doc } = loadModules();
+    sandbox.handleThreadLocked({ threadId: 't1', salt: 'ab', iterations: 1000 });
+    assert.ok(doc.getElementById('threadLockOverlay') !== null);
+    doc.getElementById('lockOverlayCancel').dispatch('click');
+    assert.ok(posted.some((p) => p.action === 'dismissLockedThread'), 'dismissLockedThread must be posted');
+    assert.strictEqual(doc.getElementById('threadLockOverlay').parentNode, null);
+    assert.strictEqual(sandbox.activeThreadId, '');
+  });
+});
+
 describe('lock modal flows', () => {
   it('set flow posts a fresh salt + derived hash and closes the modal', async () => {
     const { sandbox, posted, doc } = loadModules();
@@ -246,5 +266,51 @@ describe('lock modal flows', () => {
       nodeCrypto.pbkdf2Sync('oldpass', Buffer.from(salt, 'hex'), 1000, 32, 'sha256').toString('hex')
     );
     assert.strictEqual(msg.payload.passwordHash, '');
+  });
+});
+
+describe('sidebar lock menu', () => {
+  it('shows three options with state-appropriate disabling (locked, not unlocked)', () => {
+    const { sandbox, doc } = loadModules();
+    sandbox.handleThreadLockInfo({ threadId: 't1', salt: 'ab', iterations: 1000 });
+    sandbox.openLockMenu('t1', doc.getElementById('anchor'), { id: 't1', title: 'Locked chat', is_locked: 1 });
+    const dd = doc.getElementById('lockMenuDropdown');
+    assert.ok(dd, 'menu must be open');
+    const byAction = {};
+    dd.children.forEach(function(c) {
+      if (c.className.indexOf('lock-menu-item') >= 0) byAction[c.getAttribute('data-action')] = c;
+    });
+    assert.strictEqual(Object.keys(byAction).length, 3);
+    assert.ok(byAction.lock.disabled, 'Lock Chat must be disabled while already locked');
+    assert.ok(!byAction.unlock.disabled, 'Unlock Chat must be enabled while locked');
+    assert.ok(!byAction.change.disabled, 'Change password must be enabled while locked');
+    dd.dispatch('click', { target: byAction.unlock });
+    assert.strictEqual(sandbox.loadedThread, 't1', 'Unlock Chat must load the chat (which shows the overlay)');
+  });
+
+  it('Lock Chat relocks a session-unlocked chat via lockChatNow', () => {
+    const { sandbox, posted, doc } = loadModules();
+    sandbox.openLockMenu('t1', doc.getElementById('anchor'), { id: 't1', title: 'Secret Plan', is_locked: 1 });
+    const dd = doc.getElementById('lockMenuDropdown');
+    const lockBtn = dd.children.find((c) => c.className.indexOf('lock-menu-item') >= 0 && c.getAttribute('data-action') === 'lock');
+    assert.ok(!lockBtn.disabled, 'Lock Chat must be enabled once the chat is unlocked in the session');
+    dd.dispatch('click', { target: lockBtn });
+    assert.ok(posted.some((p) => p.action === 'lockChatNow' && p.payload.threadId === 't1'), 'lockChatNow must be posted');
+  });
+
+  it('on an unlocked chat only Lock Chat is active and it opens the protect modal', () => {
+    const { sandbox, doc } = loadModules();
+    sandbox.openLockMenu('t2', doc.getElementById('anchor'), { id: 't2', title: 'Open chat', is_locked: 0 });
+    const dd = doc.getElementById('lockMenuDropdown');
+    const byAction = {};
+    dd.children.forEach(function(c) {
+      if (c.className.indexOf('lock-menu-item') >= 0) byAction[c.getAttribute('data-action')] = c;
+    });
+    assert.ok(!byAction.lock.disabled);
+    assert.ok(byAction.unlock.disabled);
+    assert.ok(byAction.change.disabled);
+    sandbox.openThreadLockModal = function(id, mode) { sandbox.openedModal = { id: id, mode: mode }; };
+    dd.dispatch('click', { target: byAction.lock });
+    assert.deepStrictEqual(sandbox.openedModal, { id: 't2', mode: 'set' }, 'Lock Chat must open the protect modal');
   });
 });

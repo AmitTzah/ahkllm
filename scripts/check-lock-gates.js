@@ -51,9 +51,12 @@ if (!/ThreadLockService\.IsLocked\(threadId\) && !ThreadLockService\.IsUnlockedI
 if (!/_postLockedThreadState\(threadId\)/.test(chatUtils))
   fail('_postLockedThreadState missing');
 
-// 3. Sidebar must redact locked titles and report the lock flag.
+// 3. Sidebar must redact locked titles (unless session-unlocked) and report
+//    the lock flag.
 const threadRepo = read('chat/db/ThreadRepo.ahk');
-if (!/title: isLocked \? "Locked chat" : row\.title/.test(threadRepo))
+if (!/ThreadLockService\.IsUnlockedInSession\(row\.id\)/.test(threadRepo))
+  fail('Thread_List must be session-aware when redacting locked titles');
+if (!/"Locked chat"/.test(threadRepo))
   fail('Thread_List title redaction missing');
 if (!/t\.is_locked/.test(threadRepo))
   fail('Thread_List does not select is_locked');

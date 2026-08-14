@@ -84,6 +84,9 @@
     'browseIcon': { dir: 'web->ahk', fields: ['field'], required: ['field'] },
     'unlockThread': { dir: 'web->ahk', fields: ['threadId', 'passwordHash'], required: ['threadId', 'passwordHash'] },
     'setThreadLock': { dir: 'web->ahk', fields: ['threadId', 'mode', 'passwordHash', 'salt', 'iterations', 'currentPasswordHash'], required: ['threadId', 'mode', 'passwordHash', 'salt', 'iterations'] },
+    'lockChatNow': { dir: 'web->ahk', fields: ['threadId'], required: ['threadId'] },
+    'dismissLockedThread': { dir: 'web->ahk', data: 'any' },
+    'getThreadLockInfo': { dir: 'web->ahk', fields: ['threadId'], required: ['threadId'] },
     'reloadScript': { dir: 'web->ahk', data: 'any' },
     'updateFontSize': { dir: 'web->ahk', fields: ['fontSize'], required: ['fontSize'] }
   };

@@ -91,7 +91,23 @@ scenarios.push({
     if (state.domMsgs !== 0) throw new Error('DOM leaked messages: ' + state.domMsgs);
     if (!state.inputDisabled) throw new Error('composer must be disabled while locked');
     if (state.postedInit) throw new Error('initChatMode must not be posted for a locked chat');
-    return 'lock overlay shown; zero messages rendered, composer disabled';
+
+    // Escape dismisses the prompt without opening the chat.
+    await cdp.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+    await cdp.waitFor('document.getElementById("threadLockOverlay") === null && window.activeThreadId === ""', 10000, 300, 'overlay dismissed with Escape');
+    const afterEscape = await cdp.eval(`(() => ({
+      msgs: document.querySelectorAll('#chat-messages .msg').length,
+      inputDisabled: document.getElementById('chat-input') ? document.getElementById('chat-input').disabled : null
+    }))()`);
+    if (afterEscape.msgs !== 0) throw new Error('content leaked after dismissing the overlay');
+    if (afterEscape.inputDisabled) throw new Error('composer must be restored after dismissing');
+
+    // The Cancel button dismisses the same way.
+    await cdp.click(lockedItem('t-lock-236'));
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 10000, 300, 'lock overlay (second)');
+    await cdp.click('#lockOverlayCancel');
+    await cdp.waitFor('document.getElementById("threadLockOverlay") === null && window.activeThreadId === ""', 10000, 300, 'overlay dismissed with Cancel');
+    return 'lock overlay shown with zero content; Escape and Cancel both dismiss it';
   }
 });
 
@@ -137,6 +153,9 @@ scenarios.push({
     if (state.active !== 't-lock-238') throw new Error('active thread not set after unlock: ' + state.active);
     if (!state.overlay) throw new Error('lock overlay must close after unlock');
     if (state.msgCount < 1) throw new Error('no messages rendered after unlock');
+    await cdp.waitFor(`window._threadMeta['t-lock-238'] && window._threadMeta['t-lock-238'].title === 'Secret Plan'`, 15000, 300, 'real title after unlock');
+    const hasRename = await cdp.eval(`!!document.querySelector(${JSON.stringify(lockedItem('t-lock-238'))} + ' .chat-action-btn[title="Rename"]')`);
+    if (!hasRename) throw new Error('rename must be available once the chat is unlocked');
     return 'correct password unlocks and renders ' + state.msgCount + ' message(s)';
   }
 });
@@ -300,6 +319,7 @@ scenarios.push({
     await cdp.waitFor('window.activeThreadId === "t-open-244" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'open chat renders');
     await cdp.click(lockedItem('t-lock-244'));
     await cdp.waitFor('window.activeThreadId === "t-lock-244" && document.getElementById("threadLockOverlay") === null && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'locked chat re-renders without prompt');
+    await cdp.waitFor(`window._threadMeta['t-lock-244'] && window._threadMeta['t-lock-244'].title === 'Secret Plan'`, 15000, 300, 'real title stays after re-render');
     const rows = seed.query(dbPath, 'SELECT is_locked FROM chat_threads WHERE id = ?', ['t-lock-244']);
     if (!rows.length || rows[0].is_locked !== 1) throw new Error('unlock must NOT clear the DB lock flag');
     return 'session unlock survives thread switches; is_locked stays 1 in the DB';
@@ -321,18 +341,20 @@ scenarios.push({
     await cdp.click('#lockUnlockBtn');
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 30000, 300, 'locked chat renders');
 
-    const openChangeModal = `(() => {
+    const openLockMenuEval = `(() => {
       const item = document.querySelector(${JSON.stringify(lockedItem('t-lock-245'))});
-      const btn = item && item.querySelector('.chat-action-btn[title="Change lock"]');
+      const btn = item && item.querySelector('.chat-action-btn[title="Lock options"]');
       if (!btn) return false;
       btn.click();
       return true;
     })()`;
 
-    // Change: current + new password.
-    const opened = await cdp.eval(openChangeModal);
-    if (!opened) throw new Error('Change lock button not found in the sidebar');
+    // Change: current + new password via the lock menu.
+    if (!(await cdp.eval(openLockMenuEval))) throw new Error('Lock options button not found in the sidebar');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu');
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="change"]');
     await cdp.waitFor('document.getElementById("threadLockModal") !== null', 10000, 300, 'change-lock modal');
+    await cdp.waitFor('document.getElementById("lockModalSave") && !document.getElementById("lockModalSave").disabled', 10000, 300, 'save enabled after lock info loads');
     await cdp.type('#lockModalCurrent', LOCK_PASSWORD);
     await cdp.type('#lockModalNew', 'new secret');
     await cdp.type('#lockModalConfirm', 'new secret');
@@ -343,10 +365,12 @@ scenarios.push({
     if (afterChange[0].hash === lockHash(LOCK_PASSWORD, LOCK_SALT, LOCK_ITERATIONS))
       throw new Error('password hash did not change');
 
-    // Remove: current password only.
-    const opened2 = await cdp.eval(openChangeModal);
-    if (!opened2) throw new Error('Change lock button not found after password change');
+    // Remove: current password only, again via the lock menu.
+    if (!(await cdp.eval(openLockMenuEval))) throw new Error('Lock options button not found after password change');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu (remove)');
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="change"]');
     await cdp.waitFor('document.getElementById("threadLockModal") !== null', 10000, 300, 'change-lock modal (remove)');
+    await cdp.waitFor('document.getElementById("lockModalSave") && !document.getElementById("lockModalSave").disabled', 10000, 300, 'save enabled after lock info loads (remove)');
     await cdp.type('#lockModalCurrent', 'new secret');
     await cdp.click('#lockModalRemove');
     await cdp.waitFor('document.getElementById("threadLockModal") === null', 45000, 400, 'modal closes after removal');
@@ -357,6 +381,87 @@ scenarios.push({
     if (flags[0].is_locked !== 0) throw new Error('is_locked still 1 after removal');
     await cdp.waitFor(`window._threadMeta['t-lock-245'] && window._threadMeta['t-lock-245'].title === 'Secret Plan'`, 15000, 300, 'real title restored after removal');
     return 'password changed (new hash stored) and removed (lock row gone, title restored)';
+  }
+});
+
+scenarios.push({
+  id: 246,
+  name: 'Lock options menu: Lock/Unlock/Change states and the relock flow',
+  regression: true,
+  mode: null,
+  fixtures: {
+    threads: [
+      { id: 't-lock-246', title: 'Secret Plan', active_leaf_id: 't-lock-246-a1', is_locked: 1 },
+      { id: 't-open-246', title: 'Open Chat', active_leaf_id: 't-open-246-a1' }
+    ],
+    messages: [
+      { id: 't-lock-246-u1', thread_id: 't-lock-246', role: 'user', content: 'hidden content' },
+      { id: 't-lock-246-a1', thread_id: 't-lock-246', role: 'assistant', content: 'locked reply', parent_id: 't-lock-246-u1', model: 'deepseek/deepseek-v4-flash' },
+      { id: 't-open-246-u1', thread_id: 't-open-246', role: 'user', content: 'open content' },
+      { id: 't-open-246-a1', thread_id: 't-open-246', role: 'assistant', content: 'open reply', parent_id: 't-open-246-u1', model: 'deepseek/deepseek-v4-flash' }
+    ],
+    chatLocks: [{
+      thread_id: 't-lock-246',
+      salt: LOCK_SALT,
+      hash: lockHash(LOCK_PASSWORD, LOCK_SALT, LOCK_ITERATIONS),
+      iterations: LOCK_ITERATIONS
+    }]
+  },
+  async body({ cdp }) {
+    const openMenu = (id) => `(() => {
+      const item = document.querySelector(${JSON.stringify(lockedItem(id))});
+      const btn = item && item.querySelector('.chat-action-btn[title="Lock options"]');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()`;
+    const menuStates = `(() => {
+      const dd = document.getElementById('lockMenuDropdown');
+      const items = {};
+      dd.querySelectorAll('.lock-menu-item').forEach(function(b) {
+        items[b.getAttribute('data-action')] = b.disabled;
+      });
+      return items;
+    })()`;
+
+    await showChat();
+    await cdp.waitFor('document.querySelector(' + JSON.stringify(lockedItem('t-lock-246')) + ') !== null', 15000, 300, 'locked chat in sidebar');
+
+    // Locked + hidden: only Unlock Chat and Change are active.
+    if (!(await cdp.eval(openMenu('t-lock-246')))) throw new Error('Lock options button not found (locked)');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu (locked)');
+    let states = await cdp.eval(menuStates);
+    if (!states.lock || states.unlock !== false || states.change !== false)
+      throw new Error('wrong menu states for a hidden locked chat: ' + JSON.stringify(states));
+
+    // Unlock Chat from the menu -> password prompt -> chat renders with real title.
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="unlock"]');
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'lock overlay from menu');
+    await cdp.type('#lockPasswordInput', LOCK_PASSWORD);
+    await cdp.click('#lockUnlockBtn');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 30000, 300, 'messages render after menu unlock');
+    await cdp.waitFor(`window._threadMeta['t-lock-246'] && window._threadMeta['t-lock-246'].title === 'Secret Plan'`, 15000, 300, 'real title after menu unlock');
+
+    // Now Lock Chat is active: relock immediately.
+    if (!(await cdp.eval(openMenu('t-lock-246')))) throw new Error('Lock options button not found (unlocked session)');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu (session-unlocked)');
+    states = await cdp.eval(menuStates);
+    if (states.lock !== false || !states.unlock || states.change !== false)
+      throw new Error('wrong menu states for a session-unlocked chat: ' + JSON.stringify(states));
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="lock"]');
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'overlay returns after relock');
+    await cdp.waitFor(`window._threadMeta['t-lock-246'] && window._threadMeta['t-lock-246'].title === 'Locked chat'`, 15000, 300, 'title redacted again after relock');
+
+    // Never-locked chat: only Lock Chat is active and it opens the protect modal.
+    if (!(await cdp.eval(openMenu('t-open-246')))) throw new Error('Lock options button not found (open chat)');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu (open chat)');
+    states = await cdp.eval(menuStates);
+    if (states.lock !== false || !states.unlock || !states.change)
+      throw new Error('wrong menu states for an unlocked chat: ' + JSON.stringify(states));
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="lock"]');
+    await cdp.waitFor('document.getElementById("threadLockModal") !== null', 10000, 300, 'protect modal opens');
+    await cdp.waitFor('document.getElementById("lockModalSave") && !document.getElementById("lockModalSave").disabled', 10000, 300, 'save enabled in protect modal');
+    return 'lock menu shows the right three states everywhere; relock and protect flows work';
   }
 });
 

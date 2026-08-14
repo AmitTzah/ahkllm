@@ -91,3 +91,44 @@
 .thread-lock-error { color: var(--danger); font-size: 12px; min-height: 16px; margin-top: 8px; text-align: left; }
 .thread-lock-row { display: flex; gap: 8px; margin-top: 12px; }
 .thread-lock-row button { flex: 1; }
+.thread-lock-close {
+  position: absolute; top: 10px; right: 10px; width: 28px; height: 28px;
+  color: var(--text-tertiary);
+}
+.thread-lock-box { position: relative; }
+
+/* Lock modal (Protect this chat / Change chat lock) */
+.lock-modal-box { width: 420px; max-width: 92vw; }
+.lock-modal-body {
+  padding: 24px 28px; display: flex; flex-direction: column; gap: 16px;
+  background: var(--bg-main);
+}
+.lock-modal-hint { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.lock-input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border-main);
+  border-radius: var(--radius-sm); background: var(--bg-panel);
+  color: var(--text-primary); font-size: 14px; box-sizing: border-box;
+  font-family: var(--font-ui);
+}
+.lock-input:focus { outline: none; border-color: var(--accent-primary); }
+.lock-remove-btn { color: var(--danger); }
+
+/* Sidebar lock options menu */
+.lock-menu-dropdown {
+  position: fixed; z-index: 120; background: var(--bg-panel);
+  border: 1px solid var(--border-main); border-radius: 10px;
+  box-shadow: var(--shadow-modal); padding: 4px; min-width: 220px;
+}
+.lock-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: none; background: transparent;
+  color: var(--text-primary); font-size: 13px; border-radius: 6px;
+  cursor: pointer; text-align: left; box-sizing: border-box;
+}
+.lock-menu-item:hover:not(:disabled) { background: var(--bg-hover); }
+.lock-menu-item:disabled { opacity: 0.45; cursor: default; }
+.lock-menu-item i { width: 16px; height: 16px; color: var(--text-tertiary); flex-shrink: 0; }
+.lock-menu-item:hover:not(:disabled) i { color: var(--text-secondary); }
+.lock-menu-label { flex: 1; }
+.lock-menu-state { font-size: 11px; color: var(--text-tertiary); }
+.lock-menu-sep { height: 1px; background: var(--border-light); margin: 4px 6px; }

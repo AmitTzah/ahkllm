@@ -52,3 +52,47 @@ handleSetThreadLock(parsed) {
     }
     _postThreadListRefresh()
 }
+
+; Relock a session-unlocked chat immediately (sidebar lock menu -> "Lock Chat").
+handleLockChatNow(parsed) {
+    global activeThreadId
+    threadId := parsed.Get("threadId", "")
+    if !threadId || !ThreadLockService.IsLocked(threadId)
+        throw Error("Chat is not locked.", "ThreadLockInput")
+    ThreadLockService.Relock(threadId)
+    if activeThreadId = threadId
+        _postLockedThreadState(threadId)
+    _postThreadListRefresh()
+}
+
+; Leave the lock prompt without opening the chat. Only meaningful while the
+; active thread is locked and not unlocked; otherwise it is a no-op.
+handleDismissLockedThread(*) {
+    global activeThreadId
+    if !activeThreadId
+        return
+    if ThreadLockService.IsLocked(activeThreadId) && !ThreadLockService.IsUnlockedInSession(activeThreadId) {
+        activeThreadId := ""
+        _resetToDefaultSettings()
+        postWebMessage("loadThread", "")
+        postWebMessage("initChatMode", [])
+        postCurrentSettingsToWebView()
+        _sendDropdownLabel()
+        chatWindow.Title := AppInfo.Name
+        _postThreadListRefresh()
+    }
+}
+
+; Lock metadata for the change/remove modal when the thread was never loaded
+; (the sidebar lock menu can open the modal without entering the chat).
+handleGetThreadLockInfo(parsed) {
+    threadId := parsed.Get("threadId", "")
+    if !threadId
+        return
+    lockData := ThreadLockService.GetLockData(threadId)
+    postWebMessage("threadLockInfo", {
+        threadId: threadId,
+        salt: lockData ? lockData.salt : "",
+        iterations: lockData ? lockData.iterations : ThreadLockService.DEFAULT_ITERATIONS
+    })
+}

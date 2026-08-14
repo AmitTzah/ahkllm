@@ -18,8 +18,11 @@ var _lockIterations = 600000;
 // threadLockInfo). Used to derive the CURRENT password hash for
 // change/remove flows.
 var _lockInfo = {};
+// threadId -> resolve callback for a pending getThreadLockInfo request.
+var _lockInfoWaiters = {};
 var _lockOverlayState = { threadId: '', salt: '', iterations: _lockIterations };
 var _lockBusy = false;
+var _lockEscapeHandler = null;
 var _lockComposerState = { inputDisabled: null, sendDisabled: null, scopedDisabled: null };
 
 // ---------- KDF helpers (Web Crypto) ----------
@@ -72,6 +75,37 @@ function _constantTimeEquals(a, b) {
   return diff === 0;
 }
 
+// ---------- Lock metadata ----------
+
+function handleThreadLockInfo(data) {
+  if (!data || !data.threadId) return;
+  _lockInfo[data.threadId] = {
+    salt: data.salt || '',
+    iterations: data.iterations || _lockIterations
+  };
+  if (_lockInfoWaiters[data.threadId]) {
+    _lockInfoWaiters[data.threadId](_lockInfo[data.threadId]);
+    delete _lockInfoWaiters[data.threadId];
+  }
+}
+
+// Resolve a thread's lock metadata, fetching it from AHK when this page has
+// never seen it (e.g. the sidebar lock menu opens "Change password" on a chat
+// that was never opened).
+function requestLockInfo(threadId) {
+  if (_lockInfo[threadId]) return Promise.resolve(_lockInfo[threadId]);
+  return new Promise(function(resolve, reject) {
+    _lockInfoWaiters[threadId] = resolve;
+    setTimeout(function() {
+      if (_lockInfoWaiters[threadId]) {
+        delete _lockInfoWaiters[threadId];
+        reject(new Error('Timed out loading lock information.'));
+      }
+    }, 10000);
+    Ipc.postToHost('getThreadLockInfo', { threadId: threadId });
+  });
+}
+
 // ---------- Locked-thread overlay ----------
 
 function handleThreadLocked(data) {
@@ -102,14 +136,6 @@ function handleThreadLocked(data) {
   _showThreadLockOverlay();
 }
 
-function handleThreadLockInfo(data) {
-  if (!data || !data.threadId) return;
-  _lockInfo[data.threadId] = {
-    salt: data.salt || '',
-    iterations: data.iterations || _lockIterations
-  };
-}
-
 function _showThreadLockOverlay() {
   var existing = document.getElementById('threadLockOverlay');
   if (existing) existing.remove();
@@ -119,12 +145,14 @@ function _showThreadLockOverlay() {
   overlay.className = 'thread-lock-overlay';
   overlay.innerHTML =
     '<div class="thread-lock-box">' +
+      '<button class="icon-btn thread-lock-close" id="lockOverlayClose" title="Close (Esc)"><i data-lucide="x"></i></button>' +
       '<div class="thread-lock-icon"><i data-lucide="lock" style="width:44px;height:44px;"></i></div>' +
       '<div class="thread-lock-title">This chat is locked</div>' +
       '<div class="thread-lock-sub">Enter the password to view it.</div>' +
       '<input class="thread-lock-input" id="lockPasswordInput" type="password" placeholder="Password" autocomplete="off">' +
       '<div class="thread-lock-error" id="lockError"></div>' +
       '<div class="thread-lock-row">' +
+        '<button class="btn-ghost" id="lockOverlayCancel">Cancel</button>' +
         '<button class="btn-primary" id="lockUnlockBtn">Unlock</button>' +
       '</div>' +
     '</div>';
@@ -133,8 +161,20 @@ function _showThreadLockOverlay() {
   var input = document.getElementById('lockPasswordInput');
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') _submitUnlock();
+    if (e.key === 'Escape') _dismissLockedOverlay();
   });
   document.getElementById('lockUnlockBtn').addEventListener('click', _submitUnlock);
+  document.getElementById('lockOverlayCancel').addEventListener('click', _dismissLockedOverlay);
+  document.getElementById('lockOverlayClose').addEventListener('click', _dismissLockedOverlay);
+
+  // Escape anywhere dismisses the prompt (no remembered password = exit).
+  if (!_lockEscapeHandler) {
+    _lockEscapeHandler = function(e) {
+      if (e.key === 'Escape') _dismissLockedOverlay();
+    };
+    document.addEventListener('keydown', _lockEscapeHandler);
+  }
+
   setTimeout(function() { input.focus(); }, 0);
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
@@ -145,6 +185,21 @@ function clearThreadLockOverlay() {
   _lockOverlayState = { threadId: '', salt: '', iterations: _lockIterations };
   _lockBusy = false;
   _restoreComposerForLock();
+  if (_lockEscapeHandler) {
+    document.removeEventListener('keydown', _lockEscapeHandler);
+    _lockEscapeHandler = null;
+  }
+}
+
+// Exit the lock prompt without opening the chat: tell AHK to drop the active
+// thread and reset the local UI to the empty state.
+function _dismissLockedOverlay() {
+  if (_lockOverlayState.threadId)
+    Ipc.postToHost('dismissLockedThread', {});
+  clearThreadLockOverlay();
+  activeThreadId = '';
+  updateTopbarTitle();
+  if (typeof updateScopedSearchState === 'function') updateScopedSearchState();
 }
 
 function _disableComposerForLock() {
@@ -212,54 +267,68 @@ function openThreadLockModal(threadId, mode) {
   var existing = document.getElementById('threadLockModal');
   if (existing) existing.remove();
 
-  var info = _lockInfo[threadId] || { salt: '', iterations: _lockIterations };
+  var isSet = mode === 'set';
   var html =
-    '<div class="modal-overlay open" id="threadLockModal">' +
-    '<div class="modal-box" style="max-width:420px;">' +
-      '<div class="modal-head"><div class="modal-title">' +
-        (mode === 'set' ? 'Protect this chat' : 'Change chat lock') +
-      '</div><button class="icon-btn" id="lockModalClose"><i data-lucide="x"></i></button></div>' +
-      '<div class="modal-body">';
-
-  if (mode === 'change') {
-    html +=
-      '<div class="field"><label class="field-label">Current Password</label>' +
-      '<input class="thread-lock-input" id="lockModalCurrent" type="password" autocomplete="off"></div>';
-  }
-
-  if (mode === 'set') {
-    html +=
-      '<div class="thread-lock-sub">Only you can open this chat. A forgotten password cannot be recovered in-app.</div>';
-  } else {
-    html += '<div class="thread-lock-sub">Leave the new fields empty and press "Remove password" to unlock this chat for good.</div>';
-  }
-
-  html +=
-    '<div class="field"><label class="field-label">' + (mode === 'set' ? 'Password' : 'New Password') + '</label>' +
-    '<input class="thread-lock-input" id="lockModalNew" type="password" autocomplete="new-password"></div>' +
-    '<div class="field"><label class="field-label">Confirm Password</label>' +
-    '<input class="thread-lock-input" id="lockModalConfirm" type="password" autocomplete="new-password"></div>' +
-    '<div class="thread-lock-error" id="lockModalError"></div>' +
-    '</div>' +
-    '<div class="modal-foot">' +
-      (mode === 'change'
-        ? '<button class="btn-ghost" id="lockModalRemove">Remove password</button>'
-        : '') +
-      '<span style="flex:1"></span>' +
-      '<button class="btn-ghost" id="lockModalCancel">Cancel</button>' +
-      '<button class="btn-primary" id="lockModalSave">' + (mode === 'set' ? 'Lock chat' : 'Save new password') + '</button>' +
-    '</div>' +
-  '</div></div>';
+    '<div class="modal-overlay open" id="threadLockModal" style="z-index:210;">' +
+    '<div class="modal-box lock-modal-box">' +
+      '<div class="modal-head">' +
+        '<div class="modal-title">' + (isSet ? 'Protect this chat' : 'Change chat lock') + '</div>' +
+        '<button class="icon-btn" id="lockModalClose"><i data-lucide="x"></i></button>' +
+      '</div>' +
+      '<div class="lock-modal-body">' +
+        '<div class="lock-modal-hint">' +
+          (isSet
+            ? 'Only you can open this chat. A forgotten password cannot be recovered in-app.'
+            : 'Enter your current password, then set a new one or remove the lock.') +
+        '</div>' +
+        (mode === 'change'
+          ? '<div class="field"><label class="field-label" for="lockModalCurrent">Current password</label>' +
+            '<input class="lock-input" id="lockModalCurrent" type="password" autocomplete="off"></div>'
+          : '') +
+        '<div class="field"><label class="field-label" for="lockModalNew">' +
+          (isSet ? 'Password' : 'New password') + '</label>' +
+          '<input class="lock-input" id="lockModalNew" type="password" autocomplete="new-password"></div>' +
+        '<div class="field"><label class="field-label" for="lockModalConfirm">Confirm password</label>' +
+          '<input class="lock-input" id="lockModalConfirm" type="password" autocomplete="new-password"></div>' +
+        '<div class="thread-lock-error" id="lockModalError"></div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        (mode === 'change'
+          ? '<button class="btn-ghost lock-remove-btn" id="lockModalRemove">Remove password</button>'
+          : '') +
+        '<span style="flex:1"></span>' +
+        '<button class="btn-ghost" id="lockModalCancel">Cancel</button>' +
+        '<button class="btn-primary" id="lockModalSave">' + (isSet ? 'Lock chat' : 'Save password') + '</button>' +
+      '</div>' +
+    '</div></div>';
 
   var wrap = document.createElement('div');
   wrap.innerHTML = html;
   document.body.appendChild(wrap.firstChild);
 
-  _wireLockModal(threadId, mode, info);
+  _wireLockModal(threadId, mode);
+
+  // Change/remove needs the CURRENT salt to derive the current-password hash;
+  // keep the submit buttons disabled until the metadata arrives.
+  if (!isSet && !_lockInfo[threadId]) {
+    var saveBtn = document.getElementById('lockModalSave');
+    var removeBtn = document.getElementById('lockModalRemove');
+    if (saveBtn) saveBtn.disabled = true;
+    if (removeBtn) removeBtn.disabled = true;
+    requestLockInfo(threadId).then(function() {
+      if (document.getElementById('threadLockModal') === null) return;
+      if (saveBtn) saveBtn.disabled = false;
+      if (removeBtn) removeBtn.disabled = false;
+    }).catch(function(e) {
+      var err = document.getElementById('lockModalError');
+      if (err) err.textContent = e && e.message ? e.message : 'Failed to load lock information.';
+    });
+  }
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function _wireLockModal(threadId, mode, info) {
+function _wireLockModal(threadId, mode) {
   var close = function() {
     var m = document.getElementById('threadLockModal');
     if (m) m.remove();
@@ -267,25 +336,31 @@ function _wireLockModal(threadId, mode, info) {
   document.getElementById('lockModalClose').addEventListener('click', close);
   document.getElementById('lockModalCancel').addEventListener('click', close);
   document.getElementById('lockModalSave').addEventListener('click', function() {
-    _submitLockModal(threadId, mode, info);
+    _submitLockModal(threadId, mode);
   });
   var removeBtn = document.getElementById('lockModalRemove');
   if (removeBtn) removeBtn.addEventListener('click', function() {
-    _submitLockModal(threadId, 'remove', info);
+    _submitLockModal(threadId, 'remove');
   });
   ['lockModalCurrent', 'lockModalNew', 'lockModalConfirm'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') _submitLockModal(threadId, mode, info);
+      if (e.key === 'Enter') _submitLockModal(threadId, mode);
     });
   });
 }
 
-async function _submitLockModal(threadId, mode, info) {
+async function _submitLockModal(threadId, mode) {
   if (_lockBusy) return;
   var err = document.getElementById('lockModalError');
   if (!err) return;
   err.textContent = '';
+
+  var info = _lockInfo[threadId] || { salt: '', iterations: _lockIterations };
+  if ((mode === 'change' || mode === 'remove') && !info.salt) {
+    err.textContent = 'Lock information is still loading.';
+    return;
+  }
 
   var current = (document.getElementById('lockModalCurrent') || {}).value || '';
   var next = (document.getElementById('lockModalNew') || {}).value || '';
@@ -339,4 +414,78 @@ async function _submitLockModal(threadId, mode, info) {
     _lockBusy = false;
     if (saveBtn) saveBtn.disabled = false;
   }
+}
+
+// ---------- Sidebar lock menu (Lock / Unlock / Change password) ----------
+
+function _makeLockMenuItem(action, icon, label, disabled, stateLabel) {
+  var btn = document.createElement('button');
+  btn.className = 'lock-menu-item';
+  btn.setAttribute('data-action', action);
+  if (disabled) btn.disabled = true;
+  btn.innerHTML =
+    '<i data-lucide="' + icon + '"></i>' +
+    '<span class="lock-menu-label">' + escHtml(label) + '</span>' +
+    (stateLabel ? '<span class="lock-menu-state">' + escHtml(stateLabel) + '</span>' : '');
+  return btn;
+}
+
+// t is the sidebar thread row ({ id, title, is_locked }). A locked chat whose
+// title is still the redacted placeholder has not been unlocked this session.
+function openLockMenu(threadId, anchorEl, t) {
+  var existing = document.getElementById('lockMenuDropdown');
+  if (existing) existing.remove();
+
+  var locked = !!t.is_locked;
+  var hidden = locked && t.title === 'Locked chat';
+
+  var dd = document.createElement('div');
+  dd.id = 'lockMenuDropdown';
+  dd.className = 'lock-menu-dropdown';
+  dd.appendChild(_makeLockMenuItem('lock', 'lock', 'Lock Chat', hidden, hidden ? 'already locked' : ''));
+  dd.appendChild(_makeLockMenuItem('unlock', 'unlock', 'Unlock Chat', !hidden, ''));
+  var sep = document.createElement('div');
+  sep.className = 'lock-menu-sep';
+  dd.appendChild(sep);
+  dd.appendChild(_makeLockMenuItem('change', 'key-round', 'Change password / remove lock', !locked, ''));
+
+  var rect = anchorEl.getBoundingClientRect();
+  dd.style.left = Math.max(8, rect.left - 190) + 'px';
+  dd.style.top = (rect.bottom + 6) + 'px';
+  document.body.appendChild(dd);
+
+  dd.addEventListener('click', function(e) {
+    var btn = e.target.closest('.lock-menu-item');
+    if (!btn || btn.disabled) return;
+    var action = btn.getAttribute('data-action');
+    dd.remove();
+    if (action === 'lock') {
+      if (locked) Ipc.postToHost('lockChatNow', { threadId: threadId });
+      else openThreadLockModal(threadId, 'set');
+    } else if (action === 'unlock') {
+      if (typeof loadThread === 'function') loadThread(threadId);
+    } else if (action === 'change') {
+      openThreadLockModal(threadId, 'change');
+    }
+  });
+
+  var closeMenu = function(ev2) {
+    if (!dd.contains(ev2.target) && ev2.target !== anchorEl) {
+      dd.remove();
+      document.removeEventListener('click', closeMenu);
+      document.removeEventListener('keydown', closeMenu);
+    }
+  };
+  setTimeout(function() {
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', function escMenu(e2) {
+      if (e2.key === 'Escape') {
+        dd.remove();
+        document.removeEventListener('click', closeMenu);
+        document.removeEventListener('keydown', escMenu);
+      }
+    });
+  }, 0);
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }

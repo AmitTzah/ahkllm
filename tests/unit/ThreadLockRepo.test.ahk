@@ -82,8 +82,11 @@ class ThreadLockRepoTest {
     ThreadList_RedactsLockedTitles() {
         this._openDb()
         try {
+            ; Session state leaks across tests in one process - start clean.
+            ThreadLockService.LockAll()
             lockedId := ChatDB.Thread_Create("Salary negotiation")
             plainId := ChatDB.Thread_Create("Normal chat")
+            ; Repo-level Set (no session unlock) - the lock must redact the title.
             ChatDB.ThreadLock_Set(lockedId, this._validSalt(), this._validHash(), 600000)
             rows := ChatDB.Thread_List()
             lockedRow := "", plainRow := ""
@@ -99,6 +102,18 @@ class ThreadLockRepoTest {
                 throw Error("locked row must carry is_locked=1")
             if !plainRow || plainRow.title != "Normal chat" || plainRow.is_locked
                 throw Error("unlocked row must keep its title and is_locked=0")
+            ; After unlocking in the session the REAL title is shown again so
+            ; renaming and the topbar behave normally.
+            ThreadLockService.Unlock(lockedId)
+            rows := ChatDB.Thread_List()
+            unlockedRow := ""
+            for r in rows
+                if r.id = lockedId
+                    unlockedRow := r
+            if !unlockedRow || unlockedRow.title != "Salary negotiation"
+                throw Error("session-unlocked chat must show its real title: " (unlockedRow ? unlockedRow.title : "missing"))
+            if !unlockedRow.is_locked
+                throw Error("unlock must not clear the DB lock flag")
         } finally {
             this._closeDb()
         }

@@ -122,11 +122,18 @@ class ThreadRepo {
             }
             ; Bug (locked chats): a locked thread's real title can leak intent
             ; (e.g. "Salary negotiation", "therapy notes"), so it is redacted
-            ; everywhere the list renders - sidebar AND trash.
+            ; everywhere the list renders - sidebar AND trash - UNLESS the user
+            ; already unlocked it in this ChatWindow session (then the real
+            ; title is shown and renaming works normally). ThreadLockService
+            ; only exists in the ChatWindow process; other processes (Main)
+            ; simply keep the redacted title.
             isLocked := Integer(row.is_locked ? row.is_locked : 0)
+            title := row.title
+            if isLocked && IsSet(ThreadLockService) && !ThreadLockService.IsUnlockedInSession(row.id)
+                title := "Locked chat"
             threads.Push({
                 id: row.id,
-                title: isLocked ? "Locked chat" : row.title,
+                title: title,
                 is_locked: isLocked,
                 created_at: row.created_at,
                 updated_at: row.updated_at,

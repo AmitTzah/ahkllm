@@ -94,6 +94,12 @@ OnWebMessageReceived(sender, args) {
                 handleUnlockThread(parsed)
             case "setThreadLock":
                 handleSetThreadLock(parsed)
+            case "lockChatNow":
+                handleLockChatNow(parsed)
+            case "dismissLockedThread":
+                handleDismissLockedThread(parsed)
+            case "getThreadLockInfo":
+                handleGetThreadLockInfo(parsed)
         }
         _AckWebMessage(reqId, action, true, "")
     } catch Error as e {
