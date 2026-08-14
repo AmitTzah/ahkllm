@@ -10,9 +10,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, runProbe, runThinkingProbe, openSettings, openSection } = require('./helpers');
+const { sleep, runProbe, runThinkingProbe, showChat, openSettings, openSection, saveSettings, readJsonFile } = require('./helpers');
 
 const scenarios = [];
 
@@ -28,6 +29,91 @@ scenarios.push({
     const text = lines.join('\n');
     if (!text.includes('BUG22 FIXED')) throw new Error('probe output: ' + text);
     return text.split('\n').filter((l) => l.includes('thinking')).join(' | ');
+  }
+});
+
+scenarios.push({
+  id: 228,
+  name: 'A command whose API Model is set to "Default" (empty APIModels), or whose Command Title / Menu Label is cleared, must keep those keys on the runtime command - SettingsApply._ApplyCommands assigns whenever the saved key exists (empty included), so cmd.APIModels / cmd.commandName / cmd.menuText read "" without throwing and processInitialRequest\'s #162 default-model substitution is reachable (bug #228 FIXED)',
+  regression: true, // FIXED bug kept as a regression check (empty command fields must not drop the properties or crash the menu handler)
+  mode: null,
+  settings: {
+    commands: [
+      {
+        commandName: 'Crash Test', menuText: 'Crash Test', APIModels: 'deepseek/deepseek-v4-flash',
+        pasteMode: 'chat', userMessage: '{{input}}', stream: false
+      },
+      {
+        commandName: '', menuText: 'Empty Title', APIModels: 'deepseek/deepseek-v4-flash',
+        pasteMode: 'chat', stream: false
+      },
+      {
+        commandName: 'Name Only', menuText: '', APIModels: 'deepseek/deepseek-v4-flash',
+        pasteMode: 'chat', stream: false
+      }
+    ]
+  },
+  async body({ cdp, dataDir }) {
+    // 1) Drive the REAL Settings UI: Commands -> select the command -> set API
+    //    Model to "Default" -> Save. This is exactly how the buggy state is
+    //    reached by a user (the dropdown's first option is "Default").
+    await showChat();
+    await openSettings(cdp);
+    await openSection(cdp, 'commands');
+    await cdp.waitFor('document.querySelectorAll("#commandsListBody .cmd-item").length > 0', 10000, 250, 'command list');
+    await cdp.click('#commandsListBody .cmd-item');
+    await sleep(400);
+    await cdp.eval('(() => { const el = document.getElementById("cmdApiModel"); if (!el) return false; el.value = ""; el.dispatchEvent(new Event("change", { bubbles: true })); return el.value; })()');
+    await sleep(300);
+    await saveSettings(cdp, dataDir);
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    const cmd = (saved.commands || []).find((c) => c.commandName === 'Crash Test');
+    if (!cmd)
+      throw new Error('seeded command missing from saved settings: ' + JSON.stringify(saved.commands));
+    if (cmd.APIModels !== '')
+      throw new Error('API Model was not saved as Default (empty): ' + JSON.stringify(cmd.APIModels));
+
+    // 2) Run the REAL SettingsHandler.Load + SettingsApply.ApplyToGlobals chain
+    //    against the saved file (fresh AHK process) and verify the FIXED
+    //    behavior: the applied commands KEEP the empty-valued APIModels /
+    //    commandName / menuText properties, and reading them (exactly what
+    //    onCommandSelected does) does NOT throw - the #162 default-model
+    //    substitution is then reachable. PASS means the fix holds.
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'command-empty-models-crash', path.join(dataDir, 'settings.json')], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8');
+    const m = text.replace(/^\uFEFF/, '').match(/hasProp=(\d+) accessThrew=(\d+)/);
+    if (!m) throw new Error('probe output missing EMPTYMODELCRASH line: ' + text);
+    const hasProp = Number(m[1]), accessThrew = Number(m[2]);
+    const m2 = text.replace(/^\uFEFF/, '').match(/hasNameProp=(\d+) nameAccessThrew=(\d+)/);
+    if (!m2) throw new Error('probe output missing empty-name line: ' + text);
+    const hasNameProp = Number(m2[1]), nameAccessThrew = Number(m2[2]);
+    const m3 = text.replace(/^\uFEFF/, '').match(/hasMenuProp=(\d+) menuAccessThrew=(\d+)/);
+    if (!m3) throw new Error('probe output missing empty-menu line: ' + text);
+    const hasMenuProp = Number(m3[1]), menuAccessThrew = Number(m3[2]);
+    // FIXED: the applied commands keep the APIModels / commandName / menuText
+    // properties (empty) AND direct access does not throw.
+    if (hasProp !== 1 || accessThrew !== 0 || hasNameProp !== 1 || nameAccessThrew !== 0 || hasMenuProp !== 1 || menuAccessThrew !== 0)
+      throw new Error('empty-field commands still drop properties or throw (fix incomplete): hasProp=' + hasProp + ' accessThrew=' + accessThrew +
+        ' hasNameProp=' + hasNameProp + ' nameAccessThrew=' + nameAccessThrew + ' hasMenuProp=' + hasMenuProp + ' menuAccessThrew=' + menuAccessThrew + ' out=' + text);
+
+    // 3) Static check: the menu handlers now guard every direct read, and the
+    //    #162 substitution is still in place for the "" the guards fall back to.
+    const menu = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'menu', 'CommandMenu.ahk'), 'utf8');
+    const cmdState = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'menu', 'CommandState.ahk'), 'utf8');
+    if (!/cmd\.HasProp\("APIModels"\) \? cmd\.APIModels : ""/.test(menu) || !/cmd\.HasProp\("commandName"\) \? cmd\.commandName : ""/.test(menu))
+      throw new Error('CommandMenu.ahk still reads cmd fields unguarded (fix incomplete)');
+    if (!/cmd\.HasProp\("APIModels"\) \? cmd\.APIModels : ""/.test(cmdState))
+      throw new Error('CommandState.ahk still reads cmd.APIModels unguarded (fix incomplete)');
+    const rp = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'RequestProcessor.ahk'), 'utf8');
+    if (!/APIModelsArr\s*:=\s*\[appDefaultModel\]/.test(rp))
+      throw new Error('RequestProcessor.ahk no longer substitutes the app default model for empty APIModels (fix incomplete)');
+    return 'set the command API Model to Default in the real Settings UI and saved (settings.json APIModels=""); the REAL SettingsApply chain now builds runtime commands with hasProp=1/hasNameProp=1/hasMenuProp=1 and cmd.APIModels / cmd.commandName / cmd.menuText read "" without throwing - the #162 default-model substitution is reachable (' +
+      JSON.stringify(text.match(/msg='([^']*)'/)[1]) + ' was the pre-fix throw; now guarded)';
   }
 });
 

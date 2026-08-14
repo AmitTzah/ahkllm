@@ -129,23 +129,32 @@ class SettingsApply {
         newCommands := []
         for _, c in settings["commands"] {
             cmd := {}
-            SettingsApply._SetIfNonEmpty(cmd, c, "commandName")
-            SettingsApply._SetIfNonEmpty(cmd, c, "menuText")
-            SettingsApply._SetIfNonEmpty(cmd, c, "APIModels")
-            SettingsApply._SetIfNonEmpty(cmd, c, "pasteMode")
+            ; Bug #228: a command whose API Model is "Default" (empty
+            ; APIModels), or whose Command Title / Menu Label is cleared, must
+            ; keep those keys on the runtime command object - the old
+            ; _SetIfNonEmpty SKIPPED empty strings, so cmd.APIModels /
+            ; cmd.commandName / cmd.menuText no longer existed and the menu
+            ; handler's direct property reads THREW in AHK v2 before
+            ; processInitialRequest's #162 default-model substitution could
+            ; run. Assign whenever the saved key exists (empty included), the
+            ; same pattern as #101's _SetIfTruthy / #61/#71.
+            SettingsApply._SetIfExists(cmd, c, "commandName")
+            SettingsApply._SetIfExists(cmd, c, "menuText")
+            SettingsApply._SetIfExists(cmd, c, "APIModels")
+            SettingsApply._SetIfExists(cmd, c, "pasteMode")
             SettingsApply._SetIfTruthy(cmd, c, "stream")
             SettingsApply._SetIfTruthy(cmd, c, "isFIM")
             SettingsApply._SetIfTruthy(cmd, c, "showInputBox")
             if c.Has("userMessage") && c["userMessage"] != ""
                 cmd.userMessage := StrReplace(c["userMessage"], "``n", "`n")
-            SettingsApply._SetIfNonEmpty(cmd, c, "systemMessage")
-            SettingsApply._SetIfNonEmpty(cmd, c, "systemMessageFile")
-            SettingsApply._SetIfNonEmpty(cmd, c, "inputBoxDefault")
-            SettingsApply._SetIfNonEmpty(cmd, c, "temperature")
-            SettingsApply._SetIfNonEmpty(cmd, c, "maxTokens")
-            SettingsApply._SetIfNonEmpty(cmd, c, "stop")
+            SettingsApply._SetIfExists(cmd, c, "systemMessage")
+            SettingsApply._SetIfExists(cmd, c, "systemMessageFile")
+            SettingsApply._SetIfExists(cmd, c, "inputBoxDefault")
+            SettingsApply._SetIfExists(cmd, c, "temperature")
+            SettingsApply._SetIfExists(cmd, c, "maxTokens")
+            SettingsApply._SetIfExists(cmd, c, "stop")
             SettingsApply._SetIfNonEmptyTags(cmd, c)
-            SettingsApply._SetIfNonEmpty(cmd, c, "directAccelerator")
+            SettingsApply._SetIfExists(cmd, c, "directAccelerator")
             SettingsApply._SetIfTruthy(cmd, c, "expandNewlines")
             SettingsApply._SetIfNonZero(cmd, c, "maxContextWords")
             SettingsApply._SetIfTruthy(cmd, c, "includeImageContext")
@@ -156,8 +165,13 @@ class SettingsApply {
         commands := newCommands
     }
 
-    static _SetIfNonEmpty(cmd, c, key) {
-        if c.Has(key) && c[key] != ""
+    ; Bug #228: assign whenever the saved key EXISTS - an empty string is a
+    ; legitimate saved value ("Default" API model, cleared Title/Menu Label,
+    ; model-default temperature, ...) and must not be dropped, or the runtime
+    ; command object loses the property and unguarded reads (cmd.APIModels,
+    ; cmd.commandName, cmd.menuText) THROW in AHK v2.
+    static _SetIfExists(cmd, c, key) {
+        if c.Has(key)
             cmd.%key% := c[key]
     }
 

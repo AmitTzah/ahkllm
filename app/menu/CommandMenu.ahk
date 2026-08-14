@@ -19,12 +19,17 @@ buildCommandMenu() {
 
         ; If command has a directAccelerator, add a top-level shortcut
         if command.HasProp("directAccelerator") && command.directAccelerator {
-            commandMenu.Add(command.directAccelerator . " - " . command.commandName, onCommandSelected.Bind(index))
+            ; Bug #228: settings can clear the Command Title - the runtime
+            ; command then carries commandName="" (or, for legacy/crafted
+            ; settings, may lack the property entirely). Never index it
+            ; unguarded or the whole menu build throws.
+            cmdName := command.HasProp("commandName") ? command.commandName : ""
+            commandMenu.Add(command.directAccelerator . " - " . cmdName, onCommandSelected.Bind(index))
         }
 
         ; If no tags, add directly to menu and continue
         if !hasTags {
-            commandMenu.Add(command.menuText, onCommandSelected.Bind(index))
+            commandMenu.Add(command.HasProp("menuText") ? command.menuText : "", onCommandSelected.Bind(index))
             continue
         }
 
@@ -64,7 +69,7 @@ buildCommandMenu() {
         tagInfo := tagsMap[normalizedTag]
         commandMenu.Add(tagInfo.displayName, tagInfo.menu)
         for cmd in tagInfo.commands {
-            tagInfo.menu.Add(cmd.menuText, onCommandSelected.Bind(cmd.index))
+            tagInfo.menu.Add(cmd.HasProp("menuText") ? cmd.menuText : "", onCommandSelected.Bind(cmd.index))
         }
     }
 
@@ -137,8 +142,17 @@ onCommandSelected(index, *) {
             "ahk_id " commandInputWindow.guiObj.hWnd)
     } else {
         params := _extractCommandParams(cmd, "")  ; no user input
-        processInitialRequest(cmd.commandName, cmd.menuText, _resolveSystemMessage(cmd),
-            cmd.APIModels, params*)
+        ; Bug #228: the command's API Model can be "Default" (empty
+        ; APIModels) and the Title/Label can be cleared - guard every direct
+        ; read so an empty (or legacy settings file with a missing key) can
+        ; never throw inside the menu handler. processInitialRequest then
+        ; substitutes the app default model for "" (#162).
+        processInitialRequest(
+            cmd.HasProp("commandName") ? cmd.commandName : "",
+            cmd.HasProp("menuText") ? cmd.menuText : "",
+            _resolveSystemMessage(cmd),
+            cmd.HasProp("APIModels") ? cmd.APIModels : "",
+            params*)
     }
 }
 

@@ -11,6 +11,8 @@
 ;   command-empty-models- command with empty APIModels (the "Default" dropdown)
 ;   fts-attachment-text - searching attachment extracted_text finds nothing
 ;   empty-model-skip    - assistant rows with empty model are skipped by counters
+;   command-empty-models-crash - empty APIModels is dropped by SettingsApply and
+;                                cmd.APIModels THROWS in the menu handler (#228)
 #Requires AutoHotkey v2.0.18+
 #ErrorStdOut
 #SingleInstance Off
@@ -1076,6 +1078,100 @@ TitleGenParseGraceful() {
     Log("TITLEGENPARSE verdict=" (!threw && !threw3 && emptyTitle && r2.title = "Hello Title" ? "OK-graceful" : "BUG-present(parse-throws)"))
 }
 
+; ------------------------------------------------------------------
+; CHECK 29 (bug #228 REGRESSION): a command whose API Model is set to
+; "Default" (empty APIModels), or whose Command Title / Menu Label is
+; cleared, must keep those keys on the runtime command object -
+; SettingsApply._ApplyCommands now assigns whenever the saved key exists
+; (empty included, the #101/#61/#71 pattern), so cmd.APIModels /
+; cmd.commandName / cmd.menuText are present (""), direct reads never throw,
+; and processInitialRequest's #162 substitution (empty APIModels ->
+; appDefaultModel) is reachable. The scenario passes the SAVED settings.json
+; path as arg 3 so the check exercises the REAL SettingsHandler.Load +
+; SettingsApply.ApplyToGlobals chain against exactly what the user's Save
+; produced.
+; ------------------------------------------------------------------
+CommandEmptyModelsCrash() {
+    global commands
+    settingsPath := A_Args.Length >= 3 ? A_Args[3] : ""
+    if settingsPath {
+        SettingsPersistence.settingsPath := settingsPath
+        loaded := SettingsHandler.Load()
+        SettingsApply.ApplyToGlobals(loaded)
+    } else {
+        settings := Map()
+        cmdList := []
+        cmdList.Push(Map("commandName", "DefaultModelCmd", "menuText", "Test", "APIModels", "", "pasteMode", "chat", "stream", false))
+        cmdList.Push(Map("commandName", "", "menuText", "Empty Title", "APIModels", "deepseek/deepseek-v4-flash", "pasteMode", "chat", "stream", false))
+        cmdList.Push(Map("commandName", "Name Only", "menuText", "", "APIModels", "deepseek/deepseek-v4-flash", "pasteMode", "chat", "stream", false))
+        settings["commands"] := cmdList
+        SettingsApply.ApplyToGlobals(settings)
+    }
+
+    target := ""
+    for c in commands {
+        if c.HasProp("commandName") && (c.commandName = "Crash Test" || c.commandName = "DefaultModelCmd") {
+            target := c
+            break
+        }
+    }
+    found := target != ""
+    hasProp := found ? target.HasProp("APIModels") : false
+    threw := false
+    threwMsg := ""
+    if found {
+        try {
+            x := target.APIModels
+        } catch Error as e {
+            threw := true
+            threwMsg := e.Message
+        }
+    }
+
+    ; Empty commandName (same root cause: _SetIfNonEmpty drops "" and
+    ; onCommandSelected reads cmd.commandName unguarded).
+    target2 := ""
+    for c in commands {
+        if c.HasProp("menuText") && (c.menuText = "Empty Title") {
+            target2 := c
+            break
+        }
+    }
+    found2 := target2 != ""
+    hasName := found2 ? target2.HasProp("commandName") : false
+    nameThrew := false
+    if found2 {
+        try {
+            y := target2.commandName
+        } catch Error as e {
+            nameThrew := true
+        }
+    }
+
+    ; Empty menuText (same root cause: menu build reads cmd.menuText unguarded).
+    target3 := ""
+    for c in commands {
+        if c.HasProp("commandName") && c.commandName = "Name Only" {
+            target3 := c
+            break
+        }
+    }
+    found3 := target3 != ""
+    hasMenu := found3 ? target3.HasProp("menuText") : false
+    menuThrew := false
+    if found3 {
+        try {
+            z := target3.menuText
+        } catch Error as e {
+            menuThrew := true
+        }
+    }
+    Log("EMPTYMODELCRASH loadedSettings='" settingsPath "' found=" (found ? 1 : 0) " hasProp=" (hasProp ? 1 : 0) " accessThrew=" (threw ? 1 : 0) " msg='" threwMsg "'")
+    Log("EMPTYMODELCRASH foundEmptyName=" (found2 ? 1 : 0) " hasNameProp=" (hasName ? 1 : 0) " nameAccessThrew=" (nameThrew ? 1 : 0))
+    Log("EMPTYMODELCRASH foundEmptyMenu=" (found3 ? 1 : 0) " hasMenuProp=" (hasMenu ? 1 : 0) " menuAccessThrew=" (menuThrew ? 1 : 0))
+    Log("EMPTYMODELCRASH verdict=" ((found && hasProp && !threw && found2 && hasName && !nameThrew && found3 && hasMenu && !menuThrew) ? "OK-fixed(empty-fields-kept)" : "BUG-present(empty-fields-still-dropped-or-throw)"))
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -1110,6 +1206,7 @@ switch check {
     case "settings-edge-roundtrip": SettingsEdgeRoundtrip()
     case "open-race": OpenRace()
     case "titlegen-parse-throw": TitleGenParseGraceful()
+    case "command-empty-models-crash": CommandEmptyModelsCrash()
     default:
         Log("UNKNOWN CHECK " check)
 }

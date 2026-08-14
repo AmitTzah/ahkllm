@@ -250,6 +250,49 @@ class SettingsHandlerTest {
         }
     }
 
+    ; Regression (bug #228): clearing the command's API Model ("Default"
+    ; dropdown option) or Command Title / Menu Label must survive
+    ; ApplyToGlobals - the runtime command KEEPS the empty-valued properties,
+    ; so CommandMenu's direct reads (cmd.APIModels / cmd.commandName /
+    ; cmd.menuText) never throw "no property named" and processInitialRequest's
+    ; #162 default-model substitution can actually run for "".
+    ApplyCommands_EmptyRequiredFieldsSurvive() {
+        global commands
+        oldCommands := commands
+        try {
+            cmdSettings := Map(
+                "commands", [
+                    Map("commandName", "", "menuText", "", "APIModels", "", "pasteMode", "chat", "stream", false),
+                    Map("commandName", "Name Only", "menuText", "Label", "APIModels", "deepseek/deepseek-v4-flash", "pasteMode", "chat", "stream", false)
+                ]
+            )
+            SettingsHandler.ApplyToGlobals(cmdSettings)
+            if commands.Length != 2
+                throw Error("expected 2 commands, got " commands.Length)
+            cmd := commands[1]
+            ; The properties must exist with their empty values (bug #228: the
+            ; old _SetIfNonEmpty dropped them entirely).
+            if !cmd.HasOwnProp("commandName") || cmd.commandName != ""
+                throw Error("empty commandName should persist as a property, got " (cmd.HasOwnProp("commandName") ? "'" cmd.commandName "'" : "(absent)"))
+            if !cmd.HasOwnProp("menuText") || cmd.menuText != ""
+                throw Error("empty menuText should persist as a property, got " (cmd.HasOwnProp("menuText") ? "'" cmd.menuText "'" : "(absent)"))
+            if !cmd.HasOwnProp("APIModels") || cmd.APIModels != ""
+                throw Error("empty APIModels should persist as a property, got " (cmd.HasOwnProp("APIModels") ? "'" cmd.APIModels "'" : "(absent)"))
+            ; ...and reading them must not throw (the bug #228 menu-handler crash).
+            x := cmd.APIModels
+            y := cmd.commandName
+            z := cmd.menuText
+            if x != "" || y != "" || z != ""
+                throw Error("empty-valued reads should return ''")
+            ; Control: a normal command keeps its non-empty values.
+            cmd2 := commands[2]
+            if !cmd2.HasOwnProp("APIModels") || cmd2.APIModels != "deepseek/deepseek-v4-flash"
+                throw Error("non-empty APIModels should be preserved, got " (cmd2.HasOwnProp("APIModels") ? cmd2.APIModels : "(absent)"))
+        } finally {
+            commands := oldCommands
+        }
+    }
+
     ; Regression: "Reset to Defaults" must restore TRUE defaults, not the
     ; values that ApplyToGlobals() wrote into the section globals. GetDefaults()
     ; must return the pristine snapshot captured by CacheInitialDefaults().
