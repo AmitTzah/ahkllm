@@ -48,6 +48,22 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 sendNonStreamingRequest(&chatHistoryJSONRequest) {
     return ""
 }
+#Include ..\..\app\menu\CommandMenu.ahk
+; Stubs for identifiers CommandMenu.ahk's function bodies reference but that
+; live in Main.ahk / CommandState.ahk (not part of the probe chain).
+runOptionsMenuAction(*) {
+    return ""
+}
+setSelectedCommand(cmd) {
+    return ""
+}
+processInitialRequest(*) {
+    return ""
+}
+openChatWindow(threadId := "") {
+    return ""
+}
+global commandInputWindow := { guiObj: { hWnd: 0 }, EditControl: { Value: "" } }
 #Include ..\..\chat\ChatRequestBuilder.ahk
 postWebMessage(target, data := unset) {
     return ""
@@ -1172,6 +1188,101 @@ CommandEmptyModelsCrash() {
     Log("EMPTYMODELCRASH verdict=" ((found && hasProp && !threw && found2 && hasName && !nameThrew && found3 && hasMenu && !menuThrew) ? "OK-fixed(empty-fields-kept)" : "BUG-present(empty-fields-still-dropped-or-throw)"))
 }
 
+; ------------------------------------------------------------------
+; CHECK 30 (command audit): every REAL default command must survive the
+; config -> params plumbing and build a working request. Iterates the
+; commands array loaded from DefaultSettings.ahk (the probe chain does NOT
+; include test_config.ahk, so these are the genuine shipped defaults):
+;   - _extractCommandParams returns the 13 params in the expected order with
+;     values matching the command object (pasteMode/isFIM/stream/thinking/
+;     userMessage/expandNewlines/maxContextWords/includeImageContext/...);
+;   - chat-mode commands MUST stream (bug #230 invariant);
+;   - the command's APIModels resolves in the real models map;
+;   - non-FIM commands build a JSON request carrying their model + the
+;     provider-family thinking config; FIM commands build an FIM request.
+; ------------------------------------------------------------------
+CommandAudit() {
+    global commands, models
+    problems := []
+    checked := 0
+    for c in commands {
+        checked++
+        name := c.HasProp("commandName") ? c.commandName : "(unnamed)"
+        if !c.HasProp("commandName") || !c.HasProp("menuText") || !c.HasProp("APIModels")
+            problems.Push(name ": missing commandName/menuText/APIModels")
+        params := _extractCommandParams(c)
+        if params.Length != 13
+            problems.Push(name ": _extractCommandParams length " params.Length " (expected 13)")
+        pasteMode := params[1]
+        isFIM := params[2]
+        stream := params[7]
+        thinkingType := params[8]
+        thinkingLevel := params[9]
+        userMsg := params[10]
+        expand := params[11]
+        mcw := params[12]
+        incImg := params[13]
+        expPaste := c.HasProp("pasteMode") ? c.pasteMode : "chat"
+        if pasteMode != expPaste
+            problems.Push(name ": pasteMode " pasteMode " != " expPaste)
+        expFIM := c.HasProp("isFIM") && c.isFIM
+        if isFIM != expFIM
+            problems.Push(name ": isFIM mismatch")
+        expStream := c.HasProp("stream") && c.stream
+        if stream != expStream
+            problems.Push(name ": stream mismatch")
+        if pasteMode = "chat" && !stream
+            problems.Push(name ": chat-mode command must stream (bug #230)")
+        if c.HasProp("userMessage") && userMsg != c.userMessage
+            problems.Push(name ": userMessage mismatch")
+        if thinkingType != (c.HasProp("thinking") && c.thinking ? (Type(c.thinking) = "Map" ? c.thinking["type"] : c.thinking.type) : "")
+            problems.Push(name ": thinking type mismatch")
+        if thinkingLevel != (c.HasProp("thinking") && c.thinking ? (Type(c.thinking) = "Map" ? c.thinking["level"] : c.thinking.level) : "")
+            problems.Push(name ": thinking level mismatch")
+        if expand != (c.HasProp("expandNewlines") && c.expandNewlines)
+            problems.Push(name ": expandNewlines mismatch")
+        if mcw != (c.HasProp("maxContextWords") ? c.maxContextWords : 0)
+            problems.Push(name ": maxContextWords mismatch")
+        if incImg != (c.HasProp("includeImageContext") && c.includeImageContext)
+            problems.Push(name ": includeImageContext mismatch")
+
+        model := c.HasProp("APIModels") ? c.APIModels : ""
+        if model {
+            m := ModelResolver.Lookup(models, model)
+            if !IsObject(m)
+                problems.Push(name ": APIModels '" model "' does not resolve in models map")
+        }
+
+        ; Build the actual request (real code) for every command.
+        try {
+            if isFIM {
+                fimJson := (LLMRequestBuilder("")).createFIMRequest(model, "prefix", "suffix", params[4], params[5], params[6])
+                if !InStr(fimJson, ModelParser.StripProvider(model))
+                    problems.Push(name ": FIM request missing model '" model "'")
+            } else {
+                json := LLMRequestBuilder.createJSONRequest(model, "", "hello", params[4], params[5], params[6], false, thinkingType, thinkingLevel)
+                if !InStr(json, ModelParser.StripProvider(model))
+                    problems.Push(name ": JSON request missing model '" model "'")
+                ; The command's thinking config must reach the request body.
+                if thinkingType = "enabled" {
+                    family := InStr(model, "deepseek") ? "deepseek" : (InStr(model, "gpt") || InStr(model, "openai") ? "openai" : (InStr(model, "gemini") || InStr(model, "google") ? "google" : ""))
+                    hasThinking := (family = "deepseek" && InStr(json, '"thinking"'))
+                        || (family = "openai" && InStr(json, '"reasoning_effort"'))
+                        || (family = "google" && InStr(json, '"thinking_config"'))
+                    if !hasThinking
+                        problems.Push(name ": thinking config missing from request (family=" family ")")
+                }
+            }
+        } catch Error as e {
+            problems.Push(name ": request build threw: " e.Message)
+        }
+    }
+    Log("CMDAUDIT checked=" checked " problems=" problems.Length)
+    for p in problems
+        Log("CMDAUDIT problem: " p)
+    Log("CMDAUDIT verdict=" (problems.Length = 0 && checked >= 16 ? "OK-all-commands-consistent" : "BUG-command-config-drift"))
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -1207,6 +1318,7 @@ switch check {
     case "open-race": OpenRace()
     case "titlegen-parse-throw": TitleGenParseGraceful()
     case "command-empty-models-crash": CommandEmptyModelsCrash()
+    case "command-audit": CommandAudit()
     default:
         Log("UNKNOWN CHECK " check)
 }

@@ -158,9 +158,14 @@ How to run AHK safely:
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-14 - Round 6 follow-up COMPLETE: #229-#232
   verified, fixed + committed (02ca615, e62d32a, fa8fd0e) and closed in
-  History. Final verification green: full headless suite 226/226 PASS and
-  `npm run test:fast` (611 AHK + 574 JS). Next round: fresh intake when the
-  user asks.
+  History. Full-command audit added (scenarios 233 + 234): all 16 real default
+  commands are config-consistent (params -> request building, chat-mode
+  commands stream, models resolve) and all 11 chat-mode commands stream
+  end-to-end in the real app with their model + thinking config + render +
+  sidebar update - no new bugs found (mock gains an opt-in echoModel option so
+  per-command model attribution is verifiable). Full headless suite 228/228
+  PASS and `npm run test:fast` green (611 AHK + 574 JS). Next round: fresh
+  intake when the user asks.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When

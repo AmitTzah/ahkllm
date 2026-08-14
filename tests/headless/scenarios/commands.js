@@ -368,4 +368,28 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 234,
+  name: 'COMMAND AUDIT (config plumbing): every default command survives _extractCommandParams -> request building with consistent values - chat-mode commands stream (bug #230 invariant), every APIModels resolves in the real models map, and each command builds a real JSON/FIM request carrying its model + provider-family thinking config',
+  regression: true, // audit guard: the full default command set stays internally consistent
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'command-audit'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('probe spawn failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf-8').replace(/^\uFEFF/, '');
+    const m = text.match(/CMDAUDIT checked=(\d+) problems=(\d+)/);
+    if (!m) throw new Error('probe output missing CMDAUDIT line: ' + text);
+    const checked = Number(m[1]), problems = Number(m[2]);
+    if (checked < 16 || problems !== 0)
+      throw new Error('command audit failed: checked=' + checked + ' problems=' + problems + ' out=' + text);
+    return 'audited ' + checked + ' real default commands with the REAL _extractCommandParams + request builders: chat-mode commands stream, every APIModels resolves, and every command builds a request with its model + thinking config (problems=0)';
+  }
+});
+
 module.exports = scenarios;

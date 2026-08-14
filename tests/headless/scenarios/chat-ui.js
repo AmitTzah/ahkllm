@@ -1345,4 +1345,106 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 233,
+  name: 'COMMAND AUDIT (real app): every default chat-mode command must stream with its configured model + thinking config, persist the response, render it in the WebView, and update the sidebar - drives Quick ask, Summarize, Translate, Explain, Screenshot, DeepSeek V4 Pro/Flash, GPT-5.4/Mini, Gemini 3.5 Flash/3.1 Pro through the real load+trigger path against the mock SSE server',
+  regression: true, // audit guard: all default chat-mode commands work end-to-end (model/stream/thinking + render + sidebar)
+  mode: 'sse-success',
+  mockOpts: { echoModel: true }, // the mock echoes each request's model so per-command provider attribution is verifiable
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-cmd-quickask', title: 'Quick ask (V4 Flash)', active_leaf_id: 'm-cmd-quickask-u', model_override: 'deepseek-v4-flash', reasoning_override: 'none' },
+      { id: 't-cmd-summarize', title: 'Summarize', active_leaf_id: 'm-cmd-summarize-u', model_override: 'deepseek/deepseek-v4-pro', reasoning_override: 'high' },
+      { id: 't-cmd-translate', title: 'Translate to English', active_leaf_id: 'm-cmd-translate-u', model_override: 'deepseek/deepseek-v4-pro', reasoning_override: 'none' },
+      { id: 't-cmd-explain', title: 'Explain', active_leaf_id: 'm-cmd-explain-u', model_override: 'deepseek/deepseek-v4-pro', reasoning_override: 'none' },
+      { id: 't-cmd-screenshot', title: 'Screenshot', active_leaf_id: 'm-cmd-screenshot-u', model_override: 'openai/gpt-5.4-mini', reasoning_override: 'medium' },
+      { id: 't-cmd-dspro', title: 'DeepSeek V4 Pro', active_leaf_id: 'm-cmd-dspro-u', model_override: 'deepseek/deepseek-v4-pro', reasoning_override: 'high' },
+      { id: 't-cmd-dsflash', title: 'DeepSeek V4 Flash', active_leaf_id: 'm-cmd-dsflash-u', model_override: 'deepseek/deepseek-v4-flash', reasoning_override: 'high' },
+      { id: 't-cmd-gpt54', title: 'GPT-5.4', active_leaf_id: 'm-cmd-gpt54-u', model_override: 'openai/gpt-5.4', reasoning_override: 'medium' },
+      { id: 't-cmd-gpt54mini', title: 'GPT-5.4 Mini', active_leaf_id: 'm-cmd-gpt54mini-u', model_override: 'openai/gpt-5.4-mini', reasoning_override: 'medium' },
+      { id: 't-cmd-gem35', title: 'Gemini 3.5 Flash', active_leaf_id: 'm-cmd-gem35-u', model_override: 'google/gemini-3.5-flash', reasoning_override: 'medium' },
+      { id: 't-cmd-gem31', title: 'Gemini 3.1 Pro', active_leaf_id: 'm-cmd-gem31-u', model_override: 'google/gemini-3.1-pro-preview', reasoning_override: 'high' }
+    ],
+    messages: [
+      { id: 'm-cmd-quickask-u', thread_id: 't-cmd-quickask', role: 'user', content: 'quick ask content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-summarize-u', thread_id: 't-cmd-summarize', role: 'user', content: 'summarize content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-translate-u', thread_id: 't-cmd-translate', role: 'user', content: 'translate content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-explain-u', thread_id: 't-cmd-explain', role: 'user', content: 'explain content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-screenshot-u', thread_id: 't-cmd-screenshot', role: 'user', content: 'screenshot content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-dspro-u', thread_id: 't-cmd-dspro', role: 'user', content: 'deepseek pro content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-dsflash-u', thread_id: 't-cmd-dsflash', role: 'user', content: 'deepseek flash content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-gpt54-u', thread_id: 't-cmd-gpt54', role: 'user', content: 'gpt 5.4 content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-gpt54mini-u', thread_id: 't-cmd-gpt54mini', role: 'user', content: 'gpt 5.4 mini content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-gem35-u', thread_id: 't-cmd-gem35', role: 'user', content: 'gemini 3.5 content', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-cmd-gem31-u', thread_id: 't-cmd-gem31', role: 'user', content: 'gemini 3.1 content', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    const cmds = [
+      { id: 't-cmd-quickask', name: 'Quick ask (V4 Flash)', userText: 'quick ask content', model: 'deepseek-v4-flash', family: 'deepseek', icon: 'deepseek' },
+      { id: 't-cmd-summarize', name: 'Summarize', userText: 'summarize content', model: 'deepseek-v4-pro', family: 'deepseek', icon: 'deepseek' },
+      { id: 't-cmd-translate', name: 'Translate to English', userText: 'translate content', model: 'deepseek-v4-pro', family: 'deepseek', icon: 'deepseek' },
+      { id: 't-cmd-explain', name: 'Explain', userText: 'explain content', model: 'deepseek-v4-pro', family: 'deepseek', icon: 'deepseek' },
+      { id: 't-cmd-screenshot', name: 'Screenshot', userText: 'screenshot content', model: 'gpt-5.4-mini', family: 'openai', icon: 'openai' },
+      { id: 't-cmd-dspro', name: 'DeepSeek V4 Pro', userText: 'deepseek pro content', model: 'deepseek-v4-pro', family: 'deepseek', icon: 'deepseek' },
+      { id: 't-cmd-dsflash', name: 'DeepSeek V4 Flash', userText: 'deepseek flash content', model: 'deepseek-v4-flash', family: 'deepseek', icon: 'deepseek' },
+      { id: 't-cmd-gpt54', name: 'GPT-5.4', userText: 'gpt 5.4 content', model: 'gpt-5.4', family: 'openai', icon: 'openai' },
+      { id: 't-cmd-gpt54mini', name: 'GPT-5.4 Mini', userText: 'gpt 5.4 mini content', model: 'gpt-5.4-mini', family: 'openai', icon: 'openai' },
+      { id: 't-cmd-gem35', name: 'Gemini 3.5 Flash', userText: 'gemini 3.5 content', model: 'gemini-3.5-flash', family: 'google', icon: 'google' },
+      { id: 't-cmd-gem31', name: 'Gemini 3.1 Pro', userText: 'gemini 3.1 content', model: 'gemini-3.1-pro-preview', family: 'google', icon: 'google' }
+    ];
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 11', 15000, 300, 'thread list');
+    await sleep(600);
+
+    const results = [];
+    for (const c of cmds) {
+      // Load the command's thread through the real IPC and trigger the LLM
+      // with stream=1 (chat-mode commands stream).
+      await cdp.eval('window.loadThread("' + c.id + '"); true');
+      await cdp.waitFor('window.activeThreadId === "' + c.id + '"', 15000, 300, c.name + ' loaded');
+      await sleep(400);
+      const p = runProbe('trigger-llm', ['1']);
+      if (!p.posted) throw new Error(c.name + ': trigger probe did not post');
+      await waitStreamingIdle(cdp, 30000);
+      await sleep(600);
+
+      // The mock received a STREAMING request for this command's model with
+      // the family-appropriate thinking config.
+      const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l));
+      const req = lines.find((e) => e.body && e.body.messages && e.body.messages.some((m) => m.role === 'user' && String(m.content).indexOf(c.userText) >= 0));
+      if (!req) throw new Error(c.name + ': no mock request recorded');
+      const b = req.body;
+      if (b.model !== c.model)
+        throw new Error(c.name + ': request model ' + JSON.stringify(b.model) + ' != ' + c.model);
+      if (b.stream !== true)
+        throw new Error(c.name + ': request is not streaming (stream=' + JSON.stringify(b.stream) + ')');
+      const hasThinking = c.family === 'deepseek' ? !!b.thinking
+        : c.family === 'openai' ? !!b.reasoning_effort
+        : !!(b.extra_body && b.extra_body.google && b.extra_body.google.thinking_config);
+      if (!hasThinking)
+        throw new Error(c.name + ': request missing ' + c.family + ' thinking config: ' + JSON.stringify(b).slice(0, 300));
+
+      // Response persisted in the command's thread.
+      const asst = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND role='assistant'", [c.id]);
+      if (!asst[0] || asst[0].c < 1)
+        throw new Error(c.name + ': assistant response not persisted');
+
+      // Response rendered in the REAL WebView (streamed bubble).
+      const rendered = await cdp.eval('chatMessages.some((m) => m.role === "assistant" && m.content && m.content.indexOf("Hello from the mock LLM.") >= 0)');
+      if (!rendered)
+        throw new Error(c.name + ': response not rendered in the WebView');
+
+      // Sidebar shows the thread with the provider icon.
+      const icon = await cdp.eval('(() => { const img = document.querySelector("#thread-list .chat-item[data-chat=\\"' + c.id + '\\"] .chat-icon img"); return img ? img.getAttribute("src") : "(no img)"; })()');
+      if (icon.indexOf(c.icon) < 0)
+        throw new Error(c.name + ': sidebar icon ' + icon + ' does not contain ' + c.icon);
+
+      results.push(c.name + '[' + b.model + ', stream=' + b.stream + ']');
+    }
+    return 'all 11 default chat-mode commands streamed end-to-end with their configured model + thinking config, persisted + rendered the response, and updated the sidebar: ' + results.join(' | ');
+  }
+});
+
 module.exports = scenarios;

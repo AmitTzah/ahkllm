@@ -73,7 +73,7 @@ function makeSseHandler(opts) {
       }
       sseChunk(res, {
         choices: [{ delta: {}, finish_reason: 'stop' }],
-        model: 'deepseek-v4-flash',
+        model: opts.responseModel || 'deepseek-v4-flash',
         usage: { prompt_tokens: 12, completion_tokens: 9, total_tokens: 21, prompt_tokens_details: { cached_tokens: 4 } }
       });
       await delay(40);
@@ -119,6 +119,10 @@ function makeScriptedSseHandler(script = []) {
 //   opts.fimTextMap - [{ match, text }] picked by substring against the FIM
 //                    prompt, first match wins; falls back to opts.fimText.
 //   opts.script    - chunk script for mode 'sse-script'.
+//   opts.echoModel - echo the REQUEST's model in the streaming finish chunk
+//                    (real APIs do this; lets scenarios verify per-command
+//                    model attribution end-to-end). Default: the hardcoded
+//                    'deepseek-v4-flash' response model.
 function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
   const server = http.createServer((req, res) => {
     let body = '';
@@ -208,7 +212,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       if (mode === 'sse-slow') {
-        makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700 })(req, res);
+        makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700, responseModel: opts.echoModel ? parsed.model : '' })(req, res);
         return;
       }
       if (mode === 'sse-error-event') {
@@ -305,7 +309,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       if (mode === 'sse-success') {
-        makeSseHandler({ reasoning: true, content: 'yes' })(req, res);
+        makeSseHandler({ reasoning: true, content: 'yes', responseModel: opts.echoModel ? parsed.model : '' })(req, res);
         return;
       }
       if (mode === 'sse-reasoning-only') {

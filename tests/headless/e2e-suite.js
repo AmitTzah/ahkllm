@@ -43,7 +43,7 @@ async function runScenario(sc, iso, opts) {
   try {
     if (sc.mode) {
       mockLog = path.join(iso.sandboxData, 'mock-requests.jsonl');
-      server = await startMockServer(sc.mode, mockLog);
+      server = await startMockServer(sc.mode, mockLog, sc.mockOpts || {});
       endpoint = 'http://127.0.0.1:' + server.port + '/v1/chat/completions';
     }
     if (!noApp) launcher.resetDataDir(iso.sandboxData);
