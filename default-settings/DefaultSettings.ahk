@@ -387,6 +387,7 @@ commands := [
         userMessage: "{{selection}}",
         thinking: { type: "enabled", level: "high" },
         pasteMode: "chat",
+        stream: true,
         tags: ["&Digest"]
 
     }
@@ -398,6 +399,7 @@ commands := [
         userMessage: "{{selection}}",
         thinking: { type: "enabled", level: "none" },  ; disabled — fast translate
         pasteMode: "chat",
+        stream: true,
         tags: ["&Digest"]
 
     }
@@ -408,6 +410,7 @@ commands := [
         userMessage: "What does the following text mean?`n`n{{selection}}",
         thinking: { type: "enabled", level: "none" },  ; disabled — fast explanation
         pasteMode: "chat",
+        stream: true,
         tags: ["&Digest"]
 
     }

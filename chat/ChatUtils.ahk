@@ -161,6 +161,13 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
         _sendDropdownLabel()
     ; Push per-thread settings (model, assistant, font size, etc.) to WebView
     postCurrentSettingsToWebView()
+    ; Bug #230: threads created by a chat-mode command (Main's
+    ; processInitialRequest -> openChatWindow -> LoadThreadIntoUI) never
+    ; appeared in the sidebar - nothing posted a threadList refresh after the
+    ; load, so the new "Summarize"-style chat was invisible until an unrelated
+    ; action reposted it (handleBranchSwitch #174 and navigateToMessage #209
+    ; both refresh after their loads; the unified loader did not).
+    _postThreadListRefresh()
     ; Bug #195: if the loaded thread has an in-flight stream, re-paint its
     ; accumulated partial content now that its UI is visible again.
     _RepostActiveStreamForThread(activeThreadId)

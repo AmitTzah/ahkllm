@@ -12,7 +12,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
+const { sleep, showChat, sendChatMessage, waitStreamingIdle, runProbe } = require('./helpers');
 
 const scenarios = [];
 
@@ -1200,6 +1200,78 @@ scenarios.push({
       throw new Error('single-shot response content lost (fix incomplete): ' + JSON.stringify(a1));
     return 'single-shot streamDone (dbMsg present, buffers empty) rendered chatMessages=[' + renderedIds.join(',') +
       '] with renders=' + rendered + ' - the persisted assistant message appears immediately without a reload';
+  }
+});
+
+scenarios.push({
+  id: 230,
+  name: 'A chat-mode command thread created after launch must appear in the sidebar immediately, and a single-shot streamDone must render in the real WebView DOM - _LoadThreadAndRefreshUI now refreshes the thread list after every load (bug #230 FIXED), onStreamDone renders dbMsg with empty buffers (#229), and the default Summarize/Translate/Explain commands stream (stream: true)',
+  regression: true, // FIXED bugs #229/#230 kept as regression checks (command-created chats visible in the sidebar; single-shot responses render; default chat-mode Digest commands stream)
+  mode: null,
+  settings: {},
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length === 0', 15000, 300, 'empty thread list');
+
+    // Simulate Main's processInitialRequest chat branch exactly: while the app
+    // is running, a thread titled with the command name is created in the DB
+    // with a system + user message (the Summarize command flow).
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec('PRAGMA busy_timeout=5000;');
+    const tid = 't-cmd-230';
+    db.prepare('INSERT INTO chat_threads (id, title) VALUES (?, ?)').run(tid, 'Summarize');
+    db.prepare('INSERT INTO messages (id, thread_id, role, content) VALUES (?, ?, ?, ?)').run('m-230-sys', tid, 'system', 'Summarize the following text.');
+    db.prepare('INSERT INTO messages (id, thread_id, role, content) VALUES (?, ?, ?, ?)').run('m-230-u1', tid, 'user', 'The text to summarize.');
+    db.prepare('UPDATE chat_threads SET active_leaf_id=? WHERE id=?').run('m-230-u1', tid);
+    db.close();
+
+    // ChatWindow loads the command-created thread (the notifyLoadThread path
+    // openChatWindow uses), exactly like a real command run.
+    const p = runProbe('load-thread', [tid]);
+    if (!p.posted) throw new Error('setup: load-thread probe did not post');
+    await cdp.waitFor('window.activeThreadId === "t-cmd-230"', 15000, 300, 'command thread loaded');
+
+    const dbHasThread = seed.query(dbPath, "SELECT id FROM chat_threads WHERE id=?", [tid]).length === 1;
+    if (!dbHasThread)
+      throw new Error('setup: command thread missing from DB');
+
+    // FIXED (bug #230): _LoadThreadAndRefreshUI now posts a threadList refresh
+    // after every load, so the command-created chat appears in the sidebar
+    // without any unrelated action.
+    let sidebarIds = [];
+    const start = Date.now();
+    while (Date.now() - start < 8000) {
+      sidebarIds = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map(e => e.getAttribute("data-chat"))');
+      if (sidebarIds.indexOf(tid) >= 0) break;
+      await sleep(300);
+    }
+    if (sidebarIds.indexOf(tid) < 0)
+      throw new Error('command-created thread still missing from sidebar (fix incomplete): ' + JSON.stringify(sidebarIds));
+
+    // FIXED (bug #229, verified in the REAL WebView DOM): a single-shot
+    // (Stream Response OFF) completion posts streamDone with dbMsg and empty
+    // buffers - the assistant bubble must render immediately.
+    await cdp.eval(`handleStreamMessage('streamDone', { model: 'deepseek-v4-pro', displayName: 'deepseek-v4-pro', threadId: '${tid}', dbMsg: { id: 'm-230-a1', role: 'assistant', content: 'Here is the summary the API returned.', parentId: 'm-230-u1', tokenCount: 12 } }); true`);
+    await sleep(600);
+    const botTexts = await cdp.eval('[...document.querySelectorAll("#chat-messages .msg.bot .msg-content")].map(e => e.textContent)');
+    if (!botTexts.some((t) => t.indexOf('Here is the summary the API returned.') >= 0))
+      throw new Error('single-shot response not rendered in the real DOM (fix incomplete): ' + JSON.stringify(botTexts));
+
+    // FIXED (default config): the chat-mode Digest commands (Summarize,
+    // Translate to English, Explain) stream by default like every other
+    // chat-mode default command.
+    const defaults = fs.readFileSync(path.join(launcher.REPO_ROOT, 'default-settings', 'DefaultSettings.ahk'), 'utf8');
+    for (const name of ['Summarize', 'Translate to English', 'Explain']) {
+      const idx = defaults.indexOf('commandName: "' + name + '"');
+      if (idx < 0) throw new Error('default command not found: ' + name);
+      const block = defaults.slice(idx, idx + 900);
+      if (!/stream:\s*true/.test(block))
+        throw new Error('default command "' + name + '" still does not stream (fix incomplete)');
+    }
+
+    return 'command-created thread appears in the sidebar right after load (' + JSON.stringify(sidebarIds) + '); a single-shot streamDone rendered "' +
+      botTexts.find((t) => t.indexOf('Here is the summary') >= 0) + '" in the real DOM; default Summarize/Translate/Explain now carry stream: true';
   }
 });
 
