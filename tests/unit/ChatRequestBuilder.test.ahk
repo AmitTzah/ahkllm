@@ -97,24 +97,129 @@ class ChatRequestBuilderTest {
     }
 
     ; --------------------------------------------------------
-    ; Right-rail Advanced toggles are STUBS: they persist their state but
-    ; must NEVER alter the API request body. response_format/tools would be
-    ; wrong here (the features aren't implemented yet) — keep the body clean.
+    ; Web Search OFF (the default): the request body carries no tools, so the
+    ; model can never call web_search.
     ; --------------------------------------------------------
-    AdvancedToggles_AreStubs_DoNotTouchRequestBody() {
-        result := this._buildRequest("deepseek/deepseek-v4-flash", "", Map(
-            "codeExecution", true,
-            "webSearch", true
-        ))
+    WebSearch_Off_NoToolsInRequest() {
+        result := this._buildRequest("openai/gpt-5-mini", "", Map("webSearch", false))
 
         if result = ""
             throw Error("buildRequest returned empty")
 
         parsed := jsongo.Parse(result)
-        if parsed.Has("response_format")
-            throw Error("stub toggles must not add response_format to the request")
         if parsed.Has("tools")
-            throw Error("stub toggles must not add tools to the request")
+            throw Error("webSearch off must not add tools to the request")
+    }
+
+    ; --------------------------------------------------------
+    ; Web Search ON: exactly one OpenAI-compatible function tool named
+    ; web_search with a query parameter. The search BACKEND is resolved at
+    ; execution time (DeepSeek native /responses vs Tavily), so the request
+    ; format is identical for every provider.
+    ; --------------------------------------------------------
+    WebSearch_On_AddsWebSearchFunctionTool() {
+        result := this._buildRequest("openai/gpt-5-mini", "", Map("webSearch", true))
+
+        if result = ""
+            throw Error("buildRequest returned empty")
+
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("tools") || parsed["tools"].Length != 1
+            throw Error("expected exactly one tool when webSearch is on")
+        tool := parsed["tools"][1]
+        if tool["type"] != "function" || tool["function"]["name"] != "web_search"
+            throw Error("expected a web_search function tool, got " jsongo.Stringify(tool))
+        if !tool["function"]["parameters"]["properties"].Has("query")
+            throw Error("web_search must declare a query parameter")
+    }
+
+    ; --------------------------------------------------------
+    ; DeepSeek models get the same function tool in the chat-completions
+    ; request; the native search happens on DeepSeek's /responses endpoint
+    ; when the tool executes.
+    ; --------------------------------------------------------
+    WebSearch_On_DeepSeek_AddsWebSearchFunctionTool() {
+        result := this._buildRequest("deepseek/deepseek-v4-flash", "", Map("webSearch", true))
+
+        if result = ""
+            throw Error("buildRequest returned empty")
+
+        parsed := jsongo.Parse(result)
+        if !parsed.Has("tools") || parsed["tools"].Length != 1
+            throw Error("expected exactly one tool when webSearch is on (deepseek)")
+        tool := parsed["tools"][1]
+        if tool["function"]["name"] != "web_search"
+            throw Error("expected web_search function tool for deepseek, got " jsongo.Stringify(tool))
+    }
+
+    ; --------------------------------------------------------
+    ; Tool-loop round: the staged ephemeral tool exchange (assistant
+    ; tool_calls + role:"tool" result) must be appended after the DB path so
+    ; the follow-up API request satisfies the tool-call protocol.
+    ; --------------------------------------------------------
+    PendingToolMessages_AreAppendedToRequest() {
+        global activeThreadId, requestParams
+
+        EnvSet("OPENAI_API_KEY", "sk-test-openai-key")
+        this._setupDb()
+        ChatDB.Thread_Create("Tool Loop")
+        threads := ChatDB.Thread_List()
+        activeThreadId := threads[threads.Length].id
+        ChatDB.Msg_Insert({
+            thread_id: activeThreadId,
+            role: "user",
+            content: "search for X",
+            parent_id: "",
+            sibling_group: "",
+            sibling_index: 0
+        })
+
+        requestParams := Map(
+            "singleAPIModelName", "openai/gpt-5-mini",
+            "stream", true,
+            "pasteMode", "chat",
+            "windowTitle", "test",
+            "providerName", "",
+            "uniqueID", A_TickCount,
+            "_pendingToolMessages", [
+                {
+                    role: "assistant",
+                    content: "",
+                    tool_calls: [{
+                        id: "call_1",
+                        type: "function",
+                        function: { name: "web_search", arguments: "{`"query`":`"X`"}" }
+                    }]
+                },
+                { role: "tool", tool_call_id: "call_1", content: "search results" }
+            ]
+        )
+
+        result := buildRequest()
+        if result = ""
+            throw Error("buildRequest returned empty with pending tool messages")
+        parsed := jsongo.Parse(result)
+        msgs := parsed["messages"]
+        if msgs.Length < 3
+            throw Error("expected user + assistant tool_calls + tool result, got " msgs.Length " messages")
+        asst := msgs[msgs.Length - 1]
+        toolMsg := msgs[msgs.Length]
+        if asst["role"] != "assistant" || !asst.Has("tool_calls") || asst["tool_calls"].Length != 1
+            throw Error("expected assistant tool_calls message: " jsongo.Stringify(asst))
+        if asst["tool_calls"][1]["function"]["name"] != "web_search"
+            throw Error("expected web_search tool call: " jsongo.Stringify(asst))
+        if toolMsg["role"] != "tool" || toolMsg["tool_call_id"] != "call_1"
+            throw Error("expected tool result message: " jsongo.Stringify(toolMsg))
+
+        this._teardownDb()
+        if requestParams.Has("chatHistoryJSONRequestFile")
+            try FileDelete(requestParams["chatHistoryJSONRequestFile"])
+        if requestParams.Has("cURLCommandFile")
+            try FileDelete(requestParams["cURLCommandFile"])
+        if requestParams.Has("cURLOutputFile")
+            try FileDelete(requestParams["cURLOutputFile"])
+        if requestParams.Has("cURLErrorFile")
+            try FileDelete(requestParams["cURLErrorFile"])
     }
 
     ; --------------------------------------------------------

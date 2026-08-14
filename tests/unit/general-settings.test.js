@@ -211,6 +211,7 @@ describe('General settings section', () => {
                 trashRetentionDays: makeEl({ value: '3' }),
                 chatShortcut: makeEl({ value: 'Alt+Z' }),
                 newChatStartsWith: makeEl({ value: 'asst:asst-1' }),
+                tavilyApiKey: makeEl({ value: 'tvly-test' }),
             },
         });
         const data = ctx.module.save();
@@ -219,6 +220,7 @@ describe('General settings section', () => {
             apiLogs: { maxEntries: 12 },
             trash: { retentionDays: 3 },
             chatShortcut: 'Alt+Z',
+            tavilyApiKey: 'tvly-test',
             newChatStartsWith: 'asst:asst-1',
         }));
     });
@@ -239,6 +241,7 @@ describe('General settings section', () => {
         assert.ok(data.apiLogs.maxEntries === 20);
         assert.ok(data.trash.retentionDays === 30);
         assert.ok(data.chatShortcut === '');
+        assert.ok(data.tavilyApiKey === '');
         assert.ok(data.newChatStartsWith === '');
     });
 

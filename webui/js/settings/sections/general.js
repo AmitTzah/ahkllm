@@ -96,6 +96,11 @@
       var cs = document.getElementById('chatShortcut');
       if (cs) cs.value = data.chatShortcut || '';
     }
+    // Web Search (Tavily key; DeepSeek models search natively)
+    if (data && data.tavilyApiKey !== undefined) {
+      var tk = document.getElementById('tavilyApiKey');
+      if (tk) tk.value = data.tavilyApiKey || '';
+    }
   }
 
   function save() {
@@ -118,6 +123,8 @@
     };
     // Chat Shortcut
     data.chatShortcut = (document.getElementById('chatShortcut') || {}).value || '';
+    // Web Search (Tavily key)
+    data.tavilyApiKey = (document.getElementById('tavilyApiKey') || {}).value || '';
     // New Chats Start With
     data.newChatStartsWith = (document.getElementById('newChatStartsWith') || {}).value || '';
     return data;

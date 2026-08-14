@@ -30,6 +30,14 @@
 //                      the app's 100ms stream poll consumes the partial line
 //                      and then ignores the bare remainder (the bug hunt's
 //                      "data line split across poll boundaries" case)
+//   sse-tool-call      streaming web-search tool loop: the FIRST request (no
+//                      role:"tool" message) streams a web_search function call
+//                      split across two deltas + finish_reason tool_calls; the
+//                      follow-up request (contains the tool result) streams
+//                      the final answer. POSTs to /responses (DeepSeek native
+//                      search backend) and /search (Tavily backend) are
+//                      answered from the real API shapes captured during mock
+//                      setup — the headless suite never calls the real APIs.
 //   json               non-stream chat completion; FIM requests (body.prompt)
 //                      answered with choices[0].text (opts.fimText)
 //   error-json         HTTP 401 with {"error":{"message":...}}
@@ -112,6 +120,89 @@ function makeScriptedSseHandler(script = []) {
   };
 }
 
+// Streaming web-search tool loop (mode 'sse-tool-call'):
+//   round 1 (no tool result in the conversation): the model emits a
+//     web_search function call split across two deltas, then
+//     finish_reason "tool_calls".
+//   round 2+ (the request carries role:"tool" results): normal final answer.
+function makeToolCallSseHandler(parsed, opts) {
+  return (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const hasToolResult = (parsed.messages || []).some((m) => m && m.role === 'tool');
+    const usage = { prompt_tokens: 16, completion_tokens: 10, total_tokens: 26, prompt_tokens_details: { cached_tokens: 4 } };
+    (async () => {
+      if (!hasToolResult) {
+        // Fragment 1: call id + name; fragment 2: the arguments JSON.
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_search_1', type: 'function', function: { name: 'web_search', arguments: '' } }] } }] });
+        await delay(60);
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ query: opts.searchQuery || 'AutoHotkey webview2' }) } }] } }] });
+        await delay(60);
+        sseChunk(res, { choices: [{ delta: {}, finish_reason: 'tool_calls' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
+      } else {
+        sseChunk(res, { choices: [{ delta: { content: 'Based on the search, ' + (opts.chatText || 'here is the answer.') } }] });
+        await delay(60);
+        sseChunk(res, { choices: [{ delta: {}, finish_reason: 'stop' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
+      }
+      await delay(40);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    })().catch(() => { try { res.end(); } catch {} });
+  };
+}
+
+// DeepSeek native search backend (POST /responses). Shape captured from a
+// real api.deepseek.com/responses call during mock setup.
+function responsesSearchBody(opts) {
+  const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
+  return {
+    object: 'response',
+    status: 'completed',
+    model: opts.responseModel || 'deepseek-v4-flash',
+    output: [{
+      type: 'message',
+      id: 'mock-search-message',
+      status: 'completed',
+      role: 'assistant',
+      content: [{ type: 'output_text', annotations: [], text }]
+    }],
+    usage: {
+      input_tokens: 493, output_tokens: 42, total_tokens: 535,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens_details: { reasoning_tokens: 0 }
+    }
+  };
+}
+
+// Tavily fallback backend (POST /search). Shape captured from a real
+// api.tavily.com/search call during mock setup.
+function tavilySearchBody(parsed, opts) {
+  const query = (parsed && parsed.query) || 'AutoHotkey webview2';
+  const answer = opts.tavilyAnswer || 'AutoHotkey v2 supports WebView2 for hosting web content using Microsoft Edge\'s Chromium engine.';
+  return {
+    query,
+    follow_up_questions: null,
+    answer,
+    images: [],
+    results: [
+      {
+        url: 'https://github.com/example/ahk-webview2',
+        title: 'ahk2_lib/WebView2 — AutoHotkey WebView2 bindings',
+        content: 'The Microsoft Edge WebView2 control enables you to host web content in your application using Edge Chromium as the rendering engine.',
+        score: 0.6496014,
+        raw_content: null,
+        id: 'mock-tavily-00'
+      }
+    ],
+    response_time: 0.5,
+    request_id: 'mock-tavily-request'
+  };
+}
+
 // startMockServer(mode, logFile, opts)
 //   opts.chatText  - content used by the JSON chat response.
 //   opts.fimText   - choices[0].text used when the JSON body carries a
@@ -133,8 +224,20 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       if (logFile) {
         try {
           const modeUsed = parsed.stream ? 'sse' : (parsed.max_tokens === 50 ? 'title' : 'json');
-          fs.appendFileSync(logFile, JSON.stringify({ modeUsed, body: parsed }) + '\n');
+          fs.appendFileSync(logFile, JSON.stringify({ modeUsed, url: req.url, body: parsed }) + '\n');
         } catch {}
+      }
+      // Backend routing used by the web-search tool loop: DeepSeek native
+      // search calls the /responses endpoint, Tavily the /search endpoint.
+      // Both are answered from the real captured shapes — no real API calls
+      // happen in the headless suite.
+      if (req.url.includes('/responses')) {
+        json(responsesSearchBody(opts), res);
+        return;
+      }
+      if (req.url.endsWith('/search')) {
+        json(tavilySearchBody(parsed, opts), res);
+        return;
       }
       if (mode === 'drop') {
         req.socket.destroy();
@@ -168,6 +271,10 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       }
       if (mode === 'sse-script') {
         makeScriptedSseHandler(opts.script || [])(req, res);
+        return;
+      }
+      if (mode === 'sse-tool-call') {
+        makeToolCallSseHandler(parsed, opts)(req, res);
         return;
       }
       if (mode === 'sse-midfail') {

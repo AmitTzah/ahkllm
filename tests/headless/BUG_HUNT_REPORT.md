@@ -156,16 +156,16 @@ How to run AHK safely:
 
 - **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Round 6 follow-up COMPLETE: #229-#232
-  verified, fixed + committed (02ca615, e62d32a, fa8fd0e) and closed in
-  History. Full-command audit added (scenarios 233 + 234): all 16 real default
-  commands are config-consistent (params -> request building, chat-mode
-  commands stream, models resolve) and all 11 chat-mode commands stream
-  end-to-end in the real app with their model + thinking config + render +
-  sidebar update - no new bugs found (mock gains an opt-in echoModel option so
-  per-command model attribution is verifiable). Full headless suite 228/228
-  PASS and `npm run test:fast` green (611 AHK + 574 JS). Next round: fresh
-  intake when the user asks.
+- **Where we left off:** 2026-08-14 - Web-search milestone COMPLETE: composer
+  Tools dropdown + Code Execution/Calculator stubs removed; per-thread Web
+  Search toggle now adds a web_search function tool (default off). DeepSeek
+  models search natively via their /responses API; every other provider
+  falls back to Tavily. Scenarios 250 + 251 verify both backends end-to-end
+  against the local mock (no real API calls in the suite); scenario 20
+  flipped to a regression check for the stub removal. Full headless suite
+  PASS and `npm run test:fast` green. Next round: fresh intake when the user
+  asks.
+
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -217,6 +217,52 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 *No open bugs.*
+
+**Feature checks (web-search milestone):**
+
+### 250. Web Search toggle: DeepSeek native search end-to-end
+
+**Scenario:** 250
+
+**Status:** verified
+
+**Repro:** In a new chat, open the right-rail Advanced section, toggle Web
+Search on, send a message that needs current info.
+
+**Expected:** The request carries a web_search function tool; the model's tool
+call is answered by DeepSeek's native /responses search backend; the final
+answer persists as user -> search-context -> assistant; the toggle persists
+with the thread.
+
+**Actual:** Works end-to-end against the local mock (scenario PASSES).
+
+**Evidence:** `chat/tools/DeepSeekSearch.ahk` + `chat/tools/SearchToolExecutor.ahk`;
+scenario drives the real app and inspects the DB path + mock request log.
+
+**Verification:** Headless - toggled Web Search, sent a message, waited for the
+stream to idle, then asserted the rendered answer, the 3-message DB path with
+the `[Web search: ...]` context message, the mock `/responses` backend hit, and
+the `role:"tool"` follow-up request. No real API calls are made by the suite.
+
+### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
+
+**Scenario:** 251
+
+**Status:** verified
+
+**Repro:** Same as 250 but with a non-DeepSeek model (OpenAI) and a Tavily key.
+
+**Expected:** The same web_search tool call is answered by Tavily (the mock
+`/search` backend); the final answer persists with the search-context message.
+
+**Actual:** Works end-to-end against the local mock (scenario PASSES).
+
+**Evidence:** `chat/tools/TavilySearch.ahk`; the scenario patches
+`tavilyEndpoint` to the local mock via `preLaunch` so no real API call happens.
+
+**Verification:** Headless - toggled Web Search on an OpenAI-model thread,
+sent a message, asserted the rendered answer, the 3-message DB path, the mock
+`/search` backend hit, and the `role:"tool"` follow-up request.
 
 ## History (append-only)
 

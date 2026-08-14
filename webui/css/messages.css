@@ -19,6 +19,12 @@
   background: var(--user-msg-bg); padding: 14px 24px; border-radius: var(--radius-lg); 
   border-top-left-radius: 4px; display: inline-block; max-width: fit-content;
 }
+.msg.you.search-context .msg-author { color: var(--text-tertiary); font-size: 15px; }
+.msg.you.search-context .msg-content {
+  background: var(--bg-hover); color: var(--text-secondary); font-size: calc(var(--chat-font-size) - 2px);
+  border-left: 3px solid var(--border-main); border-top-left-radius: var(--radius-lg); max-width: 100%;
+  font-family: var(--font-mono);
+}
 .msg.bot .msg-content { max-width: 100%; padding: 0 6px; }
 
 /* Thinking block */

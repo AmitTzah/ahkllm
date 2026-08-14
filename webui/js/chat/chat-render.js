@@ -153,8 +153,11 @@ function createMessageBubble(msg, index) {
 
   var roleClass, authorName, contentHtml, middleHtml, editUiHtml;
   if (role === 'user') {
-    roleClass = 'you';
-    authorName = 'You';
+    // Web-search context messages (persisted as plain user-role text so API
+    // history round-trips without schema changes) render as a muted card.
+    var isSearchContext = typeof msg.content === 'string' && msg.content.indexOf('[Web search:') === 0;
+    roleClass = isSearchContext ? 'you search-context' : 'you';
+    authorName = isSearchContext ? 'Web Search' : 'You';
     contentHtml = md.render(_prepUserContent(msg.content));
     middleHtml = _buildAttachmentHtml(msg);
     editUiHtml = _buildEditUiHtml(msg);

@@ -17,6 +17,10 @@
 ; first request's state or temp files.
 _activeStreams := []
 _currentStreamKey := ""
+; Set when _handleStreamComplete hands the round off to the web-search tool
+; loop's follow-up request (_handleStreamToolCalls already tore down THIS
+; round's stream record — finalize must not remove the NEW one).
+global _toolLoopHandoff := false
 
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     debugLog("[STREAM] Started — thread=" activeThreadId)
@@ -152,6 +156,13 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
         parsed := jsongo.Parse(raw)
         response := ResponseParser.ParseChatResponse(parsed)
         content := response.response
+        ; Web-search tool loop (single-shot path): the model asked to search —
+        ; run the searches, stage the tool exchange, and re-enter the request
+        ; pipeline instead of finalizing an empty answer.
+        if response.toolCalls.Length {
+            _handleNonStreamToolCalls(response.toolCalls)
+            return
+        }
         if !content {
             requestParams["_streamContent"] := ""
             _handleStreamError()
@@ -172,6 +183,35 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
         postWebMessage("showError", { message: "Request failed: " e.Message })
         _cleanupStreamState()
         deleteTempFiles()
+    }
+}
+
+; Web-search tool loop for the non-streaming (single-shot) chat path. Runs
+; synchronously: execute the searches, persist the search context, stage the
+; ephemeral tool messages, then re-enter _BuildAndFireRequest (which rebuilds
+; the request with the tool exchange and recurses back here until the model
+; answers with plain content).
+_handleNonStreamToolCalls(toolCalls) {
+    try {
+        loopCount := requestParams.Has("_toolLoopCount") ? requestParams["_toolLoopCount"] : 0
+        loopCount++
+        if SearchToolExecutor.MaxIterationsReached(loopCount) {
+            _failToolLoop("Web search stopped: too many search rounds (max " SearchTools.MAX_TOOL_ITERATIONS ").")
+            return
+        }
+
+        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
+
+        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
+        parentId := sendPath.Length ? sendPath[sendPath.Length].id : ""
+        SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
+
+        _deleteCurrentStreamFiles()
+        _BuildAndFireRequest()
+    } catch Error as e {
+        debugLog("_handleNonStreamToolCalls error: " e.Message "`n" e.Stack)
+        _failToolLoop("Web search failed: " e.Message)
     }
 }
 
@@ -295,6 +335,9 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         chatHistoryJSONRequest: chatHistoryJSONRequest,
         pid: cURLPID,
         cancelled: false,
+        ; Web-search tool loop state (per round).
+        toolCalls: Map(),
+        toolLoopCount: requestParams.Has("_toolLoopCount") ? requestParams["_toolLoopCount"] : 0,
         ; Bug #159: capture the thread that SENT this request.
         threadId: activeThreadId,
         parentId: "",
@@ -346,6 +389,8 @@ _LoadStreamIntoParams(stream) {
     requestParams["_streamChatHistoryJSONRequest"] := stream.chatHistoryJSONRequest
     requestParams["_streamPID"]              := stream.pid
     requestParams["_streamCancelled"]        := stream.cancelled
+    requestParams["_streamToolCalls"]        := stream.HasOwnProp("toolCalls") ? stream.toolCalls : Map()
+    requestParams["_streamToolLoopCount"]    := stream.HasOwnProp("toolLoopCount") ? stream.toolLoopCount : 0
     requestParams["_streamThreadId"]         := stream.threadId
     requestParams["_streamParentId"]         := stream.parentId
     requestParams["_streamLogWindowTitle"]   := stream.logWindowTitle
@@ -382,6 +427,8 @@ _SaveStreamFromParams(stream) {
     stream.errorMessage     := requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
     stream.pollCount        := requestParams["_streamPollCount"]
     stream.cancelled        := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
+    stream.toolCalls        := requestParams.Has("_streamToolCalls") ? requestParams["_streamToolCalls"] : Map()
+    stream.toolLoopCount    := requestParams.Has("_streamToolLoopCount") ? requestParams["_streamToolLoopCount"] : 0
 }
 
 _StreamIsActive(key) {
@@ -472,7 +519,8 @@ _StreamStateFromParams() {
         rawSseChunks: requestParams["_streamRawSseChunks"],
         rawLastResponse: requestParams["_streamRawLastResponse"],
         pendingLine: requestParams["_streamPendingLine"],
-        errorMessage: requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
+        errorMessage: requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : "",
+        toolCalls: requestParams.Has("_streamToolCalls") ? requestParams["_streamToolCalls"] : Map()
     }
 }
 
@@ -492,6 +540,7 @@ _ParamsFromStreamState(state) {
     } else if requestParams.Has("_streamErrorMessage") {
         requestParams.Delete("_streamErrorMessage")
     }
+    requestParams["_streamToolCalls"] := state.toolCalls
 }
 
 _readFileChunk(state) {
@@ -620,6 +669,16 @@ _processChunk(state, chunk, doPostMessage) {
             if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
                 state.usage := chunk.usage
 
+        case "tool_call":
+            ; The model asked to search the web. Merge the partial fragments
+            ; into completed calls ({id, name, arguments}) keyed by index.
+            if chunk.HasOwnProp("toolCalls") && IsObject(chunk.toolCalls)
+                _mergeToolCallDeltas(state, chunk.toolCalls)
+            if chunk.HasOwnProp("model") && chunk.model
+                state.modelName := ModelParser.Sanitize(chunk.model)
+            if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                state.usage := chunk.usage
+
         case "reasoning":
             ; Bug #170: a reasoning-only stream never produces a "content"
             ; chunk, so the first-token timer must also stamp on reasoning -
@@ -657,8 +716,32 @@ _processChunk(state, chunk, doPostMessage) {
     }
 }
 
+; Merge streaming tool_calls delta fragments (OpenAI-compatible shape) into
+; completed {id, name, arguments} entries keyed by the call index.
+_mergeToolCallDeltas(state, fragments) {
+    if !IsObject(state.toolCalls)
+        state.toolCalls := Map()
+    for f in fragments {
+        if !IsObject(f)
+            continue
+        idx := f.Has("index") ? f["index"] : 0
+        if !state.toolCalls.Has(idx)
+            state.toolCalls[idx] := { id: "", name: "", arguments: "" }
+        entry := state.toolCalls[idx]
+        if f.Has("id") && f["id"] != ""
+            entry.id := f["id"]
+        if f.Has("function") && IsObject(f["function"]) {
+            if f["function"].Has("name") && f["function"]["name"] != ""
+                entry.name := f["function"]["name"]
+            if f["function"].Has("arguments") && f["function"]["arguments"] != ""
+                entry.arguments .= f["function"]["arguments"]
+        }
+    }
+}
+
 _finalizeStreaming() {
     try {
+        global _toolLoopHandoff
         _readStreamChunkFromParams()
         contentLen := StrLen(requestParams["_streamContent"])
         reasoningLen := StrLen(requestParams["_streamReasoning"])
@@ -671,6 +754,7 @@ _finalizeStreaming() {
         ; branch, which would otherwise look like a connection failure and show
         ; the misleading API-key banner.
         if wasCancelled {
+            _clearToolLoopState()
             _handleStreamCancelled()
             ; Bug #98: every exit path must clean up the _stream* keys so a
             ; cancelled request can never leak stale stream state into the
@@ -689,13 +773,15 @@ _finalizeStreaming() {
         ; wedged in Stop mode. This must run BEFORE the empty-content error
         ; branch so the partial is never misread as a connection failure.
         if requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"] {
+            _clearToolLoopState()
             _handleMidStreamError()
             _cleanupStreamState()
             _FinishStreamFinalize()
             return
         }
 
-        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
+        if _NoContentAndNoToolCalls() {
+            _clearToolLoopState()
             _handleStreamError()
             _cleanupStreamState()
             _FinishStreamFinalize()
@@ -703,10 +789,18 @@ _finalizeStreaming() {
         }
 
         _handleStreamComplete()
+        if _toolLoopHandoff {
+            _toolLoopHandoff := false
+            return
+        }
+        ; The web-search tool loop finished (no more tool calls) — drop the
+        ; staged tool exchange + loop counter so the next send starts clean.
+        _clearToolLoopState()
         _cleanupStreamState()
         _FinishStreamFinalize()
     } catch Error as e {
         debugLog("_finalizeStreaming error: " e.Message)
+        _clearToolLoopState()
         ; Bug #221: only re-enable the composer when NO other request is still
         ; streaming.
         if !_HasOtherActiveStreams() {
@@ -717,6 +811,86 @@ _finalizeStreaming() {
         _cleanupStreamState()
         _FinishStreamFinalize()
     }
+}
+
+; True when the stream produced neither content nor reasoning AND has no
+; pending web-search tool calls (tool-call rounds must route to the tool loop,
+; not the empty-response error branch).
+_NoContentAndNoToolCalls() {
+    if requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != ""
+        return false
+    if requestParams.Has("_streamToolCalls") && requestParams["_streamToolCalls"].Count
+        return false
+    return true
+}
+
+; Web-search tool loop: execute the model's web_search calls, persist the
+; search context as a user message, stage the ephemeral tool exchange, then
+; fire the follow-up request. The follow-up's stream record re-captures the
+; parent (now the search-context message), so the final answer chains
+; user -> search context -> answer in the DB.
+_handleStreamToolCalls() {
+    try {
+        toolCalls := requestParams["_streamToolCalls"]
+        loopCount := requestParams.Has("_toolLoopCount") ? requestParams["_toolLoopCount"] : 0
+        loopCount++
+
+        if SearchToolExecutor.MaxIterationsReached(loopCount) {
+            _failToolLoop("Web search stopped: too many search rounds (max " SearchTools.MAX_TOOL_ITERATIONS ").")
+            return
+        }
+
+        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
+
+        parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
+        threadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
+        SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
+
+        _deleteCurrentStreamFiles()
+        _RemoveStreamFromActive(_currentStreamKey)
+        _cleanupStreamState()
+        _RestoreLastActiveStream()
+        ; Re-enter the request pipeline with the staged tool messages; a new
+        ; stream record is created for this round.
+        _BuildAndFireRequest()
+    } catch Error as e {
+        debugLog("_handleStreamToolCalls error: " e.Message "`n" e.Stack)
+        _failToolLoop("Web search failed: " e.Message)
+    }
+}
+
+; Surface a tool-loop failure, tear down this round's stream, and clear the
+; staged loop state so the next normal send starts clean.
+_failToolLoop(message) {
+    debugLog("[SEARCH] " message)
+    postWebMessage("showError", { message: message })
+    postWebMessage("setChatButtonsEnabled", true)
+    startLoadingCursor(false)
+    _clearToolLoopState()
+    _deleteCurrentStreamFiles()
+    _RemoveStreamFromActive(_currentStreamKey)
+    _cleanupStreamState()
+    _RestoreLastActiveStream()
+}
+
+_deleteCurrentStreamFiles() {
+    for key in ["chatHistoryJSONRequestFile", "cURLCommandFile", "cURLOutputFile", "cURLErrorFile"] {
+        if requestParams.Has(key) {
+            p := requestParams[key]
+            if p && FileExist(p)
+                try FileDelete(p)
+        }
+    }
+}
+
+; Clear the staged tool-exchange messages + loop counter once the loop ends
+; (final completion, error, or cancel).
+_clearToolLoopState() {
+    if requestParams.Has("_pendingToolMessages")
+        requestParams.Delete("_pendingToolMessages")
+    if requestParams.Has("_toolLoopCount")
+        requestParams.Delete("_toolLoopCount")
 }
 
 ; Bug #221: drop the finalized request from the in-flight list and restore the

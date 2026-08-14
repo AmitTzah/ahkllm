@@ -108,6 +108,7 @@ activeThreadId := ""
 #Include ChatSettings.ahk
 #Include ChatRequestBuilder.ahk
 #Include ChatIPC.ahk
+#Include tools\SearchToolExecutor.ahk
 
 ; ----------------------------------------------------
 ; Create WebView and LLM client

@@ -133,6 +133,13 @@ describe('createMessageBubble — user', () => {
         assert.ok(bubble !== undefined);
         assert.ok(bubble.className.length > 0);
     });
+
+    it('renders web-search context messages with the search-context class and author', () => {
+        const ctx = loadRenderModule();
+        const bubble = ctx.createMessageBubble({ role: 'user', content: '[Web search: AutoHotkey]\\n\\nAnswer: ...', id: 'ctx1', createdAt: '2026-01-01T13:01:00' }, 0);
+        assert.ok(bubble.className.includes('search-context'), 'search context messages get a muted card class');
+        assert.ok(bubble.className.includes('you'), 'search context stays a user-role bubble');
+    });
 });
 
 describe('createMessageBubble — assistant', () => {

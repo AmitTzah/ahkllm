@@ -7,6 +7,13 @@
 
 _handleStreamComplete() {
     try {
+        ; The model asked to search: run the tool loop instead of finalizing.
+        if requestParams.Has("_streamToolCalls") && requestParams["_streamToolCalls"].Count {
+            global _toolLoopHandoff
+            _toolLoopHandoff := true
+            _handleStreamToolCalls()
+            return
+        }
         _ClearCurrentStreamPID()
         ; Bug #159: complete into the thread that SENT the request (captured
         ; at send time), not the currently-active thread.

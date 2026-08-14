@@ -23,7 +23,6 @@ function populateCurrentSettings(settings) {
     assistantName: settings.assistantName || '',
     assistantBaseModel: settings.assistantBaseModel || '',
     assistantDescription: settings.assistantDescription || '',
-    codeExecution: !!settings.codeExecution,
     webSearch: !!settings.webSearch
   };
 
@@ -120,7 +119,7 @@ function updateDropdownLabel(data) {
 }
 
 // The right-rail Advanced switches map 1:1 (by row order) to request flags.
-var _advancedToggleKeys = ['codeExecution', 'webSearch'];
+var _advancedToggleKeys = ['webSearch'];
 
 function _syncAdvancedToggles() {
   var switches = document.querySelectorAll('#advancedWrap .toggle-row .switch');
@@ -134,7 +133,7 @@ function _syncAdvancedToggles() {
 // Wire right panel controls
 if (typeof document !== 'undefined' && document.addEventListener) {
 document.addEventListener('DOMContentLoaded', function() {
-  window._currentSettings = { model: '', systemMessage: '', reasoning: '', temperature: '', codeExecution: false, webSearch: false };
+  window._currentSettings = { model: '', systemMessage: '', reasoning: '', temperature: '', webSearch: false };
 
   // Temperature slider — auto-enable on interaction, reset to default
   var tempSlider = document.getElementById('tempSlider');
@@ -253,8 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
       var row = sw.closest('.toggle-row');
       var labelEl = row ? row.querySelector('.lbl') : null;
       var label = labelEl ? (labelEl.textContent || '').trim() : '';
-      var key = label === 'Code Execution' ? 'codeExecution' :
-                label === 'Web Search' ? 'webSearch' : '';
+      var key = label === 'Web Search' ? 'webSearch' : '';
       if (key) window._currentSettings[key] = sw.classList.contains('on');
       _sendAllSettings();
     });

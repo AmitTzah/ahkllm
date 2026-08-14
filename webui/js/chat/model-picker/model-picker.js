@@ -23,7 +23,6 @@ function _sendAllSettings() {
       systemMessage: s.systemMessage || '',
       reasoning: s.reasoning || '',
       temperature: temperatureToSend,
-      codeExecution: !!s.codeExecution,
       webSearch: !!s.webSearch
     });
   }, 300);

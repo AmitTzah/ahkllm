@@ -140,23 +140,21 @@ class ChatSettingsTest {
         threads := ChatDB.Thread_List()
         activeThreadId := threads[threads.Length].id
 
-        parsed := jsongo.Parse('{"model":"deepseek/deepseek-v4-flash","systemMessage":"","reasoning":"","temperature":"","codeExecution":false,"webSearch":true}')
+        parsed := jsongo.Parse('{"model":"deepseek/deepseek-v4-flash","systemMessage":"","reasoning":"","temperature":"","webSearch":true}')
         handleModelSettingsUpdate(parsed)
 
         ; In-memory flags
-        if requestParams["codeExecution"] != false
-            throw Error("codeExecution should be false in requestParams")
         if requestParams["webSearch"] != true
             throw Error("webSearch was not stored in requestParams")
 
         ; Round-trip through the settings object
         obj := _CurrentSettingsObject()
-        if obj.codeExecution != false || obj.webSearch != true
+        if obj.webSearch != true
             throw Error("_CurrentSettingsObject does not carry the advanced toggles")
 
         ; Persisted to the thread and restored by Thread_GetSettings
         saved := ChatDB.Thread_GetSettings(activeThreadId)
-        if saved.codeExecution != false || saved.webSearch != true
+        if saved.webSearch != true
             throw Error("advanced toggles did not persist to the thread: " jsongo.Stringify(saved))
 
         activeThreadId := ""
@@ -371,7 +369,6 @@ class ChatSettingsTest {
                 systemOverride: "user override",
                 reasoningOverride: "low",
                 temperatureOverride: "0.9",
-                codeExecution: true,
                 webSearch: false,
                 fontSize: 20
             }
@@ -384,7 +381,7 @@ class ChatSettingsTest {
                 throw Error("reasoning override should win: " eff.reasoning)
             if eff.temperature != "0.9"
                 throw Error("temperature override should win: " eff.temperature)
-            if eff.codeExecution != true || eff.webSearch != false
+            if eff.webSearch != false
                 throw Error("advanced toggles should round-trip")
             if eff.fontSize != 20
                 throw Error("font size should round-trip: " eff.fontSize)

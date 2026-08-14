@@ -91,6 +91,13 @@ _BuildApiMessagesFromPath(path) {
     for msg in path {
         apiMessages.Push({ role: msg.role, content: msg.content, _msgId: msg.id })
     }
+    ; Tool-loop round: append the ephemeral assistant tool_calls + role:"tool"
+    ; results the API requires before the model can answer (they are NOT
+    ; persisted — only the search-context user message is).
+    if requestParams.Has("_pendingToolMessages") {
+        for toolMsg in requestParams["_pendingToolMessages"]
+            apiMessages.Push(toolMsg)
+    }
     return apiMessages
 }
 
@@ -230,6 +237,15 @@ _BuildRequestObj(apiMessages, providerInfo) {
     if requestParams["stream"] {
         requestObj.stream := true
         requestObj.stream_options := { include_usage: true }
+    }
+
+    ; Web Search tool: the per-thread right-rail toggle is OFF by default, so
+    ; the model only ever sees the tool when the user explicitly enables it.
+    ; The search backend is resolved at execution time (DeepSeek native vs
+    ; Tavily) — the request format is the same OpenAI-compatible function tool
+    ; for every provider.
+    if SearchTools.Enabled() {
+        requestObj.tools := [SearchTools.Definition()]
     }
 
     return requestObj

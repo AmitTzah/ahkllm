@@ -51,10 +51,20 @@ class SSEParser {
         ; later choices' payload is silently dropped.
         reasoningAcc := ""
         contentAcc := ""
+        toolCallAcc := []
         for choice in choices {
             if !IsObject(choice)
                 continue
             delta := choice.Has("delta") ? choice["delta"] : choice
+            ; Tool calls (web_search): deltas arrive as partial fragments
+            ; ({index, id, function:{name, arguments}}) that the stream handler
+            ; merges by index into completed calls.
+            if IsObject(delta) && delta.Has("tool_calls") {
+                for tcf in delta["tool_calls"] {
+                    if IsObject(tcf)
+                        toolCallAcc.Push(tcf)
+                }
+            }
             part := SSEParser._parseDeltaContent(delta)
             if !part.HasOwnProp("type")
                 continue
@@ -62,6 +72,20 @@ class SSEParser {
                 reasoningAcc .= part.content
             else if part.type = "content"
                 contentAcc .= part.content
+        }
+        ; A tool-call event (the model asked to search) - handled before the
+        ; plain content branch so the stream handler can run the tool loop.
+        if toolCallAcc.Length {
+            result := { type: "tool_call", toolCalls: toolCallAcc }
+            finish := choices[1].Has("finish_reason") ? choices[1]["finish_reason"] : ""
+            if finish != "" && finish != "null" {
+                result.reason := finish
+                if parsed.Has("model") && parsed["model"] != ""
+                    result.model := parsed["model"]
+                if parsed.Has("usage") && IsObject(parsed["usage"])
+                    result.usage := SSEParser._buildUsageObject(parsed["usage"])
+            }
+            return result
         }
         result := {}
         if reasoningAcc != "" {

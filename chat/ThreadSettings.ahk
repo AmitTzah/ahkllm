@@ -30,7 +30,6 @@ class ThreadSettings {
             systemMessage: "",
             reasoning: "",
             temperature: "",
-            codeExecution: row.HasOwnProp("codeExecution") ? row.codeExecution : false,
             webSearch: row.HasOwnProp("webSearch") ? row.webSearch : false,
             fontSize: (row.HasOwnProp("fontSize") && row.fontSize) ? row.fontSize : 17,
             assistantName: "",
@@ -81,7 +80,6 @@ class ThreadSettings {
         requestParams["reasoningOverride"] := eff.reasoning
         requestParams["temperatureOverride"] := eff.temperature
         requestParams["fontSize"] := eff.fontSize
-        requestParams["codeExecution"] := eff.codeExecution
         requestParams["webSearch"] := eff.webSearch
         if eff.assistantId
             requestParams["activeAssistantId"] := eff.assistantId
@@ -94,7 +92,6 @@ class ThreadSettings {
         requestParams["systemOverride"] := ""
         requestParams["reasoningOverride"] := ""
         requestParams["temperatureOverride"] := ""
-        requestParams["codeExecution"] := false
         requestParams["webSearch"] := false
         if requestParams.Has("activeAssistantId")
             requestParams.Delete("activeAssistantId")
@@ -114,7 +111,6 @@ class ThreadSettings {
             systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
             reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
             temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
-            codeExecution: requestParams.Has("codeExecution") ? requestParams["codeExecution"] : false,
             webSearch: requestParams.Has("webSearch") ? requestParams["webSearch"] : false,
             fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
         }
@@ -130,7 +126,6 @@ class ThreadSettings {
         temperature := requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : ""
         defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
         fontSize := requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
-        codeExecution := requestParams.Has("codeExecution") ? requestParams["codeExecution"] : false
         webSearch := requestParams.Has("webSearch") ? requestParams["webSearch"] : false
 
         assistantName := ""
@@ -159,7 +154,6 @@ class ThreadSettings {
             systemMessage: systemMessage,
             reasoning: reasoning,
             temperature: temperature,
-            codeExecution: codeExecution,
             webSearch: webSearch,
             fontSize: fontSize,
             assistantName: assistantName,

@@ -84,18 +84,6 @@
 .composer-tools .icon-btn svg { width: 20px; height: 20px; }
 .composer-tools .icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 
-.tools-dropdown { position: relative; display: flex; }
-.tools-menu {
-  position: absolute; bottom: calc(100% + 12px); left: 0; z-index: 40;
-  background: var(--bg-panel); border: 1px solid var(--border-main);
-  border-radius: var(--radius-md); box-shadow: var(--shadow-modal);
-  padding: 16px; width: 260px; display: none; flex-direction: column; gap: 10px;
-}
-.tools-dropdown.menu-open .tools-menu { display: flex; }
-.tools-menu-header { font-size: 13px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-.tool-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
-.tool-toggle-row .lbl { font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 10px; font-weight: 500;}
-
 .composer-inner textarea { 
   flex: 1; border: none; background: transparent; font-family: var(--font-ui); font-size: 16px;
   color: var(--text-primary); outline: none; resize: none; max-height: 250px; padding: 8px 0; line-height: 1.6;

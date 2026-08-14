@@ -102,24 +102,22 @@ describe('populateCurrentSettings', () => {
         assert.strictEqual(ctx.window._currentSettings.assistantDescription, 'A friendly bot');
     });
 
-    it('stores the advanced toggles and syncs the right-rail switches', () => {
+    it('stores the Web Search toggle and syncs the right-rail switch (code execution removed)', () => {
         const ctx = loadModule();
         const added = [], removed = [];
-        const switches = [0, 1].map(() => ({
+        const switches = [0].map(() => ({
             classList: { add: (c) => added.push(c), remove: (c) => removed.push(c), contains: () => false }
         }));
         ctx.document.querySelectorAll = () => switches;
 
         ctx.populateCurrentSettings({
             model: 'deepseek/deepseek-v4-flash', systemMessage: '', reasoning: '', temperature: '',
-            codeExecution: false, webSearch: true
+            webSearch: true
         });
 
-        assert.strictEqual(ctx.window._currentSettings.codeExecution, false);
+        assert.strictEqual(ctx.window._currentSettings.codeExecution, undefined, 'codeExecution stub was removed');
         assert.strictEqual(ctx.window._currentSettings.webSearch, true);
-        // Row order: Code Execution / Web Search
-        assert.strictEqual(added.length, 1, 'one switch should turn on');
-        assert.ok(removed.includes('on'), 'off toggle should have its class removed');
+        assert.ok(added.includes('on'), 'web search switch should turn on');
     });
 });
 

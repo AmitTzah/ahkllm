@@ -170,27 +170,34 @@ scenarios.push({
 
 scenarios.push({
   id: 20,
-  name: 'Right-rail Advanced toggles (Code Execution / Web Search) do nothing',
-  regression: true, // FIXED bug kept as a regression check (toggles must keep persisting as stubs)
+  name: 'Composer Tools dropdown and Code Execution/Calculator stubs removed; right-rail Web Search is the only tool toggle',
+  regression: true, // web-search milestone: stubs removed, only web_search remains
   mode: null,
   settings: {},
   async body({ cdp }) {
     await showChat();
+    // The composer Tools dropdown (Web Search / Code Execution / Calculator)
+    // is gone entirely.
+    const dropdown = await cdp.eval('document.querySelector(".tools-dropdown") !== null');
+    if (dropdown) throw new Error('composer Tools dropdown still present');
+
+    // Right-rail Advanced: exactly one toggle row, labeled Web Search.
     await cdp.click('#advancedToggle');
     await cdp.waitFor('document.getElementById("advancedWrap").classList.contains("open")', 5000, 200, 'advanced open');
+    const rows = await cdp.eval('[...document.querySelectorAll("#advancedWrap .toggle-row")].map(r => (r.querySelector(".lbl") || {}).textContent)');
+    if (rows.length !== 1 || rows[0].indexOf('Web Search') < 0)
+      throw new Error('expected a single Web Search toggle, got ' + JSON.stringify(rows));
+
     await cdp.clearPosted();
-    await cdp.click('#advancedWrap .toggle-row .switch'); // first row = Code Execution
-    await sleep(900); // debounce 300ms + IPC round trip
+    await cdp.click('#advancedWrap .toggle-row .switch');
+    await sleep(1000); // debounce 300ms + IPC round trip
     const after = await cdp.postedMessages();
-    const nonSettings = after.filter((m) => !m.includes('"updateModelSettings"'));
-    if (nonSettings.length > 0) throw new Error('toggle triggered unexpected actions: ' + JSON.stringify(nonSettings));
     const lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop();
     if (!lastAfter) throw new Error('no updateModelSettings posted after toggling a switch');
     const payload = JSON.parse(lastAfter);
-    if (payload.codeExecution !== true) throw new Error('codeExecution not true in updateModelSettings payload: ' + lastAfter);
-    const toggled = await cdp.eval('document.querySelector("#advancedWrap .toggle-row .switch").classList.contains("on")');
-    if (!toggled) throw new Error('Code Execution switch did not stay visually on');
-    return 'toggle posts updateModelSettings with codeExecution=true and the switch stays on (on=' + toggled + ')';
+    if (payload.webSearch !== true) throw new Error('webSearch not true in updateModelSettings payload: ' + lastAfter);
+    if ('codeExecution' in payload) throw new Error('codeExecution stub still in payload: ' + lastAfter);
+    return 'stubs removed: no Tools dropdown, single Web Search toggle, no codeExecution in updateModelSettings';
   }
 });
 

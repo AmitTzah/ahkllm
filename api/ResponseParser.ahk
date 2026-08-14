@@ -12,8 +12,23 @@ class ResponseParser {
     ; Handles both DeepSeek's prompt_cache_hit_tokens and OpenAI/Gemini's
     ; prompt_tokens_details.cached_tokens formats.
     static ParseChatResponse(var) {
-        response := var.Get("choices")[1].Get("message").Get("content")
+        message := var.Get("choices")[1].Get("message")
+        response := message.Has("content") ? message["content"] : ""
         model := var.Get("model")
+
+        ; Tool calls (web_search) — returned so the stream/single-shot loop can
+        ; execute them and re-request with the results.
+        toolCalls := []
+        if message.Has("tool_calls") {
+            for tc in message["tool_calls"] {
+                fn := tc.Has("function") ? tc["function"] : ""
+                toolCalls.Push({
+                    id: tc.Has("id") ? tc["id"] : "",
+                    name: IsObject(fn) && fn.Has("name") ? fn["name"] : "",
+                    arguments: IsObject(fn) && fn.Has("arguments") ? fn["arguments"] : ""
+                })
+            }
+        }
 
         usage := { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, thinkingTokens: 0 }
         if var.Has("usage") {
@@ -46,7 +61,8 @@ class ResponseParser {
         return {
             response: response,
             model: model,
-            usage: usage
+            usage: usage,
+            toolCalls: toolCalls
         }
     }
 

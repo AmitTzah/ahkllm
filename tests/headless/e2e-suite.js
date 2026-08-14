@@ -49,7 +49,7 @@ async function runScenario(sc, iso, opts) {
     if (!noApp) launcher.resetDataDir(iso.sandboxData);
     const dataDir = noApp ? null : iso.sandboxData;
     if (!noApp) seed.writeSettings(dataDir, sc.settings || {}, endpoint);
-    if (!noApp && sc.preLaunch) sc.preLaunch(dataDir);
+    if (!noApp && sc.preLaunch) sc.preLaunch(dataDir, endpoint);
     const dbPath = (!noApp && sc.fixtures) ? seed.createDb(dataDir, sc.fixtures) : (!noApp ? path.join(dataDir, 'chat_history.db') : null);
     detail.dbPath = dbPath;
 
@@ -97,6 +97,7 @@ const scenarios = [].concat(
   require('./scenarios/settings'),
   require('./scenarios/usage-tokens'),
   require('./scenarios/chat-ui'),
+  require('./scenarios/search-tools'),
   require('./scenarios/misc'),
   require('./scenarios/chat-locks'),
   require('./scenarios/db-verify')
