@@ -154,16 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-14). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Round 6 follow-up: #230 FIXED -
-  _LoadThreadAndRefreshUI now posts a threadList refresh after every load
-  (command-created chats appear in the sidebar immediately), and the default
-  chat-mode Digest commands (Summarize/Translate to English/Explain) now carry
-  stream: true. Scenario 230 flipped to a regression check that also verifies
-  the #229 single-shot render in the REAL WebView DOM. Verified:
-  `--scenarios=230` PASS, full headless suite 224/224 PASS, `npm run test:fast`
-  green (607 AHK + 574 JS). Next: commit, close the entry in History.
+- **Where we left off:** 2026-08-14 - Round 6 follow-up COMPLETE: #229 + #230
+  verified, fixed + committed (02ca615, e62d32a) and closed in History. Final
+  verification green: full headless suite 224/224 PASS and `npm run test:fast`
+  (607 AHK + 574 JS). Next round: fresh intake when the user asks.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -214,45 +210,21 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 230. Chat-mode command threads never appear in the sidebar (and the default Summarize/Translate/Explain commands don't stream)
-
-**Scenario:** 230 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** With the chat window open, run any chat-mode command (e.g. the
-default `Summarize` command with text selected) and watch the sidebar.
-
-**Expected:** a new chat appears in the sidebar (titled with the command name)
-and the response streams in the chat window.
-
-**Actual (pre-fix):** the thread is created in the DB by Main's
-`processInitialRequest` and ChatWindow loads it, but nothing refreshed the
-WebView sidebar — the new chat was invisible until an unrelated action posted
-`threadList` (and the default `Summarize`/`Translate to English`/`Explain`
-commands had no `stream` flag, so they were single-shot instead of streaming
-like every other chat-mode default).
-
-**Evidence:** `chat/ChatUtils.ahk` `_LoadThreadAndRefreshUI` now calls
-`_postThreadListRefresh()` after every load (matching handleBranchSwitch #174
-and navigateToMessage #209); `default-settings/DefaultSettings.ahk` Digest-
-group chat commands (Summarize/Translate to English/Explain) now carry
-`stream: true` like every other chat-mode default.
-
-**Verification:** headless — the scenario launches the real app, creates a
-"Summarize"-style thread + system/user messages in the live DB while the app
-runs (exactly what `processInitialRequest` does), loads it through the real
-`load-thread` IPC, and asserts: pre-fix the sidebar did NOT contain the new
-thread (scenario 230 PASS reproduced it); post-fix the thread appears in the
-sidebar right after the load, a single-shot `streamDone` renders in the REAL
-WebView DOM, and the default chat-mode Digest commands carry `stream: true`
-(scenario 230 flipped to a regression check).
+*No open bugs.*
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-14 - "Chat-mode command threads never appear in the sidebar (and the
+  default Summarize/Translate/Explain commands don't stream)" - FIXED +
+  COMMITTED in e62d32a: fix(chat): _LoadThreadAndRefreshUI now posts a
+  threadList refresh after every load (command-created chats appear
+  immediately) and the default chat-mode Digest commands carry stream:true.
+  Scenario 230 flipped to a regression check (real-app sidebar + real-DOM
+  single-shot render + streaming defaults); full headless suite 224/224 PASS
+  and test:fast green (607 AHK + 574 JS).
 
 - 2026-08-14 - "Non-streaming (single-shot) chat responses are never rendered
   in the WebView - onStreamDone only persisted when the streaming buffers were
