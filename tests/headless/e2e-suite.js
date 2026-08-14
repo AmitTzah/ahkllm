@@ -98,6 +98,7 @@ const scenarios = [].concat(
   require('./scenarios/usage-tokens'),
   require('./scenarios/chat-ui'),
   require('./scenarios/misc'),
+  require('./scenarios/chat-locks'),
   require('./scenarios/db-verify')
 ).sort((a, b) => a.id - b.id);
 // ---------- Runner ----------

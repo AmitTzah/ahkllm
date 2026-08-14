@@ -326,6 +326,11 @@ async function _submitLockModal(threadId, mode, info) {
         payload.currentPasswordHash = await derivePasswordHash(current, info.salt, info.iterations);
     }
     await Ipc.request('setThreadLock', payload);
+    // Keep the page's salt/iterations in sync so a follow-up change/remove
+    // derives the CURRENT password hash with the CURRENT salt.
+    if (mode === 'set' || mode === 'change') {
+      _lockInfo[threadId] = { salt: payload.salt, iterations: payload.iterations };
+    }
     var m = document.getElementById('threadLockModal');
     if (m) m.remove();
   } catch (e) {

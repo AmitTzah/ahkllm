@@ -225,6 +225,10 @@ describe('lock modal flows', () => {
       nodeCrypto.pbkdf2Sync('oldpass', Buffer.from(salt, 'hex'), 1000, 32, 'sha256').toString('hex')
     );
     assert.strictEqual(msg.payload.passwordHash.length, 64);
+    // The page must keep the CURRENT salt after a change so a follow-up
+    // remove/change derives the current hash correctly.
+    assert.strictEqual(sandbox._lockInfo.t1.salt, msg.payload.salt);
+    assert.strictEqual(sandbox._lockInfo.t1.iterations, msg.payload.iterations);
   });
 
   it('remove flow posts mode remove with the current-password hash', async () => {

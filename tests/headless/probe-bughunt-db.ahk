@@ -914,7 +914,7 @@ DanglingMidstreamRows() {
 
 ; ------------------------------------------------------------------
 ; CHECK 24: the v6 migration backfill (bug #10 follow-up) must apply
-; exactly ONCE per DB - PRAGMA user_version=6 guards the one-time re-price
+; exactly ONCE per DB - PRAGMA user_version=7 guards the one-time re-price
 ; of legacy rows. After a price change, a reopen must NOT re-run the
 ; backfill (the costs stay at the first-open prices).
 ; ------------------------------------------------------------------

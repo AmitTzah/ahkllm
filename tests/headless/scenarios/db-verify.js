@@ -21,9 +21,9 @@ scenarios.push({
     const dbPath=seed.createDb(dir,{ threads:[{id:"t1",title:"x"}], messages:[{id:"m1",thread_id:"t1",role:"user",content:"hi"}]});
     function q(sql){ return seed.query(dbPath, sql); }
     const tables=q("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").map(r=>r.name);
-    for(const t of ["chat_threads","messages","message_attachments","chat_usage","command_usage"]) if(!tables.includes(t)) throw new Error("missing "+t);
+    for(const t of ["chat_threads","messages","message_attachments","chat_usage","command_usage","chat_locks"]) if(!tables.includes(t)) throw new Error("missing "+t);
     const cols=q("PRAGMA table_info(chat_threads)").map(r=>r.name);
-    for(const c of ["cumulative_cost","font_size","folder_id","advanced_toggles"]) if(!cols.includes(c)) throw new Error("missing col "+c);
+    for(const c of ["cumulative_cost","font_size","folder_id","advanced_toggles","is_locked"]) if(!cols.includes(c)) throw new Error("missing col "+c);
     const w=new DatabaseSync(dbPath); w.exec("INSERT INTO messages_fts(msg_id, content) VALUES ('probe','hello FTS world')"); w.close();
     if(q("SELECT * FROM messages_fts WHERE messages_fts MATCH 'hello'").length!==1) throw new Error("FTS");
     if(q("SELECT COUNT(*) as c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads)")[0].c!==0) throw new Error("orphan");
@@ -544,7 +544,7 @@ scenarios.push({
 
 scenarios.push({
   id: 185,
-  regression: true, // REFUTED lead (2026-08-10): two real AHK processes racing ChatDB.Open on one WAL DB stayed idempotent (3/3 runs: no lost rows, no duplicated FTS entries, user_version=6)
+  regression: true, // REFUTED lead (2026-08-10): two real AHK processes racing ChatDB.Open on one WAL DB stayed idempotent (3/3 runs: no lost rows, no duplicated FTS entries, user_version=7)
   name: 'Cross-process startup on one WAL DB: two AHK processes racing _CreateSchema/_Migrate + the FTS DELETE+INSERT rebuild stay idempotent (no lost rows, no duplicated index entries, user_version guarded)',
   mode: null,
   noApp: true,
@@ -586,7 +586,7 @@ scenarios.push({
     if (dups.length > 0)
       throw new Error('FTS index has duplicated entries after the race (BUG present): ' + JSON.stringify(dups));
     if (ver !== 6)
-      throw new Error('user_version not guarded at 6: ' + ver);
+      throw new Error('user_version not guarded at 7: ' + ver);
     return 'two AHK processes raced ChatDB.Open (schema + migrations + FTS rebuild) on one WAL DB: both exited 0, user_version=' + ver +
       ', messages=' + msgCount + ' = messages_fts=' + ftsCount + ', 0 duplicated index entries - the startup path stays idempotent under busy_timeout';
   }
@@ -594,7 +594,7 @@ scenarios.push({
 
 scenarios.push({
   id: 188,
-  regression: true, // REFUTED lead (2026-08-10): the user_version=6 guard holds - the v6 cost backfill runs exactly once; a reopen after a price change never re-prices legacy rows
+  regression: true, // REFUTED lead (2026-08-10): the user_version=7 guard holds - the v6 cost backfill runs exactly once; a reopen after a price change never re-prices legacy rows
   name: 'Legacy schema-v6 migration backfill applies ONCE (user_version guard): reopening after a price change keeps the first-open snapshot prices',
   mode: null,
   noApp: true,
@@ -613,7 +613,7 @@ scenarios.push({
     const c2M = text.match(/cost2=([\d.]+)/);
     if (!v1M || !v2M || !c1M || !c2M) throw new Error('probe output missing fields: ' + text);
     const v1 = Number(v1M[1]), v2 = Number(v2M[1]), cost1 = Number(c1M[1]), cost2 = Number(c2M[1]);
-    if (v1 !== 6 || v2 !== 6) throw new Error('user_version not 6 after migration: ' + text);
+    if (v1 !== 7 || v2 !== 7) throw new Error('user_version not 7 after migration: ' + text);
     if (cost1 <= 0) throw new Error('backfill did not run on the first open: ' + text);
     if (cost1 !== cost2) throw new Error('reopen re-priced the legacy row (guard FAILED): cost1=' + cost1 + ' cost2=' + cost2);
     return 'v5 DB upgraded to user_version=' + v1 + '; the one-time backfill priced the legacy assistant row at cost1=' + cost1 +

@@ -30,6 +30,7 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 - **Drag in files.** Images, PDFs (scanned pages included), DOCX, and code, straight into the conversation.
 - **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, plus any OpenAI-compatible provider you add (OpenRouter, local servers, whatever has an API endpoint). Model selection is per conversation, per command, and per assistant.
 - **Everything stays organized.** Folders, trash with auto-retention, real-time search across all your chats, assistant profiles with custom system prompts, and per-thread model, reasoning, and temperature settings.
+- **Lock sensitive chats.** Protect any chat with a password: locked chats show a generic title + lock icon, are hidden from search, and refuse to load until unlocked. See [docs/locked-chats.md](docs/locked-chats.md) for exactly what the lock protects.
 - **Know what it costs.** The usage dashboard charts tokens, spend, speed, and latency per model and provider, with filters and CSV export. A built-in API logs viewer lets you inspect requests and responses when something looks off.
 
 ## Requirements
@@ -65,6 +66,8 @@ Default hotkeys: `` ` `` (backtick) opens the command menu, Ctrl+Alt+R reloads t
 ## Where your data lives
 
 Chats, settings, and attachments are stored locally under `%APPDATA%\AhkLLM\`: `settings.json`, a SQLite chat database with real-time search, and your uploaded files. The only thing leaving your machine is the request you send to the provider you picked.
+
+Chat passwords are stored as PBKDF2-SHA-256 hashes and gate access inside the app; chat content itself is **not encrypted at rest** (see [Locked Chats](docs/locked-chats.md)).
 
 ## Running Tests
 
