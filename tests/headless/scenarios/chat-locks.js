@@ -449,8 +449,13 @@ scenarios.push({
     if (states.lock !== false || !states.unlock || states.change !== false)
       throw new Error('wrong menu states for a session-unlocked chat: ' + JSON.stringify(states));
     await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="lock"]');
-    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'overlay returns after relock');
+    await cdp.waitFor('window.activeThreadId === "" && document.querySelectorAll("#chat-messages .msg").length === 0 && document.getElementById("threadLockOverlay") === null', 15000, 300, 'relock is quiet (no overlay, content cleared)');
     await cdp.waitFor(`window._threadMeta['t-lock-246'] && window._threadMeta['t-lock-246'].title === 'Locked chat'`, 15000, 300, 'title redacted again after relock');
+    // The unlock prompt belongs to OPENING a locked chat, not to locking it.
+    await cdp.click(lockedItem('t-lock-246'));
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'unlock prompt when reopening a locked chat');
+    await cdp.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+    await cdp.waitFor('document.getElementById("threadLockOverlay") === null && window.activeThreadId === ""', 10000, 300, 'prompt dismissed');
 
     // Never-locked chat: only Lock Chat is active and it opens the protect modal.
     if (!(await cdp.eval(openMenu('t-open-246')))) throw new Error('Lock options button not found (open chat)');
@@ -462,6 +467,70 @@ scenarios.push({
     await cdp.waitFor('document.getElementById("threadLockModal") !== null', 10000, 300, 'protect modal opens');
     await cdp.waitFor('document.getElementById("lockModalSave") && !document.getElementById("lockModalSave").disabled', 10000, 300, 'save enabled in protect modal');
     return 'lock menu shows the right three states everywhere; relock and protect flows work';
+  }
+});
+
+scenarios.push({
+  id: 247,
+  name: 'Locking the active chat: first-time lock keeps it open, relock shows the lock state',
+  regression: true,
+  mode: null,
+  fixtures: {
+    threads: [
+      { id: 't-open-247', title: 'Active Chat', active_leaf_id: 't-open-247-a1' }
+    ],
+    messages: [
+      { id: 't-open-247-u1', thread_id: 't-open-247', role: 'user', content: 'hello' },
+      { id: 't-open-247-a1', thread_id: 't-open-247', role: 'assistant', content: 'hi there', parent_id: 't-open-247-u1', model: 'deepseek/deepseek-v4-flash' }
+    ]
+  },
+  async body({ cdp }) {
+    const openMenu = (id) => `(() => {
+      const item = document.querySelector(${JSON.stringify(lockedItem(id))});
+      const btn = item && item.querySelector('.chat-action-btn[title="Lock options"]');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()`;
+
+    await showChat();
+    await cdp.waitFor('document.querySelector(' + JSON.stringify(lockedItem('t-open-247')) + ') !== null', 15000, 300, 'chat in sidebar');
+    await cdp.click(lockedItem('t-open-247'));
+    await cdp.waitFor('window.activeThreadId === "t-open-247" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'chat open');
+
+    // First-time lock: set a password on the ACTIVE chat.
+    if (!(await cdp.eval(openMenu('t-open-247')))) throw new Error('Lock options button not found');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu');
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="lock"]');
+    await cdp.waitFor('document.getElementById("threadLockModal") !== null', 10000, 300, 'protect modal');
+    await cdp.waitFor('document.getElementById("lockModalSave") && !document.getElementById("lockModalSave").disabled', 10000, 300, 'save enabled');
+    await cdp.type('#lockModalNew', LOCK_PASSWORD);
+    await cdp.type('#lockModalConfirm', LOCK_PASSWORD);
+    await cdp.click('#lockModalSave');
+    await cdp.waitFor('document.getElementById("threadLockModal") === null', 45000, 400, 'modal closes after saving');
+
+    // The chat the user just locked must NOT pop the lock overlay: the session
+    // stays unlocked for it and the content remains visible.
+    const afterSet = await cdp.eval(`(() => ({
+      overlay: document.getElementById('threadLockOverlay') !== null,
+      msgs: document.querySelectorAll('#chat-messages .msg').length,
+      active: window.activeThreadId
+    }))()`);
+    if (afterSet.overlay) throw new Error('lock overlay appeared right after setting the password');
+    if (afterSet.msgs < 1) throw new Error('chat content disappeared after setting the password');
+    if (afterSet.active !== 't-open-247') throw new Error('active thread changed: ' + afterSet.active);
+
+    // Relock via the menu: the chat is now locked again, so the lock overlay
+    // (the locked state) shows and the title is redacted.
+    if (!(await cdp.eval(openMenu('t-open-247')))) throw new Error('Lock options button not found (relock)');
+    await cdp.waitFor('document.getElementById("lockMenuDropdown") !== null', 5000, 300, 'lock menu (relock)');
+    await cdp.click('#lockMenuDropdown .lock-menu-item[data-action="lock"]');
+    await cdp.waitFor('window.activeThreadId === "" && document.querySelectorAll("#chat-messages .msg").length === 0 && document.getElementById("threadLockOverlay") === null', 15000, 300, 'relock is quiet (no overlay, content cleared)');
+    await cdp.waitFor(`window._threadMeta['t-open-247'] && window._threadMeta['t-open-247'].title === 'Locked chat'`, 15000, 300, 'title redacted after relock');
+    // The unlock prompt belongs to OPENING a locked chat, not to locking it.
+    await cdp.click(lockedItem('t-open-247'));
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'unlock prompt when reopening');
+    return 'first-time lock keeps the chat open; relock is quiet (no overlay), prompt only when reopening';
   }
 });
 

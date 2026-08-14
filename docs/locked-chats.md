@@ -43,9 +43,10 @@ an XSS or a direct IPC call cannot unlock a chat without the password.
    chats freely; it stays unlocked) and restores the real chat title, so
    renaming works again.
 3. **Lock options menu:** the lock icon on any chat opens a menu with **Lock Chat**
-   (relocks immediately once a password exists), **Unlock Chat**, and **Change
-   password / remove lock**. Options that do not apply to the chat's current
-   state are greyed out.
+   (relocks immediately once a password exists — the chat locks quietly, its
+   content clears, and no prompt pops up; the password prompt only appears when
+   you open the chat again), **Unlock Chat**, and **Change password / remove
+   lock**. Options that do not apply to the chat's current state are greyed out.
 4. **Leave the password prompt:** press **Escape**, click the **×**, or click
    **Cancel** — the app returns to the empty state without opening the chat.
 5. **Change / remove the password:** lock menu → **Change password / remove lock**,

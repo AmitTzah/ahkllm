@@ -54,14 +54,26 @@ handleSetThreadLock(parsed) {
 }
 
 ; Relock a session-unlocked chat immediately (sidebar lock menu -> "Lock Chat").
+; Locking must NOT pop the password prompt: it hides the content and redacts
+; the title; the prompt appears only when the user OPENS the chat again.
 handleLockChatNow(parsed) {
     global activeThreadId
     threadId := parsed.Get("threadId", "")
     if !threadId || !ThreadLockService.IsLocked(threadId)
         throw Error("Chat is not locked.", "ThreadLockInput")
     ThreadLockService.Relock(threadId)
-    if activeThreadId = threadId
-        _postLockedThreadState(threadId)
+    if activeThreadId = threadId {
+        ; The chat the user just locked must not keep its content on screen -
+        ; clear the pane back to the empty state (same as dismissing the lock
+        ; prompt). Clicking the chat again shows the unlock prompt.
+        activeThreadId := ""
+        _resetToDefaultSettings()
+        postWebMessage("loadThread", "")
+        postWebMessage("initChatMode", [])
+        postCurrentSettingsToWebView()
+        _sendDropdownLabel()
+        chatWindow.Title := AppInfo.Name
+    }
     _postThreadListRefresh()
 }
 
