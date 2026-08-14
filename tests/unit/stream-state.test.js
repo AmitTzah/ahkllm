@@ -348,6 +348,73 @@ describe('onStreamDone reasoning-only responses', () => {
     });
 });
 
+describe('onStreamDone single-shot responses (bug #229)', () => {
+    // Bug #229: a NON-STREAMING (single-shot) chat response - e.g. a chat-mode
+    // command with "Stream Response" OFF, like the default Summarize command -
+    // streams no content/reasoning chunks, so the streaming buffers are empty.
+    // onStreamDone must still render the persisted assistant message from the
+    // streamDone dbMsg; before the fix the bubble only appeared after a reload.
+    function makeSingleShotCtx() {
+        const ctx = loadStreamModule();
+        ctx.activeThreadId = 't-1';
+        ctx.chatMessages = [{ id: 'u1', role: 'user', content: 'question' }];
+        ctx.streamState.active = false;
+        ctx.streamState.bubble = null;
+        ctx.streamState.contentDiv = null;
+        ctx.streamState.thinkingDetails = null;
+        ctx.streamState.contentBuffer = '';
+        ctx.streamState.thinkingBuffer = '';
+        ctx.streamState.modelName = 'deepseek-v4-pro';
+        ctx.streamState.userScrolledUp = false;
+        let renders = 0;
+        ctx.renderChatMessages = () => { renders++; };
+        return { ctx, renders: () => renders };
+    }
+
+    it('renders the persisted assistant message from dbMsg when the buffers are empty', () => {
+        const { ctx, renders } = makeSingleShotCtx();
+        ctx.onStreamDone({
+            model: 'deepseek-v4-pro',
+            displayName: 'deepseek-v4-pro',
+            threadId: 't-1',
+            dbMsg: { id: 'a1', role: 'assistant', content: 'The summary the API returned.', parentId: 'u1', tokenCount: 9 }
+        });
+        assert.strictEqual(ctx.chatMessages.length, 2, 'the single-shot response must be added to chatMessages');
+        const a1 = ctx.chatMessages[1];
+        assert.strictEqual(a1.id, 'a1');
+        assert.strictEqual(a1.role, 'assistant');
+        assert.strictEqual(a1.content, 'The summary the API returned.');
+        assert.strictEqual(a1.model, 'deepseek-v4-pro');
+        assert.strictEqual(renders(), 1, 'the view must be re-rendered so the bubble appears immediately');
+    });
+
+    it('does not duplicate an already-present message (dedup by id)', () => {
+        const { ctx } = makeSingleShotCtx();
+        ctx.chatMessages = [
+            { id: 'u1', role: 'user' },
+            { id: 'a1', role: 'assistant', content: 'already rendered' }
+        ];
+        ctx.onStreamDone({
+            model: 'deepseek-v4-pro',
+            threadId: 't-1',
+            dbMsg: { id: 'a1', role: 'assistant', content: 'already rendered' }
+        });
+        assert.strictEqual(ctx.chatMessages.length, 2, 'an already-present message must not be duplicated');
+    });
+
+    it('does not render a non-current single-shot response into the current array', () => {
+        const { ctx, renders } = makeSingleShotCtx();
+        ctx.activeThreadId = 't-2';
+        ctx.onStreamDone({
+            model: 'deepseek-v4-pro',
+            threadId: 't-1',
+            dbMsg: { id: 'a1', role: 'assistant', content: 'other thread summary', parentId: 'u1' }
+        });
+        assert.strictEqual(ctx.chatMessages.length, 1, 'a wrong-thread single-shot response must not be pushed');
+        assert.strictEqual(renders(), 0);
+    });
+});
+
 describe('_updateUserTokenCount', () => {
     it('applies a zero contribution to the last user message (bug #150)', () => {
         const ctx = loadStreamModule();

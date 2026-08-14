@@ -169,6 +169,15 @@ function onStreamDone(data) {
   if (isCurrent && (streamState.contentBuffer || streamState.thinkingBuffer)) {
     _persistStreamedMessage(streamState.contentBuffer, modelName, dbMsg);
     if (streamState.bubble) addStreamingActions(streamState.bubble, chatMessages.length - 1);
+  } else if (isCurrent && dbMsg && dbMsg.role === 'assistant') {
+    // Bug #229: a NON-STREAMING (single-shot) chat response never streams any
+    // content/reasoning chunks, so the buffers are empty and the branch above
+    // is skipped - AHK persisted the assistant row and posted streamDone with
+    // dbMsg, but the bubble never appeared until the thread was reloaded
+    // (e.g. chat-mode commands with "Stream Response" OFF, like the default
+    // Summarize command). Render the persisted DB message directly.
+    _persistStreamedMessage(dbMsg.content || '', modelName, dbMsg);
+    if (typeof renderChatMessages === 'function') renderChatMessages(chatMessages);
   }
 
   if (isCurrent) _updateUserTokenCount(data);

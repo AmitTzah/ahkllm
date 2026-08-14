@@ -1134,4 +1134,73 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 229,
+  name: 'A non-streaming (single-shot) chat response must render from dbMsg when the streaming buffers are empty - onStreamDone now persists the assistant message directly from streamDone.dbMsg and re-renders chatMessages, so a chat-mode command with "Stream Response" OFF (e.g. the default Summarize command) shows its response instead of waiting for a reload (bug #229 FIXED)',
+  regression: true, // FIXED bug kept as a regression check (single-shot responses must render immediately)
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'chat', 'stream.js'), 'utf8');
+    const sandbox = {
+      document: {
+        getElementById: () => null,
+        createElement: () => ({ style: {}, appendChild: () => {}, querySelector: () => null, querySelectorAll: () => [], insertBefore: () => {} }),
+        querySelectorAll: () => [],
+        querySelector: () => null
+      },
+      window: { addEventListener: () => {} },
+      console,
+      md: { render: (c) => c },
+      setTimeout, clearTimeout,
+      chatMessages: [],
+      sessionStorage: { getItem: () => null, setItem: () => {} },
+      streamState: undefined,
+      hideLoadingIndicator: () => {},
+      setChatButtonsEnabled: () => {},
+      addMessageActions: () => {},
+      escHtml: (s) => String(s || ''),
+      renderChatMessages: () => {},
+      renderNavList: () => {}
+    };
+    sandbox.global = sandbox;
+    vm.runInContext(src, vm.createContext(sandbox));
+
+    // Single-shot completion shape: AHK persisted the assistant row and posts
+    // streamDone with dbMsg + threadId, but no content/reasoning chunk was
+    // ever streamed, so the streaming buffers are empty.
+    sandbox.activeThreadId = 't-229';
+    sandbox.chatMessages = [{ id: 'm-229-u1', role: 'user', content: 'question' }];
+    let rendered = 0;
+    sandbox.renderChatMessages = () => { rendered++; };
+    sandbox.streamState.active = false;
+    sandbox.streamState.bubble = null;
+    sandbox.streamState.contentDiv = null;
+    sandbox.streamState.thinkingDetails = null;
+    sandbox.streamState.contentBuffer = '';
+    sandbox.streamState.thinkingBuffer = '';
+    sandbox.streamState.modelName = 'deepseek-v4-pro';
+    sandbox.streamState.userScrolledUp = false;
+    sandbox.onStreamDone({
+      model: 'deepseek-v4-pro',
+      displayName: 'deepseek-v4-pro',
+      threadId: 't-229',
+      dbMsg: { id: 'm-229-a1', role: 'assistant', content: 'The summary the API returned.', parentId: 'm-229-u1', tokenCount: 9 }
+    });
+
+    // FIXED (bug #229): the persisted assistant message is added to
+    // chatMessages from dbMsg even though no chunks were streamed, and the
+    // view is re-rendered so the bubble appears immediately.
+    const renderedIds = sandbox.chatMessages.map((m) => m.id);
+    if (renderedIds.length !== 2 || renderedIds.indexOf('m-229-a1') < 0 || rendered !== 1)
+      throw new Error('single-shot response still not rendered (fix incomplete): ids=' + JSON.stringify(renderedIds) + ' renders=' + rendered);
+    const a1 = sandbox.chatMessages.find((m) => m.id === 'm-229-a1');
+    if (!a1 || a1.role !== 'assistant' || a1.content !== 'The summary the API returned.')
+      throw new Error('single-shot response content lost (fix incomplete): ' + JSON.stringify(a1));
+    return 'single-shot streamDone (dbMsg present, buffers empty) rendered chatMessages=[' + renderedIds.join(',') +
+      '] with renders=' + rendered + ' - the persisted assistant message appears immediately without a reload';
+  }
+});
+
 module.exports = scenarios;
