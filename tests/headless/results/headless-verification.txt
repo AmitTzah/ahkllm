@@ -1,5 +1,5 @@
-# 2026-08-14T12:24:55.445Z | run of 1 scenario(s)
-PASS | #245 | Password change and removal require the current password | password changed (new hash stored) and removed (lock row gone, title restored) | 4.8s
+# 2026-08-14T12:43:15.929Z | run of 1 scenario(s)
+PASS | #185 | Cross-process startup on one WAL DB: two AHK processes racing _CreateSchema/_Migrate + the FTS DELETE+INSERT rebuild stay idempotent (no lost rows, no duplicated index entries, user_version guarded) | two AHK processes raced ChatDB.Open (schema + migrations + FTS rebuild) on one WAL DB: both exited 0, user_version=7, messages=150 = messages_fts=150, 0 duplicated index entries - the startup path stays idempotent under busy_timeout | 1.0s
 
 Summary: 1/1 scenarios PASS
 Real profile restored: yes

@@ -585,7 +585,7 @@ scenarios.push({
       throw new Error('FTS index diverged after the race (BUG present): messages=' + msgCount + ' fts=' + ftsCount);
     if (dups.length > 0)
       throw new Error('FTS index has duplicated entries after the race (BUG present): ' + JSON.stringify(dups));
-    if (ver !== 6)
+    if (ver !== 7)
       throw new Error('user_version not guarded at 7: ' + ver);
     return 'two AHK processes raced ChatDB.Open (schema + migrations + FTS rebuild) on one WAL DB: both exited 0, user_version=' + ver +
       ', messages=' + msgCount + ' = messages_fts=' + ftsCount + ', 0 duplicated index entries - the startup path stays idempotent under busy_timeout';

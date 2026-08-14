@@ -38,70 +38,70 @@ models := Map(    ; -- DeepSeek --
     "openai/gpt-4", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 30, cachedInput: 0, output: 60, context: 8192, reasoning: false, vision: false
     },
     "openai/gpt-4.1", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 2, cachedInput: 0.5, output: 8, context: 1047576, reasoning: false, vision: true
     },
     "openai/gpt-4.1-mini", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 0.4, cachedInput: 0.1, output: 1.6, context: 1047576, reasoning: false, vision: true
     },
     "openai/gpt-4.1-nano", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 0.1, cachedInput: 0.025, output: 0.4, context: 1047576, reasoning: false, vision: true
     },
     "openai/gpt-4o", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 2.5, cachedInput: 1.25, output: 10, context: 128000, reasoning: false, vision: true
     },
     "openai/gpt-4o-2024-05-13", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 5, cachedInput: 0, output: 15, context: 128000, reasoning: false, vision: true
     },
     "openai/gpt-4o-2024-08-06", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 2.5, cachedInput: 1.25, output: 10, context: 128000, reasoning: false, vision: true
     },
     "openai/gpt-4o-2024-11-20", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 2.5, cachedInput: 1.25, output: 10, context: 128000, reasoning: false, vision: true
     },
     "openai/gpt-4o-mini", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 0.15, cachedInput: 0.075, output: 0.6, context: 128000, reasoning: false, vision: true
     },
     "openai/gpt-4-turbo", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 10, cachedInput: 0, output: 30, context: 128000, reasoning: false, vision: true
     },
@@ -143,7 +143,7 @@ models := Map(    ; -- DeepSeek --
     "openai/gpt-5.3-chat-latest", {
         provider: "openai", api: "openai-completions",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens"),
-        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high", "xhigh", "xhigh", "max", "max"),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
         thinkingOff: "none",
         input: 1.75, cachedInput: 0.175, output: 14, context: 128000, reasoning: false, vision: true
     },
@@ -305,43 +305,43 @@ models := Map(    ; -- DeepSeek --
     "google/deep-research-max-preview-04-2026", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 2, cachedInput: 0.2, output: 12, context: 131072, reasoning: true, vision: true
     },
     "google/deep-research-preview-04-2026", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 2, cachedInput: 0.2, output: 12, context: 131072, reasoning: true, vision: true
     },
     "google/gemini-2.5-computer-use-preview-10-2025", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 1.25, cachedInput: 0, output: 10, context: 131072, reasoning: true, vision: true
     },
     "google/gemini-2.5-flash", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 0.3, cachedInput: 0.03, output: 2.5, context: 1048576, reasoning: true, vision: true
     },
     "google/gemini-2.5-flash-lite", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 0.1, cachedInput: 0.01, output: 0.4, context: 1048576, reasoning: true, vision: true
     },
     "google/gemini-2.5-pro", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 1.25, cachedInput: 0.125, output: 10, context: 1048576, reasoning: true, vision: true
     },
     "google/gemini-3.1-flash-lite", {
@@ -407,6 +407,13 @@ models := Map(    ; -- DeepSeek --
         thinkingOff: "MINIMAL",
         input: 1.5, cachedInput: 0.15, output: 7.5, context: 1048576, reasoning: true, vision: true
     },
+    "google/gemini-3.7-flash", {
+        provider: "google", api: "openai-completions",
+        compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
+        input: 0.75, cachedInput: 0.075, output: 3.75, context: 1048576, reasoning: true, vision: true
+    },
     "google/gemini-3-flash-preview", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
@@ -431,22 +438,22 @@ models := Map(    ; -- DeepSeek --
     "google/gemini-robotics-er-1.6-preview", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 1, cachedInput: 0, output: 5, context: 131072, reasoning: true, vision: true
     },
     "google/gemma-4-26b-a4b-it", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 0, cachedInput: 0, output: 0, context: 262144, reasoning: true, vision: true
     },
     "google/gemma-4-31b-it", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
-        thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
-        thinkingOff: "MINIMAL",
+        thinkingLevelMap: Map("low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
+        thinkingOff: "LOW",
         input: 0, cachedInput: 0, output: 0, context: 262144, reasoning: true, vision: true
     },
 )
