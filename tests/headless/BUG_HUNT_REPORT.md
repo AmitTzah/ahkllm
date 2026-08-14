@@ -154,16 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-14). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Round 6: #228 FIXED: SettingsApply.
-  _ApplyCommands now assigns command keys whenever the saved key exists (empty
-  included) and CommandMenu/CommandState guard every direct read, so an empty
-  APIModels ("Default"), commandName or menuText can no longer drop the
-  property and throw at menu click - the #162 default-model substitution is
-  reachable. Scenario 228 flipped to a regression check + new
-  SettingsHandler AHK unit test. Verified: `--scenarios=228` PASS, full
-  headless suite + test:fast green. Next: commit, close the entry in History.
+- **Where we left off:** 2026-08-14 - Bug hunt round 6 COMPLETE: #228 verified,
+  fixed + committed (1252ba6) and closed in History. Final verification green:
+  full headless suite 222/222 PASS and `npm run test:fast` (607 AHK + 571 JS).
+  Next round: fresh intake when the user asks.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -214,56 +210,23 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 228. Command set to "Default" model crashes at menu click (empty APIModels dropped by SettingsApply)
-
-**Scenario:** 228 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Settings → Commands → select any command → set its API Model dropdown to
-"Default" → Save (or clear the Command Title / Menu Label fields → Save). Then run
-the command from the backtick/tray menu (chat mode).
-
-**Expected:** the command runs using the app default model — the #162 fix
-(`processInitialRequest` substitutes `appDefaultModel` when `APIModels` is empty)
-is exactly the "Default" dropdown's advertised behavior.
-
-**Actual (pre-fix):** nothing runs; a runtime error tooltip appears:
-`This value of type "Object" has no property named "APIModels".` The saved
-settings carry `APIModels: ""` (or `commandName: ""` / `menuText: ""`), but
-`SettingsApply._ApplyCommands` built the runtime command with `_SetIfNonEmpty`,
-which SKIPS empty strings, so the runtime command object had NO `APIModels`
-(or `commandName` / `menuText`) property. `CommandMenu.ahk`'s
-`onCommandSelected` / `onCommandInputSend` read `cmd.APIModels` /
-`cmd.commandName` directly (and `buildCommandMenu` reads `cmd.menuText`
-directly), which THREW in AHK v2 before `processInitialRequest` was ever
-called — the #162 substitution was dead code for UI-configured Default
-commands (an empty Command Title or Menu Label crashed identically; same root
-cause).
-
-**Evidence:** `app/settings/SettingsApply.ahk` `_SetIfExists` now assigns
-whenever the saved key exists (empty included - the #101/#61/#71 pattern);
-`app/menu/CommandMenu.ahk` + `app/menu/CommandState.ahk` guard every direct
-`cmd.APIModels` / `cmd.commandName` / `cmd.menuText` read;
-`app/RequestProcessor.ahk` #162 substitution handles the resulting `""`.
-
-**Verification:** headless — drove the REAL Settings UI (Commands section) to set
-the command's API Model to Default and saved (`settings.json` now has
-`"APIModels": ""`, plus commands with `"commandName": ""` and `"menuText": ""`);
-then ran the REAL `SettingsHandler.Load` + `SettingsApply.ApplyToGlobals` chain
-in a fresh AHK process against that saved file: the applied commands keep
-`HasProp("APIModels")=1` / `HasProp("commandName")=1` /
-`HasProp("menuText")=1` and direct access returns `""` without throwing;
-static check confirms the guarded reads in `CommandMenu.ahk` / `CommandState.ahk`
-and the `#162` substitution in `RequestProcessor.ahk`. Scenario 228 flipped to a
-regression check; `SettingsHandler.test.ahk` added the empty-field survival unit
-test.
+*No open bugs.*
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-14 - "Commands with an empty API Model (the "Default" dropdown
+  option), Command Title or Menu Label crash at menu click - SettingsApply
+  dropped the empty-valued properties, so cmd.APIModels / cmd.commandName /
+  cmd.menuText threw in AHK v2 before the #162 default-model substitution" -
+  FIXED + COMMITTED in 1252ba6: fix(settings): SettingsApply._ApplyCommands
+  now assigns command keys whenever the saved key exists (empty included, the
+  #101/#61/#71 pattern) via _SetIfExists, and CommandMenu/CommandState guard
+  every direct read. Scenario 228 flipped to a regression check + new
+  SettingsHandler AHK unit test; full headless suite 222/222 PASS and
+  test:fast green (607 AHK + 571 JS).
 
 - 2026-08-13 - "Settings saves (and all Main-bound IPC) are silently dropped when another AHK script's window shadows Main's own" - FIXED + COMMITTED in 92e6ade: fix(main): Main.ahk now resolves its own window with A_ScriptHwnd in the prewarm spawn and _spawnChatWindow (was the ambiguous WinExist("ahk_class AutoHotkey") class lookup, which could return one of the user's other AHK scripts' windows). Scenario 227 flipped to a regression check + new MainWindowHandle AHK unit tests; full headless suite 221/221 PASS and test:fast green (606 AHK + 571 JS).
 - 2026-08-13 - "Sidebar New Chat discards right-rail selections made before the first message" - REFUTED: clicking New Chat is explicitly "start fresh with the configured defaults" (user-confirmed expected behavior), so pre-send selections are reset by design. Scenario 226 kept as a regression check (regression: true) guarding the reset behavior.
