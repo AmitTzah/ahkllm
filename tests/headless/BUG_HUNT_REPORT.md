@@ -154,16 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 1 fix applied** (2026-08-14). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Round 6 follow-up: #229 FIXED -
-  onStreamDone now renders the persisted assistant message directly from
-  streamDone.dbMsg when the streaming buffers are empty (single-shot / Stream
-  Response OFF chat-mode commands like the default Summarize command), so the
-  response appears immediately instead of after a reload. Scenario 229 flipped
-  to a regression check + stream-state unit tests. Verified: `--scenarios=229`
-  PASS, full headless suite 223/223 PASS, `npm run test:fast` green (607 AHK +
-  574 JS). Next: commit, close the entry in History.
+- **Where we left off:** 2026-08-14 - Round 6 follow-up COMPLETE: #229 verified,
+  fixed + committed (02ca615) and closed in History. Final verification green:
+  full headless suite 223/223 PASS and `npm run test:fast` (607 AHK + 574 JS).
+  Next round: fresh intake when the user asks.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -214,47 +210,21 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 229. Non-streaming (single-shot) chat responses are never rendered in the WebView
-
-**Scenario:** 229 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Run any chat-mode command whose "Stream Response" toggle is OFF (the
-shipped default `Summarize` command has no `stream` flag, so it is single-shot).
-Select text, run the command, and watch the chat window.
-
-**Expected:** the response appears in the chat as an assistant bubble.
-
-**Actual (pre-fix):** the window shows the user message (and loading dots),
-then goes idle with no assistant bubble - the response was persisted to the DB
-and `streamDone` was posted with `dbMsg`, but `webui/js/chat/stream.js`'s
-`onStreamDone` only added the message to `chatMessages` when
-`contentBuffer || thinkingBuffer` was non-empty. A single-shot response streams
-NO chunks, so both buffers were empty and the persist branch was skipped - the
-bubble only appeared after reloading the thread.
-
-**Evidence:** `webui/js/chat/stream.js` `onStreamDone` now has a
-`else if (isCurrent && dbMsg && dbMsg.role === 'assistant')` branch that
-persists `dbMsg.content` and re-renders `chatMessages` when no chunks were
-streamed; `chat/streaming/StreamHandler.ahk` `sendNonStreamingRequest` + the
-default `Summarize` command (no `stream` flag) reach exactly this path.
-
-**Verification:** headless (unit-style sandbox - the single-shot cURL path is
-documented as NOT end-to-end automatable against the local mock in
-tests/headless/README.md, so this is verified with the real `stream.js` in a
-vm): pre-fix, `onStreamDone({ threadId: current, dbMsg: { role: 'assistant',
-content: '...' } })` with empty buffers left `chatMessages` at just the user
-message (scenario 229 PASS reproduced it); post-fix, the same call adds the
-assistant message from `dbMsg` and calls `renderChatMessages` (scenario 229
-flipped to a regression check). New `stream-state.test.js` unit tests cover the
-render, id-dedup, and non-current-thread scoping.
+*No open bugs.*
 
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
+
+- 2026-08-14 - "Non-streaming (single-shot) chat responses are never rendered
+  in the WebView - onStreamDone only persisted when the streaming buffers were
+  non-empty, so chat-mode commands with Stream Response OFF (e.g. the default
+  Summarize command) showed no bubble until the thread was reloaded" - FIXED +
+  COMMITTED in 02ca615: fix(chat): onStreamDone now renders the persisted
+  assistant message directly from streamDone.dbMsg when the buffers are empty.
+  Scenario 229 flipped to a regression check + stream-state unit tests; full
+  headless suite 223/223 PASS and test:fast green (607 AHK + 574 JS).
 
 - 2026-08-14 - "Commands with an empty API Model (the "Default" dropdown
   option), Command Title or Menu Label crash at menu click - SettingsApply
