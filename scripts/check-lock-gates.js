@@ -91,6 +91,17 @@ for (const msg of ['threadLocked', 'threadLockInfo', 'unlockThread', 'setThreadL
     fail('IPC contract missing "' + msg + '"');
 }
 
+// 8. Forking a locked chat must inherit the lock (and the new fork stays
+//    session-unlocked for the user who just created it).
+const treeRepo = read('chat/db/TreeRepo.ahk');
+if (!/_CopyThreadLock\(sourceThreadId, targetThreadId\)/.test(treeRepo))
+  fail('TreeRepo is missing _CopyThreadLock');
+if (!/_CopyThreadLock\(threadId, newThreadId\)/.test(treeRepo))
+  fail('TreeRepo.ForkThread does not copy the source lock to the fork');
+const branch = read('chat/callbacks/Branch.ahk');
+if (!/ThreadLockService\.Unlock\(newThreadId\)/.test(branch))
+  fail('handleFork must keep the new locked fork session-unlocked');
+
 if (ok) {
   console.log('Lock gates OK: ' + EXPECTED_GATED_ACTIONS.length + ' gated actions, load/search/stream/log/sidebar guards present');
   process.exit(0);

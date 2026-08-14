@@ -257,4 +257,36 @@ class ThreadLockRepoTest {
             this._closeDb()
         }
     }
+
+    Fork_InheritsLock() {
+        this._openDb()
+        try {
+            ThreadLockService.LockAll()
+            ; Forking a locked chat must produce a locked copy (same password),
+            ; or forking would strip the protection from sensitive content.
+            lockedId := ChatDB.Thread_Create("Secret Plan")
+            u1 := ChatDB.Msg_Insert({ thread_id: lockedId, role: "user", content: "u1", parent_id: "", sibling_group: "", sibling_index: 0 })
+            a1 := ChatDB.Msg_Insert({ thread_id: lockedId, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", sibling_group: "", sibling_index: 0 })
+            ChatDB.ThreadLock_Set(lockedId, this._validSalt(), this._validHash(), 600000)
+            forkId := ChatDB.Msg_ForkThread(lockedId, a1)
+            if !forkId
+                throw Error("fork of a locked chat failed")
+            if !ChatDB.ThreadLock_IsLocked(forkId)
+                throw Error("fork must inherit is_locked=1")
+            lock := ChatDB.ThreadLock_Get(forkId)
+            if lock.salt != this._validSalt() || lock.hash != this._validHash() || lock.iterations != 600000
+                throw Error("fork must copy the lock credentials")
+            ; Forking an unlocked chat must stay unlocked.
+            plainId := ChatDB.Thread_Create("Plain chat")
+            p1 := ChatDB.Msg_Insert({ thread_id: plainId, role: "user", content: "p1", parent_id: "", sibling_group: "", sibling_index: 0 })
+            p2 := ChatDB.Msg_Insert({ thread_id: plainId, role: "assistant", content: "p2", parent_id: p1, model: "deepseek/deepseek-v4-flash", sibling_group: "", sibling_index: 0 })
+            plainFork := ChatDB.Msg_ForkThread(plainId, p2)
+            if !plainFork
+                throw Error("fork of an unlocked chat failed")
+            if ChatDB.ThreadLock_IsLocked(plainFork)
+                throw Error("fork of an unlocked chat must stay unlocked")
+        } finally {
+            this._closeDb()
+        }
+    }
 }

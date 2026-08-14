@@ -165,8 +165,12 @@ class TreeRepo {
 
         newThreadId := TreeRepo._CreateForkThread(threadId)
 
-        ; Copy thread-level settings from original to fork
-        TreeRepo._CopyThreadSettings(threadId, newThreadId)
+          ; Copy thread-level settings from original to fork
+          TreeRepo._CopyThreadSettings(threadId, newThreadId)
+          ; A fork is a full copy of the conversation prefix - if the source is
+          ; password-protected, the copy must be equally protected, or forking
+          ; would silently strip the lock from sensitive content.
+          TreeRepo._CopyThreadLock(threadId, newThreadId)
 
         idMap := Map()
         sgMap := Map()  ; old sibling_group -> new sibling_group (fresh UUIDs per fork)
@@ -226,7 +230,7 @@ class TreeRepo {
     }
 
     ; Copy thread-level settings (model, system, reasoning, temperature, assistant) from original to fork.
-    static _CopyThreadSettings(sourceThreadId, targetThreadId) {
+      static _CopyThreadSettings(sourceThreadId, targetThreadId) {
         settings := ThreadRepo.GetSettings(sourceThreadId)
         if settings.modelOverride
             ChatDB.db.Query("UPDATE chat_threads SET model_override=? WHERE id=?;", settings.modelOverride, targetThreadId)
@@ -253,6 +257,17 @@ class TreeRepo {
                     ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", srcRow[1, "folder_id"], targetThreadId)
             }
         }
+    }
+
+    ; Copy the source thread's lock (is_locked + chat_locks row) to the fork.
+    static _CopyThreadLock(sourceThreadId, targetThreadId) {
+        if !ThreadLockRepo.IsLocked(sourceThreadId)
+            return
+        lockData := ThreadLockRepo.Get(sourceThreadId)
+        if !lockData
+            return
+        ChatDB.db.Query("UPDATE chat_threads SET is_locked=1 WHERE id=?;", targetThreadId)
+        ChatDB.db.Query("INSERT OR REPLACE INTO chat_locks (thread_id, kdf, salt, hash, iterations) VALUES(?, ?, ?, ?, ?);", targetThreadId, lockData.kdf, lockData.salt, lockData.hash, lockData.iterations)
     }
 
     ; Map an old sibling_group to a fresh UUID, creating one if needed.

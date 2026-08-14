@@ -31,8 +31,14 @@ handleFork(msgId, *) {
         return
     newThreadId := ChatDB.Msg_ForkThread(activeThreadId, msgId)
     debugLog("[THREAD] Forked - id=" newThreadId " from=" activeThreadId)
-    if newThreadId
+    if newThreadId {
+        ; The fork inherits the source's lock. Keep it unlocked in THIS session
+        ; so the user who just created it can read it without re-entering the
+        ; password - it stays locked in the DB for every other session.
+        if ThreadLockService.IsLocked(newThreadId)
+            ThreadLockService.Unlock(newThreadId)
         postWebMessage("threadForked", { newThreadId: newThreadId })
+    }
 }
 
 ; ----------------------------------------------------

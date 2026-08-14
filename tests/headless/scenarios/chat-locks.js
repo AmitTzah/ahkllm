@@ -534,4 +534,123 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 248,
+  name: 'Fork of a locked chat inherits the lock and opens session-unlocked',
+  regression: true,
+  mode: null,
+  fixtures: lockedFixtures('t-lock-248', 'Secret Plan', 'hidden content'),
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelector(' + JSON.stringify(lockedItem('t-lock-248')) + ') !== null', 15000, 300, 'locked chat in sidebar');
+    await cdp.click(lockedItem('t-lock-248'));
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'lock overlay');
+    await cdp.type('#lockPasswordInput', LOCK_PASSWORD);
+    await cdp.click('#lockUnlockBtn');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 30000, 300, 'locked chat renders');
+
+    // Fork from the last message (the assistant reply).
+    const clicked = await cdp.eval(`(() => {
+      const msgs = document.querySelectorAll('#chat-messages .msg');
+      const btn = msgs[msgs.length - 1].querySelector('.msg-action-btn[title="Fork"]');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()`);
+    if (!clicked) throw new Error('Fork button not found');
+    await cdp.waitFor('window.activeThreadId !== "t-lock-248"', 20000, 300, 'fork thread loaded');
+    const forkId = await cdp.eval('window.activeThreadId');
+    if (!forkId) throw new Error('no active thread after fork');
+
+    // The fork opens without a prompt (session-unlocked for the creator) but is
+    // locked in the DB with the same password.
+    const overlay = await cdp.eval('document.getElementById("threadLockOverlay") === null');
+    if (!overlay) throw new Error('fork showed the lock overlay');
+    const lockRows = seed.query(dbPath, 'SELECT is_locked FROM chat_threads WHERE id = ?', [forkId]);
+    if (!lockRows.length || lockRows[0].is_locked !== 1) throw new Error('fork is not locked in the DB');
+    const chatLocks = seed.query(dbPath, 'SELECT salt, hash, iterations FROM chat_locks WHERE thread_id = ?', [forkId]);
+    if (!chatLocks.length) throw new Error('fork has no chat_locks row');
+    if (chatLocks[0].hash !== lockHash(LOCK_PASSWORD, LOCK_SALT, LOCK_ITERATIONS))
+      throw new Error('fork did not inherit the password hash');
+    const title = await cdp.eval(`window._threadMeta['${forkId}'] && window._threadMeta['${forkId}'].title`);
+    if (title !== 'Copy - Secret Plan') throw new Error('unexpected fork title: ' + title);
+    return 'fork of a locked chat inherits is_locked + chat_locks and opens session-unlocked as "' + title + '"';
+  }
+});
+
+scenarios.push({
+  id: 249,
+  name: 'Locked chat inside a folder: redacted render, unlock, and move-to-folder',
+  regression: true,
+  mode: null,
+  fixtures: {
+    folders: [{ id: 'f-work', name: 'Work' }, { id: 'f-home', name: 'Home' }],
+    threads: [
+      { id: 't-lock-249', title: 'Secret Plan', folder_id: 'f-work', active_leaf_id: 't-lock-249-a1', is_locked: 1 },
+      { id: 't-open-249', title: 'Open Chat', folder_id: 'f-work', active_leaf_id: 't-open-249-a1' }
+    ],
+    messages: [
+      { id: 't-lock-249-u1', thread_id: 't-lock-249', role: 'user', content: 'hidden content' },
+      { id: 't-lock-249-a1', thread_id: 't-lock-249', role: 'assistant', content: 'locked reply', parent_id: 't-lock-249-u1', model: 'deepseek/deepseek-v4-flash' },
+      { id: 't-open-249-u1', thread_id: 't-open-249', role: 'user', content: 'open content' },
+      { id: 't-open-249-a1', thread_id: 't-open-249', role: 'assistant', content: 'open reply', parent_id: 't-open-249-u1', model: 'deepseek/deepseek-v4-flash' }
+    ],
+    chatLocks: [{
+      thread_id: 't-lock-249',
+      salt: LOCK_SALT,
+      hash: lockHash(LOCK_PASSWORD, LOCK_SALT, LOCK_ITERATIONS),
+      iterations: LOCK_ITERATIONS
+    }]
+  },
+  async body({ cdp, dbPath }) {
+    const folderItem = "#thread-list .folder[data-folder='f-work'] .chat-item[data-chat='t-lock-249']";
+    await showChat();
+    await cdp.waitFor('document.querySelector(' + JSON.stringify(folderItem) + ') !== null', 15000, 300, 'locked chat inside folder');
+    const info = await cdp.eval(`(() => {
+      const item = document.querySelector(${JSON.stringify(folderItem)});
+      return {
+        title: item.querySelector('.chat-name').textContent.trim(),
+        hasLockIcon: !!item.querySelector('.chat-name svg'),
+        folder: window._threadMeta['t-lock-249'] && window._threadMeta['t-lock-249'].folder
+      };
+    })()`);
+    if (info.title !== 'Locked chat' || !info.hasLockIcon || info.folder !== 'Work')
+      throw new Error('locked chat mis-rendered inside its folder: ' + JSON.stringify(info));
+
+    // Unlock from within the folder; the real title shows and the folder stays.
+    await cdp.click(folderItem);
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'lock overlay in folder');
+    await cdp.type('#lockPasswordInput', LOCK_PASSWORD);
+    await cdp.click('#lockUnlockBtn');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 30000, 300, 'chat renders from folder');
+    await cdp.waitFor(`window._threadMeta['t-lock-249'] && window._threadMeta['t-lock-249'].title === 'Secret Plan'`, 15000, 300, 'real title in folder');
+    const folderAfter = await cdp.eval(`window._threadMeta['t-lock-249'] && window._threadMeta['t-lock-249'].folder`);
+    if (folderAfter !== 'Work') throw new Error('folder changed after unlock: ' + folderAfter);
+
+    // Moving a locked chat between folders is placement, not content - allowed.
+    const moved = await cdp.eval(`(() => {
+      const item = document.querySelector(${JSON.stringify(folderItem)});
+      const btn = item && item.querySelector('.chat-action-btn[title="Move to folder"]');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()`);
+    if (!moved) throw new Error('Move to folder button not found');
+    await cdp.waitFor('document.querySelector(".folder-pick-dropdown") !== null', 5000, 300, 'move dropdown');
+    const picked = await cdp.eval(`(() => {
+      const dd = document.querySelector('.folder-pick-dropdown');
+      const target = [...dd.children].find(function(i) { return i.textContent.trim() === 'Home'; });
+      if (!target) return false;
+      target.click();
+      return true;
+    })()`);
+    if (!picked) throw new Error('Home folder option not found');
+    await cdp.waitFor(`window._threadMeta['t-lock-249'] && window._threadMeta['t-lock-249'].folder === 'Home'`, 10000, 300, 'moved to Home');
+    const rows = seed.query(dbPath, 'SELECT folder_id, is_locked FROM chat_threads WHERE id = ?', ['t-lock-249']);
+    if (!rows.length || rows[0].folder_id !== 'f-home' || rows[0].is_locked !== 1)
+      throw new Error('move lost the folder or the lock: ' + JSON.stringify(rows[0]));
+    return 'locked chat renders redacted inside a folder, unlocks in place, and moves folders without losing the lock';
+  }
+});
+
 module.exports = scenarios;
