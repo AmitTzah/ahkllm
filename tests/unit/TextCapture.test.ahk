@@ -101,6 +101,16 @@ class TextCaptureTest {
             throw Error("Without expand, single LF should stay: " result)
     }
 
+    ; Regression (bug #231): web selections carry single newlines between
+    ; paragraphs (HTML collapses the blank lines) - the LLM context must get
+    ; \n\n paragraph breaks.
+    NormalizeLineEndings_WebSelection_ParagraphsExpand() {
+        result := TextCapture.NormalizeLineEndings(
+            "First paragraph of the page.`nSecond paragraph of the page.`nThird paragraph.", true)
+        if result != "First paragraph of the page.`n`nSecond paragraph of the page.`n`nThird paragraph."
+            throw Error("Web selection single newlines should expand to \n\n: " result)
+    }
+
     ; ======================================================
     ; _TruncateWords — behavioral (pure function)
     ; ======================================================
@@ -419,6 +429,20 @@ class TextCaptureTest {
         ; fullText capture must be guarded by includeFullText param
         if !InStr(method, "includeFullText")
             throw Error("_CaptureChat must check includeFullText before capturing fullText")
+    }
+
+    ; Regression (bug #231): _CaptureSelection must ALWAYS expand single
+    ; newlines in the captured selection and fullText - the toggle-driven
+    ; normalization left web selections with single-\n paragraph breaks.
+    CaptureSelection_AlwaysExpandsSingleNewlines() {
+        src := TextCaptureTest._ReadSrc()
+        method := TextCaptureTest._ExtractMethod(src, "_CaptureSelection(")
+        if !RegExMatch(method, "NormalizeLineEndings\(userMessage,\s*true\)")
+            throw Error("_CaptureSelection must always expand single newlines in userMessage (bug #231)")
+        if !RegExMatch(method, "NormalizeLineEndings\(fullText,\s*true\)")
+            throw Error("_CaptureSelection must always expand single newlines in fullText (bug #231)")
+        if RegExMatch(method, "NormalizeLineEndings\((?:userMessage|fullText),\s*expandNewlines\)")
+            throw Error("_CaptureSelection must not use the command toggle for non-FIM capture (bug #231)")
     }
 
     ; ======================================================

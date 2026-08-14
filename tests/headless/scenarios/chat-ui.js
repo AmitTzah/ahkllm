@@ -1275,4 +1275,74 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 231,
+  name: 'Web selections must ALWAYS get \\n\\n paragraph breaks - _CaptureSelection now expands single newlines in the captured selection and fullText unconditionally (not only when the command toggle is on), so summarizing/translating text copied from the web keeps the source paragraph structure (bug #231 FIXED)',
+  regression: true, // FIXED bug #231 kept as a regression check (selection capture always expands single newlines)
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'TextCapture.ahk'), 'utf8');
+    // FIXED (bug #231): the captured selection AND fullText are normalized
+    // with expand=true unconditionally, so a default command never sends
+    // single-\n paragraph breaks from web selections.
+    if (!/NormalizeLineEndings\(userMessage,\s*true\)/.test(src))
+      throw new Error('userMessage capture does not always expand single newlines (fix incomplete)');
+    if (!/NormalizeLineEndings\(fullText,\s*true\)/.test(src))
+      throw new Error('fullText capture does not always expand single newlines (fix incomplete)');
+    if (/NormalizeLineEndings\((?:userMessage|fullText),\s*expandNewlines\)/.test(src))
+      throw new Error('selection capture still uses the command toggle instead of always expanding (fix incomplete)');
+    return '_CaptureSelection always expands single newlines to \\n\\n for the captured selection and fullText - web selections keep their paragraph structure when summarized/translated';
+  }
+});
+
+scenarios.push({
+  id: 232,
+  name: 'Sidebar provider icon / thread order must update as soon as a stream completes - _handleStreamComplete (and the cancel/partial path) now post a threadList refresh, so the sidebar item shows the responding model\'s icon and moves to the top without exiting and re-entering the chat (bug #232 FIXED)',
+  regression: true, // FIXED bug #232 kept as a regression check (sidebar follows stream completion)
+  mode: 'sse-success',
+  settings: {},
+  fixtures: {
+    threads: [
+      { id: 't-232', title: 'Existing Chat', active_leaf_id: 'm-232-u1', created_at: '2026-08-10 10:00:00' },
+      { id: 't-232-b', title: 'Newer Chat', active_leaf_id: 'm-232-u1b', created_at: '2026-08-11 10:00:00' }
+    ],
+    messages: [
+      { id: 'm-232-u1', thread_id: 't-232', role: 'user', content: 'question', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-232-u1b', thread_id: 't-232-b', role: 'user', content: 'other', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await sleep(500);
+    await cdp.eval('window.loadThread("t-232"); true');
+    await cdp.waitFor('window.activeThreadId === "t-232"', 15000, 300, 't-232 loaded');
+    await sleep(500);
+    await sendChatMessage(cdp, 'summarize this for me');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(800);
+    // Read the sidebar WITHOUT any reload/re-enter - the completion must have
+    // refreshed it.
+    let iconAfter = '';
+    let orderAfter = [];
+    const start = Date.now();
+    while (Date.now() - start < 8000) {
+      iconAfter = await cdp.eval('(() => { const img = document.querySelector("#thread-list .chat-item[data-chat=\\"t-232\\"] .chat-icon img"); return img ? img.getAttribute("src") : "(no img)"; })()');
+      orderAfter = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map(e => e.getAttribute("data-chat"))');
+      if (iconAfter.indexOf('deepseek') >= 0 && orderAfter[0] === 't-232') break;
+      await sleep(300);
+    }
+    // FIXED (bug #232): the completion refreshed the sidebar - the icon is the
+    // responding model's and the thread moved to the top (updated_at bumped).
+    if (iconAfter.indexOf('deepseek') < 0)
+      throw new Error('sidebar provider icon still stale after completion (fix incomplete): ' + iconAfter);
+    if (orderAfter[0] !== 't-232')
+      throw new Error('sidebar order still stale after completion (fix incomplete): ' + orderAfter.join(','));
+    return 'after the stream completed, the sidebar shows icon=' + iconAfter + ' and order=[' + orderAfter.join(',') +
+      '] - the provider icon / model badge follow the stream immediately without exiting the chat';
+  }
+});
+
 module.exports = scenarios;

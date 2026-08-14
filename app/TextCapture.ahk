@@ -311,8 +311,16 @@ class TextCapture {
 
         ; Normalise line endings — different apps produce different formats
         ; (Notepad = CRLF, Chrome = LF).  The LLM API expects consistent \n.
-        userMessage := TextCapture.NormalizeLineEndings(userMessage, expandNewlines)
-        fullText := TextCapture.NormalizeLineEndings(fullText, expandNewlines)
+        ; Bug #231: web selections commonly carry SINGLE newlines between
+        ; paragraphs (HTML collapses the original blank lines when copying), so
+        ; ALWAYS expand a single \n between text to \n\n — the universal
+        ; paragraph break LLMs were trained on — instead of only when the
+        ; command's expandNewlines toggle is on. Without it, summarizing or
+        ; translating web text sends distinct paragraphs as one block. (FIM
+        ; capture keeps the toggle-driven behavior: completions/code care about
+        ; exact whitespace.)
+        userMessage := TextCapture.NormalizeLineEndings(userMessage, true)
+        fullText := TextCapture.NormalizeLineEndings(fullText, true)
 
         ; Truncate fullText around selection (selection always fully captured)
         fullText := TextCapture._TruncateAround(fullText, userMessage, maxContextWords)

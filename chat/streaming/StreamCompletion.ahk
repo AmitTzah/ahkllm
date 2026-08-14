@@ -36,6 +36,12 @@ _handleStreamComplete() {
         postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount, threadId: streamThreadId })
 
         postThreadStats(streamThreadId)
+        ; Bug #232: the persisted assistant message changes the sidebar's
+        ; model badge and the thread's updated_at (order) - refresh the
+        ; sidebar on completion so the provider icon and position follow the
+        ; stream immediately instead of after the user exits/re-enters the
+        ; chat (title-gen only refreshed first-exchange chats).
+        _postThreadListRefresh()
         ; Bug #221: only re-enable the composer/loading cursor when NO other
         ; request is still streaming - a concurrent command stream must keep
         ; Stop mode.

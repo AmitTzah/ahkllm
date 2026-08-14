@@ -330,4 +330,24 @@ class StreamErrorTest {
 
         this._teardown()
     }
+
+    ; ----------------------------------------------------
+    ; Regression (bug #232): completing a stream (or persisting a cancelled/
+    ; mid-error partial) changes the sidebar's model badge and thread order -
+    ; both paths must post a threadList refresh so the provider icon and
+    ; position follow the stream immediately (no exit/re-enter needed).
+    ; ----------------------------------------------------
+    StreamComplete_RefreshesSidebar() {
+        src := FileRead(A_ScriptDir "\..\chat\streaming\StreamCompletion.ahk")
+        ; _handleStreamComplete must post the sidebar refresh right after the
+        ; stats post (the point where the persisted message changes the badge).
+        if !RegExMatch(src, "postThreadStats\(streamThreadId\)\s*`n\s*; Bug #232[\s\S]{0,400}?_postThreadListRefresh\(\)")
+            throw Error("_handleStreamComplete must post a threadList refresh after postThreadStats (bug #232)")
+    }
+
+    PartialPersist_RefreshesSidebar() {
+        src := FileRead(A_ScriptDir "\..\chat\streaming\StreamError.ahk")
+        if !RegExMatch(src, "postThreadStats\(streamThreadId\)\s*`n\s*; Bug #232[\s\S]{0,400}?_postThreadListRefresh\(\)")
+            throw Error("_persistPartialStreamContent must post a threadList refresh after postThreadStats (bug #232)")
+    }
 }

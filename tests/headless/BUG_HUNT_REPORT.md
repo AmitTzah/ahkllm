@@ -154,12 +154,16 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
+- **0 reported, 0 verified, 0 fix in progress, 2 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Round 6 follow-up COMPLETE: #229 + #230
-  verified, fixed + committed (02ca615, e62d32a) and closed in History. Final
-  verification green: full headless suite 224/224 PASS and `npm run test:fast`
-  (607 AHK + 574 JS). Next round: fresh intake when the user asks.
+- **Where we left off:** 2026-08-14 - Round 6 follow-up: #231 + #232 FIXED -
+  selection capture always expands single newlines to \n\n (web selections
+  keep paragraph structure), and stream completion/cancel/partial paths now
+  refresh the sidebar (provider icon + thread order follow the stream
+  immediately). Scenarios 231 + 232 flipped to regression checks + AHK unit
+  tests. Verified: `--scenarios=231,232` PASS, full headless suite 226/226
+  PASS, `npm run test:fast` green (611 AHK + 574 JS). Next: commit, close both
+  entries in History.
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -210,7 +214,67 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-*No open bugs.*
+
+### 231. Web selections send single newlines between paragraphs (no \n\n expansion by default)
+
+**Scenario:** 231 (scenario code in e2e-suite.js)
+
+**Status:** fix applied
+
+**Repro:** Select text from a web page whose paragraphs are separated by single
+newlines (common when copying from HTML) and run `Summarize` (or any non-FIM
+selection command without the Expand Newlines toggle).
+
+**Expected:** captured paragraph breaks are always `\n\n` — the universal
+paragraph break LLMs were trained on — so the summary keeps the source's
+paragraph structure.
+
+**Actual:** `TextCapture._CaptureSelection` normalizes line endings with the
+command's `expandNewlines` toggle (default false), so single `\n` paragraph
+breaks pass through unchanged and the LLM reads distinct paragraphs as one
+block.
+
+**Evidence:** `app/TextCapture.ahk` `_CaptureSelection` now calls
+`NormalizeLineEndings(userMessage, true)` / `fullText, true` (FIM capture keeps
+the toggle-driven behavior).
+
+**Verification:** headless — structural check of `app/TextCapture.ahk`:
+pre-fix `_CaptureSelection` passed the toggle value (scenario 231 PASS
+reproduced it); post-fix it always passes `true` for userMessage + fullText
+(scenario 231 flipped to a regression check). New TextCapture AHK unit tests
+cover the always-expand call sites and the web-selection \n\n behavior.
+
+### 232. Sidebar provider icon and thread order stay stale after a stream completes
+
+**Scenario:** 232 (scenario code in e2e-suite.js)
+
+**Status:** fix applied
+
+**Repro:** Open a chat whose thread has no assistant response yet (sidebar
+shows the default provider icon), send a message, wait for the stream to
+finish, and look at the sidebar WITHOUT leaving the chat.
+
+**Expected:** the thread's provider icon updates to the responding model and
+the thread moves to the top (its `updated_at` bumped) as soon as the stream
+completes.
+
+**Actual (pre-fix):** `_handleStreamComplete` persisted the assistant message
+(which `ThreadRepo.List` uses for the model badge and order) but posted no
+`threadList` refresh — the sidebar kept the default icon and old position
+until the user exited and re-entered the chat (title-gen only refreshed
+first-exchange chats).
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` `_handleStreamComplete` and
+`chat/streaming/StreamError.ahk` `_persistPartialStreamContent` now post
+`_postThreadListRefresh()` right after `postThreadStats(streamThreadId)`.
+
+**Verification:** headless — the scenario seeds a thread with no assistant,
+sends a real message against the mock SSE server, waits for completion, and
+reads the sidebar WITHOUT any reload: pre-fix the icon/order were unchanged
+(scenario 232 PASS reproduced it); post-fix the icon becomes the responding
+model's (deepseek.ico) and the thread moves to the top immediately (scenario
+232 flipped to a regression check). New StreamError/StreamHandler AHK unit
+tests assert both refresh call sites.
 
 ## History (append-only)
 

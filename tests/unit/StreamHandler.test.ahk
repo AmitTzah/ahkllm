@@ -574,7 +574,9 @@ class StreamHandlerTest {
         scPath := A_ScriptDir "\..\chat\streaming\StreamCompletion.ahk"
         sc := FileRead(scPath)
         completeIdx := InStr(sc, "_handleStreamComplete() {")
-        completeBlock := SubStr(sc, completeIdx, 2600)
+        ; The window is generous because the bug #232 sidebar-refresh comment
+        ; sits between the stats post and the temp-file cleanup.
+        completeBlock := SubStr(sc, completeIdx, 3600)
         if !InStr(completeBlock, "deleteTempFiles()")
             throw Error("_handleStreamComplete must delete temp files (bug #110)")
         sePath := A_ScriptDir "\..\chat\streaming\StreamError.ahk"

@@ -142,6 +142,10 @@ _persistPartialStreamContent() {
     })
     _maybeGenerateTitle(path, streamThreadId)
     postThreadStats(streamThreadId)
+    ; Bug #232: a cancelled/mid-error partial also changes the sidebar's model
+    ; badge and thread order - keep the sidebar in sync on the partial path
+    ; too (mirrors _handleStreamComplete).
+    _postThreadListRefresh()
     streamPath := ChatDB.Msg_GetActivePath(streamThreadId)
     if !streamPath.Length
         return ""
