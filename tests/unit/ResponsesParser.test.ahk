@@ -32,4 +32,22 @@ class ResponsesParserTest {
         if result.usage.totalTokens != 0
             throw Error("expected zeroed usage")
     }
+
+    ; Regression (real-API report): search-heavy /responses runs emit interim
+    ; "commentary" messages ("Let me dig deeper...") before the final answer.
+    ; Only the final-answer message may be used as the tool result.
+    Parse_CommentaryMessagesAreNotConcatenated() {
+        raw := '{"output":[{"type":"message","phase":"commentary","content":[{"type":"output_text","text":"Let me dig deeper."}]},{"type":"message","phase":"commentary","content":[{"type":"output_text","text":"Checking more sources."}]},{"type":"message","phase":"final_answer","content":[{"type":"output_text","text":"The final answer."}]}]}'
+        result := ResponsesParser.Parse(jsongo.Parse(raw))
+        if result.response != "The final answer."
+            throw Error("expected only the final-answer text, got: '" result.response "'")
+    }
+
+    ; No phase markers (e.g. the headless mock): the LAST message item wins.
+    Parse_NoPhase_FallsBackToLastMessage() {
+        raw := '{"output":[{"type":"message","content":[{"type":"output_text","text":"first"}]},{"type":"message","content":[{"type":"output_text","text":"last"}]}]}'
+        result := ResponsesParser.Parse(jsongo.Parse(raw))
+        if result.response != "last"
+            throw Error("expected the last message text, got: '" result.response "'")
+    }
 }

@@ -35,7 +35,7 @@ function assertCanonicalToolOrder(log) {
 async function enableWebSearch(cdp) {
   await showChat();
   await cdp.clearPosted();
-  await cdp.click('#webSearchToggle');
+  await cdp.eval('document.getElementById("webSearchToggle").click()');
   await sleep(1000); // debounce 300ms + IPC round trip
   const posted = await cdp.postedMessages();
   const last = posted.filter((m) => m.includes('"updateModelSettings"')).pop();
@@ -122,6 +122,15 @@ scenarios.push({
     if (card.hiddenBefore !== true || card.hiddenAfter !== false)
       throw new Error('search card results did not toggle: ' + cardState);
 
+    // The search backend call is recorded in the API log (like chat/title).
+    const apiLogFile = require('node:path').join(require('node:os').tmpdir(), 'LLM_API_Log.json');
+    let apiLogEntries = [];
+    try { apiLogEntries = JSON.parse(fs.readFileSync(apiLogFile, 'utf8')); } catch {}
+    const searchEntry = apiLogEntries.find((e) => String(e.commandName || '').indexOf('Web Search (DeepSeek)') >= 0);
+    if (!searchEntry) throw new Error('DeepSeek search request not found in the API log');
+    if (String(searchEntry.searchQuery || '').indexOf('AutoHotkey WebView2') < 0)
+      throw new Error('API log search entry missing the query: ' + JSON.stringify(searchEntry));
+
     return 'deepseek native search: tool call -> /responses mock -> answer persisted (3 messages, toggle persisted, no real API calls)';
   }
 });
@@ -173,6 +182,15 @@ scenarios.push({
     if (log.indexOf('"role":"tool"') < 0) throw new Error('tool result not returned to the model');
     assertCanonicalToolOrder(log);
 
+    // The Tavily backend call is recorded in the API log.
+    const apiLogFile = require('node:path').join(require('node:os').tmpdir(), 'LLM_API_Log.json');
+    let apiLogEntries = [];
+    try { apiLogEntries = JSON.parse(fs.readFileSync(apiLogFile, 'utf8')); } catch {}
+    const searchEntry = apiLogEntries.find((e) => String(e.commandName || '').indexOf('Web Search (Tavily)') >= 0);
+    if (!searchEntry) throw new Error('Tavily search request not found in the API log');
+    if (String(searchEntry.searchQuery || '').indexOf('AutoHotkey WebView2') < 0)
+      throw new Error('API log search entry missing the query: ' + JSON.stringify(searchEntry));
+
     return 'tavily fallback: tool call -> mock /search -> answer persisted (no real API calls)';
   }
 });
@@ -191,7 +209,7 @@ scenarios.push({
 
     // Toggle the same right-rail switch OFF and capture the posted payload.
     await cdp.clearPosted();
-    await cdp.click('#webSearchToggle');
+    await cdp.eval('document.getElementById("webSearchToggle").click()');
     await sleep(1000); // debounce 300ms + IPC round trip
     const posted = await cdp.postedMessages();
     const last = posted.filter((m) => m.includes('"updateModelSettings"')).pop();

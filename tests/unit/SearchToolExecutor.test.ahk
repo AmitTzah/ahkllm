@@ -88,4 +88,51 @@ class SearchToolExecutorTest {
         activeThreadId := ""
         this._teardownDb()
     }
+
+    ; The search round stages a "Searching…" placeholder FIRST (so the UI
+    ; shows the query immediately), then QueueFollowUp EDITS that same row to
+    ; the real result - one card per round, updated in place.
+    PrepareFollowUp_ThenQueueFollowUp_UpdatesPlaceholderInPlace() {
+        global requestParams, activeThreadId
+        this._setupDb()
+        ChatDB.Thread_Create("Placeholder")
+        threads := ChatDB.Thread_List()
+        activeThreadId := threads[threads.Length].id
+        u1Id := ChatDB.Msg_Insert({ thread_id: activeThreadId, role: "user", content: "q" })
+
+        toolCalls := [{
+            id: "call_1",
+            name: "web_search",
+            arguments: "{`"query`":`"latest news`"}"
+        }]
+        requestParams := Map()
+        ctxId := SearchToolExecutor.PrepareFollowUp(toolCalls, activeThreadId, u1Id)
+        if !ctxId
+            throw Error("expected a placeholder message id")
+
+        path := ChatDB.Msg_GetActivePath(activeThreadId)
+        if path.Length != 2 || path[2].id != ctxId
+            throw Error("placeholder not chained after the user message")
+        if InStr(path[2].content, "Searching…") = 0
+            throw Error("placeholder content missing Searching marker: " path[2].content)
+        if requestParams["_pendingSearchContextIds"].Length != 1 || requestParams["_pendingSearchContextIds"][1] != ctxId
+            throw Error("placeholder id not tracked for canonical ordering")
+
+        exec := {
+            toolMessages: [{ role: "assistant", content: "", tool_calls: [] }],
+            contextText: "[Web search: latest news]`n`nreal results"
+        }
+        SearchToolExecutor.QueueFollowUp(exec, activeThreadId, u1Id, 1)
+
+        path2 := ChatDB.Msg_GetActivePath(activeThreadId)
+        if path2.Length != 2
+            throw Error("placeholder must NOT create a second message row, got " path2.Length " messages")
+        if path2[2].id != ctxId || path2[2].content != "[Web search: latest news]`n`nreal results"
+            throw Error("placeholder row not edited to the real result: " jsongo.Stringify(path2[2]))
+        if requestParams.Has("_pendingSearchPlaceholderId")
+            throw Error("placeholder state should be cleared after QueueFollowUp")
+
+        activeThreadId := ""
+        this._teardownDb()
+    }
 }

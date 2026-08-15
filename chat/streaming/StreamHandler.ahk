@@ -200,16 +200,19 @@ _handleNonStreamToolCalls(toolCalls) {
             return
         }
 
-        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
-        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
-
         sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := sendPath.Length ? sendPath[sendPath.Length].id : ""
-        ctxId := SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
-        ; Live UI feedback: render the search-context card (query + results)
-        ; as soon as the search completes instead of waiting for a reload.
+        ; Immediate UI feedback: show the query card ("Searching…") while the
+        ; backend runs, then update it in place with the real result.
+        ctxId := SearchToolExecutor.PrepareFollowUp(toolCalls, activeThreadId, parentId)
         if ctxId
-            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
+            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: SearchToolExecutor.PlaceholderContent(toolCalls) })
+
+        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
+        SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
+        if ctxId
+            postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
 
         _deleteCurrentStreamFiles()
         _BuildAndFireRequest()
@@ -844,16 +847,19 @@ _handleStreamToolCalls() {
             return
         }
 
-        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
-        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
-
         parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
         threadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
-        ctxId := SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
-        ; Live UI feedback: render the search-context card (query + results)
-        ; as soon as the search completes instead of waiting for a reload.
+        ; Immediate UI feedback: show the query card ("Searching…") while the
+        ; backend runs, then update it in place with the real result.
+        ctxId := SearchToolExecutor.PrepareFollowUp(toolCalls, threadId, parentId)
         if ctxId
-            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
+            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: SearchToolExecutor.PlaceholderContent(toolCalls) })
+
+        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
+        SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
+        if ctxId
+            postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
 
         _deleteCurrentStreamFiles()
         _RemoveStreamFromActive(_currentStreamKey)
@@ -872,6 +878,17 @@ _handleStreamToolCalls() {
 ; staged loop state so the next normal send starts clean.
 _failToolLoop(message) {
     debugLog("[SEARCH] " message)
+    ; Turn the "Searching…" placeholder into a failure card instead of
+    ; leaving a stale "Searching…" message in the thread.
+    if requestParams.Has("_pendingSearchPlaceholderId") && requestParams["_pendingSearchPlaceholderId"] != "" {
+        ctxId := requestParams["_pendingSearchPlaceholderId"]
+        q := requestParams.Has("_pendingSearchPlaceholderQuery") ? requestParams["_pendingSearchPlaceholderQuery"] : ""
+        content := "[Web search: " q "]\n\n" message
+        try ChatDB.Msg_Edit(ctxId, content)
+        postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
+        requestParams.Delete("_pendingSearchPlaceholderId")
+        requestParams.Delete("_pendingSearchPlaceholderQuery")
+    }
     postWebMessage("showError", { message: message })
     postWebMessage("setChatButtonsEnabled", true)
     startLoadingCursor(false)

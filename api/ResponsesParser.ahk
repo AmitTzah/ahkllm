@@ -11,19 +11,38 @@ class ResponsesParser {
 
     ; Parse a non-streaming Responses JSON object (jsongo-parsed Map).
     static Parse(var) {
-        text := ""
+        ; A search-heavy /responses run can emit multiple message items:
+        ; interim "commentary" texts ("Let me dig deeper...") plus the real
+        ; answer. Concatenating ALL of them pollutes the tool result, so
+        ; prefer the final-answer message and fall back to the LAST message
+        ; item when no phase marker is present.
+        texts := []
         if var.Has("output") {
             for item in var["output"] {
                 if !IsObject(item) || !item.Has("type") || item["type"] != "message"
                     continue
                 if !item.Has("content")
                     continue
+                itemText := ""
                 for part in item["content"] {
                     if IsObject(part) && part.Has("type") && part["type"] = "output_text" && part.Has("text")
-                        text .= part["text"]
+                        itemText .= part["text"]
                 }
+                texts.Push({ text: itemText, phase: item.Has("phase") ? item["phase"] : "" })
             }
         }
+        text := ""
+        finalIdx := -1
+        for i, t in texts {
+            if t.phase = "final_answer" {
+                finalIdx := i
+                break
+            }
+        }
+        if finalIdx >= 0
+            text := texts[finalIdx].text
+        else if texts.Length
+            text := texts[texts.Length].text
 
         model := var.Has("model") ? var["model"] : ""
         usage := { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, thinkingTokens: 0 }

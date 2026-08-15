@@ -73,12 +73,20 @@ class SearchToolExecutor {
     }
 
     ; Persist the search context as a user-role message and stage the
-    ; ephemeral tool exchange for the next request. Returns the new context
-    ; message id ("" when there is no parent thread to attach to).
+    ; ephemeral tool exchange for the next request. When a "Searching…"
+    ; placeholder was staged via PrepareFollowUp, the placeholder row is
+    ; EDITED to the real result instead of inserting a second message, so
+    ; each round produces exactly one card that updates in place. Returns the
+    ; context message id ("" when there is no parent thread to attach to).
     static QueueFollowUp(execResult, threadId, parentId, loopCount) {
         global requestParams
         ctxId := ""
-        if threadId && parentId && execResult.contextText != "" {
+        if requestParams.Has("_pendingSearchPlaceholderId") && requestParams["_pendingSearchPlaceholderId"] != "" {
+            ctxId := requestParams["_pendingSearchPlaceholderId"]
+            try ChatDB.Msg_Edit(ctxId, execResult.contextText)
+            requestParams.Delete("_pendingSearchPlaceholderId")
+            requestParams.Delete("_pendingSearchPlaceholderQuery")
+        } else if threadId && parentId && execResult.contextText != "" {
             ctxId := ChatDB.Msg_Insert({
                 thread_id: threadId,
                 role: "user",
@@ -101,6 +109,53 @@ class SearchToolExecutor {
         requestParams["_pendingToolMessages"] := execResult.toolMessages
         requestParams["_toolLoopCount"] := loopCount
         return ctxId
+    }
+
+    ; Create the durable search-context message as an IMMEDIATE "Searching…"
+    ; placeholder (persisted + posted to the UI) so the user sees what the AI
+    ; is searching for while the backend runs. QueueFollowUp edits this row to
+    ; the real result afterwards. Returns the placeholder message id.
+    static PrepareFollowUp(toolCalls, threadId, parentId) {
+        global requestParams
+        ctxId := ""
+        query := SearchToolExecutor.FirstQuery(toolCalls)
+        if threadId && parentId && query != "" {
+            ctxId := ChatDB.Msg_Insert({
+                thread_id: threadId,
+                role: "user",
+                content: SearchTools.BuildContextText(query, "Searching…"),
+                parent_id: parentId,
+                sibling_group: "",
+                sibling_index: 0
+            })
+            if ctxId != "" {
+                if !requestParams.Has("_pendingSearchContextIds")
+                    requestParams["_pendingSearchContextIds"] := []
+                requestParams["_pendingSearchContextIds"].Push(ctxId)
+                requestParams["_pendingSearchPlaceholderId"] := ctxId
+                requestParams["_pendingSearchPlaceholderQuery"] := query
+            }
+        }
+        return ctxId
+    }
+
+    ; The placeholder text the UI shows while the backend runs.
+    static PlaceholderContent(toolCalls) {
+        return SearchTools.BuildContextText(SearchToolExecutor.FirstQuery(toolCalls), "Searching…")
+    }
+
+    ; The query of the first web_search tool call (used for the placeholder).
+    static FirstQuery(toolCalls) {
+        for idx, tc in toolCalls {
+            if tc.HasOwnProp("name") && tc.name = "web_search" {
+                try {
+                    args := jsongo.Parse(tc.HasOwnProp("arguments") ? tc.arguments : "")
+                    if IsObject(args) && args.Has("query")
+                        return args["query"]
+                }
+            }
+        }
+        return ""
     }
 
     static MaxIterationsReached(loopCount) {

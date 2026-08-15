@@ -46,9 +46,11 @@ class TavilySearch {
             . '-d @"' requestFile '" '
             . '-o "' outputFile '" '
             . '2>"' errorFile '"'
+        startTime := A_TickCount
         Run(cURLCommand, , "Hide", &cURLPID)
         while ProcessExist(cURLPID)
             Sleep 100
+        responseTimeMs := A_TickCount - startTime
 
         raw := ""
         if FileExist(outputFile)
@@ -56,23 +58,58 @@ class TavilySearch {
 
         TavilySearch._Cleanup(requestFile, outputFile, errorFile)
 
+        result := ""
+        status := "success"
         if !raw {
             debugLog("[SEARCH] Tavily returned no response for query '" query "'")
-            return "Web search failed: no response from the Tavily API."
+            result := "Web search failed: no response from the Tavily API."
+            status := "error"
+        } else {
+            try {
+                parsed := jsongo.Parse(raw)
+                if parsed.Has("error") {
+                    debugLog("[SEARCH] Tavily error for query '" query "': " (IsObject(parsed["error"]) ? jsongo.Stringify(parsed["error"]) : parsed["error"]))
+                    result := "Web search failed: Tavily API error."
+                    status := "error"
+                } else {
+                    result := TavilySearch._Format(parsed)
+                }
+            } catch {
+                debugLog("[SEARCH] Tavily returned unparseable JSON for query '" query "'")
+                result := "Web search failed: unparseable Tavily response."
+                status := "error"
+            }
         }
+        if InStr(result, "Web search failed")
+            status := "error"
 
+        TavilySearch._LogRequest(query, key, payload, raw, result, status, responseTimeMs)
+        return result
+    }
+
+    ; Record the Tavily call in the API log (best-effort).
+    static _LogRequest(query, key, payload, raw, result, status, responseTimeMs) {
+        if apiLogMaxEntries <= 0
+            return
         try {
-            parsed := jsongo.Parse(raw)
-        } catch {
-            debugLog("[SEARCH] Tavily returned unparseable JSON for query '" query "'")
-            return "Web search failed: unparseable Tavily response."
+            ApiLogger.LogRequest({
+                timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+                commandName: "Web Search (Tavily)",
+                provider: "tavily",
+                model: "",
+                isFIM: false,
+                endpoint: SearchTools.TavilyEndpoint(),
+                pasteMode: "chat",
+                request: payload,
+                response: raw,
+                status: status,
+                responseTimeMs: responseTimeMs,
+                searchQuery: query,
+                searchResult: result
+            })
+        } catch Error as e {
+            debugLog("[SEARCH] API log write failed: " e.Message)
         }
-        if parsed.Has("error") {
-            debugLog("[SEARCH] Tavily error for query '" query "': " (IsObject(parsed["error"]) ? jsongo.Stringify(parsed["error"]) : parsed["error"]))
-            return "Web search failed: Tavily API error."
-        }
-
-        return TavilySearch._Format(parsed)
     }
 
     static _Format(parsed) {

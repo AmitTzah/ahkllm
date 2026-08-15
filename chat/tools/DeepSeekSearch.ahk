@@ -25,7 +25,12 @@ class DeepSeekSearch {
         payload := jsongo.Stringify({
             model: providerInfo.modelName,
             input: [{ role: "user", content: [{ type: "input_text", text: query }] }],
-            max_output_tokens: 600,
+            ; Search-heavy models burn output tokens on their internal
+            ; search/open_page rounds before writing the answer - 600 left
+            ; deepseek-v4-flash truncated ("incomplete: max_output_tokens")
+            ; and the final answer never appeared. 4096 lets the search and
+            ; the answer both complete.
+            max_output_tokens: 4096,
             tools: [{ type: "web_search" }]
         })
 
@@ -45,9 +50,11 @@ class DeepSeekSearch {
             . '-d @"' requestFile '" '
             . '-o "' outputFile '" '
             . '2>"' errorFile '"'
+        startTime := A_TickCount
         Run(cURLCommand, , "Hide", &cURLPID)
         while ProcessExist(cURLPID)
             Sleep 100
+        responseTimeMs := A_TickCount - startTime
 
         raw := ""
         if FileExist(outputFile)
@@ -55,18 +62,53 @@ class DeepSeekSearch {
 
         DeepSeekSearch._Cleanup(requestFile, outputFile, errorFile)
 
+        result := ""
+        status := "success"
         if !raw {
             debugLog("[SEARCH] DeepSeek Responses returned no response for query '" query "'")
-            return "Web search failed: no response from the DeepSeek search API."
+            result := "Web search failed: no response from the DeepSeek search API."
+            status := "error"
+        } else {
+            try {
+                parsed := jsongo.Parse(raw)
+                result := DeepSeekSearch.ExtractResult(parsed, query)
+            } catch {
+                debugLog("[SEARCH] DeepSeek Responses returned unparseable JSON for query '" query "'")
+                result := "Web search failed: unparseable DeepSeek search response."
+                status := "error"
+            }
         }
+        if InStr(result, "Web search failed")
+            status := "error"
 
+        DeepSeekSearch._LogRequest(query, providerInfo, payload, raw, result, status, responseTimeMs)
+        return result
+    }
+
+    ; Record the /responses call in the API log so searches are visible in
+    ; the API Logs viewer like chat/title requests (logging is best-effort).
+    static _LogRequest(query, providerInfo, payload, raw, result, status, responseTimeMs) {
+        if apiLogMaxEntries <= 0
+            return
         try {
-            parsed := jsongo.Parse(raw)
-        } catch {
-            debugLog("[SEARCH] DeepSeek Responses returned unparseable JSON for query '" query "'")
-            return "Web search failed: unparseable DeepSeek search response."
+            ApiLogger.LogRequest({
+                timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+                commandName: "Web Search (DeepSeek)",
+                provider: providerInfo.providerKey,
+                model: providerInfo.modelName,
+                isFIM: false,
+                endpoint: SearchTools.ResponsesEndpoint(providerInfo.endpoint),
+                pasteMode: "chat",
+                request: payload,
+                response: raw,
+                status: status,
+                responseTimeMs: responseTimeMs,
+                searchQuery: query,
+                searchResult: result
+            })
+        } catch Error as e {
+            debugLog("[SEARCH] API log write failed: " e.Message)
         }
-        return DeepSeekSearch.ExtractResult(parsed, query)
     }
 
     ; Translate a parsed /responses body into the tool result. Split out of

@@ -248,8 +248,10 @@ use canonical function-calling order (contiguous `assistant tool_calls` ->
 `role:"tool"`, with the search-context message excluded from that round and
 re-entering history only afterwards). The search-context message renders as a
 collapsible card (query in the header, results hidden until expanded), and the
-scenario clicks the toggle to verify expansion. No real API calls are made by
-the suite.
+scenario clicks the toggle to verify expansion. The card is posted immediately
+as a "Searching..." placeholder and updated in place when the backend returns,
+and the scenario asserts the DeepSeek search request appears in the API log.
+No real API calls are made by the suite.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 
