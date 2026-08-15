@@ -118,6 +118,7 @@ RegisterTestClass(className) {
 #Include unit\SearchTools.test.ahk
 #Include unit\ResponsesParser.test.ahk
 #Include unit\TavilySearch.test.ahk
+#Include unit\DeepSeekSearch.test.ahk
 #Include unit\SSEParser.test.ahk
 #Include unit\SearchToolExecutor.test.ahk
 #Include unit\CustomMessages.test.ahk

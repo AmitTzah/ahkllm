@@ -156,22 +156,42 @@ function makeToolCallSseHandler(parsed, opts) {
 }
 
 // DeepSeek native search backend (POST /responses). Shape captured from a
-// real api.deepseek.com/responses call during mock setup.
+// real api.deepseek.com/responses call during mock setup (2026-08-15). The
+// envelope ALWAYS carries an "error" key - JSON null on success (OpenAI
+// Responses API shape) - and the output array interleaves reasoning,
+// web_search_call and message items. Including error:null is load-bearing:
+// jsongo parses JSON null as "" (empty string), and DeepSeekSearch must NOT
+// treat a present-but-null error key as a failure, or every successful
+// search reports "Web search failed: ".
 function responsesSearchBody(opts) {
   const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
   return {
+    id: 'mock-response-id',
     object: 'response',
     status: 'completed',
     model: opts.responseModel || 'deepseek-v4-flash',
+    error: null,
+    incomplete_details: null,
     output: [{
+      type: 'reasoning',
+      id: 'mock-reasoning-1',
+      status: 'completed',
+      content: [{ type: 'reasoning_text', text: 'Let me search the web for this.' }],
+      summary: []
+    }, {
+      type: 'web_search_call',
+      id: 'call_mock_search_1',
+      status: 'completed',
+      action: { type: 'search', queries: [opts.searchQuery || 'AutoHotkey webview2'] }
+    }, {
       type: 'message',
       id: 'mock-search-message',
       status: 'completed',
       role: 'assistant',
-      content: [{ type: 'output_text', annotations: [], text }]
+      content: [{ type: 'output_text', annotations: [], logprobs: [], text }]
     }],
     usage: {
-      input_tokens: 493, output_tokens: 42, total_tokens: 535,
+      input_tokens: 4750, output_tokens: 42, total_tokens: 4792,
       input_tokens_details: { cached_tokens: 0 },
       output_tokens_details: { reasoning_tokens: 0 }
     }

@@ -66,9 +66,30 @@ class DeepSeekSearch {
             debugLog("[SEARCH] DeepSeek Responses returned unparseable JSON for query '" query "'")
             return "Web search failed: unparseable DeepSeek search response."
         }
-        if parsed.Has("error") {
-            errText := IsObject(parsed["error"]) ? jsongo.Stringify(parsed["error"]) : parsed["error"]
-            debugLog("[SEARCH] DeepSeek Responses error for query '" query "': " errText)
+        return DeepSeekSearch.ExtractResult(parsed, query)
+    }
+
+    ; Translate a parsed /responses body into the tool result. Split out of
+    ; Run() so unit tests exercise response handling without cURL.
+    ;
+    ; DeepSeek's /responses envelope ALWAYS carries an "error" key - JSON
+    ; null on success (OpenAI Responses API shape). jsongo parses JSON null
+    ; as "" (empty string), so a present-but-empty error key means SUCCESS;
+    ; only a non-empty error is a real failure. Treating the null key as an
+    ; error made every successful search report "Web search failed: " with
+    ; no reason (real-API report 2026-08-15).
+    static ExtractResult(parsed, query := "") {
+        if parsed.Has("error") && parsed["error"] != "" {
+            err := parsed["error"]
+            ; Prefer the error object's human-readable message (real DeepSeek
+            ; failures carry {"message": ...}); fall back to the raw value.
+            if IsObject(err) && err.Has("message") && err["message"] != ""
+                errText := err["message"]
+            else if IsObject(err)
+                errText := jsongo.Stringify(err)
+            else
+                errText := err
+            debugLog("[SEARCH] DeepSeek Responses error for query '" query "': " (IsObject(err) ? jsongo.Stringify(err) : err))
             return "Web search failed: " SubStr(errText, 1, 300)
         }
 
