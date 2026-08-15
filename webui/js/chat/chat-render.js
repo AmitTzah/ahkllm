@@ -151,14 +151,18 @@ function createMessageBubble(msg, index) {
   var metaText = _buildMetaText(msg);
   var role = msg.role;
 
-  var roleClass, authorName, contentHtml, middleHtml, editUiHtml;
+  var roleClass, authorName, contentHtml, middleHtml, editUiHtml, isSearchContext = false;
   if (role === 'user') {
     // Web-search context messages (persisted as plain user-role text so API
-    // history round-trips without schema changes) render as a muted card.
-    var isSearchContext = typeof msg.content === 'string' && msg.content.indexOf('[Web search:') === 0;
+    // history round-trips without schema changes) render as a muted,
+    // collapsible card: the query in the header, the results hidden until
+    // the user expands them.
+    isSearchContext = typeof msg.content === 'string' && msg.content.indexOf('[Web search:') === 0;
     roleClass = isSearchContext ? 'you search-context' : 'you';
     authorName = isSearchContext ? 'Web Search' : 'You';
-    contentHtml = md.render(_prepUserContent(msg.content));
+    contentHtml = isSearchContext
+      ? _buildSearchContextHtml(_parseSearchContext(msg.content))
+      : md.render(_prepUserContent(msg.content));
     middleHtml = _buildAttachmentHtml(msg);
     editUiHtml = _buildEditUiHtml(msg);
   } else if (role === 'assistant') {
@@ -182,6 +186,8 @@ function createMessageBubble(msg, index) {
   template.innerHTML = _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml);
   var bubble = template.firstElementChild;
 
+  if (isSearchContext) _wireSearchCardToggle(bubble);
+
   if (role !== 'system') {
     var actionsDiv = bubble.querySelector('.msg-actions');
     if (actionsDiv) addMessageActions(actionsDiv, msg, index);
@@ -189,6 +195,48 @@ function createMessageBubble(msg, index) {
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
   return bubble;
+}
+
+// Split a persisted "[Web search: <query>]" message into its query and
+// results body (the marker line is replaced by the card header).
+function _parseSearchContext(content) {
+  var text = String(content || '');
+  var query = '';
+  var results = text;
+  var m = /^\[Web search: ([^\]]*)\](?:\r?\n)*/.exec(text);
+  if (m) {
+    query = m[1];
+    results = text.slice(m[0].length);
+  }
+  return { query: query, results: results };
+}
+
+// Collapsible search-result card: header shows the query, the results body
+// is hidden by default and revealed by the toggle.
+function _buildSearchContextHtml(sc) {
+  var q = escHtml(sc.query || '');
+  var body = md.render(_prepUserContent(sc.results || ''));
+  return '<div class="search-card">' +
+    '<button type="button" class="search-card-toggle" aria-expanded="false" title="Show or hide the search results">' +
+    '<i data-lucide="search" style="width:14px;height:14px;flex-shrink:0;"></i>' +
+    '<span class="search-card-title">Searched the web for: <strong>' + q + '</strong></span>' +
+    '<i data-lucide="chevron-down" class="search-card-caret" style="width:14px;height:14px;flex-shrink:0;"></i>' +
+    '</button>' +
+    '<div class="search-card-results" hidden>' + body + '</div>' +
+    '</div>';
+}
+
+// Toggle the card's results on click and keep aria-expanded in sync.
+function _wireSearchCardToggle(bubble) {
+  var toggle = bubble.querySelector('.search-card-toggle');
+  if (!toggle) return;
+  toggle.addEventListener('click', function() {
+    var card = toggle.closest('.search-card');
+    var results = card ? card.querySelector('.search-card-results') : null;
+    var expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    if (results) results.hidden = expanded;
+  });
 }
 
 function _buildMetaText(msg) {

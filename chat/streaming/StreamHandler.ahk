@@ -205,7 +205,11 @@ _handleNonStreamToolCalls(toolCalls) {
 
         sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := sendPath.Length ? sendPath[sendPath.Length].id : ""
-        SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
+        ctxId := SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
+        ; Live UI feedback: render the search-context card (query + results)
+        ; as soon as the search completes instead of waiting for a reload.
+        if ctxId
+            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
 
         _deleteCurrentStreamFiles()
         _BuildAndFireRequest()
@@ -845,7 +849,11 @@ _handleStreamToolCalls() {
 
         parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
         threadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
-        SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
+        ctxId := SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
+        ; Live UI feedback: render the search-context card (query + results)
+        ; as soon as the search completes instead of waiting for a reload.
+        if ctxId
+            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
 
         _deleteCurrentStreamFiles()
         _RemoveStreamFromActive(_currentStreamKey)

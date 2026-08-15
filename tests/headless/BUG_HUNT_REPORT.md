@@ -245,7 +245,10 @@ the `[Web search: ...]` context message, the mock `/responses` backend hit, and
 the `role:"tool"` follow-up request. The follow-up request is also asserted to
 use canonical function-calling order (contiguous `assistant tool_calls` ->
 `role:"tool"`, with the search-context message excluded from that round and
-re-entering history only afterwards). No real API calls are made by the suite.
+re-entering history only afterwards). The search-context message renders as a
+collapsible card (query in the header, results hidden until expanded), and the
+scenario clicks the toggle to verify expansion. No real API calls are made by
+the suite.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 

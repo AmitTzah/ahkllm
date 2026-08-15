@@ -78,7 +78,7 @@ function loadRenderModule() {
                   var m = val.match(/class="([^"]+)"/);
                   if (m) el.firstElementChild = { className: m[1], children: [], style: {}, dataset: {}, querySelector: function(s) {
                     if (val.indexOf(s.replace('.','').replace('#','')) >= 0) {
-                      return { className: s.replace('.',''), innerHTML: '', children: [], appendChild: function(){}, querySelector: function(){ return null; }, querySelectorAll: function(){ return []; }, style: {}, setAttribute: function(){}, removeAttribute: function(){} };
+                      return { className: s.replace('.',''), innerHTML: '', children: [], appendChild: function(){}, querySelector: function(){ return null; }, querySelectorAll: function(){ return []; }, style: {}, setAttribute: function(){}, removeAttribute: function(){}, addEventListener: function(){} };
                     }
                     return null;
                   }, querySelectorAll: function() { return []; }, classList: { add: function(){}, contains: function(){ return false; } }, appendChild: function(c){ this.children.push(c); }, addEventListener: function(){}, remove: function(){}, insertBefore: function(){}, closest: function(){ return null; }, setAttribute: function(){}, removeAttribute: function(){} };
@@ -139,6 +139,29 @@ describe('createMessageBubble — user', () => {
         const bubble = ctx.createMessageBubble({ role: 'user', content: '[Web search: AutoHotkey]\\n\\nAnswer: ...', id: 'ctx1', createdAt: '2026-01-01T13:01:00' }, 0);
         assert.ok(bubble.className.includes('search-context'), 'search context messages get a muted card class');
         assert.ok(bubble.className.includes('you'), 'search context stays a user-role bubble');
+        assert.ok(bubble.querySelector('.search-card-toggle'), 'search context renders a collapsible card header');
+    });
+
+    it('parses the query out of the [Web search: ...] marker line', () => {
+        const ctx = loadRenderModule();
+        const sc = ctx._parseSearchContext('[Web search: most played song on Spotify 2024]\n\nThe answer body.');
+        assert.strictEqual(sc.query, 'most played song on Spotify 2024');
+        assert.ok(sc.results.indexOf('The answer body.') === 0, 'results keep everything after the marker line');
+        const plain = ctx._parseSearchContext('a normal user message');
+        assert.strictEqual(plain.query, '');
+        assert.strictEqual(plain.results, 'a normal user message');
+    });
+
+    it('builds a collapsed search card showing the query with the raw marker replaced', () => {
+        const ctx = loadRenderModule();
+        const html = ctx._buildSearchContextHtml({ query: 'AutoHotkey WebView2', results: 'Answer: it works.' });
+        assert.ok(html.indexOf('search-card') >= 0, 'card root present');
+        assert.ok(html.indexOf('Searched the web for:') >= 0, 'header labels the query');
+        assert.ok(html.indexOf('AutoHotkey WebView2') >= 0, 'header shows the query text');
+        assert.ok(html.indexOf('search-card-results" hidden') >= 0, 'results are collapsed by default');
+        assert.ok(html.indexOf('Answer: it works.') >= 0, 'results body is present inside the card');
+        assert.ok(html.indexOf('[Web search:') < 0, 'raw marker is replaced by the card header');
+        assert.ok(html.indexOf('aria-expanded="false"') >= 0, 'toggle starts collapsed');
     });
 });
 

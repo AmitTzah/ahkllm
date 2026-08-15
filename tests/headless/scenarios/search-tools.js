@@ -98,6 +98,32 @@ scenarios.push({
     if (!settings.length || String(settings[0].advanced_toggles || '').indexOf('webSearch') < 0)
       throw new Error('webSearch not persisted: ' + JSON.stringify(settings[0]));
 
+    // UI feedback: the search context renders as a collapsible card showing
+    // the query, with the results hidden until the user expands them.
+    const cardState = await cdp.eval(`(() => {
+      var toggle = document.querySelector('.msg.search-context .search-card-toggle');
+      var results = document.querySelector('.msg.search-context .search-card-results');
+      if (!toggle || !results) return JSON.stringify({ missing: true });
+      var hiddenBefore = results.hidden;
+      toggle.click();
+      var hiddenAfter = results.hidden;
+      toggle.click();
+      return JSON.stringify({ title: toggle.textContent, hiddenBefore: hiddenBefore, hiddenAfter: hiddenAfter });
+    })()`);
+    const card = JSON.parse(cardState);
+    if (card.missing) {
+      const dom = await cdp.eval(`(() => {
+        var sc = document.querySelector('.msg.search-context');
+        if (sc) return sc.outerHTML.slice(0, 800);
+        return 'no .msg.search-context; total .msg nodes=' + document.querySelectorAll('.msg').length;
+      })()`);
+      throw new Error('search context card not rendered: ' + cardState + ' | dom=' + dom);
+    }
+    if (card.title.indexOf('Searched the web for:') < 0 || card.title.indexOf('AutoHotkey WebView2') < 0)
+      throw new Error('search card header missing the query: ' + cardState);
+    if (card.hiddenBefore !== true || card.hiddenAfter !== false)
+      throw new Error('search card results did not toggle: ' + cardState);
+
     return 'deepseek native search: tool call -> /responses mock -> answer persisted (3 messages, toggle persisted, no real API calls)';
   }
 });
