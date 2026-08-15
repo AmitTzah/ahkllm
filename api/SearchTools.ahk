@@ -26,8 +26,13 @@ class SearchTools {
                 parameters: {
                     type: "object",
                     properties: { query: { type: "string", description: "The search query." } },
-                    required: ["query"],
-                    additionalProperties: false
+                    required: ["query"]
+                    ; NOTE: do NOT add additionalProperties here. AHK has no
+                    ; boolean type — `false` IS 0, and jsongo serializes it as
+                    ; "additionalProperties":0, which DeepSeek's JSON-Schema
+                    ; validator rejects ("0 is not of types boolean, object").
+                    ; The field is optional in JSON Schema, so omitting it is
+                    ; both valid and provider-safe.
                 }
             }
         }

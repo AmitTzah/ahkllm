@@ -227,6 +227,28 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           fs.appendFileSync(logFile, JSON.stringify({ modeUsed, url: req.url, body: parsed }) + '\n');
         } catch {}
       }
+      // Emulate the real providers' JSON-Schema validation for function tools.
+      // AHK's jsongo serializes `false` as 0, and DeepSeek rejects
+      // additionalProperties:0 with exactly this error — enforcing it here
+      // keeps the headless suite honest: an invalid tool schema now FAILS the
+      // scenario instead of passing silently (regression: web-search schema).
+      if (parsed.tools && Array.isArray(parsed.tools)) {
+        for (const tool of parsed.tools) {
+          if (tool && tool.function && tool.function.parameters &&
+              typeof tool.function.parameters.additionalProperties !== 'undefined') {
+            const ap = tool.function.parameters.additionalProperties;
+            if (ap !== true && ap !== false && (typeof ap !== 'object' || ap === null)) {
+              json({
+                error: {
+                  message: `Invalid schema for function '${tool.function.name || 'unknown'}': ${JSON.stringify(ap)} is not of types "boolean", "object"`,
+                  type: 'invalid_request_error'
+                }
+              }, res, 400);
+              return;
+            }
+          }
+        }
+      }
       // Backend routing used by the web-search tool loop: DeepSeek native
       // search calls the /responses endpoint, Tavily the /search endpoint.
       // Both are answered from the real captured shapes — no real API calls

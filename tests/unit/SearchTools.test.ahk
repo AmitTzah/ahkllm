@@ -40,6 +40,25 @@ class SearchToolsTest {
             throw Error("missing required array")
     }
 
+    ; Regression (real-API report): AHK has no boolean type — `false` IS 0,
+    ; so jsongo serialized the old additionalProperties:false as
+    ; "additionalProperties":0. DeepSeek's JSON-Schema validator rejects that
+    ; with "Invalid schema for function 'web_search': 0 is not of types
+    ; boolean, object". The serialized tool definition must therefore contain
+    ; no additionalProperties key at all (the field is optional in JSON
+    ; Schema, so omitting it is valid and provider-safe).
+    ToolDefinition_SerializedJson_HasNoAdditionalProperties() {
+        serialized := jsongo.Stringify(SearchTools.Definition())
+        if InStr(serialized, "additionalProperties")
+            throw Error("tool schema must not carry additionalProperties (jsongo serializes AHK false as 0, which real APIs reject): " serialized)
+        if InStr(serialized, "0}")
+            throw Error("tool schema unexpectedly contains a bare 0 value: " serialized)
+        if !InStr(serialized, '"name":"web_search"')
+            throw Error("serialized tool lost its name: " serialized)
+        if !InStr(serialized, '"required":["query"]')
+            throw Error("serialized tool lost its required query: " serialized)
+    }
+
     ContextText_MarksSearch() {
         txt := SearchTools.BuildContextText("q", "answer")
         if SubStr(txt, 1, 15) != "[Web search: q]"
