@@ -58,13 +58,19 @@ class ModelPricingParserTest {
         ; the committed sample (tests/fixtures/models_metadata.txt) so the
         ; parser is always exercised in CI, where the generated file does not
         ; exist (regression: CI failed with "models_metadata.txt not found").
+        ; An EMPTY generated file (a refresh that fetched 0 models - e.g. a
+        ; failed models.dev call) is treated the same as a missing one: the
+        ; parser must still be exercised against the committed sample.
         path := A_ScriptDir "\..\scripts\models_metadata.txt"
-        if !FileExist(path)
+        models := []
+        if FileExist(path)
+            models := ModelPricingParser.Parse(FileRead(path, "UTF-8"))
+        if models.Length = 0 {
             path := A_ScriptDir "\fixtures\models_metadata.txt"
-        if !FileExist(path)
-            throw Error("models_metadata.txt not found at " path)
-        content := FileRead(path, "UTF-8")
-        models := ModelPricingParser.Parse(content)
+            if !FileExist(path)
+                throw Error("models_metadata.txt not found at " path)
+            models := ModelPricingParser.Parse(FileRead(path, "UTF-8"))
+        }
         if models.Length = 0
             throw Error("Expected at least one model from generated metadata file")
         for m in models {
