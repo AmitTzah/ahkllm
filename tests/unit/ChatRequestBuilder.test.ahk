@@ -222,6 +222,104 @@ class ChatRequestBuilderTest {
             try FileDelete(requestParams["cURLErrorFile"])
     }
 
+    ; Canonical function-calling order: while a tool round is in flight, the
+    ; durable search-context user message is excluded from the follow-up
+    ; request body - the staged assistant tool_calls + role:"tool" pair is
+    ; contiguous and carries the results. Once the loop clears the staged
+    ; state, the context re-enters the history for later requests.
+    PendingToolMessages_ExcludeSearchContext_ThenReenterAfterLoop() {
+        global activeThreadId, requestParams
+
+        EnvSet("OPENAI_API_KEY", "sk-test-openai-key")
+        this._setupDb()
+        ChatDB.Thread_Create("Canonical Tool Loop")
+        threads := ChatDB.Thread_List()
+        activeThreadId := threads[threads.Length].id
+        userMsgId := ChatDB.Msg_Insert({
+            thread_id: activeThreadId,
+            role: "user",
+            content: "search for X",
+            parent_id: "",
+            sibling_group: "",
+            sibling_index: 0
+        })
+        ctxId := ChatDB.Msg_Insert({
+            thread_id: activeThreadId,
+            role: "user",
+            content: "[Web search: X]`n`nsearch results",
+            parent_id: userMsgId,
+            sibling_group: "",
+            sibling_index: 0
+        })
+
+        requestParams := Map(
+            "singleAPIModelName", "openai/gpt-5-mini",
+            "stream", true,
+            "pasteMode", "chat",
+            "windowTitle", "test",
+            "providerName", "",
+            "uniqueID", A_TickCount,
+            "_pendingToolMessages", [
+                {
+                    role: "assistant",
+                    content: "",
+                    tool_calls: [{
+                        id: "call_1",
+                        type: "function",
+                        function: { name: "web_search", arguments: "{`"query`":`"X`"}" }
+                    }]
+                },
+                { role: "tool", tool_call_id: "call_1", content: "search results" }
+            ],
+            "_pendingSearchContextIds", [ctxId]
+        )
+
+        result := buildRequest()
+        if result = ""
+            throw Error("buildRequest returned empty with pending tool messages")
+        parsed := jsongo.Parse(result)
+        msgs := parsed["messages"]
+        if msgs.Length != 3
+            throw Error("expected user + assistant tool_calls + tool (context excluded), got " msgs.Length " messages")
+        if msgs[1]["role"] != "user" || msgs[1]["content"] != "search for X"
+            throw Error("first message should be the original user message: " jsongo.Stringify(msgs[1]))
+        if InStr(result, "[Web search: X]")
+            throw Error("search context must not appear before the tool call in the follow-up request")
+        if msgs[2]["role"] != "assistant" || !msgs[2].Has("tool_calls") || msgs[2]["tool_calls"].Length != 1
+            throw Error("second message should be assistant tool_calls: " jsongo.Stringify(msgs[2]))
+        if msgs[3]["role"] != "tool" || msgs[3]["tool_call_id"] != "call_1"
+            throw Error("third message should be the tool result: " jsongo.Stringify(msgs[3]))
+
+        ; Clean this round's temp files before building again.
+        for key in ["chatHistoryJSONRequestFile", "cURLCommandFile", "cURLOutputFile", "cURLErrorFile"] {
+            if requestParams.Has(key)
+                try FileDelete(requestParams[key])
+        }
+
+        ; Loop finished: clearing the staged state lets the context re-enter.
+        requestParams.Delete("_pendingToolMessages")
+        requestParams.Delete("_pendingSearchContextIds")
+        result2 := buildRequest()
+        if result2 = ""
+            throw Error("buildRequest returned empty after the tool loop")
+        parsed2 := jsongo.Parse(result2)
+        msgs2 := parsed2["messages"]
+        if msgs2.Length != 2
+            throw Error("expected user + search context after the loop, got " msgs2.Length " messages")
+        if msgs2[2]["role"] != "user" || InStr(msgs2[2]["content"], "[Web search: X]") = 0
+            throw Error("search context must re-enter history after the loop: " jsongo.Stringify(msgs2))
+
+        this._teardownDb()
+        if requestParams.Has("chatHistoryJSONRequestFile")
+            try FileDelete(requestParams["chatHistoryJSONRequestFile"])
+        if requestParams.Has("cURLCommandFile")
+            try FileDelete(requestParams["cURLCommandFile"])
+        if requestParams.Has("cURLOutputFile")
+            try FileDelete(requestParams["cURLOutputFile"])
+        if requestParams.Has("cURLErrorFile")
+            try FileDelete(requestParams["cURLErrorFile"])
+    }
+
     ; --------------------------------------------------------
     ; Gemini 2.5 + reasoning override: extra_body with
     ; thinking_budget (numeric) + include_thoughts.

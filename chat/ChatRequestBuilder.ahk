@@ -88,7 +88,20 @@ _ShowEndpointError(providerInfo) {
 ; Build a plain {role, content, _msgId} array from the DB path.
 _BuildApiMessagesFromPath(path) {
     apiMessages := []
+    ; Canonical function-calling order: while a tool round is in flight, the
+    ; durable search-context user messages inserted for THIS round are
+    ; excluded from the follow-up request body - the staged assistant
+    ; tool_calls + role:"tool" pair carries the results. Once the tool loop
+    ; clears the staged state, the context re-enters the history for every
+    ; later request.
+    skip := Map()
+    if requestParams.Has("_pendingSearchContextIds") {
+        for id in requestParams["_pendingSearchContextIds"]
+            skip[id] := true
+    }
     for msg in path {
+        if msg.HasOwnProp("id") && skip.Has(msg.id)
+            continue
         apiMessages.Push({ role: msg.role, content: msg.content, _msgId: msg.id })
     }
     ; Tool-loop round: append the ephemeral assistant tool_calls + role:"tool"

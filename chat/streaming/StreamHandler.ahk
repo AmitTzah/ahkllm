@@ -891,6 +891,8 @@ _clearToolLoopState() {
         requestParams.Delete("_pendingToolMessages")
     if requestParams.Has("_toolLoopCount")
         requestParams.Delete("_toolLoopCount")
+    if requestParams.Has("_pendingSearchContextIds")
+        requestParams.Delete("_pendingSearchContextIds")
 }
 
 ; Bug #221: drop the finalized request from the in-flight list and restore the

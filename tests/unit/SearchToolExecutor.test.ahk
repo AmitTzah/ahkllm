@@ -82,6 +82,8 @@ class SearchToolExecutorTest {
             throw Error("tool loop count not staged")
         if requestParams["_pendingToolMessages"].Length != 1
             throw Error("pending tool messages not staged")
+        if requestParams["_pendingSearchContextIds"].Length != 1 || requestParams["_pendingSearchContextIds"][1] != ctxId
+            throw Error("search context id not tracked for canonical ordering: " jsongo.Stringify(requestParams["_pendingSearchContextIds"]))
 
         activeThreadId := ""
         this._teardownDb()

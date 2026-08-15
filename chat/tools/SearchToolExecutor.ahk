@@ -87,6 +87,16 @@ class SearchToolExecutor {
                 sibling_group: "",
                 sibling_index: 0
             })
+            ; Track the inserted context message so THIS round's follow-up
+            ; request can exclude it from the history (canonical
+            ; function-calling order: assistant tool_calls -> role:"tool"
+            ; carry the results; the context re-enters history for later
+            ; requests once the tool loop clears the staged state).
+            if ctxId != "" {
+                if !requestParams.Has("_pendingSearchContextIds")
+                    requestParams["_pendingSearchContextIds"] := []
+                requestParams["_pendingSearchContextIds"].Push(ctxId)
+            }
         }
         requestParams["_pendingToolMessages"] := execResult.toolMessages
         requestParams["_toolLoopCount"] := loopCount

@@ -242,7 +242,10 @@ scenario drives the real app and inspects the DB path + mock request log.
 **Verification:** Headless - toggled Web Search, sent a message, waited for the
 stream to idle, then asserted the rendered answer, the 3-message DB path with
 the `[Web search: ...]` context message, the mock `/responses` backend hit, and
-the `role:"tool"` follow-up request. No real API calls are made by the suite.
+the `role:"tool"` follow-up request. The follow-up request is also asserted to
+use canonical function-calling order (contiguous `assistant tool_calls` ->
+`role:"tool"`, with the search-context message excluded from that round and
+re-entering history only afterwards). No real API calls are made by the suite.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 
@@ -262,7 +265,33 @@ the `role:"tool"` follow-up request. No real API calls are made by the suite.
 
 **Verification:** Headless - toggled Web Search on an OpenAI-model thread,
 sent a message, asserted the rendered answer, the 3-message DB path, the mock
-`/search` backend hit, and the `role:"tool"` follow-up request.
+`/search` backend hit, and the `role:"tool"` follow-up request (canonical
+function-calling order, same assertion as #250).
+
+### 252. Web Search toggle: turning it off removes the tool from subsequent requests
+
+**Scenario:** 252
+
+**Status:** verified
+
+**Repro:** Toggle Web Search on, send a message, then toggle it off and send
+another message in the same thread.
+
+**Expected:** The first request carries the `web_search` function tool; the
+second request has no `tools` array at all; the off state persists with the
+thread (survives reloads and new chats stay off by default).
+
+**Actual:** Works (scenario PASSES) - the first request carries the tool, the
+second has no `tools` key, and `advanced_toggles` stores webSearch off.
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` gates `requestObj.tools` on
+`SearchTools.Enabled()` (requestParams.webSearch); the toggle round-trips via
+`webui/js/chat/model-picker/model-picker.js` -> `chat/ChatSettings.ahk` ->
+`chat/db/ThreadRepo.ahk`.
+
+**Verification:** Headless - toggled Web Search on, sent a message, toggled it
+off, sent another, then inspected the mock request log (tool present, then
+absent) and the thread's `advanced_toggles`.
 
 ## History (append-only)
 
