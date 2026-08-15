@@ -224,6 +224,35 @@ describe('appendChatMessage', () => {
     });
 });
 
+describe('updateChatMessage', () => {
+    it('replaces the matching bubble in place and updates the message array', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [{ id: 'ctx1', role: 'user', content: '[Web search: X]\n\nSearching…' }];
+        let replaced = null;
+        ctx.document.getElementById = (id) => {
+            if (id === 'chat-messages') {
+                return {
+                    querySelector: (sel) => (sel.indexOf('ctx1') >= 0 ? { replaceWith: (el) => { replaced = el; } } : null)
+                };
+            }
+            return null;
+        };
+        ctx.updateChatMessage({ id: 'ctx1', role: 'user', content: '[Web search: X]\n\nreal results' });
+        assert.ok(replaced, 'bubble should be replaced');
+        assert.strictEqual(ctx.chatMessages[0].content, '[Web search: X]\n\nreal results');
+    });
+
+    it('does nothing when the message id has no bubble', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [];
+        ctx.document.getElementById = (id) => {
+            if (id === 'chat-messages') return { querySelector: () => null };
+            return null;
+        };
+        assert.doesNotThrow(() => ctx.updateChatMessage({ id: 'nope', role: 'user', content: 'x' }));
+    });
+});
+
 describe('removeLastAssistantMessage', () => {
     it('removes last assistant message from array', () => {
         const ctx = loadRenderModule();

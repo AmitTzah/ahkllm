@@ -28,6 +28,7 @@ function loadModule() {
                 if (id === 'sysMsgClose') return { addEventListener: () => {} };
                 if (id === 'sysMsgCancel') return { addEventListener: () => {} };
                 if (id === 'webSearchToggle') return { classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false }, setAttribute: () => {}, title: '', addEventListener: () => {} };
+                if (id === 'railWebSearchToggle') return { classList: { add: () => {}, remove: () => {}, contains: () => false }, addEventListener: () => {} };
                 if (id === 'modelCardTrigger') return { querySelector: () => ({ textContent: '' }) };
                 return null;
             },
@@ -108,7 +109,9 @@ describe('populateCurrentSettings', () => {
             classList: { add: (c) => added.push(c), remove: (c) => removed.push(c), toggle: (c, force) => { if (force) added.push(c); else removed.push(c); }, contains: () => false },
             setAttribute: () => {}, title: ''
         };
-        ctx.document.getElementById = (id) => (id === 'webSearchToggle' ? btn : null);
+        const railAdded = [];
+        const rail = { classList: { add: (c) => railAdded.push(c), remove: () => {}, contains: () => false } };
+        ctx.document.getElementById = (id) => (id === 'webSearchToggle' ? btn : (id === 'railWebSearchToggle' ? rail : null));
 
         ctx.populateCurrentSettings({
             model: 'deepseek/deepseek-v4-flash', systemMessage: '', reasoning: '', temperature: '',
@@ -118,6 +121,7 @@ describe('populateCurrentSettings', () => {
         assert.strictEqual(ctx.window._currentSettings.codeExecution, undefined, 'codeExecution stub was removed');
         assert.strictEqual(ctx.window._currentSettings.webSearch, true);
         assert.ok(added.includes('on'), 'web search button should turn on');
+        assert.ok(railAdded.includes('on'), 'right-rail web search switch should turn on');
     });
 });
 
@@ -200,6 +204,39 @@ describe('composer Web Search toggle handler', () => {
         const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
         // Should not throw even with no toggle button
         assert.doesNotThrow(() => vm.runInContext(src, vm.createContext(sandbox2)));
+    });
+
+    it('attaches a click handler to the right-rail switch #railWebSearchToggle that flips the flag', () => {
+        const handlers = [];
+        let sendAllSettingsCalls = 0;
+        const rail = {
+            classList: { add: () => {}, remove: () => {}, contains: () => false },
+            addEventListener: (ev, fn) => { handlers.push(fn); }
+        };
+        const sandbox = {
+            document: {
+                getElementById: (id) => (id === 'railWebSearchToggle' ? rail : (id === 'webSearchToggle' ? null : null)),
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
+                addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
+            },
+            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {}, _currentSettings: { webSearch: false } },
+            setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
+            _sendAllSettings: () => { sendAllSettingsCalls++; },
+            _updateModelCard: () => {},
+            lucide: { createIcons: () => {} },
+            console: console
+        };
+        sandbox.global = sandbox;
+
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
+        vm.runInContext(src, vm.createContext(sandbox));
+
+        assert.strictEqual(handlers.length, 1, 'Expected 1 click handler on the right-rail switch');
+        handlers[0]();
+        assert.strictEqual(sandbox.window._currentSettings.webSearch, true, 'click should flip webSearch on');
+        assert.strictEqual(sendAllSettingsCalls, 1, 'Expected _sendAllSettings to be called once on click');
     });
 });
 

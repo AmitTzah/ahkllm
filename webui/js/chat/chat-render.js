@@ -361,6 +361,24 @@ function appendChatMessage(message) {
   hideLoadingIndicator();
 }
 
+// Replace an existing bubble's content in place (used to turn a "Searching…"
+// search card into the real results card without re-rendering the chat).
+function updateChatMessage(message) {
+  if (!message || !message.id) return;
+  var container = document.getElementById('chat-messages');
+  if (!container) return;
+  var old = container.querySelector('[data-msg-id="' + message.id + '"]');
+  if (!old) return;
+  var idx = -1;
+  for (var i = 0; i < chatMessages.length; i++) {
+    if (chatMessages[i] && chatMessages[i].id === message.id) { idx = i; break; }
+  }
+  if (idx >= 0) chatMessages[idx] = message;
+  var fresh = createMessageBubble(message, idx >= 0 ? idx : chatMessages.length - 1);
+  old.replaceWith(fresh);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
 function removeLastAssistantMessage() {
   for (var i = chatMessages.length - 1; i >= 0; i--) {
     if (chatMessages[i].role === 'assistant') {

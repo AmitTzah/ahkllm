@@ -27,6 +27,7 @@
     // ---------- AHK -> WebView ----------
     'initChatMode': { dir: 'ahk->web', fields: ['messages', 'threadId'], required: ['messages', 'threadId'] },
     'appendChatMessage': { dir: 'ahk->web', data: 'object' },
+    'updateChatMessage': { dir: 'ahk->web', data: 'object' },
     'streamContent': { dir: 'ahk->web', data: 'string' },
     'streamReasoning': { dir: 'ahk->web', data: 'string' },
     'streamModelName': { dir: 'ahk->web', data: 'string' },

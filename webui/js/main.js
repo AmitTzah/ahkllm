@@ -95,6 +95,10 @@ function handleWebMessage(event) {
         renderNavList();
         break;
 
+      case 'updateChatMessage':
+        updateChatMessage(data);
+        break;
+
       case 'removeLastAssistantMessage':
         removeLastAssistantMessage();
         break;

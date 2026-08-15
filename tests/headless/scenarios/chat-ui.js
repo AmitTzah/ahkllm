@@ -170,7 +170,7 @@ scenarios.push({
 
 scenarios.push({
   id: 20,
-  name: 'Composer Web Search toggle is the only tool control (no Tools dropdown, no right-rail Advanced section, no codeExecution)',
+  name: 'Composer + right-rail Web Search toggles are the only tool controls (no Tools dropdown, no Advanced section, no codeExecution)',
   regression: true, // web-search milestone: stubs removed, only web_search remains
   mode: null,
   settings: {},
@@ -184,9 +184,11 @@ scenarios.push({
     if (hasAdvanced) throw new Error('right-rail Advanced section still present');
     const hasToggle = await cdp.eval('!!document.getElementById("webSearchToggle")');
     if (!hasToggle) throw new Error('composer Web Search toggle missing');
+    const hasRailToggle = await cdp.eval('!!document.getElementById("railWebSearchToggle")');
+    if (!hasRailToggle) throw new Error('right-rail Web Search toggle missing');
 
     await cdp.clearPosted();
-    await cdp.click('#webSearchToggle');
+    await cdp.click('#railWebSearchToggle');
     await sleep(1000); // debounce 300ms + IPC round trip
     const after = await cdp.postedMessages();
     const lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop();
@@ -194,7 +196,10 @@ scenarios.push({
     const payload = JSON.parse(lastAfter);
     if (payload.webSearch !== true) throw new Error('webSearch not true in updateModelSettings payload: ' + lastAfter);
     if ('codeExecution' in payload) throw new Error('codeExecution stub still in payload: ' + lastAfter);
-    return 'stubs removed: composer Web Search toggle is the only tool control (no Tools dropdown, no Advanced section, no codeExecution)';
+    // The composer button reflects the same per-thread flag.
+    const btnOn = await cdp.eval('document.getElementById("webSearchToggle").classList.contains("on")');
+    if (!btnOn) throw new Error('composer toggle not synced with the right-rail switch');
+    return 'stubs removed: composer + right-rail Web Search toggles are the only tool controls (no Tools dropdown, no Advanced section, no codeExecution)';
   }
 });
 
@@ -1040,6 +1045,10 @@ scenarios.push({
     if (asstRows[0].cnt < 1 || partialInDb[0].cnt < 1)
       throw new Error('partial streamed content was not persisted (bug #219 not fixed): assistantRows=' + asstRows[0].cnt + ' partialRows=' + partialInDb[0].cnt);
     // The next Send must actually send (not be swallowed as cancelStream).
+    // Wait for the composer to be truly re-enabled - under full-suite load
+    // the setChatButtonsEnabled(true) post can lag a few hundred ms past the
+    // banner, and a click on a still-disabled button posts nothing.
+    await cdp.waitFor('document.getElementById("chat-send-btn") && !document.getElementById("chat-send-btn").disabled', 15000, 200, 'send button enabled after error');
     const uiCountBefore = await cdp.eval('chatMessages.length');
     await sendChatMessage(cdp, 'follow-up after the error');
     await sleep(800);

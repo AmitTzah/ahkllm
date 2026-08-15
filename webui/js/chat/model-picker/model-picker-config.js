@@ -118,14 +118,21 @@ function updateDropdownLabel(data) {
   }
 }
 
-// The composer Web Search toggle reflects the current per-thread flag.
+// Both Web Search controls (composer button + right-rail switch) reflect the
+// current per-thread flag.
 function _syncWebSearchToggle() {
-  var btn = document.getElementById('webSearchToggle');
-  if (!btn) return;
   var on = !!(window._currentSettings && window._currentSettings.webSearch);
-  btn.classList.toggle('on', on);
-  btn.setAttribute('aria-pressed', String(on));
-  btn.title = on ? 'Web Search (on)' : 'Web Search (off)';
+  var btn = document.getElementById('webSearchToggle');
+  if (btn) {
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.title = on ? 'Web Search (on)' : 'Web Search (off)';
+  }
+  var rail = document.getElementById('railWebSearchToggle');
+  if (rail) {
+    if (on) rail.classList.add('on');
+    else rail.classList.remove('on');
+  }
 }
 
 // Wire right panel controls
@@ -238,6 +245,16 @@ document.addEventListener('DOMContentLoaded', function() {
   // and re-syncs the button state.
   var webSearchToggle = document.getElementById('webSearchToggle');
   if (webSearchToggle) webSearchToggle.addEventListener('click', function() {
+    if (!window._currentSettings) window._currentSettings = {};
+    window._currentSettings.webSearch = !window._currentSettings.webSearch;
+    _syncWebSearchToggle();
+    _sendAllSettings();
+  });
+
+  // Right-rail Web Search switch (same per-thread flag as the composer
+  // button; both stay in sync).
+  var railWebSearchToggle = document.getElementById('railWebSearchToggle');
+  if (railWebSearchToggle) railWebSearchToggle.addEventListener('click', function() {
     if (!window._currentSettings) window._currentSettings = {};
     window._currentSettings.webSearch = !window._currentSettings.webSearch;
     _syncWebSearchToggle();
