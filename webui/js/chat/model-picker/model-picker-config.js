@@ -26,8 +26,8 @@ function populateCurrentSettings(settings) {
     webSearch: !!settings.webSearch
   };
 
-  // Sync the right-rail Advanced toggle switches with the current settings
-  _syncAdvancedToggles();
+  // Sync the composer Web Search toggle with the current settings
+  _syncWebSearchToggle();
 
   // Apply per-chat font size
   if (settings.fontSize) {
@@ -118,16 +118,14 @@ function updateDropdownLabel(data) {
   }
 }
 
-// The right-rail Advanced switches map 1:1 (by row order) to request flags.
-var _advancedToggleKeys = ['webSearch'];
-
-function _syncAdvancedToggles() {
-  var switches = document.querySelectorAll('#advancedWrap .toggle-row .switch');
-  for (var i = 0; i < switches.length && i < _advancedToggleKeys.length; i++) {
-    var on = window._currentSettings && window._currentSettings[_advancedToggleKeys[i]];
-    if (on) switches[i].classList.add('on');
-    else switches[i].classList.remove('on');
-  }
+// The composer Web Search toggle reflects the current per-thread flag.
+function _syncWebSearchToggle() {
+  var btn = document.getElementById('webSearchToggle');
+  if (!btn) return;
+  var on = !!(window._currentSettings && window._currentSettings.webSearch);
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Web Search (on)' : 'Web Search (off)';
 }
 
 // Wire right panel controls
@@ -236,26 +234,14 @@ document.addEventListener('DOMContentLoaded', function() {
     _sendAllSettings();
   });
 
-  // Advanced toggle
-  var advToggle = document.getElementById('advancedToggle');
-  var advWrap = document.getElementById('advancedWrap');
-  if (advToggle && advWrap) advToggle.addEventListener('click', function() {
-    advWrap.classList.toggle('open');
-  });
-
-  // Toggle switches (right rail only — avoid double-handling settings panel switches)
-  document.querySelectorAll('#railRight .toggle-row .switch').forEach(function(sw) {
-    sw.addEventListener('click', function() {
-      sw.classList.toggle('on');
-      if (!window._currentSettings) window._currentSettings = {};
-      // Map the clicked switch back to its request flag via the row's label.
-      var row = sw.closest('.toggle-row');
-      var labelEl = row ? row.querySelector('.lbl') : null;
-      var label = labelEl ? (labelEl.textContent || '').trim() : '';
-      var key = label === 'Web Search' ? 'webSearch' : '';
-      if (key) window._currentSettings[key] = sw.classList.contains('on');
-      _sendAllSettings();
-    });
+  // Composer Web Search toggle (the only tool): flips the per-thread flag
+  // and re-syncs the button state.
+  var webSearchToggle = document.getElementById('webSearchToggle');
+  if (webSearchToggle) webSearchToggle.addEventListener('click', function() {
+    if (!window._currentSettings) window._currentSettings = {};
+    window._currentSettings.webSearch = !window._currentSettings.webSearch;
+    _syncWebSearchToggle();
+    _sendAllSettings();
   });
 
   // Model card click — handled by chat-settings.js

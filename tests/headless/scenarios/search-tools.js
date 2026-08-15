@@ -34,10 +34,8 @@ function assertCanonicalToolOrder(log) {
 // posted payload.
 async function enableWebSearch(cdp) {
   await showChat();
-  await cdp.click('#advancedToggle');
-  await cdp.waitFor('document.getElementById("advancedWrap").classList.contains("open")', 5000, 200, 'advanced open');
   await cdp.clearPosted();
-  await cdp.click('#advancedWrap .toggle-row .switch');
+  await cdp.click('#webSearchToggle');
   await sleep(1000); // debounce 300ms + IPC round trip
   const posted = await cdp.postedMessages();
   const last = posted.filter((m) => m.includes('"updateModelSettings"')).pop();
@@ -193,7 +191,7 @@ scenarios.push({
 
     // Toggle the same right-rail switch OFF and capture the posted payload.
     await cdp.clearPosted();
-    await cdp.click('#advancedWrap .toggle-row .switch');
+    await cdp.click('#webSearchToggle');
     await sleep(1000); // debounce 300ms + IPC round trip
     const posted = await cdp.postedMessages();
     const last = posted.filter((m) => m.includes('"updateModelSettings"')).pop();

@@ -157,14 +157,15 @@ How to run AHK safely:
 - **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-14 - Web-search milestone COMPLETE: composer
-  Tools dropdown + Code Execution/Calculator stubs removed; per-thread Web
-  Search toggle now adds a web_search function tool (default off). DeepSeek
-  models search natively via their /responses API; every other provider
-  falls back to Tavily. Scenarios 250 + 251 verify both backends end-to-end
-  against the local mock (no real API calls in the suite); scenario 20
-  flipped to a regression check for the stub removal. Full headless suite
-  PASS and `npm run test:fast` green. Next round: fresh intake when the user
-  asks.
+  Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
+  Web Search toggle (composer toolbar button, default off) adds a web_search
+  function tool. The right-rail Advanced collapsible was removed since it
+  only held that toggle. DeepSeek models search natively via their /responses
+  API; every other provider falls back to Tavily. Scenarios 250 + 251 verify
+  both backends end-to-end against the local mock (no real API calls in the
+  suite); scenario 20 flipped to a regression check for the stub removal.
+  Full headless suite PASS and `npm run test:fast` green. Next round: fresh
+  intake when the user asks.
 
 ## Bug entry template
 
@@ -226,8 +227,8 @@ one at a time, in rank order.
 
 **Status:** verified
 
-**Repro:** In a new chat, open the right-rail Advanced section, toggle Web
-Search on, send a message that needs current info.
+**Repro:** In a new chat, click the Web Search button in the composer
+toolbar, send a message that needs current info.
 
 **Expected:** The request carries a web_search function tool; the model's tool
 call is answered by DeepSeek's native /responses search backend; the final

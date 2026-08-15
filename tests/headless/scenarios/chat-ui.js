@@ -170,34 +170,31 @@ scenarios.push({
 
 scenarios.push({
   id: 20,
-  name: 'Composer Tools dropdown and Code Execution/Calculator stubs removed; right-rail Web Search is the only tool toggle',
+  name: 'Composer Web Search toggle is the only tool control (no Tools dropdown, no right-rail Advanced section, no codeExecution)',
   regression: true, // web-search milestone: stubs removed, only web_search remains
   mode: null,
   settings: {},
   async body({ cdp }) {
     await showChat();
-    // The composer Tools dropdown (Web Search / Code Execution / Calculator)
-    // is gone entirely.
+    // The composer Tools dropdown and the right-rail Advanced collapsible are
+    // gone; the only tool control is the composer Web Search toggle button.
     const dropdown = await cdp.eval('document.querySelector(".tools-dropdown") !== null');
     if (dropdown) throw new Error('composer Tools dropdown still present');
-
-    // Right-rail Advanced: exactly one toggle row, labeled Web Search.
-    await cdp.click('#advancedToggle');
-    await cdp.waitFor('document.getElementById("advancedWrap").classList.contains("open")', 5000, 200, 'advanced open');
-    const rows = await cdp.eval('[...document.querySelectorAll("#advancedWrap .toggle-row")].map(r => (r.querySelector(".lbl") || {}).textContent)');
-    if (rows.length !== 1 || rows[0].indexOf('Web Search') < 0)
-      throw new Error('expected a single Web Search toggle, got ' + JSON.stringify(rows));
+    const hasAdvanced = await cdp.eval('!!document.getElementById("advancedWrap")');
+    if (hasAdvanced) throw new Error('right-rail Advanced section still present');
+    const hasToggle = await cdp.eval('!!document.getElementById("webSearchToggle")');
+    if (!hasToggle) throw new Error('composer Web Search toggle missing');
 
     await cdp.clearPosted();
-    await cdp.click('#advancedWrap .toggle-row .switch');
+    await cdp.click('#webSearchToggle');
     await sleep(1000); // debounce 300ms + IPC round trip
     const after = await cdp.postedMessages();
     const lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop();
-    if (!lastAfter) throw new Error('no updateModelSettings posted after toggling a switch');
+    if (!lastAfter) throw new Error('no updateModelSettings posted after toggling web search');
     const payload = JSON.parse(lastAfter);
     if (payload.webSearch !== true) throw new Error('webSearch not true in updateModelSettings payload: ' + lastAfter);
     if ('codeExecution' in payload) throw new Error('codeExecution stub still in payload: ' + lastAfter);
-    return 'stubs removed: no Tools dropdown, single Web Search toggle, no codeExecution in updateModelSettings';
+    return 'stubs removed: composer Web Search toggle is the only tool control (no Tools dropdown, no Advanced section, no codeExecution)';
   }
 });
 

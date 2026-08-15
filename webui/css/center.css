@@ -83,6 +83,7 @@
 .composer-tools .icon-btn { width: 40px; height: 40px; color: var(--text-tertiary); border-radius: var(--radius-sm); border: none; background: transparent; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
 .composer-tools .icon-btn svg { width: 20px; height: 20px; }
 .composer-tools .icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.composer-tools .icon-btn.web-search-toggle.on { color: var(--accent-primary); background: var(--accent-light); }
 
 .composer-inner textarea { 
   flex: 1; border: none; background: transparent; font-family: var(--font-ui); font-size: 16px;
