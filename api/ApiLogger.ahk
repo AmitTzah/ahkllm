@@ -9,11 +9,20 @@
 class ApiLogger {
     static logFilePath := A_Temp "\LLM_API_Log.json"
 
-    ; Logs a single API interaction entry
+    ; Reads the log file and returns the entries array (newest first). A
+    ; missing, unparseable, or non-array log file yields [] - logging is
+    ; best-effort and must NEVER crash the app. A torn/corrupt file (from an
+    ; interrupted write or a concurrent app instance) used to raise a
+    ; runtime error dialog because the parse result could be a String.
     static _readLogFile() {
         if FileExist(this.logFilePath) {
             try {
-                return jsongo.Parse(FileOpen(this.logFilePath, "r", "UTF-8-RAW").Read())
+                parsed := jsongo.Parse(FileOpen(this.logFilePath, "r", "UTF-8-RAW").Read())
+                if parsed is Array
+                    return parsed
+            } catch {
+                ; Corrupt/unparseable log - treat as empty; the next write
+                ; replaces the file.
             }
         }
         return []
@@ -61,8 +70,11 @@ class ApiLogger {
     ; Write the log array atomically (bug #111): write a temp file in the same
     ; directory, then rename it over the target, so a crash mid-write never
     ; leaves truncated JSON that ReadLogs fails to parse (same class as #97).
+    ; The temp name is unique per write: concurrent app instances used to
+    ; share one ".tmp" path and interleave bytes into it, which was then moved
+    ; over the real log (corrupting it and crashing the next read).
     static _WriteLogs(logs) {
-        tmpPath := this.logFilePath ".tmp"
+        tmpPath := this.logFilePath ".tmp" A_TickCount "_" Random(1000, 999999)
         try {
             f := FileOpen(tmpPath, "w", "UTF-8-RAW")
             f.Write(jsongo.Stringify(logs))
