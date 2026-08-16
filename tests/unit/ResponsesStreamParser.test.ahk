@@ -40,6 +40,29 @@ class ResponsesStreamParserTest {
             throw Error("expected empty phase for unknown item, got: " jsongo.Stringify(result))
     }
 
+    ; Real capture 2026-08-16: DeepSeek tags EVERY message "final_answer" at
+    ; output_item.added time and only marks interim commentary correctly at
+    ; output_item.done. The done event's phase must win, and deltas must
+    ; expose their item id so consumers can rebuild the final result.
+    ParseLine_DoneEventPhaseOverridesAddedPhase() {
+        ResponsesStreamParser.Reset()
+        ResponsesStreamParser.ParseLine('data: {"type":"response.output_item.added","item":{"type":"message","id":"m1","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":1}')
+        ResponsesStreamParser.ParseLine('data: {"type":"response.output_item.done","item":{"type":"message","id":"m1","status":"completed","content":[],"phase":"commentary","role":"assistant"},"output_index":1}')
+        if ResponsesStreamParser.PhaseOf("m1") != "commentary"
+            throw Error("done phase must override the added phase, got: '" ResponsesStreamParser.PhaseOf("m1") "'")
+        result := ResponsesStreamParser.ParseLine('data: {"type":"response.output_text.delta","content_index":0,"delta":"x","item_id":"m1","output_index":1}')
+        if result.type != "answer" || result.phase != "commentary" || result.itemId != "m1"
+            throw Error("delta must carry the corrected phase + item id: " jsongo.Stringify(result))
+    }
+
+    ParseLine_DonePhaseKeepsFinalAnswer() {
+        ResponsesStreamParser.Reset()
+        ResponsesStreamParser.ParseLine('data: {"type":"response.output_item.added","item":{"type":"message","id":"m2","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":2}')
+        ResponsesStreamParser.ParseLine('data: {"type":"response.output_item.done","item":{"type":"message","id":"m2","status":"completed","content":[],"phase":"final_answer","role":"assistant"},"output_index":2}')
+        if ResponsesStreamParser.PhaseOf("m2") != "final_answer"
+            throw Error("final answer must keep final_answer phase")
+    }
+
     ParseLine_SearchAndLifecycleEvents() {
         result := ResponsesStreamParser.ParseLine('data: {"type":"response.web_search_call.searching","item_id":"call_1","output_index":1}')
         if result.type != "search"

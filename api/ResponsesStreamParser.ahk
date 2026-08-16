@@ -7,8 +7,14 @@
 ;   response.output_text.delta     - the text it is composing (commentary +
 ;                                    final answer)
 ;   response.web_search_call.*     - search rounds in progress
-; The message phase ("commentary" vs "final_answer") is only available on the
-; response.output_item.added event, so item ids are tracked per stream.
+; The message phase ("commentary" vs "final_answer") is tagged on
+; response.output_item.added, but DeepSeek's backend tags EVERY message item
+; "final_answer" at add time and only sets the true phase on
+; response.output_item.done (real capture 2026-08-16: interim "Let me search
+; ..." texts are corrected to "commentary" at done time, the final answer
+; stays "final_answer"). The parser tracks item ids per stream and the DONE
+; event's phase WINS, so consumers can attribute output_text deltas
+; correctly after the stream finishes.
 ; ======================================================
 
 class ResponsesStreamParser {
@@ -46,13 +52,23 @@ class ResponsesStreamParser {
             if item.Has("type") && item["type"] = "message" && item.Has("id")
                 this._phases[item["id"]] := item.Has("phase") ? item["phase"] : ""
         }
+        ; The done event carries the AUTHORITATIVE phase: DeepSeek tags every
+        ; message "final_answer" on added and only marks interim commentary
+        ; texts correctly on done. Overwrite the add-time guess so the final
+        ; result never includes the model's interim narration.
+        if t = "response.output_item.done" && parsed.Has("item") && IsObject(parsed["item"]) {
+            item := parsed["item"]
+            if item.Has("type") && item["type"] = "message" && item.Has("id") && item.Has("phase")
+                this._phases[item["id"]] := item["phase"]
+        }
         if t = "response.reasoning_text.delta" && parsed.Has("delta")
             return { type: "reasoning", content: parsed["delta"] }
         if t = "response.output_text.delta" && parsed.Has("delta") {
             phase := ""
-            if parsed.Has("item_id") && this._phases.Has(parsed["item_id"])
-                phase := this._phases[parsed["item_id"]]
-            return { type: "answer", content: parsed["delta"], phase: phase }
+            itemId := parsed.Has("item_id") ? parsed["item_id"] : ""
+            if itemId != "" && this._phases.Has(itemId)
+                phase := this._phases[itemId]
+            return { type: "answer", content: parsed["delta"], phase: phase, itemId: itemId }
         }
         if t = "response.web_search_call.searching" || t = "response.web_search_call.in_progress"
             return { type: "search" }
@@ -67,5 +83,11 @@ class ResponsesStreamParser {
             return { type: "failed", message: message }
         }
         return { type: "ignore" }
+    }
+
+    ; The phase recorded for a message item AFTER the stream's done events
+    ; have been processed ("" when unknown).
+    static PhaseOf(itemId) {
+        return this._phases.Has(itemId) ? this._phases[itemId] : ""
     }
 }

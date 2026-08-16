@@ -330,6 +330,68 @@ sent a message, waited for the "Searching..." card, posted cancelStream, then
 asserted the cancelled card, exactly one chat request (no follow-up), the API
 log entry with status cancelled, and an enabled send button.
 
+**Scenario:** 254
+
+**Status:** verified
+
+**Repro:** Enable Web Search, send a message that triggers a search, and the
+DeepSeek `/responses` backend completes with ZERO message items (the real
+backend's "returned no answer" shape - captured 2026-08-16 when the user's
+"Iran war" queries all failed in ~0.5s each).
+
+**Expected:** The app shows ONE failure card ("Web search failed: DeepSeek
+returned no answer.") and STOPS the tool loop: no follow-up chat request, so
+the model cannot keep firing more failed searches (the user's run showed four
+failed cards in a row before the model gave up). The failure is persisted,
+the backend call is API-logged with status error, and the composer returns to
+Send mode.
+
+**Actual:** Works (scenario PASSES) - a search round where every query failed
+now surfaces the failure card and terminates the loop instead of staging the
+tool exchange and re-entering the request pipeline.
+
+**Evidence:** `SearchToolExecutor.Execute` reports `successCount`/`failureText`;
+`_handleStreamToolCalls`/`_handleNonStreamToolCalls` call `_failToolLoop` when
+`successCount = 0` (no `QueueFollowUp`/`_BuildAndFireRequest`), which edits the
+placeholder card to the failure text, posts the error, and cleans up.
+
+**Verification:** Headless - `sse-tool-call` mode with `searchEmpty: true`
+(mock `/responses` completes with no message items); asserted exactly one chat
+request (no follow-up), the failure card text, the persisted user + failure
+rows (no assistant answer), the API-log entry with status error, and an
+enabled send button.
+
+**Scenario:** 255
+
+**Status:** verified
+
+**Repro:** DeepSeek `/responses` streams multiple message items, all tagged
+"final_answer" at `output_item.added`, with the interim commentary ("Let me
+search for the latest news...") corrected to "commentary" only at
+`output_item.done` (real capture 2026-08-16: three message items - two
+interim, one real answer).
+
+**Expected:** The search result fed back to the model (role:"tool" message)
+and the persisted search card contain ONLY the real answer, never the model's
+interim narration, while the live card still shows everything as it streams.
+
+**Actual:** Works (scenario PASSES) - the stream parser records the
+`output_item.done` phase as authoritative and `DeepSeekSearch._BuildFinalAnswer`
+rebuilds the result from the final phases.
+
+**Evidence:** `ResponsesStreamParser` updates `_phases[item_id]` on
+`response.output_item.done`; `DeepSeekSearch._FeedProgress` accumulates
+per-item text and the result is rebuilt after the stream (last
+`final_answer` item wins; fallback to the last item when no phases exist).
+Fixture `tests/fixtures/responses-stream-multi-item.sse` mirrors the real
+event sequence.
+
+**Verification:** Headless - `sse-tool-call` mode with `searchInterim` set;
+asserted the persisted search context and the follow-up tool message contain
+the final answer and not "Let me search"/"Let me open". Unit: parser
+done-phase tests, `DeepSeekSearch.FeedFixture_MultiItemStream_*`, and
+`SearchToolExecutor` success-count tests.
+
 ## History (append-only)
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per

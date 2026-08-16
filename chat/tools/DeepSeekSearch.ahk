@@ -75,7 +75,11 @@ class DeepSeekSearch {
         requestParams["_pendingSearchPid"] := cURLPID
 
         ResponsesStreamParser.Reset()
-        state := { reasoning: "", answer: "", finalAnswer: "", searchRounds: 0, failedMsg: "", lastProgressTick: 0 }
+        ; items/itemOrder keep per-message text so the final result can be
+        ; rebuilt from the AUTHORITATIVE phases (output_item.done): DeepSeek
+        ; tags every message "final_answer" at add time and corrects interim
+        ; commentary to "commentary" at done time (real capture 2026-08-16).
+        state := { reasoning: "", answer: "", items: Map(), itemOrder: [], searchRounds: 0, failedMsg: "", lastProgressTick: 0 }
         buffer := ""
         lastPos := 0
         f := ""
@@ -103,12 +107,15 @@ class DeepSeekSearch {
             debugLog("[SEARCH] DeepSeek Responses failed for query '" query "': " state.failedMsg)
             result := "Web search failed: " state.failedMsg
             status := "error"
-        } else if state.finalAnswer = "" {
-            debugLog("[SEARCH] DeepSeek search returned an empty answer for query '" query "'")
-            result := "Web search failed: DeepSeek returned no answer."
-            status := "error"
         } else {
-            result := state.finalAnswer
+            state.finalAnswer := DeepSeekSearch._BuildFinalAnswer(state)
+            if state.finalAnswer = "" {
+                debugLog("[SEARCH] DeepSeek search returned an empty answer for query '" query "'")
+                result := "Web search failed: DeepSeek returned no answer."
+                status := "error"
+            } else {
+                result := state.finalAnswer
+            }
         }
 
         DeepSeekSearch._LogRequest(query, providerInfo, payload, result, result, status, responseTimeMs)
@@ -145,9 +152,16 @@ class DeepSeekSearch {
         if result.type = "reasoning"
             state.reasoning .= result.content
         else if result.type = "answer" {
+            ; The live card shows EVERYTHING the model streams (commentary +
+            ; final answer) so the user sees exactly what the search is doing.
             state.answer .= result.content
-            if result.phase = "final_answer"
-                state.finalAnswer .= result.content
+            if result.HasOwnProp("itemId") && result.itemId != "" {
+                if !state.items.Has(result.itemId) {
+                    state.items[result.itemId] := ""
+                    state.itemOrder.Push(result.itemId)
+                }
+                state.items[result.itemId] .= result.content
+            }
         } else if result.type = "search"
             state.searchRounds++
         else if result.type = "failed" && state.failedMsg = ""
@@ -175,6 +189,25 @@ class DeepSeekSearch {
         if state.answer != ""
             body .= "**Answer...**`n`n" state.answer
         return body
+    }
+
+    ; Rebuild the final answer from the per-item text using the phases the
+    ; stream settled on (output_item.done wins over output_item.added):
+    ; concatenate every item whose final phase is "final_answer" in stream
+    ; order, falling back to the LAST message when no phase markers exist.
+    static _BuildFinalAnswer(state) {
+        if !state.items.Count
+            return ""
+        finalText := ""
+        lastItemId := ""
+        for itemId in state.itemOrder {
+            lastItemId := itemId
+            if ResponsesStreamParser.PhaseOf(itemId) = "final_answer"
+                finalText .= state.items[itemId]
+        }
+        if finalText = "" && lastItemId != ""
+            finalText := state.items[lastItemId]
+        return finalText
     }
 
     ; Record the /responses call in the API log so searches are visible in

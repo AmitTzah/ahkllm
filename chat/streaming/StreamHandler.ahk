@@ -222,6 +222,15 @@ _handleNonStreamToolCalls(toolCalls) {
             startLoadingCursor(false)
             return
         }
+        ; Every search in this round failed (empty backend answers, API
+        ; errors, missing keys): surface the failure card and STOP the loop -
+        ; no follow-up request, so the model cannot keep firing more failed
+        ; queries (real-API report 2026-08-16: four failed search cards in a
+        ; row before the model gave up).
+        if execResult.successCount = 0 {
+            _failToolLoop(execResult.failureText != "" ? execResult.failureText : "Web search failed.", execResult.contextText)
+            return
+        }
         SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
         if ctxId
             postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
@@ -884,6 +893,12 @@ _handleStreamToolCalls() {
             _RestoreLastActiveStream()
             return
         }
+        ; Same all-failed guard as the non-streaming path: stop the loop
+        ; instead of letting the model retry failed searches.
+        if execResult.successCount = 0 {
+            _failToolLoop(execResult.failureText != "" ? execResult.failureText : "Web search failed.", execResult.contextText)
+            return
+        }
         SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
         if ctxId
             postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
@@ -903,14 +918,15 @@ _handleStreamToolCalls() {
 
 ; Surface a tool-loop failure, tear down this round's stream, and clear the
 ; staged loop state so the next normal send starts clean.
-_failToolLoop(message) {
+_failToolLoop(message, contextText := "") {
     debugLog("[SEARCH] " message)
     ; Turn the "Searching…" placeholder into a failure card instead of
-    ; leaving a stale "Searching…" message in the thread.
+    ; leaving a stale "Searching…" message in the thread. When the round had
+    ; multiple failed queries, contextText carries every query's failure card.
     if requestParams.Has("_pendingSearchPlaceholderId") && requestParams["_pendingSearchPlaceholderId"] != "" {
         ctxId := requestParams["_pendingSearchPlaceholderId"]
         q := requestParams.Has("_pendingSearchPlaceholderQuery") ? requestParams["_pendingSearchPlaceholderQuery"] : ""
-        content := "[Web search: " q "]\n\n" message
+        content := contextText != "" ? contextText : "[Web search: " q "]\n\n" message
         try ChatDB.Msg_Edit(ctxId, content)
         postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
         requestParams.Delete("_pendingSearchPlaceholderId")

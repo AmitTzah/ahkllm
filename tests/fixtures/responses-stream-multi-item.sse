@@ -1,0 +1,61 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"mock-resp","object":"response","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"type":"message","id":"msg_a","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":0}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_a","output_index":0,"part":{"type":"output_text","text":""}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"Let me search for the latest news. ","item_id":"msg_a","output_index":0}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"I will gather sources. ","item_id":"msg_a","output_index":0}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_a","output_index":0}
+
+; DeepSeek tags every message "final_answer" at add time and only marks the
+; interim commentary correctly at done time (real capture 2026-08-16).
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_a","status":"completed","content":[{"type":"output_text","text":"Let me search for the latest news. I will gather sources. "}],"phase":"commentary","role":"assistant"},"output_index":0}
+
+event: response.web_search_call.in_progress
+data: {"type":"response.web_search_call.in_progress","item_id":"call_1","output_index":1}
+
+event: response.web_search_call.searching
+data: {"type":"response.web_search_call.searching","item_id":"call_1","output_index":1}
+
+event: response.web_search_call.completed
+data: {"type":"response.web_search_call.completed","item_id":"call_1","output_index":1}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"type":"message","id":"msg_b","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":2}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"Let me open the live coverage. ","item_id":"msg_b","output_index":2}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_b","status":"completed","content":[{"type":"output_text","text":"Let me open the live coverage. "}],"phase":"commentary","role":"assistant"},"output_index":2}
+
+event: response.web_search_call.in_progress
+data: {"type":"response.web_search_call.in_progress","item_id":"call_2","output_index":3}
+
+event: response.web_search_call.completed
+data: {"type":"response.web_search_call.completed","item_id":"call_2","output_index":3}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"type":"message","id":"msg_c","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":4}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"Here is the answer: ","item_id":"msg_c","output_index":4}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"Iran situation is tense.","item_id":"msg_c","output_index":4}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_c","status":"completed","content":[{"type":"output_text","text":"Here is the answer: Iran situation is tense."}],"phase":"final_answer","role":"assistant"},"output_index":4}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"mock-resp","object":"response","status":"completed"}}

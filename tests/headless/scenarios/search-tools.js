@@ -305,4 +305,105 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 254,
+  name: 'DeepSeek native search empty backend: one failure card, tool loop stops (no retry loop)',
+  mode: 'sse-tool-call',
+  settings: { threadTitles: { enabled: false } },
+  mockOpts: {
+    searchEmpty: true, // /responses completes with ZERO message items (real
+                       // backend shape when it returns "no answer")
+    chatText: 'the answer comes from DeepSeek native search.'
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    const payload = await enableWebSearch(cdp);
+    if (payload.webSearch !== true) throw new Error('webSearch not enabled');
+
+    await sendChatMessage(cdp, 'What is the latest AutoHotkey version?');
+    // The placeholder card appears immediately, then becomes the failure card
+    // once the empty backend stream completes.
+    await cdp.waitFor('document.querySelector(".msg.search-context .search-card-results") && document.querySelector(".msg.search-context .search-card-results").textContent.indexOf("Searching") >= 0', 15000, 150, 'searching card');
+    await cdp.waitFor('document.querySelector(".msg.search-context .search-card-results") && document.querySelector(".msg.search-context .search-card-results").textContent.indexOf("Web search failed") >= 0', 30000, 150, 'failure card');
+
+    // Regression: a failed search round must NOT fire a follow-up request, so
+    // the model cannot keep retrying (real-API report 2026-08-16: four failed
+    // search cards in a row before the model gave up).
+    const log = fs.readFileSync(mockLog, 'utf8');
+    const chatReqs = log.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.url).includes('/chat/completions'));
+    if (chatReqs.length !== 1) throw new Error('expected exactly 1 chat request (no follow-up after failed search), got ' + chatReqs.length);
+    if (JSON.stringify(chatReqs[0].body).indexOf('"role":"tool"') >= 0) throw new Error('follow-up tool exchange fired after failed search');
+
+    // The card carries the failure message, and the thread persists user +
+    // failure card with NO assistant answer (the loop stopped).
+    const cardText = await cdp.eval('document.querySelector(".msg.search-context .search-card-results") ? document.querySelector(".msg.search-context .search-card-results").textContent : ""');
+    if (cardText.indexOf('DeepSeek returned no answer') < 0) throw new Error('failure card missing the reason: ' + JSON.stringify(cardText));
+    const rows = seed.query(dbPath, 'SELECT role, content FROM messages ORDER BY created_at');
+    if (rows.length !== 2) throw new Error('expected user + failure card, got ' + rows.length + ' rows');
+    if (String(rows[1].content || '').indexOf('Web search failed') < 0)
+      throw new Error('failure not persisted: ' + JSON.stringify(rows[1]));
+
+    // The failed backend call is logged with status error.
+    const apiLogFile = require('node:path').join(require('node:os').tmpdir(), 'LLM_API_Log.json');
+    let apiLogEntries = [];
+    try { apiLogEntries = JSON.parse(fs.readFileSync(apiLogFile, 'utf8')); } catch {}
+    const searchEntry = apiLogEntries.find((e) => String(e.commandName || '').indexOf('Web Search (DeepSeek)') >= 0);
+    if (!searchEntry) throw new Error('empty search request not found in the API log');
+    if (String(searchEntry.status) !== 'error') throw new Error('expected error status, got ' + JSON.stringify(searchEntry.status));
+
+    // The chat is not broken: composer is back in Send mode.
+    const sendEnabled = await cdp.eval('document.getElementById("chat-send-btn") ? !document.getElementById("chat-send-btn").disabled : false');
+    if (!sendEnabled) throw new Error('composer not re-enabled after failed search');
+
+    return 'empty backend: one failure card, no follow-up request, failure persisted + logged, composer usable';
+  }
+});
+
+scenarios.push({
+  id: 255,
+  name: 'DeepSeek native search multi-item stream: interim commentary excluded from the search result',
+  mode: 'sse-tool-call',
+  settings: { threadTitles: { enabled: false } },
+  mockOpts: {
+    searchQuery: 'AutoHotkey WebView2',
+    // Real capture 2026-08-16: DeepSeek tags every message "final_answer" at
+    // output_item.added and corrects interim commentary to "commentary" at
+    // output_item.done. The tool result must contain ONLY the final answer.
+    searchInterim: ['Let me search for the latest news.', 'Let me open the live coverage.'],
+    searchText: 'DeepSeek native answer: AutoHotkey v2 hosts web content with WebView2.',
+    chatText: 'the answer comes from DeepSeek\'s native search.'
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    const payload = await enableWebSearch(cdp);
+    if (payload.webSearch !== true) throw new Error('webSearch not enabled');
+
+    await sendChatMessage(cdp, 'What is the latest AutoHotkey version?');
+    await waitStreamingIdle(cdp, 45000);
+
+    const text = (await cdp.text('.msg.bot .msg-content')) || '';
+    if (text.indexOf('Based on the search') < 0) throw new Error('final answer missing: ' + text.slice(0, 120));
+
+    // Persisted search context: the real answer only - no interim narration.
+    const rows = seed.query(dbPath, 'SELECT role, content FROM messages ORDER BY created_at');
+    if (rows.length !== 3) throw new Error('expected 3 messages, got ' + rows.length);
+    const context = String(rows[1].content || '');
+    if (context.indexOf('DeepSeek native answer') < 0)
+      throw new Error('search context missing the final answer: ' + JSON.stringify(rows[1]));
+    if (context.indexOf('Let me search') >= 0 || context.indexOf('Let me open') >= 0)
+      throw new Error('interim commentary leaked into the persisted search result: ' + JSON.stringify(rows[1]));
+
+    // The follow-up chat request's role:"tool" message carries the clean
+    // result too (the model must not see "Let me search..." as a search hit).
+    const log = fs.readFileSync(mockLog, 'utf8');
+    const toolReq = log.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((r) => JSON.stringify(r.body || {}).includes('"role":"tool"'));
+    if (!toolReq) throw new Error('no follow-up request with the tool result');
+    const toolMsg = (toolReq.body.messages || []).find((m) => m && m.role === 'tool');
+    if (!toolMsg || String(toolMsg.content || '').indexOf('DeepSeek native answer') < 0)
+      throw new Error('tool result missing the answer: ' + JSON.stringify(toolMsg));
+    if (String(toolMsg.content || '').indexOf('Let me search') >= 0 || String(toolMsg.content || '').indexOf('Let me open') >= 0)
+      throw new Error('interim commentary leaked into the tool result: ' + JSON.stringify(toolMsg));
+
+    return 'multi-item stream: search result contains only the final answer (no interim commentary)';
+  }
+});
+
 module.exports = scenarios;

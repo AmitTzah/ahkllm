@@ -57,6 +57,50 @@ class SearchToolExecutorTest {
         exec := SearchToolExecutor.Execute(toolCalls, providerInfo)
         if !InStr(exec.toolMessages[2].content, "not available")
             throw Error("expected unavailable-tool error: " exec.toolMessages[2].content)
+        if exec.successCount != 0
+            throw Error("unknown tool must not count as a successful search")
+        if InStr(exec.failureText, "not available") = 0
+            throw Error("unknown tool failureText wrong: '" exec.failureText "'")
+    }
+
+    ; A round where EVERY search fails must stop the tool loop - Execute
+    ; reports successCount 0 + the first failure text so the caller skips the
+    ; follow-up request (real-API report 2026-08-16: four failed search cards
+    ; in a row before the model gave up).
+    Execute_AllSearchesFailed_ReportsZeroSuccess() {
+        providerInfo := { providerKey: "openai", modelName: "gpt-5-mini", apiKey: "k", endpoint: "http://x/chat/completions" }
+        toolCalls := [{
+            id: "call_1",
+            name: "web_search",
+            arguments: "{`"query`":`"q1`"}"
+        }]
+        exec := SearchToolExecutor.Execute(toolCalls, providerInfo, (q) => "Web search failed: no answer.")
+        if exec.successCount != 0
+            throw Error("expected 0 successes, got " exec.successCount)
+        if exec.failureText != "Web search failed: no answer."
+            throw Error("failureText wrong: '" exec.failureText "'")
+    }
+
+    ; A round with one success and one failure still continues the loop (the
+    ; model sees both tool messages and may legitimately answer or rephrase).
+    Execute_PartialSuccess_ReportsSuccessCount() {
+        providerInfo := { providerKey: "openai", modelName: "gpt-5-mini", apiKey: "k", endpoint: "http://x/chat/completions" }
+        toolCalls := [{
+            id: "call_1",
+            name: "web_search",
+            arguments: "{`"query`":`"q1`"}"
+        }, {
+            id: "call_2",
+            name: "web_search",
+            arguments: "{`"query`":`"q2`"}"
+        }]
+        exec := SearchToolExecutor.Execute(toolCalls, providerInfo, (q) => q = "q1" ? "answer for q1" : "Web search failed: nope")
+        if exec.successCount != 1
+            throw Error("expected 1 success, got " exec.successCount)
+        if exec.failureText != "Web search failed: nope"
+            throw Error("failureText wrong: '" exec.failureText "'")
+        if !InStr(exec.toolMessages[2].content, "answer for q1") || !InStr(exec.toolMessages[3].content, "Web search failed: nope")
+            throw Error("tool messages must carry both the success and the failure")
     }
 
     QueueFollowUp_InsertsContextAndStagesMessages() {

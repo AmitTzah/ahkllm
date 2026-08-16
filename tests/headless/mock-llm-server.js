@@ -215,6 +215,22 @@ function makeResponsesStreamHandler(parsed, opts) {
     const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
     const reasoningOff = parsed.reasoning && parsed.reasoning.effort === 'none';
     const ev = (type, data) => res.write('event: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n');
+    // Emit one streaming message item: added carries DeepSeek's optimistic
+    // phase, done carries the authoritative phase. opts.searchInterim lists
+    // the interim commentary texts (corrected to "commentary" at done), the
+    // final message stays "final_answer". opts.searchEmpty skips the message
+    // items entirely - the real backend sometimes completes with no answer
+    // at all (real-API report 2026-08-16).
+    const emitMessage = async (id, outputIndex, bodyText, donePhase) => {
+      ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'message', id, status: 'in_progress', content: [], phase: 'final_answer', role: 'assistant' }, output_index: outputIndex });
+      ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: id, output_index: outputIndex, part: { type: 'output_text', text: '' } });
+      for (const token of bodyText.split(' ')) {
+        ev('response.output_text.delta', { type: 'response.output_text.delta', content_index: 0, delta: token + ' ', item_id: id, output_index: outputIndex });
+        await delay(step);
+      }
+      ev('response.output_item.done', { type: 'response.output_item.done', item: { type: 'message', id, status: 'completed', content: [{ type: 'output_text', text: bodyText }], phase: donePhase, role: 'assistant' }, output_index: outputIndex });
+      await delay(step);
+    };
     (async () => {
       ev('response.created', { type: 'response.created', response: { id: 'mock-resp', object: 'response', status: 'in_progress', model: opts.responseModel || 'deepseek-v4-flash' } });
       await delay(step);
@@ -232,14 +248,19 @@ function makeResponsesStreamHandler(parsed, opts) {
       await delay(step * 2);
       ev('response.web_search_call.completed', { type: 'response.web_search_call.completed', item_id: 'call_1', output_index: 1 });
       await delay(step);
-      ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'message', id: 'm1', status: 'in_progress', content: [], phase: 'final_answer', role: 'assistant' }, output_index: 2 });
-      ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: 'm1', output_index: 2, part: { type: 'output_text', text: '' } });
-      for (const token of text.split(' ')) {
-        ev('response.output_text.delta', { type: 'response.output_text.delta', content_index: 0, delta: token + ' ', item_id: 'm1', output_index: 2 });
-        await delay(step);
+      if (opts.searchEmpty) {
+        // Real backend shape when it returns "no answer": the stream runs the
+        // search lifecycle and completes with ZERO message items.
+        ev('response.completed', { type: 'response.completed', response: { id: 'mock-resp', object: 'response', status: 'completed', model: opts.responseModel || 'deepseek-v4-flash' } });
+        res.end();
+        return;
       }
-      ev('response.output_item.done', { type: 'response.output_item.done', item: { type: 'message', id: 'm1', status: 'completed', content: [{ type: 'output_text', text }], phase: 'final_answer', role: 'assistant' }, output_index: 2 });
-      await delay(step);
+      let outputIndex = 2;
+      for (const interim of opts.searchInterim || []) {
+        await emitMessage('interim_' + outputIndex, outputIndex, interim, 'commentary');
+        outputIndex++;
+      }
+      await emitMessage('m1', outputIndex, text, 'final_answer');
       ev('response.completed', { type: 'response.completed', response: { id: 'mock-resp', object: 'response', status: 'completed', model: opts.responseModel || 'deepseek-v4-flash' } });
       res.end();
     })().catch(() => { try { res.end(); } catch {} });

@@ -26,6 +26,8 @@ class SearchToolExecutor {
         toolMessages := []
         assistantMsg := { role: "assistant", content: "", tool_calls: [] }
         contextParts := []
+        successCount := 0
+        failureText := ""
 
         ; toolCalls is a Map keyed by call index — AHK v2 `for x in Map`
         ; iterates KEYS, so use the two-variable form to get the values.
@@ -62,13 +64,28 @@ class SearchToolExecutor {
             } else {
                 resultText := "Tool '" name "' is not available. Only web_search is supported."
             }
+            ; A round where EVERY search fails must stop the tool loop (no
+            ; follow-up request, so the model cannot bounce through more
+            ; failed queries). "No results found" from Tavily is a SUCCESS -
+            ; the backend answered, the model may legitimately rephrase.
+            isSearchCall := name = "web_search"
+            if isSearchCall && InStr(resultText, "Web search failed") {
+                if failureText = ""
+                    failureText := resultText
+            } else if isSearchCall {
+                successCount++
+            } else if failureText = "" {
+                failureText := resultText
+            }
             toolMessages.Push({ role: "tool", tool_call_id: id, content: resultText })
         }
 
         toolMessages.InsertAt(1, assistantMsg)
         return {
             toolMessages: toolMessages,
-            contextText: contextParts.Length ? RTrim(SearchToolExecutor._Join(contextParts, "`n`n"), "`n") : ""
+            contextText: contextParts.Length ? RTrim(SearchToolExecutor._Join(contextParts, "`n`n"), "`n") : "",
+            successCount: successCount,
+            failureText: failureText
         }
     }
 

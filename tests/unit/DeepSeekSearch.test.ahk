@@ -54,4 +54,31 @@ class DeepSeekSearchTest {
         if !InStr(result, "no DeepSeek API key")
             throw Error("expected missing-key failure, got: '" result "'")
     }
+
+    ; Regression (real capture 2026-08-16): DeepSeek tags every message item
+    ; "final_answer" at output_item.added time and only marks interim
+    ; commentary ("Let me search...") as "commentary" at output_item.done.
+    ; The streamed result must be rebuilt from the done-time phases so the
+    ; tool result / search card never includes the model's interim narration,
+    ; while the live card still shows everything the model streams.
+    FeedFixture_MultiItemStream_UsesDoneTimePhaseForFinalAnswer() {
+        streamFile := A_ScriptDir "\fixtures\responses-stream-multi-item.sse"
+        if !FileExist(streamFile)
+            throw Error("fixture missing: " streamFile)
+        raw := FileOpen(streamFile, "r", "UTF-8-RAW").Read()
+        ResponsesStreamParser.Reset()
+        state := { reasoning: "", answer: "", items: Map(), itemOrder: [], searchRounds: 0, failedMsg: "", lastProgressTick: 0 }
+        for line in StrSplit(raw, "`n") {
+            if Trim(line) = ""
+                continue
+            DeepSeekSearch._FeedProgress(line, state, "test query", "")
+        }
+        finalAnswer := DeepSeekSearch._BuildFinalAnswer(state)
+        if finalAnswer != "Here is the answer: Iran situation is tense."
+            throw Error("expected only the final item in the result, got: '" finalAnswer "'")
+        if InStr(state.answer, "Let me search for the latest news.") = 0
+            throw Error("live card must still show the interim commentary")
+        if InStr(finalAnswer, "Let me search") != 0
+            throw Error("interim commentary leaked into the final result")
+    }
 }
