@@ -81,4 +81,40 @@ class DeepSeekSearchTest {
         if InStr(finalAnswer, "Let me search") != 0
             throw Error("interim commentary leaked into the final result")
     }
+
+    ; Regression (real-API report 2026-08-16 18:48): jsongo serializes AHK
+    ; true as JSON 1, and DeepSeek's /responses API REJECTS "stream":1 with a
+    ; 400 - every search call failed instantly and was misreported as
+    ; "no answer". The wire payload must carry a real JSON boolean.
+    BuildPayload_SendsRealJsonBooleanForStream() {
+        payload := DeepSeekSearch._BuildPayload("latest news", { providerKey: "deepseek", modelName: "deepseek-v4-pro", apiKey: "k", endpoint: "https://api.deepseek.com/chat/completions" })
+        if InStr(payload, '"stream":1') != 0
+            throw Error("payload must not carry stream:1: " payload)
+        if InStr(payload, '"stream":true') = 0
+            throw Error("payload must carry stream:true: " payload)
+        parsed := jsongo.Parse(payload)
+        if !IsObject(parsed) || !parsed.Has("stream")
+            throw Error("payload did not parse: " payload)
+    }
+
+    ; A 400 validation body is plain JSON (no SSE events), so the stream
+    ; parser never sees it - the real API error must still surface instead of
+    ; the misleading "DeepSeek returned no answer".
+    ReadApiError_ExtractsMessageFromValidationBody() {
+        errFile := A_Temp "\ds_err_test_" A_TickCount "_" Random(1000, 999999) ".json"
+        FileOpen(errFile, "w", "UTF-8-RAW").Write('{"error":{"message":"stream: invalid type: integer 1, expected a boolean","type":"invalid_request_error"}}')
+        msg := DeepSeekSearch._ReadApiError(errFile)
+        try FileDelete(errFile)
+        if InStr(msg, "expected a boolean") = 0
+            throw Error("expected the real error message, got: '" msg "'")
+    }
+
+    ReadApiError_EmptyForNonJsonBody() {
+        errFile := A_Temp "\ds_err_test2_" A_TickCount "_" Random(1000, 999999) ".txt"
+        FileOpen(errFile, "w", "UTF-8-RAW").Write("not json")
+        msg := DeepSeekSearch._ReadApiError(errFile)
+        try FileDelete(errFile)
+        if msg != ""
+            throw Error("expected empty for non-JSON body, got: '" msg "'")
+    }
 }

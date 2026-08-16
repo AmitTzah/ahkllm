@@ -13,6 +13,7 @@
 #Include ..\..\api\ResponsesParser.ahk
 #Include ..\..\api\ResponsesStreamParser.ahk
 #Include ..\..\api\CurlBuilder.ahk
+#Include ..\..\api\LLMRequestBuilder.ahk
 #Include ..\..\shared\DebugLog.ahk
 
 class DeepSeekSearch {
@@ -27,27 +28,7 @@ class DeepSeekSearch {
             return "Web search failed: no DeepSeek API key configured."
         }
 
-        payload := jsongo.Stringify({
-            model: providerInfo.modelName,
-            input: [{ role: "user", content: [{ type: "input_text", text: query }] }],
-            ; Search-heavy models burn output tokens on their internal
-            ; search/open_page rounds before writing the answer - 600 left
-            ; deepseek-v4-flash truncated ("incomplete: max_output_tokens")
-            ; and the final answer never appeared. 4096 lets the search and
-            ; the answer both complete.
-            max_output_tokens: 4096,
-            ; Reasoning is disabled for the SEARCH call: with it enabled,
-            ; the model can burn the whole output budget on its internal
-            ; search/reason loop and end the response with NO answer message
-            ; at all (real-API report 2026-08-16: "Iran war news today"
-            ; streamed for 71s, status completed, zero message items).
-            ; With effort "none" the same query answers in ~25s while still
-            ; performing the web searches. The chat request keeps the user's
-            ; thinking setting; only the search backend runs reasoning-free.
-            reasoning: { effort: "none" },
-            stream: true,
-            tools: [{ type: "web_search" }]
-        })
+        payload := DeepSeekSearch._BuildPayload(query, providerInfo)
 
         uniqueID := A_TickCount "_" Random(1000, 999999)
         requestFile := A_Temp "\DSearch_Req_" uniqueID ".json"
@@ -91,6 +72,10 @@ class DeepSeekSearch {
         DeepSeekSearch._ReadMore(outputFile, &f, &lastPos, &buffer, state, query, onProgress)
         if f
             try f.Close()
+        ; A non-SSE body (e.g. a 400 validation error) never produces stream
+        ; events - capture it before the temp files are deleted so the real
+        ; API error can surface instead of a misleading "no answer".
+        apiError := DeepSeekSearch._ReadApiError(outputFile)
 
         DeepSeekSearch._Cleanup(requestFile, outputFile, errorFile)
         responseTimeMs := A_TickCount - startTime
@@ -110,9 +95,20 @@ class DeepSeekSearch {
         } else {
             state.finalAnswer := DeepSeekSearch._BuildFinalAnswer(state)
             if state.finalAnswer = "" {
-                debugLog("[SEARCH] DeepSeek search returned an empty answer for query '" query "'")
-                result := "Web search failed: DeepSeek returned no answer."
-                status := "error"
+                ; A non-SSE body (e.g. a 400 validation error) never produces
+                ; stream events - surface the REAL API error instead of the
+                ; misleading "no answer" message. This is how the stream:1
+                ; rejection ("invalid type: integer `1`, expected a boolean")
+                ; was hiding for days (real-API report 2026-08-16 18:48).
+                if apiError != "" {
+                    debugLog("[SEARCH] DeepSeek Responses API error for query '" query "': " apiError)
+                    result := "Web search failed: " apiError
+                    status := "error"
+                } else {
+                    debugLog("[SEARCH] DeepSeek search returned an empty answer for query '" query "'")
+                    result := "Web search failed: DeepSeek returned no answer."
+                    status := "error"
+                }
             } else {
                 result := state.finalAnswer
             }
@@ -120,6 +116,65 @@ class DeepSeekSearch {
 
         DeepSeekSearch._LogRequest(query, providerInfo, payload, result, result, status, responseTimeMs)
         return result
+    }
+
+    ; Build the /responses wire payload. jsongo serializes AHK true as JSON 1,
+    ; and DeepSeek's /responses API REJECTS "stream":1 with a 400
+    ; ("invalid type: integer `1`, expected a boolean") - every search call
+    ; failed instantly and was misreported as "no answer" until the payload
+    ; carried a real boolean. Reuses the quote-aware chat-path fix.
+    static _BuildPayload(query, providerInfo) {
+        payload := jsongo.Stringify({
+            model: providerInfo.modelName,
+            input: [{ role: "user", content: [{ type: "input_text", text: query }] }],
+            ; Search-heavy models burn output tokens on their internal
+            ; search/open_page rounds before writing the answer - 600 left
+            ; deepseek-v4-flash truncated ("incomplete: max_output_tokens")
+            ; and the final answer never appeared. 4096 lets the search and
+            ; the answer both complete.
+            max_output_tokens: 4096,
+            ; Reasoning is disabled for the SEARCH call: with it enabled,
+            ; the model can burn the whole output budget on its internal
+            ; search/reason loop and end the response with NO answer message
+            ; at all (real-API report 2026-08-16: "Iran war news today"
+            ; streamed for 71s, status completed, zero message items).
+            ; With effort "none" the same query answers in ~25s while still
+            ; performing the web searches. The chat request keeps the user's
+            ; thinking setting; only the search backend runs reasoning-free.
+            reasoning: { effort: "none" },
+            stream: true,
+            tools: [{ type: "web_search" }]
+        })
+        return LLMRequestBuilder._FixStreamBoolean(payload)
+    }
+
+    ; Read a plain (non-SSE) JSON error body from the cURL output file - the
+    ; shape a 4xx validation failure returns before any SSE event. Returns
+    ; the API's human-readable error message ("" when there is none).
+    static _ReadApiError(outputFile) {
+        if !FileExist(outputFile)
+            return ""
+        f := FileOpen(outputFile, "r", "UTF-8-RAW")
+        if !f
+            return ""
+        raw := f.Read(8192)
+        try f.Close()
+        raw := Trim(raw)
+        if SubStr(raw, 1, 1) != "{"
+            return ""
+        try {
+            parsed := jsongo.Parse(raw)
+        } catch {
+            return ""
+        }
+        if !IsObject(parsed) || !parsed.Has("error") || parsed["error"] = ""
+            return ""
+        err := parsed["error"]
+        if IsObject(err) && err.Has("message") && err["message"] != ""
+            return err["message"]
+        if IsObject(err)
+            return jsongo.Stringify(err)
+        return err
     }
 
     ; Read newly-appended bytes from the stream output file and feed complete

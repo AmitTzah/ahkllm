@@ -343,6 +343,22 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       // Both are answered from the real captured shapes — no real API calls
       // happen in the headless suite.
       if (req.url.includes('/responses')) {
+        // Real DeepSeek strictness (captured 2026-08-16 18:48): the API
+        // REJECTS "stream":1 (jsongo serializes AHK true as 1) with a 400 -
+        // "invalid type: integer `1`, expected a boolean". Enforcing the
+        // strict boolean here turns a payload regression into a FAILED
+        // scenario instead of a silent "no answer".
+        if (parsed.stream !== true) {
+          json({
+            error: {
+              message: 'Failed to deserialize the JSON body into the target type: stream: invalid type: integer `1`, expected a boolean',
+              type: 'invalid_request_error',
+              param: null,
+              code: 'invalid_request_error'
+            }
+          }, res, 400);
+          return;
+        }
         if (parsed.stream) {
           makeResponsesStreamHandler(parsed, opts)(req, res);
           return;

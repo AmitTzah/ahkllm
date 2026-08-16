@@ -97,8 +97,11 @@ scenarios.push({
     assertCanonicalToolOrder(log);
     const requests = log.split('\n').filter(Boolean).map((l) => JSON.parse(l));
     const responsesReq = requests.find((r) => String(r.url).includes('/responses'));
-    // AHK's jsongo serializes true as 1, so the wire body carries stream:1.
-    if (!responsesReq || !responsesReq.body.stream) throw new Error('/responses request must be streaming');
+    // Regression: the REAL DeepSeek API rejects stream:1 (jsongo serializes
+    // AHK true as 1) with a 400 "invalid type: integer, expected a boolean"
+    // (captured 2026-08-16 18:48) - the wire payload must carry a real
+    // boolean, and the mock enforces it too.
+    if (!responsesReq || responsesReq.body.stream !== true) throw new Error('/responses request must carry stream:true');
 
     // The toggle persisted with the thread.
     const settings = seed.query(dbPath, 'SELECT advanced_toggles FROM chat_threads LIMIT 1');

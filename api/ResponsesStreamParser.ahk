@@ -41,8 +41,25 @@ class ResponsesStreamParser {
         } catch {
             return { type: "ignore" }
         }
-        if Type(parsed) != "Map" || !parsed.Has("type")
+        if Type(parsed) != "Map"
             return { type: "ignore" }
+        if !parsed.Has("type") {
+            ; A plain OpenAI-style error event (`data: {"error":{"message":
+            ; "..."}}`) carries no "type" key - surface it as a failure so the
+            ; search card reports the REAL reason instead of a generic
+            ; "no answer" (real-API report 2026-08-16 18:48: the 400 for
+            ; stream:1 arrived as exactly this shape).
+            if parsed.Has("error") && parsed["error"] != "" {
+                message := "the DeepSeek search stream failed"
+                err := parsed["error"]
+                if IsObject(err) && err.Has("message") && err["message"] != ""
+                    message := err["message"]
+                else if IsObject(err)
+                    message := jsongo.Stringify(err)
+                return { type: "failed", message: message }
+            }
+            return { type: "ignore" }
+        }
 
         t := parsed["type"]
         ; Track message phases so output_text deltas can be attributed to the

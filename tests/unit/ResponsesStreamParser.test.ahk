@@ -63,6 +63,15 @@ class ResponsesStreamParserTest {
             throw Error("final answer must keep final_answer phase")
     }
 
+    ; A plain OpenAI-style error event (`data: {"error":{"message":"..."}}`)
+    ; carries no "type" key - the parser must surface the API's message so
+    ; the search card never hides a real 4xx behind "no answer".
+    ParseLine_TopLevelErrorEvent_ReturnsFailure() {
+        result := ResponsesStreamParser.ParseLine('data: {"error":{"message":"stream: invalid type: integer 1, expected a boolean","type":"invalid_request_error"}}')
+        if result.type != "failed" || InStr(result.message, "expected a boolean") = 0
+            throw Error("expected failed with the API message, got: " jsongo.Stringify(result))
+    }
+
     ParseLine_SearchAndLifecycleEvents() {
         result := ResponsesStreamParser.ParseLine('data: {"type":"response.web_search_call.searching","item_id":"call_1","output_index":1}')
         if result.type != "search"
