@@ -222,6 +222,33 @@ describe('cancelStreaming state', () => {
     });
 });
 
+describe('late streamContent after finalize (Stop race)', () => {
+    // Regression: stopping a stream can let a final SSE chunk arrive after
+    // the UI finalized the bubble. It must append to the last assistant
+    // bubble - NOT open a duplicate message.
+    it('appends the late chunk to the last assistant bubble instead of opening a duplicate', () => {
+        const ctx = loadStreamModule();
+        ctx.streamState.active = false;
+        ctx.streamState.bubble = null;
+        ctx.streamState.contentBuffer = '';
+        const contentDiv = { innerHTML: '', textContent: 'A lot' };
+        const lastBubble = { querySelector: (sel) => (sel === '.msg-content' ? contentDiv : null) };
+        ctx.document.getElementById = (id) => (id === 'chat-messages' ? { querySelectorAll: (sel) => (sel === '.msg.bot' ? [lastBubble] : []) } : null);
+        ctx.chatMessages = [{ id: 'm1', role: 'assistant', content: 'A lot' }];
+        ctx.onStreamContent(' depends', undefined);
+        assert.ok(contentDiv.innerHTML.indexOf('A lot depends') >= 0, 'late chunk must append to the existing bubble');
+        assert.strictEqual(ctx.chatMessages[0].content, 'A lot depends');
+        assert.strictEqual(ctx.streamState.active, false, 'late chunk must not restart a stream session');
+    });
+
+    it('does nothing when no assistant bubble exists', () => {
+        const ctx = loadStreamModule();
+        ctx.streamState.active = false;
+        ctx.document.getElementById = (id) => (id === 'chat-messages' ? { querySelectorAll: () => [] } : null);
+        assert.doesNotThrow(() => ctx.onStreamContent('depends', undefined));
+    });
+});
+
 describe('onStreamDone thread scoping (bug #195)', () => {
     it('does not persist another thread/branch response into the current array', () => {
         const ctx = loadStreamModule();

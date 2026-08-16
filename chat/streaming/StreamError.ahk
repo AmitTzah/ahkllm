@@ -202,11 +202,14 @@ handleCancelStream() {
     ; never fires and the card becomes "Search cancelled.".
     if requestParams.Has("_pendingSearchPid") && requestParams["_pendingSearchPid"] {
         pid := requestParams["_pendingSearchPid"]
+        ; Flag the loop BEFORE killing the process tree: taskkill blocks, and
+        ; if the tool loop sees the PID vanish before the flag is set it may
+        ; treat the partial search as complete.
+        requestParams["_toolLoopCancelled"] := true
         if pid && ProcessExist(pid) {
             ; The 2> redirection runs cURL inside cmd, so kill the whole tree.
             RunWait('taskkill /PID ' pid ' /T /F', , "Hide")
         }
-        requestParams["_toolLoopCancelled"] := true
         requestParams.Delete("_pendingSearchPid")
         if !_HasOtherActiveStreams()
             postWebMessage("setChatButtonsEnabled", true)
@@ -224,14 +227,22 @@ handleCancelStream() {
         return
     }
     _LoadStreamIntoParams(stream)
+    ; Set the cancelled flag BEFORE killing the process tree. taskkill blocks,
+    ; and if the poll finalizes after the PID dies but before the flag is set,
+    ; the stream takes the COMPLETION path with a partial/zero-token response
+    ; and inflates the thread's cumulative counters (bug #133).
+    requestParams["_streamCancelled"] := true
+    stream.cancelled := true
     pid := requestParams["_streamPID"]
     if pid && ProcessExist(pid) {
-        ProcessClose(pid)
+        ; The 2> redirection runs cURL inside cmd, so kill the whole tree -
+        ; ProcessClose on the cmd wrapper can leave an orphaned cURL that
+        ; keeps writing to the output file and delivers a late streamContent
+        ; chunk AFTER the cancel finalizes the bubble (double-bubble).
+        RunWait('taskkill /PID ' pid ' /T /F', , "Hide")
         if cURLState("get") = pid
             cURLState("set", 0)
     }
-    requestParams["_streamCancelled"] := true
-    stream.cancelled := true
     ; The Stop button re-wires to Send immediately, but the composer itself
     ; only re-enables when no OTHER request is still streaming.
     if !_HasOtherActiveStreams()

@@ -508,8 +508,11 @@ _CloseCurrentStreamPID() {
     if !requestParams.Has("_streamPID")
         return
     pid := requestParams["_streamPID"]
-    if pid && ProcessExist(pid)
-        ProcessClose(pid)
+    if pid && ProcessExist(pid) {
+        ; Kill the whole tree (cmd wrapper + cURL child) so no orphan keeps
+        ; writing to the output file after the stream finalizes.
+        RunWait('taskkill /PID ' pid ' /T /F', , "Hide")
+    }
     if cURLState("get") = pid
         cURLState("set", 0)
 }

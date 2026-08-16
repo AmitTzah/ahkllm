@@ -40,7 +40,22 @@ function onStreamContent(text, threadId) {
   // Bug #195: a stream that belongs to another thread/branch must never paint
   // into the currently-visible conversation.
   if (threadId && activeThreadId && threadId !== activeThreadId) return;
-  if (!streamState.active) startStreaming();
+  if (!streamState.active) {
+    // Late chunk after finalize (Stop raced the final SSE event): append it
+    // to the last assistant bubble instead of opening a DUPLICATE bubble.
+    var container = document.getElementById('chat-messages');
+    if (!container) return;
+    var bubbles = container.querySelectorAll('.msg.bot');
+    if (!bubbles.length) return;
+    var contentDiv = bubbles[bubbles.length - 1].querySelector('.msg-content');
+    if (!contentDiv) return;
+    var full = contentDiv.textContent + text;
+    contentDiv.innerHTML = md.render(full);
+    var last = chatMessages[chatMessages.length - 1];
+    if (last && last.role === 'assistant') last.content = full;
+    scrollToBottom();
+    return;
+  }
 
   streamState.contentBuffer += text;
 
