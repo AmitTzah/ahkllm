@@ -61,9 +61,9 @@ scenarios.push({
 
     await sendChatMessage(cdp, 'What is the latest AutoHotkey version?');
     // Live progress: the streaming /responses backend re-renders the search
-    // card with reasoning as it arrives - assert it appears BEFORE the
-    // stream completes.
-    await cdp.waitFor('document.querySelector(".msg.search-context .search-card-results") && document.querySelector(".msg.search-context .search-card-results").textContent.indexOf("Let me search") >= 0', 20000, 150, 'live search progress');
+    // card as it runs (search rounds, then the answer) - assert it appears
+    // BEFORE the stream completes.
+    await cdp.waitFor('document.querySelector(".msg.search-context .search-card-results") && document.querySelector(".msg.search-context .search-card-results").textContent.indexOf("related terms") >= 0', 20000, 150, 'live search progress');
     await waitStreamingIdle(cdp, 45000);
 
     // The final answer bubble rendered after the tool round.

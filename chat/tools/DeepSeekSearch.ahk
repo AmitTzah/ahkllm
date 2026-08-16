@@ -36,6 +36,15 @@ class DeepSeekSearch {
             ; and the final answer never appeared. 4096 lets the search and
             ; the answer both complete.
             max_output_tokens: 4096,
+            ; Reasoning is disabled for the SEARCH call: with it enabled,
+            ; the model can burn the whole output budget on its internal
+            ; search/reason loop and end the response with NO answer message
+            ; at all (real-API report 2026-08-16: "Iran war news today"
+            ; streamed for 71s, status completed, zero message items).
+            ; With effort "none" the same query answers in ~25s while still
+            ; performing the web searches. The chat request keeps the user's
+            ; thinking setting; only the search backend runs reasoning-free.
+            reasoning: { effort: "none" },
             stream: true,
             tools: [{ type: "web_search" }]
         })

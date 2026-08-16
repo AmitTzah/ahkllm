@@ -213,15 +213,18 @@ function makeResponsesStreamHandler(parsed, opts) {
     const step = opts.searchDelay || 120;
     const reasoning = opts.searchReasoning || 'Let me search for this.';
     const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
+    const reasoningOff = parsed.reasoning && parsed.reasoning.effort === 'none';
     const ev = (type, data) => res.write('event: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n');
     (async () => {
       ev('response.created', { type: 'response.created', response: { id: 'mock-resp', object: 'response', status: 'in_progress', model: opts.responseModel || 'deepseek-v4-flash' } });
       await delay(step);
-      ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'reasoning', id: 'r1', status: 'in_progress', content: [], summary: [] }, output_index: 0 });
-      ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: 'r1', output_index: 0, part: { type: 'reasoning_text', text: '' } });
-      for (const token of reasoning.split(' ')) {
-        ev('response.reasoning_text.delta', { type: 'response.reasoning_text.delta', content_index: 0, delta: token + ' ', item_id: 'r1', output_index: 0 });
-        await delay(step);
+      if (!reasoningOff) {
+        ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'reasoning', id: 'r1', status: 'in_progress', content: [], summary: [] }, output_index: 0 });
+        ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: 'r1', output_index: 0, part: { type: 'reasoning_text', text: '' } });
+        for (const token of reasoning.split(' ')) {
+          ev('response.reasoning_text.delta', { type: 'response.reasoning_text.delta', content_index: 0, delta: token + ' ', item_id: 'r1', output_index: 0 });
+          await delay(step);
+        }
       }
       ev('response.web_search_call.in_progress', { type: 'response.web_search_call.in_progress', item_id: 'call_1', output_index: 1 });
       await delay(step);

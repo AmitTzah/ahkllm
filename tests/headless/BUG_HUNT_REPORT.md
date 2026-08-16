@@ -251,9 +251,11 @@ collapsible card (query in the header, results hidden until expanded), and the
 scenario clicks the toggle to verify expansion. The card is posted immediately
 as a "Searching..." placeholder and updated in place when the backend returns,
 and the scenario asserts the DeepSeek search request appears in the API log.
-The `/responses` backend is STREAMED: the card shows the reasoning and answer
-live before completion, and the scenario asserts that live progress. No real
-API calls are made by the suite.
+The `/responses` backend is STREAMED: the card shows the search rounds and the
+answer live before completion, and the scenario asserts that live progress.
+The search call runs with reasoning effort "none" (reasoning-on searches can
+burn the whole output budget on internal search rounds and end with no answer
+at all - real-API report 2026-08-16). No real API calls are made by the suite.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 
