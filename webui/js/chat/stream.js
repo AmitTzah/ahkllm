@@ -1,6 +1,7 @@
 // Streaming response state
 var streamState = {
   active: false,
+  finalized: false, // a stream finalize (done/cancel) happened; cleared when a new stream starts
   bubble: null,
   contentDiv: null,
   thinkingDetails: null,
@@ -41,20 +42,23 @@ function onStreamContent(text, threadId) {
   // into the currently-visible conversation.
   if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!streamState.active) {
-    // Late chunk after finalize (Stop raced the final SSE event): append it
-    // to the last assistant bubble instead of opening a DUPLICATE bubble.
-    var container = document.getElementById('chat-messages');
-    if (!container) return;
-    var bubbles = container.querySelectorAll('.msg.bot');
-    if (!bubbles.length) return;
-    var contentDiv = bubbles[bubbles.length - 1].querySelector('.msg-content');
-    if (!contentDiv) return;
-    var full = contentDiv.textContent + text;
-    contentDiv.innerHTML = md.render(full);
-    var last = chatMessages[chatMessages.length - 1];
-    if (last && last.role === 'assistant') last.content = full;
-    scrollToBottom();
-    return;
+    if (streamState.finalized) {
+      // Late chunk after finalize (Stop raced the final SSE event): append it
+      // to the last assistant bubble instead of opening a DUPLICATE bubble.
+      var container = document.getElementById('chat-messages');
+      if (!container) return;
+      var bubbles = container.querySelectorAll('.msg.bot');
+      if (!bubbles.length) return;
+      var contentDiv = bubbles[bubbles.length - 1].querySelector('.msg-content');
+      if (!contentDiv) return;
+      var full = contentDiv.textContent + text;
+      contentDiv.innerHTML = md.render(full);
+      var last = chatMessages[chatMessages.length - 1];
+      if (last && last.role === 'assistant') last.content = full;
+      scrollToBottom();
+      return;
+    }
+    startStreaming();
   }
 
   streamState.contentBuffer += text;
@@ -211,6 +215,7 @@ function onStreamDone(data) {
   if (!isCurrent) return;
 
   streamState.active = false;
+  streamState.finalized = true;
   streamState.contentBuffer = '';
   streamState.thinkingBuffer = '';
   streamState.bubble = null;
@@ -364,6 +369,11 @@ function onStreamModelName(modelName, threadId) {
   if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!modelName) return;
   streamState.modelName = modelName;
+  // A new stream session is starting (the app posts streamModelName before
+  // the first content chunk) - clear the previous finalize marker so the
+  // first chunk opens a fresh streaming bubble instead of being treated as
+  // a late chunk after Stop.
+  streamState.finalized = false;
 
   if (!streamState.bubble) return;
   var author = streamState.bubble.querySelector('.msg-author');
@@ -389,6 +399,7 @@ function cancelStreaming(data) {
   if (!isCurrent) return;
 
   streamState.active = false;
+  streamState.finalized = true;
 
   // Remove blinking cursor from partial content
   if (streamState.contentDiv) {

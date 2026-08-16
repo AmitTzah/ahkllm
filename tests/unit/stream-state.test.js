@@ -17,6 +17,7 @@ function loadStreamModule() {
         window: { addEventListener: () => {} },
         console: console,
         md: { render: (c) => c },
+        escHtml: (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
         setTimeout: setTimeout, clearTimeout: clearTimeout,
         chatMessages: [],
         sessionStorage: { getItem: () => null, setItem: () => {} },
@@ -229,6 +230,7 @@ describe('late streamContent after finalize (Stop race)', () => {
     it('appends the late chunk to the last assistant bubble instead of opening a duplicate', () => {
         const ctx = loadStreamModule();
         ctx.streamState.active = false;
+        ctx.streamState.finalized = true;
         ctx.streamState.bubble = null;
         ctx.streamState.contentBuffer = '';
         const contentDiv = { innerHTML: '', textContent: 'A lot' };
@@ -244,8 +246,46 @@ describe('late streamContent after finalize (Stop race)', () => {
     it('does nothing when no assistant bubble exists', () => {
         const ctx = loadStreamModule();
         ctx.streamState.active = false;
+        ctx.streamState.finalized = true;
         ctx.document.getElementById = (id) => (id === 'chat-messages' ? { querySelectorAll: () => [] } : null);
         assert.doesNotThrow(() => ctx.onStreamContent('depends', undefined));
+    });
+
+    // Regression: the first chunk of a NEW stream (no finalize happened yet)
+    // must start streaming - NOT be swallowed as a "late chunk". This is what
+    // made responses appear all-at-once instead of streaming.
+    it('starts a fresh stream session when no finalize happened', () => {
+        const ctx = loadStreamModule();
+        ctx.streamState.active = false;
+        ctx.streamState.finalized = false;
+        ctx.chatMessages = [];
+        const contentDiv = { innerHTML: '' };
+        const container = {
+            appendChild: () => {},
+            querySelectorAll: () => []
+        };
+        ctx.document.getElementById = (id) => (id === 'chat-messages' ? container : null);
+        ctx.document.createElement = () => ({
+            style: {}, children: [],
+            set innerHTML(v) { this._html = v; },
+            get innerHTML() { return this._html || ''; },
+            firstElementChild: { querySelector: (sel) => (sel === '.msg-content' ? contentDiv : null) },
+            appendChild: (c) => { this.children.push(c); },
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            insertBefore: () => {}
+        });
+        ctx.onStreamContent('Hello', undefined);
+        assert.strictEqual(ctx.streamState.active, true, 'the first chunk must start a stream session');
+        assert.strictEqual(ctx.streamState.contentBuffer, 'Hello');
+        assert.strictEqual(contentDiv.innerHTML, 'Hello');
+    });
+
+    it('clears the finalize marker when a new stream starts (streamModelName)', () => {
+        const ctx = loadStreamModule();
+        ctx.streamState.finalized = true;
+        ctx.onStreamModelName('deepseek-v4-pro', undefined);
+        assert.strictEqual(ctx.streamState.finalized, false);
     });
 });
 
