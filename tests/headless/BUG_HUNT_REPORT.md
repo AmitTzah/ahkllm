@@ -251,7 +251,9 @@ collapsible card (query in the header, results hidden until expanded), and the
 scenario clicks the toggle to verify expansion. The card is posted immediately
 as a "Searching..." placeholder and updated in place when the backend returns,
 and the scenario asserts the DeepSeek search request appears in the API log.
-No real API calls are made by the suite.
+The `/responses` backend is STREAMED: the card shows the reasoning and answer
+live before completion, and the scenario asserts that live progress. No real
+API calls are made by the suite.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 
@@ -298,6 +300,33 @@ second has no `tools` key, and `advanced_toggles` stores webSearch off.
 **Verification:** Headless - toggled Web Search on, sent a message, toggled it
 off, sent another, then inspected the mock request log (tool present, then
 absent) and the thread's `advanced_toggles`.
+
+### 253. Stopping a search mid-flight cancels the backend call and keeps the chat usable
+
+**Scenario:** 253
+
+**Status:** verified
+
+**Repro:** Enable Web Search, send a message that triggers a search, then press
+Stop while the card still shows "Searching...".
+
+**Expected:** The `/responses` backend call is killed, no follow-up chat
+request fires with the staged tool exchange, the card becomes "Search
+cancelled.", the search call is still recorded in the API log (status
+cancelled), and the composer returns to Send mode.
+
+**Actual:** Works (scenario PASSES) - the search cURL is killed, no follow-up
+request is sent, the card is marked cancelled, the API log entry is status
+cancelled, and the composer is usable.
+
+**Evidence:** `handleCancelStream` kills the search process tree and flags the
+tool loop (`_toolLoopCancelled`); the tool handlers skip `QueueFollowUp` and
+`_BuildAndFireRequest` when the flag is set.
+
+**Verification:** Headless - slow streaming `/responses` mock (60s step delay),
+sent a message, waited for the "Searching..." card, posted cancelStream, then
+asserted the cancelled card, exactly one chat request (no follow-up), the API
+log entry with status cancelled, and an enabled send button.
 
 ## History (append-only)
 

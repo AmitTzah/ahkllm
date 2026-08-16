@@ -1,22 +1,27 @@
 ; ======================================================
-; DeepSeekSearch.ahk — DeepSeek native web search backend
+; DeepSeekSearch.ahk - DeepSeek native web search backend
 ;
 ; DeepSeek's server-side web_search tool is only available on the Responses
 ; API (POST /responses); /chat/completions rejects the non-function tool
-; with a 400. This executor sends a single non-streaming /responses call
-; with the query, lets DeepSeek's servers run the search, and returns the
+; with a 400. This executor sends a STREAMING /responses call so the search
+; card can show live progress (search rounds + reasoning + the answer being
+; composed), lets DeepSeek's servers run the search, and returns the final
 ; answer text as the tool result. No Tavily key is needed for DeepSeek.
 ; ======================================================
 
 #Include ..\..\api\SearchTools.ahk
 #Include ..\..\api\ResponsesParser.ahk
+#Include ..\..\api\ResponsesStreamParser.ahk
 #Include ..\..\api\CurlBuilder.ahk
 #Include ..\..\shared\DebugLog.ahk
 
 class DeepSeekSearch {
 
-    ; Returns the answer text (or a failure message — never throws).
-    static Run(query, providerInfo) {
+    ; Returns the answer text (or a failure message - never throws).
+    ; onProgress: optional function receiving the live card content
+    ; ("[Web search: <query>]\n\n<progress>") as the search streams.
+    static Run(query, providerInfo, onProgress := "") {
+        global requestParams
         if !providerInfo.apiKey {
             debugLog("[SEARCH] DeepSeek API key missing for native web search")
             return "Web search failed: no DeepSeek API key configured."
@@ -31,6 +36,7 @@ class DeepSeekSearch {
             ; and the final answer never appeared. 4096 lets the search and
             ; the answer both complete.
             max_output_tokens: 4096,
+            stream: true,
             tools: [{ type: "web_search" }]
         })
 
@@ -43,7 +49,10 @@ class DeepSeekSearch {
         endpoint := SearchTools.ResponsesEndpoint(providerInfo.endpoint)
         ; 2> redirection routes cURL through cmd so local mock servers in the
         ; headless suite can answer (same pattern as the chat stream path).
-        cURLCommand := 'cURL.exe -s --max-time 60 --connect-timeout 15 -X POST '
+        ; -N disables output buffering so the output file grows as events
+        ; arrive. Real search-heavy calls routinely take 30-60s, so the
+        ; max-time is 120 (the old 60s killed legitimate calls mid-search).
+        cURLCommand := 'cURL.exe -sN --max-time 120 --connect-timeout 15 -X POST '
             . endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
@@ -52,42 +61,116 @@ class DeepSeekSearch {
             . '2>"' errorFile '"'
         startTime := A_TickCount
         Run(cURLCommand, , "Hide", &cURLPID)
-        while ProcessExist(cURLPID)
-            Sleep 100
-        responseTimeMs := A_TickCount - startTime
+        ; Exposed so handleCancelStream can kill the search cURL when the
+        ; user presses Stop mid-search.
+        requestParams["_pendingSearchPid"] := cURLPID
 
-        raw := ""
-        if FileExist(outputFile)
-            raw := FileOpen(outputFile, "r", "UTF-8-RAW").Read()
+        ResponsesStreamParser.Reset()
+        state := { reasoning: "", answer: "", finalAnswer: "", searchRounds: 0, failedMsg: "", lastProgressTick: 0 }
+        buffer := ""
+        lastPos := 0
+        f := ""
+        while ProcessExist(cURLPID) {
+            Sleep 100
+            DeepSeekSearch._ReadMore(outputFile, &f, &lastPos, &buffer, state, query, onProgress)
+        }
+        ; Final drain: cURL can exit right after writing the last bytes.
+        DeepSeekSearch._ReadMore(outputFile, &f, &lastPos, &buffer, state, query, onProgress)
+        if f
+            try f.Close()
 
         DeepSeekSearch._Cleanup(requestFile, outputFile, errorFile)
+        responseTimeMs := A_TickCount - startTime
+        if requestParams.Has("_pendingSearchPid")
+            requestParams.Delete("_pendingSearchPid")
 
+        if requestParams.Has("_toolLoopCancelled") && requestParams["_toolLoopCancelled"] {
+            DeepSeekSearch._LogRequest(query, providerInfo, payload, "Web search cancelled.", "Web search cancelled.", "cancelled", responseTimeMs)
+            return "Web search cancelled."
+        }
         result := ""
         status := "success"
-        if !raw {
-            debugLog("[SEARCH] DeepSeek Responses returned no response for query '" query "'")
-            result := "Web search failed: no response from the DeepSeek search API."
+        if state.failedMsg != "" {
+            debugLog("[SEARCH] DeepSeek Responses failed for query '" query "': " state.failedMsg)
+            result := "Web search failed: " state.failedMsg
+            status := "error"
+        } else if state.finalAnswer = "" {
+            debugLog("[SEARCH] DeepSeek search returned an empty answer for query '" query "'")
+            result := "Web search failed: DeepSeek returned no answer."
             status := "error"
         } else {
-            try {
-                parsed := jsongo.Parse(raw)
-                result := DeepSeekSearch.ExtractResult(parsed, query)
-            } catch {
-                debugLog("[SEARCH] DeepSeek Responses returned unparseable JSON for query '" query "'")
-                result := "Web search failed: unparseable DeepSeek search response."
-                status := "error"
+            result := state.finalAnswer
+        }
+
+        DeepSeekSearch._LogRequest(query, providerInfo, payload, result, result, status, responseTimeMs)
+        return result
+    }
+
+    ; Read newly-appended bytes from the stream output file and feed complete
+    ; SSE lines to the progress builder.
+    static _ReadMore(outputFile, &f, &lastPos, &buffer, state, query, onProgress) {
+        if !f && FileExist(outputFile)
+            f := FileOpen(outputFile, "r", "UTF-8-RAW")
+        if !f
+            return
+        size := f.Length
+        if size <= lastPos
+            return
+        f.Seek(lastPos)
+        buffer .= f.Read()
+        lastPos := f.Pos
+        loop {
+            nl := InStr(buffer, "`n")
+            if !nl
+                break
+            line := RTrim(SubStr(buffer, 1, nl - 1), "`r")
+            buffer := SubStr(buffer, nl + 1)
+            DeepSeekSearch._FeedProgress(line, state, query, onProgress)
+        }
+    }
+
+    ; Feed one SSE line into the live progress state and (throttled) push the
+    ; card content to the UI.
+    static _FeedProgress(line, state, query, onProgress) {
+        result := ResponsesStreamParser.ParseLine(line)
+        if result.type = "reasoning"
+            state.reasoning .= result.content
+        else if result.type = "answer" {
+            state.answer .= result.content
+            if result.phase = "final_answer"
+                state.finalAnswer .= result.content
+        } else if result.type = "search"
+            state.searchRounds++
+        else if result.type = "failed" && state.failedMsg = ""
+            state.failedMsg := result.message
+
+        if onProgress != "" && (result.type = "reasoning" || result.type = "answer" || result.type = "search") {
+            body := DeepSeekSearch._ProgressBody(state)
+            if body != "" && (state.lastProgressTick = 0 || A_TickCount - state.lastProgressTick >= 250) {
+                state.lastProgressTick := A_TickCount
+                onProgress(SearchTools.BuildContextText(query, body))
             }
         }
-        if InStr(result, "Web search failed")
-            status := "error"
+    }
 
-        DeepSeekSearch._LogRequest(query, providerInfo, payload, raw, result, status, responseTimeMs)
-        return result
+    ; The live card body: search rounds, reasoning, and the answer being
+    ; composed - each section appears as it becomes available.
+    static _ProgressBody(state) {
+        if state.searchRounds = 0 && state.reasoning = "" && state.answer = ""
+            return ""
+        body := "**Searching...**`n`n"
+        if state.searchRounds > 0
+            body .= "Searching for related terms (round " state.searchRounds ")...`n`n"
+        if state.reasoning != ""
+            body .= "**Reasoning...**`n`n" state.reasoning "`n`n"
+        if state.answer != ""
+            body .= "**Answer...**`n`n" state.answer
+        return body
     }
 
     ; Record the /responses call in the API log so searches are visible in
     ; the API Logs viewer like chat/title requests (logging is best-effort).
-    static _LogRequest(query, providerInfo, payload, raw, result, status, responseTimeMs) {
+    static _LogRequest(query, providerInfo, payload, response, result, status, responseTimeMs) {
         if apiLogMaxEntries <= 0
             return
         try {
@@ -100,7 +183,7 @@ class DeepSeekSearch {
                 endpoint: SearchTools.ResponsesEndpoint(providerInfo.endpoint),
                 pasteMode: "chat",
                 request: payload,
-                response: raw,
+                response: response,
                 status: status,
                 responseTimeMs: responseTimeMs,
                 searchQuery: query,

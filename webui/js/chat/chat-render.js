@@ -216,13 +216,16 @@ function _parseSearchContext(content) {
 function _buildSearchContextHtml(sc) {
   var q = escHtml(sc.query || '');
   var body = md.render(_prepUserContent(sc.results || ''));
+  // While the search is still streaming ("Searching..." body) keep the card
+  // expanded so the live progress is visible; completed cards collapse.
+  var live = /Searching(\.\.\.|…)/.test(sc.results || '');
   return '<div class="search-card">' +
-    '<button type="button" class="search-card-toggle" aria-expanded="false" title="Show or hide the search results">' +
+    '<button type="button" class="search-card-toggle" aria-expanded="' + (live ? 'true' : 'false') + '" title="Show or hide the search results">' +
     '<i data-lucide="search" style="width:14px;height:14px;flex-shrink:0;"></i>' +
     '<span class="search-card-title">Searched the web for: <strong>' + q + '</strong></span>' +
     '<i data-lucide="chevron-down" class="search-card-caret" style="width:14px;height:14px;flex-shrink:0;"></i>' +
     '</button>' +
-    '<div class="search-card-results" hidden>' + body + '</div>' +
+    '<div class="search-card-results"' + (live ? '' : ' hidden') + '>' + body + '</div>' +
     '</div>';
 }
 

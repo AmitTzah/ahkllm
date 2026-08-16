@@ -198,6 +198,51 @@ function responsesSearchBody(opts) {
   };
 }
 
+// Streaming DeepSeek /responses (request body has stream:true). Emits the
+// real event sequence: reasoning deltas -> web_search_call lifecycle ->
+// output_text deltas -> completed. Inter-event delays come from
+// opts.searchDelay so scenarios can observe (or stop) mid-search.
+function makeResponsesStreamHandler(parsed, opts) {
+  return (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const step = opts.searchDelay || 120;
+    const reasoning = opts.searchReasoning || 'Let me search for this.';
+    const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
+    const ev = (type, data) => res.write('event: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n');
+    (async () => {
+      ev('response.created', { type: 'response.created', response: { id: 'mock-resp', object: 'response', status: 'in_progress', model: opts.responseModel || 'deepseek-v4-flash' } });
+      await delay(step);
+      ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'reasoning', id: 'r1', status: 'in_progress', content: [], summary: [] }, output_index: 0 });
+      ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: 'r1', output_index: 0, part: { type: 'reasoning_text', text: '' } });
+      for (const token of reasoning.split(' ')) {
+        ev('response.reasoning_text.delta', { type: 'response.reasoning_text.delta', content_index: 0, delta: token + ' ', item_id: 'r1', output_index: 0 });
+        await delay(step);
+      }
+      ev('response.web_search_call.in_progress', { type: 'response.web_search_call.in_progress', item_id: 'call_1', output_index: 1 });
+      await delay(step);
+      ev('response.web_search_call.searching', { type: 'response.web_search_call.searching', item_id: 'call_1', output_index: 1 });
+      await delay(step * 2);
+      ev('response.web_search_call.completed', { type: 'response.web_search_call.completed', item_id: 'call_1', output_index: 1 });
+      await delay(step);
+      ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'message', id: 'm1', status: 'in_progress', content: [], phase: 'final_answer', role: 'assistant' }, output_index: 2 });
+      ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: 'm1', output_index: 2, part: { type: 'output_text', text: '' } });
+      for (const token of text.split(' ')) {
+        ev('response.output_text.delta', { type: 'response.output_text.delta', content_index: 0, delta: token + ' ', item_id: 'm1', output_index: 2 });
+        await delay(step);
+      }
+      ev('response.output_item.done', { type: 'response.output_item.done', item: { type: 'message', id: 'm1', status: 'completed', content: [{ type: 'output_text', text }], phase: 'final_answer', role: 'assistant' }, output_index: 2 });
+      await delay(step);
+      ev('response.completed', { type: 'response.completed', response: { id: 'mock-resp', object: 'response', status: 'completed', model: opts.responseModel || 'deepseek-v4-flash' } });
+      res.end();
+    })().catch(() => { try { res.end(); } catch {} });
+  };
+}
+
 // Tavily fallback backend (POST /search). Shape captured from a real
 // api.tavily.com/search call during mock setup.
 function tavilySearchBody(parsed, opts) {
@@ -274,6 +319,10 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       // Both are answered from the real captured shapes — no real API calls
       // happen in the headless suite.
       if (req.url.includes('/responses')) {
+        if (parsed.stream) {
+          makeResponsesStreamHandler(parsed, opts)(req, res);
+          return;
+        }
         json(responsesSearchBody(opts), res);
         return;
       }

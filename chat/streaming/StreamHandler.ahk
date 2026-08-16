@@ -209,7 +209,19 @@ _handleNonStreamToolCalls(toolCalls) {
             postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: SearchToolExecutor.PlaceholderContent(toolCalls) })
 
         providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
-        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
+        ; Live progress: re-render the search card as the backend streams.
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo, "", _postSearchProgress)
+        if requestParams.Has("_toolLoopCancelled") && requestParams["_toolLoopCancelled"] {
+            ; User pressed Stop while the search ran: cancel the card and do
+            ; NOT fire the follow-up request.
+            _handleSearchCancelledCard()
+            _clearToolLoopState()
+            _deleteCurrentStreamFiles()
+            _cleanupStreamState()
+            postWebMessage("setChatButtonsEnabled", true)
+            startLoadingCursor(false)
+            return
+        }
         SearchToolExecutor.QueueFollowUp(execResult, activeThreadId, parentId, loopCount)
         if ctxId
             postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
@@ -856,7 +868,19 @@ _handleStreamToolCalls() {
             postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: SearchToolExecutor.PlaceholderContent(toolCalls) })
 
         providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
-        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo)
+        ; Live progress: re-render the search card as the backend streams.
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo, "", _postSearchProgress)
+        if requestParams.Has("_toolLoopCancelled") && requestParams["_toolLoopCancelled"] {
+            ; User pressed Stop while the search ran: cancel the card and do
+            ; NOT fire the follow-up request.
+            _handleSearchCancelledCard()
+            _clearToolLoopState()
+            _deleteCurrentStreamFiles()
+            _RemoveStreamFromActive(_currentStreamKey)
+            _cleanupStreamState()
+            _RestoreLastActiveStream()
+            return
+        }
         SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount)
         if ctxId
             postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
@@ -918,6 +942,33 @@ _clearToolLoopState() {
         requestParams.Delete("_toolLoopCount")
     if requestParams.Has("_pendingSearchContextIds")
         requestParams.Delete("_pendingSearchContextIds")
+    if requestParams.Has("_pendingSearchPid")
+        requestParams.Delete("_pendingSearchPid")
+    if requestParams.Has("_toolLoopCancelled")
+        requestParams.Delete("_toolLoopCancelled")
+    if requestParams.Has("_pendingSearchPlaceholderId")
+        requestParams.Delete("_pendingSearchPlaceholderId")
+    if requestParams.Has("_pendingSearchPlaceholderQuery")
+        requestParams.Delete("_pendingSearchPlaceholderQuery")
+}
+
+; Turn the "Searching..." placeholder into a cancelled card (Stop was pressed
+; while the search backend was still running).
+_handleSearchCancelledCard() {
+    if requestParams.Has("_pendingSearchPlaceholderId") && requestParams["_pendingSearchPlaceholderId"] != "" {
+        ctxId := requestParams["_pendingSearchPlaceholderId"]
+        q := requestParams.Has("_pendingSearchPlaceholderQuery") ? requestParams["_pendingSearchPlaceholderQuery"] : ""
+        content := "[Web search: " q "]\n\n**Search cancelled.**"
+        try ChatDB.Msg_Edit(ctxId, content)
+        postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
+    }
+}
+
+; Called by the search backend as it streams: re-render the placeholder card
+; with the latest live progress.
+_postSearchProgress(cardContent) {
+    if requestParams.Has("_pendingSearchPlaceholderId") && requestParams["_pendingSearchPlaceholderId"] != ""
+        postWebMessage("updateChatMessage", { id: requestParams["_pendingSearchPlaceholderId"], role: "user", content: cardContent })
 }
 
 ; Bug #221: drop the finalized request from the in-flight list and restore the

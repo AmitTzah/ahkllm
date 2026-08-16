@@ -197,6 +197,21 @@ _handleStreamCancelled() {
 ; poll timer will detect the flag on its next tick and finalize.
 handleCancelStream() {
     try {
+    ; Web-search round in flight (the /responses backend is still running):
+    ; kill the search cURL and flag the tool loop so the follow-up request
+    ; never fires and the card becomes "Search cancelled.".
+    if requestParams.Has("_pendingSearchPid") && requestParams["_pendingSearchPid"] {
+        pid := requestParams["_pendingSearchPid"]
+        if pid && ProcessExist(pid) {
+            ; The 2> redirection runs cURL inside cmd, so kill the whole tree.
+            RunWait('taskkill /PID ' pid ' /T /F', , "Hide")
+        }
+        requestParams["_toolLoopCancelled"] := true
+        requestParams.Delete("_pendingSearchPid")
+        if !_HasOtherActiveStreams()
+            postWebMessage("setChatButtonsEnabled", true)
+        return
+    }
     ; Bug #221: cancel the request that belongs to the CURRENT thread - with
     ; concurrent command streams there is no single global cURL PID. Fall back
     ; to the most recent stream for legacy flows.

@@ -117,6 +117,7 @@ RegisterTestClass(className) {
 #Include unit\ChatRequestBuilder.test.ahk
 #Include unit\SearchTools.test.ahk
 #Include unit\ResponsesParser.test.ahk
+#Include unit\ResponsesStreamParser.test.ahk
 #Include unit\TavilySearch.test.ahk
 #Include unit\DeepSeekSearch.test.ahk
 #Include unit\SSEParser.test.ahk

@@ -50,6 +50,7 @@ scenarios.push({
   settings: { threadTitles: { enabled: false } },
   mockOpts: {
     searchQuery: 'AutoHotkey WebView2',
+    searchReasoning: 'Let me search for this.',
     searchText: 'DeepSeek native answer: AutoHotkey v2 hosts web content with WebView2.',
     chatText: 'the answer comes from DeepSeek\'s native search.'
   },
@@ -59,6 +60,10 @@ scenarios.push({
     if ('codeExecution' in payload) throw new Error('codeExecution stub still in payload');
 
     await sendChatMessage(cdp, 'What is the latest AutoHotkey version?');
+    // Live progress: the streaming /responses backend re-renders the search
+    // card with reasoning as it arrives - assert it appears BEFORE the
+    // stream completes.
+    await cdp.waitFor('document.querySelector(".msg.search-context .search-card-results") && document.querySelector(".msg.search-context .search-card-results").textContent.indexOf("Let me search") >= 0', 20000, 150, 'live search progress');
     await waitStreamingIdle(cdp, 45000);
 
     // The final answer bubble rendered after the tool round.
@@ -90,6 +95,10 @@ scenarios.push({
     if (log.indexOf('"type":"web_search"') < 0) throw new Error('DeepSeek /responses request did not carry the web_search tool');
     if (log.indexOf('"role":"tool"') < 0) throw new Error('tool result not returned to the model');
     assertCanonicalToolOrder(log);
+    const requests = log.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const responsesReq = requests.find((r) => String(r.url).includes('/responses'));
+    // AHK's jsongo serializes true as 1, so the wire body carries stream:1.
+    if (!responsesReq || !responsesReq.body.stream) throw new Error('/responses request must be streaming');
 
     // The toggle persisted with the thread.
     const settings = seed.query(dbPath, 'SELECT advanced_toggles FROM chat_threads LIMIT 1');
@@ -243,6 +252,56 @@ scenarios.push({
     if (toggles.webSearch) throw new Error('webSearch not persisted as off: ' + JSON.stringify(rows[0]));
 
     return 'toggle off: first request carries web_search tool, second request has no tools, thread persists webSearch off';
+  }
+});
+
+scenarios.push({
+  id: 253,
+  name: 'Stop mid-search: backend call cancelled, no follow-up request, card cancelled, chat usable',
+  mode: 'sse-tool-call',
+  settings: { threadTitles: { enabled: false } },
+  mockOpts: {
+    searchQuery: 'AutoHotkey WebView2',
+    searchDelay: 60000, // keep the /responses stream open so Stop lands mid-search
+    chatText: 'the answer comes from DeepSeek native search.'
+  },
+  async body({ cdp, mockLog }) {
+    const payload = await enableWebSearch(cdp);
+    if (payload.webSearch !== true) throw new Error('webSearch not enabled');
+
+    await sendChatMessage(cdp, 'What is the latest AutoHotkey version?');
+    // The placeholder card appears immediately; the slow mock keeps the
+    // search streaming.
+    await cdp.waitFor('document.querySelector(".msg.search-context .search-card-results") && document.querySelector(".msg.search-context .search-card-results").textContent.indexOf("Searching") >= 0', 15000, 150, 'searching card');
+    await sleep(500);
+
+    // Press Stop while the search backend is still running.
+    await cdp.eval('window.chrome.webview.postMessage(JSON.stringify({ action: "cancelStream" }))');
+    await sleep(2000);
+
+    // The card becomes "Search cancelled." instead of a stale "Searching...".
+    const cardText = await cdp.eval('document.querySelector(".msg.search-context .search-card-results") ? document.querySelector(".msg.search-context .search-card-results").textContent : ""');
+    if (cardText.indexOf('Search cancelled') < 0) throw new Error('card not marked cancelled: ' + JSON.stringify(cardText));
+
+    // No follow-up chat request - the staged tool exchange must NOT fire.
+    const log = fs.readFileSync(mockLog, 'utf8');
+    const chatReqs = log.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.url).includes('/chat/completions'));
+    if (chatReqs.length !== 1) throw new Error('expected exactly 1 chat request (no follow-up after cancel), got ' + chatReqs.length);
+    if (JSON.stringify(chatReqs[0].body).indexOf('"role":"tool"') >= 0) throw new Error('follow-up tool exchange fired after cancel');
+
+    // The backend call was still logged (status cancelled).
+    const apiLogFile = require('node:path').join(require('node:os').tmpdir(), 'LLM_API_Log.json');
+    let apiLogEntries = [];
+    try { apiLogEntries = JSON.parse(fs.readFileSync(apiLogFile, 'utf8')); } catch {}
+    const searchEntry = apiLogEntries.find((e) => String(e.commandName || '').indexOf('Web Search (DeepSeek)') >= 0 && String(e.searchQuery || '').indexOf('AutoHotkey WebView2') >= 0);
+    if (!searchEntry) throw new Error('cancelled search request not found in the API log');
+    if (String(searchEntry.status) !== 'cancelled') throw new Error('expected cancelled status, got ' + JSON.stringify(searchEntry.status));
+
+    // The chat is not broken: composer is back in Send mode.
+    const sendEnabled = await cdp.eval('document.getElementById("chat-send-btn") ? !document.getElementById("chat-send-btn").disabled : false');
+    if (!sendEnabled) throw new Error('composer not re-enabled after cancel');
+
+    return 'stop mid-search: /responses killed, no follow-up request, card cancelled, search logged (status cancelled), composer usable';
   }
 });
 

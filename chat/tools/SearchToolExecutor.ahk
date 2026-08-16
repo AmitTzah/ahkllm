@@ -21,7 +21,7 @@ class SearchToolExecutor {
     ; testRunner: optional function-object seam for unit tests (returns the
     ; search answer for a query instead of hitting a real backend).
     ; Returns { toolMessages, contextText }.
-    static Execute(toolCalls, providerInfo, testRunner := "") {
+    static Execute(toolCalls, providerInfo, testRunner := "", onSearchProgress := "") {
         native := SearchTools.IsNativeDeepSeek(providerInfo.providerKey)
         toolMessages := []
         assistantMsg := { role: "assistant", content: "", tool_calls: [] }
@@ -54,7 +54,7 @@ class SearchToolExecutor {
                 } else if testRunner != "" {
                     resultText := testRunner(query)
                 } else if native {
-                    resultText := DeepSeekSearch.Run(query, providerInfo)
+                    resultText := DeepSeekSearch.Run(query, providerInfo, onSearchProgress)
                 } else {
                     resultText := TavilySearch.Run(query)
                 }
