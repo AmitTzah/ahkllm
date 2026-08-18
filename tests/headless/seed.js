@@ -30,7 +30,7 @@ function defaultProviders(endpoint, fimEndpoint = '') {
     },
     google: {
       displayName: 'Google Gemini', endpoint, fimEndpoint: '',
-      authMode: 'env', authEnvVar: 'GEMINI_API_KEY', apiKey: '',
+      authMode: 'env', authEnvVar: 'GOOGLE_API_KEY', apiKey: '',
       icon: '', collapseThinking: false, prefixes: ['gemini', 'gemma', 'google']
     }
   };

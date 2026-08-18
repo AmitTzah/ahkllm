@@ -222,7 +222,7 @@ class DeepSeekSearch {
         else if result.type = "failed" && state.failedMsg = ""
             state.failedMsg := result.message
 
-        if onProgress != "" && (result.type = "reasoning" || result.type = "answer" || result.type = "search") {
+        if onProgress != "" && (result.type = "reasoning" || result.type = "search") {
             body := DeepSeekSearch._ProgressBody(state)
             if body != "" && (state.lastProgressTick = 0 || A_TickCount - state.lastProgressTick >= 250) {
                 state.lastProgressTick := A_TickCount
@@ -231,19 +231,19 @@ class DeepSeekSearch {
         }
     }
 
-    ; The live card body: search rounds, reasoning, and the answer being
-    ; composed - each section appears as it becomes available.
+    ; The live card body: search rounds + reasoning only. The final
+    ; answer is not streamed into the card - it stays in the assistant
+    ; bubble afterwards, so the card shows *what was searched* and *what
+    ; was thought*, not a duplicate response (user report 2026-08-16).
     static _ProgressBody(state) {
-        if state.searchRounds = 0 && state.reasoning = "" && state.answer = ""
+        if state.searchRounds = 0 && state.reasoning = ""
             return ""
         body := "**Searching...**`n`n"
         if state.searchRounds > 0
             body .= "Searching for related terms (round " state.searchRounds ")...`n`n"
         if state.reasoning != ""
-            body .= "**Reasoning...**`n`n" state.reasoning "`n`n"
-        if state.answer != ""
-            body .= "**Answer...**`n`n" state.answer
-        return body
+            body .= state.reasoning "`n`n"
+        return RTrim(body, "`n")
     }
 
     ; Rebuild the final answer from the per-item text using the phases the

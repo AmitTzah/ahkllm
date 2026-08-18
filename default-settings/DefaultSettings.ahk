@@ -46,7 +46,7 @@ providers := Map(
         displayName: "Google Gemini",
         endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         fimEndpoint: "",
-        authEnvVar: "GEMINI_API_KEY",
+        authEnvVar: "GOOGLE_API_KEY",
         icon: "icons/google.ico",
         collapseThinking: true
     }

@@ -39,7 +39,7 @@ class ChatRequestBuilderTest {
         ; EnvSet is process-scoped — no cleanup needed between tests.
         EnvSet("DEEPSEEK_API_KEY", "sk-test-deepseek-key")
         EnvSet("OPENAI_API_KEY", "sk-test-openai-key")
-        EnvSet("GEMINI_API_KEY", "sk-test-gemini-key")
+        EnvSet("GOOGLE_API_KEY", "sk-test-gemini-key")
 
         this._setupDb()
 
