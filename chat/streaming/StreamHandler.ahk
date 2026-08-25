@@ -16,6 +16,13 @@
 ; poll timer swaps per request), so a second command can never clobber the
 ; first request's state or temp files.
 _activeStreams := []
+; Search tool loops remain registered while their synchronous backend is in
+; flight. This list is separate from _activeStreams because a non-streaming
+; chat request can also enter a search loop without having an LLM cURL stream.
+_activeToolLoops := []
+; Single-shot requests have no polling stream record, but still need an
+; ownership record while their initial cURL is blocking.
+_activeNonStreamRequests := []
 _currentStreamKey := ""
 
 sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
@@ -86,42 +93,93 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 ; streamDone) by populating the _stream* context keys first.
 sendNonStreamingRequest(&chatHistoryJSONRequest) {
     try {
-        global _currentStreamKey
+        global _currentStreamKey, activeThreadId
+        requestPath := requestParams.Has("_requestPath")
+            ? requestParams["_requestPath"].Clone()
+            : ChatDB.Msg_GetActivePath(activeThreadId).Clone()
+        scope := {
+            key: A_TickCount "_" Random(1000, 999999),
+            threadId: activeThreadId,
+            requestPath: requestPath,
+            parentId: requestPath.Length ? requestPath[requestPath.Length].id : "",
+            params: requestParams.Clone(),
+            pid: 0,
+            searchPid: 0,
+            cancelled: false
+        }
+        scope.params["_requestPath"] := requestPath
+        _activeNonStreamRequests.Push(scope)
         ; Bug #221: the single-shot path runs synchronously and is NOT tracked
         ; in _activeStreams - clear the current-stream marker so the
         ; _finalizeStreaming cleanup below does not remove another request's
         ; in-flight stream, then restore that stream afterwards.
         _currentStreamKey := ""
         requestStartTime := A_TickCount
-        providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
+        providerInfo := ProviderResolver.Resolve(scope.params["singleAPIModelName"])
         if !providerInfo.endpoint {
+            _RemoveNonStreamRequest(scope)
             _ShowEndpointError(providerInfo)
             return
         }
         cURLCommand := CurlBuilder.Build(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"])
         FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
         Run(cURLCommand, , "Hide", &cURLPID)
+        scope.pid := cURLPID
+        SearchTools.RegisterProcess(scope, cURLPID)
         cURLState("set", cURLPID)
-        while ProcessExist(cURLPID)
+        while ProcessExist(cURLPID) {
+            if scope.cancelled
+                break
             Sleep 100
+        }
         cURLState("set", 0)
+        SearchTools.ClearProcess(scope, cURLPID)
+        _RemoveNonStreamRequest(scope)
 
-        raw := ""
-        if FileExist(requestParams["cURLOutputFile"])
-            raw := FileOpen(requestParams["cURLOutputFile"], "r", "UTF-8-RAW").Read()
+        if scope.cancelled {
+            _DeleteToolLoopFiles(scope)
+            if !_HasOtherActiveOperations("", "", scope)
+                postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+            return
+        }
 
-        ; Populate the same _stream* context the completion/error handlers use.
+        ; The remaining legacy population/parsing block is retained below for
+        ; unit compatibility; the scoped response handler owns the live path.
+        return _ProcessNonStreamResponse(scope, chatHistoryJSONRequest, providerInfo, requestStartTime)
+
+        ; Web-search tool loop (single-shot path): the model asked to search —
+        ; run the searches, stage the tool exchange, and re-enter the request
+        ; pipeline instead of finalizing an empty answer.
+    } catch Error as e {
+        debugLog("sendNonStreamingRequest error: " e.Message)
+        if IsSet(scope)
+            _RemoveNonStreamRequest(scope)
+        postWebMessage("showError", { message: "Request failed: " e.Message })
+        if !_HasOtherActiveOperations()
+            postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+        _cleanupStreamState()
+        deleteTempFiles()
+    }
+}
+
+_ProcessNonStreamResponse(scope, chatHistoryJSONRequest, providerInfo, requestStartTime) {
+    global requestParams
+    visibleParams := requestParams
+    try {
+        requestParams := scope.params
+        raw := FileExist(requestParams["cURLOutputFile"])
+            ? FileOpen(requestParams["cURLOutputFile"], "r", "UTF-8-RAW").Read()
+            : ""
         requestParams["_streamOutputFile"] := requestParams["cURLOutputFile"]
         requestParams["_streamLastPos"] := 0
         requestParams["_streamContent"] := ""
         requestParams["_streamReasoning"] := ""
         sanitizedModel := ModelParser.Sanitize(requestParams["singleAPIModelName"])
         requestParams["_streamModelName"] := sanitizedModel
+        requestParams["_streamDisplayName"] := sanitizedModel
         if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] {
             asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
             requestParams["_streamDisplayName"] := asst && asst.name ? asst.name : sanitizedModel
-        } else {
-            requestParams["_streamDisplayName"] := sanitizedModel
         }
         requestParams["_streamFirstTokenTime"] := 0
         requestParams["_streamUsage"] := {}
@@ -134,11 +192,8 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
         requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
         requestParams["_streamPID"] := 0
         requestParams["_streamCancelled"] := false
-        requestParams["_streamThreadId"] := activeThreadId
-        requestParams["_streamParentId"] := ""
-        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
-        if sendPath.Length
-            requestParams["_streamParentId"] := sendPath[sendPath.Length].id
+        requestParams["_streamThreadId"] := scope.threadId
+        requestParams["_streamParentId"] := scope.parentId
         requestParams["_streamLogWindowTitle"] := requestParams["windowTitle"]
         requestParams["_streamLogProviderName"] := requestParams["providerName"]
         requestParams["_streamLogModel"] := requestParams["singleAPIModelName"]
@@ -149,29 +204,93 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
             _cleanupStreamState()
             return
         }
-        parsed := jsongo.Parse(raw)
-        response := ResponseParser.ParseChatResponse(parsed)
-        content := response.response
-        if !content {
-            requestParams["_streamContent"] := ""
+        response := ResponseParser.ParseChatResponse(jsongo.Parse(raw))
+        if response.toolCalls.Length {
+            _handleNonStreamToolCalls(response.toolCalls, scope)
+            return
+        }
+        if !response.response {
             _handleStreamError()
             _cleanupStreamState()
             return
         }
-        requestParams["_streamContent"] := content
+        requestParams["_streamContent"] := response.response
         requestParams["_streamUsage"] := response.usage
         if response.model != ""
             requestParams["_streamModelName"] := ModelParser.Sanitize(response.model)
-        ; Single-shot response: first token = whole response completion time.
         requestParams["_streamFirstTokenTime"] := A_TickCount
         _finalizeStreaming()
+    } finally {
+        requestParams := visibleParams
+    }
+}
+
+; Web-search tool loop for the non-streaming (single-shot) chat path. Runs
+; synchronously: execute the searches, persist the search context, stage the
+; ephemeral tool messages, then re-enter _BuildAndFireRequest (which rebuilds
+; the request with the tool exchange and recurses back here until the model
+; answers with plain content).
+_handleNonStreamToolCalls(toolCalls, ownerScope := "") {
+    try {
+        global activeThreadId
+        if IsObject(ownerScope) {
+            scopeParams := ownerScope.params.Clone()
+            threadId := ownerScope.threadId
+            sendPath := ownerScope.requestPath
+            parentId := ownerScope.parentId
+        } else {
+            scopeParams := requestParams.Clone()
+            threadId := activeThreadId
+            sendPath := ChatDB.Msg_GetActivePath(threadId)
+            parentId := sendPath.Length ? sendPath[sendPath.Length].id : ""
+        }
+        scopeParams["_requestPath"] := sendPath.Clone()
+        loopState := SearchToolExecutor.NewLoopState(threadId, parentId, scopeParams, 0)
+        loopState.placeholderQuery := SearchToolExecutor.FirstQuery(toolCalls)
+        _activeToolLoops.Push(loopState)
+        loopCount := loopState.loopCount
+        loopCount++
+        if SearchToolExecutor.MaxIterationsReached(loopCount) {
+            _failToolLoop("Web search stopped: too many search rounds (max " SearchTools.MAX_TOOL_ITERATIONS ").", "", loopState)
+            return
+        }
+
+        ; Immediate UI feedback: show the query card ("Searching…") while the
+        ; backend runs, then update it in place with the real result.
+        ctxId := SearchToolExecutor.PrepareFollowUp(toolCalls, threadId, parentId, loopState)
+        if ctxId && activeThreadId = threadId
+            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: SearchToolExecutor.PlaceholderContent(toolCalls) })
+
+        providerInfo := ProviderResolver.Resolve(scopeParams["singleAPIModelName"])
+        ; Live progress: re-render the search card as the backend streams.
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo, "", _postSearchProgress.Bind(loopState), loopState)
+        if SearchTools.IsCancelled(loopState) {
+            ; User pressed Stop while the search ran: cancel the card and do
+            ; NOT fire the follow-up request.
+            _handleSearchCancelledCard(loopState)
+            _FinishToolLoop(loopState)
+            if !_HasOtherActiveOperations(loopState)
+                postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+            return
+        }
+        ; Every search in this round failed (empty backend answers, API
+        ; errors, missing keys): surface the failure card and STOP the loop -
+        ; no follow-up request, so the model cannot keep firing more failed
+        ; queries (real-API report 2026-08-16: four failed search cards in a
+        ; row before the model gave up).
+        if execResult.successCount = 0 {
+            _failToolLoop(execResult.failureText != "" ? execResult.failureText : "Web search failed.", execResult.contextText, loopState)
+            return
+        }
+        SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount, loopState)
+        if ctxId && activeThreadId = threadId
+            postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
+
+        _FinishToolLoop(loopState, "", true)
+        _BuildAndFireRequestForScope(loopState)
     } catch Error as e {
-        debugLog("sendNonStreamingRequest error: " e.Message)
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
-        postWebMessage("showError", { message: "Request failed: " e.Message })
-        _cleanupStreamState()
-        deleteTempFiles()
+        debugLog("_handleNonStreamToolCalls error: " e.Message "`n" e.Stack)
+        _failToolLoop("Web search failed: " e.Message, "", IsSet(loopState) ? loopState : "")
     }
 }
 
@@ -272,8 +391,19 @@ _RepostActiveStreamForThread(threadId) {
 _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, sanitizedModel, requestStartTime) {
     retryIsRoot := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
     retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
+    requestPath := requestParams.Has("_requestPath")
+        ? requestParams["_requestPath"]
+        : ChatDB.Msg_GetActivePath(activeThreadId)
+    requestPath := requestPath.Clone()
+    requestParamsSnapshot := requestParams.Clone()
+    requestParamsSnapshot["_requestPath"] := requestPath
     stream := {
         key: A_TickCount "_" Random(1000, 999999),
+        requestParamsSnapshot: requestParamsSnapshot,
+        requestPath: requestPath,
+        requestLeafId: requestPath.Length ? requestPath[requestPath.Length].id : "",
+        phase: "stream",
+        toolLoopState: "",
         outputFile: requestParams["cURLOutputFile"],
         lastPos: 0,
         content: "",
@@ -295,6 +425,9 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         chatHistoryJSONRequest: chatHistoryJSONRequest,
         pid: cURLPID,
         cancelled: false,
+        ; Web-search tool loop state (per round).
+        toolCalls: Map(),
+        toolLoopCount: requestParams.Has("_toolLoopCount") ? requestParams["_toolLoopCount"] : 0,
         ; Bug #159: capture the thread that SENT this request.
         threadId: activeThreadId,
         parentId: "",
@@ -314,9 +447,8 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
     ; Bug #197: capture the LAST message of the request path at send time. A
     ; root retry has no parent (bug #147).
     if !retryIsRoot {
-        sendPath := ChatDB.Msg_GetActivePath(activeThreadId)
-        if sendPath.Length
-            stream.parentId := sendPath[sendPath.Length].id
+        if requestPath.Length
+            stream.parentId := requestPath[requestPath.Length].id
     }
     return stream
 }
@@ -346,8 +478,11 @@ _LoadStreamIntoParams(stream) {
     requestParams["_streamChatHistoryJSONRequest"] := stream.chatHistoryJSONRequest
     requestParams["_streamPID"]              := stream.pid
     requestParams["_streamCancelled"]        := stream.cancelled
+    requestParams["_streamToolCalls"]        := stream.HasOwnProp("toolCalls") ? stream.toolCalls : Map()
+    requestParams["_streamToolLoopCount"]    := stream.HasOwnProp("toolLoopCount") ? stream.toolLoopCount : 0
     requestParams["_streamThreadId"]         := stream.threadId
     requestParams["_streamParentId"]         := stream.parentId
+    requestParams["_requestPath"]            := stream.HasOwnProp("requestPath") ? stream.requestPath : []
     requestParams["_streamLogWindowTitle"]   := stream.logWindowTitle
     requestParams["_streamLogProviderName"]  := stream.logProviderName
     requestParams["_streamLogModel"]         := stream.logModel
@@ -382,6 +517,8 @@ _SaveStreamFromParams(stream) {
     stream.errorMessage     := requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
     stream.pollCount        := requestParams["_streamPollCount"]
     stream.cancelled        := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
+    stream.toolCalls        := requestParams.Has("_streamToolCalls") ? requestParams["_streamToolCalls"] : Map()
+    stream.toolLoopCount    := requestParams.Has("_streamToolLoopCount") ? requestParams["_streamToolLoopCount"] : 0
 }
 
 _StreamIsActive(key) {
@@ -410,6 +547,11 @@ _RestoreLastActiveStream() {
         _LoadStreamIntoParams(_activeStreams[_activeStreams.Length])
     } else {
         _currentStreamKey := ""
+        ; No stream owns the shared requestParams window anymore. A private
+        ; tool-loop scope may retain its own path, but the shared window must
+        ; not leak the completed stream's request path into the next request.
+        if requestParams.Has("_requestPath")
+            requestParams.Delete("_requestPath")
     }
 }
 
@@ -435,6 +577,123 @@ _FindLatestStreamForThread(threadId) {
     return found
 }
 
+_FindStreamByKey(key) {
+    if !key
+        return ""
+    for stream in _activeStreams
+        if stream.key = key
+            return stream
+    return ""
+}
+
+_FindToolLoopForThread(threadId) {
+    found := ""
+    for loopState in _activeToolLoops
+        if loopState.threadId = threadId
+            found := loopState
+    return found
+}
+
+_FindNonStreamRequestForThread(threadId) {
+    found := ""
+    for scope in _activeNonStreamRequests
+        if scope.threadId = threadId
+            found := scope
+    return found
+}
+
+_RemoveNonStreamRequest(scope) {
+    if !IsObject(scope)
+        return
+    for i, item in _activeNonStreamRequests {
+        if item.key = scope.key {
+            _activeNonStreamRequests.RemoveAt(i)
+            return
+        }
+    }
+}
+
+; Aggregate in-flight check used by tool-loop cleanup. The current operation
+; can be excluded while it is being removed; other streams/searches keep the
+; composer in Stop mode.
+_HasOtherActiveOperations(currentLoop := "", currentStream := "", currentRequest := "") {
+    for stream in _activeStreams
+        if !IsObject(currentStream) || stream.key != currentStream.key
+            return true
+    for loopState in _activeToolLoops
+        if !IsObject(currentLoop) || loopState.key != currentLoop.key
+            return true
+    for scope in _activeNonStreamRequests
+        if !IsObject(currentRequest) || scope.key != currentRequest.key
+            return true
+    return false
+}
+
+_RemoveToolLoop(loopState) {
+    if !IsObject(loopState)
+        return
+    for i, item in _activeToolLoops {
+        if item.key = loopState.key {
+            _activeToolLoops.RemoveAt(i)
+            return
+        }
+    }
+}
+
+; Continue a tool loop with its captured thread/settings map. The global
+; requestParams/activeThreadId variables are swapped only for the synchronous
+; build/send call; the new stream record captures the scoped map before the
+; visible thread is restored.
+_BuildAndFireRequestForScope(loopState) {
+    global requestParams, activeThreadId
+    visibleParams := requestParams
+    visibleThreadId := activeThreadId
+    loopState.params["_requestPath"] := loopState.requestPath.Clone()
+    requestParams := loopState.params
+    activeThreadId := loopState.threadId
+    try {
+        return _BuildAndFireRequest()
+    } finally {
+        loopState.params := requestParams
+        requestParams := visibleParams
+        activeThreadId := visibleThreadId
+    }
+}
+
+_DeleteToolLoopFiles(loopState) {
+    if !IsObject(loopState) || !IsObject(loopState.params)
+        return
+    for key in ["chatHistoryJSONRequestFile", "cURLCommandFile", "cURLOutputFile", "cURLErrorFile"] {
+        if loopState.params.Has(key) {
+            p := loopState.params[key]
+            if p && FileExist(p)
+                try FileDelete(p)
+        }
+    }
+}
+
+_FinishToolLoop(loopState, stream := "", preserveStaged := false) {
+    if !IsObject(loopState)
+        return
+    _RemoveToolLoop(loopState)
+    _DeleteToolLoopFiles(loopState)
+    if !preserveStaged {
+        for key in ["_pendingToolMessages", "_pendingSearchContextIds", "_toolLoopCount"] {
+            if loopState.params.Has(key)
+                loopState.params.Delete(key)
+        }
+    }
+    if IsObject(stream) {
+        stream.phase := "finished"
+        stream.toolLoopState := ""
+        _RemoveStreamFromActive(stream.key)
+        if _currentStreamKey = stream.key
+            _RestoreLastActiveStream()
+        if _activeStreams.Length
+            SetTimer(_pollStreamTimer, 100)
+    }
+}
+
 ; Kill the cURL process of the CURRENTLY loaded stream without touching
 ; another concurrent request's PID (the old single global cURLState would
 ; close the wrong process once two commands can stream at once - bug #221).
@@ -442,8 +701,11 @@ _CloseCurrentStreamPID() {
     if !requestParams.Has("_streamPID")
         return
     pid := requestParams["_streamPID"]
-    if pid && ProcessExist(pid)
-        ProcessClose(pid)
+    if pid && ProcessExist(pid) {
+        ; Kill the whole tree (cmd wrapper + cURL child) so no orphan keeps
+        ; writing to the output file after the stream finalizes.
+        RunWait('taskkill /PID ' pid ' /T /F', , "Hide")
+    }
     if cURLState("get") = pid
         cURLState("set", 0)
 }
@@ -472,7 +734,8 @@ _StreamStateFromParams() {
         rawSseChunks: requestParams["_streamRawSseChunks"],
         rawLastResponse: requestParams["_streamRawLastResponse"],
         pendingLine: requestParams["_streamPendingLine"],
-        errorMessage: requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
+        errorMessage: requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : "",
+        toolCalls: requestParams.Has("_streamToolCalls") ? requestParams["_streamToolCalls"] : Map()
     }
 }
 
@@ -492,6 +755,7 @@ _ParamsFromStreamState(state) {
     } else if requestParams.Has("_streamErrorMessage") {
         requestParams.Delete("_streamErrorMessage")
     }
+    requestParams["_streamToolCalls"] := state.toolCalls
 }
 
 _readFileChunk(state) {
@@ -620,6 +884,16 @@ _processChunk(state, chunk, doPostMessage) {
             if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
                 state.usage := chunk.usage
 
+        case "tool_call":
+            ; The model asked to search the web. Merge the partial fragments
+            ; into completed calls ({id, name, arguments}) keyed by index.
+            if chunk.HasOwnProp("toolCalls") && IsObject(chunk.toolCalls)
+                _mergeToolCallDeltas(state, chunk.toolCalls)
+            if chunk.HasOwnProp("model") && chunk.model
+                state.modelName := ModelParser.Sanitize(chunk.model)
+            if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+                state.usage := chunk.usage
+
         case "reasoning":
             ; Bug #170: a reasoning-only stream never produces a "content"
             ; chunk, so the first-token timer must also stamp on reasoning -
@@ -657,6 +931,29 @@ _processChunk(state, chunk, doPostMessage) {
     }
 }
 
+; Merge streaming tool_calls delta fragments (OpenAI-compatible shape) into
+; completed {id, name, arguments} entries keyed by the call index.
+_mergeToolCallDeltas(state, fragments) {
+    if !IsObject(state.toolCalls)
+        state.toolCalls := Map()
+    for f in fragments {
+        if !IsObject(f)
+            continue
+        idx := f.Has("index") ? f["index"] : 0
+        if !state.toolCalls.Has(idx)
+            state.toolCalls[idx] := { id: "", name: "", arguments: "" }
+        entry := state.toolCalls[idx]
+        if f.Has("id") && f["id"] != ""
+            entry.id := f["id"]
+        if f.Has("function") && IsObject(f["function"]) {
+            if f["function"].Has("name") && f["function"]["name"] != ""
+                entry.name := f["function"]["name"]
+            if f["function"].Has("arguments") && f["function"]["arguments"] != ""
+                entry.arguments .= f["function"]["arguments"]
+        }
+    }
+}
+
 _finalizeStreaming() {
     try {
         _readStreamChunkFromParams()
@@ -671,6 +968,7 @@ _finalizeStreaming() {
         ; branch, which would otherwise look like a connection failure and show
         ; the misleading API-key banner.
         if wasCancelled {
+            _clearToolLoopState()
             _handleStreamCancelled()
             ; Bug #98: every exit path must clean up the _stream* keys so a
             ; cancelled request can never leak stale stream state into the
@@ -689,27 +987,41 @@ _finalizeStreaming() {
         ; wedged in Stop mode. This must run BEFORE the empty-content error
         ; branch so the partial is never misread as a connection failure.
         if requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"] {
+            _clearToolLoopState()
             _handleMidStreamError()
             _cleanupStreamState()
             _FinishStreamFinalize()
             return
         }
 
-        if (requestParams["_streamContent"] = "" && requestParams["_streamReasoning"] = "") {
+        if _NoContentAndNoToolCalls() {
+            _clearToolLoopState()
             _handleStreamError()
             _cleanupStreamState()
             _FinishStreamFinalize()
             return
         }
 
+        ; A tool-call round owns its stream teardown and continuation. Do not
+        ; run ordinary completion cleanup against the visible thread's
+        ; requestParams window after the synchronous search returns.
+        if requestParams.Has("_streamToolCalls") && requestParams["_streamToolCalls"].Count {
+            _handleStreamComplete()
+            return
+        }
         _handleStreamComplete()
+        ; The web-search tool loop finished (no more tool calls) — drop the
+        ; staged tool exchange + loop counter so the next send starts clean.
+        _clearToolLoopState()
         _cleanupStreamState()
         _FinishStreamFinalize()
     } catch Error as e {
         debugLog("_finalizeStreaming error: " e.Message)
-        ; Bug #221: only re-enable the composer when NO other request is still
-        ; streaming.
-        if !_HasOtherActiveStreams() {
+        _clearToolLoopState()
+        ; The finishing stream is still registered here, so exclude it while
+        ; checking all other streams, search loops, and non-stream requests.
+        currentStream := _FindStreamByKey(_currentStreamKey)
+        if !_HasOtherActiveOperations("", currentStream) {
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         }
@@ -717,6 +1029,168 @@ _finalizeStreaming() {
         _cleanupStreamState()
         _FinishStreamFinalize()
     }
+}
+
+; True when the stream produced neither content nor reasoning AND has no
+; pending web-search tool calls (tool-call rounds must route to the tool loop,
+; not the empty-response error branch).
+_NoContentAndNoToolCalls() {
+    if requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != ""
+        return false
+    if requestParams.Has("_streamToolCalls") && requestParams["_streamToolCalls"].Count
+        return false
+    return true
+}
+
+; Web-search tool loop: execute the model's web_search calls, persist the
+; search context as a user message, stage the ephemeral tool exchange, then
+; fire the follow-up request. The follow-up's stream record re-captures the
+; parent (now the search-context message), so the final answer chains
+; user -> search context -> answer in the DB.
+_handleStreamToolCalls() {
+    try {
+        global activeThreadId
+        stream := _FindStreamByKey(_currentStreamKey)
+        if !stream
+            throw Error("originating stream record is missing")
+        toolCalls := requestParams["_streamToolCalls"]
+        loopState := SearchToolExecutor.NewLoopState(stream.threadId, stream.parentId, stream.requestParamsSnapshot.Clone(), stream.toolLoopCount)
+        loopState.placeholderQuery := SearchToolExecutor.FirstQuery(toolCalls)
+        stream.phase := "search"
+        stream.toolLoopState := loopState
+        _activeToolLoops.Push(loopState)
+        loopCount := loopState.loopCount
+        loopCount++
+
+        if SearchToolExecutor.MaxIterationsReached(loopCount) {
+            _failToolLoop("Web search stopped: too many search rounds (max " SearchTools.MAX_TOOL_ITERATIONS ").", "", loopState, stream)
+            return
+        }
+
+        parentId := stream.parentId
+        threadId := stream.threadId
+        ; Immediate UI feedback: show the query card ("Searching…") while the
+        ; backend runs, then update it in place with the real result.
+        ctxId := SearchToolExecutor.PrepareFollowUp(toolCalls, threadId, parentId, loopState)
+        if ctxId && activeThreadId = threadId
+            postWebMessage("appendChatMessage", { id: ctxId, role: "user", content: SearchToolExecutor.PlaceholderContent(toolCalls) })
+
+        providerInfo := ProviderResolver.Resolve(loopState.params["singleAPIModelName"])
+        ; Live progress: re-render the search card as the backend streams.
+        execResult := SearchToolExecutor.Execute(toolCalls, providerInfo, "", _postSearchProgress.Bind(loopState), loopState)
+        if SearchTools.IsCancelled(loopState) {
+            ; User pressed Stop while the search ran: cancel the card and do
+            ; NOT fire the follow-up request.
+            _handleSearchCancelledCard(loopState)
+            _FinishToolLoop(loopState, stream)
+            if !_HasOtherActiveOperations(loopState, stream)
+                postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+            return
+        }
+        ; Same all-failed guard as the non-streaming path: stop the loop
+        ; instead of letting the model retry failed searches.
+        if execResult.successCount = 0 {
+            _failToolLoop(execResult.failureText != "" ? execResult.failureText : "Web search failed.", execResult.contextText, loopState, stream)
+            return
+        }
+        SearchToolExecutor.QueueFollowUp(execResult, threadId, parentId, loopCount, loopState)
+        if ctxId && activeThreadId = threadId
+            postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: execResult.contextText })
+
+        _FinishToolLoop(loopState, stream, true)
+        ; Re-enter the request pipeline with the staged tool messages; a new
+        ; stream record is created for this round.
+        _BuildAndFireRequestForScope(loopState)
+    } catch Error as e {
+        debugLog("_handleStreamToolCalls error: " e.Message "`n" e.Stack)
+        _failToolLoop("Web search failed: " e.Message, "", IsSet(loopState) ? loopState : "", IsSet(stream) ? stream : "")
+    }
+}
+
+; Surface a tool-loop failure, tear down this round's stream, and clear the
+; staged loop state so the next normal send starts clean.
+_failToolLoop(message, contextText := "", loopState := "", stream := "") {
+    debugLog("[SEARCH] " message)
+    if IsObject(loopState) && loopState.placeholderId = "" && loopState.placeholderQuery != "" && loopState.threadId && loopState.parentId {
+        loopState.placeholderId := ChatDB.Msg_Insert({
+            thread_id: loopState.threadId,
+            role: "user",
+            content: SearchTools.BuildContextText(loopState.placeholderQuery, message),
+            parent_id: loopState.parentId,
+            sibling_group: "",
+            sibling_index: 0
+        })
+    }
+    ; Turn the "Searching…" placeholder into a failure card instead of
+    ; leaving a stale "Searching…" message in the thread. When the round had
+    ; multiple failed queries, contextText carries every query's failure card.
+    if IsObject(loopState) && loopState.placeholderId != "" {
+        ctxId := loopState.placeholderId
+        q := loopState.placeholderQuery
+        content := contextText != "" ? contextText : "[Web search: " q "]\n\n" message
+        try ChatDB.Msg_Edit(ctxId, content)
+        if activeThreadId = loopState.threadId
+            postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
+        loopState.placeholderId := ""
+        loopState.placeholderQuery := ""
+    }
+    postWebMessage("showError", { message: message })
+    if IsObject(loopState)
+        _FinishToolLoop(loopState, stream)
+    else
+        _clearToolLoopState()
+    if !IsObject(loopState) {
+        _deleteCurrentStreamFiles()
+        _RemoveStreamFromActive(_currentStreamKey)
+        _cleanupStreamState()
+        _RestoreLastActiveStream()
+    }
+    if !_activeStreams.Length && !_activeToolLoops.Length && !_activeNonStreamRequests.Length
+        postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+}
+
+_deleteCurrentStreamFiles() {
+    for key in ["chatHistoryJSONRequestFile", "cURLCommandFile", "cURLOutputFile", "cURLErrorFile"] {
+        if requestParams.Has(key) {
+            p := requestParams[key]
+            if p && FileExist(p)
+                try FileDelete(p)
+        }
+    }
+}
+
+; Clear the staged tool-exchange messages + loop counter once the loop ends
+; (final completion, error, or cancel).
+_clearToolLoopState(stream := "") {
+    if !IsObject(stream)
+        stream := _FindStreamByKey(_currentStreamKey)
+    if !IsObject(stream)
+        return
+    params := stream.requestParamsSnapshot
+    for key in ["_pendingToolMessages", "_pendingSearchContextIds", "_toolLoopCount"] {
+        if params.Has(key)
+            params.Delete(key)
+    }
+}
+
+; Turn the "Searching..." placeholder into a cancelled card (Stop was pressed
+; while the search backend was still running).
+_handleSearchCancelledCard(loopState := "") {
+    if IsObject(loopState) && loopState.placeholderId != "" {
+        ctxId := loopState.placeholderId
+        q := loopState.placeholderQuery
+        content := "[Web search: " q "]\n\n**Search cancelled.**"
+        try ChatDB.Msg_Edit(ctxId, content)
+        if activeThreadId = loopState.threadId
+            postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
+    }
+}
+
+; Called by the search backend as it streams: re-render the placeholder card
+; with the latest live progress.
+_postSearchProgress(loopState, cardContent) {
+    if IsObject(loopState) && loopState.placeholderId != "" && activeThreadId = loopState.threadId
+        postWebMessage("updateChatMessage", { id: loopState.placeholderId, role: "user", content: cardContent })
 }
 
 ; Bug #221: drop the finalized request from the in-flight list and restore the
@@ -770,6 +1244,12 @@ _cleanupStreamState() {
         requestParams.Delete("_streamThreadId")
     if requestParams.Has("_streamParentId")
         requestParams.Delete("_streamParentId")
+    ; Keep a path available until _FinishStreamFinalize() can restore a
+    ; remaining stream. If no stream is active, this is either the shared
+    ; window after a failed preflight or a terminal private scope; neither may
+    ; retain a completed request's path.
+    if !_activeStreams.Length && requestParams.Has("_requestPath")
+        requestParams.Delete("_requestPath")
     if requestParams.Has("_streamLogWindowTitle")
         requestParams.Delete("_streamLogWindowTitle")
     if requestParams.Has("_streamLogProviderName")

@@ -7,6 +7,11 @@
 
 _handleStreamComplete() {
     try {
+        ; The model asked to search: run the tool loop instead of finalizing.
+        if requestParams.Has("_streamToolCalls") && requestParams["_streamToolCalls"].Count {
+            _handleStreamToolCalls()
+            return
+        }
         _ClearCurrentStreamPID()
         ; Bug #159: complete into the thread that SENT the request (captured
         ; at send time), not the currently-active thread.
@@ -42,10 +47,10 @@ _handleStreamComplete() {
         ; stream immediately instead of after the user exits/re-enters the
         ; chat (title-gen only refreshed first-exchange chats).
         _postThreadListRefresh()
-        ; Bug #221: only re-enable the composer/loading cursor when NO other
-        ; request is still streaming - a concurrent command stream must keep
-        ; Stop mode.
-        if !_HasOtherActiveStreams() {
+        ; The finishing stream is still registered here, so exclude it while
+        ; checking all other streams, search loops, and non-stream requests.
+        currentStream := _FindStreamByKey(_currentStreamKey)
+        if !_HasOtherActiveOperations("", currentStream) {
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         }
@@ -59,7 +64,8 @@ _handleStreamComplete() {
         ; usage-less stream) must still return the UI to a usable state - the
         ; input/Stop button stayed disabled and streamState stayed active until
         ; reload.
-        if !_HasOtherActiveStreams() {
+        currentStream := _FindStreamByKey(_currentStreamKey)
+        if !_HasOtherActiveOperations("", currentStream) {
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         }
@@ -119,7 +125,6 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
 _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0, streamThreadId := "") {
     if !streamThreadId
         streamThreadId := activeThreadId
-    path := ChatDB.Msg_GetActivePath(streamThreadId)
     ; Bug #147: a retry of a ROOT assistant (no parent) must insert the new
     ; response as a SIBLING with parent_id NULL - not as a CHILD of the
     ; original root (path[last] would be the original assistant itself).
@@ -137,10 +142,23 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         if sendPath.Length
             parentId := sendPath[sendPath.Length].id
     }
+    attributionPath := isRootRetry ? []
+        : (requestParams.Has("_requestPath") ? requestParams["_requestPath"].Clone()
+            : (parentId ? ChatDB.Msg_GetPathToLeaf(streamThreadId, parentId) : ChatDB.Msg_GetActivePath(streamThreadId)))
+    path := attributionPath
     retrySiblingGroup := requestParams.Has("pendingRetrySiblingGroup") ? requestParams["pendingRetrySiblingGroup"] : ""
     retrySiblingIdx := retrySiblingGroup ? MessageRepo.GetMaxSiblingIndex(retrySiblingGroup) + 1 : 0
     if retrySiblingGroup
         requestParams.Delete("pendingRetrySiblingGroup")
+
+    ; A same-thread branch switch can leave the visible active leaf on a
+    ; different branch while this response is being persisted. Keep that
+    ; user-selected leaf unchanged; the assistant still uses parentId above.
+    preserveActiveLeaf := false
+    if activeThreadId = streamThreadId && !isRootRetry && parentId {
+        visiblePath := ChatDB.Msg_GetActivePath(streamThreadId)
+        preserveActiveLeaf := visiblePath.Length && visiblePath[visiblePath.Length].id != parentId
+    }
 
     completionTokens := usage.HasProp("completionTokens") ? usage.completionTokens : 0
     thinkingTokens := usage.HasProp("thinkingTokens") ? usage.thinkingTokens : 0
@@ -155,7 +173,9 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         thinking_tokens: thinkingTokens,
         cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0,
         response_time_ms: responseTimeMs,
-        ttft_ms: ttftMs
+        ttft_ms: ttftMs,
+        token_attribution_path: attributionPath,
+        update_active_leaf: !preserveActiveLeaf
     })
     _maybeGenerateTitle(path, streamThreadId)
 }

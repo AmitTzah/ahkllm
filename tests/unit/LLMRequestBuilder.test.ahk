@@ -358,6 +358,59 @@ class LLMRequestBuilderTest {
         }
     }
 
+    ; Regression (runtime error dialog): a corrupt/unparseable API log file
+    ; used to crash the app - _readLogFile had no catch, and a torn file
+    ; could parse into a non-array value. Reads must degrade to [] instead of
+    ; raising "This value of type 'String' has no property named 'Length'".
+    ReadLogs_CorruptFile_ReturnsEmptyArray() {
+        oldPath := ApiLogger.logFilePath
+        target := A_Temp "\test_api_log_corrupt_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := target
+        try {
+            try FileDelete(target)
+            FileOpen(target, "w", "UTF-8-RAW").Write('[{not json,,,')
+            logs := ApiLogger.ReadLogs()
+            if Type(logs) != "Array" || logs.Length != 0
+                throw Error("corrupt log must read as an empty array, got: " Type(logs))
+        } finally {
+            ApiLogger.logFilePath := oldPath
+            try FileDelete(target)
+        }
+    }
+
+    ; Regression: a log file whose top level is a JSON string (valid JSON,
+    ; wrong shape) previously parsed fine and crashed on logs.Length. The
+    ; next LogRequest must repair the file instead of raising.
+    LogRequest_CorruptFile_RepairsInsteadOfCrashing() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath
+        oldLimit := apiLogMaxEntries
+        target := A_Temp "\test_api_log_corrupt2_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := target
+        apiLogMaxEntries := 10
+        try {
+            try FileDelete(target)
+            FileOpen(target, "w", "UTF-8-RAW").Write('"not an array"')
+            ApiLogger.LogRequest({ promptName: "fixed", request: "{}", response: "{}", status: "success" })
+            logs := ApiLogger.ReadLogs()
+            if logs.Length != 1 || logs[1]["promptName"] != "fixed"
+                throw Error("LogRequest should replace the corrupt log with a fresh array")
+        } finally {
+            ApiLogger.logFilePath := oldPath
+            apiLogMaxEntries := oldLimit
+            try FileDelete(target)
+        }
+    }
+
+    ; Regression: _WriteLogs must use a per-write unique temp name. The old
+    ; shared ".tmp" path let two concurrent app instances interleave bytes
+    ; into the same temp file, which was then moved over the real log.
+    WriteLogs_UsesUniqueTempName() {
+        src := FileRead(A_ScriptDir "\..\api\ApiLogger.ahk", "UTF-8")
+        if !InStr(src, '".tmp" A_TickCount')
+            throw Error("_WriteLogs must use a unique temp file per write (shared .tmp interleaves across concurrent app instances)")
+    }
+
     ; ----------------------------------------------------
     ; ResolveProvider tests
     ; ----------------------------------------------------

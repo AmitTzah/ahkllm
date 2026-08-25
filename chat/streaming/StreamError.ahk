@@ -58,10 +58,13 @@ _handleStreamError() {
     if !errMsg
         errMsg := "Request failed. Check your API key and try again."
     postWebMessage("showError", { message: errMsg })
-    ; Bug #221: only re-enable the composer/loading cursor when NO other
-    ; request is still streaming - a concurrent command stream must keep
-    ; Stop mode.
-    if !_HasOtherActiveStreams() {
+    ; Diagnostics have been read into memory; remove the request files before
+    ; any later logging/UI work can return control to another request.
+    deleteTempFiles()
+    ; The finishing stream is still registered here, so exclude it while
+    ; checking all other streams, search loops, and non-stream requests.
+    currentStream := _FindStreamByKey(_currentStreamKey)
+    if !_HasOtherActiveOperations("", currentStream) {
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
     }
@@ -88,14 +91,11 @@ _handleStreamError() {
     }
     ApiLogger.LogRequest(logEntry)
 
-    ; Bug #110: the error path must also delete the temp request/cURL files
-    ; (they contain the Bearer token) once the diagnostics have been read.
-    deleteTempFiles()
-
     } catch Error as e {
         debugLog("_handleStreamError crashed: " e.Message "`n" e.Stack, "ErrorHandler")
         postWebMessage("showError", { message: "Request failed: " e.Message })
-        if !_HasOtherActiveStreams() {
+        currentStream := _FindStreamByKey(_currentStreamKey)
+        if !_HasOtherActiveOperations("", currentStream) {
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         }
@@ -174,8 +174,10 @@ _handleStreamCancelled() {
 
     _cleanupStreamState()
     deleteTempFiles()
-    ; Bug #221: only re-enable when NO other request is still streaming.
-    if !_HasOtherActiveStreams() {
+    ; The finishing stream is still registered here, so exclude it while
+    ; checking all other streams, search loops, and non-stream requests.
+    currentStream := _FindStreamByKey(_currentStreamKey)
+    if !_HasOtherActiveOperations("", currentStream) {
         startLoadingCursor(false)
         postWebMessage("setChatButtonsEnabled", true)
     }
@@ -184,7 +186,8 @@ _handleStreamCancelled() {
         debugLog("_handleStreamCancelled crashed: " e.Message "`n" e.Stack, "ErrorHandler")
         _cleanupStreamState()
         deleteTempFiles()
-        if !_HasOtherActiveStreams() {
+        currentStream := _FindStreamByKey(_currentStreamKey)
+        if !_HasOtherActiveOperations("", currentStream) {
             startLoadingCursor(false)
             postWebMessage("setChatButtonsEnabled", true)
         }
@@ -197,33 +200,60 @@ _handleStreamCancelled() {
 ; poll timer will detect the flag on its next tick and finalize.
 handleCancelStream() {
     try {
+    ; Web-search round in flight: the PID and cancellation flag belong to the
+    ; originating request's loop state, so cancelling thread B cannot kill A.
+    loopState := _FindToolLoopForThread(activeThreadId)
+    if loopState {
+        SearchTools.CancelProcess(loopState)
+        ; The loop remains registered until its synchronous handler resumes;
+        ; exclude it while checking whether another operation is active.
+        if !_HasOtherActiveOperations(loopState)
+            postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+        return
+    }
+    initialRequest := _FindNonStreamRequestForThread(activeThreadId)
+    if initialRequest {
+        SearchTools.CancelProcess(initialRequest)
+        if !_HasOtherActiveOperations("", "", initialRequest)
+            postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+        return
+    }
     ; Bug #221: cancel the request that belongs to the CURRENT thread - with
     ; concurrent command streams there is no single global cURL PID. Fall back
-    ; to the most recent stream for legacy flows.
+    ; to the most recent stream only when there is no visible thread (legacy
+    ; flows); never cancel another thread's active request.
     stream := _FindLatestStreamForThread(activeThreadId)
-    if !stream && _activeStreams.Length
+    if !stream && !activeThreadId && _activeStreams.Length
         stream := _activeStreams[_activeStreams.Length]
     if !stream {
-        if !_HasOtherActiveStreams()
+        if !_HasOtherActiveOperations()
             postWebMessage("setChatButtonsEnabled", true)
         return
     }
     _LoadStreamIntoParams(stream)
+    ; Set the cancelled flag BEFORE killing the process tree. taskkill blocks,
+    ; and if the poll finalizes after the PID dies but before the flag is set,
+    ; the stream takes the COMPLETION path with a partial/zero-token response
+    ; and inflates the thread's cumulative counters (bug #133).
+    requestParams["_streamCancelled"] := true
+    stream.cancelled := true
     pid := requestParams["_streamPID"]
     if pid && ProcessExist(pid) {
-        ProcessClose(pid)
+        ; The 2> redirection runs cURL inside cmd, so kill the whole tree -
+        ; ProcessClose on the cmd wrapper can leave an orphaned cURL that
+        ; keeps writing to the output file and delivers a late streamContent
+        ; chunk AFTER the cancel finalizes the bubble (double-bubble).
+        RunWait('taskkill /PID ' pid ' /T /F', , "Hide")
         if cURLState("get") = pid
             cURLState("set", 0)
     }
-    requestParams["_streamCancelled"] := true
-    stream.cancelled := true
     ; The Stop button re-wires to Send immediately, but the composer itself
     ; only re-enables when no OTHER request is still streaming.
-    if !_HasOtherActiveStreams()
-        postWebMessage("setChatButtonsEnabled", true)
+    if !_HasOtherActiveOperations("", stream)
+        postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
     } catch Error as e {
         debugLog("handleCancelStream error: " e.Message "`n" e.Stack, "ErrorHandler")
-        if !_HasOtherActiveStreams()
+        if !_HasOtherActiveOperations()
             postWebMessage("setChatButtonsEnabled", true)
     }
 }

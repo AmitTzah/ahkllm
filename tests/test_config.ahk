@@ -68,7 +68,7 @@ global models := Map(
 global providers := Map(
     "deepseek", { displayName: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", authEnvVar: "DEEPSEEK_API_KEY", fimEndpoint: "https://api.deepseek.com/beta/completions", icon: "" },
     "openai",   { displayName: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", authEnvVar: "OPENAI_API_KEY", fimEndpoint: "", icon: "" },
-    "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GEMINI_API_KEY", fimEndpoint: "", icon: "" }
+    "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GOOGLE_API_KEY", fimEndpoint: "", icon: "" }
 )
 
 global assistants := [

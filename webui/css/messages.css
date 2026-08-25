@@ -19,7 +19,31 @@
   background: var(--user-msg-bg); padding: 14px 24px; border-radius: var(--radius-lg); 
   border-top-left-radius: 4px; display: inline-block; max-width: fit-content;
 }
+.msg.you.search-context .msg-author { color: var(--text-tertiary); font-size: 15px; }
+.msg.you.search-context .msg-content {
+  background: var(--bg-hover); color: var(--text-secondary); font-size: calc(var(--chat-font-size) - 2px);
+  border-left: 3px solid var(--border-main); border-top-left-radius: var(--radius-lg); max-width: 100%;
+  font-family: var(--font-mono);
+}
 .msg.bot .msg-content { max-width: 100%; padding: 0 6px; }
+
+/* Web-search result card (collapsible) */
+.search-card { width: 100%; }
+.search-card-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 0;
+  background: none; border: none; cursor: pointer; text-align: left;
+  color: var(--text-secondary); font-family: inherit;
+  font-size: calc(var(--chat-font-size) - 2px); transition: color 0.2s;
+}
+.search-card-toggle:hover { color: var(--text-primary); }
+.search-card-title { flex: 1; }
+.search-card-title strong { color: var(--text-primary); font-weight: 600; }
+.search-card-caret { transition: transform 0.2s; }
+.search-card-toggle[aria-expanded="true"] .search-card-caret { transform: rotate(180deg); }
+.search-card-results {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-main);
+  color: var(--text-secondary); font-size: calc(var(--chat-font-size) - 2px);
+}
 
 /* Thinking block */
 .thinking-block { margin-bottom: 16px; margin-left: 6px; max-width: 100%; border-left: 2px solid var(--border-main); padding-left: 14px; }

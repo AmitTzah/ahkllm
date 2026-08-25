@@ -742,6 +742,77 @@ class StreamHandlerTest {
         }
     }
 
+    ; Regression: a finishing stream must still see a concurrent synchronous
+    ; request/tool loop as an active operation, even though it is not another
+    ; stream.
+    HasOtherActiveOperations_IncludesNonStreamAndToolOwners() {
+        global _activeStreams, _activeToolLoops, _activeNonStreamRequests
+        oldStreams := _activeStreams
+        oldLoops := _activeToolLoops
+        oldRequests := _activeNonStreamRequests
+        try {
+            current := {key: "stream-b", threadId: "t-b"}
+            _activeStreams := [current]
+            _activeToolLoops := []
+            _activeNonStreamRequests := [{key: "request-a", threadId: "t-a"}]
+            if !_HasOtherActiveOperations("", current)
+                throw Error("a finishing stream must detect an active non-stream request")
+            _activeNonStreamRequests := []
+            _activeToolLoops := [{key: "loop-a", threadId: "t-a"}]
+            if !_HasOtherActiveOperations("", current)
+                throw Error("a finishing stream must detect an active search/tool loop")
+            _activeToolLoops := []
+            if _HasOtherActiveOperations("", current)
+                throw Error("the finishing stream must be idle when it is the only operation")
+        } finally {
+            _activeStreams := oldStreams
+            _activeToolLoops := oldLoops
+            _activeNonStreamRequests := oldRequests
+        }
+    }
+
+    RequestPath_CleansAndRestoresByStreamOwnership() {
+        global requestParams, _activeStreams, _currentStreamKey
+        oldParams := requestParams
+        oldStreams := _activeStreams
+        oldKey := _currentStreamKey
+        try {
+            requestParams := Map()
+            streamA := {
+                key: "path-a", requestPath: [{id: "leaf-a"}], outputFile: "out-a", lastPos: 0,
+                content: "", reasoning: "", modelName: "m", displayName: "M", firstTokenTime: 0,
+                usage: {}, providerKey: "deepseek", rawSseChunks: "", rawLastResponse: "", pendingLine: "",
+                errorMessage: "", pollCount: 0, requestStartTime: 0, chatHistoryJSONRequest: "{}", pid: 0,
+                cancelled: false, toolCalls: Map(), toolLoopCount: 0, threadId: "t-a", parentId: "",
+                logWindowTitle: "", logProviderName: "", logModel: "m", logPasteMode: "chat",
+                retryIsRoot: false, retrySiblingGroup: "", requestFile: "", cURLCommandFile: "", errorFile: ""
+            }
+            streamB := streamA.Clone()
+            streamB.key := "path-b"
+            streamB.requestPath := [{id: "leaf-b"}]
+            _activeStreams := [streamA, streamB]
+
+            _LoadStreamIntoParams(streamA)
+            if requestParams["_requestPath"][1].id != "leaf-a"
+                throw Error("stream A path was not loaded")
+            _cleanupStreamState()
+            if !requestParams.Has("_requestPath")
+                throw Error("cleanup removed the path before the remaining stream could be restored")
+            _FinishStreamFinalize()
+            if !requestParams.Has("_requestPath") || requestParams["_requestPath"][1].id != "leaf-b"
+                throw Error("remaining stream B path was not restored")
+
+            _cleanupStreamState()
+            _FinishStreamFinalize()
+            if requestParams.Has("_requestPath")
+                throw Error("completed stream path leaked after the final stream finished")
+        } finally {
+            requestParams := oldParams
+            _activeStreams := oldStreams
+            _currentStreamKey := oldKey
+        }
+    }
+
     ; Regression (bug #221): removing a finalized stream must only remove the
     ; matching key and never touch another concurrent request's record.
     RemoveStreamFromActive_OnlyRemovesMatchingKey() {

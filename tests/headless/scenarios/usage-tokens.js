@@ -472,6 +472,7 @@ scenarios.push({
   name: 'Cancelling a stream mid-response records a fake 0-token API request in chat_usage and inflates the thread cumulative input by the un-billed parent context (header vs dashboard disagree)',
   mode: 'sse-success',
   settings: {},
+  mockOpts: { chunkDelay: 800 },
   async body({ cdp, dbPath }) {
     await showChat();
     // Exchange 1 completes: u1 + a1 (mock usage prompt 12 / completion 9 / cached 4).

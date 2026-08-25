@@ -149,25 +149,8 @@
       <div class="composer-inner">
         <div class="composer-tools">
           <button class="icon-btn" id="attachment-browse-btn" title="Attach Context"><i data-lucide="paperclip"></i></button>
+          <button class="icon-btn web-search-toggle" id="webSearchToggle" title="Web Search (off)" aria-pressed="false"><i data-lucide="search"></i></button>
 
-          <div class="tools-dropdown">
-            <button class="icon-btn tools-toggle" title="Tools"><i data-lucide="blocks"></i></button>
-            <div class="tools-menu">
-              <div class="tools-menu-header">Enabled Tools</div>
-              <div class="tool-toggle-row">
-                <span class="lbl"><i data-lucide="globe" style="width:18px;height:18px;"></i> Web Search</span>
-                <div class="switch"><div class="knob"></div></div>
-              </div>
-              <div class="tool-toggle-row">
-                <span class="lbl"><i data-lucide="terminal" style="width:18px;height:18px;"></i> Code Execution</span>
-                <div class="switch on"><div class="knob"></div></div>
-              </div>
-              <div class="tool-toggle-row">
-                <span class="lbl"><i data-lucide="calculator" style="width:18px;height:18px;"></i> Calculator</span>
-                <div class="switch"><div class="knob"></div></div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <textarea id="chat-input" placeholder="Type a message... (Shift+Enter for newline)" rows="1"></textarea>
@@ -218,7 +201,7 @@
   <!-- Settings Center -->
   <div class="settings-center" id="settingsCenter" style="display:none;">
     <div class="settings-content">
-      <div class="section-card" id="sec-general" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="settings"></i> General — Thread Titles, API Logs, Trash</div><div class="section-card-body"><div class="field"><label class="field-label">New Chats Start With</label><select id="newChatStartsWith"><option value="">App Default (deepseek/deepseek-v4-flash)</option><optgroup label="Assistants"></optgroup><optgroup label="Models"></optgroup></select></div>
+      <div class="section-card" id="sec-general" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="settings"></i> General — Thread Titles, API Logs, Trash, Web Search</div><div class="section-card-body"><div class="field"><label class="field-label">New Chats Start With</label><select id="newChatStartsWith"><option value="">App Default (deepseek/deepseek-v4-flash)</option><optgroup label="Assistants"></optgroup><optgroup label="Models"></optgroup></select></div>
         <div class="settings-card-group">
           <div class="toggle-row settings-card-header-row">
             <div><div class="lbl">Thread Title Generation</div><div class="settings-hint-12-top">After the first exchange, generates a short title via a cheap LLM call</div></div>
@@ -233,6 +216,11 @@
         <div class="field settings-mb-20">
           <label class="field-label">Chat Shortcut Key <span class="hint">press backtick then this key to open chat. Leave empty to disable</span></label>
           <input class="settings-w-60" type="text" id="chatShortcut" maxlength="1" placeholder="1">
+        </div>
+        <div class="settings-group-title">Web Search</div>
+        <div class="field settings-mb-20">
+          <label class="field-label">Tavily API Key <span class="hint">used when the model provider is not DeepSeek; DeepSeek models search natively. Leave empty to use the TAVILY_API_KEY environment variable</span></label>
+          <input class="settings-w-60" type="password" id="tavilyApiKey" placeholder="tvly-...">
         </div>
         <div class="settings-group-title">Data Management</div>
         <div class="grid-2">
@@ -386,13 +374,8 @@
           </select>
         </div>
 
-        <div class="advanced-wrap" id="advancedWrap">
-          <div class="advanced-toggle" id="advancedToggle"><span class="lbl">Advanced</span><i data-lucide="chevron-down"></i></div>
-          <div class="advanced-body">
-            <div class="toggle-row"><span class="lbl">Code Execution</span><div class="switch on"><div class="knob"></div></div></div>
-            <div class="toggle-row"><span class="lbl">Web Search</span><div class="switch"><div class="knob"></div></div></div>
-          </div>
-        </div>
+        <div class="toggle-row"><span class="lbl">Web Search</span><div class="switch" id="railWebSearchToggle"><div class="knob"></div></div></div>
+
       </div>
     </div>
 

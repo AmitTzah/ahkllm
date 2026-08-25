@@ -229,6 +229,16 @@ $defaultModelsPath = Join-Path $scriptDir "..\default-settings\DefaultModels.ahk
 
 "@
     $modelsContent = $modelsHeader + "models := Map(" + ($lines -join "`r`n") + "`r`n)"
+
+    # Safety guard: never clobber a good committed model list with an empty
+    # one. A failed models.dev fetch (e.g. no network) must not destroy the
+    # app's working defaults - the headless E2E suite hit exactly this when
+    # scenario #40's refresh emptied default-settings/DefaultModels.ahk to
+    # 0 models and every later app launch failed model resolution.
+    if ($totalModels -eq 0 -and (Test-Path $defaultModelsPath) -and
+        (Select-String -Path $defaultModelsPath -Pattern '^\s*"[^"]+"\s*,\s*\{' -Quiet)) {
+        throw "Refresh produced 0 models but $defaultModelsPath already has entries - refusing to overwrite (check network / models.dev)"
+    }
     Set-Content $defaultModelsPath $modelsContent -Encoding UTF8 -NoNewline
 
     Write-Host ""

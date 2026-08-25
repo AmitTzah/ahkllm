@@ -87,7 +87,7 @@ function seedData(dataDir, endpoint = 'http://127.0.0.1:9') {
     },
     google: {
       displayName: 'Google Gemini', endpoint, fimEndpoint: '', authMode: 'env',
-      authEnvVar: 'GEMINI_API_KEY', apiKey: '', icon: '',
+      authEnvVar: 'GOOGLE_API_KEY', apiKey: '', icon: '',
       collapseThinking: false, prefixes: ['gemini', 'gemma', 'google']
     },
     openrouter: {

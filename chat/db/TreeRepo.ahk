@@ -14,6 +14,13 @@ class TreeRepo {
         if !leafTable.count
             return []
         leafId := leafTable[1, "active_leaf_id"]
+        return TreeRepo.GetPathToLeaf(threadId, leafId)
+    }
+
+    ; Return the path ending at an explicit leaf, without consulting the
+    ; thread's mutable active_leaf_id. Request scopes use this to keep an
+    ; in-flight continuation on the branch that sent the request.
+    static GetPathToLeaf(threadId, leafId) {
         if !leafId
             return []
 

@@ -29,7 +29,8 @@ class MessageRepo {
         new_input := 0
         existing_sum := 0
         if !isLocalCopy && msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") && msgObj.prompt_tokens > 0 {
-            new_input := MessageRepo._BackfillUserTokens(msgObj.thread_id, msgObj.prompt_tokens, &existing_sum)
+            attributionPath := msgObj.HasProp("token_attribution_path") ? msgObj.token_attribution_path : ""
+            new_input := MessageRepo._BackfillUserTokens(msgObj.thread_id, msgObj.prompt_tokens, &existing_sum, attributionPath)
         }
 
         ; active_path_tokens: total context tokens from root to this message.
@@ -74,7 +75,8 @@ class MessageRepo {
         ; Sync FTS5 index
         ChatDB.FTS_Sync(id, msgObj.content)
 
-        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
+        if !msgObj.HasProp("update_active_leaf") || msgObj.update_active_leaf
+            ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
 
         ; Hardening item 3: the thread's cumulative counters are DERIVED from
         ; the messages in exactly one place (_RecomputeCumulativeCounters) -
@@ -125,8 +127,10 @@ class MessageRepo {
     ; Backfill the user message's token_count based on API prompt_tokens.
     ; Returns new_input (tokens the user message contributed).
     ; @param existing_sum - output: sum of existing token_count values in path before backfill
-    static _BackfillUserTokens(threadId, promptTokens, &existing_sum := 0) {
-        path := TreeRepo.GetActivePath(threadId)
+    ; @param attributionPath - explicit request-owned path; ordinary inserts
+    ; fall back to the visible active path for compatibility.
+    static _BackfillUserTokens(threadId, promptTokens, &existing_sum := 0, attributionPath := "") {
+        path := IsObject(attributionPath) ? attributionPath : TreeRepo.GetActivePath(threadId)
         existing_sum := 0
         for msg in path {
             existing_sum += msg.HasProp("token_count") ? msg.token_count : 0

@@ -17,6 +17,11 @@ const seed = require('../seed');
 const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, saveSettings, hideSettingsToChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
+// Keep the retention regression relative to the run date; a fixed historical
+// timestamp eventually becomes older than the default 30-day retention and
+// is correctly removed during startup.
+const retentionFixtureDate = new Date(Date.now() - 19 * 24 * 60 * 60 * 1000)
+  .toISOString().slice(0, 19).replace('T', ' ');
 
 scenarios.push({
   id: 3,
@@ -636,7 +641,7 @@ scenarios.push({
     threads: [
       // Deleted 19 days ago: survives the startup purge (retention 30) but
       // must be purged the moment retention is lowered to 1 and saved.
-      { id: 't-trash-120', title: 'To Purge', is_deleted: 1, deleted_at: '2026-07-20 00:00:00' },
+      { id: 't-trash-120', title: 'To Purge', is_deleted: 1, deleted_at: retentionFixtureDate },
       { id: 't-live-120', title: 'Live Thread', active_leaf_id: 'm-120-u1' }
     ],
     messages: [{ id: 'm-120-u1', thread_id: 't-live-120', role: 'user', content: 'hello' }]

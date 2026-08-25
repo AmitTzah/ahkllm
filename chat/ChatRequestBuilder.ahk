@@ -14,11 +14,27 @@
 #Include ..\shared\AttachmentUtils.ahk
 #Include ..\shared\ImageUtils.ahk
 
-buildRequest() {
+; Preflight failures happen before a request gets its own ownership record.
+; Keep this check local to the builder because the standalone #Warn/load probe
+; includes this file without the streaming module that defines the full helper.
+_HasActiveOperationForUi() {
+    global _activeStreams, _activeToolLoops, _activeNonStreamRequests
+    if IsSet(_activeStreams) && _activeStreams.Length
+        return true
+    if IsSet(_activeToolLoops) && _activeToolLoops.Length
+        return true
+    if IsSet(_activeNonStreamRequests) && _activeNonStreamRequests.Length
+        return true
+    return false
+}
+
+buildRequest(requestPath := "") {
     if !activeThreadId {
         return ""
     }
-    path := ChatDB.Msg_GetActivePath(activeThreadId)
+    if !IsObject(requestPath) && requestParams.Has("_requestPath")
+        requestPath := requestParams["_requestPath"]
+    path := IsObject(requestPath) ? requestPath : ChatDB.Msg_GetActivePath(activeThreadId)
     if !path.Length {
         return ""
     }
@@ -69,8 +85,8 @@ _ShowApiKeyError(providerInfo) {
     envVar := pInfo && pInfo.HasOwnProp("authEnvVar") ? pInfo.authEnvVar : providerInfo.providerKey
     errorMsg := "No API key configured for " providerInfo.providerKey ". Set " envVar " environment variable."
     postWebMessage("showError", { message: errorMsg })
-    postWebMessage("setChatButtonsEnabled", true)
-    startLoadingCursor(false)
+    if !_HasActiveOperationForUi()
+        postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
     debugLog("ERROR: " errorMsg)
     return ""
 }
@@ -79,8 +95,8 @@ _ShowApiKeyError(providerInfo) {
 _ShowEndpointError(providerInfo) {
     errorMsg := "No endpoint configured for provider '" providerInfo.providerKey "'. Set it in Settings → Providers."
     postWebMessage("showError", { message: errorMsg })
-    postWebMessage("setChatButtonsEnabled", true)
-    startLoadingCursor(false)
+    if !_HasActiveOperationForUi()
+        postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
     debugLog("ERROR: " errorMsg)
     return ""
 }
@@ -88,8 +104,28 @@ _ShowEndpointError(providerInfo) {
 ; Build a plain {role, content, _msgId} array from the DB path.
 _BuildApiMessagesFromPath(path) {
     apiMessages := []
+    ; Canonical function-calling order: while a tool round is in flight, the
+    ; durable search-context user messages inserted for THIS round are
+    ; excluded from the follow-up request body - the staged assistant
+    ; tool_calls + role:"tool" pair carries the results. Once the tool loop
+    ; clears the staged state, the context re-enters the history for every
+    ; later request.
+    skip := Map()
+    if requestParams.Has("_pendingSearchContextIds") {
+        for id in requestParams["_pendingSearchContextIds"]
+            skip[id] := true
+    }
     for msg in path {
+        if msg.HasOwnProp("id") && skip.Has(msg.id)
+            continue
         apiMessages.Push({ role: msg.role, content: msg.content, _msgId: msg.id })
+    }
+    ; Tool-loop round: append the ephemeral assistant tool_calls + role:"tool"
+    ; results the API requires before the model can answer (they are NOT
+    ; persisted — only the search-context user message is).
+    if requestParams.Has("_pendingToolMessages") {
+        for toolMsg in requestParams["_pendingToolMessages"]
+            apiMessages.Push(toolMsg)
     }
     return apiMessages
 }
@@ -115,8 +151,8 @@ _ProcessAttachmentsForPath(&apiMessages, modelName) {
         if attachments.Length && _HasImageAttachments(attachments) && !AttachmentUtils.HasVision(modelName) {
             errorMsg := "Model '" modelName "' does not support vision. Remove images or switch models."
             postWebMessage("showError", { message: errorMsg })
-            postWebMessage("setChatButtonsEnabled", true)
-            startLoadingCursor(false)
+            if !_HasActiveOperationForUi()
+                postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
             return false
         }
     }
@@ -232,6 +268,15 @@ _BuildRequestObj(apiMessages, providerInfo) {
         requestObj.stream_options := { include_usage: true }
     }
 
+    ; Web Search tool: the per-thread right-rail toggle is OFF by default, so
+    ; the model only ever sees the tool when the user explicitly enables it.
+    ; The search backend is resolved at execution time (DeepSeek native vs
+    ; Tavily) — the request format is the same OpenAI-compatible function tool
+    ; for every provider.
+    if SearchTools.Enabled() {
+        requestObj.tools := [SearchTools.Definition()]
+    }
+
     return requestObj
 }
 
@@ -295,8 +340,8 @@ _BuildAndFireRequest() {
     try {
     chatHistoryJSONRequest := buildRequest()
     if !chatHistoryJSONRequest {
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
+        if !_HasActiveOperationForUi()
+            postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
         ; Bug #211: a retry rejected before any stream (vision gate, API-key
         ; error, endpoint error) leaves pendingRetrySiblingGroup / 
         ; pendingRetryIsRoot set - clear them so the next normal response is

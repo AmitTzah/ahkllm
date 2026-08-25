@@ -170,27 +170,36 @@ scenarios.push({
 
 scenarios.push({
   id: 20,
-  name: 'Right-rail Advanced toggles (Code Execution / Web Search) do nothing',
-  regression: true, // FIXED bug kept as a regression check (toggles must keep persisting as stubs)
+  name: 'Composer + right-rail Web Search toggles are the only tool controls (no Tools dropdown, no Advanced section, no codeExecution)',
+  regression: true, // web-search milestone: stubs removed, only web_search remains
   mode: null,
   settings: {},
   async body({ cdp }) {
     await showChat();
-    await cdp.click('#advancedToggle');
-    await cdp.waitFor('document.getElementById("advancedWrap").classList.contains("open")', 5000, 200, 'advanced open');
+    // The composer Tools dropdown and the right-rail Advanced collapsible are
+    // gone; the only tool control is the composer Web Search toggle button.
+    const dropdown = await cdp.eval('document.querySelector(".tools-dropdown") !== null');
+    if (dropdown) throw new Error('composer Tools dropdown still present');
+    const hasAdvanced = await cdp.eval('!!document.getElementById("advancedWrap")');
+    if (hasAdvanced) throw new Error('right-rail Advanced section still present');
+    const hasToggle = await cdp.eval('!!document.getElementById("webSearchToggle")');
+    if (!hasToggle) throw new Error('composer Web Search toggle missing');
+    const hasRailToggle = await cdp.eval('!!document.getElementById("railWebSearchToggle")');
+    if (!hasRailToggle) throw new Error('right-rail Web Search toggle missing');
+
     await cdp.clearPosted();
-    await cdp.click('#advancedWrap .toggle-row .switch'); // first row = Code Execution
-    await sleep(900); // debounce 300ms + IPC round trip
+    await cdp.click('#railWebSearchToggle');
+    await sleep(1000); // debounce 300ms + IPC round trip
     const after = await cdp.postedMessages();
-    const nonSettings = after.filter((m) => !m.includes('"updateModelSettings"'));
-    if (nonSettings.length > 0) throw new Error('toggle triggered unexpected actions: ' + JSON.stringify(nonSettings));
     const lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop();
-    if (!lastAfter) throw new Error('no updateModelSettings posted after toggling a switch');
+    if (!lastAfter) throw new Error('no updateModelSettings posted after toggling web search');
     const payload = JSON.parse(lastAfter);
-    if (payload.codeExecution !== true) throw new Error('codeExecution not true in updateModelSettings payload: ' + lastAfter);
-    const toggled = await cdp.eval('document.querySelector("#advancedWrap .toggle-row .switch").classList.contains("on")');
-    if (!toggled) throw new Error('Code Execution switch did not stay visually on');
-    return 'toggle posts updateModelSettings with codeExecution=true and the switch stays on (on=' + toggled + ')';
+    if (payload.webSearch !== true) throw new Error('webSearch not true in updateModelSettings payload: ' + lastAfter);
+    if ('codeExecution' in payload) throw new Error('codeExecution stub still in payload: ' + lastAfter);
+    // The composer button reflects the same per-thread flag.
+    const btnOn = await cdp.eval('document.getElementById("webSearchToggle").classList.contains("on")');
+    if (!btnOn) throw new Error('composer toggle not synced with the right-rail switch');
+    return 'stubs removed: composer + right-rail Web Search toggles are the only tool controls (no Tools dropdown, no Advanced section, no codeExecution)';
   }
 });
 
@@ -1036,6 +1045,10 @@ scenarios.push({
     if (asstRows[0].cnt < 1 || partialInDb[0].cnt < 1)
       throw new Error('partial streamed content was not persisted (bug #219 not fixed): assistantRows=' + asstRows[0].cnt + ' partialRows=' + partialInDb[0].cnt);
     // The next Send must actually send (not be swallowed as cancelStream).
+    // Wait for the composer to be truly re-enabled - under full-suite load
+    // the setChatButtonsEnabled(true) post can lag a few hundred ms past the
+    // banner, and a click on a still-disabled button posts nothing.
+    await cdp.waitFor('document.getElementById("chat-send-btn") && !document.getElementById("chat-send-btn").disabled', 15000, 200, 'send button enabled after error');
     const uiCountBefore = await cdp.eval('chatMessages.length');
     await sendChatMessage(cdp, 'follow-up after the error');
     await sleep(800);

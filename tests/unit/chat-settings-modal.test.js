@@ -27,8 +27,8 @@ function loadModule() {
                 if (id === 'sysMsgSave') return { addEventListener: () => {} };
                 if (id === 'sysMsgClose') return { addEventListener: () => {} };
                 if (id === 'sysMsgCancel') return { addEventListener: () => {} };
-                if (id === 'advancedToggle') return { addEventListener: () => {} };
-                if (id === 'advancedWrap') return { classList: { toggle: () => {} } };
+                if (id === 'webSearchToggle') return { classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false }, setAttribute: () => {}, title: '', addEventListener: () => {} };
+                if (id === 'railWebSearchToggle') return { classList: { add: () => {}, remove: () => {}, contains: () => false }, addEventListener: () => {} };
                 if (id === 'modelCardTrigger') return { querySelector: () => ({ textContent: '' }) };
                 return null;
             },
@@ -102,24 +102,26 @@ describe('populateCurrentSettings', () => {
         assert.strictEqual(ctx.window._currentSettings.assistantDescription, 'A friendly bot');
     });
 
-    it('stores the advanced toggles and syncs the right-rail switches', () => {
+    it('stores the Web Search toggle and syncs the composer button (code execution removed)', () => {
         const ctx = loadModule();
         const added = [], removed = [];
-        const switches = [0, 1].map(() => ({
-            classList: { add: (c) => added.push(c), remove: (c) => removed.push(c), contains: () => false }
-        }));
-        ctx.document.querySelectorAll = () => switches;
+        const btn = {
+            classList: { add: (c) => added.push(c), remove: (c) => removed.push(c), toggle: (c, force) => { if (force) added.push(c); else removed.push(c); }, contains: () => false },
+            setAttribute: () => {}, title: ''
+        };
+        const railAdded = [];
+        const rail = { classList: { add: (c) => railAdded.push(c), remove: () => {}, contains: () => false } };
+        ctx.document.getElementById = (id) => (id === 'webSearchToggle' ? btn : (id === 'railWebSearchToggle' ? rail : null));
 
         ctx.populateCurrentSettings({
             model: 'deepseek/deepseek-v4-flash', systemMessage: '', reasoning: '', temperature: '',
-            codeExecution: false, webSearch: true
+            webSearch: true
         });
 
-        assert.strictEqual(ctx.window._currentSettings.codeExecution, false);
+        assert.strictEqual(ctx.window._currentSettings.codeExecution, undefined, 'codeExecution stub was removed');
         assert.strictEqual(ctx.window._currentSettings.webSearch, true);
-        // Row order: Code Execution / Web Search
-        assert.strictEqual(added.length, 1, 'one switch should turn on');
-        assert.ok(removed.includes('on'), 'off toggle should have its class removed');
+        assert.ok(added.includes('on'), 'web search button should turn on');
+        assert.ok(railAdded.includes('on'), 'right-rail web search switch should turn on');
     });
 });
 
@@ -145,31 +147,24 @@ describe('updateDropdownLabel', () => {
     });
 });
 
-describe('toggle switch handler scoping — regression: double-handler on titleGenToggle', () => {
-    it('attaches click handler to all three #railRight .toggle-row .switch and calls _sendAllSettings', () => {
+describe('composer Web Search toggle handler', () => {
+    it('attaches a click handler to #webSearchToggle that flips the flag and calls _sendAllSettings', () => {
         const handlers = [];
         let sendAllSettingsCalls = 0;
-
-        const makeSwitch = () => ({
+        const btn = {
             classList: { toggle: () => {}, contains: () => false },
-            closest: () => null,
+            setAttribute: () => {}, title: '',
             addEventListener: (ev, fn) => { handlers.push(fn); }
-        });
-
+        };
         const sandbox = {
             document: {
-                getElementById: () => null,
+                getElementById: (id) => (id === 'webSearchToggle' ? btn : null),
                 querySelector: () => null,
-                querySelectorAll: (sel) => {
-                    if (sel === '#railRight .toggle-row .switch') {
-                        return [makeSwitch(), makeSwitch(), makeSwitch()];
-                    }
-                    return [];
-                },
+                querySelectorAll: () => [],
                 createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
                 addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
             },
-            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {} },
+            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {}, _currentSettings: { webSearch: false } },
             setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
             _sendAllSettings: () => { sendAllSettingsCalls++; },
             _updateModelCard: () => {},
@@ -181,50 +176,15 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
         const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
         vm.runInContext(src, vm.createContext(sandbox));
 
-        // All three switches should have click handlers
-        assert.strictEqual(handlers.length, 3, 'Expected 3 click handlers for 3 right-rail switches');
-        // Simulate clicking one — should call _sendAllSettings
+        // Exactly one handler on the composer toggle.
+        assert.strictEqual(handlers.length, 1, 'Expected 1 click handler on the composer toggle');
+        // Simulate clicking it — should flip webSearch and send settings.
         handlers[0]();
+        assert.strictEqual(sandbox.window._currentSettings.webSearch, true, 'click should flip webSearch on');
         assert.strictEqual(sendAllSettingsCalls, 1, 'Expected _sendAllSettings to be called once on click');
     });
 
-    it('does not attach handlers to switches outside #railRight', () => {
-        const outsideHandlers = [];
-
-        const makeSwitch = () => ({
-            classList: { toggle: () => {}, contains: () => false },
-            addEventListener: (ev, fn) => { outsideHandlers.push(fn); }
-        });
-
-        const sandbox = {
-            document: {
-                getElementById: () => null,
-                querySelector: () => null,
-                querySelectorAll: (sel) => {
-                    if (sel === '#railRight .toggle-row .switch') return [];
-                    // settings panel switches (outside #railRight)
-                    if (sel === '.toggle-row .switch') return [makeSwitch(), makeSwitch()];
-                    return [];
-                },
-                createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
-                addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
-            },
-            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {} },
-            setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
-            _sendAllSettings: () => {}, _updateModelCard: () => {},
-            lucide: { createIcons: () => {} },
-            console: console
-        };
-        sandbox.global = sandbox;
-
-        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
-        vm.runInContext(src, vm.createContext(sandbox));
-
-        // No handlers should be attached to switches outside #railRight
-        assert.strictEqual(outsideHandlers.length, 0, 'Expected 0 handlers on switches outside #railRight');
-    });
-
-    it('does not attach handlers when no #railRight .toggle-row .switch exist', () => {
+    it('does not throw when no #webSearchToggle exists', () => {
         const sandbox2 = {
             document: {
                 getElementById: () => null,
@@ -233,7 +193,7 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
                 createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
                 addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
             },
-            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {} },
+            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {}, _currentSettings: {} },
             setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
             _sendAllSettings: () => {}, _updateModelCard: () => {},
             lucide: { createIcons: () => {} },
@@ -242,8 +202,41 @@ describe('toggle switch handler scoping — regression: double-handler on titleG
         sandbox2.global = sandbox2;
 
         const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
-        // Should not throw even with no switches
+        // Should not throw even with no toggle button
         assert.doesNotThrow(() => vm.runInContext(src, vm.createContext(sandbox2)));
+    });
+
+    it('attaches a click handler to the right-rail switch #railWebSearchToggle that flips the flag', () => {
+        const handlers = [];
+        let sendAllSettingsCalls = 0;
+        const rail = {
+            classList: { add: () => {}, remove: () => {}, contains: () => false },
+            addEventListener: (ev, fn) => { handlers.push(fn); }
+        };
+        const sandbox = {
+            document: {
+                getElementById: (id) => (id === 'railWebSearchToggle' ? rail : (id === 'webSearchToggle' ? null : null)),
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                createElement: () => ({ style: {}, appendChild: () => {}, addEventListener: () => {} }),
+                addEventListener: (ev, fn) => { if (ev === 'DOMContentLoaded') fn(); }
+            },
+            window: { chrome: { webview: { postMessage: () => {} } }, addEventListener: () => {}, _currentSettings: { webSearch: false } },
+            setTimeout: (fn) => { try { fn(); } catch(e) {} }, clearTimeout: () => {},
+            _sendAllSettings: () => { sendAllSettingsCalls++; },
+            _updateModelCard: () => {},
+            lucide: { createIcons: () => {} },
+            console: console
+        };
+        sandbox.global = sandbox;
+
+        const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'chat', 'model-picker', 'model-picker-config.js'), 'utf-8');
+        vm.runInContext(src, vm.createContext(sandbox));
+
+        assert.strictEqual(handlers.length, 1, 'Expected 1 click handler on the right-rail switch');
+        handlers[0]();
+        assert.strictEqual(sandbox.window._currentSettings.webSearch, true, 'click should flip webSearch on');
+        assert.strictEqual(sendAllSettingsCalls, 1, 'Expected _sendAllSettings to be called once on click');
     });
 });
 

@@ -26,6 +26,23 @@ const { runProbe, sleep } = require('./scenarios/helpers');
 const RESULTS_DIR = path.join(__dirname, 'results');
 const RESULTS_FILE = path.join(RESULTS_DIR, 'headless-verification.txt');
 let diagShown = false;
+
+async function closeMockServer(handle) {
+  const srv = handle && handle.server;
+  if (!srv)
+    return;
+  try {
+    if (typeof srv.closeAllConnections === 'function')
+      srv.closeAllConnections();
+  } catch {}
+  if (!srv.listening)
+    return;
+  await new Promise((resolve) => {
+    try { srv.close(() => resolve()); }
+    catch { resolve(); }
+  });
+}
+
 // ---------- Scenario infrastructure ----------
 
 async function runScenario(sc, iso, opts) {
@@ -49,7 +66,7 @@ async function runScenario(sc, iso, opts) {
     if (!noApp) launcher.resetDataDir(iso.sandboxData);
     const dataDir = noApp ? null : iso.sandboxData;
     if (!noApp) seed.writeSettings(dataDir, sc.settings || {}, endpoint);
-    if (!noApp && sc.preLaunch) sc.preLaunch(dataDir);
+    if (!noApp && sc.preLaunch) sc.preLaunch(dataDir, endpoint);
     const dbPath = (!noApp && sc.fixtures) ? seed.createDb(dataDir, sc.fixtures) : (!noApp ? path.join(dataDir, 'chat_history.db') : null);
     detail.dbPath = dbPath;
 
@@ -83,7 +100,7 @@ async function runScenario(sc, iso, opts) {
     return { id: sc.id, name: sc.name, pass: false, detail: detail.step + ' -> ' + (e && e.message ? e.message : String(e)), dataDir: iso.sandboxData, pid: mainPid };
   } finally {
     if (mainPid) launcher.teardown(mainPid);
-    if (server) try { server.server.close(); } catch {}
+    if (server) await closeMockServer(server);
   }
 }
 
@@ -97,6 +114,7 @@ const scenarios = [].concat(
   require('./scenarios/settings'),
   require('./scenarios/usage-tokens'),
   require('./scenarios/chat-ui'),
+  require('./scenarios/search-tools'),
   require('./scenarios/misc'),
   require('./scenarios/chat-locks'),
   require('./scenarios/db-verify')
@@ -250,7 +268,6 @@ async function main() {
   };
   process.on('SIGINT', onInterrupt);
   process.on('SIGTERM', onInterrupt);
-  const spawnedPids = [];
   const lines = [];
   let passCount = 0;
   let iso = null;
@@ -265,7 +282,6 @@ async function main() {
     for (const sc of selected) {
       const started = Date.now();
       const r = await runScenario(sc, iso, {});
-      if (r.pid) spawnedPids.push(r.pid);
       if (r.dataDir) {
         const dataDirLine = '  (data dir for inspection: ' + r.dataDir + ')';
         lines.push(dataDirLine);
@@ -286,7 +302,10 @@ async function main() {
     }
     lines.push('RUNNER ERROR: ' + (e && e.message ? e.message : String(e)));
   } finally {
-    for (const pid of spawnedPids) launcher.teardown(pid);
+    // runScenario already tears down each scenario's app. Do one repo-scoped
+    // backstop sweep here; repeating teardown once per historical PID made a
+    // full run spend minutes re-running PowerShell/taskkill for dead apps.
+    launcher.teardown(0);
     if (iso) restored = launcher.restoreProfile(iso) ? 'yes' : 'NO — CHECK MANUALLY';
     // Final bounded sweep: a completed run must not leave WebView2 folders
     // behind, even if the last scenario's browser processes released their

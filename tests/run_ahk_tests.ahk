@@ -78,6 +78,7 @@ global responseWindow := {PostWebMessageAsJSON: (*) => ""}
 #Include ..\chat\ChatUtils.ahk
 #Include ..\chat\ChatSettings.ahk
 #Include ..\chat\streaming\StreamHandler.ahk
+#Include ..\chat\tools\SearchToolExecutor.ahk
 #Include ..\chat\callbacks\Message.ahk
 #Include ..\chat\ChatRequestBuilder.ahk
 ; Settings-related modules that live in Main.ahk / ChatWindow.ahk and are
@@ -114,6 +115,13 @@ RegisterTestClass(className) {
 #Include unit\StreamHandler.test.ahk
 #Include unit\StreamError.test.ahk
 #Include unit\ChatRequestBuilder.test.ahk
+#Include unit\SearchTools.test.ahk
+#Include unit\ResponsesParser.test.ahk
+#Include unit\ResponsesStreamParser.test.ahk
+#Include unit\TavilySearch.test.ahk
+#Include unit\DeepSeekSearch.test.ahk
+#Include unit\SSEParser.test.ahk
+#Include unit\SearchToolExecutor.test.ahk
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
 #Include unit\ModelParser.test.ahk

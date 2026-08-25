@@ -38,10 +38,9 @@ class ThreadRepo {
             parts.Push("temperature_override = ?") params.Push(settings.temperatureOverride != "" ? settings.temperatureOverride : SQLite.Null)
         if settings.HasOwnProp("fontSize")
             parts.Push("font_size = ?") params.Push(settings.fontSize ? settings.fontSize : 17)
-        if settings.HasOwnProp("codeExecution") || settings.HasOwnProp("webSearch") {
+        if settings.HasOwnProp("webSearch") {
             togglesJson := jsongo.Stringify({
-                codeExecution: settings.HasOwnProp("codeExecution") ? ThreadRepo._ToBool(settings.codeExecution) : false,
-                webSearch: settings.HasOwnProp("webSearch") ? ThreadRepo._ToBool(settings.webSearch) : false
+                webSearch: ThreadRepo._ToBool(settings.webSearch)
             })
             parts.Push("advanced_toggles = ?") params.Push(togglesJson)
         }
@@ -59,11 +58,10 @@ class ThreadRepo {
         table := ChatDB.db.Query("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, advanced_toggles FROM chat_threads WHERE id=?;", threadId)
         if table.count {
             row := table[1]
-            codeExecution := false, webSearch := false
+            webSearch := false
             if row.advanced_toggles {
                 try {
                     toggles := jsongo.Parse(row.advanced_toggles)
-                    codeExecution := toggles.Has("codeExecution") ? ThreadRepo._ToBool(toggles["codeExecution"]) : false
                     webSearch := toggles.Has("webSearch") ? ThreadRepo._ToBool(toggles["webSearch"]) : false
                 } catch {
                     debugLog("[THREAD] Failed to parse advanced_toggles for " threadId)
@@ -75,7 +73,6 @@ class ThreadRepo {
                 systemOverride: row.system_override,
                 reasoningOverride: row.reasoning_override,
                 temperatureOverride: row.temperature_override,
-                codeExecution: codeExecution,
                 webSearch: webSearch,
                 fontSize: row.font_size ? row.font_size : 17
             }

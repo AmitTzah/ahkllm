@@ -6,6 +6,9 @@
 // independently, even across branch switches.
 var _persistedThinkingStates = {};
 
+// Collapsed/expanded state for search cards, same persistence idea.
+var _persistedSearchStates = {};
+
 function _saveThinkingBlockStates() {
   var blocks = document.querySelectorAll('.thinking-block');
   for (var i = 0; i < blocks.length; i++) {
@@ -37,10 +40,40 @@ function _restoreThinkingBlockStates() {
   }
 }
 
+function _saveSearchCardStates() {
+  var toggles = document.querySelectorAll('.search-card-toggle');
+  for (var i = 0; i < toggles.length; i++) {
+    var msgEl = toggles[i].closest('.msg');
+    if (!msgEl) continue;
+    var msgId = msgEl.getAttribute('data-msg-id');
+    if (!msgId) continue;
+    _persistedSearchStates[msgId] = toggles[i].getAttribute('aria-expanded') === 'true';
+  }
+}
+
+function _restoreSearchCardStates() {
+  var container = document.getElementById('chat-messages');
+  if (!container) return;
+  var toggles = container.querySelectorAll('.search-card-toggle');
+  for (var i = 0; i < toggles.length; i++) {
+    var msgEl = toggles[i].closest('.msg');
+    if (!msgEl) continue;
+    var msgId = msgEl.getAttribute('data-msg-id');
+    if (!msgId) continue;
+    if (!_persistedSearchStates.hasOwnProperty(msgId)) continue;
+    var expanded = _persistedSearchStates[msgId];
+    toggles[i].setAttribute('aria-expanded', String(expanded));
+    var card = toggles[i].closest('.search-card');
+    var results = card ? card.querySelector('.search-card-results') : null;
+    if (results) results.hidden = !expanded;
+  }
+}
+
 function renderChatMessages(messages) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
   _saveThinkingBlockStates();
+  _saveSearchCardStates();
   // Preserve error banners across re-render (e.g. vision gate error on first send)
   // so they survive initChatMode when loadThread triggers _LoadThreadAndRefreshUI.
   var errorBanners = container.querySelectorAll('.error-banner');
@@ -52,6 +85,7 @@ function renderChatMessages(messages) {
     container.appendChild(errorBanners[i]);
   }
   _restoreThinkingBlockStates();
+  _restoreSearchCardStates();
   // Render Lucide icons now that bubbles are in the DOM
   if (typeof lucide !== 'undefined') lucide.createIcons();
   // Scroll the parent .thread element
@@ -63,6 +97,7 @@ function replaceMessagesAfter(startIndex, newMessages, startOffset) {
   var container = document.getElementById('chat-messages');
   if (!container) return;
   _saveThinkingBlockStates();
+  _saveSearchCardStates();
   startOffset = startOffset || 0;
   var existingBubbles = container.querySelectorAll('.msg');
   for (var i = startIndex; i < existingBubbles.length; i++) {
@@ -70,6 +105,7 @@ function replaceMessagesAfter(startIndex, newMessages, startOffset) {
   }
   if (!newMessages || newMessages.length === 0) {
     _restoreThinkingBlockStates();
+    _restoreSearchCardStates();
     return;
   }
   for (var j = startOffset; j < newMessages.length; j++) {
@@ -77,6 +113,7 @@ function replaceMessagesAfter(startIndex, newMessages, startOffset) {
     container.appendChild(bubble);
   }
   _restoreThinkingBlockStates();
+  _restoreSearchCardStates();
 }
 
 function attachmentsEqual(a, b) {
@@ -151,11 +188,18 @@ function createMessageBubble(msg, index) {
   var metaText = _buildMetaText(msg);
   var role = msg.role;
 
-  var roleClass, authorName, contentHtml, middleHtml, editUiHtml;
+  var roleClass, authorName, contentHtml, middleHtml, editUiHtml, isSearchContext = false;
   if (role === 'user') {
-    roleClass = 'you';
-    authorName = 'You';
-    contentHtml = md.render(_prepUserContent(msg.content));
+    // Web-search context messages (persisted as plain user-role text so API
+    // history round-trips without schema changes) render as a muted,
+    // collapsible card: the query in the header, the results hidden until
+    // the user expands them.
+    isSearchContext = typeof msg.content === 'string' && msg.content.indexOf('[Web search:') === 0;
+    roleClass = isSearchContext ? 'you search-context' : 'you';
+    authorName = isSearchContext ? 'Web Search' : 'You';
+    contentHtml = isSearchContext
+      ? _buildSearchContextHtml(_parseSearchContext(msg.content), msgId)
+      : md.render(_prepUserContent(msg.content));
     middleHtml = _buildAttachmentHtml(msg);
     editUiHtml = _buildEditUiHtml(msg);
   } else if (role === 'assistant') {
@@ -179,6 +223,8 @@ function createMessageBubble(msg, index) {
   template.innerHTML = _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml);
   var bubble = template.firstElementChild;
 
+  if (isSearchContext) _wireSearchCardToggle(bubble, msgId);
+
   if (role !== 'system') {
     var actionsDiv = bubble.querySelector('.msg-actions');
     if (actionsDiv) addMessageActions(actionsDiv, msg, index);
@@ -186,6 +232,60 @@ function createMessageBubble(msg, index) {
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
   return bubble;
+}
+
+// Split a persisted "[Web search: <query>]" message into its query and
+// results body (the marker line is replaced by the card header).
+function _parseSearchContext(content) {
+  var text = String(content || '');
+  var query = '';
+  var results = text;
+  var m = /^\[Web search: ([^\]]*)\](?:\r?\n)*/.exec(text);
+  if (m) {
+    query = m[1];
+    results = text.slice(m[0].length);
+  }
+  return { query: query, results: results };
+}
+
+// Collapsible search-result card: header shows the query, the results body
+// is hidden by default and revealed by the toggle. When a persisted
+// expanded state exists for msgId it wins; otherwise live
+// ("Searching...") cards start expanded so progress is visible.
+function _buildSearchContextHtml(sc, msgId) {
+  var q = escHtml(sc.query || '');
+  var body = md.render(_prepUserContent(sc.results || ''));
+  var live = /Searching(\.\.\.|…)/.test(sc.results || '');
+  var expanded;
+  if (msgId && _persistedSearchStates.hasOwnProperty(msgId)) {
+    expanded = _persistedSearchStates[msgId];
+  } else {
+    expanded = live;
+  }
+  return '<div class="search-card">' +
+    '<button type="button" class="search-card-toggle" aria-expanded="' + (expanded ? 'true' : 'false') + '" title="Show or hide the search results">' +
+    '<i data-lucide="search" style="width:14px;height:14px;flex-shrink:0;"></i>' +
+    '<span class="search-card-title">Searched the web for: <strong>' + q + '</strong></span>' +
+    '<i data-lucide="chevron-down" class="search-card-caret" style="width:14px;height:14px;flex-shrink:0;"></i>' +
+    '</button>' +
+    '<div class="search-card-results"' + (expanded ? '' : ' hidden') + '>' + body + '</div>' +
+    '</div>';
+}
+
+// Toggle the card's results on click, keep aria-expanded in sync, and
+// persist the state so streaming updates don't clobber a user collapse.
+function _wireSearchCardToggle(bubble, msgId) {
+  var toggle = bubble.querySelector('.search-card-toggle');
+  if (!toggle) return;
+  var id = msgId || (bubble.getAttribute('data-msg-id') || '');
+  toggle.addEventListener('click', function() {
+    var card = toggle.closest('.search-card');
+    var results = card ? card.querySelector('.search-card-results') : null;
+    var expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    if (results) results.hidden = expanded;
+    if (id) _persistedSearchStates[id] = !expanded;
+  });
 }
 
 function _buildMetaText(msg) {
@@ -308,6 +408,33 @@ function appendChatMessage(message) {
   var scrollEl = document.getElementById('chat-scroll');
   if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
   hideLoadingIndicator();
+}
+
+// Replace an existing bubble's content in place (used to turn a "Searching…"
+// search card into the real results card without re-rendering the chat).
+function updateChatMessage(message) {
+  if (!message || !message.id) return;
+  var container = document.getElementById('chat-messages');
+  if (!container) return;
+  var old = container.querySelector('[data-msg-id="' + message.id + '"]');
+  if (!old) return;
+  // Preserve the user's collapsed/expanded choice across the replace - the
+  // streaming progress re-renders the card every ~250ms and would otherwise
+  // clobber a user-initiated collapse.
+  var oldToggle = old.querySelector ? old.querySelector('.search-card-toggle') : null;
+  // A live card is expanded only to show progress. Preserve the DOM state
+  // here only after the user has explicitly toggled it; otherwise the final
+  // result card would inherit the temporary live expansion.
+  if (oldToggle && Object.prototype.hasOwnProperty.call(_persistedSearchStates, message.id))
+    _persistedSearchStates[message.id] = oldToggle.getAttribute('aria-expanded') === 'true';
+  var idx = -1;
+  for (var i = 0; i < chatMessages.length; i++) {
+    if (chatMessages[i] && chatMessages[i].id === message.id) { idx = i; break; }
+  }
+  if (idx >= 0) chatMessages[idx] = message;
+  var fresh = createMessageBubble(message, idx >= 0 ? idx : chatMessages.length - 1);
+  old.replaceWith(fresh);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function removeLastAssistantMessage() {

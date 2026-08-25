@@ -11,6 +11,9 @@ node_modules/
 *.swp
 *.swo
 
+# Local agent/index state
+.chatgpt/
+
 # OS files
 Thumbs.db
 .DS_Store
@@ -19,11 +22,22 @@ desktop.ini
 # Environment
 .env
 *.env
+.env.*
+!.env.example
 
 # Database files (user data)
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
 
 # Logs
 *.log

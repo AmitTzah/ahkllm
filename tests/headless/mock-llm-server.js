@@ -30,6 +30,14 @@
 //                      the app's 100ms stream poll consumes the partial line
 //                      and then ignores the bare remainder (the bug hunt's
 //                      "data line split across poll boundaries" case)
+//   sse-tool-call      streaming web-search tool loop: the FIRST request (no
+//                      role:"tool" message) streams a web_search function call
+//                      split across two deltas + finish_reason tool_calls; the
+//                      follow-up request (contains the tool result) streams
+//                      the final answer. POSTs to /responses (DeepSeek native
+//                      search backend) and /search (Tavily backend) are
+//                      answered from the real API shapes captured during mock
+//                      setup — the headless suite never calls the real APIs.
 //   json               non-stream chat completion; FIM requests (body.prompt)
 //                      answered with choices[0].text (opts.fimText)
 //   error-json         HTTP 401 with {"error":{"message":...}}
@@ -49,6 +57,24 @@ function sseChunk(res, obj) {
   res.write('data: ' + JSON.stringify(obj) + '\n\n');
 }
 
+// Resolve slow mock delays when cURL disconnects, so killed requests cannot
+// keep the Node harness alive after scenario teardown.
+function responseDelay(res, ms) {
+  if (res.destroyed || res.writableEnded) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      res.off('close', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    res.once('close', finish);
+  });
+}
+
 function makeSseHandler(opts) {
   return (req, res) => {
     res.writeHead(200, {
@@ -56,7 +82,7 @@ function makeSseHandler(opts) {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive'
     });
-    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const delay = (ms) => responseDelay(res, ms);
     const chunkDelay = opts.chunkDelay || 60;
     (async () => {
       if (opts.reasoning !== false) {
@@ -93,7 +119,7 @@ function makeScriptedSseHandler(script = []) {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive'
     });
-    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const delay = (ms) => responseDelay(res, ms);
     (async () => {
       for (const step of script) {
         const delta = step.type === 'reasoning' ? { reasoning_content: step.text } : { content: step.text };
@@ -112,6 +138,186 @@ function makeScriptedSseHandler(script = []) {
   };
 }
 
+// Streaming web-search tool loop (mode 'sse-tool-call'):
+//   round 1 (no tool result in the conversation): the model emits a
+//     web_search function call split across two deltas, then
+//     finish_reason "tool_calls".
+//   round 2+ (the request carries role:"tool" results): normal final answer.
+function makeToolCallSseHandler(parsed, opts) {
+  return (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    const delay = (ms) => responseDelay(res, ms);
+    const answerDelay = opts.chatDelay || 60;
+    const toolCallDelay = opts.toolCallDelay || 60;
+    const hasToolResult = (parsed.messages || []).some((m) => m && m.role === 'tool');
+    const wantsWebSearch = Array.isArray(parsed.tools) && parsed.tools.some((t) => t && t.function && t.function.name === 'web_search');
+    const round = Number.isInteger(parsed.__mockToolRound) ? parsed.__mockToolRound : 0;
+    const needsToolCall = wantsWebSearch && (opts.toolRounds ? round < opts.toolRounds : !hasToolResult);
+    const usage = { prompt_tokens: 16, completion_tokens: 10, total_tokens: 26, prompt_tokens_details: { cached_tokens: 4 } };
+    (async () => {
+      if (needsToolCall) {
+        // Fragment 1: call id + name; fragment 2: the arguments JSON.
+        const callIndex = round + 1;
+        const queries = opts.searchQueries || [];
+        const searchQuery = queries[round] || opts.searchQuery || 'AutoHotkey webview2';
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_search_' + callIndex, type: 'function', function: { name: 'web_search', arguments: '' } }] } }] });
+        await delay(toolCallDelay);
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ query: searchQuery }) } }] } }] });
+         await delay(toolCallDelay);
+        sseChunk(res, { choices: [{ delta: {}, finish_reason: 'tool_calls' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
+      } else {
+        sseChunk(res, { choices: [{ delta: { content: 'Based on the search, ' + (opts.chatText || 'here is the answer.') } }] });
+        await delay(answerDelay);
+        sseChunk(res, { choices: [{ delta: {}, finish_reason: 'stop' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
+      }
+      await delay(40);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    })().catch(() => { try { res.end(); } catch {} });
+  };
+}
+
+// DeepSeek native search backend (POST /responses). Shape captured from a
+// real api.deepseek.com/responses call during mock setup (2026-08-15). The
+// envelope ALWAYS carries an "error" key - JSON null on success (OpenAI
+// Responses API shape) - and the output array interleaves reasoning,
+// web_search_call and message items. Including error:null is load-bearing:
+// jsongo parses JSON null as "" (empty string), and DeepSeekSearch must NOT
+// treat a present-but-null error key as a failure, or every successful
+// search reports "Web search failed: ".
+function responsesSearchBody(opts) {
+  const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
+  return {
+    id: 'mock-response-id',
+    object: 'response',
+    status: 'completed',
+    model: opts.responseModel || 'deepseek-v4-flash',
+    error: null,
+    incomplete_details: null,
+    output: [{
+      type: 'reasoning',
+      id: 'mock-reasoning-1',
+      status: 'completed',
+      content: [{ type: 'reasoning_text', text: 'Let me search the web for this.' }],
+      summary: []
+    }, {
+      type: 'web_search_call',
+      id: 'call_mock_search_1',
+      status: 'completed',
+      action: { type: 'search', queries: [opts.searchQuery || 'AutoHotkey webview2'] }
+    }, {
+      type: 'message',
+      id: 'mock-search-message',
+      status: 'completed',
+      role: 'assistant',
+      content: [{ type: 'output_text', annotations: [], logprobs: [], text }]
+    }],
+    usage: {
+      input_tokens: 4750, output_tokens: 42, total_tokens: 4792,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens_details: { reasoning_tokens: 0 }
+    }
+  };
+}
+
+// Streaming DeepSeek /responses (request body has stream:true). Emits the
+// real event sequence: reasoning deltas -> web_search_call lifecycle ->
+// output_text deltas -> completed. Inter-event delays come from
+// opts.searchDelay so scenarios can observe (or stop) mid-search.
+function makeResponsesStreamHandler(parsed, opts) {
+  return (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    const delay = (ms) => responseDelay(res, ms);
+    const step = opts.searchDelay || 120;
+    const reasoning = opts.searchReasoning || 'Let me search for this.';
+    const text = opts.searchText || 'DeepSeek native search answer: AutoHotkey v2 hosts web content with WebView2.';
+    const reasoningOff = parsed.reasoning && parsed.reasoning.effort === 'none';
+    const ev = (type, data) => res.write('event: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n');
+    // Emit one streaming message item: added carries DeepSeek's optimistic
+    // phase, done carries the authoritative phase. opts.searchInterim lists
+    // the interim commentary texts (corrected to "commentary" at done), the
+    // final message stays "final_answer". opts.searchEmpty skips the message
+    // items entirely - the real backend sometimes completes with no answer
+    // at all (real-API report 2026-08-16).
+    const emitMessage = async (id, outputIndex, bodyText, donePhase) => {
+      ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'message', id, status: 'in_progress', content: [], phase: 'final_answer', role: 'assistant' }, output_index: outputIndex });
+      ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: id, output_index: outputIndex, part: { type: 'output_text', text: '' } });
+      for (const token of bodyText.split(' ')) {
+        ev('response.output_text.delta', { type: 'response.output_text.delta', content_index: 0, delta: token + ' ', item_id: id, output_index: outputIndex });
+        await delay(step);
+      }
+      ev('response.output_item.done', { type: 'response.output_item.done', item: { type: 'message', id, status: 'completed', content: [{ type: 'output_text', text: bodyText }], phase: donePhase, role: 'assistant' }, output_index: outputIndex });
+      await delay(step);
+    };
+    (async () => {
+      ev('response.created', { type: 'response.created', response: { id: 'mock-resp', object: 'response', status: 'in_progress', model: opts.responseModel || 'deepseek-v4-flash' } });
+      await delay(step);
+      if (!reasoningOff) {
+        ev('response.output_item.added', { type: 'response.output_item.added', item: { type: 'reasoning', id: 'r1', status: 'in_progress', content: [], summary: [] }, output_index: 0 });
+        ev('response.content_part.added', { type: 'response.content_part.added', content_index: 0, item_id: 'r1', output_index: 0, part: { type: 'reasoning_text', text: '' } });
+        for (const token of reasoning.split(' ')) {
+          ev('response.reasoning_text.delta', { type: 'response.reasoning_text.delta', content_index: 0, delta: token + ' ', item_id: 'r1', output_index: 0 });
+          await delay(step);
+        }
+      }
+      ev('response.web_search_call.in_progress', { type: 'response.web_search_call.in_progress', item_id: 'call_1', output_index: 1 });
+      await delay(step);
+      ev('response.web_search_call.searching', { type: 'response.web_search_call.searching', item_id: 'call_1', output_index: 1 });
+      await delay(step * 2);
+      ev('response.web_search_call.completed', { type: 'response.web_search_call.completed', item_id: 'call_1', output_index: 1 });
+      await delay(step);
+      if (opts.searchEmpty) {
+        // Real backend shape when it returns "no answer": the stream runs the
+        // search lifecycle and completes with ZERO message items.
+        ev('response.completed', { type: 'response.completed', response: { id: 'mock-resp', object: 'response', status: 'completed', model: opts.responseModel || 'deepseek-v4-flash' } });
+        res.end();
+        return;
+      }
+      let outputIndex = 2;
+      for (const interim of opts.searchInterim || []) {
+        await emitMessage('interim_' + outputIndex, outputIndex, interim, 'commentary');
+        outputIndex++;
+      }
+      await emitMessage('m1', outputIndex, text, 'final_answer');
+      ev('response.completed', { type: 'response.completed', response: { id: 'mock-resp', object: 'response', status: 'completed', model: opts.responseModel || 'deepseek-v4-flash' } });
+      res.end();
+    })().catch(() => { try { res.end(); } catch {} });
+  };
+}
+
+// Tavily fallback backend (POST /search). Shape captured from a real
+// api.tavily.com/search call during mock setup.
+function tavilySearchBody(parsed, opts) {
+  const query = (parsed && parsed.query) || 'AutoHotkey webview2';
+  const answer = opts.tavilyAnswer || 'AutoHotkey v2 supports WebView2 for hosting web content using Microsoft Edge\'s Chromium engine.';
+  return {
+    query,
+    follow_up_questions: null,
+    answer,
+    images: [],
+    results: [
+      {
+        url: 'https://github.com/example/ahk-webview2',
+        title: 'ahk2_lib/WebView2 — AutoHotkey WebView2 bindings',
+        content: 'The Microsoft Edge WebView2 control enables you to host web content in your application using Edge Chromium as the rendering engine.',
+        score: 0.6496014,
+        raw_content: null,
+        id: 'mock-tavily-00'
+      }
+    ],
+    response_time: 0.5,
+    request_id: 'mock-tavily-request'
+  };
+}
+
 // startMockServer(mode, logFile, opts)
 //   opts.chatText  - content used by the JSON chat response.
 //   opts.fimText   - choices[0].text used when the JSON body carries a
@@ -124,6 +330,7 @@ function makeScriptedSseHandler(script = []) {
 //                    model attribution end-to-end). Default: the hardcoded
 //                    'deepseek-v4-flash' response model.
 function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
+  const toolRoundCounters = new Map();
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
@@ -133,8 +340,87 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       if (logFile) {
         try {
           const modeUsed = parsed.stream ? 'sse' : (parsed.max_tokens === 50 ? 'title' : 'json');
-          fs.appendFileSync(logFile, JSON.stringify({ modeUsed, body: parsed }) + '\n');
+          fs.appendFileSync(logFile, JSON.stringify({ modeUsed, url: req.url, body: parsed }) + '\n');
         } catch {}
+      }
+      if (req.url.includes('/chat/completions') && opts.toolRounds) {
+        const key = JSON.stringify((parsed.messages || [])
+          .filter((m) => m && m.role === 'user')
+          .map((m) => m.content));
+        parsed.__mockToolRound = toolRoundCounters.get(key) || 0;
+        toolRoundCounters.set(key, parsed.__mockToolRound + 1);
+      }
+      // Emulate the real providers' JSON-Schema validation for function tools.
+      // AHK's jsongo serializes `false` as 0, and DeepSeek rejects
+      // additionalProperties:0 with exactly this error — enforcing it here
+      // keeps the headless suite honest: an invalid tool schema now FAILS the
+      // scenario instead of passing silently (regression: web-search schema).
+      if (parsed.tools && Array.isArray(parsed.tools)) {
+        for (const tool of parsed.tools) {
+          if (tool && tool.function && tool.function.parameters &&
+              typeof tool.function.parameters.additionalProperties !== 'undefined') {
+            const ap = tool.function.parameters.additionalProperties;
+            if (ap !== true && ap !== false && (typeof ap !== 'object' || ap === null)) {
+              json({
+                error: {
+                  message: `Invalid schema for function '${tool.function.name || 'unknown'}': ${JSON.stringify(ap)} is not of types "boolean", "object"`,
+                  type: 'invalid_request_error'
+                }
+              }, res, 400);
+              return;
+            }
+          }
+        }
+      }
+      // Backend routing used by the web-search tool loop: DeepSeek native
+      // search calls the /responses endpoint, Tavily the /search endpoint.
+      // Both are answered from the real captured shapes — no real API calls
+      // happen in the headless suite.
+      if (req.url.includes('/responses')) {
+        // Real DeepSeek strictness (captured 2026-08-16 18:48): the API
+        // REJECTS "stream":1 (jsongo serializes AHK true as 1) with a 400 -
+        // "invalid type: integer `1`, expected a boolean". Enforcing the
+        // strict boolean here turns a payload regression into a FAILED
+        // scenario instead of a silent "no answer".
+        if (parsed.stream !== true) {
+          json({
+            error: {
+              message: 'Failed to deserialize the JSON body into the target type: stream: invalid type: integer `1`, expected a boolean',
+              type: 'invalid_request_error',
+              param: null,
+              code: 'invalid_request_error'
+            }
+          }, res, 400);
+          return;
+        }
+        if (parsed.stream) {
+          makeResponsesStreamHandler(parsed, opts)(req, res);
+          return;
+        }
+        json(responsesSearchBody(opts), res);
+        return;
+      }
+      if (req.url.endsWith('/search')) {
+        if (opts.tavilyError) {
+          const sendError = () => {
+            if (!res.destroyed && !res.writableEnded)
+              json({ error: { message: 'mock Tavily failure' } }, res, 500);
+          };
+          if (opts.tavilyDelay)
+            responseDelay(res, opts.tavilyDelay).then(sendError);
+          else
+            sendError();
+          return;
+        }
+        if (opts.tavilyDelay) {
+          responseDelay(res, opts.tavilyDelay).then(() => {
+            if (!res.destroyed && !res.writableEnded)
+              json(tavilySearchBody(parsed, opts), res);
+          });
+        } else {
+          json(tavilySearchBody(parsed, opts), res);
+        }
+        return;
       }
       if (mode === 'drop') {
         req.socket.destroy();
@@ -159,15 +445,41 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           return;
         }
         const title = parsed.max_tokens === 50;
-        json({
+        if (mode === 'json' && opts.toolRounds && parsed.tools && parsed.__mockToolRound < opts.toolRounds) {
+          const round = parsed.__mockToolRound;
+          const queries = opts.searchQueries || [];
+          const searchQuery = queries[round] || opts.searchQuery || 'AutoHotkey webview2';
+          const toolResponse = {
+            choices: [{ message: { role: 'assistant', content: '', tool_calls: [{
+              id: 'call_search_' + (round + 1), type: 'function',
+              function: { name: 'web_search', arguments: JSON.stringify({ query: searchQuery }) }
+            }] }, finish_reason: 'tool_calls' }],
+            model: 'gpt-5-mini',
+            usage: { prompt_tokens: 16, completion_tokens: 10, total_tokens: 26 }
+          };
+          if (opts.jsonDelay)
+            responseDelay(res, opts.jsonDelay).then(() => { if (!res.destroyed && !res.writableEnded) json(toolResponse, res); });
+          else
+            json(toolResponse, res);
+          return;
+        }
+        const finalResponse = {
           choices: [{ message: { content: title ? 'Mock Auto Title' : (opts.chatText || 'Hello from the mock LLM (non-stream).') }, finish_reason: 'stop' }],
           model: 'deepseek-v4-flash',
           usage: { prompt_tokens: 8, completion_tokens: title ? 5 : 12, total_tokens: 20, prompt_tokens_details: { cached_tokens: 3 } }
-        }, res);
+        };
+        if (opts.jsonDelay)
+          responseDelay(res, opts.jsonDelay).then(() => { if (!res.destroyed && !res.writableEnded) json(finalResponse, res); });
+        else
+          json(finalResponse, res);
         return;
       }
       if (mode === 'sse-script') {
         makeScriptedSseHandler(opts.script || [])(req, res);
+        return;
+      }
+      if (mode === 'sse-tool-call') {
+        makeToolCallSseHandler(parsed, opts)(req, res);
         return;
       }
       if (mode === 'sse-midfail') {
@@ -178,7 +490,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive'
         });
-        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const delay = (ms) => responseDelay(res, ms);
         (async () => {
           sseChunk(res, { choices: [{ delta: { content: 'Partial answer before the connection died. ' } }] });
           await delay(120);
@@ -200,7 +512,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive'
         });
-        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const delay = (ms) => responseDelay(res, ms);
         (async () => {
           res.write(': keepalive\n\n');
           await delay(opts.lateErrorDelay || 1500);
@@ -224,7 +536,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive'
         });
-        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        const delay = (ms) => responseDelay(res, ms);
         (async () => {
           sseChunk(res, { choices: [{ delta: { content: 'Partial answer before the error event. ' } }] });
           await delay(150);
@@ -244,7 +556,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive'
         });
-        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        const delay = (ms) => responseDelay(res, ms);
         (async () => {
           sseChunk(res, { choices: [{ delta: { content: 'First paragraph of the summary.\n' } }] });
           await delay(60);
@@ -287,7 +599,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive'
         });
-        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        const delay = (ms) => responseDelay(res, ms);
         (async () => {
           sseChunk(res, { choices: [{ delta: { content: 'Hello from the mock LLM. ' } }] });
           await delay(150);
@@ -309,7 +621,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       if (mode === 'sse-success') {
-        makeSseHandler({ reasoning: true, content: 'yes', responseModel: opts.echoModel ? parsed.model : '' })(req, res);
+        makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: opts.chunkDelay || 60, responseModel: opts.echoModel ? parsed.model : '' })(req, res);
         return;
       }
       if (mode === 'sse-reasoning-only') {

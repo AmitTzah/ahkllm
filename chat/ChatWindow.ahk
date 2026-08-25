@@ -78,6 +78,14 @@ _ChatWindowOnExit(*) {
                     ProcessClose(stream.pid)
             }
         }
+        if IsSet(_activeToolLoops) {
+            for loopState in _activeToolLoops
+                SearchTools.CancelProcess(loopState)
+        }
+        if IsSet(_activeNonStreamRequests) {
+            for scope in _activeNonStreamRequests
+                SearchTools.CancelProcess(scope)
+        }
         if IsSet(cURLState) {
             pid := cURLState("get")
             if pid && ProcessExist(pid)
@@ -108,6 +116,7 @@ activeThreadId := ""
 #Include ChatSettings.ahk
 #Include ChatRequestBuilder.ahk
 #Include ChatIPC.ahk
+#Include tools\SearchToolExecutor.ahk
 
 ; ----------------------------------------------------
 ; Create WebView and LLM client

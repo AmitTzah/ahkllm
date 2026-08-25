@@ -156,16 +156,17 @@ How to run AHK safely:
 
 - **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Round 6 follow-up COMPLETE: #229-#232
-  verified, fixed + committed (02ca615, e62d32a, fa8fd0e) and closed in
-  History. Full-command audit added (scenarios 233 + 234): all 16 real default
-  commands are config-consistent (params -> request building, chat-mode
-  commands stream, models resolve) and all 11 chat-mode commands stream
-  end-to-end in the real app with their model + thinking config + render +
-  sidebar update - no new bugs found (mock gains an opt-in echoModel option so
-  per-command model attribution is verifiable). Full headless suite 228/228
-  PASS and `npm run test:fast` green (611 AHK + 574 JS). Next round: fresh
+- **Where we left off:** 2026-08-14 - Web-search milestone COMPLETE: composer
+  Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
+  Web Search toggle (composer toolbar button, default off) adds a web_search
+  function tool. The right-rail Advanced collapsible was removed since it
+  only held that toggle. DeepSeek models search natively via their /responses
+  API; every other provider falls back to Tavily. Scenarios 250 + 251 verify
+  both backends end-to-end against the local mock (no real API calls in the
+  suite); scenario 20 flipped to a regression check for the stub removal.
+  Full headless suite PASS and `npm run test:fast` green. Next round: fresh
   intake when the user asks.
+
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
@@ -217,6 +218,179 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 *No open bugs.*
+
+**Feature checks (web-search milestone):**
+
+### 250. Web Search toggle: DeepSeek native search end-to-end
+
+**Scenario:** 250
+
+**Status:** verified
+
+**Repro:** In a new chat, click the Web Search button in the composer
+toolbar, send a message that needs current info.
+
+**Expected:** The request carries a web_search function tool; the model's tool
+call is answered by DeepSeek's native /responses search backend; the final
+answer persists as user -> search-context -> assistant; the toggle persists
+with the thread.
+
+**Actual:** Works end-to-end against the local mock (scenario PASSES).
+
+**Evidence:** `chat/tools/DeepSeekSearch.ahk` + `chat/tools/SearchToolExecutor.ahk`;
+scenario drives the real app and inspects the DB path + mock request log.
+
+**Verification:** Headless - toggled Web Search, sent a message, waited for the
+stream to idle, then asserted the rendered answer, the 3-message DB path with
+the `[Web search: ...]` context message, the mock `/responses` backend hit, and
+the `role:"tool"` follow-up request. The follow-up request is also asserted to
+use canonical function-calling order (contiguous `assistant tool_calls` ->
+`role:"tool"`, with the search-context message excluded from that round and
+re-entering history only afterwards). The search-context message renders as a
+collapsible card (query in the header, results hidden until expanded), and the
+scenario clicks the toggle to verify expansion. The card is posted immediately
+as a "Searching..." placeholder and updated in place when the backend returns,
+and the scenario asserts the DeepSeek search request appears in the API log.
+The `/responses` backend is STREAMED: the card shows the search rounds and the
+answer live before completion, and the scenario asserts that live progress.
+The search call runs with reasoning effort "none" (reasoning-on searches can
+burn the whole output budget on internal search rounds and end with no answer
+at all - real-API report 2026-08-16). No real API calls are made by the suite.
+
+### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
+
+**Scenario:** 251
+
+**Status:** verified
+
+**Repro:** Same as 250 but with a non-DeepSeek model (OpenAI) and a Tavily key.
+
+**Expected:** The same web_search tool call is answered by Tavily (the mock
+`/search` backend); the final answer persists with the search-context message.
+
+**Actual:** Works end-to-end against the local mock (scenario PASSES).
+
+**Evidence:** `chat/tools/TavilySearch.ahk`; the scenario patches
+`tavilyEndpoint` to the local mock via `preLaunch` so no real API call happens.
+
+**Verification:** Headless - toggled Web Search on an OpenAI-model thread,
+sent a message, asserted the rendered answer, the 3-message DB path, the mock
+`/search` backend hit, and the `role:"tool"` follow-up request (canonical
+function-calling order, same assertion as #250).
+
+### 252. Web Search toggle: turning it off removes the tool from subsequent requests
+
+**Scenario:** 252
+
+**Status:** verified
+
+**Repro:** Toggle Web Search on, send a message, then toggle it off and send
+another message in the same thread.
+
+**Expected:** The first request carries the `web_search` function tool; the
+second request has no `tools` array at all; the off state persists with the
+thread (survives reloads and new chats stay off by default).
+
+**Actual:** Works (scenario PASSES) - the first request carries the tool, the
+second has no `tools` key, and `advanced_toggles` stores webSearch off.
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` gates `requestObj.tools` on
+`SearchTools.Enabled()` (requestParams.webSearch); the toggle round-trips via
+`webui/js/chat/model-picker/model-picker.js` -> `chat/ChatSettings.ahk` ->
+`chat/db/ThreadRepo.ahk`.
+
+**Verification:** Headless - toggled Web Search on, sent a message, toggled it
+off, sent another, then inspected the mock request log (tool present, then
+absent) and the thread's `advanced_toggles`.
+
+### 253. Stopping a search mid-flight cancels the backend call and keeps the chat usable
+
+**Scenario:** 253
+
+**Status:** verified
+
+**Repro:** Enable Web Search, send a message that triggers a search, then press
+Stop while the card still shows "Searching...".
+
+**Expected:** The `/responses` backend call is killed, no follow-up chat
+request fires with the staged tool exchange, the card becomes "Search
+cancelled.", the search call is still recorded in the API log (status
+cancelled), and the composer returns to Send mode.
+
+**Actual:** Works (scenario PASSES) - the search cURL is killed, no follow-up
+request is sent, the card is marked cancelled, the API log entry is status
+cancelled, and the composer is usable.
+
+**Evidence:** `handleCancelStream` kills the search process tree and flags the
+tool loop (`_toolLoopCancelled`); the tool handlers skip `QueueFollowUp` and
+`_BuildAndFireRequest` when the flag is set.
+
+**Verification:** Headless - slow streaming `/responses` mock (60s step delay),
+sent a message, waited for the "Searching..." card, posted cancelStream, then
+asserted the cancelled card, exactly one chat request (no follow-up), the API
+log entry with status cancelled, and an enabled send button.
+
+**Scenario:** 254
+
+**Status:** verified
+
+**Repro:** Enable Web Search, send a message that triggers a search, and the
+DeepSeek `/responses` backend completes with ZERO message items (the real
+backend's "returned no answer" shape - captured 2026-08-16 when the user's
+"Iran war" queries all failed in ~0.5s each).
+
+**Expected:** The app shows ONE failure card ("Web search failed: DeepSeek
+returned no answer.") and STOPS the tool loop: no follow-up chat request, so
+the model cannot keep firing more failed searches (the user's run showed four
+failed cards in a row before the model gave up). The failure is persisted,
+the backend call is API-logged with status error, and the composer returns to
+Send mode.
+
+**Actual:** Works (scenario PASSES) - a search round where every query failed
+now surfaces the failure card and terminates the loop instead of staging the
+tool exchange and re-entering the request pipeline.
+
+**Evidence:** `SearchToolExecutor.Execute` reports `successCount`/`failureText`;
+`_handleStreamToolCalls`/`_handleNonStreamToolCalls` call `_failToolLoop` when
+`successCount = 0` (no `QueueFollowUp`/`_BuildAndFireRequest`), which edits the
+placeholder card to the failure text, posts the error, and cleans up.
+
+**Verification:** Headless - `sse-tool-call` mode with `searchEmpty: true`
+(mock `/responses` completes with no message items); asserted exactly one chat
+request (no follow-up), the failure card text, the persisted user + failure
+rows (no assistant answer), the API-log entry with status error, and an
+enabled send button.
+
+**Scenario:** 255
+
+**Status:** verified
+
+**Repro:** DeepSeek `/responses` streams multiple message items, all tagged
+"final_answer" at `output_item.added`, with the interim commentary ("Let me
+search for the latest news...") corrected to "commentary" only at
+`output_item.done` (real capture 2026-08-16: three message items - two
+interim, one real answer).
+
+**Expected:** The search result fed back to the model (role:"tool" message)
+and the persisted search card contain ONLY the real answer, never the model's
+interim narration, while the live card still shows everything as it streams.
+
+**Actual:** Works (scenario PASSES) - the stream parser records the
+`output_item.done` phase as authoritative and `DeepSeekSearch._BuildFinalAnswer`
+rebuilds the result from the final phases.
+
+**Evidence:** `ResponsesStreamParser` updates `_phases[item_id]` on
+`response.output_item.done`; `DeepSeekSearch._FeedProgress` accumulates
+per-item text and the result is rebuilt after the stream (last
+`final_answer` item wins; fallback to the last item when no phases exist).
+Fixture `tests/fixtures/responses-stream-multi-item.sse` mirrors the real
+event sequence.
+
+**Verification:** Headless - `sse-tool-call` mode with `searchInterim` set;
+asserted the persisted search context and the follow-up tool message contain
+the final answer and not "Let me search"/"Let me open". Unit: parser
+done-phase tests, `DeepSeekSearch.FeedFixture_MultiItemStream_*`, and
+`SearchToolExecutor` success-count tests.
 
 ## History (append-only)
 

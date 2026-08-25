@@ -24,6 +24,11 @@ class SettingsApply {
         global newChatStartsWith
         if settings.Has("newChatStartsWith")
             newChatStartsWith := settings["newChatStartsWith"]
+        global tavilyApiKey, tavilyEndpoint
+        if settings.Has("tavilyApiKey")
+            tavilyApiKey := settings["tavilyApiKey"]
+        if settings.Has("tavilyEndpoint")
+            tavilyEndpoint := settings["tavilyEndpoint"]
     }
 
     ; --- Apply helpers (write from settings Map to globals) ---

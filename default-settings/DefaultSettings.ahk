@@ -46,7 +46,7 @@ providers := Map(
         displayName: "Google Gemini",
         endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         fimEndpoint: "",
-        authEnvVar: "GEMINI_API_KEY",
+        authEnvVar: "GOOGLE_API_KEY",
         icon: "icons/google.ico",
         collapseThinking: true
     }
@@ -518,6 +518,13 @@ titleGenMaxTokens := 50
 chatShortcut := "1"
 appDefaultModel := "deepseek/deepseek-v4-flash"
 newChatStartsWith := "" ; "" = app default model; "asst:<id>" = assistant; otherwise a model id
+
+; -- Web Search (per-thread toggle; see ThreadSettings) --
+; DeepSeek models search natively via DeepSeek's Responses API. All other
+; providers use Tavily; the key can be set here directly or via the
+; TAVILY_API_KEY environment variable (Settings -> General).
+tavilyApiKey := ""
+tavilyEndpoint := "https://api.tavily.com/search"
 responseWindowFontFace := "Inter"
 responseWindowFontSize := "17"
 

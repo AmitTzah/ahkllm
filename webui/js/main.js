@@ -95,6 +95,10 @@ function handleWebMessage(event) {
         renderNavList();
         break;
 
+      case 'updateChatMessage':
+        updateChatMessage(data);
+        break;
+
       case 'removeLastAssistantMessage':
         removeLastAssistantMessage();
         break;
@@ -458,22 +462,6 @@ document.addEventListener('DOMContentLoaded', function () {
   var exportChatBtn = document.getElementById('export-chat-btn');
   if (exportChatBtn) exportChatBtn.addEventListener('click', exportChat);
 
-
-  // Tools dropdown toggle
-  document.querySelectorAll('.tools-toggle').forEach(function(t) {
-    t.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var parent = this.closest('.tools-dropdown');
-      var wasOpen = parent.classList.contains('menu-open');
-      document.querySelectorAll('.tools-dropdown.menu-open').forEach(function(d) { d.classList.remove('menu-open'); });
-      if (!wasOpen) parent.classList.add('menu-open');
-    });
-  });
-  document.addEventListener('click', function(e) {
-    if (!e.target.closest('.tools-dropdown')) {
-      document.querySelectorAll('.tools-dropdown.menu-open').forEach(function(d) { d.classList.remove('menu-open'); });
-    }
-  });
 
   // New folder button — inline input (no prompt)
   var newFolderBtn = document.querySelector('.rail-head-actions button[title="New folder"]');

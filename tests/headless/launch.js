@@ -159,7 +159,7 @@ function launch({ sandbox, port }) {
     WEBVIEW2_USER_DATA_FOLDER: activeWebView2Dir,
     DEEPSEEK_API_KEY: 'sk-headless-test',
     OPENAI_API_KEY: 'sk-headless-test',
-    GEMINI_API_KEY: 'sk-headless-test'
+    GOOGLE_API_KEY: 'sk-headless-test'
   });
   const child = spawn(AHK, [MAIN_AHK], {
     env,

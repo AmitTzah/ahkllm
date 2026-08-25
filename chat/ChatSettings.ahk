@@ -198,7 +198,6 @@ handleModelSettingsUpdate(parsed) {
     systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
     temperature := parsed.Get("temperature", "")
-    codeExecution := _BoolFrom(parsed.Get("codeExecution", false))
     webSearch := _BoolFrom(parsed.Get("webSearch", false))
 
     ; Only clear assistant when user explicitly changes the model (non-empty).
@@ -216,7 +215,6 @@ handleModelSettingsUpdate(parsed) {
     requestParams["systemOverride"] := systemMessage
     requestParams["reasoningOverride"] := reasoning
     requestParams["temperatureOverride"] := temperature
-    requestParams["codeExecution"] := codeExecution
     requestParams["webSearch"] := webSearch
 
     ; Persist to DB

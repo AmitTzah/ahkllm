@@ -41,7 +41,7 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 - API keys for the providers you want to use, set as environment variables or entered directly in Settings:
   - `DEEPSEEK_API_KEY`
   - `OPENAI_API_KEY`
-  - `GEMINI_API_KEY`
+  - `GOOGLE_API_KEY`
 
 ## Quick Start
 

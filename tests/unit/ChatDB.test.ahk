@@ -380,6 +380,69 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression: assistant usage must attribute the prompt contribution to
+    ; the request's captured branch, even after the visible leaf switches to a
+    ; sibling before persistence.
+    Insert_AssistantBackfillUsesExplicitBranchPath() {
+        threadId := this._setup()
+        rootUserId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root", token_count: 5, active_path_tokens: 5})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A1", model: "deepseek-v4-flash", parent_id: rootUserId, sibling_group: "sg-path", sibling_index: 0, token_count: 5, prompt_tokens: 10})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A2", model: "deepseek-v4-flash", parent_id: rootUserId, sibling_group: "sg-path", sibling_index: 1, token_count: 5, prompt_tokens: 10})
+        a1UserId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "A1 follow-up", parent_id: a1Id, token_count: 0})
+        a1LeafId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A1 leaf", model: "deepseek-v4-flash", parent_id: a1UserId, token_count: 2, active_path_tokens: 22})
+        a2UserId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "A2 follow-up", parent_id: a2Id, token_count: 0})
+        a2LeafId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A2 leaf", model: "deepseek-v4-flash", parent_id: a2UserId, token_count: 6, active_path_tokens: 26})
+
+        requestPath := ChatDB.Msg_GetPathToLeaf(threadId, a1LeafId)
+        ChatDB.Msg_Insert({
+            thread_id: threadId, role: "assistant", content: "A1 response after branch switch",
+            model: "deepseek-v4-flash", parent_id: a1LeafId,
+            token_count: 10, prompt_tokens: 16,
+            token_attribution_path: requestPath,
+            update_active_leaf: false
+        })
+
+        a1User := ChatDB.db.Query("SELECT token_count, active_path_tokens FROM messages WHERE id=?;", a1UserId)
+        a2User := ChatDB.db.Query("SELECT token_count, active_path_tokens FROM messages WHERE id=?;", a2UserId)
+        activeLeaf := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
+        a1Response := ChatDB.db.Query("SELECT parent_id, active_path_tokens FROM messages WHERE thread_id=? AND content=?;", threadId, "A1 response after branch switch")
+        if Integer(a1User[1, "token_count"]) != 4 || Integer(a1User[1, "active_path_tokens"]) != 19
+            throw Error("explicit request path must backfill A1: tc=" a1User[1, "token_count"] " apt=" a1User[1, "active_path_tokens"])
+        if Integer(a2User[1, "token_count"]) != 0 || Integer(a2User[1, "active_path_tokens"]) != 15
+            throw Error("sibling A2 attribution changed: tc=" a2User[1, "token_count"] " apt=" a2User[1, "active_path_tokens"])
+        if activeLeaf[1, "active_leaf_id"] != a2LeafId
+            throw Error("visible active leaf changed during off-path persistence")
+        if a1Response[1, "parent_id"] != a1LeafId || Integer(a1Response[1, "active_path_tokens"]) != 26
+            throw Error("assistant was not persisted on A1 with correct path tokens")
+        this._teardown()
+    }
+
+    GetPathToExplicitLeaf_StaysOnRequestedBranch() {
+        threadId := this._setup()
+        rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A1", parent_id: rootId, sibling_group: "sg", sibling_index: 0})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A2", parent_id: rootId, sibling_group: "sg", sibling_index: 1})
+        path := ChatDB.Msg_GetPathToLeaf(threadId, a1Id)
+        if path.Length != 2 || path[2].id != a1Id
+            throw Error("explicit leaf path did not stay on A1: " jsongo.Stringify(path))
+        active := ChatDB.Msg_GetActivePath(threadId)
+        if active.Length != 2 || active[2].id != a2Id
+            throw Error("explicit path lookup changed the active A2 branch")
+        this._teardown()
+    }
+
+    Insert_CanPreserveVisibleLeafForOffPathContinuation() {
+        threadId := this._setup()
+        rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        a1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A1", parent_id: rootId, sibling_group: "sg", sibling_index: 0})
+        a2Id := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "A2", parent_id: rootId, sibling_group: "sg", sibling_index: 1})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "off-path answer", parent_id: a1Id, update_active_leaf: false})
+        row := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
+        if !row.count || row[1, "active_leaf_id"] != a2Id
+            throw Error("off-path insert changed the visible active leaf")
+        this._teardown()
+    }
+
     HardDelete_MiddleMessage_ReparentsChildren() {
         threadId := this._setup()
         u1Id := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})

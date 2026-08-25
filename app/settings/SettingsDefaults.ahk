@@ -49,6 +49,8 @@ class SettingsDefaults {
         d["menuItems"] := SettingsDefaults._DefaultsMenuItems()
         d["chatShortcut"] := IsSet(chatShortcut) ? chatShortcut : ""
         d["newChatStartsWith"] := IsSet(newChatStartsWith) ? newChatStartsWith : ""
+        d["tavilyApiKey"] := IsSet(tavilyApiKey) ? tavilyApiKey : ""
+        d["tavilyEndpoint"] := IsSet(tavilyEndpoint) ? tavilyEndpoint : "https://api.tavily.com/search"
         return d
     }
 

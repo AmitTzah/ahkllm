@@ -238,6 +238,7 @@ class ChatDB {
     static Msg_HardDelete(msgId) => MessageRepo.HardDelete(msgId)
     static Msg_Edit(msgId, newContent) => MessageRepo.Edit(msgId, newContent)
     static Msg_GetActivePath(threadId) => TreeRepo.GetActivePath(threadId)
+    static Msg_GetPathToLeaf(threadId, leafId) => TreeRepo.GetPathToLeaf(threadId, leafId)
     static Msg_GetSiblings(msgId) => TreeRepo.GetSiblings(msgId)
     static Msg_GetTree(threadId) => TreeRepo.GetTree(threadId)
     static Msg_ForkThread(threadId, upToMsgId) => TreeRepo.ForkThread(threadId, upToMsgId)
