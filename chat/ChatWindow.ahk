@@ -158,6 +158,30 @@ OnMessage(CustomMessages.WM_SHOW_DASHBOARD, (*) => (
     chatWindow.Show(),
     WinActivate("ahk_id " chatWindow.hWnd)
 ))
+OnMessage(CustomMessages.WM_BACKUP_STATUS, _OnBackupStatus)
+
+_OnBackupStatus(*) {
+    try {
+        if !FileExist(BackupManager.StatusPath)
+            return
+        ; Build a plain AHK object from scalar fields. Passing the raw jsongo
+        ; wrapper through nested jsongo.Stringify can fail with "Invalid index"
+        ; and leave the WebView showing its optimistic pending text.
+        parsedStatus := jsongo.Parse(FileRead(BackupManager.StatusPath, "UTF-8"))
+        status := {
+            enabled: parsedStatus.Get("enabled", false),
+            folder: parsedStatus.Get("folder", ""),
+            text: parsedStatus.Get("text", "No backup has been created yet"),
+            lastBackupTime: parsedStatus.Get("lastBackupTime", ""),
+            lastError: parsedStatus.Get("lastError", ""),
+            pending: parsedStatus.Get("pending", false),
+            running: parsedStatus.Get("running", false)
+        }
+        postWebMessage("backupStatus", status)
+    } catch Error as e {
+        debugLog("[BACKUP] Failed to read status: " e.Message)
+    }
+}
 
 #Include ChatUtils.ahk
 #Include ThreadTitleGen.ahk

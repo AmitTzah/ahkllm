@@ -34,16 +34,19 @@ class ThreadLockRepo {
     static Set(threadId, salt, hash, iterations) {
         ChatDB.db.Query("INSERT OR REPLACE INTO chat_locks (thread_id, kdf, salt, hash, iterations) VALUES(?, 'pbkdf2-sha256', ?, ?, ?);", threadId, salt, hash, iterations)
         ChatDB.db.Query("UPDATE chat_threads SET is_locked=1, updated_at=datetime('now') WHERE id=?;", threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Update the lock credentials (password change).
     static Update(threadId, salt, hash, iterations) {
         ChatDB.db.Query("UPDATE chat_locks SET salt=?, hash=?, iterations=?, updated_at=datetime('now') WHERE thread_id=?;", salt, hash, iterations, threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Remove the lock and mark the thread unlocked.
     static Remove(threadId) {
         ChatDB.db.Query("DELETE FROM chat_locks WHERE thread_id=?;", threadId)
         ChatDB.db.Query("UPDATE chat_threads SET is_locked=0, updated_at=datetime('now') WHERE id=?;", threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 }

@@ -56,6 +56,8 @@
     'updateBranchInfo': { dir: 'ahk->web', fields: ['msgId', 'siblingInfo'], required: ['msgId', 'siblingInfo'] },
     'updateChatView': { dir: 'ahk->web', data: 'array' },
     'iconFileSelected': { dir: 'ahk->web', fields: ['field', 'path'], required: ['field', 'path'] },
+    'backupFolderSelected': { dir: 'ahk->web', fields: ['folder'], required: ['folder'] },
+    'backupStatus': { dir: 'ahk->web', data: 'object' },
     'modelPricingRefresh': { dir: 'ahk->web', fields: ['success', 'models', 'error'], required: ['success'] },
     'ack': { dir: 'ahk->web', fields: ['reqId', 'action', 'ok', 'error'], required: ['reqId', 'action', 'ok'] },
 
@@ -83,6 +85,8 @@
     'debugLog': { dir: 'web->ahk', fields: ['message'], required: ['message'] },
     'webViewReady': { dir: 'web->ahk', data: 'any' },
     'browseIcon': { dir: 'web->ahk', fields: ['field'], required: ['field'] },
+    'browseBackupFolder': { dir: 'web->ahk', fields: ['folder'], required: ['folder'] },
+    'backupNow': { dir: 'web->ahk', fields: ['backup'], required: ['backup'] },
     'unlockThread': { dir: 'web->ahk', fields: ['threadId', 'passwordHash'], required: ['threadId', 'passwordHash'] },
     'setThreadLock': { dir: 'web->ahk', fields: ['threadId', 'mode', 'passwordHash', 'salt', 'iterations', 'currentPasswordHash'], required: ['threadId', 'mode', 'passwordHash', 'salt', 'iterations'] },
     'lockChatNow': { dir: 'web->ahk', fields: ['threadId'], required: ['threadId'] },

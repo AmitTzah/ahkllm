@@ -149,12 +149,14 @@ _HandleFolderAction(action, params) {
             if params.Has("name") {
                 id := ChatDB._UUID()
                 ChatDB.db.Query("INSERT INTO chat_folders (id, name) VALUES(?, ?);", id, params["name"])
+                ChatDB._MarkPersistentDataChanged()
                 _postThreadListRefresh()
             }
 
         case "renameFolder":
             if params.Has("folderId") && params.Has("name") {
                 ChatDB.db.Query("UPDATE chat_folders SET name=? WHERE id=?;", params["name"], params["folderId"])
+                ChatDB._MarkPersistentDataChanged()
                 _postThreadListRefresh()
             }
 
@@ -162,6 +164,7 @@ _HandleFolderAction(action, params) {
             if params.Has("folderId") {
                 ChatDB.db.Query("UPDATE chat_threads SET folder_id=NULL WHERE folder_id=?;", params["folderId"])
                 ChatDB.db.Query("DELETE FROM chat_folders WHERE id=?;", params["folderId"])
+                ChatDB._MarkPersistentDataChanged()
                 _postThreadListRefresh()
             }
 
@@ -169,6 +172,7 @@ _HandleFolderAction(action, params) {
             if params.Has("threadId") && params.Has("folderId") {
                 fid := params["folderId"] = "__none__" ? SQLite.Null : params["folderId"]
                 ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", fid, params["threadId"])
+                ChatDB._MarkPersistentDataChanged()
                 debugLog("[FOLDER] moveToFolder thread=" params["threadId"] " folderId=" params["folderId"])
                 _postThreadListRefresh()
             }

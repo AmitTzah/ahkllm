@@ -224,6 +224,7 @@ class TreeRepo {
         for fam in forkAttMsgs.rows
             ChatDB.FTS_ResyncForAttachments(fam.message_id)
 
+        ChatDB._MarkPersistentDataChanged()
         return newThreadId
     }
 
@@ -398,6 +399,7 @@ class TreeRepo {
             return
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", msgId, threadId)
         TreeRepo._RecomputeActivePath(threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
 
@@ -424,6 +426,7 @@ class TreeRepo {
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, threadId)
 
         path := TreeRepo.GetActivePath(threadId)
+        ChatDB._MarkPersistentDataChanged()
         return { path: path, siblingInfo: { index: newPos + 1, total: siblings.Length } }
     }
 

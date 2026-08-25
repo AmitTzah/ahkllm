@@ -121,6 +121,7 @@ class MessageRepo {
             })
         }
 
+        ChatDB._MarkPersistentDataChanged()
         return id
     }
 
@@ -213,6 +214,7 @@ class MessageRepo {
         ; header totals - recompute the cumulative counters from the remaining
         ; messages (they were previously left stale and forever inflated).
         MessageRepo._RecomputeCumulativeCounters(threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Recompute a thread's cumulative counters from its remaining messages
@@ -307,6 +309,7 @@ class MessageRepo {
         ; refreshed count (until the next API call forces a recompute).
         if threadId
             MessageRepo._RecomputeCumulativeCounters(threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     static GetMaxSiblingIndex(siblingGroup) {

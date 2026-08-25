@@ -55,6 +55,15 @@ _registerAllHotkeys()
 
 ChatDB.Open()
 
+; Main owns the only backup lifecycle. ChatWindow forwards durable-change
+; notifications here because it has its own SQLite connection.
+global gBackupManager := BackupManager()
+gBackupManager.Init(SettingsHandler.Merge(settings, SettingsHandler.GetDefaults()))
+SettingsService.RegisterHook("backup", gBackupManager.ApplySettings.Bind(gBackupManager))
+OnMessage(CustomMessages.WM_BACKUP_DIRTY, (*) => gBackupManager.MarkDirty())
+OnMessage(CustomMessages.WM_BACKUP_NOW, (*) => gBackupManager.BackupNow(false, CustomMessages.consumeBackupNowConfig()))
+OnMessage(CustomMessages.WM_BACKUP_STATUS_REQUEST, (*) => gBackupManager.PublishStatus())
+
 ; ----------------------------------------------------
 ; Trash retention — auto-purge expired trashed threads
 ; ----------------------------------------------------
@@ -123,7 +132,8 @@ onChatWindowOpened(uniqueID, lParam, msg, hWnd) {
 OnExit(closeChatWindow)
 closeChatWindow(ExitReason, ExitCode) {
     debugLog("[APP] Exiting — reason=" ExitReason)
-    global chatWindowPID
+    global chatWindowPID, gBackupManager
+    try gBackupManager.Shutdown()
 
     ; Close child ChatWindow process. Try graceful close first,
     ; then force kill. PID may be 0 if spawn failed.
@@ -211,6 +221,7 @@ CustomMessages.registerHandlers("mainScript", handleLoadingState)
 OnMessage(CustomMessages.WM_SETTINGS_UPDATED, (*) => (
     debugLog("[SETTINGS] Received settingsUpdated from ChatWindow, reloading..."),
     SettingsService.ReloadFromDisk(),
+    gBackupManager.MarkDirty(),
     debugLog("[SETTINGS] Reloaded settings globals and re-registered hotkeys")
 ))
 

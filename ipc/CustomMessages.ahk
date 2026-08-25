@@ -17,6 +17,10 @@ class CustomMessages {
     static WM_SHOW_API_LOGS := 0x500 + 7
     static WM_SETTINGS_UPDATED := 0x500 + 8
     static WM_RELOAD_MAIN := 0x500 + 9
+    static WM_BACKUP_DIRTY := 0x500 + 10
+    static WM_BACKUP_NOW := 0x500 + 11
+    static WM_BACKUP_STATUS := 0x500 + 12
+    static WM_BACKUP_STATUS_REQUEST := 0x500 + 13
 
     static registerHandlers(origin, handle) {
         switch origin {
@@ -76,6 +80,51 @@ class CustomMessages {
     ; ChatWindow → Main: notify that settings were saved, reload settings
     static notifySettingsUpdated(mainScriptHiddenHwnd) {
         try PostMessage(this.WM_SETTINGS_UPDATED, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
+    }
+
+    ; ChatWindow -> Main: durable data changed; increment Main's generation.
+    static notifyBackupDirty(mainScriptHiddenHwnd) {
+        try PostMessage(this.WM_BACKUP_DIRTY, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
+    }
+
+    ; ChatWindow -> Main: request the same BackupManager implementation used
+    ; by the automatic timer, without creating a second backup lifecycle.
+    static notifyBackupNow(mainScriptHiddenHwnd, backupConfig := "") {
+        try {
+            requestPath := A_Temp "\AhkLLM_Backup_Request.json"
+            try FileDelete(requestPath)
+            if IsObject(backupConfig) {
+                f := FileOpen(requestPath, "w", "UTF-8")
+                f.Write(jsongo.Stringify(backupConfig))
+                f.Close()
+            }
+            PostMessage(this.WM_BACKUP_NOW, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    static consumeBackupNowConfig() {
+        requestPath := A_Temp "\AhkLLM_Backup_Request.json"
+        if !FileExist(requestPath)
+            return ""
+        try {
+            raw := FileRead(requestPath, "UTF-8")
+            FileDelete(requestPath)
+            return jsongo.Parse(raw)
+        } catch {
+            try FileDelete(requestPath)
+            return ""
+        }
+    }
+
+    static notifyBackupStatus(chatWindowhWnd) {
+        try PostMessage(this.WM_BACKUP_STATUS, 0, 0, , "ahk_id " chatWindowhWnd)
+    }
+
+    static notifyBackupStatusRequest(mainScriptHiddenHwnd) {
+        try PostMessage(this.WM_BACKUP_STATUS_REQUEST, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
     }
 
     ; ChatWindow → Main: request full script reload (e.g. after hotkey changes)

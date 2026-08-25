@@ -22,6 +22,10 @@ class ChatDB {
     static dbPath := ""
     static isOpen := false
 
+    ; Notify the Main-owned BackupManager, or forward the notification when
+    ; this facade is running inside ChatWindow.
+    static _MarkPersistentDataChanged() => BackupManager.MarkPersistentDataChanged()
+
     ; Open (or create) the database.
     static Open(dbPath := "") {
         if ChatDB.isOpen

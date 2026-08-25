@@ -46,6 +46,10 @@ class SettingsDefaults {
         d["hotkeys"] := SettingsDefaults._DefaultsHotkeys()
         d["apiLogs"] := SettingsDefaults._DefaultsApiLogs()
         d["trash"] := SettingsDefaults._DefaultsTrash()
+        d["backup"] := Map(
+            "enabled", false,
+            "folder", ""
+        )
         d["menuItems"] := SettingsDefaults._DefaultsMenuItems()
         d["chatShortcut"] := IsSet(chatShortcut) ? chatShortcut : ""
         d["newChatStartsWith"] := IsSet(newChatStartsWith) ? newChatStartsWith : ""

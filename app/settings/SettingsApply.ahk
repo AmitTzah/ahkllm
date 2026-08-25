@@ -17,6 +17,7 @@ class SettingsApply {
         SettingsApply._ApplyHotkeys(settings)
         SettingsApply._ApplyApiLogs(settings)
         SettingsApply._ApplyTrash(settings)
+        SettingsApply._ApplyBackup(settings)
         SettingsApply._ApplyMenuItems(settings)
         global chatShortcut
         if settings.Has("chatShortcut")
@@ -335,6 +336,23 @@ class SettingsApply {
         tr := settings["trash"]
         if tr.Has("retentionDays")
             trashRetentionDays := tr["retentionDays"]
+    }
+
+    static _ApplyBackup(settings) {
+        ; BackupManager owns the live backup configuration. Keep a small
+        ; global mirror for settings consumers and tests, but do not start a
+        ; second settings/timer system here.
+        global backupEnabled, backupFolder
+        if !settings.Has("backup")
+            return
+        b := settings["backup"]
+        if !IsObject(b) {
+            backupEnabled := false
+            backupFolder := ""
+            return
+        }
+        backupEnabled := b.Has("enabled") ? b["enabled"] : false
+        backupFolder := b.Has("folder") ? b["folder"] : ""
     }
 
     static _ApplyMenuItems(settings) {

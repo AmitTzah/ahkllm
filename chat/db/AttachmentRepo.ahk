@@ -36,6 +36,15 @@ class AttachmentRepo {
     }
 
     static Insert(msgId, attObj) {
+        lockHandle := BackupManager.BeginAttachmentMutation()
+        try {
+            return AttachmentRepo._InsertUnlocked(msgId, attObj)
+        } finally {
+            BackupManager.EndAttachmentMutation(lockHandle)
+        }
+    }
+
+    static _InsertUnlocked(msgId, attObj) {
         id := ChatDB._UUID()
         mimeType := attObj.HasProp("mime_type") && attObj.mime_type ? attObj.mime_type : ""
         filename := attObj.HasProp("original_filename") && attObj.original_filename ? attObj.original_filename : ""
@@ -51,6 +60,7 @@ class AttachmentRepo {
         ; Bug #165: keep the FTS index in sync - the attachment's extracted
         ; text must be searchable immediately.
         ChatDB.FTS_ResyncForAttachments(msgId)
+        ChatDB._MarkPersistentDataChanged()
         return id
     }
 
@@ -95,43 +105,61 @@ class AttachmentRepo {
     ; Delete all attachments for a message - DB rows + disk files (reference-counted).
     ; MUST be called BEFORE DELETE FROM messages to read file_path before CASCADE.
     static DeleteByMessage(msgId) {
-        table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE message_id=?;", msgId)
-        ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id=?;", msgId)
-        ; Bug #117: check the refcount AFTER the batch delete. Checking per-row
-        ; before the delete left a file held by 2 rows on the same message (or
-        ; by rows about to be deleted) looking referenced, so it was never
-        ; removed even though no rows survive.
-        for row in table.rows {
-            AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+        lockHandle := BackupManager.BeginAttachmentMutation()
+        try {
+            table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE message_id=?;", msgId)
+            ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id=?;", msgId)
+            ; Bug #117: check the refcount AFTER the batch delete. Checking per-row
+            ; before the delete left a file held by 2 rows on the same message (or
+            ; by rows about to be deleted) looking referenced, so it was never
+            ; removed even though no rows survive.
+            for row in table.rows
+                AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+            ; Bug #165: re-index (the message may still exist - e.g. an edit's
+            ; attachment removal); HardDelete removes the FTS row afterwards.
+            ChatDB.FTS_ResyncForAttachments(msgId)
+            ChatDB._MarkPersistentDataChanged()
+        } finally {
+            BackupManager.EndAttachmentMutation(lockHandle)
         }
-        ; Bug #165: re-index (the message may still exist - e.g. an edit's
-        ; attachment removal); HardDelete removes the FTS row afterwards.
-        ChatDB.FTS_ResyncForAttachments(msgId)
     }
 
     ; Delete all attachments for a thread - DB rows + disk files (reference-counted).
     ; MUST be called BEFORE raw DELETE FROM messages that triggers CASCADE.
-    static DeleteByThread(threadId) {
-        table := ChatDB.db.Query("SELECT DISTINCT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id=?;", threadId)
-        ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id=?);", threadId)
-        ; Bug #117: refcount check runs AFTER the batch delete (see DeleteByMessage).
-        for row in table.rows {
-            AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+    static DeleteByThread(threadId, markDirty := true) {
+        lockHandle := BackupManager.BeginAttachmentMutation()
+        try {
+            table := ChatDB.db.Query("SELECT DISTINCT a.file_path FROM message_attachments a JOIN messages m ON a.message_id = m.id WHERE m.thread_id=?;", threadId)
+            ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE thread_id=?);", threadId)
+            changed := AttachmentRepo._Changes()
+            ; Bug #117: refcount check runs AFTER the batch delete (see DeleteByMessage).
+            for row in table.rows
+                AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+            if markDirty
+                ChatDB._MarkPersistentDataChanged()
+            return changed
+        } finally {
+            BackupManager.EndAttachmentMutation(lockHandle)
         }
     }
 
     ; Delete a single attachment by ID - DB row + disk file (reference-counted).
     static DeleteOne(attachmentId) {
-        table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE id=?;", attachmentId)
-        msgTable := ChatDB.db.Query("SELECT message_id FROM message_attachments WHERE id=?;", attachmentId)
-        ChatDB.db.Query("DELETE FROM message_attachments WHERE id=?;", attachmentId)
-        ; Bug #117: refcount check runs AFTER the row delete (see DeleteByMessage).
-        for row in table.rows {
-            AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+        lockHandle := BackupManager.BeginAttachmentMutation()
+        try {
+            table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE id=?;", attachmentId)
+            msgTable := ChatDB.db.Query("SELECT message_id FROM message_attachments WHERE id=?;", attachmentId)
+            ChatDB.db.Query("DELETE FROM message_attachments WHERE id=?;", attachmentId)
+            ; Bug #117: refcount check runs AFTER the row delete (see DeleteByMessage).
+            for row in table.rows
+                AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
+            ; Bug #165: re-index the message without the removed attachment text.
+            if msgTable.count && msgTable[1, "message_id"]
+                ChatDB.FTS_ResyncForAttachments(msgTable[1, "message_id"])
+            ChatDB._MarkPersistentDataChanged()
+        } finally {
+            BackupManager.EndAttachmentMutation(lockHandle)
         }
-        ; Bug #165: re-index the message without the removed attachment text.
-        if msgTable.count && msgTable[1, "message_id"]
-            ChatDB.FTS_ResyncForAttachments(msgTable[1, "message_id"])
     }
 
     ; Copy all attachments from one message to another.
@@ -139,8 +167,10 @@ class AttachmentRepo {
     ; excludeAttachmentIds: array of source attachment ids to skip (bug #146 -
     ; "Save as Branch" must not copy attachments the user removed during the edit).
     static CopyForMessage(sourceMsgId, targetMsgId, excludeAttachmentIds := "") {
-        table := ChatDB.db.Query("SELECT id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id=?;", sourceMsgId)
-        for row in table.rows {
+        lockHandle := BackupManager.BeginAttachmentMutation()
+        try {
+            table := ChatDB.db.Query("SELECT id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text FROM message_attachments WHERE message_id=?;", sourceMsgId)
+            for row in table.rows {
             if excludeAttachmentIds {
                 skipped := false
                 for excludedId in excludeAttachmentIds {
@@ -158,11 +188,20 @@ class AttachmentRepo {
             extracted := row.Has("extracted_text") && row.extracted_text ? row.extracted_text : ""
             fileSize := row.Has("file_size") ? row.file_size : 0
 
-            ChatDB.db.Query("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES(?, ?, ?, ?, ?, ?, ?, ?);", newId, targetMsgId, row.attachment_type, row.file_path, mimeType, filename, fileSize, extracted)
+                ChatDB.db.Query("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES(?, ?, ?, ?, ?, ?, ?, ?);", newId, targetMsgId, row.attachment_type, row.file_path, mimeType, filename, fileSize, extracted)
+            }
+            ; Bug #165: the copied attachment's text must be searchable on the
+            ; target message too.
+            ChatDB.FTS_ResyncForAttachments(targetMsgId)
+            ChatDB._MarkPersistentDataChanged()
+        } finally {
+            BackupManager.EndAttachmentMutation(lockHandle)
         }
-        ; Bug #165: the copied attachment's text must be searchable on the
-        ; target message too.
-        ChatDB.FTS_ResyncForAttachments(targetMsgId)
+    }
+
+    static _Changes() {
+        result := ChatDB.db.Exec("SELECT changes() AS count;")
+        return result.count ? Integer(result[1, "count"]) : 0
     }
 
     ; Delete physical file only if no DB rows reference it (reference counting).

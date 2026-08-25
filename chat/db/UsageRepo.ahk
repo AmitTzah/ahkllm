@@ -163,6 +163,7 @@ class UsageRepo {
         } else {
             ChatDB.db.Query("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES(?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, cmd, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft)
         }
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Chat usage - daily aggregation UPSERT
@@ -179,5 +180,6 @@ class UsageRepo {
         } else {
             ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES(?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft)
         }
+        ChatDB._MarkPersistentDataChanged()
     }
 }

@@ -1,5 +1,5 @@
 // ======================================================
-// general.js — General settings section (Thread Titles, API Logs, Trash)
+// general.js — General settings section (Thread Titles, API Logs, Trash, Backups)
 // ======================================================
 
 (function() {
@@ -101,6 +101,14 @@
       var tk = document.getElementById('tavilyApiKey');
       if (tk) tk.value = data.tavilyApiKey || '';
     }
+    if (data && data.backup) {
+      var backup = data.backup;
+      var enabled = document.getElementById('backupEnabledToggle');
+      var folder = document.getElementById('backupFolder');
+      if (enabled) enabled.classList.toggle('on', !!backup.enabled);
+      if (folder) folder.value = backup.folder || '';
+    }
+    if (data && data.backupStatus) onBackupStatus(data.backupStatus);
   }
 
   function save() {
@@ -127,7 +135,24 @@
     data.tavilyApiKey = (document.getElementById('tavilyApiKey') || {}).value || '';
     // New Chats Start With
     data.newChatStartsWith = (document.getElementById('newChatStartsWith') || {}).value || '';
+    var backupToggle = document.getElementById('backupEnabledToggle');
+    data.backup = {
+      enabled: backupToggle ? backupToggle.classList.contains('on') : false,
+      folder: (document.getElementById('backupFolder') || {}).value || ''
+    };
     return data;
+  }
+
+  function onFolderSelected(folder) {
+    var input = document.getElementById('backupFolder');
+    if (!input) return;
+    input.value = folder || '';
+    S.markDirty();
+  }
+
+  function onBackupStatus(status) {
+    var el = document.getElementById('backupStatus');
+    if (el && status) el.textContent = status.text || 'No backup has been created yet';
   }
 
   // Wire toggle
@@ -146,13 +171,36 @@
     });
   }
 
+  function wireBackupControls() {
+    var toggle = document.getElementById('backupEnabledToggle');
+    if (toggle) toggle.addEventListener('click', function() {
+      this.classList.toggle('on');
+      S.markDirty();
+    });
+    var browse = document.getElementById('backupBrowseBtn');
+    if (browse) browse.addEventListener('click', function() {
+      var folder = (document.getElementById('backupFolder') || {}).value || '';
+      Ipc.postToHost('browseBackupFolder', { folder: folder });
+    });
+    var now = document.getElementById('backupNowBtn');
+    if (now) now.addEventListener('click', function() {
+      onBackupStatus({ text: 'Backup pending' });
+      var current = save().backup;
+      Ipc.request('backupNow', { backup: current }).catch(function(err) {
+        onBackupStatus({ text: 'Backup failed: ' + ((err && err.message) || 'request failed') });
+      });
+    });
+  }
+
   // Initialize
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', function() {
       wireToggle();
+      wireBackupControls();
       S.wireDirty('sec-general', S.markDirty);
     });
   }
 
+  window.SettingsGeneral = { onFolderSelected: onFolderSelected, onBackupStatus: onBackupStatus };
   S.registerSection(sectionName, { load: load, save: save });
 })();

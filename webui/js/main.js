@@ -232,6 +232,18 @@ function handleWebMessage(event) {
         }
         break;
 
+      case 'backupFolderSelected':
+        if (window.SettingsGeneral && typeof window.SettingsGeneral.onFolderSelected === 'function') {
+          window.SettingsGeneral.onFolderSelected(data.folder);
+        }
+        break;
+
+      case 'backupStatus':
+        if (window.SettingsGeneral && typeof window.SettingsGeneral.onBackupStatus === 'function') {
+          window.SettingsGeneral.onBackupStatus(data);
+        }
+        break;
+
       case 'updateTopbarTitle':
         if (typeof updateTopbarTitle === 'function') updateTopbarTitle(data);
         break;

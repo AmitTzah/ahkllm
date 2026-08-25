@@ -18,6 +18,7 @@ class ThreadRepo {
     static Create(title := "New Chat") {
         id := ChatDB._UUID()
         ChatDB.db.Query("INSERT INTO chat_threads (id, title) VALUES(?, ?);", id, title)
+        ChatDB._MarkPersistentDataChanged()
         return id
     }
 
@@ -50,6 +51,7 @@ class ThreadRepo {
                 setClause .= (i > 1 ? ", " : "") p
             params.Push(threadId)
             ChatDB.db.Query("UPDATE chat_threads SET " setClause " WHERE id=?;", params*)
+            ChatDB._MarkPersistentDataChanged()
         }
     }
 
@@ -146,11 +148,13 @@ class ThreadRepo {
     static SoftDelete(threadId) {
         debugLog("[THREAD] Deleted - id=" threadId)
         ChatDB.db.Query("UPDATE chat_threads SET is_deleted=1, deleted_at=datetime('now'), updated_at=datetime('now') WHERE id=?;", threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Restore a trashed thread.
     static Restore(threadId) {
         ChatDB.db.Query("UPDATE chat_threads SET is_deleted=0, deleted_at=NULL, updated_at=datetime('now') WHERE id=?;", threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Permanently delete expired trashed threads.
@@ -169,14 +173,27 @@ class ThreadRepo {
         ; Bug #129: keep messages_fts in sync with messages - remove the FTS
         ; rows for every purged message (same guarantee as MessageRepo.HardDelete
         ; -> FTS_Remove). The raw DELETEs below never touch the FTS index.
+        changed := false
         for row in expiredTable.rows {
             msgIds := ChatDB.db.Query("SELECT id FROM messages WHERE thread_id=?;", row.id)
             for m in msgIds.rows
                 ChatDB.FTS_Remove(m.id)
-            AttachmentRepo.DeleteByThread(row.id)
+            if AttachmentRepo.DeleteByThread(row.id, false) > 0
+                changed := true
         }
         ChatDB.db.Query("DELETE FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', ?));", retentionModifier)
+        if ThreadRepo._Changes() > 0
+            changed := true
         ChatDB.db.Query("DELETE FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', ?);", retentionModifier)
+        if ThreadRepo._Changes() > 0
+            changed := true
+        if changed
+            ChatDB._MarkPersistentDataChanged()
+    }
+
+    static _Changes() {
+        result := ChatDB.db.Exec("SELECT changes() AS count;")
+        return result.count ? Integer(result[1, "count"]) : 0
     }
 
     ; Permanently delete a thread and all its messages.
@@ -194,6 +211,7 @@ class ThreadRepo {
             ChatDB.FTS_Remove(m.id)
         ChatDB.db.Query("DELETE FROM messages WHERE thread_id=?;", threadId)
         ChatDB.db.Query("DELETE FROM chat_threads WHERE id=?;", threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 
     ; Update thread title and timestamp.
@@ -204,5 +222,6 @@ class ThreadRepo {
             ChatDB.db.Query("UPDATE chat_threads SET title=?, updated_at=datetime('now') WHERE id=?;", title, threadId)
         else
             ChatDB.db.Query("UPDATE chat_threads SET title=? WHERE id=?;", title, threadId)
+        ChatDB._MarkPersistentDataChanged()
     }
 }

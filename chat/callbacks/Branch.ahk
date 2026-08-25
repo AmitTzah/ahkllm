@@ -72,6 +72,7 @@ _setupSiblingGroup(msg) {
         ; Hardening item 1: msg.id and sg are bound parameters - crafted ids
         ; can never alter the SQL text.
         ChatDB.db.Query("UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;", sg, msg.id)
+        ChatDB._MarkPersistentDataChanged()
     }
     return sg
 }

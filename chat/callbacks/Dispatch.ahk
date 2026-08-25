@@ -86,6 +86,10 @@ OnWebMessageReceived(sender, args) {
                 CustomMessages.notifyReloadMain(requestParams["mainScriptHiddenHwnd"])
             case "browseIcon":
                 _HandleBrowseIcon(parsed)
+            case "browseBackupFolder":
+                _HandleBrowseBackupFolder(parsed)
+            case "backupNow":
+                _HandleBackupNow(parsed)
             case "debugLog":
                 debugLog(parsed.Get("message", ""), "WebUI")
             case "updateFontSize":
@@ -174,6 +178,8 @@ _HandleRequestAllSettings() {
     ; message (appSettings) so it can never be mistaken for the right-rail
     ; per-thread payload (threadSettings).
     postWebMessage("appSettings", merged)
+    if requestParams.Has("mainScriptHiddenHwnd")
+        CustomMessages.notifyBackupStatusRequest(requestParams["mainScriptHiddenHwnd"])
 }
 
 ; Send raw defaults (not merged with loaded) to WebView for Reset button.
@@ -277,6 +283,32 @@ _HandleBrowseIcon(parsed) {
     if InStr(selected, repoRoot) = 1
         selected := SubStr(selected, StrLen(repoRoot) + 2)
     postWebMessage("iconFileSelected", { field: field, path: selected })
+}
+
+_HandleBrowseBackupFolder(parsed) {
+    current := parsed.Get("folder", "")
+    ; AutoHotkey's numeric mode 2 is a save-file dialog. Use the explicit
+    ; directory mode so Browse cannot select a backup file; also discard a
+    ; stale/typed file path as the dialog's starting directory.
+    currentDir := DirExist(current) ? current : ""
+    selected := FileSelect("D", currentDir, "Select AHKLLM backup folder")
+    if selected
+        postWebMessage("backupFolderSelected", { folder: selected })
+}
+
+_HandleBackupNow(parsed) {
+    config := parsed.Get("backup", "")
+    if !IsObject(config)
+        throw Error("backupNow requires the currently displayed backup configuration")
+    merged := SettingsService.SaveFromWebView({ backup: config })
+    if !merged
+        throw Error("could not persist the backup configuration")
+    ; The config is persisted/applied in this process and is also sent
+    ; explicitly to Main. Do not send a second settings-updated notification:
+    ; that notification can race after the manual backup and leave the just-
+    ; completed backup falsely pending for the settings change itself.
+    if !CustomMessages.notifyBackupNow(requestParams["mainScriptHiddenHwnd"], config)
+        throw Error("could not send the manual backup request to Main")
 }
 
 #Include Message.ahk
