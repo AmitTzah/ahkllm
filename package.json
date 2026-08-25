@@ -5,7 +5,8 @@
   "description": "AhkLLM - a Windows-native AI assistant built on AutoHotkey v2 with a WebView2 chat UI",
   "scripts": {
     "test": "npm run test:fast",
-    "test:fast": "npm run test:contract && npm run test:lockgates && npm run test:load && npm run test:sql && npm run test:ahk && npm run test:unit",
+    "test:fast": "npm run check:release && npm run test:contract && npm run test:lockgates && npm run test:load && npm run test:sql && npm run test:ahk && npm run test:unit",
+    "check:release": "node scripts/check-release-readiness.js",
     "test:lockgates": "node scripts/check-lock-gates.js",
     "test:contract": "node scripts/check-ipc-contract.js",
     "test:load": "node scripts/check-ahk-load.js",

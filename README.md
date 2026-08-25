@@ -38,6 +38,7 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 - Windows 10 or later
 - [AutoHotkey v2.0.18+](https://www.autohotkey.com/)
 - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11)
+- [Node.js 22+](https://nodejs.org/) (tests only)
 - API keys for the providers you want to use, set as environment variables or entered directly in Settings:
   - `DEEPSEEK_API_KEY`
   - `OPENAI_API_KEY`
@@ -47,13 +48,15 @@ AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It si
 
 1. Install [AutoHotkey v2](https://www.autohotkey.com/download/ahk-v2.exe)
 2. Clone this repo
-3. Set your API keys:
+3. Install Node.js 22+ if you want to run the tests. No `npm install` is required: runtime JavaScript dependencies are vendored under `webui/`.
+4. Set your API keys:
    ```cmd
    setx DEEPSEEK_API_KEY "sk-your-key"
    ```
-4. Double-click `Main.ahk` (or run `AutoHotkey64.exe Main.ahk`)
-5. Press `` ` `` to open the command menu
-6. Press `` ` `` then `1` to open the chat window, or right-click the tray icon
+   Start a new terminal or sign out/in after `setx` so the environment change is visible. Never commit a real key, settings file, log, database, or user attachment.
+5. Double-click `Main.ahk` (or run `AutoHotkey64.exe Main.ahk`)
+6. Press `` ` `` to open the command menu
+7. Press `` ` `` then `1` to open the chat window, or right-click the tray icon
 
 ## Configuration
 
@@ -65,9 +68,9 @@ Default hotkeys: `` ` `` (backtick) opens the command menu, Ctrl+Alt+R reloads t
 
 ## Where your data lives
 
-Chats, settings, and attachments are stored locally under `%APPDATA%\AhkLLM\`: `settings.json`, a SQLite chat database with real-time search, and your uploaded files. The only thing leaving your machine is the request you send to the provider you picked.
+Chats, settings, and attachments are stored locally under `%APPDATA%\AhkLLM\`: `settings.json`, a SQLite chat database with real-time search, and your uploaded files. API request/response logs and the diagnostic debug log are written under `%TEMP%` and can contain prompt, response, or attachment-derived data; logging can be disabled in Settings. Directly entered provider keys are stored in `settings.json`; environment variables are preferred. The app has no telemetry, but prompts, selected text, and uploaded attachments leave your machine when you send them to the configured provider. With Web Search enabled, DeepSeek may search through its Responses API, while other providers use Tavily; those services receive the relevant search query.
 
-Chat passwords are stored as PBKDF2-SHA-256 hashes and gate access inside the app; chat content itself is **not encrypted at rest** (see [Locked Chats](docs/locked-chats.md)).
+Chat passwords are stored as PBKDF2-SHA-256 hashes and gate access inside the app. Locked-chat bodies are redacted in the API log viewer, but the chat database and attachments remain **unencrypted at rest** (see [Locked Chats](docs/locked-chats.md)). This is an app-level lock, not protection from another process that can read your Windows profile.
 
 ## Running Tests
 
@@ -94,3 +97,5 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for a deep dive into the data model, IP
 GNU General Public License v3.0. See [`LICENSE`](LICENSE).
 
 AhkLLM is a derivative of [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant) by [kdalanon](https://github.com/kdalanon), extended with a full WebView2 chat GUI, message branching, multi-provider streaming, file attachments, and a comprehensive test suite.
+
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for vendored libraries, binaries, fonts, icons, licenses, and attribution requirements.

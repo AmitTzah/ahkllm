@@ -39,6 +39,14 @@ desktop.ini
 *.sqlite3-shm
 *.sqlite3-journal
 
+# AhkLLM user state if a developer runs the app from a copied working tree
+settings.json
+chat_history.db
+attachments/
+
+# Headless test output is regenerated locally and is not a fixture.
+tests/headless/results/
+
 # Logs
 *.log
 debug*.txt

@@ -29,7 +29,7 @@ screen and no focus is stolen. It still needs elevated permissions (profile isol
 WebView2 startup), so the sandbox will ask - that is expected (`--check-sync` needs no app
 and no permission). Each run gets its own WebView2 user-data folder, so leftover browser
 processes from aborted runs cannot block the next launch. Results go to
-`tests/headless/results/headless-verification.txt` and stdout, one `PASS/FAIL` line per
+the ignored `tests/headless/results/` directory and stdout, one `PASS/FAIL` line per
 scenario.
 
 ## Cleanup after an aborted run
@@ -96,8 +96,8 @@ Point an agent at this folder — `BUG_HUNT_REPORT.md` is the entry point:
   the entries' Statuses.
 - **"What's open?"** → read "Current state" / the open-bug list.
 
-The results file (`results/headless-verification.txt`) is regenerated on every run; the
-report is the authoritative source for bug status.
+The local results file is regenerated on every run and is intentionally not tracked;
+the report is the authoritative source for bug status.
 
 ## Verifying a fix with git stash (optional)
 

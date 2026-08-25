@@ -1,39 +1,47 @@
-; original by tmplinshi, modified by toralf, Alguimist: https://www.autohotkey.com/boards/viewtopic.php?f=6&t=1079
-; converted to v2 by Relayer: https://www.autohotkey.com/boards/viewtopic.php?f=83&t=114445
+; AhkLLM original implementation.
+;
+; The historical AutoXYWH source was identified as a 2015 AutoHotkey v1
+; forum implementation by tmplinshi, with later modifications/conversion,
+; but no redistribution license could be established. The application only
+; needs proportional x/y movement and w/h resizing for InputWindow, so this
+; small implementation is authored for AhkLLM rather than redistributing that
+; unknown-license code.
 
-AutoXYWH(DimSize, cList*)
-{
-	Static cInfo := Map()
-	If DimSize = 'reset'
-		Return cInfo := Map()
-	For Ctrl in cList
-	{
-		Ctrl.Gui.GetPos(,, &gw, &gh)
-		If !cInfo.Has(Ctrl)
-		{
-			Ctrl.GetPos(&x, &y, &w, &h)
-			fx := fy := fw := fh := 0
-			For dim in StrSplit(RegExReplace(DimSize, 'i)[^xywh]'))
-				f%dim% := RegExMatch(DimSize, 'i)' dim '\s*\K[\d.-]+', &m) ? m[] : 1
-			If InStr(DimSize, 't')
-			{
-				Hwnd := DllCall('GetParent', 'Ptr', Ctrl.Hwnd, 'Ptr')
-				DllCall('GetWindowRect', 'Ptr', Hwnd, 'Ptr', RECT := Buffer(16, 0))
-				DllCall('MapWindowPoints', 'Ptr', 0, 'Ptr', DllCall('GetParent', 'Ptr', Hwnd, 'Ptr'), 'Ptr', RECT, 'UInt', 2)
-				x -= NumGet(RECT, 'Int') * 96 // A_ScreenDPI
-				y -= NumGet(RECT, 4, 'Int') * 96 // A_ScreenDPI
-			}
-			cInfo[Ctrl] := Map('x', x, 'fx', fx, 'y', y, 'fy', fy, 'w', w, 'fw', fw, 'h', h, 'fh', fh, 'gw', gw, 'gh', gh, 'm', !!InStr(DimSize, '*'))
-		}
-		Else
-		{
-			dgw := gw - cInfo[Ctrl]['gw'], dgh := gh - cInfo[Ctrl]['gh']
-			Ctrl.Move(cInfo[Ctrl]['fx'] ? dgw * cInfo[Ctrl]['fx'] + cInfo[Ctrl]['x'] : unset
-				, cInfo[Ctrl]['fy'] ? dgh * cInfo[Ctrl]['fy'] + cInfo[Ctrl]['y'] : unset
-				, cInfo[Ctrl]['fw'] ? dgw * cInfo[Ctrl]['fw'] + cInfo[Ctrl]['w'] : unset
-				, cInfo[Ctrl]['fh'] ? dgh * cInfo[Ctrl]['fh'] + cInfo[Ctrl]['h'] : unset)
-			If cInfo[Ctrl]['m']
-				Ctrl.Redraw()
-		}
-	}
+AutoXYWH(DimSize, controls*) {
+    static snapshots := Map()
+
+    if DimSize = "reset"
+        return snapshots := Map()
+
+    dimensions := Map()
+    normalized := StrLower(DimSize)
+    for axis in ["x", "y", "w", "h"] {
+        if !InStr(normalized, axis)
+            continue
+        if RegExMatch(normalized, axis "\s*(-?(?:\d+(?:\.\d*)?|\.\d+))", &match)
+            dimensions[axis] := match[1] + 0
+        else
+            dimensions[axis] := 1
+    }
+
+    for control in controls {
+        control.Gui.GetPos(,, &guiWidth, &guiHeight)
+        if !snapshots.Has(control) {
+            control.GetPos(&x, &y, &width, &height)
+            snapshots[control] := {
+                x: x, y: y, width: width, height: height,
+                guiWidth: guiWidth, guiHeight: guiHeight
+            }
+            continue
+        }
+
+        prior := snapshots[control]
+        deltaWidth := guiWidth - prior.guiWidth
+        deltaHeight := guiHeight - prior.guiHeight
+        control.Move(
+            dimensions.Has("x") ? prior.x + deltaWidth * dimensions["x"] : unset,
+            dimensions.Has("y") ? prior.y + deltaHeight * dimensions["y"] : unset,
+            dimensions.Has("w") ? prior.width + deltaWidth * dimensions["w"] : unset,
+            dimensions.Has("h") ? prior.height + deltaHeight * dimensions["h"] : unset)
+    }
 }
