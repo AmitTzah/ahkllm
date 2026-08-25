@@ -1532,6 +1532,55 @@ class ChatDBTest {
         }
     }
 
+    Thread_PurgeExpired_NoExpiredThreadsDoesNotMarkBackupDirty() {
+        global trashRetentionDays, gBackupManager
+        oldRetention := trashRetentionDays
+        hadManager := IsSet(gBackupManager)
+        oldManager := hadManager ? gBackupManager : unset
+        trashRetentionDays := 30
+        try {
+            this._setup()
+            gBackupManager := BackupManager()
+            before := gBackupManager._changeGeneration
+            ChatDB.Thread_PurgeExpired()
+            if gBackupManager._changeGeneration != before
+                throw Error("a no-op purge must not notify the backup manager")
+        } finally {
+            trashRetentionDays := oldRetention
+            if hadManager
+                gBackupManager := oldManager
+            else
+                gBackupManager := unset
+            this._teardown()
+        }
+    }
+
+    Thread_PurgeExpired_ExpiredThreadsMarkBackupDirty() {
+        global trashRetentionDays, gBackupManager
+        oldRetention := trashRetentionDays
+        hadManager := IsSet(gBackupManager)
+        oldManager := hadManager ? gBackupManager : unset
+        trashRetentionDays := 1
+        try {
+            this._setup()
+            expiredId := ChatDB.Thread_Create("Expired for dirty test")
+            ChatDB.Thread_SoftDelete(expiredId)
+            ChatDB.db.Query("UPDATE chat_threads SET deleted_at=datetime('now', '-2 days') WHERE id=?;", expiredId)
+            gBackupManager := BackupManager()
+            before := gBackupManager._changeGeneration
+            ChatDB.Thread_PurgeExpired()
+            if gBackupManager._changeGeneration <= before
+                throw Error("purging an expired thread must notify the backup manager")
+        } finally {
+            trashRetentionDays := oldRetention
+            if hadManager
+                gBackupManager := oldManager
+            else
+                gBackupManager := unset
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Cumulative counter persistence
     ; --------------------

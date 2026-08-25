@@ -105,7 +105,7 @@ class SettingsHandlerTest {
         defaults := SettingsHandler.GetDefaults()
         expectedKeys := ["version", "providers", "models", "assistants", "commands",
                           "submenuOrder", "threadTitles", "ui", "icons",
-                          "hotkeys", "apiLogs", "trash", "menuItems"]
+                          "hotkeys", "apiLogs", "trash", "backup", "menuItems"]
         for _, k in expectedKeys {
             if !defaults.Has(k)
                 throw Error("GetDefaults() missing key: " k)

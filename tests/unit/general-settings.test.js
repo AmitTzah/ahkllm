@@ -36,6 +36,7 @@ function loadSection(opts) {
     const timers = [];
     const registered = [];
     const dirtyCalls = [];
+    const ipcCalls = [];
 
     const panelStub = {
         registerSection: (name, mod) => { registered.push({ name, mod }); },
@@ -51,6 +52,10 @@ function loadSection(opts) {
         },
         window: {
             SettingsPanel: settingsPanel,
+        },
+        Ipc: {
+            postToHost: (action, payload) => { ipcCalls.push({ method: 'postToHost', action, payload }); },
+            request: (action, payload) => { ipcCalls.push({ method: 'request', action, payload }); return Promise.resolve({ ok: true }); },
         },
         setTimeout: (fn) => { timers.push(fn); },
         console,
@@ -69,6 +74,7 @@ function loadSection(opts) {
         panelStub,
         registered,
         dirtyCalls,
+        ipcCalls,
         domContentLoaded,
         timers,
         module: registeredModule || (registered[0] && registered[0].mod),
@@ -211,7 +217,9 @@ describe('General settings section', () => {
                 trashRetentionDays: makeEl({ value: '3' }),
                 chatShortcut: makeEl({ value: 'Alt+Z' }),
                 newChatStartsWith: makeEl({ value: 'asst:asst-1' }),
-                tavilyApiKey: makeEl({ value: 'tvly-test' }),
+            tavilyApiKey: makeEl({ value: 'tvly-test' }),
+                backupEnabledToggle: makeEl({ classList: makeClassList(['on']) }),
+                backupFolder: makeEl({ value: 'C:\\Backups' }),
             },
         });
         const data = ctx.module.save();
@@ -222,7 +230,24 @@ describe('General settings section', () => {
             chatShortcut: 'Alt+Z',
             tavilyApiKey: 'tvly-test',
             newChatStartsWith: 'asst:asst-1',
+            backup: { enabled: true, folder: 'C:\\Backups' },
         }));
+    });
+
+    it('loads and saves backup settings, including the disabled defaults', () => {
+        const toggle = makeEl({ classList: makeClassList() });
+        const folder = makeEl();
+        const status = makeEl();
+        const ctx = loadSection({ els: { backupEnabledToggle: toggle, backupFolder: folder, backupStatus: status } });
+        ctx.module.load({ backup: { enabled: true, folder: 'D:\\Synced\\AHKLLM' }, backupStatus: { text: 'Last backup: Aug 25, 2026 17:40' } });
+        assert.ok(toggle.classList.contains('on'));
+        assert.strictEqual(folder.value, 'D:\\Synced\\AHKLLM');
+        assert.strictEqual(status.textContent, 'Last backup: Aug 25, 2026 17:40');
+        const saved = ctx.module.save();
+        assert.strictEqual(JSON.stringify(saved.backup), JSON.stringify({ enabled: true, folder: 'D:\\Synced\\AHKLLM' }));
+
+        const empty = loadSection({}).module.save();
+        assert.strictEqual(JSON.stringify(empty.backup), JSON.stringify({ enabled: false, folder: '' }));
     });
 
     it('save falls back to defaults when elements are missing or values are invalid', () => {
@@ -266,6 +291,25 @@ describe('General settings section', () => {
         const ctx = loadSection({ els: { secGeneral: container } });
         ctx.fireDomReady(); // no toggle/fields, no inputs — must not throw
         assert.ok(true);
+    });
+
+    it('Back Up Now sends the currently displayed folder to the native request', async () => {
+        const now = makeEl();
+        const folder = makeEl({ value: 'D:\\Displayed\\Backup' });
+        const toggle = makeEl({ classList: makeClassList(['on']) });
+        const ctx = loadSection({ els: {
+            backupNowBtn: now,
+            backupFolder: folder,
+            backupEnabledToggle: toggle,
+        } });
+        ctx.fireDomReady();
+
+        now.fire('click');
+        await new Promise((resolve) => setImmediate(resolve));
+        const request = ctx.ipcCalls.find((call) => call.method === 'request' && call.action === 'backupNow');
+        assert.ok(request, 'manual backup must reach IPC');
+        assert.strictEqual(request.payload.backup.enabled, true);
+        assert.strictEqual(request.payload.backup.folder, 'D:\\Displayed\\Backup');
     });
 
     it('wireDirty marks dirty on change and input for every field', () => {

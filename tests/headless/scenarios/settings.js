@@ -1581,4 +1581,48 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 266,
+  name: 'Back Up Now uses the displayed backup folder without a separate Save click',
+  regression: true,
+  mode: null,
+  settings: {},
+  async body({ cdp, dataDir }) {
+    const target = path.join(os.tmpdir(), 'ahkllm-backup-now-' + process.pid + '-' + Date.now());
+    try { fs.rmSync(target, { recursive: true, force: true }); } catch {}
+    await showChat();
+    await openSettings(cdp);
+    await openSection(cdp, 'general');
+    await cdp.waitFor('document.getElementById("backupFolder") !== null', 10000, 250, 'backup controls');
+    await cdp.eval(`(() => {
+      const folder = document.getElementById('backupFolder');
+      folder.value = ${JSON.stringify(target)};
+      folder.dispatchEvent(new Event('input', { bubbles: true }));
+      folder.dispatchEvent(new Event('change', { bubbles: true }));
+      const toggle = document.getElementById('backupEnabledToggle');
+      if (!toggle.classList.contains('on')) toggle.click();
+      return { folder: folder.value, enabled: toggle.classList.contains('on') };
+    })()`);
+    // Deliberately click Back Up Now directly; the Settings Save button is
+    // never pressed. The native path is verified by the resulting ZIP.
+    await cdp.click('#backupNowBtn');
+    const start = Date.now();
+    let saved = null;
+    const zip = path.join(target, 'AHKLLM Backup.zip');
+    while (Date.now() - start < 30000) {
+      try {
+        const current = readJsonFile(path.join(dataDir, 'settings.json'));
+        if (current.backup && current.backup.folder === target && current.backup.enabled) {
+          saved = current;
+          if (fs.existsSync(zip)) break;
+        }
+      } catch {}
+      await sleep(300);
+    }
+    if (!saved) throw new Error('Back Up Now did not persist the displayed backup config: ' + target);
+    if (!fs.existsSync(zip)) throw new Error('Back Up Now did not publish a ZIP in the displayed folder: ' + target);
+    return 'displayed folder ' + target + ' reached settings.json and native manual backup published ' + zip;
+  }
+});
+
 module.exports = scenarios;

@@ -19,7 +19,9 @@ RunWait(cmd := "", workDir := "", options := "", &outPID := 0) {
 }
 
 FileSelect(options := "", root := "", prompt := "", filter := "") {
-    global _mockFileSelectResult
+    global _mockFileSelectResult, _mockFileSelectOptions, _mockFileSelectRoot
+    _mockFileSelectOptions := options
+    _mockFileSelectRoot := root
     return _mockFileSelectResult
 }
 
@@ -488,6 +490,24 @@ class ChatDispatchTest {
         }
         if this._findCaptured(web.captured, "iconFileSelected")
             throw Error("Cancelled/invalid icon browse must not post")
+    }
+
+    Dispatch_BrowseBackupFolder_UsesDirectoryPicker() {
+        global _mockFileSelectResult, _mockFileSelectOptions, _mockFileSelectRoot
+        filePath := A_Temp "\\backup-browse-file-" A_TickCount ".txt"
+        FileAppend("not a folder", filePath)
+        _mockFileSelectResult := A_Temp "\\selected-backup-folder"
+        _mockFileSelectOptions := ""
+        _mockFileSelectRoot := "sentinel"
+        try {
+            _HandleBrowseBackupFolder(Map("folder", filePath))
+            if _mockFileSelectOptions != "D"
+                throw Error("backup Browse must use FileSelect directory mode D")
+            if _mockFileSelectRoot != ""
+                throw Error("backup Browse must not use a file as the starting directory")
+        } finally {
+            try FileDelete(filePath)
+        }
     }
 
     Dispatch_IpcActions_NoThrow() {
