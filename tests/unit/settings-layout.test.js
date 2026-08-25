@@ -7,6 +7,11 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const rightPanelCss = fs.readFileSync(
+    path.resolve(__dirname, '..', '..', 'webui', 'css', 'right-panel.css'),
+    'utf-8'
+);
+
 // =========================================================================
 // HTML structure validation — #settingsNav and #settingsCenter
 // =========================================================================
@@ -134,5 +139,12 @@ describe('index.html settings structure', () => {
         });
         assert.deepStrictEqual(missing, [],
             'These getElementById calls have no matching id in index.html: ' + JSON.stringify(missing));
+    });
+});
+
+describe('right-panel layout', () => {
+    it('lets the configuration panel size to its content instead of reserving half the rail', () => {
+        assert.match(rightPanelCss, /#rr-session\s*\{[^}]*height:\s*auto;/s);
+        assert.doesNotMatch(rightPanelCss, /#rr-session\s*\{[^}]*height:\s*50%/s);
     });
 });

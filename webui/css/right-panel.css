@@ -1,7 +1,9 @@
 /* right-panel.css — Right rail: config panel, model card, fields, thread map */
 
 .rr-panel { display: flex; flex-direction: column; min-height: 0; }
-#rr-session { flex: 0 0 auto; height: 50%; min-height: 200px; }
+/* Let the configuration section end with its content by default. The seam
+   can still assign an explicit height when the user resizes the section. */
+#rr-session { flex: 0 0 auto; height: auto; min-height: 200px; }
 #rr-thread { flex: 1; min-height: 200px; }
 
 .h-seam {
