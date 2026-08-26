@@ -30,8 +30,10 @@ handleEdit(params, *) {
         model := ""
         tokenCount := 0, promptTokens := 0, thinkingTokens := 0, cachedTokens := 0, activePathTokens := 0
         reasoning := ""
+        found := false
         for i, msg in path {
             if msg.id = id {
+                found := true
                 parentId := msg.parent_id
                 role := msg.role
                 model := msg.model
@@ -56,6 +58,11 @@ handleEdit(params, *) {
                 break
             }
         }
+        ; Branching is only valid from a message on the current active path.
+        ; Never let the default assistant/root metadata below turn a missing
+        ; or off-path source into a durable bogus root.
+        if !found
+            return
         ; Bug #118: this is a LOCAL DB copy - no API call happened, so Insert
         ; must not upsert chat_usage or re-charge the cumulative counters.
         ; Bug #123: carry the source message's token metadata (token_count,

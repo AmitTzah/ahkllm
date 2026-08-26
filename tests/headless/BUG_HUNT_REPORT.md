@@ -154,11 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **5 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 301 fixed and committed with
-  ownership enforced at the persistence/application boundary. Next:
-  invalid branch-edit sources in scenario 302.
+- **Where we left off:** 2026-08-26 - Scenario 302 fixed and fully verified;
+  report update is ready for commit. Next: locked API-log redaction scenario 304.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -224,7 +223,7 @@ one at a time, in rank order.
 
 **Scenario:** 302
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** In active thread A, send an `editMessage` IPC action with
 `mode:"branch"` and a nonexistent ID, a B ID, or an off-active-path A ID.
@@ -232,19 +231,17 @@ one at a time, in rank order.
 **Expected:** Branch edit fails closed unless the source is an allowed message
 owned by A; no new message is inserted for an invalid source.
 
-**Actual:** Cross-thread and nonexistent IDs are now rejected by the ownership
-boundary, but `handleEdit` still initializes default source metadata and calls
-`Msg_Insert` for a same-thread off-active-path ID.
+**Actual:** Fixed: branch mode now requires the source message to be on the
+active path before inserting a branch copy; invalid IDs leave the tree and
+active leaf unchanged.
 
-**Evidence:** `chat/callbacks/Edit.ahk` branch mode has no `found` guard before
-the insert.
+**Evidence:** `chat/callbacks/Edit.ahk` validates source ownership and uses a
+`found` guard before the branch insert.
 
-**Verification:** The real WebView scenario passes for a same-thread
-off-active-path ID: it inserts an assistant root with empty/default source
-metadata and advances the active leaf; nonexistent and foreign IDs are
-rejected by the ownership fix. A subsequent send attaches to the remaining
-bogus root. The intended policy is active-path-only branching, so an off-path
-message must be navigated to before it can be branch-edited.
+**Verification:** The fixed WebView scenario rejects nonexistent, foreign, and
+off-active-path IDs without inserts or active-leaf changes; a subsequent send
+uses the preserved active path and the reopened database passes the invariant
+auditor. A handler-level regression covers the same cases and a valid source.
 
 ### 2. Chat request temp files collide when requests share an A_TickCount
 

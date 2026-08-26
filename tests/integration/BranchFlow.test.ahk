@@ -112,6 +112,40 @@ class BranchFlowTest {
         this._teardown()
     }
 
+    ; Regression (bug #302): branch-edit must fail closed when the source is
+    ; missing, foreign, or not on the active path. A valid active-path source
+    ; still creates the expected sibling.
+    BranchEdit_RejectsInvalidSources() {
+        global activeThreadId
+        threadId := this._setup()
+        activeThreadId := threadId
+        rootId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "root"})
+        activeId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "active", parent_id: rootId, model: "deepseek/deepseek-v4-flash"})
+        offPathId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "off path", parent_id: rootId, model: "deepseek/deepseek-v4-flash", sibling_group: "off-path", sibling_index: 1})
+        foreignThreadId := ChatDB.Thread_Create("Foreign")
+        foreignId := ChatDB.Msg_Insert({thread_id: foreignThreadId, role: "assistant", content: "foreign", model: "deepseek/deepseek-v4-flash"})
+        ChatDB.Msg_SetActiveLeaf(threadId, activeId)
+
+        try {
+            baseline := ChatDB.db.Query("SELECT COUNT(*) AS c, active_leaf_id FROM messages m JOIN chat_threads t ON t.id=? WHERE m.thread_id=?;", threadId, threadId)
+            if baseline[1, "c"] != 3 || baseline[1, "active_leaf_id"] != activeId
+                throw Error("invalid-source fixture setup failed")
+            for invalidId, label in Map("missing-302", "missing", foreignId, "foreign", offPathId, "off-path")
+                handleEdit(Map("id", invalidId, "content", "INVALID_" label, "mode", "branch"))
+            afterInvalid := ChatDB.db.Query("SELECT COUNT(*) AS c, active_leaf_id FROM messages m JOIN chat_threads t ON t.id=? WHERE m.thread_id=?;", threadId, threadId)
+            if afterInvalid[1, "c"] != 3 || afterInvalid[1, "active_leaf_id"] != activeId
+                throw Error("invalid branch source created a message or changed the leaf")
+
+            handleEdit(Map("id", activeId, "content", "valid active branch", "mode", "branch"))
+            valid := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND content='valid active branch';", threadId)
+            if valid[1, "c"] != 1
+                throw Error("valid active-path branch source was rejected")
+        } finally {
+            activeThreadId := ""
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Create branch via retry mechanism
     ; --------------------

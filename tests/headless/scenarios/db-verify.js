@@ -126,6 +126,7 @@ scenarios.push({
 scenarios.push({
   id: 302,
   name: "Branch edit with nonexistent, foreign, or off-path IDs inserts bogus roots",
+  regression: true,
   mode: null,
   fixtures: {
     threads: [{ id: "t-a-302", title: "Chat A", active_leaf_id: "m-a-302-active" }, { id: "t-b-302", title: "Chat B", active_leaf_id: "m-b-302" }],
@@ -136,7 +137,7 @@ scenarios.push({
       { id: "m-b-302", thread_id: "t-b-302", role: "user", content: "BBB_ONLY" }
     ]
   },
-  async body({ cdp, dbPath }) {
+  async body({ cdp, dbPath, dataDir }) {
     await showChat();
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, "thread list");
     await cdp.click('#thread-list .chat-item[data-chat="t-a-302"]');
@@ -148,15 +149,16 @@ scenarios.push({
     const bogus = seed.query(dbPath, "SELECT id, parent_id, role, model, content FROM messages WHERE thread_id='t-a-302' AND content LIKE 'BOGUS_%'");
     const foreign = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-a-302' AND content='BOGUS_FOREIGN'")[0].c;
     const missing = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-a-302' AND content='BOGUS_NONEXISTENT'")[0].c;
-    if (bogus.length !== 1 || foreign !== 0 || missing !== 0 || bogus[0]?.content !== "BOGUS_OFF_PATH" || bogus.some((row) => row.parent_id !== null || row.role !== "assistant" || (row.model !== "" && row.model !== null)))
-      throw new Error("branch-invalid IDs did not reproduce the remaining bogus roots after ownership hardening: " + JSON.stringify({ bogus, foreign }));
+    if (bogus.length !== 0 || foreign !== 0 || missing !== 0)
+      throw new Error("invalid branch sources still inserted messages: " + JSON.stringify({ bogus, foreign, missing }));
     const leaf = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-a-302'")[0].active_leaf_id;
-    if (!bogus.some((row) => row.id === leaf)) throw new Error("active leaf did not move to bogus root: " + leaf);
-    await post(cdp, { action: "chatSend", message: "AAA_AFTER_BOGUS_BRANCH" });
+    if (leaf !== "m-a-302-active") throw new Error("rejected branch sources changed active leaf: " + leaf);
+    await post(cdp, { action: "chatSend", message: "AAA_AFTER_SAFE_BRANCH" });
     await sleep(800);
-    const follow = seed.query(dbPath, "SELECT parent_id FROM messages WHERE thread_id='t-a-302' AND content='AAA_AFTER_BOGUS_BRANCH'")[0];
-    if (!follow || !bogus.some((row) => row.id === follow.parent_id)) throw new Error("subsequent send did not expose the bogus-root corruption");
-    return "ownership hardening rejects nonexistent and foreign branch IDs, but a same-thread off-path ID still inserts an assistant root; the next send attached to a bogus active root";
+    const follow = seed.query(dbPath, "SELECT parent_id FROM messages WHERE thread_id='t-a-302' AND content='AAA_AFTER_SAFE_BRANCH'")[0];
+    if (!follow || follow.parent_id !== "m-a-302-active") throw new Error("subsequent send did not use the preserved active path: " + JSON.stringify(follow));
+    assertInvariants(dbPath, dataDir);
+    return "nonexistent, foreign, and off-path branch sources were rejected without inserts or active-leaf changes; a subsequent send used the existing active path and the reopened database passed invariants";
   }
 });
 
