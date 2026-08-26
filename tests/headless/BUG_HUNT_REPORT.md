@@ -924,6 +924,6 @@ closure; never rewrite past entries.
 
 - 2026-08-26 - "Cross-thread SwitchBranch can persist a foreign active leaf" - FIXED + COMMITTED in 69761d8: ownership validation and thread-scoped leaf walking were added to TreeRepo, with scenario 300 and ChatDB regression coverage.
 - 2026-08-26 - "Cross-include `_RequestParamsAreDefault` warning can open a blocking modal" - FIXED + COMMITTED in 69761d8: the helper was relocated to the shared ChatUtils include loaded before callbacks, with scenario 308 and bounded `#Warn` load coverage.
-- 2026-08-26 - "Stale message and attachment IDs can mutate another chat" - FIXED + COMMITTED in the ownership fix commit below: message edits/hard-deletes and attachment deletion now require the expected thread, callbacks validate ownership before processing attachments, and delayed search-card edits retain their originating thread. Scenario 301 is now a regression check; AHK, invariant, fast, and full headless gates passed.
+- 2026-08-26 - "Stale message and attachment IDs can mutate another chat" - FIXED + COMMITTED in df1d0fb: message edits/hard-deletes and attachment deletion now require the expected thread, callbacks validate ownership before processing attachments, and delayed search-card edits retain their originating thread. Scenario 301 is now a regression check; AHK, invariant, fast, and full headless gates passed.
 
 
