@@ -15,6 +15,7 @@ function populateCurrentSettings(settings) {
   window._currentSettings = {
     model: settings.model || '',
     systemMessage: settings.systemMessage || '',
+    systemOverrideSet: settings.systemOverrideSet === true,
     reasoning: settings.reasoning || '',
     reasoningOverrideSet: settings.reasoningOverrideSet === true,
     temperatureOverrideSet: settings.temperatureOverrideSet === true,
@@ -140,7 +141,7 @@ function _syncWebSearchToggle() {
 // Wire right panel controls
 if (typeof document !== 'undefined' && document.addEventListener) {
 document.addEventListener('DOMContentLoaded', function() {
-  window._currentSettings = { model: '', systemMessage: '', reasoning: '', temperature: '', webSearch: false };
+  window._currentSettings = { model: '', systemMessage: '', systemOverrideSet: false, reasoning: '', temperature: '', webSearch: false };
 
   // Temperature slider — auto-enable on interaction, reset to default
   var tempSlider = document.getElementById('tempSlider');
@@ -194,6 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (sysMsgMini) sysMsgMini.addEventListener('input', function() {
     if (!window._currentSettings) window._currentSettings = {};
     window._currentSettings.systemMessage = sysMsgMini.value;
+    window._currentSettings.systemOverrideSet = true;
     _sendAllSettings();
   });
 
@@ -218,6 +220,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (full && mini) {
       mini.value = full.value;
       window._currentSettings.systemMessage = full.value;
+      window._currentSettings.systemOverrideSet = true;
       _sendAllSettings();
     }
     if (overlay) overlay.classList.remove('open');

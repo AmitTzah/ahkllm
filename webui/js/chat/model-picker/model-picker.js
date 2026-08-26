@@ -21,6 +21,7 @@ function _sendAllSettings(immediate) {
     Ipc.postToHost('updateModelSettings', {
       model: modelToSend,
       systemMessage: s.systemMessage || '',
+      systemOverrideSet: s.systemOverrideSet === true,
       reasoning: s.reasoning || '',
       temperature: temperatureToSend,
       reasoningOverrideSet: s.reasoningOverrideSet === true,
@@ -166,6 +167,7 @@ function _makeAssistantClickHandler(el, asstId) {
     if (mini) mini.value = sysPrompt;
     if (!window._currentSettings) window._currentSettings = {};
     window._currentSettings.systemMessage = sysPrompt;
+    window._currentSettings.systemOverrideSet = false;
     window._currentSettings.reasoningOverrideSet = false;
     window._currentSettings.temperatureOverrideSet = false;
     Ipc.postToHost('switchAssistant', { assistantId: asstId });
@@ -226,6 +228,7 @@ function _makeModelClickHandler(el, fullId) {
         // falls back to Model Default when the new model doesn't support
         // it). Still clear assistant-owned system prompt / temperature.
         window._currentSettings.systemMessage = '';
+        window._currentSettings.systemOverrideSet = false;
         window._currentSettings.temperature = '';
         window._currentSettings.reasoningOverrideSet = window._currentSettings.reasoning !== '';
         window._currentSettings.temperatureOverrideSet = false;

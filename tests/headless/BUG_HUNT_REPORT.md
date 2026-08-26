@@ -154,7 +154,7 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-26 - Bugs 316-318 fixed and committed; no verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass; next round is fresh intake when the user asks. Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
@@ -169,7 +169,7 @@ How to run AHK safely:
   suite); scenario 20 flipped to a regression check for the stub removal.
   Full headless suite PASS and `npm run test:fast` green. Next round: fresh
   intake when the user asks. Reviewer candidates 319-322 are all verified and
-  ranked below; bug 320 is next in rank order.
+  ranked below; bug 321 is next in rank order.
 
 ## Bug entry template
 
@@ -222,22 +222,6 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 320. Clearing an assistant system prompt is not a stable per-thread choice
-
-**Scenario:** 320 (scenario code in `scenarios/settings.js`)
-
-**Status:** verified
-
-**Repro:** Open a chat using an assistant with a distinctive system prompt; erase the right-rail System Prompt field; wait for the debounced save; send; reload the thread.
-
-**Expected:** Either the blank prompt remains a valid override, or the UI immediately restores the assistant prompt as the documented reset behavior.
-
-**Actual:** The current request omits the prompt and the field stays blank, but reload restores the assistant prompt because the empty override is stored as SQL NULL.
-
-**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` sends an empty typed value; `chat/ChatRequestBuilder.ahk:284-299` omits an empty override; `chat/ThreadSettings.ahk:42-58` restores the assistant prompt on reload.
-
-**Verification:** Scenario 320 clears the field, checks the mock request has no assistant prompt, reloads, and checks whether the prompt returns.
-
 ### 321. Deleting the active assistant response leaves the sidebar model badge stale
 
 **Scenario:** 321 (scenario code in `scenarios/chat-tree.js`)
@@ -274,6 +258,7 @@ one at a time, in rank order.
 
 - 2026-08-26 - Web-search scenarios 250-255 were reclassified as regression coverage, not bug-hunt entries; their end-to-end checks remain in the suite.
 - 2026-08-26 - "Explicit Model Default reasoning/temperature selections are lost on reload" - FIXED + COMMITTED in this fix commit: per-thread override-set flags distinguish intentional empty defaults from inherited assistant values; scenario 319 is now a regression check with ThreadSettings, persistence, and UI payload coverage.
+- 2026-08-26 - "Clearing an assistant system prompt is not a stable per-thread choice" - FIXED + COMMITTED in this fix commit: explicit blank system overrides now survive the immediate-send settings flush and reload; scenario 320 is now a regression check with request-payload and ThreadSettings coverage.
 - 2026-08-26 - "Message edit updates thread recency but leaves the sidebar stale" - FIXED + COMMITTED in this fix commit: branch and overwrite edits now post `_postThreadListRefresh()` after persistence; scenario 318 is a regression check and verifies live sidebar order/date updates.
 - 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED in this fix commit: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
 - 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.

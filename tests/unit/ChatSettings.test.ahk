@@ -442,6 +442,26 @@ class ChatSettingsTest {
         }
     }
 
+    ; Regression (bug #320): clearing an assistant prompt is an explicit
+    ; per-thread blank, not a request to restore the assistant prompt.
+    test_ThreadSettings_explicitEmptySystemOverrideWins() {
+        global assistants
+        oldAsst := assistants
+        assistants := [{
+            id: "asst-explicit-system", name: "Prompt", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "", temperature: ""
+        }]
+        try {
+            row := { assistantId: "asst-explicit-system", systemOverride: "", systemOverrideSet: true }
+            eff := ThreadSettings.ComputeEffective(row, assistants[1])
+            if eff.systemMessage != "" || !eff.systemOverrideSet
+                throw Error("explicit blank system override was replaced by assistant prompt")
+        } finally {
+            assistants := oldAsst
+        }
+    }
+
     ; Regression (bug #35): a per-thread temperature override of 0 is valid.
     ; ComputeEffective used a truthiness check and AHK treats numeric 0 as
     ; falsy, so the 0 override was dropped and the assistant's temperature

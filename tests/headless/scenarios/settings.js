@@ -93,7 +93,8 @@ scenarios.push({
 
 scenarios.push({
   id: 320,
-  name: 'Clearing an assistant system prompt omits it now but restores it after reload',
+  name: 'Clearing an assistant system prompt remains blank after reload',
+  regression: true,
   mode: 'sse-success',
   settings: {
     assistants: [{
@@ -122,10 +123,21 @@ scenarios.push({
     const current = await cdp.eval('({ prompt: document.getElementById("sysMsgMini").value, setting: window._currentSettings.systemMessage })');
     if (current.prompt !== '' || current.setting !== '')
       throw new Error('setup: prompt did not clear in the current session: ' + JSON.stringify(current));
+    const settingsPosts = (await cdp.postedMessages()).filter((message) => message.includes('"updateModelSettings"'));
+    const settingsPayload = settingsPosts.length ? JSON.parse(settingsPosts[settingsPosts.length - 1]) : null;
+    if (!settingsPayload || settingsPayload.systemOverrideSet !== true)
+      throw new Error('setup: cleared prompt did not send systemOverrideSet=true: ' + JSON.stringify(settingsPayload));
+    const beforeSend = seed.query(dbPath, "SELECT system_override_set FROM chat_threads WHERE id='t-prompt-320'");
+    if (!beforeSend.length || beforeSend[0].system_override_set !== 1)
+      throw new Error('setup: systemOverrideSet was not persisted before send: ' + JSON.stringify(beforeSend));
 
     await sendChatMessage(cdp, 'send with cleared prompt');
     await waitStreamingIdle(cdp, 30000);
     await sleep(500);
+    const postSendSettings = (await cdp.postedMessages())
+      .filter((message) => message.includes('"updateModelSettings"'))
+      .map((message) => JSON.parse(message));
+    const lastPostSendSettings = postSendSettings[postSendSettings.length - 1];
     const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
     const request = lines.find((entry) => entry.body && entry.body.stream === true);
     if (!request) throw new Error('setup: no streaming request logged; lines=' + lines.length);
@@ -135,19 +147,17 @@ scenarios.push({
     if (systemMessages.some((content) => content.indexOf('distinct assistant system 320') >= 0))
       throw new Error('setup: cleared prompt still reached the current request: ' + JSON.stringify(systemMessages));
 
-    const saved = seed.query(dbPath, "SELECT system_override FROM chat_threads WHERE id='t-prompt-320'");
-    if (!saved.length || saved[0].system_override !== null)
-      throw new Error('setup: cleared prompt was not stored as NULL: ' + JSON.stringify(saved));
+    const saved = seed.query(dbPath, "SELECT system_override, system_override_set FROM chat_threads WHERE id='t-prompt-320'");
+    if (!saved.length || saved[0].system_override !== null || saved[0].system_override_set !== 1)
+      throw new Error('setup: cleared prompt was not stored as an explicit blank override: ' + JSON.stringify({ saved, lastPostSendSettings }));
     await cdp.eval('window.loadThread("t-prompt-320"); true');
     await cdp.waitFor('window.activeThreadId === "t-prompt-320" && document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread reloaded');
     await sleep(700);
     const reloaded = await cdp.eval('document.getElementById("sysMsgMini").value');
-    // PASS means the suspected bug is reproduced: reload treats the blank as
-    // inheritance and restores the assistant prompt.
-    if (reloaded !== 'distinct assistant system 320')
-      throw new Error('blank prompt stayed blank after reload (lead not reproduced): ' + JSON.stringify(reloaded));
+    if (reloaded !== '')
+      throw new Error('blank prompt was not preserved after reload: ' + JSON.stringify(reloaded));
     return 'cleared the assistant prompt; current request had system messages=' + JSON.stringify(systemMessages) +
-      '; reload restored ' + JSON.stringify(reloaded);
+      '; explicit blank override survived reload';
   }
 });
 

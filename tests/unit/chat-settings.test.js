@@ -187,11 +187,12 @@ describe('_sendAllSettings', () => {
         const posted = [];
         ctx.window.chrome.webview.postMessage = (m) => posted.push(m);
         ctx.window._currentSettings = {
-            model: '', systemMessage: '', reasoning: '', temperature: '', assistantName: 'Defaults',
+            model: '', systemMessage: '', systemOverrideSet: true, reasoning: '', temperature: '', assistantName: 'Defaults',
             reasoningOverrideSet: true, temperatureOverrideSet: true
         };
         ctx._sendAllSettings();
         const payload = JSON.parse(posted[0]);
+        assert.strictEqual(payload.systemOverrideSet, true);
         assert.strictEqual(payload.reasoningOverrideSet, true);
         assert.strictEqual(payload.temperatureOverrideSet, true);
     });

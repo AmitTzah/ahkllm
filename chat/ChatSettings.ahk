@@ -184,6 +184,14 @@ handleModelSettingsUpdate(parsed) {
     systemOverrideSet := _BoolFrom(parsed.Get("systemOverrideSet", systemMessage != ""))
     reasoningOverrideSet := _BoolFrom(parsed.Get("reasoningOverrideSet", reasoning != ""))
     temperatureOverrideSet := _BoolFrom(parsed.Get("temperatureOverrideSet", temperature != ""))
+    ; An immediate settings flush can arrive from an older renderer snapshot
+    ; after the explicit blank was saved. Preserve that durable choice rather
+    ; than turning it back into assistant inheritance.
+    if !systemMessage && activeThreadId && !systemOverrideSet {
+        savedSettings := ChatDB.Thread_GetSettings(activeThreadId)
+        if savedSettings && savedSettings.systemOverrideSet
+            systemOverrideSet := true
+    }
     webSearch := _BoolFrom(parsed.Get("webSearch", false))
 
     ; Only clear assistant when user explicitly changes the model (non-empty).
