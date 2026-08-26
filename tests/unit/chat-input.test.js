@@ -55,6 +55,23 @@ describe('onChatSend — payload construction', () => {
         assert.strictEqual(payload.message, 'test message');
     });
 
+    it('flushes pending right-rail settings before posting chatSend (bug #316)', () => {
+        const { ctx, postedMessages } = loadInputModule();
+        const order = [];
+        ctx._sendAllSettings = (immediate) => {
+            if (immediate) order.push('settings');
+        };
+        ctx.window.chrome.webview.postMessage = (message) => {
+            order.push(JSON.parse(message).action);
+        };
+        ctx.isLoading = false;
+        ctx.onChatSend();
+        assert.deepStrictEqual(order, ['settings', 'chatSend'],
+            'the settings IPC must be posted before chatSend');
+        assert.strictEqual(postedMessages.length, 0,
+            'the test stub replaced the WebView sender');
+    });
+
     it('sends "Describe the attached content." when message is empty and attachments exist', () => {
         const { ctx, postedMessages } = loadInputModule();
         ctx.isLoading = false;

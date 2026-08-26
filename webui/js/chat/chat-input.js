@@ -43,6 +43,7 @@ function onChatSend() {
 
   if (message || attachments.length > 0) {
     // Normal send with typed text and/or attachments
+    if (typeof _sendAllSettings === 'function') _sendAllSettings(true);
     input.value = '';
     input.style.height = 'auto';
     isLoading = true;

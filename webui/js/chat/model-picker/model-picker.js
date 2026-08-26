@@ -5,9 +5,9 @@
 // Shared helpers (used by both model-picker.js and model-picker-config.js)
 
 var _settingsTimer = null;
-function _sendAllSettings() {
+function _sendAllSettings(immediate) {
   if (_settingsTimer) clearTimeout(_settingsTimer);
-  _settingsTimer = setTimeout(function() {
+  var send = function() {
     var s = window._currentSettings || {};
     // When assistant is active, don't send the base model as the model field.
     // The assistant manages the model — sending it would cause AHK to treat it
@@ -25,6 +25,15 @@ function _sendAllSettings() {
       temperature: temperatureToSend,
       webSearch: !!s.webSearch
     });
+  };
+  if (immediate) {
+    _settingsTimer = null;
+    send();
+    return;
+  }
+  _settingsTimer = setTimeout(function() {
+    _settingsTimer = null;
+    send();
   }, 300);
 }
 

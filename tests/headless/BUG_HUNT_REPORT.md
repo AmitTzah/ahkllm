@@ -154,10 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 311-315 fixed and committed;
-  Candidates 1-3 are verified in the current verification queue. Scenario
+- **Where we left off:** 2026-08-26 - Bug 316 fixed and committed; next fix is bug 317 (simultaneous message editors must keep attachment-removal state scoped to each editor). Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
   and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
@@ -221,36 +220,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 316. Right-rail settings debounce races with immediate Send
-
-**Scenario:** 316
-
-**Status:** verified
-
-**Repro:** In a fresh empty chat, type a distinctive system prompt directly into
-the right-rail `#sysMsgMini` field and immediately press Send with a message,
-without waiting 300 ms.
-
-**Expected:** The first outgoing API request contains the newly typed system
-prompt.
-
-**Actual:** The first request contained the previous/default conversational
-system prompt, not the newly typed prompt. `_sendAllSettings()` is debounced
-while `onChatSend()` posts `chatSend` immediately; the setting update arrived
-after the request had begun.
-
-**Evidence:** `webui/js/chat/model-picker/model-picker.js` delays
-`updateModelSettings` by 300 ms, while `webui/js/chat/chat-input.js` posts
-`chatSend` immediately. On a fresh chat, `chat/callbacks/Message.ahk` may apply
-the new-chat default and fire `_BuildAndFireRequest()` before the delayed
-settings callback reaches `chat/ChatSettings.ahk`.
-
-**Verification:** Headless scenario 316 PASSED: the real WebView typed
-`IMMEDIATE SYSTEM PROMPT 316` and clicked Send in the same CDP turn; the first
-local-mock request contained only the default conversational system prompt,
-not the typed prompt. The delayed `updateModelSettings` therefore arrived after
-`chatSend` had already started the request.
 
 ### 317. Simultaneous message editors cross-contaminate attachment removals
 
@@ -486,6 +455,8 @@ done-phase tests, `DeepSeekSearch.FeedFixture_MultiItemStream_*`, and
 `SearchToolExecutor` success-count tests.
 
 ## History (append-only)
+
+- 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.

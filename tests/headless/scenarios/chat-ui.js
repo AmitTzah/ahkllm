@@ -19,6 +19,7 @@ const scenarios = [];
 scenarios.push({
   id: 316,
   name: 'Right-rail system prompt debounce races with an immediate first Send - the first chat request is built before the delayed updateModelSettings IPC arrives',
+  regression: true, // FIXED bug #316 kept as a regression check (settings flush before send)
   mode: 'sse-success',
   settings: { threadTitles: { enabled: false } },
   async body({ cdp, mockLog }) {
@@ -43,12 +44,12 @@ scenarios.push({
       .filter((message) => message.role === 'system')
       .map((message) => String(message.content || ''));
     const containsTyped = systemMessages.some((content) => content.indexOf(distinctive) >= 0);
-    // Phase-1 scenarios assert the suspected buggy outcome: the first request
-    // misses the newly typed setting. This must be flipped when fixing #316.
-    if (containsTyped)
-      throw new Error('settings update reached the first request (bug #316 not reproduced): ' + JSON.stringify(systemMessages));
+    // Fixed behavior: the pending debounced settings update is flushed before
+    // chatSend, so the first request must contain the newly typed prompt.
+    if (!containsTyped)
+      throw new Error('settings update did not reach the first request (bug #316 fix incomplete): ' + JSON.stringify(systemMessages));
     return 'typed ' + JSON.stringify(distinctive) + ' and clicked Send in the same turn; first mock request system messages=' +
-      JSON.stringify(systemMessages) + ' (the delayed updateModelSettings arrived after chatSend)';
+      JSON.stringify(systemMessages) + ' (pending updateModelSettings was flushed before chatSend)';
   }
 });
 
