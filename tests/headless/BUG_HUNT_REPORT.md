@@ -154,12 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix in progress, 2 fix applied** (2026-08-26). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Phase 1 verified #1-#7 and added
-  invariant scenarios 307/309. Phase 2 has #1 and the user-reported #8
-  warning fix applied; await the user's manual verification/commit before
-  starting another production fix.
+- **Where we left off:** 2026-08-26 - Baseline audit committed as 69761d8;
+  scenarios 300 and 308 were independently re-verified as fixed. Phase 2 next:
+  cross-chat mutation scenario 301.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -221,31 +220,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. Cross-thread SwitchBranch can persist a foreign active leaf
-
-**Scenario:** 300
-
-**Status:** fix applied
-
-**Repro:** With chats A and B present, switch to A and deliver a stale
-`switchBranch` event carrying a branch message ID from B.
-
-**Expected:** The operation is rejected or is a no-op. A's `active_leaf_id`
-and active path remain unchanged and every persisted active leaf belongs to A.
-
-**Actual:** Fixed: `SwitchBranch` now rejects a message not owned by the
-caller thread, scopes leaf walking by thread, and scopes thread stats' leaf
-lookup by thread.
-
-**Evidence:** `chat/db/TreeRepo.ahk` `SwitchBranch` calls `GetSiblings(msgId)`
-and then updates `chat_threads` by `threadId` without a membership check.
-
-**Verification:** Bug reproduction passed before the fix in the DB probe; the
-flipped real WebView regression now passes with A's own leaf/path/stats
-preserved across reopen and a subsequent send continuing the existing root. A
-unit regression and the full release suite also pass.
-
-### 2. Stale message and attachment IDs can mutate another chat
+### 1. Stale message and attachment IDs can mutate another chat
 
 **Scenario:** 301
 
@@ -270,7 +245,7 @@ switching to A, stale edit/delete/delete-attachment IPC changed B and removed
 the locked target's attachment/file while A remained active. The DB ownership
 probe independently reproduced the same three mutations.
 
-### 3. Invalid branch-edit IDs can create a bogus root message
+### 2. Invalid branch-edit IDs can create a bogus root message
 
 **Scenario:** 302
 
@@ -294,7 +269,7 @@ source metadata and advanced the active leaf; a subsequent send attached to
 the bogus root. The intended policy is active-path-only branching, so an
 off-path message must be navigated to before it can be branch-edited.
 
-### 4. Chat request temp files collide when requests share an A_TickCount
+### 3. Chat request temp files collide when requests share an A_TickCount
 
 **Scenario:** 303
 
@@ -317,7 +292,7 @@ cleanup each other's bearer-containing files.
 also found title-generation temp names are tick-only. No timing-based clicking
 was used.
 
-### 5. Locked-chat API logs use the visible thread instead of the request owner
+### 4. Locked-chat API logs use the visible thread instead of the request owner
 
 **Scenario:** 304
 
@@ -342,7 +317,7 @@ send, relocked, switched away to U, and completion logged
 `activeThreadId` expression in success, error, and cancellation logging; the
 same owner decision therefore affects all three terminal paths.
 
-### 6. Multi-step persistence operations can leave durable partial state
+### 5. Multi-step persistence operations can leave durable partial state
 
 **Scenario:** 305
 
@@ -371,7 +346,7 @@ remained after close/reopen. `PRAGMA integrity_check` and
 the attachment case also left the message without its physical file, and the
 lock case left metadata with `is_locked=0`.
 
-### 7. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+### 6. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
 **Scenario:** 306
 
@@ -394,30 +369,6 @@ false.
 Include/reachability audit found current `Main.ahk` does not call
 `Thread_List`, while `ChatWindow.ahk` loads `ChatUtils` and the service; this
 is verified as a latent API defect, not a currently reachable UI leak.
-
-### 8. Cross-include `_RequestParamsAreDefault` warning can open a blocking modal
-
-**Scenario:** 308
-
-**Status:** fix applied
-
-**Repro:** Launch the chat process with `#Warn` enabled and create the first
-message when `Message.ahk` calls `_RequestParamsAreDefault()`.
-
-**Expected:** The helper resolves as a defined global function and no warning
-dialog interrupts first-message processing.
-
-**Actual:** Observed warning: “This local variable appears to never be
-assigned a value. Specifically: `_RequestParamsAreDefault`,” at
-`chat/callbacks/Message.ahk:25`. AHK can show this as a modal popup and block
-the chat process.
-
-**Evidence:** The helper is now defined once in `ChatUtils.ahk`, loaded before
-the callback include; it is no longer defined in `ChatSettings.ahk`.
-
-**Verification:** Scenario 308 and the bounded AHK load suite pass with
-`#Warn All, StdOut`; the full release suite passes. Full GUI first-send replay
-is blocked by profile isolation.
 
 **Feature checks (web-search milestone):**
 
@@ -993,5 +944,8 @@ closure; never rewrite past entries.
 - 2026-08-04 - "Per-thread system prompt / temperature edits are discarded on reload when an assistant is active" - FIXED in a30ae19: `_restoreThreadSettings` now applies the assistant's system message / reasoning / temperature ONLY when the thread has no per-thread override for that field, so per-thread edits survive reloads and reach the API request; scenario 47 flipped to a regression check (`regression: true`) + ChatSettings AHK unit tests (overrides win; assistant defaults still apply when no override).
 - 2026-08-04 - "Typing a system prompt directly into the right-rail field never reaches the API request (the field is display-only)" - FIXED in 50d4111: `#sysMsgMini` now has an input listener that updates `_currentSettings.systemMessage` and posts the debounced `updateModelSettings` (mirrors the modal Save path); scenario 60 flipped to a regression check (`regression: true`) + model-picker-config unit test.
 - 2026-08-04 - "Commands Advanced card collapses when you click inside it to edit a field" - FIXED in b31a6b9: the Advanced toggle listener moved from the whole `.cmd-advanced-wrap` to the `.cmd-advanced-toggle` header, so clicks inside fields no longer collapse the card; scenario 27 flipped to a regression check (`regression: true`) + commands-advanced-toggle unit test.
+
+- 2026-08-26 - "Cross-thread SwitchBranch can persist a foreign active leaf" - FIXED + COMMITTED in 69761d8: ownership validation and thread-scoped leaf walking were added to TreeRepo, with scenario 300 and ChatDB regression coverage.
+- 2026-08-26 - "Cross-include `_RequestParamsAreDefault` warning can open a blocking modal" - FIXED + COMMITTED in 69761d8: the helper was relocated to the shared ChatUtils include loaded before callbacks, with scenario 308 and bounded `#Warn` load coverage.
 
 
