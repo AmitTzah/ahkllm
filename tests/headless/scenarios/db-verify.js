@@ -185,6 +185,7 @@ scenarios.push({
 scenarios.push({
   id: 304,
   name: "A locked request logs plaintext after relock and thread switch",
+  regression: true,
   mode: "sse-slow",
   fixtures: {
     threads: [
@@ -217,8 +218,17 @@ scenarios.push({
     await cdp.waitFor('window.activeThreadId === "t-open-304"', 15000, 300, "U loaded");
     await sleep(5000);
     const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
-    if (!log.includes("LOCKED_SECRET_73B91")) throw new Error("setup: expected buggy success log to contain the secret, got " + log.slice(0, 300));
-    return "L was unlocked for send, relocked, then switched to U before completion; the success API log still contains LOCKED_SECRET_73B91 because redaction used activeThreadId=U";
+    if (log.includes("LOCKED_SECRET_73B91") || !log.includes("<hidden: locked chat>"))
+      throw new Error("locked success log was not redacted: " + log.slice(0, 500));
+    const completion = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "streaming", "StreamCompletion.ahk"), "utf8");
+    const streamError = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "streaming", "StreamError.ahk"), "utf8");
+    const deepSeek = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "tools", "DeepSeekSearch.ahk"), "utf8");
+    const tavily = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "tools", "TavilySearch.ahk"), "utf8");
+    if (!completion.includes("ShouldRedactContent(streamThreadId)") ||
+        (streamError.match(/ShouldRedactContent\(streamThreadId\)/g) || []).length < 2 ||
+        !deepSeek.includes("ShouldRedactContent(threadId)") || !tavily.includes("ShouldRedactContent(threadId)"))
+      throw new Error("not every request-owned API-log path uses the captured thread for redaction");
+    return "L was unlocked for send, relocked, then switched to U before completion; success logging followed L and stored only the hidden marker, with error/cancel/search paths statically bound to captured request owners";
   }
 });
 

@@ -119,7 +119,7 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
         _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs, ttftMs, streamThreadId)
     }
 
-    _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime)
+    _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime, streamThreadId)
 }
 
 _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0, streamThreadId := "") {
@@ -180,7 +180,10 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
     _maybeGenerateTitle(path, streamThreadId)
 }
 
-_logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime) {
+_logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime, streamThreadId := "") {
+    global activeThreadId
+    if !streamThreadId
+        streamThreadId := activeThreadId
     responseTimeMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : A_TickCount - requestStartTime
 
     pt := usage.HasProp("promptTokens") ? usage.promptTokens : 0
@@ -219,7 +222,7 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
         response: responseStr,
         status: "success", responseTimeMs: responseTimeMs
     }
-    if ThreadLockService.ShouldRedactContent(activeThreadId) {
+    if ThreadLockService.ShouldRedactContent(streamThreadId) {
         logEntry.request := "<hidden: locked chat>"
         logEntry.response := "<hidden: locked chat>"
     }

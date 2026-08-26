@@ -154,10 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 302 fixed and fully verified;
-  report update is ready for commit. Next: locked API-log redaction scenario 304.
+- **Where we left off:** 2026-08-26 - Scenario 304 fixed and fully verified;
+  report update is ready for commit. Next: request temp-file uniqueness in
+  scenario 303.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -219,31 +220,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. Invalid branch-edit IDs can create a bogus root message
-
-**Scenario:** 302
-
-**Status:** fix applied
-
-**Repro:** In active thread A, send an `editMessage` IPC action with
-`mode:"branch"` and a nonexistent ID, a B ID, or an off-active-path A ID.
-
-**Expected:** Branch edit fails closed unless the source is an allowed message
-owned by A; no new message is inserted for an invalid source.
-
-**Actual:** Fixed: branch mode now requires the source message to be on the
-active path before inserting a branch copy; invalid IDs leave the tree and
-active leaf unchanged.
-
-**Evidence:** `chat/callbacks/Edit.ahk` validates source ownership and uses a
-`found` guard before the branch insert.
-
-**Verification:** The fixed WebView scenario rejects nonexistent, foreign, and
-off-active-path IDs without inserts or active-leaf changes; a subsequent send
-uses the preserved active path and the reopened database passes the invariant
-auditor. A handler-level regression covers the same cases and a valid source.
-
-### 2. Chat request temp files collide when requests share an A_TickCount
+### 1. Chat request temp files collide when requests share an A_TickCount
 
 **Scenario:** 303
 
@@ -266,11 +243,11 @@ cleanup each other's bearer-containing files.
 also found title-generation temp names are tick-only. No timing-based clicking
 was used.
 
-### 3. Locked-chat API logs use the visible thread instead of the request owner
+### 2. Locked-chat API logs use the visible thread instead of the request owner
 
 **Scenario:** 304
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Start a delayed request from an unlocked locked chat L, relock L,
 switch to ordinary chat U, and let the request complete, fail, or cancel.
@@ -279,19 +256,21 @@ switch to ordinary chat U, and let the request complete, fail, or cancel.
 so L's plaintext never enters the API log. A U request remains governed by U
 even if L is visible when it finishes.
 
-**Actual:** Success, error, and cancellation redaction checks use mutable
-`activeThreadId` instead of captured `_streamThreadId`.
+**Actual:** Fixed: success, error, and cancellation redaction checks use the
+request-owning thread captured at send time. DeepSeek and Tavily search log
+bodies follow the same owner-thread policy.
 
-**Evidence:** `chat/streaming/StreamCompletion.ahk` and `StreamError.ahk` call
-`ShouldRedactContent(activeThreadId)`.
+**Evidence:** `chat/streaming/StreamCompletion.ahk` and `StreamError.ahk` use
+`ShouldRedactContent(streamThreadId)`; search loggers derive the thread from
+their loop state.
 
-**Verification:** Real delayed-stream scenario passed: L was unlocked for
-send, relocked, switched away to U, and completion logged
-`LOCKED_SECRET_73B91` in plaintext. Static inspection confirms the same wrong
-`activeThreadId` expression in success, error, and cancellation logging; the
-same owner decision therefore affects all three terminal paths.
+**Verification:** The fixed delayed-stream scenario confirms that L was
+unlocked for send, relocked, switched away to U, and completion stored only
+`<hidden: locked chat>`. Unit coverage invokes success, error, and cancellation
+logging with a locked owner and a different visible thread, plus the inverse
+unlocked-owner case; static checks cover DeepSeek/Tavily search logs.
 
-### 4. Multi-step persistence operations can leave durable partial state
+### 3. Multi-step persistence operations can leave durable partial state
 
 **Scenario:** 305
 
@@ -320,7 +299,7 @@ remained after close/reopen. `PRAGMA integrity_check` and
 the attachment case also left the message without its physical file, and the
 lock case left metadata with `is_locked=0`.
 
-### 5. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+### 4. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
 **Scenario:** 306
 
@@ -922,5 +901,7 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Cross-thread SwitchBranch can persist a foreign active leaf" - FIXED + COMMITTED in 69761d8: ownership validation and thread-scoped leaf walking were added to TreeRepo, with scenario 300 and ChatDB regression coverage.
 - 2026-08-26 - "Cross-include `_RequestParamsAreDefault` warning can open a blocking modal" - FIXED + COMMITTED in 69761d8: the helper was relocated to the shared ChatUtils include loaded before callbacks, with scenario 308 and bounded `#Warn` load coverage.
 - 2026-08-26 - "Stale message and attachment IDs can mutate another chat" - FIXED + COMMITTED in df1d0fb: message edits/hard-deletes and attachment deletion now require the expected thread, callbacks validate ownership before processing attachments, and delayed search-card edits retain their originating thread. Scenario 301 is now a regression check; AHK, invariant, fast, and full headless gates passed.
+- 2026-08-26 - "Invalid branch-edit IDs can create a bogus root message" - FIXED + COMMITTED in fa0bd21: branch edits now require a source on the active path before inserting a copy; scenario 302 is a regression check with handler and invariant coverage.
+- 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in the log-redaction fix commit below: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304, terminal-path unit coverage, fast gates, and the full headless suite passed.
 
 

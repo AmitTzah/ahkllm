@@ -79,7 +79,7 @@ class DeepSeekSearch {
         wasCancelled := SearchTools.IsCancelled(loopState)
         SearchTools.ClearProcess(loopState, cURLPID)
         if wasCancelled {
-            DeepSeekSearch._LogRequest(query, providerInfo, payload, "Web search cancelled.", "Web search cancelled.", "cancelled", responseTimeMs)
+            DeepSeekSearch._LogRequest(query, providerInfo, payload, "Web search cancelled.", "Web search cancelled.", "cancelled", responseTimeMs, loopState)
             return "Web search cancelled."
         }
         result := ""
@@ -110,7 +110,7 @@ class DeepSeekSearch {
             }
         }
 
-        DeepSeekSearch._LogRequest(query, providerInfo, payload, result, result, status, responseTimeMs)
+        DeepSeekSearch._LogRequest(query, providerInfo, payload, result, result, status, responseTimeMs, loopState)
         return result
     }
 
@@ -263,11 +263,11 @@ class DeepSeekSearch {
 
     ; Record the /responses call in the API log so searches are visible in
     ; the API Logs viewer like chat/title requests (logging is best-effort).
-    static _LogRequest(query, providerInfo, payload, response, result, status, responseTimeMs) {
+    static _LogRequest(query, providerInfo, payload, response, result, status, responseTimeMs, loopState := "") {
         if apiLogMaxEntries <= 0
             return
         try {
-            ApiLogger.LogRequest({
+            logEntry := {
                 timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
                 commandName: "Web Search (DeepSeek)",
                 provider: providerInfo.providerKey,
@@ -281,7 +281,15 @@ class DeepSeekSearch {
                 responseTimeMs: responseTimeMs,
                 searchQuery: query,
                 searchResult: result
-            })
+            }
+            threadId := IsObject(loopState) && loopState.HasOwnProp("threadId") ? loopState.threadId : ""
+            if ThreadLockService.ShouldRedactContent(threadId) {
+                logEntry.request := "<hidden: locked chat>"
+                logEntry.response := "<hidden: locked chat>"
+                logEntry.searchQuery := "<hidden: locked chat>"
+                logEntry.searchResult := "<hidden: locked chat>"
+            }
+            ApiLogger.LogRequest(logEntry)
         } catch Error as e {
             debugLog("[SEARCH] API log write failed: " e.Message)
         }

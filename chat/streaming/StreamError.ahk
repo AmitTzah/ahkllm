@@ -21,6 +21,7 @@ _extractErrorMsg(rawOutput) {
 
 _handleStreamError() {
     try {
+    streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
     errorFile := requestParams["cURLErrorFile"]
     stderrText := ""
     if FileExist(errorFile) {
@@ -85,7 +86,7 @@ _handleStreamError() {
         status: "error",
         responseTimeMs: responseTimeMs
     }
-    if ThreadLockService.ShouldRedactContent(activeThreadId) {
+    if ThreadLockService.ShouldRedactContent(streamThreadId) {
         logEntry.request := "<hidden: locked chat>"
         logEntry.response := "<hidden: locked chat>"
     }
@@ -259,6 +260,7 @@ handleCancelStream() {
 }
 
 _logCancelledRequest() {
+    streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
     responseTimeMs := requestParams["_streamFirstTokenTime"] > 0
         ? requestParams["_streamFirstTokenTime"] - requestParams["_streamRequestStartTime"]
         : A_TickCount - requestParams["_streamRequestStartTime"]
@@ -288,7 +290,7 @@ _logCancelledRequest() {
         status: "cancelled",
         responseTimeMs: responseTimeMs
     }
-    if ThreadLockService.ShouldRedactContent(activeThreadId) {
+    if ThreadLockService.ShouldRedactContent(streamThreadId) {
         cancelLogEntry.request := "<hidden: locked chat>"
         cancelLogEntry.response := "<hidden: locked chat>"
     }

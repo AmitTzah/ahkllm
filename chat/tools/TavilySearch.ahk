@@ -90,18 +90,18 @@ class TavilySearch {
             status := "cancelled"
         }
         SearchTools.ClearProcess(loopState, cURLPID)
-        TavilySearch._LogRequest(query, key, payload, raw, result, status, responseTimeMs)
+        TavilySearch._LogRequest(query, key, payload, raw, result, status, responseTimeMs, loopState)
         return result
     }
 
     ; Record the Tavily call in the API log (best-effort).
-    static _LogRequest(query, key, payload, raw, result, status, responseTimeMs) {
+    static _LogRequest(query, key, payload, raw, result, status, responseTimeMs, loopState := "") {
         if apiLogMaxEntries <= 0
             return
         try {
             safeRaw := key != "" ? StrReplace(raw, key, "<redacted>") : raw
             safeResult := key != "" ? StrReplace(result, key, "<redacted>") : result
-            ApiLogger.LogRequest({
+            logEntry := {
                 timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
                 commandName: "Web Search (Tavily)",
                 provider: "tavily",
@@ -117,7 +117,15 @@ class TavilySearch {
                 responseTimeMs: responseTimeMs,
                 searchQuery: query,
                 searchResult: safeResult
-            })
+            }
+            threadId := IsObject(loopState) && loopState.HasOwnProp("threadId") ? loopState.threadId : ""
+            if ThreadLockService.ShouldRedactContent(threadId) {
+                logEntry.request := "<hidden: locked chat>"
+                logEntry.response := "<hidden: locked chat>"
+                logEntry.searchQuery := "<hidden: locked chat>"
+                logEntry.searchResult := "<hidden: locked chat>"
+            }
+            ApiLogger.LogRequest(logEntry)
         } catch Error as e {
             debugLog("[SEARCH] API log write failed: " e.Message)
         }

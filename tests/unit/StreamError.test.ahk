@@ -249,6 +249,76 @@ class StreamErrorTest {
             throw Error("Expected setChatButtonsEnabled true; captured: " jsongo.Stringify(captured))
     }
 
+    ; Regression (bug #304): completion, error, and cancellation logging must
+    ; decide redaction from the request-owning thread, not activeThreadId.
+    StreamLogRedaction_UsesCapturedThreadForAllTerminalPaths() {
+        global activeThreadId, requestParams, responseWindow, apiLogMaxEntries
+        threadLocked := this._setup()
+        threadVisible := ChatDB.Thread_Create("Visible unlocked thread")
+        ChatDB.ThreadLock_Set(threadLocked, "00112233445566778899aabbccddeeff", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 10000)
+        ThreadLockService.sessionUnlocked.Clear()
+        activeThreadId := threadVisible
+
+        oldLogPath := ApiLogger.logFilePath
+        oldLogLimit := apiLogMaxEntries
+        oldResponseWindow := responseWindow
+        oldParams := requestParams
+        logPath := A_Temp "\test_stream_redaction_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := logPath
+        apiLogMaxEntries := 10
+        responseWindow := { PostWebMessageAsJSON: (*) => "" }
+        outFile := ""
+        requestParams := Map(
+            "cURLErrorFile", "", "_streamOutputFile", "",
+            "uniqueID", "stream-redaction-test", "mainScriptHiddenHwnd", "0x0",
+            "chatHistoryJSONRequestFile", "", "cURLCommandFile", "", "cURLOutputFile", "",
+            "_streamRequestStartTime", A_TickCount, "_streamFirstTokenTime", 0,
+            "_streamContent", "LOCKED_CANCEL_SECRET", "_streamReasoning", "",
+            "_streamModelName", "deepseek/deepseek-v4-flash", "singleAPIModelName", "deepseek/deepseek-v4-flash",
+            "_streamThreadId", threadLocked, "_streamChatHistoryJSONRequest", "LOCKED_CANCEL_SECRET",
+            "_streamProviderKey", "deepseek", "providerName", "deepseek",
+            "windowTitle", "test", "pasteMode", "chat"
+        )
+
+        try {
+            _logStreamResponse("LOCKED_SUCCESS_SECRET", "deepseek/deepseek-v4-flash", "", {}, "{}", "LOCKED_SUCCESS_SECRET", A_TickCount, 0, threadLocked)
+            _logCancelledRequest()
+
+            outFile := A_Temp "\test_stream_redaction_out_" A_TickCount "_" Random(1000, 999999) ".json"
+            FileAppend('{"error":{"message":"LOCKED_ERROR_SECRET"}}', outFile, "UTF-8-RAW")
+            requestParams["_streamOutputFile"] := outFile
+            requestParams["_streamChatHistoryJSONRequest"] := "LOCKED_ERROR_SECRET"
+            _handleStreamError()
+            logText := FileRead(logPath, "UTF-8")
+            if InStr(logText, "LOCKED_SUCCESS_SECRET") || InStr(logText, "LOCKED_CANCEL_SECRET") || InStr(logText, "LOCKED_ERROR_SECRET")
+                throw Error("locked request secret leaked in terminal-path API log: " logText)
+            hiddenCount := 0
+            StrReplace(logText, "<hidden: locked chat>", "", , &hiddenCount)
+            if hiddenCount < 6
+                throw Error("all locked terminal-path bodies were not redacted: " logText)
+
+            ; Inverse: an unlocked request remains visible even when a locked
+            ; thread is currently displayed.
+            activeThreadId := threadLocked
+            requestParams["_streamThreadId"] := threadVisible
+            requestParams["_streamContent"] := "UNLOCKED_OWNER_SECRET"
+            requestParams["_streamChatHistoryJSONRequest"] := "UNLOCKED_OWNER_SECRET"
+            _logCancelledRequest()
+            logText := FileRead(logPath, "UTF-8")
+            if !InStr(logText, "UNLOCKED_OWNER_SECRET")
+                throw Error("unlocked request was redacted based on visible locked thread")
+        } finally {
+            try FileDelete(logPath)
+            try FileDelete(outFile)
+            ApiLogger.logFilePath := oldLogPath
+            apiLogMaxEntries := oldLogLimit
+            responseWindow := oldResponseWindow
+            requestParams := oldParams
+            activeThreadId := ""
+            this._teardown()
+        }
+    }
+
     ; ----------------------------------------------------
     ; Bug #133 regression: the cancelled partial assistant is a LOCAL DB row
     ; (no usage was ever reported), so inserting it with local_copy must NOT
