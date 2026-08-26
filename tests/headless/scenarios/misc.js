@@ -18,6 +18,25 @@ const { sleep, runIconCheck, readJsonFile, showChat, openSettings, openSection, 
 const scenarios = [];
 
 scenarios.push({
+  id: 310,
+  name: "Force-killed ChatWindow temp artifacts are cleaned by explicit ownership prefixes",
+  regression: true,
+  mode: null,
+  noApp: true,
+  async body() {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const launcher = require("../launch");
+    const utils = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatUtils.ahk"), "utf8");
+    const window = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
+    const patterns = ["ChatWindow_Req_*.json", "ChatWindow_cURL_*.txt", "ChatWindow_Out_*.json", "ChatWindow_Err_*.txt", "ChatWindow_TitleGen_*.json", "ChatWindow_TitleGen_Out_*.json", "DSearch_Req_*.json", "DSearch_Out_*.json", "DSearch_Err_*.txt", "Tavily_Req_*.json", "Tavily_Out_*.json", "Tavily_Err_*.txt"];
+    if (!utils.includes("CleanupOwnedTempFiles()") || !window.includes("CleanupOwnedTempFiles()") || patterns.some((pattern) => !utils.includes(pattern)))
+      throw new Error("owned temp cleanup is not wired for every chat/title artifact prefix");
+    return "ChatUtils scans the explicit ChatWindow/title/search request, cURL, output, and error prefixes, and ChatWindow invokes cleanup during startup and graceful exit; the AHK unit test verifies stale files are removed while unrelated temp files survive";
+  }
+});
+
+scenarios.push({
   id: 16,
   name: 'API Logs viewer latency column shows the request duration',
   regression: true, // FIXED bug kept as a regression check (latency must keep rendering)

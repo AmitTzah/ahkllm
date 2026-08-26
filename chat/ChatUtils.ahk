@@ -72,6 +72,25 @@ deleteTempFiles() {
     safeDelete(requestParams.Has("cURLErrorFile") ? requestParams["cURLErrorFile"] : "")
 }
 
+; Remove artifacts left by a force-killed or crashed ChatWindow. The prefixes
+; are exclusive to this app and the scan is bounded to files directly in the
+; system temp directory, so one request cannot delete another app's files.
+CleanupOwnedTempFiles() {
+    deleteTempFiles()
+    patterns := [
+        "ChatWindow_Req_*.json", "ChatWindow_cURL_*.txt",
+        "ChatWindow_Out_*.json", "ChatWindow_Err_*.txt",
+        "ChatWindow_TitleGen_*.json", "ChatWindow_TitleGen_Out_*.json",
+        "DSearch_Req_*.json", "DSearch_Out_*.json", "DSearch_Err_*.txt",
+        "Tavily_Req_*.json", "Tavily_Out_*.json", "Tavily_Err_*.txt"
+    ]
+    for pattern in patterns {
+        patternPath := A_Temp "\" pattern
+        Loop Files, patternPath, "F"
+            safeDelete(A_LoopFileFullPath)
+    }
+}
+
 ; ----------------------------------------------------
 ; Start or stop loading cursor
 ; ----------------------------------------------------

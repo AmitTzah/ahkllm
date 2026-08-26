@@ -77,6 +77,43 @@ class ChatUtilsTest {
             throw Error("Expected PID 0 after close (cancellation detection), got " pid)
     }
 
+    ; Regression discovered by the final artifact audit: force-killed runs can
+    ; leave credential-bearing request/cURL/title files in %TEMP%. Startup and
+    ; exit cleanup must remove only this app's explicit prefixes.
+    CleanupOwnedTempFiles_RemovesStaleArtifacts() {
+        suffix := ChatDB._UUID()
+        files := [
+            A_Temp "\ChatWindow_Req_" suffix ".json",
+            A_Temp "\ChatWindow_cURL_" suffix ".txt",
+            A_Temp "\ChatWindow_Out_" suffix ".json",
+            A_Temp "\ChatWindow_Err_" suffix ".txt",
+            A_Temp "\ChatWindow_TitleGen_" suffix ".json",
+            A_Temp "\ChatWindow_TitleGen_Out_" suffix ".json",
+            A_Temp "\DSearch_Req_" suffix ".json",
+            A_Temp "\DSearch_Out_" suffix ".json",
+            A_Temp "\DSearch_Err_" suffix ".txt",
+            A_Temp "\Tavily_Req_" suffix ".json",
+            A_Temp "\Tavily_Out_" suffix ".json",
+            A_Temp "\Tavily_Err_" suffix ".txt"
+        ]
+        unrelated := A_Temp "\not-chat-window-" suffix ".txt"
+        try {
+            for filePath in files
+                FileAppend("stale secret", filePath, "UTF-8-RAW")
+            FileAppend("keep", unrelated, "UTF-8-RAW")
+            CleanupOwnedTempFiles()
+            for filePath in files
+                if FileExist(filePath)
+                    throw Error("stale app artifact survived cleanup: " filePath)
+            if !FileExist(unrelated)
+                throw Error("cleanup removed an unrelated temp file")
+        } finally {
+            for filePath in files
+                try FileDelete(filePath)
+            try FileDelete(unrelated)
+        }
+    }
+
     ; --------------------
     ; postWebMessage — verify json format
     ; --------------------

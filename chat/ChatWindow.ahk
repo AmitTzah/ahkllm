@@ -91,6 +91,7 @@ _ChatWindowOnExit(*) {
             if pid && ProcessExist(pid)
                 cURLState("close")
         }
+        CleanupOwnedTempFiles()
     }
 }
 OnExit(_ChatWindowOnExit)
@@ -107,6 +108,7 @@ requestParams["isFIM"] := false
 requestParams["numberOfAPIModels"] := 1
 requestParams["APIModelsIndex"] := 1
 activeThreadId := ""
+CleanupOwnedTempFiles()
 
 ; ----------------------------------------------------
 ; IPC handlers (ChatIPC), settings (ChatSettings),
