@@ -1484,6 +1484,25 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #305): a failure during a structural mutation must roll
+    ; back its DB writes rather than leaving a partial fork behind.
+    Transaction_RollbackRestoresFork() {
+        global persistenceFaultStage
+        threadId := this._setup()
+        userId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "source"})
+        ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer", parent_id: userId, model: "deepseek/deepseek-v4-flash"})
+        persistenceFaultStage := "fork-after-thread"
+        threw := false
+        try ChatDB.Msg_ForkThread(threadId, userId)
+        catch Error
+            threw := true
+        persistenceFaultStage := ""
+        threads := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_threads;")
+        if !threw || threads[1, "c"] != 1
+            throw Error("failed fork must roll back its thread row")
+        this._teardown()
+    }
+
     ; Trash lifecycle
     ; --------------------
 

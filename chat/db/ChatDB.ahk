@@ -21,6 +21,8 @@ class ChatDB {
     static db := unset
     static dbPath := ""
     static isOpen := false
+    static _transactionDepth := 0
+    static _deferredFileDeletes := []
 
     ; Notify the Main-owned BackupManager, or forward the notification when
     ; this facade is running inside ChatWindow.
@@ -53,9 +55,68 @@ class ChatDB {
 
     static Close() {
         if ChatDB.isOpen {
+            if ChatDB._transactionDepth
+                ChatDB.RollbackTransaction()
             ChatDB.db.Close()
             ChatDB.db := unset
             ChatDB.isOpen := false
+        }
+    }
+
+    ; Structural mutations use one DB transaction. Files referenced by rows are
+    ; deleted only after COMMIT, so a rollback can never restore a row whose
+    ; physical attachment was already removed.
+    static BeginTransaction() {
+        if ChatDB._transactionDepth
+            throw Error("nested ChatDB transaction")
+        ChatDB.db.Exec("BEGIN;")
+        ChatDB._transactionDepth := 1
+        ChatDB._deferredFileDeletes := []
+    }
+
+    static CommitTransaction() {
+        if !ChatDB._transactionDepth
+            return
+        ChatDB.db.Exec("COMMIT;")
+        ChatDB._transactionDepth := 0
+        pending := ChatDB._deferredFileDeletes
+        ChatDB._deferredFileDeletes := []
+        ChatDB._DeleteCommittedOrphanFiles(pending)
+    }
+
+    static RollbackTransaction() {
+        if !ChatDB._transactionDepth
+            return
+        try ChatDB.db.Exec("ROLLBACK;")
+        ChatDB._transactionDepth := 0
+        ChatDB._deferredFileDeletes := []
+    }
+
+    static DeferFileDelete(filePath) {
+        if !ChatDB._transactionDepth
+            return false
+        for existing in ChatDB._deferredFileDeletes
+            if existing = filePath
+                return true
+        ChatDB._deferredFileDeletes.Push(filePath)
+        return true
+    }
+
+    static _DeleteCommittedOrphanFiles(filePaths) {
+        for filePath in filePaths {
+            refs := ChatDB.db.Query("SELECT COUNT(*) AS c FROM message_attachments WHERE file_path=?;", filePath)
+            if (!refs.count || Integer(refs[1, "c"]) = 0)
+                try FileDelete(AppInfo.DataDir "\" filePath)
+        }
+    }
+
+    ; Bounded fault seam used by the persistence audit. It is inert unless a
+    ; probe/test explicitly sets the named stage.
+    static MaybeFault(stage) {
+        global persistenceFaultStage
+        if IsSet(persistenceFaultStage) && persistenceFaultStage = stage {
+            persistenceFaultStage := ""
+            throw Error("injected persistence failure: " stage)
         }
     }
 

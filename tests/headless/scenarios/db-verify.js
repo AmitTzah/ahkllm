@@ -237,23 +237,26 @@ scenarios.push({
 scenarios.push({
   id: 305,
   name: "Injected fork and hard-delete failures leave durable partial states after reopen",
+  regression: true,
   mode: null,
   noApp: true,
   async body() {
     const text = runProbeCheck("fault-injection");
-    const lines = text.split(/\r?\n/).filter((line) => line.startsWith("FAULT_AUDIT"));
+    const allLines = text.split(/\r?\n/);
+    const lines = allLines.filter((line) => line.startsWith("FAULT_AUDIT"));
     if (lines.length !== 5) throw new Error("fault audit missing stages: " + text);
     const forkThread = lines.find((line) => line.includes("label=fork-after-thread"));
     const forkMessage = lines.find((line) => line.includes("label=fork-after-first-message"));
     const deletion = lines.find((line) => line.includes("label=delete-after-reparent"));
     const threadDelete = lines.find((line) => line.includes("label=thread-delete-after-attachments"));
     const lockCreate = lines.find((line) => line.includes("label=lock-create-after-metadata"));
-    if (!forkThread || !/threads=2 messages=2 forkRows=1/.test(forkThread)) throw new Error("fork partial after thread creation not durable: " + text);
-    if (!forkMessage || !/threads=2 messages=3 forkRows=1/.test(forkMessage)) throw new Error("fork partial after first message not durable: " + text);
-    if (!deletion || !/messages=3/.test(deletion) || /childParent=NULL/.test(deletion)) throw new Error("delete partial after reparent not durable: " + text);
-    if (!threadDelete || !/threads=1 messages=1/.test(threadDelete) || !/attachments=0/.test(threadDelete)) throw new Error("thread delete partial after attachment removal not durable: " + text);
-    if (!lockCreate || !/locks=1 lockedFlags=0/.test(lockCreate)) throw new Error("lock create partial metadata/flag mismatch not durable: " + text);
-    return "faults after fork thread creation/first message and after hard-delete reparent survived close/reopen; SQLite integrity and FK checks were still clean, so logical partial state is the failure";
+    if (!forkThread || !/threads=1 messages=2 forkRows=0/.test(forkThread)) throw new Error("fork rollback after thread creation failed: " + text);
+    if (!forkMessage || !/threads=1 messages=2 forkRows=0/.test(forkMessage)) throw new Error("fork rollback after first message failed: " + text);
+    if (!deletion || !/messages=3/.test(deletion) || /childParent=NULL/.test(deletion)) throw new Error("delete rollback after reparent failed: " + text);
+    const threadFault = allLines.find((line) => line.includes("FAULT thread-delete error="));
+    if (!threadDelete || !/threads=1 messages=1/.test(threadDelete) || !/attachments=1/.test(threadDelete) || !threadFault || !/fileExists=1/.test(threadFault)) throw new Error("thread delete rollback did not preserve attachment row/file: " + text);
+    if (!lockCreate || !/locks=0 lockedFlags=0/.test(lockCreate)) throw new Error("lock create rollback left metadata/flag state: " + text);
+    return "injected failures after fork creation/message copy, hard-delete reparenting, thread attachment cleanup, and lock metadata all rolled back to coherent pre-operation state after reopen; SQLite integrity and FK checks stayed clean";
   }
 });
 

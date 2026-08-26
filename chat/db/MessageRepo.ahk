@@ -189,6 +189,8 @@ class MessageRepo {
             return
         parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
         threadId := parentTable[1, "thread_id"]
+        ChatDB.BeginTransaction()
+        try {
 
         childrenTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=?;", msgId)
         for row in childrenTable.rows {
@@ -197,6 +199,7 @@ class MessageRepo {
             else
                 ChatDB.db.Query("UPDATE messages SET parent_id=NULL WHERE id=?;", row.id)
         }
+        ChatDB.MaybeFault("delete-after-reparent")
 
         leafTable := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
         if leafTable.count && leafTable[1, "active_leaf_id"] = msgId {
@@ -217,7 +220,12 @@ class MessageRepo {
         ; header totals - recompute the cumulative counters from the remaining
         ; messages (they were previously left stale and forever inflated).
         MessageRepo._RecomputeCumulativeCounters(threadId)
+        ChatDB.CommitTransaction()
         ChatDB._MarkPersistentDataChanged()
+        } catch Error as e {
+            ChatDB.RollbackTransaction()
+            throw e
+        }
     }
 
     ; Recompute a thread's cumulative counters from its remaining messages

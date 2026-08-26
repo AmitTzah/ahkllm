@@ -170,6 +170,8 @@ class ThreadRepo {
         expiredTable := ChatDB.db.Query("SELECT id FROM chat_threads WHERE is_deleted=1 AND deleted_at < datetime('now', ?);", retentionModifier)
         if !expiredTable.count
             return
+        ChatDB.BeginTransaction()
+        try {
         ; Bug #129: keep messages_fts in sync with messages - remove the FTS
         ; rows for every purged message (same guarantee as MessageRepo.HardDelete
         ; -> FTS_Remove). The raw DELETEs below never touch the FTS index.
@@ -189,6 +191,11 @@ class ThreadRepo {
             changed := true
         if changed
             ChatDB._MarkPersistentDataChanged()
+        ChatDB.CommitTransaction()
+        } catch Error as e {
+            ChatDB.RollbackTransaction()
+            throw e
+        }
     }
 
     static _Changes() {
@@ -199,6 +206,8 @@ class ThreadRepo {
     ; Permanently delete a thread and all its messages.
     static Delete(threadId) {
         debugLog("[THREAD] Deleted - id=" threadId)
+        ChatDB.BeginTransaction()
+        try {
         ; Bug #116: pass the RAW id - DeleteByThread escapes it internally.
         ; Passing safeId (already escaped) double-escaped it, so crafted-id
         ; threads deleted their messages but orphaned their attachment rows.
@@ -209,9 +218,15 @@ class ThreadRepo {
         msgIds := ChatDB.db.Query("SELECT id FROM messages WHERE thread_id=?;", threadId)
         for m in msgIds.rows
             ChatDB.FTS_Remove(m.id)
+        ChatDB.MaybeFault("thread-delete-after-attachments")
         ChatDB.db.Query("DELETE FROM messages WHERE thread_id=?;", threadId)
         ChatDB.db.Query("DELETE FROM chat_threads WHERE id=?;", threadId)
+        ChatDB.CommitTransaction()
         ChatDB._MarkPersistentDataChanged()
+        } catch Error as e {
+            ChatDB.RollbackTransaction()
+            throw e
+        }
     }
 
     ; Update thread title and timestamp.

@@ -170,7 +170,10 @@ class TreeRepo {
         if !cutoff
             return ""
 
+        ChatDB.BeginTransaction()
+        try {
         newThreadId := TreeRepo._CreateForkThread(threadId)
+        ChatDB.MaybeFault("fork-after-thread")
 
           ; Copy thread-level settings from original to fork
           TreeRepo._CopyThreadSettings(threadId, newThreadId)
@@ -192,6 +195,8 @@ class TreeRepo {
             safeSiblingGroup := TreeRepo._MapSiblingGroup(msg, &sgMap)
             TreeRepo._InsertForkMessage(newId, newThreadId, msg, newParentId, safeSiblingGroup)
             AttachmentRepo.CopyForMessage(msg.id, newId)
+            if A_Index = 1
+                ChatDB.MaybeFault("fork-after-first-message")
         }
 
         ; Second pass: copy any siblings NOT on the active path so branch nav works,
@@ -224,8 +229,13 @@ class TreeRepo {
         for fam in forkAttMsgs.rows
             ChatDB.FTS_ResyncForAttachments(fam.message_id)
 
+        ChatDB.CommitTransaction()
         ChatDB._MarkPersistentDataChanged()
         return newThreadId
+        } catch Error as e {
+            ChatDB.RollbackTransaction()
+            throw e
+        }
     }
 
     ; Create a new thread for the fork with "Copy - " prefix.

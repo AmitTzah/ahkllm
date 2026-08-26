@@ -223,8 +223,8 @@ class AttachmentRepo {
         count := ChatDB.db.Query("SELECT COUNT(*) AS cnt FROM message_attachments WHERE file_path=?;", filePath)
         refs := count.count ? count[1, "cnt"] : 0
         if refs = 0 {
-            fullPath := AppInfo.DataDir "\" filePath
-            try FileDelete(fullPath)
+            if !ChatDB.DeferFileDelete(filePath)
+                try FileDelete(AppInfo.DataDir "\" filePath)
         }
     }
 

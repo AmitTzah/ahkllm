@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 303 fixed and committed as
-  eb64f85. Next: multi-step persistence atomicity in scenario 305.
+- **Where we left off:** 2026-08-26 - Scenario 305 fixed and fully verified;
+  report update is ready for commit. Next: locked-title fallback in scenario 306.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -223,7 +223,7 @@ one at a time, in rank order.
 
 **Scenario:** 305
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Inject a failure after meaningful steps in fork and hard-delete
 operations, close/reopen the SQLite database, and inspect rows, FTS, counters,
@@ -232,21 +232,18 @@ and attachment references.
 **Expected:** A failed operation leaves the pre-operation state intact or
 performs complete compensation; no user-visible half-fork/half-delete remains.
 
-**Actual:** Fork, hard-delete, thread delete/purge, lock updates, and
-attachment filesystem changes are multi-statement sequences without an
-explicit transaction or complete compensation.
+**Actual:** Fixed: structural DB mutations now run in explicit transactions;
+attachment file deletion is deferred until commit, and rollback clears staged
+filesystem work.
 
-**Evidence:** `TreeRepo.ForkThread`, `MessageRepo.HardDelete`,
-`ThreadRepo.Delete/PurgeExpired`, and `ThreadLockRepo.Set/Remove` issue
-multiple writes sequentially.
+**Evidence:** `ChatDB` owns transaction state and deferred file cleanup;
+`TreeRepo`, `MessageRepo`, `ThreadRepo`, and `ThreadLockRepo` roll back on
+failure and expose bounded fault points for the audit.
 
-**Verification:** Bounded AHK fault-injection probe passed. Failures after fork
-thread creation, after the first copied message, after hard-delete child
-reparenting, after thread attachment cleanup, and after lock metadata insertion
-remained after close/reopen. `PRAGMA integrity_check` and
-`foreign_key_check` stayed clean, demonstrating durable logical partial state;
-the attachment case also left the message without its physical file, and the
-lock case left metadata with `is_locked=0`.
+**Verification:** Fixed no-app fault-injection probe invokes the public
+operations, closes/reopens SQLite after each injected failure, and confirms
+pre-operation rows/files, clean `PRAGMA integrity_check`, and clean
+`foreign_key_check`. Scenario 305 is now a regression check.
 
 ### 2. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
@@ -853,5 +850,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Invalid branch-edit IDs can create a bogus root message" - FIXED + COMMITTED in fa0bd21: branch edits now require a source on the active path before inserting a copy; scenario 302 is a regression check with handler and invariant coverage.
 - 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in 243914e: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304 and terminal-path unit coverage passed.
 - 2026-08-26 - "Chat request temp files collide when requests share an A_TickCount" - FIXED + COMMITTED in eb64f85: chat and title-generation temp files now use UUID-derived names; scenario 303 is a regression check with synchronous request-builder coverage.
+- 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in the atomicity fix commit below: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
 
 

@@ -194,20 +194,9 @@ ForkFault(stage) {
     u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "fork source"})
     a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "fork answer", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
     try {
-        path := ChatDB.Msg_GetActivePath(tid)
-        newThreadId := TreeRepo._CreateForkThread(tid)
-        if stage = "after-thread"
-            throw Error("injected after new thread")
-        TreeRepo._CopyThreadSettings(tid, newThreadId)
-        if stage = "after-settings"
-            throw Error("injected after settings")
-        idMap := Map(), sgMap := Map()
-        newId := ChatDB._UUID()
-        idMap[a1] := newId
-        TreeRepo._InsertForkMessage(newId, newThreadId, path[2], path[1].id, "")
-        if stage = "after-first-message"
-            throw Error("injected after first message")
-        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=? WHERE id=?;", newId, newThreadId)
+        global persistenceFaultStage
+        persistenceFaultStage := "fork-" stage
+        ChatDB.Msg_ForkThread(tid, a1)
     } catch Error as e {
         Log("FAULT fork stage=" stage " error=" e.Message)
     }
@@ -221,14 +210,9 @@ DeleteFault(stage) {
     a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "delete answer", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
     child := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "child survives", parent_id: a1})
     try {
-        parentTable := ChatDB.db.Query("SELECT parent_id FROM messages WHERE id=?;", a1)
-        parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
-        childrenTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=?;", a1)
-        for row in childrenTable.rows
-            ChatDB.db.Query("UPDATE messages SET parent_id=? WHERE id=?;", parentId ? parentId : SQLite.Null, row.id)
-        if stage = "after-reparent"
-            throw Error("injected after child reparent")
-        ChatDB.db.Query("DELETE FROM messages WHERE id=?;", a1)
+        global persistenceFaultStage
+        persistenceFaultStage := "delete-" stage
+        ChatDB.Msg_HardDelete(a1)
     } catch Error as e {
         Log("FAULT delete stage=" stage " error=" e.Message)
     }
@@ -267,8 +251,9 @@ ThreadDeleteFault() {
     FileAppend("THREAD_DELETE_FILE", dataDir "\" filePath, "UTF-8-RAW")
     ChatDB.Attachment_Insert(msg, {attachment_type: "text_file", file_path: filePath, mime_type: "text/plain", original_filename: "thread-delete.txt", file_size: 18})
     try {
-        AttachmentRepo.DeleteByThread(tid)
-        throw Error("injected after attachment filesystem/row cleanup")
+        global persistenceFaultStage
+        persistenceFaultStage := "thread-delete-after-attachments"
+        ChatDB.Thread_Delete(tid)
     } catch Error as e {
         Log("FAULT thread-delete error=" e.Message " fileExists=" (FileExist(dataDir "\" filePath) ? 1 : 0))
     }
@@ -282,8 +267,9 @@ LockCreateFault() {
     dbPath := OpenDb()
     tid := ChatDB.Thread_Create("Fault lock create")
     try {
-        ChatDB.db.Query("INSERT INTO chat_locks (thread_id, kdf, salt, hash, iterations) VALUES(?, 'pbkdf2-sha256', ?, ?, ?);", tid, "00112233445566778899aabbccddeeff", "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", 600000)
-        throw Error("injected after lock metadata insert")
+        global persistenceFaultStage
+        persistenceFaultStage := "lock-create-after-metadata"
+        ChatDB.ThreadLock_Set(tid, "00112233445566778899aabbccddeeff", "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", 600000)
     } catch Error as e {
         Log("FAULT lock-create error=" e.Message)
     }
