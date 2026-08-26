@@ -46,6 +46,7 @@ async function enableWebSearch(cdp) {
 scenarios.push({
   id: 250,
   name: 'Web Search toggle: DeepSeek native search end-to-end (tool loop through the mock /responses backend)',
+  regression: true, // feature acceptance coverage retained as a regression check
   mode: 'sse-tool-call',
   settings: { threadTitles: { enabled: false } },
   mockOpts: {
@@ -150,6 +151,7 @@ scenarios.push({
 scenarios.push({
   id: 251,
   name: 'Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers (mock /search backend)',
+  regression: true, // feature acceptance coverage retained as a regression check
   mode: 'sse-tool-call',
   settings: {
     threadTitles: { enabled: false },
@@ -219,6 +221,7 @@ scenarios.push({
 scenarios.push({
   id: 252,
   name: 'Web Search toggle off: web_search tool removed from subsequent API requests (on -> send -> off -> send)',
+  regression: true, // feature acceptance coverage retained as a regression check
   mode: 'sse-success',
   settings: { threadTitles: { enabled: false } },
   async body({ cdp, dbPath, mockLog }) {
@@ -270,6 +273,7 @@ scenarios.push({
 scenarios.push({
   id: 253,
   name: 'Stop mid-search: backend call cancelled, no follow-up request, card cancelled, chat usable',
+  regression: true, // feature acceptance coverage retained as a regression check
   mode: 'sse-tool-call',
   settings: { threadTitles: { enabled: false } },
   mockOpts: {
@@ -488,6 +492,7 @@ scenarios.push({
 scenarios.push({
   id: 254,
   name: 'DeepSeek native search empty backend: one failure card, tool loop stops (no retry loop)',
+  regression: true, // feature acceptance coverage retained as a regression check
   mode: 'sse-tool-call',
   settings: { threadTitles: { enabled: false } },
   mockOpts: {
@@ -541,6 +546,7 @@ scenarios.push({
 scenarios.push({
   id: 255,
   name: 'DeepSeek native search multi-item stream: interim commentary excluded from the search result',
+  regression: true, // feature acceptance coverage retained as a regression check
   mode: 'sse-tool-call',
   settings: { threadTitles: { enabled: false } },
   mockOpts: {
