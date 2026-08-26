@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 316-317 fixed and committed; next fix is bug 318 (refresh the sidebar after message edits change thread recency). Candidates 1-3 are verified in the current verification queue. Scenario
+- **Where we left off:** 2026-08-26 - Bugs 316-318 fixed and committed; no verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass; next round is fresh intake when the user asks. Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
   and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
@@ -220,36 +220,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 318. Message edit updates thread recency but leaves the sidebar stale
-
-**Scenario:** 318
-
-**Status:** verified
-
-**Repro:** Seed older chat A and newer chat B. Open A, edit an assistant
-message, choose Save as Branch, and inspect the sidebar immediately without
-reopening or toggling it.
-
-**Expected:** Because A's `updated_at` is now newest, A moves above B and its
-displayed date updates immediately.
-
-**Actual:** The DB order changed to A,B, but the sidebar DOM remained B,A and
-kept the old displayed date because `handleEdit()` does not post a `threadList`
-refresh.
-
-**Evidence:** `chat/db/MessageRepo.ahk` `Edit()` calls
-`_TouchThreadByMsg(msgId)`, and its `Insert()` path also updates
-`chat_threads.updated_at` when the assistant branch copy is created;
-`chat/callbacks/Edit.ahk` posts `updateChatView` and `postThreadStats` only.
-`chat/db/ThreadRepo.ahk` orders `List()` by `updated_at DESC`, and
-`webui/js/chat/chat-sidebar.js` only re-renders when a `threadList` message
-arrives.
-
-**Verification:** Headless scenario 318 PASSED: Save as Branch on assistant A
-changed the DB order from B,A to A,B and updated A's `updated_at`, but the live
-sidebar remained B,A with the old displayed date, without reopening or toggling
-the sidebar. This is the missing `threadList` refresh path.
 
 **Feature checks (web-search milestone):**
 
@@ -426,6 +396,7 @@ done-phase tests, `DeepSeekSearch.FeedFixture_MultiItemStream_*`, and
 
 ## History (append-only)
 
+- 2026-08-26 - "Message edit updates thread recency but leaves the sidebar stale" - FIXED + COMMITTED in this fix commit: branch and overwrite edits now post `_postThreadListRefresh()` after persistence; scenario 318 is a regression check and verifies live sidebar order/date updates.
 - 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED in this fix commit: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
 - 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.
 

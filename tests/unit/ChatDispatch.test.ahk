@@ -831,6 +831,21 @@ class ChatDispatchTest {
             throw Error("handleBranchSwitch must refresh the sidebar thread list (bug #174)")
     }
 
+    ; Regression (bug #318): both edit modes touch chat_threads.updated_at,
+    ; so each must refresh the sidebar order/date immediately.
+    Edit_PostsThreadListRefresh() {
+        srcPath := A_ScriptDir "\..\chat\callbacks\Edit.ahk"
+        if !FileExist(srcPath)
+            throw Error("Edit.ahk not found")
+        src := FileRead(srcPath)
+        first := InStr(src, "_postThreadListRefresh()")
+        if !first
+            throw Error("handleEdit must refresh the sidebar after branch edits (bug #318)")
+        second := InStr(src, "_postThreadListRefresh()", false, first + StrLen("_postThreadListRefresh()"))
+        if !second
+            throw Error("handleEdit must refresh the sidebar after overwrite edits (bug #318)")
+    }
+
     ; Regression (bug #212): handleChatSend's auto-create branch must apply the
     ; "New Chats Start With" default ONLY when the right-rail requestParams are
     ; pristine - an unconditional apply overwrote a pre-send assistant pick /

@@ -107,6 +107,9 @@ handleEdit(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
+        ; Bug #318: editing creates/updates a message and touches thread
+        ; recency, so the sidebar must re-render its order and displayed date.
+        _postThreadListRefresh()
         if (role = "user") {
             ; Bug #203: branch-edit auto-fire is a normal chat exchange - stream.
             requestParams["stream"] := true
@@ -138,6 +141,9 @@ handleEdit(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
+        ; Bug #318: overwrite edits also touch updated_at; keep the sidebar in
+        ; sync immediately instead of waiting for a later thread-list action.
+        _postThreadListRefresh()
     }
 }
 

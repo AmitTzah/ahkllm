@@ -2179,6 +2179,7 @@ scenarios.push({
 scenarios.push({
   id: 318,
   name: 'Editing an assistant message bumps thread recency but does not refresh the sidebar - Save as Branch changes DB order while the live thread list stays stale',
+  regression: true, // FIXED bug #318 kept as a regression check (edit refreshes sidebar)
   mode: null,
   settings: { threadTitles: { enabled: false } },
   fixtures: {
@@ -2219,14 +2220,14 @@ scenarios.push({
     const dateAfter = await cdp.eval('document.querySelector("#thread-list .chat-item[data-chat=\\"t-order-a-318\\"] .chat-date").textContent');
     if (dbAfter <= dbBefore || dbOrder[0] !== 't-order-a-318')
       throw new Error('setup: branch edit did not make A newest in DB: ' + dbBefore + ' -> ' + dbAfter + ' order=' + dbOrder.join(','));
-    // Phase-1 assertion: the live sidebar remains in its original B,A order
-    // and retains A's old date even though the DB is now A,B.
-    if (orderAfter.join(',') !== 't-order-b-318,t-order-a-318' || dateAfter !== dateBefore)
-      throw new Error('sidebar refreshed after edit (bug #318 not reproduced): before=' + orderBefore.join(',') +
+    // Fixed behavior: the edit posts a threadList refresh, so the live
+    // sidebar follows the DB's new order and date immediately.
+    if (orderAfter.join(',') !== 't-order-a-318,t-order-b-318' || dateAfter === dateBefore)
+      throw new Error('sidebar did not refresh after edit (bug #318 fix incomplete): before=' + orderBefore.join(',') +
         ' after=' + orderAfter.join(',') + ' dates=' + JSON.stringify(dateBefore) + ' -> ' + JSON.stringify(dateAfter));
     return 'Save as Branch on assistant A changed DB order to ' + dbOrder.join(',') + ' (' + dbBefore + ' -> ' + dbAfter +
-      ') but live sidebar stayed ' + orderAfter.join(',') + ' with date ' + JSON.stringify(dateAfter) +
-      ' (unchanged from ' + JSON.stringify(dateBefore) + ')';
+      ') and live sidebar refreshed to ' + orderAfter.join(',') + ' with date ' + JSON.stringify(dateAfter) +
+      ' (changed from ' + JSON.stringify(dateBefore) + ')';
   }
 });
 
