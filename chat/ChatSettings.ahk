@@ -56,6 +56,9 @@ _applyAssistantToRequestParams(asst) {
     requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
     requestParams["reasoningOverride"] := asst.reasoning
     requestParams["temperatureOverride"] := asst.temperature
+    requestParams["systemOverrideSet"] := false
+    requestParams["reasoningOverrideSet"] := false
+    requestParams["temperatureOverrideSet"] := false
     requestParams["activeAssistantId"] := asst.id
     _updateProviderFromModel(asst.baseModel)
 }
@@ -178,6 +181,9 @@ handleModelSettingsUpdate(parsed) {
     systemMessage := parsed.Get("systemMessage", "")
     reasoning := parsed.Get("reasoning", "")
     temperature := parsed.Get("temperature", "")
+    systemOverrideSet := _BoolFrom(parsed.Get("systemOverrideSet", systemMessage != ""))
+    reasoningOverrideSet := _BoolFrom(parsed.Get("reasoningOverrideSet", reasoning != ""))
+    temperatureOverrideSet := _BoolFrom(parsed.Get("temperatureOverrideSet", temperature != ""))
     webSearch := _BoolFrom(parsed.Get("webSearch", false))
 
     ; Only clear assistant when user explicitly changes the model (non-empty).
@@ -195,6 +201,9 @@ handleModelSettingsUpdate(parsed) {
     requestParams["systemOverride"] := systemMessage
     requestParams["reasoningOverride"] := reasoning
     requestParams["temperatureOverride"] := temperature
+    requestParams["systemOverrideSet"] := systemOverrideSet
+    requestParams["reasoningOverrideSet"] := reasoningOverrideSet
+    requestParams["temperatureOverrideSet"] := temperatureOverrideSet
     requestParams["webSearch"] := webSearch
 
     ; Persist to DB

@@ -36,25 +36,30 @@ class ThreadSettings {
             assistantBaseModel: "",
             assistantDescription: ""
         }
-        hasTemperatureOverride := false
+        hasSystemOverride := row.HasOwnProp("systemOverrideSet") ? row.systemOverrideSet : (row.HasOwnProp("systemOverride") && row.systemOverride != "")
+        hasReasoningOverride := row.HasOwnProp("reasoningOverrideSet") ? row.reasoningOverrideSet : (row.HasOwnProp("reasoningOverride") && row.reasoningOverride != "")
+        hasTemperatureOverride := row.HasOwnProp("temperatureOverrideSet") ? row.temperatureOverrideSet : false
         if row.HasOwnProp("modelOverride") && row.modelOverride
             eff.model := row.modelOverride
-        if row.HasOwnProp("systemOverride") && row.systemOverride
+        if hasSystemOverride
             eff.systemMessage := row.systemOverride
-        if row.HasOwnProp("reasoningOverride") && row.reasoningOverride
+        if hasReasoningOverride
             eff.reasoning := row.reasoningOverride
         ; Temperature 0 is a valid override (bug #35): AHK treats the numeric
         ; 0 as falsy, so only NULL/empty string means "no override".
-        if row.HasOwnProp("temperatureOverride") && row.temperatureOverride != "" {
+        if row.HasOwnProp("temperatureOverride") && (hasTemperatureOverride || row.temperatureOverride != "") {
             eff.temperature := row.temperatureOverride
             hasTemperatureOverride := true
         }
+        eff.systemOverrideSet := hasSystemOverride
+        eff.reasoningOverrideSet := hasReasoningOverride
+        eff.temperatureOverrideSet := hasTemperatureOverride
         if eff.assistantId && asst {
             if !eff.model
                 eff.model := asst.baseModel
-            if !eff.systemMessage
+            if !hasSystemOverride
                 eff.systemMessage := AssistantRepo._resolveSystemMessage(asst)
-            if !eff.reasoning
+            if !hasReasoningOverride
                 eff.reasoning := asst.reasoning
             if !hasTemperatureOverride
                 eff.temperature := asst.temperature
@@ -79,6 +84,9 @@ class ThreadSettings {
         requestParams["systemOverride"] := eff.systemMessage
         requestParams["reasoningOverride"] := eff.reasoning
         requestParams["temperatureOverride"] := eff.temperature
+        requestParams["systemOverrideSet"] := eff.systemOverrideSet
+        requestParams["reasoningOverrideSet"] := eff.reasoningOverrideSet
+        requestParams["temperatureOverrideSet"] := eff.temperatureOverrideSet
         requestParams["fontSize"] := eff.fontSize
         requestParams["webSearch"] := eff.webSearch
         if eff.assistantId
@@ -92,6 +100,9 @@ class ThreadSettings {
         requestParams["systemOverride"] := ""
         requestParams["reasoningOverride"] := ""
         requestParams["temperatureOverride"] := ""
+        requestParams["systemOverrideSet"] := false
+        requestParams["reasoningOverrideSet"] := false
+        requestParams["temperatureOverrideSet"] := false
         requestParams["webSearch"] := false
         if requestParams.Has("activeAssistantId")
             requestParams.Delete("activeAssistantId")
@@ -111,6 +122,9 @@ class ThreadSettings {
             systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
             reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
             temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
+            systemOverrideSet: requestParams.Has("systemOverrideSet") ? requestParams["systemOverrideSet"] : false,
+            reasoningOverrideSet: requestParams.Has("reasoningOverrideSet") ? requestParams["reasoningOverrideSet"] : false,
+            temperatureOverrideSet: requestParams.Has("temperatureOverrideSet") ? requestParams["temperatureOverrideSet"] : false,
             webSearch: requestParams.Has("webSearch") ? requestParams["webSearch"] : false,
             fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
         }
@@ -154,6 +168,9 @@ class ThreadSettings {
             systemMessage: systemMessage,
             reasoning: reasoning,
             temperature: temperature,
+            systemOverrideSet: requestParams.Has("systemOverrideSet") ? requestParams["systemOverrideSet"] : false,
+            reasoningOverrideSet: requestParams.Has("reasoningOverrideSet") ? requestParams["reasoningOverrideSet"] : false,
+            temperatureOverrideSet: requestParams.Has("temperatureOverrideSet") ? requestParams["temperatureOverrideSet"] : false,
             webSearch: webSearch,
             fontSize: fontSize,
             assistantName: assistantName,

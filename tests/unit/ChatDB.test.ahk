@@ -46,8 +46,8 @@ class ChatDBTest {
     Schema_IsMigratedToLatest() {
         this._setup()
         version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-        if Integer(version) != 7
-            throw Error("expected user_version 7, got " version)
+        if Integer(version) != 8
+            throw Error("expected user_version 8, got " version)
         cols := [
             { t: "chat_threads", c: "font_size" },
             { t: "chat_threads", c: "advanced_toggles" },
@@ -89,8 +89,8 @@ class ChatDBTest {
           ChatDB.Open(oldDbPath)
           try {
               version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-              if Integer(version) != 7
-                  throw Error("expected user_version 7 after migration, got " version)
+              if Integer(version) != 8
+                  throw Error("expected user_version 8 after migration, got " version)
             hasPrompt := false
             for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
                 if row.name = "prompt_tokens"

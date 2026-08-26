@@ -16,6 +16,8 @@ function populateCurrentSettings(settings) {
     model: settings.model || '',
     systemMessage: settings.systemMessage || '',
     reasoning: settings.reasoning || '',
+    reasoningOverrideSet: settings.reasoningOverrideSet === true,
+    temperatureOverrideSet: settings.temperatureOverrideSet === true,
     // Bug #78: 0 is a valid temperature override - only treat null/undefined
     // as "not set".
     temperature: settings.temperature == null ? '' : settings.temperature,
@@ -51,7 +53,7 @@ function populateCurrentSettings(settings) {
   if (tempSlider) {
     // Bug #78: 0 is a valid temperature override - use explicit empty checks
     // instead of a truthiness check (0 is falsy in JS).
-    var hasTemp = settings.temperature !== '' && settings.temperature !== undefined && settings.temperature !== null;
+    var hasTemp = settings.temperatureOverrideSet !== true && settings.temperature !== '' && settings.temperature !== undefined && settings.temperature !== null;
     if (hasTemp) {
       tempSlider.value = settings.temperature;
       tempSlider.classList.remove('temp-default');
@@ -155,6 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     tempSlider.addEventListener('change', function() {
       window._currentSettings.temperature = tempSlider.value;
+      window._currentSettings.temperatureOverrideSet = false;
       _sendAllSettings();
     });
   }
@@ -165,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (tempVal) tempVal.textContent = 'Default';
       tempReset.style.display = 'none';
       window._currentSettings.temperature = '';
+      window._currentSettings.temperatureOverrideSet = true;
       _sendAllSettings();
     });
   }
@@ -238,6 +242,7 @@ document.addEventListener('DOMContentLoaded', function() {
   var thinkingDropdown = document.getElementById('reasoningDropdown');
   if (thinkingDropdown) thinkingDropdown.addEventListener('change', function() {
     window._currentSettings.reasoning = thinkingDropdown.value;
+    window._currentSettings.reasoningOverrideSet = thinkingDropdown.value === '';
     _sendAllSettings();
   });
 

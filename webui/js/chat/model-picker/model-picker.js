@@ -23,6 +23,8 @@ function _sendAllSettings(immediate) {
       systemMessage: s.systemMessage || '',
       reasoning: s.reasoning || '',
       temperature: temperatureToSend,
+      reasoningOverrideSet: s.reasoningOverrideSet === true,
+      temperatureOverrideSet: s.temperatureOverrideSet === true,
       webSearch: !!s.webSearch
     });
   };
@@ -164,6 +166,8 @@ function _makeAssistantClickHandler(el, asstId) {
     if (mini) mini.value = sysPrompt;
     if (!window._currentSettings) window._currentSettings = {};
     window._currentSettings.systemMessage = sysPrompt;
+    window._currentSettings.reasoningOverrideSet = false;
+    window._currentSettings.temperatureOverrideSet = false;
     Ipc.postToHost('switchAssistant', { assistantId: asstId });
     var p = document.getElementById('modelPopover'); if (p) p.classList.remove('open');
     var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
@@ -223,6 +227,8 @@ function _makeModelClickHandler(el, fullId) {
         // it). Still clear assistant-owned system prompt / temperature.
         window._currentSettings.systemMessage = '';
         window._currentSettings.temperature = '';
+        window._currentSettings.reasoningOverrideSet = window._currentSettings.reasoning !== '';
+        window._currentSettings.temperatureOverrideSet = false;
         _sendAllSettings();
         _updateModelCard();
         var pop = document.getElementById('modelPopover'); if (pop) pop.classList.remove('open');

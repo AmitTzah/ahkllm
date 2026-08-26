@@ -154,7 +154,7 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-26 - Bugs 316-318 fixed and committed; no verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass; next round is fresh intake when the user asks. Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
@@ -169,7 +169,7 @@ How to run AHK safely:
   suite); scenario 20 flipped to a regression check for the stub removal.
   Full headless suite PASS and `npm run test:fast` green. Next round: fresh
   intake when the user asks. Reviewer candidates 319-322 are all verified and
-  ranked below; no fix has been started.
+  ranked below; bug 320 is next in rank order.
 
 ## Bug entry template
 
@@ -222,22 +222,6 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 319. Explicit Model Default reasoning/temperature resets are lost on reload
-
-**Scenario:** 319 (scenario code in `scenarios/settings.js`)
-
-**Status:** verified
-
-**Repro:** Open a chat using an assistant with Reasoning = high and Temperature = 0.3; select Model Default for reasoning and reset temperature to Default; wait for the settings save; reload the thread.
-
-**Expected:** The explicit default selections remain selected after reload.
-
-**Actual:** The assistant's high reasoning and 0.3 temperature return because empty overrides are stored as SQL NULL and treated as inheritance.
-
-**Evidence:** `chat/db/ThreadRepo.ahk:34-38` converts empty reasoning/temperature overrides to NULL; `chat/ThreadSettings.ahk:42-60` falls back to the assistant when those values are empty.
-
-**Verification:** Scenario 319 selects both defaults, confirms the persisted row is cleared, reloads the thread, and checks whether the assistant values return.
-
 ### 320. Clearing an assistant system prompt is not a stable per-thread choice
 
 **Scenario:** 320 (scenario code in `scenarios/settings.js`)
@@ -289,6 +273,7 @@ one at a time, in rank order.
 ## History (append-only)
 
 - 2026-08-26 - Web-search scenarios 250-255 were reclassified as regression coverage, not bug-hunt entries; their end-to-end checks remain in the suite.
+- 2026-08-26 - "Explicit Model Default reasoning/temperature selections are lost on reload" - FIXED + COMMITTED in this fix commit: per-thread override-set flags distinguish intentional empty defaults from inherited assistant values; scenario 319 is now a regression check with ThreadSettings, persistence, and UI payload coverage.
 - 2026-08-26 - "Message edit updates thread recency but leaves the sidebar stale" - FIXED + COMMITTED in this fix commit: branch and overwrite edits now post `_postThreadListRefresh()` after persistence; scenario 318 is a regression check and verifies live sidebar order/date updates.
 - 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED in this fix commit: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
 - 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.

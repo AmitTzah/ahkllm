@@ -42,8 +42,8 @@ class ThreadLockRepoTest {
         this._openDb()
         try {
             version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-            if Integer(version) != 7
-                throw Error("expected user_version 7, got " version)
+            if Integer(version) != 8
+                throw Error("expected user_version 8, got " version)
             hasCol := false
             for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows
                 if row.name = "is_locked"

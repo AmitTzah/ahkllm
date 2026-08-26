@@ -25,7 +25,8 @@ const retentionFixtureDate = new Date(Date.now() - 19 * 24 * 60 * 60 * 1000)
 
 scenarios.push({
   id: 319,
-  name: 'Explicit Model Default reasoning and temperature selections return to assistant values after reload',
+  name: 'Explicit Model Default reasoning and temperature selections survive reload',
+  regression: true,
   mode: null,
   settings: {
     assistants: [{
@@ -71,9 +72,9 @@ scenarios.push({
     if (selected.reasoning !== '' || selected.temperature !== '' || !selected.tempDefault)
       throw new Error('setup: explicit default controls were not selected: ' + JSON.stringify(selected));
 
-    const saved = seed.query(dbPath, "SELECT reasoning_override, temperature_override FROM chat_threads WHERE id='t-defaults-319'");
-    if (!saved.length || saved[0].reasoning_override !== null || saved[0].temperature_override !== null)
-      throw new Error('setup: expected empty overrides to be persisted as NULL: ' + JSON.stringify(saved));
+    const saved = seed.query(dbPath, "SELECT reasoning_override, temperature_override, reasoning_override_set, temperature_override_set FROM chat_threads WHERE id='t-defaults-319'");
+    if (!saved.length || saved[0].reasoning_override !== null || saved[0].temperature_override !== null || saved[0].reasoning_override_set !== 1 || saved[0].temperature_override_set !== 1)
+      throw new Error('setup: expected explicit empty overrides to be persisted with set flags: ' + JSON.stringify(saved));
 
     await cdp.eval('window.loadThread("t-defaults-319"); true');
     await cdp.waitFor('window.activeThreadId === "t-defaults-319" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread reloaded');
@@ -84,12 +85,9 @@ scenarios.push({
       tempDefault: document.getElementById('tempSlider').classList.contains('temp-default'),
       assistant: window._currentSettings.assistantName
     }))()`);
-    // PASS means the suspected bug is reproduced: NULL is interpreted as
-    // inheritance, so the assistant's non-default values return.
-    if (reloaded.reasoning !== 'high' || String(reloaded.temperature) !== '0.3' || reloaded.tempDefault)
-      throw new Error('explicit defaults survived reload (lead not reproduced): ' + JSON.stringify(reloaded));
-    return 'selected Model Default and temperature Default; DB stored NULL overrides; reload restored reasoning=' +
-      JSON.stringify(reloaded.reasoning) + ' and temperature=' + JSON.stringify(reloaded.temperature);
+    if (reloaded.reasoning !== '' || reloaded.temperature !== '' || !reloaded.tempDefault || reloaded.assistant !== 'Defaults Assistant')
+      throw new Error('explicit defaults did not survive reload: ' + JSON.stringify(reloaded));
+    return 'selected Model Default and temperature Default; DB stored explicit empty overrides; reload kept both defaults';
   }
 });
 

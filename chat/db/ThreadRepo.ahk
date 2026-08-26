@@ -14,6 +14,14 @@ class ThreadRepo {
         return false
     }
 
+    ; An empty value normally clears an override. The explicit flag lets the
+    ; UI persist an intentional empty override (Model Default / blank prompt).
+    static _OverrideFlag(settings, flagName, value) {
+        if settings.HasOwnProp(flagName)
+            return ThreadRepo._ToBool(settings.%flagName%)
+        return value != ""
+    }
+
     ; Create a new thread. Returns thread id string.
     static Create(title := "New Chat") {
         id := ChatDB._UUID()
@@ -31,12 +39,18 @@ class ThreadRepo {
             parts.Push("assistant_id = ?") params.Push(settings.assistantId ? settings.assistantId : SQLite.Null)
         if settings.HasOwnProp("modelOverride")
             parts.Push("model_override = ?") params.Push(settings.modelOverride ? settings.modelOverride : SQLite.Null)
-        if settings.HasOwnProp("systemOverride")
-            parts.Push("system_override = ?") params.Push(settings.systemOverride ? settings.systemOverride : SQLite.Null)
-        if settings.HasOwnProp("reasoningOverride")
-            parts.Push("reasoning_override = ?") params.Push(settings.reasoningOverride ? settings.reasoningOverride : SQLite.Null)
-        if settings.HasOwnProp("temperatureOverride")
+        if settings.HasOwnProp("systemOverride") {
+            parts.Push("system_override = ?") params.Push(settings.systemOverride != "" ? settings.systemOverride : SQLite.Null)
+            parts.Push("system_override_set = ?") params.Push(ThreadRepo._OverrideFlag(settings, "systemOverrideSet", settings.systemOverride))
+        }
+        if settings.HasOwnProp("reasoningOverride") {
+            parts.Push("reasoning_override = ?") params.Push(settings.reasoningOverride != "" ? settings.reasoningOverride : SQLite.Null)
+            parts.Push("reasoning_override_set = ?") params.Push(ThreadRepo._OverrideFlag(settings, "reasoningOverrideSet", settings.reasoningOverride))
+        }
+        if settings.HasOwnProp("temperatureOverride") {
             parts.Push("temperature_override = ?") params.Push(settings.temperatureOverride != "" ? settings.temperatureOverride : SQLite.Null)
+            parts.Push("temperature_override_set = ?") params.Push(ThreadRepo._OverrideFlag(settings, "temperatureOverrideSet", settings.temperatureOverride))
+        }
         if settings.HasOwnProp("fontSize")
             parts.Push("font_size = ?") params.Push(settings.fontSize ? settings.fontSize : 17)
         if settings.HasOwnProp("webSearch") {
@@ -57,7 +71,7 @@ class ThreadRepo {
 
     ; Get per-thread settings.
     static GetSettings(threadId) {
-        table := ChatDB.db.Query("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, font_size, advanced_toggles FROM chat_threads WHERE id=?;", threadId)
+        table := ChatDB.db.Query("SELECT assistant_id, model_override, system_override, reasoning_override, temperature_override, system_override_set, reasoning_override_set, temperature_override_set, font_size, advanced_toggles FROM chat_threads WHERE id=?;", threadId)
         if table.count {
             row := table[1]
             webSearch := false
@@ -75,6 +89,9 @@ class ThreadRepo {
                 systemOverride: row.system_override,
                 reasoningOverride: row.reasoning_override,
                 temperatureOverride: row.temperature_override,
+                systemOverrideSet: ThreadRepo._ToBool(row.system_override_set),
+                reasoningOverrideSet: ThreadRepo._ToBool(row.reasoning_override_set),
+                temperatureOverrideSet: ThreadRepo._ToBool(row.temperature_override_set),
                 webSearch: webSearch,
                 fontSize: row.font_size ? row.font_size : 17
             }

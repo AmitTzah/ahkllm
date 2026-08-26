@@ -416,6 +416,32 @@ class ChatSettingsTest {
         }
     }
 
+    ; Regression (bug #319): an explicit empty reasoning/temperature override
+    ; is different from an absent override and suppresses assistant fallback.
+    test_ThreadSettings_explicitEmptyOverridesWin() {
+        global assistants
+        oldAsst := assistants
+        assistants := [{
+            id: "asst-explicit-default", name: "Defaults", baseModel: "deepseek/test",
+            systemMessage: "assistant system", systemMessageFile: "",
+            reasoning: "high", temperature: "0.3"
+        }]
+        try {
+            row := {
+                assistantId: "asst-explicit-default",
+                reasoningOverride: "", reasoningOverrideSet: true,
+                temperatureOverride: "", temperatureOverrideSet: true
+            }
+            eff := ThreadSettings.ComputeEffective(row, assistants[1])
+            if eff.reasoning != "" || eff.temperature != ""
+                throw Error("explicit empty overrides were replaced by assistant defaults")
+            if !eff.reasoningOverrideSet || !eff.temperatureOverrideSet
+                throw Error("explicit override flags were not retained")
+        } finally {
+            assistants := oldAsst
+        }
+    }
+
     ; Regression (bug #35): a per-thread temperature override of 0 is valid.
     ; ComputeEffective used a truthiness check and AHK treats numeric 0 as
     ; falsy, so the 0 override was dropped and the assistant's temperature

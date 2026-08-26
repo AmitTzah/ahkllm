@@ -182,6 +182,20 @@ describe('_sendAllSettings', () => {
         assert.strictEqual(payload.webSearch, true);
     });
 
+    it('includes explicit empty override flags in the payload', () => {
+        const ctx = loadSettingsModule();
+        const posted = [];
+        ctx.window.chrome.webview.postMessage = (m) => posted.push(m);
+        ctx.window._currentSettings = {
+            model: '', systemMessage: '', reasoning: '', temperature: '', assistantName: 'Defaults',
+            reasoningOverrideSet: true, temperatureOverrideSet: true
+        };
+        ctx._sendAllSettings();
+        const payload = JSON.parse(posted[0]);
+        assert.strictEqual(payload.reasoningOverrideSet, true);
+        assert.strictEqual(payload.temperatureOverrideSet, true);
+    });
+
     it('keeps a temperature override of 0 in the payload (bug #193)', () => {
         const ctx = loadSettingsModule();
         const posted = [];
