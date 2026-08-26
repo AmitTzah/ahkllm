@@ -208,4 +208,32 @@ class SearchToolExecutorTest {
         activeThreadId := ""
         this._teardownDb()
     }
+
+    ; Regression (bug #315): a placeholder from a force-killed process must be
+    ; converted on the next ChatWindow startup and remain searchable in FTS.
+    RecoverAbandonedPlaceholders_MarksFailureAndKeepsCompletedResults() {
+        this._setupDb()
+        threadId := ChatDB.Thread_Create("Recovery")
+        staleId := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "user",
+            content: "[Web search: stale query]`n`nSearching…"
+        })
+        completedId := ChatDB.Msg_Insert({
+            thread_id: threadId, role: "user",
+            content: "[Web search: done query]`n`nCompleted result"
+        })
+        recovered := SearchToolExecutor.RecoverAbandonedPlaceholders()
+        stale := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", staleId)
+        completed := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", completedId)
+        if recovered != 1
+            throw Error("expected one abandoned placeholder recovery, got " recovered)
+        if InStr(stale[1, "content"], "Searching") || !InStr(stale[1, "content"], "interrupted by application restart")
+            throw Error("stale placeholder was not marked failed: " stale[1, "content"])
+        if completed[1, "content"] != "[Web search: done query]`n`nCompleted result"
+            throw Error("completed search context was changed")
+        results := ChatDB.SearchMessages("interrupted application restart")
+        if results.Length != 1 || results[1].messageId != staleId
+            throw Error("recovered failure was not reindexed in FTS")
+        this._teardownDb()
+    }
 }

@@ -971,6 +971,7 @@ scenarios.push({
 
 scenarios.push({
   id: 312,
+  regression: true,
   name: "Chat send rolls back when an attachment cannot be saved",
   mode: "sse-success",
   fixtures: { threads: [], messages: [] },
@@ -1016,6 +1017,7 @@ scenarios.push({
 
 scenarios.push({
   id: 313,
+  regression: true,
   name: "Overwrite edit rolls back when a replacement attachment cannot be saved",
   mode: null,
   fixtures: {
@@ -1117,64 +1119,18 @@ scenarios.push({
 });
 scenarios.push({
   id: 315,
-  name: "Web-search placeholder remains Searching after process restart",
-  mode: "sse-tool-call",
-  settings: { threadTitles: { enabled: false } },
-  mockOpts: {
-    searchQuery: "Crash recovery 315",
-    searchDelay: 5000,
-    searchText: "Search result that should not be mistaken for a live operation."
-  },
-  fixtures: { threads: [], messages: [] },
-  async body({ cdp, dbPath, dataDir }) {
-    await showChat();
-    await cdp.eval('document.getElementById("webSearchToggle").click(); true');
-    await sleep(900);
-    await post(cdp, { action: "chatSend", message: "CRASH_PLACEHOLDER_315" });
-    await cdp.waitFor('document.querySelector(".msg.search-context") !== null', 20000, 100, "search placeholder in UI");
-    await sleep(300);
-    const beforeKill = seed.query(dbPath, "SELECT id, content FROM messages WHERE content LIKE '%Searching%' ORDER BY rowid DESC LIMIT 1");
-    if (!beforeKill.length) throw new Error("placeholder row was not durable before kill");
-
-    await cdp.close();
-    const killed = runProbe("kill-app");
-    if (!killed || Number(killed.closed) < 1) throw new Error("targeted kill-app did not close the scenario app: " + JSON.stringify(killed));
-    // kill-app targets only the app scripts; sweep the harness-owned
-    // WebView2 child before restarting on a new CDP port.
-    launcher.killRepoAppProcesses();
-    launcher.sweepWebView2Dirs();
-    await sleep(1200);
-
-    const restartPort = await launcher.findFreePort();
-    const restarted = launcher.launch({ sandbox: dataDir, port: restartPort });
-    let restartedCdp = null;
-    try {
-      let target;
-      try {
-        target = await launcher.waitForChatTarget(restartPort, 30000);
-      } catch (error) {
-        let targets = [];
-        try { targets = await launcher.listTargets(restartPort); } catch {}
-        throw new Error(error.message + "; restart app-pids=" + JSON.stringify(runProbe("app-pids")) +
-          "; restart targets=" + JSON.stringify(targets.map((item) => ({ type: item.type, url: item.url }))));
-      }
-      restartedCdp = await CDP.connect(target.webSocketDebuggerUrl);
-      await restartedCdp.installPostMessageHook();
-      await restartedCdp.waitFor('document.readyState === "complete" && typeof chatMessages !== "undefined"', 60000, 400, "restarted chat ready");
-      await restartedCdp.waitFor('document.querySelector("#thread-list .chat-item") !== null', 20000, 300, "restarted thread list");
-      await restartedCdp.click("#thread-list .chat-item");
-      await restartedCdp.waitFor('window.activeThreadId !== "" && document.querySelector(".msg.search-context") !== null', 20000, 200, "reloaded thread");
-      const cardText = await restartedCdp.text(".msg.search-context");
-      if (String(cardText).indexOf("Searching") < 0)
-        throw new Error("placeholder was recovered instead of remaining stale: " + cardText);
-      const afterRestart = seed.query(dbPath, "SELECT id, content FROM messages WHERE id=?", [beforeKill[0].id]);
-      if (!afterRestart.length || String(afterRestart[0].content).indexOf("Searching") < 0)
-        throw new Error("placeholder content changed unexpectedly after restart: " + JSON.stringify(afterRestart));
-      return "targeted app kill during a slow search left the durable placeholder row and reloaded card as Searching after restart (row " + beforeKill[0].id + ")";
-    } finally {
-      if (restartedCdp) await restartedCdp.close();
-      launcher.teardown(restarted.mainPid);
-    }
+  regression: true,
+  name: "Web-search placeholders are recovered after process restart",
+  mode: null,
+  noApp: true,
+  async body() {
+    const executor = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "tools", "SearchToolExecutor.ahk"), "utf8");
+    const window = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
+    const hasRecovery = /static RecoverAbandonedPlaceholders\(\)[\s\S]*?Searching[\s\S]*?interrupted by application restart[\s\S]*?FTS_Sync/.test(executor);
+    const runsAtStartup = /#Include tools\\SearchToolExecutor\.ahk\s*\r?\nSearchToolExecutor\.RecoverAbandonedPlaceholders\(\)/.test(window);
+    if (!hasRecovery || !runsAtStartup)
+      throw new Error("startup recovery contract missing: recovery=" + hasRecovery + " startup=" + runsAtStartup);
+    return "ChatWindow startup invokes SearchToolExecutor.RecoverAbandonedPlaceholders, which transactionally marks persisted Searching cards as interrupted failures and reindexes them; behavioral coverage is in SearchToolExecutorTest";
   }
 });
 module.exports=scenarios;

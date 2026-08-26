@@ -119,6 +119,7 @@ CleanupOwnedTempFiles()
 #Include ChatRequestBuilder.ahk
 #Include ChatIPC.ahk
 #Include tools\SearchToolExecutor.ahk
+SearchToolExecutor.RecoverAbandonedPlaceholders()
 
 ; ----------------------------------------------------
 ; Create WebView and LLM client

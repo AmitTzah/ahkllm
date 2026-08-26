@@ -16,6 +16,41 @@
 
 class SearchToolExecutor {
 
+    ; A force-killed ChatWindow cannot resume its in-memory tool loop. Convert
+    ; any durable placeholder left by that process into an actionable failure
+    ; before the new window can render it as an indefinitely live search.
+    static RecoverAbandonedPlaceholders() {
+        if !ChatDB.isOpen
+            return 0
+        rows := ChatDB.db.Query("SELECT id, content FROM messages WHERE role=?;", "user")
+        placeholders := []
+        for row in rows.rows {
+            if SubStr(row.content, 1, 12) = "[Web search:" && InStr(row.content, "`n`nSearching")
+                placeholders.Push(row)
+        }
+        if !placeholders.Length
+            return 0
+
+        recovered := 0
+        ChatDB.BeginTransaction()
+        try {
+        for row in placeholders {
+            markerPos := InStr(row.content, "`n`n")
+            replacement := SubStr(row.content, 1, markerPos + 1) . "Web search failed: interrupted by application restart."
+            ChatDB.db.Query("UPDATE messages SET content=? WHERE id=?;", replacement, row.id)
+            ChatDB.FTS_Sync(row.id, replacement)
+            recovered++
+        }
+        ChatDB.CommitTransaction()
+        } catch Error as e {
+            ChatDB.RollbackTransaction()
+            throw e
+        }
+        if recovered
+            ChatDB._MarkPersistentDataChanged()
+        return recovered
+    }
+
     ; toolCalls: array of {id, name, arguments} from the stream/response.
     ; providerInfo: ProviderResolver.Resolve(...) output.
     ; testRunner: optional function-object seam for unit tests (returns the

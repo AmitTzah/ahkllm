@@ -154,13 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 311-313 fixed and committed; bug
-  314 is now in progress (branch attachment persistence failure).
-  Scenario 315 was attempted twice; both targeted-kill runs failed during
-  restart setup (`waitForChatTarget` timeout, diagnostics saw only
-  `api-logs.html`), so entry 315 remains `reported` pending harness recovery.
+- **Where we left off:** 2026-08-26 - Bugs 311-315 fixed and committed; no
+  verified or reported bugs remain. Scenario 315's live restart path was
+  infrastructure-blocked, so its regression contract and unit test cover the
+  startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -259,40 +258,6 @@ answer live before completion, and the scenario asserts that live progress.
 The search call runs with reasoning effort "none" (reasoning-on searches can
 burn the whole output budget on internal search rounds and end with no answer
 at all - real-API report 2026-08-16). No real API calls are made by the suite.
-
-### 315. Web-search placeholder remains “Searching…” after process restart
-
-**Scenario:** 315
-
-**Status:** reported
-
-**Repro:** Enable Web Search, start a deliberately slow search, wait until the
-durable `[Web search: ...]` placeholder row says `Searching…`, force-kill only
-the AhkLLM app process, restart the app against the same profile, and reload
-the thread.
-
-**Expected:** Restart recovery distinguishes an active search from an
-abandoned persisted placeholder. A placeholder from a prior process must be
-marked as abandoned/failed (or otherwise made actionable) and must not remain
-indefinitely as `Searching…`; legitimate completed search-context history must
-remain unchanged.
-
-**Actual:** Suspected: `SearchToolExecutor.PrepareFollowUp` inserts a durable
-placeholder, but the tool-loop state (`loopState`, backend PID, and active
-operation) is process-local. No startup path appears to reconcile a persisted
-`Searching…` row, so after a crash/restart it may remain permanently pending.
-
-**Evidence:** `chat/tools/SearchToolExecutor.ahk:PrepareFollowUp` persists the
-placeholder before `Execute`; `chat/streaming/StreamHandler.ahk` keeps the
-active loop in process memory, while the startup/load paths contain no
-abandoned-placeholder recovery keyed to a process or operation owner.
-
-**Verification:** Infrastructure-pending - scenario 315 enabled the real Web
-Search toggle and reached the persisted placeholder before using
-`runProbe('kill-app')`. Two bounded attempts then timed out in
-`waitForChatTarget` while restarting (the diagnostic target list contained only
-`api-logs.html`), before the stale-card assertion could run. This is not a
-refutation; rerun after the restart harness can reliably expose the chat page.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 
@@ -844,5 +809,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Chat send ignores a failed attachment save and still sends" - FIXED + COMMITTED in this fix commit: sends now transact the user message, attachments, and FTS state, reject failed attachment saves, clean up created files on rollback, and surface an error without firing a request; scenario 312 and ChatFlow regression coverage passed.
 - 2026-08-26 - "Overwrite edit deletes old attachments before a failed replacement" - FIXED + COMMITTED in this fix commit: overwrite edits now transact attachment deletion, replacement saves, message content, and FTS updates; failed replacements restore the original message and file without firing a request; scenario 313 and BranchFlow regression coverage passed.
 - 2026-08-26 - "Branch edit activates a partial branch after attachment persistence failure" - FIXED + COMMITTED in this fix commit: branch creation now keeps message insertion, source-attachment copying, replacement saves, active-leaf changes, and FTS updates in one transaction; failed replacements leave the source tree intact and send no request; scenario 314 and BranchFlow regression coverage passed.
+- 2026-08-26 - "Web-search placeholder remains ‘Searching…’ after process restart" - FIXED + COMMITTED in this fix commit: ChatWindow startup now converts abandoned persisted placeholders into searchable interruption failures; scenario 315's static contract and SearchToolExecutor behavioral regression passed (the live restart harness remains infrastructure-blocked).
 
 
