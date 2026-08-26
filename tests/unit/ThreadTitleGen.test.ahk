@@ -181,6 +181,31 @@ class ThreadTitleGenTest {
         this._teardownDb()
     }
 
+    ; Regression (bug #311): a delayed callback must not read or dispatch a
+    ; title request after the thread was relocked.
+    Generate_RelockedThread_DoesNotExposeContent() {
+        global _mockRunCalls
+        this._setupDb()
+        this._setGlobals()
+        threadId := ChatDB.Thread_Create("Locked title")
+        usrId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "SECRET TITLE INPUT" })
+        ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "SECRET TITLE OUTPUT", parent_id: usrId })
+        ThreadLockService.LockAll()
+        ChatDB.ThreadLock_Set(threadId,
+            "0123456789abcdef0123456789abcdef",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            600000)
+        _mockRunCalls := []
+        try {
+            generateThreadTitle(threadId)
+            if _mockRunCalls.Length != 0
+                throw Error("relocked thread must not dispatch title generation (bug #311)")
+        } finally {
+            ThreadLockService.LockAll()
+            this._teardownDb()
+        }
+    }
+
     ; ----------------------------------------------------
     ; Bug #140 regression: retrying the first exchange calls _maybeGenerateTitle
     ; with the same pre-insert path and "New Chat" title. Once a title request

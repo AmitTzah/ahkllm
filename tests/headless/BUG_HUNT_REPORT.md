@@ -154,11 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **4 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **3 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenarios 311-314 PASSED and reproduced
-  delayed title exposure, send attachment omission, overwrite attachment loss,
-  and partial active branch creation. Entries 311-314 are `verified`.
+- **Where we left off:** 2026-08-26 - Bug 311 fixed and committed; next fix is
+  bug 312 (send attachment persistence failure).
   Scenario 315 was attempted twice; both targeted-kill runs failed during
   restart setup (`waitForChatTarget` timeout, diagnostics saw only
   `api-logs.html`), so entry 315 remains `reported` pending harness recovery.
@@ -260,38 +259,6 @@ answer live before completion, and the scenario asserts that live progress.
 The search call runs with reasoning effort "none" (reasoning-on searches can
 burn the whole output budget on internal search rounds and end with no answer
 at all - real-API report 2026-08-16). No real API calls are made by the suite.
-
-### 311. Delayed title generation reads and logs a chat after relock
-
-**Scenario:** 311
-
-**Status:** verified
-
-**Repro:** Open a password-protected empty chat, unlock it, send the first user
-message and wait for the assistant response, then relock the chat immediately
-before the delayed title callback runs.
-
-**Expected:** A title-generation job that has not started must not newly expose
-the relocked chat. It must either abort without an outbound title request or
-redact all title-request content, including the API log; ordinary unlocked
-chats must keep automatic title generation.
-
-**Actual:** Suspected: `_maybeGenerateTitle` schedules an unowned delayed
-callback, and `generateThreadTitle` reads the active path and logs its payload
-without checking `ThreadLockService.ShouldRedactContent(threadId)`. This may
-send the first exchange and write its plaintext to `LLM_API_Log.json` after
-the chat has been relocked.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk` schedules
-`SetTimer(generateThreadTitle.Bind(threadId), -200)`; `chat/ThreadTitleGen.ahk`
-calls `ChatDB.Msg_GetActivePath(threadId)` and `_TitleGen_LogRequest(...)`
-without a request-owned lock/redaction gate, while normal stream logging uses
-`ThreadLockService.ShouldRedactContent(streamThreadId)`.
-
-**Verification:** Headless - scenario 311 unlocked a real locked thread, sent
-the first exchange against the local mock, relocked at the first idle
-observation, and found `TITLE_SECRET_311` in both the mock title request and
-the `Thread Title Generation` entry in `LLM_API_Log.json`.
 
 ### 312. Chat send ignores a failed attachment save and still sends
 
@@ -973,5 +940,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in 784f79b: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
 - 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in efda6ab: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
 - 2026-08-26 - "Force-killed ChatWindow runs can leave credential-bearing temp files" - FIXED + COMMITTED in b4fa670: explicit app-owned temp prefixes are removed at startup and exit; scenario 310 and the AHK cleanup regression passed.
+- 2026-08-26 - "Delayed title generation reads and logs a chat after relock" - FIXED + COMMITTED in this fix commit: delayed title callbacks fail closed for relocked threads and redact any lock transition observed before publication/logging; scenario 311 and ThreadTitleGen regression coverage passed.
 
 

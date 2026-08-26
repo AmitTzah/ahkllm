@@ -18,6 +18,13 @@ generateThreadTitle(threadId) {
     global _titleGenRequestedThreads
     if !autoTitleGenerationEnabled || !IsSet(titleGenModel) || !titleGenModel
         return
+    ; A delayed title callback can run after the user relocks its thread.
+    ; Do not even read the active path in that case: title generation is an
+    ; outbound plaintext sink just like the normal chat request/log path.
+    if ThreadLockService.ShouldRedactContent(threadId) {
+        debugLog("[TITLEGEN] skip locked thread=" threadId)
+        return
+    }
 
     prompt := _TitleGen_BuildPrompt(threadId)
     if !prompt
@@ -59,7 +66,10 @@ generateThreadTitle(threadId) {
 
     _TitleGen_TrackUsage(titleGenModel, providerInfo.providerKey, promptTokens, completionTokens, thinkingTokens, titleGenStart)
 
-    if title {
+    ; A lock may be applied by the other process while cURL is running. Do
+    ; not publish or persist a title based on a now-protected exchange.
+    redacted := ThreadLockService.ShouldRedactContent(threadId)
+    if title && !redacted {
         ChatDB.Thread_Update(threadId, title)
         threads := ChatDB.Thread_List()
         folders := _GetFolders()
@@ -80,7 +90,7 @@ generateThreadTitle(threadId) {
         debugLog("[TITLEGEN] title='" title "' thread=" threadId
             . " dbFolderId='" dbFolderId "' resolvedFolderName='" folderName "'")
         postWebMessage("updateTopbarTitle", { text: title, folder: folderName })
-    } else {
+    } else if !title {
         ; Bug #151: a FAILED title request (no title parsed - transient network
         ; error, provider hiccup, timeout, empty response) must NOT permanently
         ; disable auto-titles. Clear the dispatch guard so the next trigger
@@ -90,7 +100,7 @@ generateThreadTitle(threadId) {
         debugLog("[TITLEGEN] no title parsed - dispatch guard cleared thread=" threadId)
     }
 
-    _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, providerInfo.endpoint, payload, raw, title, titleGenStart)
+    _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, providerInfo.endpoint, payload, raw, title, titleGenStart, redacted)
 }
 
 ; Build the prompt from the first user+assistant exchange.
@@ -189,7 +199,11 @@ _TitleGen_TrackUsage(titleModel, providerKey, promptTokens, completionTokens, th
 }
 
 ; Log the title generation API request.
-_TitleGen_LogRequest(titleModel, providerKey, endpoint, payload, raw, title, titleGenStart) {
+_TitleGen_LogRequest(titleModel, providerKey, endpoint, payload, raw, title, titleGenStart, redacted := false) {
+    if redacted {
+        payload := "<hidden: locked chat>"
+        raw := "<hidden: locked chat>"
+    }
     ApiLogger.LogRequest({
         timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
         commandName: "Thread Title Generation",

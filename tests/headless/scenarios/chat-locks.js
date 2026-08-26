@@ -655,7 +655,8 @@ scenarios.push({
 
 scenarios.push({
   id: 311,
-  name: 'Delayed title generation reads and logs a chat after relock',
+  regression: true,
+  name: 'Delayed title generation does not read or log a chat after relock',
   mode: 'sse-success',
   fixtures: {
     threads: [{ id: 't-title-relock-311', title: 'New Chat', active_leaf_id: null, is_locked: 1 }],
@@ -713,10 +714,10 @@ scenarios.push({
     const titleEntry = titleLogEntries.find((entry) => entry && entry.commandName === 'Thread Title Generation');
     const outboundLeak = titleRequests.some((entry) => JSON.stringify(entry.body).includes('TITLE_SECRET_311'));
     const apiLogLeak = !!titleEntry && JSON.stringify(titleEntry.request).includes('TITLE_SECRET_311');
-    if (!outboundLeak || !apiLogLeak)
-      throw new Error('title race did not reproduce both exposures: outbound=' + outboundLeak + ' apiLog=' + apiLogLeak +
+    if (outboundLeak || apiLogLeak)
+      throw new Error('relocked title callback exposed content: outbound=' + outboundLeak + ' apiLog=' + apiLogLeak +
         ' titleRequests=' + titleRequests.length + ' titleEntry=' + !!titleEntry);
-    return 'relocked immediately after the first exchange; delayed title request still carried TITLE_SECRET_311 and the title-specific API log entry stored it in plaintext';
+    return 'relocked immediately after the first exchange; the delayed callback skipped the title request and stored no plaintext title payload';
   }
 });
 
