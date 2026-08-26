@@ -250,11 +250,12 @@ async function main() {
     console.error('Unknown scenario ids: ' + ids.filter((i) => !scenarios.some((s) => s.id === i)).join(','));
     process.exit(2);
   }
-  if (launcher.preflight()) {
+  const needsApp = selected.some((s) => !s.noApp);
+  if (needsApp && launcher.preflight()) {
     console.error('ABORT: the app (Main.ahk/ChatWindow.ahk) appears to be running already (#SingleInstance). Close it and re-run, or if it is a leftover from an aborted run: node tests/headless/e2e-suite.js --cleanup');
     process.exit(3);
   }
-  console.log('Isolating the real profile (junction redirect)...');
+  console.log(needsApp ? 'Isolating the real profile (junction redirect)...' : 'Running noApp scenarios without profile isolation...');
   // If the harness is stopped mid-run (Ctrl+C / SIGTERM), restore the profile
   // and close spawned processes instead of leaving the app isolated.
   let interrupted = false;
@@ -273,7 +274,7 @@ async function main() {
   let iso = null;
   let restored = 'not attempted';
   try {
-    iso = launcher.isolateProfile();
+    iso = needsApp ? launcher.isolateProfile() : { sandboxData: null };
     console.log('Launching headless verification for ' + selected.length + ' scenarios...');
     // Fresh record per run; each scenario appends immediately so an externally
     // killed run (e.g. another process blanket-killing AHK/node) still leaves a
@@ -306,7 +307,8 @@ async function main() {
     // backstop sweep here; repeating teardown once per historical PID made a
     // full run spend minutes re-running PowerShell/taskkill for dead apps.
     launcher.teardown(0);
-    if (iso) restored = launcher.restoreProfile(iso) ? 'yes' : 'NO — CHECK MANUALLY';
+    if (iso && needsApp) restored = launcher.restoreProfile(iso) ? 'yes' : 'NO — CHECK MANUALLY';
+    else if (!needsApp) restored = 'not needed (noApp-only run)';
     // Final bounded sweep: a completed run must not leave WebView2 folders
     // behind, even if the last scenario's browser processes released their
     // files only after its teardown retry window.

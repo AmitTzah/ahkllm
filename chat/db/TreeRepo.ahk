@@ -404,6 +404,12 @@ class TreeRepo {
 
 
     static SwitchBranch(threadId, msgId, direction := 1) {
+        ; A branch event can arrive after the user switched threads. The
+        ; sibling lookup is keyed by the message's real thread, so verify the
+        ; caller's thread before deriving a leaf from that sibling set.
+        ownership := ChatDB.db.Query("SELECT id FROM messages WHERE id=? AND thread_id=?;", msgId, threadId)
+        if !ownership.count
+            return { path: TreeRepo.GetActivePath(threadId), siblingInfo: { index: 1, total: 1 } }
         siblings := TreeRepo.GetSiblings(msgId)
         if siblings.Length < 2
             return { path: TreeRepo.GetActivePath(threadId), siblingInfo: { index: 1, total: 1 } }
@@ -422,7 +428,7 @@ class TreeRepo {
         if newMsgId = msgId
             return { path: TreeRepo.GetActivePath(threadId), siblingInfo: { index: currentPos + 1, total: siblings.Length } }
 
-        newLeafId := TreeRepo._WalkToLeaf(newMsgId)
+        newLeafId := TreeRepo._WalkToLeaf(newMsgId, threadId)
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, threadId)
 
         path := TreeRepo.GetActivePath(threadId)
@@ -440,7 +446,7 @@ class TreeRepo {
         threadRow := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
         activePathTokens := 0
         if threadRow.count && threadRow[1, "active_leaf_id"] {
-            leafRow := ChatDB.db.Query("SELECT active_path_tokens FROM messages WHERE id=?;", threadRow[1, "active_leaf_id"])
+            leafRow := ChatDB.db.Query("SELECT active_path_tokens FROM messages WHERE id=? AND thread_id=?;", threadRow[1, "active_leaf_id"], threadId)
             if leafRow.count
                 activePathTokens := Integer(leafRow[1, "active_path_tokens"])
         }
@@ -512,7 +518,7 @@ class TreeRepo {
         return ""
     }
 
-    static _WalkToLeaf(msgId) {
+    static _WalkToLeaf(msgId, threadId := "") {
         currentId := msgId
         loop {
             ; Bug #55 + #148: pick the NEWEST continuation - retries and branch
@@ -520,7 +526,10 @@ class TreeRepo {
             ; order by sibling_index DESC (rowid DESC for ties = last-inserted).
             ; The old ASC order picked the ORIGINAL answer instead of the most
             ; recent retry, and ORDER BY created_at picked the OLDEST child.
-            childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? ORDER BY sibling_index DESC, rowid DESC LIMIT 1;", currentId)
+            if threadId
+                childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? AND thread_id=? ORDER BY sibling_index DESC, rowid DESC LIMIT 1;", currentId, threadId)
+            else
+                childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? ORDER BY sibling_index DESC, rowid DESC LIMIT 1;", currentId)
             if !childTable.count
                 break
             currentId := childTable[1, "id"]

@@ -4,11 +4,333 @@ const fs=require("node:fs");
 const path=require("node:path");
 const os=require("node:os");
 const { spawn, spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const seed=require("../seed");
 const launcher=require("../launch");
 const { sleep, showChat, waitStreamingIdle } = require("./helpers");
+const { assertInvariants } = require("../invariant-audit");
 const scenarios=[];
+
+function lockHash(password, saltHex, iterations) {
+  return crypto.pbkdf2Sync(password, Buffer.from(saltHex, "hex"), iterations, 32, "sha256").toString("hex");
+}
+
+function post(cdp, payload) {
+  return cdp.eval(`window.chrome.webview.postMessage(JSON.stringify(${JSON.stringify(payload)})); true`);
+}
+
+function runProbeCheck(check, args = [], timeout = 25000) {
+  const outFile = path.join(os.tmpdir(), `llm-bughunt-${check}-${process.pid}.txt`);
+  try { fs.unlinkSync(outFile); } catch {}
+  const probe = path.join(__dirname, "..", "probe-bughunt-db.ahk");
+  const result = spawnSync(launcher.AHK, ["/ErrorStdOut", probe, outFile, check, ...args], { timeout, windowsHide: true, encoding: "utf8" });
+  if (result.error) throw new Error(`${check} probe spawn failed/timed out: ${result.error.message}`);
+  if (result.stderr) process.stderr.write(`[${check} probe stderr] ${result.stderr}`);
+  return fs.readFileSync(outFile, "utf8").replace(/^\uFEFF/, "");
+}
+
+scenarios.push({
+  id: 300,
+  name: "Cross-thread stale SwitchBranch is rejected and cannot alter the active tree",
+  regression: true,
+  mode: null,
+  fixtures: {
+    threads: [
+      { id: "t-a-300", title: "Chat A", active_leaf_id: "m-a-300" },
+      { id: "t-b-300", title: "Chat B", active_leaf_id: "m-b-300-1" }
+    ],
+    messages: [
+      { id: "m-a-300-u", thread_id: "t-a-300", role: "user", content: "AAA_ONLY", token_count: 4, active_path_tokens: 4 },
+      { id: "m-a-300", thread_id: "t-a-300", role: "assistant", content: "A response", model: "openai/gpt-4", parent_id: "m-a-300-u", prompt_tokens: 8, token_count: 3, active_path_tokens: 11 },
+      { id: "m-b-300-u", thread_id: "t-b-300", role: "user", content: "BBB_ONLY", token_count: 4, active_path_tokens: 4 },
+      { id: "m-b-300-1", thread_id: "t-b-300", role: "assistant", content: "B branch one", model: "deepseek/deepseek-v4-flash", parent_id: "m-b-300-u", sibling_group: "sg-b-300", sibling_index: 0, prompt_tokens: 8, token_count: 3, active_path_tokens: 11 },
+      { id: "m-b-300-2", thread_id: "t-b-300", role: "assistant", content: "B branch two", model: "deepseek/deepseek-v4-flash", parent_id: "m-b-300-u", sibling_group: "sg-b-300", sibling_index: 1, prompt_tokens: 9, token_count: 5, active_path_tokens: 13 },
+      { id: "m-b-300-tail", thread_id: "t-b-300", role: "user", content: "B tail", parent_id: "m-b-300-2", token_count: 2, active_path_tokens: 15 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, "thread list");
+    await cdp.click('#thread-list .chat-item[data-chat="t-b-300"]');
+    await cdp.waitFor('window.activeThreadId === "t-b-300"', 15000, 300, "B loaded");
+    await cdp.click('#thread-list .chat-item[data-chat="t-a-300"]');
+    await cdp.waitFor('window.activeThreadId === "t-a-300"', 15000, 300, "A loaded");
+    await post(cdp, { action: "switchBranch", id: "m-b-300-1", direction: 1 });
+    await sleep(800);
+    const after = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-a-300'")[0].active_leaf_id;
+    const pathLen = await cdp.eval("chatMessages.length");
+    if (after !== "m-a-300" || pathLen !== 2) throw new Error(`stale branch event changed A: leaf=${after} path=${pathLen}`);
+    const probe = runProbeCheck("foreign-switch-reopen", [dbPath, "t-a-300"]);
+    if (!/FOREIGN_SWITCH first leaf=m-a-300 pathLen=2 statsPathTokens=11/.test(probe) || !/FOREIGN_SWITCH reopen leaf=m-a-300 pathLen=2 statsPathTokens=11/.test(probe))
+      throw new Error("fixed leaf/path did not survive reopen: " + probe);
+    await post(cdp, { action: "chatSend", message: "AAA_AFTER_SAFE_SWITCH" });
+    await sleep(900);
+    const roots = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-a-300' AND parent_id IS NULL")[0].c;
+    if (roots !== 1) throw new Error("safe subsequent send created a second root: " + roots);
+    return "real stale switchBranch IPC from B while A was active was rejected; A's leaf/path/stats survived close/reopen and a subsequent send stayed in the same root";
+  }
+});
+
+scenarios.push({
+  id: 301,
+  name: "Stale message and attachment IDs mutate another chat while A is active",
+  mode: null,
+  fixtures: {
+    threads: [
+      { id: "t-a-301", title: "Chat A", active_leaf_id: "m-a-301" },
+      { id: "t-b-301", title: "Chat B", active_leaf_id: "m-b-301-edit" },
+      { id: "t-l-301", title: "Locked B", active_leaf_id: "m-l-301", is_locked: 1 }
+    ],
+    messages: [
+      { id: "m-a-301", thread_id: "t-a-301", role: "user", content: "AAA_ONLY" },
+      { id: "m-b-301-edit", thread_id: "t-b-301", role: "user", content: "BBB_EDIT_SENTINEL" },
+      { id: "m-b-301-delete", thread_id: "t-b-301", role: "user", content: "BBB_DELETE_SENTINEL" },
+      { id: "m-l-301", thread_id: "t-l-301", role: "user", content: "LOCKED_ATTACHMENT_SENTINEL" }
+    ],
+    chatLocks: [{ thread_id: "t-l-301", salt: "00112233445566778899aabbccddeeff", hash: lockHash("correct horse", "00112233445566778899aabbccddeeff", 600000), iterations: 600000 }]
+  },
+  async body({ cdp, dbPath, dataDir }) {
+    const attPath = "attachments/locked-301.txt";
+    fs.mkdirSync(path.join(dataDir, "attachments"), { recursive: true });
+    fs.writeFileSync(path.join(dataDir, attPath), "LOCKED_FILE_SENTINEL");
+    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    db.prepare("INSERT INTO message_attachments (id,message_id,attachment_type,file_path,mime_type,original_filename,file_size) VALUES (?,?,?,?,?,?,?)").run("att-l-301", "m-l-301", "text_file", attPath, "text/plain", "locked.txt", 20);
+    db.close();
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, "thread list");
+    await cdp.click('#thread-list .chat-item[data-chat="t-b-301"]');
+    await cdp.waitFor('window.activeThreadId === "t-b-301"', 15000, 300, "B loaded");
+    await cdp.click('#thread-list .chat-item[data-chat="t-a-301"]');
+    await cdp.waitFor('window.activeThreadId === "t-a-301"', 15000, 300, "A loaded");
+    await post(cdp, { action: "editMessage", id: "m-b-301-edit", content: "BBB_EDITED_BY_STALE_EVENT", mode: "overwrite", attachments: [], removedAttachmentIds: [] });
+    await sleep(500);
+    await post(cdp, { action: "deleteMessage", id: "m-b-301-delete" });
+    await sleep(500);
+    await post(cdp, { action: "deleteAttachment", id: "att-l-301" });
+    await sleep(700);
+    const edited = seed.query(dbPath, "SELECT content FROM messages WHERE id='m-b-301-edit'")[0]?.content;
+    const deleted = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-b-301-delete'")[0].c;
+    const attRows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE id='att-l-301'")[0].c;
+    const fileExists = fs.existsSync(path.join(dataDir, attPath));
+    if (edited !== "BBB_EDITED_BY_STALE_EVENT" || deleted !== 0 || attRows !== 0 || fileExists)
+      throw new Error(`cross-chat mutation did not reproduce consistently: edited=${edited} deleted=${deleted} attRows=${attRows} file=${fileExists}`);
+    return "after opening B then switching to A, stale IPC edited B, deleted B's message, and deleted the locked target's attachment/file while A remained active";
+  }
+});
+
+scenarios.push({
+  id: 302,
+  name: "Branch edit with nonexistent, foreign, or off-path IDs inserts bogus roots",
+  mode: null,
+  fixtures: {
+    threads: [{ id: "t-a-302", title: "Chat A", active_leaf_id: "m-a-302-active" }, { id: "t-b-302", title: "Chat B", active_leaf_id: "m-b-302" }],
+    messages: [
+      { id: "m-a-302-root", thread_id: "t-a-302", role: "user", content: "AAA_ROOT" },
+      { id: "m-a-302-active", thread_id: "t-a-302", role: "assistant", content: "AAA_ACTIVE", model: "openai/gpt-4", parent_id: "m-a-302-root", sibling_group: "sg-a-302", sibling_index: 0 },
+      { id: "m-a-302-off", thread_id: "t-a-302", role: "assistant", content: "AAA_OFF_PATH", model: "openai/gpt-4", parent_id: "m-a-302-root", sibling_group: "sg-a-302", sibling_index: 1 },
+      { id: "m-b-302", thread_id: "t-b-302", role: "user", content: "BBB_ONLY" }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, "thread list");
+    await cdp.click('#thread-list .chat-item[data-chat="t-a-302"]');
+    await cdp.waitFor('window.activeThreadId === "t-a-302" && chatMessages.length === 2', 15000, 300, "A loaded");
+    for (const [id, content] of [["missing-302", "BOGUS_NONEXISTENT"], ["m-b-302", "BOGUS_FOREIGN"], ["m-a-302-off", "BOGUS_OFF_PATH"]]) {
+      await post(cdp, { action: "editMessage", id, content, mode: "branch", attachments: [], removedAttachmentIds: [] });
+      await sleep(450);
+    }
+    const bogus = seed.query(dbPath, "SELECT id, parent_id, role, model, content FROM messages WHERE thread_id='t-a-302' AND content LIKE 'BOGUS_%'");
+    if (bogus.length !== 3 || bogus.some((row) => row.parent_id !== null || row.role !== "assistant" || (row.model !== "" && row.model !== null)))
+      throw new Error("branch-invalid IDs did not create the expected bogus roots: " + JSON.stringify(bogus));
+    const leaf = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-a-302'")[0].active_leaf_id;
+    if (!bogus.some((row) => row.id === leaf)) throw new Error("active leaf did not move to bogus root: " + leaf);
+    await post(cdp, { action: "chatSend", message: "AAA_AFTER_BOGUS_BRANCH" });
+    await sleep(800);
+    const follow = seed.query(dbPath, "SELECT parent_id FROM messages WHERE thread_id='t-a-302' AND content='AAA_AFTER_BOGUS_BRANCH'")[0];
+    if (!follow || !bogus.some((row) => row.id === follow.parent_id)) throw new Error("subsequent send did not expose the bogus-root corruption");
+    return "three real stale branch-edit IPC events inserted assistant roots for nonexistent, foreign, and off-path IDs; the next send attached to the bogus active root";
+  }
+});
+
+scenarios.push({
+  id: 303,
+  name: "Chat request and title-generation temp filenames collide under an identical tick",
+  mode: null,
+  noApp: true,
+  async body() {
+    const requestSource = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatRequestBuilder.ahk"), "utf8");
+    const titleSource = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ThreadTitleGen.ahk"), "utf8");
+    if (!/uniqueID\s*:=\s*A_TickCount\s*\r?\n\s*requestFile/.test(requestSource)) throw new Error("request builder no longer has the reported tick-only seam");
+    const tick = 424242;
+    const paths = ["Req", "cURL", "Out", "Err"].map((kind) => `ChatWindow_${kind}_${tick}.${kind === "Req" ? "json" : kind === "cURL" || kind === "Err" ? "txt" : "json"}`);
+    if (new Set(paths).size !== 4) throw new Error("internal probe setup failed");
+    const first = paths.map((p) => path.join(os.tmpdir(), p));
+    const second = paths.map((p) => path.join(os.tmpdir(), p));
+    if (!first.every((p, i) => p === second[i])) throw new Error("identical tick did not produce identical request paths");
+    if (!/ChatWindow_TitleGen_\" A_TickCount/.test(titleSource)) throw new Error("title generation tick-only temp names were not found");
+    return `under injected tick ${tick}, two request builds receive identical paths: ${first.join(", ")}; title generation also uses tick-only temp names`;
+  }
+});
+
+scenarios.push({
+  id: 304,
+  name: "A locked request logs plaintext after relock and thread switch",
+  mode: "sse-slow",
+  fixtures: {
+    threads: [
+      { id: "t-lock-304", title: "Secret Plan", active_leaf_id: "m-lock-304-a", is_locked: 1 },
+      { id: "t-open-304", title: "Ordinary Chat", active_leaf_id: "m-open-304-a" }
+    ],
+    messages: [
+      { id: "m-lock-304-u", thread_id: "t-lock-304", role: "user", content: "LOCKED_SECRET_73B91" },
+      { id: "m-lock-304-a", thread_id: "t-lock-304", role: "assistant", content: "private answer", model: "deepseek/deepseek-v4-flash", parent_id: "m-lock-304-u" },
+      { id: "m-open-304-u", thread_id: "t-open-304", role: "user", content: "ordinary" },
+      { id: "m-open-304-a", thread_id: "t-open-304", role: "assistant", content: "ordinary answer", model: "deepseek/deepseek-v4-flash", parent_id: "m-open-304-u" }
+    ],
+    chatLocks: [{ thread_id: "t-lock-304", salt: "00112233445566778899aabbccddeeff", hash: lockHash("correct horse", "00112233445566778899aabbccddeeff", 600000), iterations: 600000 }]
+  },
+  async body({ cdp }) {
+    const logPath = path.join(os.tmpdir(), "LLM_API_Log.json");
+    try { fs.unlinkSync(logPath); } catch {}
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, "thread list");
+    await cdp.click('#thread-list .chat-item[data-chat="t-lock-304"]');
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, "lock overlay");
+    await cdp.type("#lockPasswordInput", "correct horse");
+    await cdp.click("#lockUnlockBtn");
+    await cdp.waitFor('window.activeThreadId === "t-lock-304" && document.querySelectorAll("#chat-messages .msg").length >= 2', 30000, 300, "locked chat unlocked");
+    await post(cdp, { action: "chatSend", message: "private delayed request" });
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 100, "delayed stream active");
+    await post(cdp, { action: "lockChatNow", threadId: "t-lock-304" });
+    await cdp.waitFor('window.activeThreadId === ""', 15000, 300, "L relocked");
+    await cdp.click('#thread-list .chat-item[data-chat="t-open-304"]');
+    await cdp.waitFor('window.activeThreadId === "t-open-304"', 15000, 300, "U loaded");
+    await sleep(5000);
+    const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+    if (!log.includes("LOCKED_SECRET_73B91")) throw new Error("setup: expected buggy success log to contain the secret, got " + log.slice(0, 300));
+    return "L was unlocked for send, relocked, then switched to U before completion; the success API log still contains LOCKED_SECRET_73B91 because redaction used activeThreadId=U";
+  }
+});
+
+scenarios.push({
+  id: 305,
+  name: "Injected fork and hard-delete failures leave durable partial states after reopen",
+  mode: null,
+  noApp: true,
+  async body() {
+    const text = runProbeCheck("fault-injection");
+    const lines = text.split(/\r?\n/).filter((line) => line.startsWith("FAULT_AUDIT"));
+    if (lines.length !== 5) throw new Error("fault audit missing stages: " + text);
+    const forkThread = lines.find((line) => line.includes("label=fork-after-thread"));
+    const forkMessage = lines.find((line) => line.includes("label=fork-after-first-message"));
+    const deletion = lines.find((line) => line.includes("label=delete-after-reparent"));
+    const threadDelete = lines.find((line) => line.includes("label=thread-delete-after-attachments"));
+    const lockCreate = lines.find((line) => line.includes("label=lock-create-after-metadata"));
+    if (!forkThread || !/threads=2 messages=2 forkRows=1/.test(forkThread)) throw new Error("fork partial after thread creation not durable: " + text);
+    if (!forkMessage || !/threads=2 messages=3 forkRows=1/.test(forkMessage)) throw new Error("fork partial after first message not durable: " + text);
+    if (!deletion || !/messages=3/.test(deletion) || /childParent=NULL/.test(deletion)) throw new Error("delete partial after reparent not durable: " + text);
+    if (!threadDelete || !/threads=1 messages=1/.test(threadDelete) || !/attachments=0/.test(threadDelete)) throw new Error("thread delete partial after attachment removal not durable: " + text);
+    if (!lockCreate || !/locks=1 lockedFlags=0/.test(lockCreate)) throw new Error("lock create partial metadata/flag mismatch not durable: " + text);
+    return "faults after fork thread creation/first message and after hard-delete reparent survived close/reopen; SQLite integrity and FK checks were still clean, so logical partial state is the failure";
+  }
+});
+
+scenarios.push({
+  id: 306,
+  name: "ThreadRepo.List exposes a locked title when ThreadLockService is unavailable",
+  mode: null,
+  noApp: true,
+  async body() {
+    const text = runProbeCheck("list-without-lock-service");
+    const match = text.match(/LIST_NO_LOCK_SERVICE title=(.*) serviceDefined=(\d+)/);
+    if (!match) throw new Error("lock-service probe output missing: " + text);
+    if (match[1] !== "Salary negotiation - PRIVATE" || match[2] !== "0") throw new Error("probe setup changed: " + text);
+    const main = fs.readFileSync(path.join(launcher.REPO_ROOT, "Main.ahk"), "utf8");
+    const chatWindow = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
+    if (!main.includes("#Include <Config>") || main.includes("Thread_List()") || !chatWindow.includes("#Include ChatUtils.ahk"))
+      throw new Error("include/reachability classification changed unexpectedly");
+    return "ChatDB-only probe returned the plaintext locked title with ThreadLockService undefined; current Main.ahk does not call Thread_List, while ChatWindow loads ChatUtils and the service, so this is a latent API defect rather than a current reachable leak";
+  }
+});
+
+scenarios.push({
+  id: 307,
+  regression: true,
+  name: "Reusable invariant audit passes on a healthy scenario database",
+  mode: null,
+  noApp: true,
+  async body() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llm-invariants-"));
+    const dbPath = seed.createDb(dir, {
+      threads: [{ id: "t-invariant", title: "Healthy", active_leaf_id: "m-invariant-a", cumulative_input_tokens: 8, cumulative_output_tokens: 3 }],
+      messages: [
+        { id: "m-invariant-u", thread_id: "t-invariant", role: "user", content: "invariant user", token_count: 4, active_path_tokens: 4 },
+        { id: "m-invariant-a", thread_id: "t-invariant", role: "assistant", content: "invariant answer", model: "deepseek/deepseek-v4-flash", parent_id: "m-invariant-u", prompt_tokens: 8, token_count: 3, active_path_tokens: 11 }
+      ]
+    });
+    const db = new DatabaseSync(dbPath);
+    db.prepare("INSERT INTO messages_fts(msg_id,content) VALUES (?,?)").run("m-invariant-u", "invariant user");
+    db.prepare("INSERT INTO messages_fts(msg_id,content) VALUES (?,?)").run("m-invariant-a", "invariant answer");
+    db.close();
+    const result = assertInvariants(dbPath, dir);
+    return `healthy database audit passed: ${JSON.stringify(result.counts)}`;
+  }
+});
+
+scenarios.push({
+  id: 308,
+  regression: true,
+  name: "First-send helper resolves before callback parsing and does not trigger an AHK #Warn modal",
+  mode: null,
+  noApp: true,
+  async body() {
+    const utils = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatUtils.ahk"), "utf8");
+    const settings = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatSettings.ahk"), "utf8");
+    const window = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
+    const dispatch = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "callbacks", "Dispatch.ahk"), "utf8");
+    if (!utils.includes("_RequestParamsAreDefault()") || settings.includes("_RequestParamsAreDefault() {"))
+      throw new Error("helper was not moved to the shared pre-callback module");
+    if (window.indexOf("#Include ChatUtils.ahk") > window.indexOf("#Include callbacks\\Dispatch.ahk"))
+      throw new Error("ChatUtils must load before Dispatch callbacks");
+    if (!dispatch.includes("#Include Message.ahk")) throw new Error("Message callback include missing");
+    return "_RequestParamsAreDefault is defined once in ChatUtils, loaded before Dispatch/Message, so the first-send call cannot resolve as an unassigned local and show the blocking #Warn modal";
+  }
+});
+
+scenarios.push({
+  id: 309,
+  regression: true,
+  name: "Invariant audit detects representative logical and physical corruption",
+  mode: null,
+  noApp: true,
+  async body() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llm-invariants-bad-"));
+    fs.mkdirSync(path.join(dir, "attachments"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "attachments", "orphan-309.txt"), "orphan");
+    const dbPath = seed.createDb(dir, {
+      threads: [
+        { id: "t-bad-a", title: "A", active_leaf_id: "m-bad-b", cumulative_input_tokens: 99 },
+        { id: "t-bad-b", title: "B", active_leaf_id: "m-bad-b" }
+      ],
+      messages: [
+        { id: "m-bad-a", thread_id: "t-bad-a", role: "user", content: "A", parent_id: "m-bad-a", sibling_group: "sg-bad", sibling_index: 0 },
+        { id: "m-bad-b", thread_id: "t-bad-b", role: "assistant", content: "B", parent_id: "m-bad-a", model: "deepseek/deepseek-v4-flash", sibling_group: "sg-bad", sibling_index: 0 }
+      ]
+    });
+    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    db.prepare("INSERT INTO message_attachments (id,message_id,attachment_type,file_path) VALUES ('att-bad','missing-message','text_file','attachments/missing-309.txt')").run();
+    db.prepare("INSERT INTO chat_locks (thread_id,kdf,salt,hash,iterations) VALUES ('missing-thread','pbkdf2-sha256','bad','bad',1)").run();
+    db.prepare("INSERT INTO messages_fts (msg_id,content) VALUES ('stale-309','stale')").run();
+    db.close();
+    const result = require("../invariant-audit").auditDatabase(dbPath, dir);
+    const mustDetect = ["cross-thread active leaf", "cross-thread parent", "parent cycle", "sibling group sg-bad spans threads", "duplicate sibling index", "orphan attachment", "missing attachment file", "unreferenced physical attachment", "orphan lock", "missing FTS row", "stale FTS row", "cumulative input"];
+    const missing = mustDetect.filter((needle) => !result.errors.some((error) => error.includes(needle)));
+    if (missing.length) throw new Error("invariant audit missed: " + missing.join(", ") + " all=" + result.errors.join("; "));
+    return `corrupt fixture produced ${result.errors.length} invariant failures, including ownership, cycle, sibling, attachment/file, lock, FTS, and counter violations`;
+  }
+});
 scenarios.push({
   id: 104,
   regression: true,

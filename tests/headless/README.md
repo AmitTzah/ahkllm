@@ -32,6 +32,10 @@ processes from aborted runs cannot block the next launch. Results go to
 the ignored `tests/headless/results/` directory and stdout, one `PASS/FAIL` line per
 scenario.
 
+Probe-only scenarios marked `noApp: true` skip preflight and profile isolation, so
+database/static audits can run without moving or touching the user's real profile;
+scenarios that launch the app still use the junction isolation described below.
+
 ## Cleanup after an aborted run
 
 `--cleanup` closes ONLY this repo's app processes (`Main.ahk`, `chat/ChatWindow.ahk` -
@@ -161,6 +165,7 @@ The next scenario run also auto-recovers as a fallback.
   | `probe-thinking.ahk` | Standalone AHK check used by one scenario (see report) |
   | `probe-utf8.ahk` | Standalone AHK check for `_readFileChunk`'s UTF-8-RAW byte-seek semantics (multibyte poll-split corruption, scenario 160) |
   | `probe-bughunt-db.ahk` | Standalone AHK check that runs the REAL ChatDB/repo code against a temp SQLite DB and prints token-accounting / tree-copy / cost-snapshot / provider-resolution / edit-cumulative / default-assistant / fork-local-copy / provider-empty results (used by the DB-audit scenarios; see report). `open-race <dbPath>` opens a shared DB so two spawned processes can race the startup schema/FTS-rebuild path (scenario 185); `command-empty-models-crash <settingsPath>` applies a saved settings.json through the REAL SettingsHandler/SettingsApply chain and checks whether an empty-APIModels command throws at menu dispatch (scenario 228) |
+  | `invariant-audit.js` | Reusable Node/SQLite audit for tree ownership, active leaves, parent cycles, sibling groups/indexes, attachments/files, locks, FTS, cumulative counters, and active-path token totals |
 | `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
 | `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
 | `scenarios/helpers.js` | Shared helpers used by scenario bodies (probes, UI navigation) |

@@ -20,7 +20,7 @@ handleSidebarAction(params, *) {
                 _LoadThreadAndRefreshUI(params["threadId"])
         case "navigateToMessage":
             if params.Has("messageId") && activeThreadId {
-                leafId := TreeRepo._WalkToLeaf(params["messageId"])
+                leafId := TreeRepo._WalkToLeaf(params["messageId"], activeThreadId)
                 ChatDB.Msg_SetActiveLeaf(activeThreadId, leafId)
                 _LoadThreadAndRefreshUI(activeThreadId, false)
                 ; Bug #209: SetActiveLeaf bumps the thread's updated_at, so the

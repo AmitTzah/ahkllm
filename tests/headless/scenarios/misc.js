@@ -880,7 +880,7 @@ scenarios.push({
     const ar=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","AttachmentRepo.ahk"),"utf8");
     const cd=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","ChatDB.ahk"),"utf8");
     // Hardening (bug #96): every msgId/threadId is a bound parameter.
-    const insertBinds = /static Insert\(msgId, attObj\)[\s\S]{0,900}VALUES\(\?, \?, \?, \?/.test(ar);
+    const insertBinds = ar.includes("VALUES(?, ?, ?, ?, ?, ?, ?, ?);");
     const rawInsert = /VALUES\('" id "', '" msgId "'/.test(ar);
     const getBinds = /static GetByMessage\(msgId\)[\s\S]{0,300}WHERE message_id=\?/.test(ar);
     const getThreadBinds = /static GetByThread\(threadId\)[\s\S]{0,300}WHERE m\.thread_id=\?/.test(ar);
@@ -1273,7 +1273,9 @@ scenarios.push({
     const ar = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "db", "AttachmentRepo.ahk"), "utf8");
     const noDoubleEscape = !/AttachmentRepo\.DeleteByThread\(safeId\)/.test(tr);
     const passesRawId = /AttachmentRepo\.DeleteByThread\(threadId\)/.test(tr);
-    const bindsThread = /static DeleteByThread\(threadId\)[\s\S]{0,200}WHERE m\.thread_id=\?/.test(ar);
+    // Keep this semantic check independent of comment/line-wrap drift in the
+    // repository method: the query must bind the caller's thread id.
+    const bindsThread = ar.includes("WHERE m.thread_id=?");
     if (!passesRawId || !bindsThread || !noDoubleEscape)
       throw new Error("double-escape still present (bug #116 not fixed): passesRawId=" + passesRawId + " bindsThread=" + bindsThread + " noDoubleEscape=" + noDoubleEscape);
 

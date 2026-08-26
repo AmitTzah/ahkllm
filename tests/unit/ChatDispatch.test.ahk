@@ -863,7 +863,9 @@ class ChatDispatchTest {
         navPos := InStr(src, 'case "navigateToMessage":')
         if !navPos
             throw Error("navigateToMessage case not found in Sidebar.ahk")
-        block := SubStr(src, navPos, 800)
+        ; The navigation call now passes activeThreadId into _WalkToLeaf so
+        ; stale message IDs cannot even be resolved outside the visible tree.
+        block := SubStr(src, navPos, 1200)
         if !InStr(block, "_postThreadListRefresh()")
             throw Error("navigateToMessage must refresh the sidebar thread list (bug #209)")
     }

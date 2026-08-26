@@ -673,6 +673,29 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #1): a stale branch event from another thread must not
+    ; write that thread's leaf into the caller's active_leaf_id.
+    SwitchBranch_RejectsForeignMessage() {
+        threadA := this._setup()
+        threadB := ChatDB.Thread_Create("Other Thread")
+        aUser := ChatDB.Msg_Insert({thread_id: threadA, role: "user", content: "A"})
+        aLeaf := ChatDB.Msg_Insert({thread_id: threadA, role: "assistant", content: "A answer", parent_id: aUser, model: "deepseek-v4-flash", token_count: 3})
+        bUser := ChatDB.Msg_Insert({thread_id: threadB, role: "user", content: "B"})
+        b1 := ChatDB.Msg_Insert({thread_id: threadB, role: "assistant", content: "B one", parent_id: bUser, sibling_group: "foreign-sg", sibling_index: 0, model: "deepseek-v4-flash", token_count: 3})
+        ChatDB.Msg_Insert({thread_id: threadB, role: "assistant", content: "B two", parent_id: bUser, sibling_group: "foreign-sg", sibling_index: 1, model: "deepseek-v4-flash", token_count: 5})
+        ChatDB.Msg_SetActiveLeaf(threadA, aLeaf)
+        result := ChatDB.Msg_SwitchBranch(threadA, b1, 1)
+        stored := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadA)
+        if stored[1, "active_leaf_id"] != aLeaf
+            throw Error("foreign branch switch changed A's leaf to " stored[1, "active_leaf_id"])
+        if result.path.Length != 2 || result.path[result.path.Length].id != aLeaf
+            throw Error("foreign branch switch returned the wrong A path")
+        stats := ChatDB.Msg_GetThreadStats(threadA)
+        if stats.activePathTokens != 3
+            throw Error("foreign branch switch leaked B stats into A: " stats.activePathTokens)
+        this._teardown()
+    }
+
     ; --------------------
     ; Msg_ForkThread
     ; --------------------

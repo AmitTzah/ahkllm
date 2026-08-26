@@ -13,6 +13,11 @@
 ;   empty-model-skip    - assistant rows with empty model are skipped by counters
 ;   command-empty-models-crash - empty APIModels is dropped by SettingsApply and
 ;                                cmd.APIModels THROWS in the menu handler (#228)
+;   foreign-switch-reopen  - stale SwitchBranch writes a foreign leaf and the
+;                            corruption survives close/reopen
+;   fault-injection        - representative fork/delete failures leave partial
+;                            durable state after reopen
+;   list-without-lock-service - locked title behavior without ThreadLockService
 #Requires AutoHotkey v2.0.18+
 #ErrorStdOut
 #SingleInstance Off
@@ -113,6 +118,261 @@ CloseDb(dbPath) {
     try FileDelete(dbPath)
     try FileDelete(dbPath "-wal")
     try FileDelete(dbPath "-shm")
+}
+
+; ------------------------------------------------------------------
+; CHECK 30: Cross-thread SwitchBranch ownership and persistence.
+; The scenario drives the stale IPC against a real app first; this probe then
+; opens that same database, reads the foreign leaf/path/stats, closes it, and
+; reads again after reopening. This is intentionally read-only with respect
+; to the already-corrupted state.
+; Args: foreign-switch-reopen <dbPath> <threadId>
+; ------------------------------------------------------------------
+ForeignSwitchDb() {
+    dbPath := OpenDb()
+    a := ChatDB.Thread_Create("A")
+    b := ChatDB.Thread_Create("B")
+    au := ChatDB.Msg_Insert({thread_id: a, role: "user", content: "AAA_ONLY"})
+    aa := ChatDB.Msg_Insert({thread_id: a, role: "assistant", content: "A response", parent_id: au, model: "openai/gpt-4", prompt_tokens: 8, token_count: 3})
+    bu := ChatDB.Msg_Insert({thread_id: b, role: "user", content: "BBB_ONLY"})
+    b1 := ChatDB.Msg_Insert({thread_id: b, role: "assistant", content: "B one", parent_id: bu, sibling_group: "foreign-sg", sibling_index: 0, model: "deepseek/deepseek-v4-flash", prompt_tokens: 8, token_count: 3})
+    b2 := ChatDB.Msg_Insert({thread_id: b, role: "assistant", content: "B two", parent_id: bu, sibling_group: "foreign-sg", sibling_index: 1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 9, token_count: 5, active_path_tokens: 13})
+    ChatDB.Msg_SetActiveLeaf(a, aa)
+    ChatDB.Msg_SetActiveLeaf(b, b1)
+    before := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", a)[1, "active_leaf_id"]
+    ChatDB.Msg_SwitchBranch(a, b1, 1)
+    after := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", a)[1, "active_leaf_id"]
+    path := ChatDB.Msg_GetActivePath(a)
+    stats := ChatDB.Msg_GetThreadStats(a)
+    ChatDB.Close()
+    ChatDB.Open(dbPath)
+    reopen := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", a)[1, "active_leaf_id"]
+    ; Same behavior as handleChatSend after a valid active path: continue from
+    ; A's existing leaf rather than creating a second root.
+    ChatDB.Msg_Insert({thread_id: a, role: "user", content: "AAA_AFTER_CORRUPTION", parent_id: aa})
+    roots := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND parent_id IS NULL;", a)
+    Log("FOREIGN_DB before=" before " after=" after " pathLen=" path.Length " statsPathTokens=" stats.activePathTokens " reopen=" reopen " rootsAfterSend=" roots[1, "c"])
+    CloseDb(dbPath)
+}
+
+ForeignSwitchReopen(dbPath, threadId) {
+    ChatDB.Open(dbPath)
+    first := ForeignSwitchRead(threadId, "first")
+    ChatDB.Close()
+    ChatDB.Open(dbPath)
+    second := ForeignSwitchRead(threadId, "reopen")
+    Log("FOREIGN_SWITCH equalAfterReopen=" (first = second ? 1 : 0))
+    ChatDB.Close()
+}
+
+ForeignSwitchRead(threadId, label) {
+    leaf := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
+    leafId := leaf.count ? leaf[1, "active_leaf_id"] : ""
+    path := ChatDB.Msg_GetActivePath(threadId)
+    stats := ChatDB.Msg_GetThreadStats(threadId)
+    Log("FOREIGN_SWITCH " label " leaf=" leafId " pathLen=" path.Length " statsPathTokens=" stats.activePathTokens)
+    return leafId "|" path.Length "|" stats.activePathTokens
+}
+
+; ------------------------------------------------------------------
+; CHECK 31: Fault injection at durable persistence boundaries.
+; Each case uses the real repository primitives and throws immediately after
+; one meaningful write phase. The catch closes/reopens the DB before auditing,
+; proving that the partial state is durable rather than an in-memory artifact.
+; ------------------------------------------------------------------
+FaultInjectionAudit() {
+    ForkFault("after-thread")
+    ForkFault("after-first-message")
+    DeleteFault("after-reparent")
+    ThreadDeleteFault()
+    LockCreateFault()
+}
+
+ForkFault(stage) {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("Fault fork source")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "fork source"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "fork answer", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+    try {
+        path := ChatDB.Msg_GetActivePath(tid)
+        newThreadId := TreeRepo._CreateForkThread(tid)
+        if stage = "after-thread"
+            throw Error("injected after new thread")
+        TreeRepo._CopyThreadSettings(tid, newThreadId)
+        if stage = "after-settings"
+            throw Error("injected after settings")
+        idMap := Map(), sgMap := Map()
+        newId := ChatDB._UUID()
+        idMap[a1] := newId
+        TreeRepo._InsertForkMessage(newId, newThreadId, path[2], path[1].id, "")
+        if stage = "after-first-message"
+            throw Error("injected after first message")
+        ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=? WHERE id=?;", newId, newThreadId)
+    } catch Error as e {
+        Log("FAULT fork stage=" stage " error=" e.Message)
+    }
+    AuditAfterFault(dbPath, "fork-" stage, tid)
+}
+
+DeleteFault(stage) {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("Fault delete source")
+    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "delete root"})
+    a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "delete answer", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
+    child := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "child survives", parent_id: a1})
+    try {
+        parentTable := ChatDB.db.Query("SELECT parent_id FROM messages WHERE id=?;", a1)
+        parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
+        childrenTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=?;", a1)
+        for row in childrenTable.rows
+            ChatDB.db.Query("UPDATE messages SET parent_id=? WHERE id=?;", parentId ? parentId : SQLite.Null, row.id)
+        if stage = "after-reparent"
+            throw Error("injected after child reparent")
+        ChatDB.db.Query("DELETE FROM messages WHERE id=?;", a1)
+    } catch Error as e {
+        Log("FAULT delete stage=" stage " error=" e.Message)
+    }
+    AuditAfterFault(dbPath, "delete-" stage, tid)
+}
+
+AuditAfterFault(dbPath, label, sourceThreadId) {
+    ; Reopen before inspection: any rows seen here are durable partial state.
+    ChatDB.Close()
+    ChatDB.Open(dbPath)
+    threads := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_threads;")
+    msgs := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages;")
+    forkRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_threads WHERE title LIKE 'Copy - %';")
+    integrity := ChatDB.db.Exec("PRAGMA integrity_check;")
+    fk := ChatDB.db.Exec("PRAGMA foreign_key_check;")
+    parent := ChatDB.db.Query("SELECT parent_id FROM messages WHERE content='child survives';")
+    parentId := parent.count && parent[1, "parent_id"] ? parent[1, "parent_id"] : "NULL"
+    attachments := ChatDB.db.Query("SELECT COUNT(*) AS c FROM message_attachments;")
+    locks := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_locks;")
+    lockedFlags := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_threads WHERE is_locked=1;")
+    Log("FAULT_AUDIT label=" label " threads=" threads[1, "c"] " messages=" msgs[1, "c"] " forkRows=" forkRows[1, "c"] " attachments=" attachments[1, "c"] " locks=" locks[1, "c"] " lockedFlags=" lockedFlags[1, "c"] " integrity=" integrity[1, "integrity_check"] " fkRows=" fk.count " childParent=" parentId)
+    CloseDb(dbPath)
+}
+
+; A thread delete removes physical attachment files before its message/thread
+; DELETE statements. A failure between those phases loses the file while the
+; chat row remains, a partial state SQLite alone cannot roll back.
+ThreadDeleteFault() {
+    dbPath := OpenDb()
+    dataDir := A_Temp "\bughunt_thread_delete_" A_TickCount
+    DirCreate(dataDir "\attachments")
+    AppInfo.DataDir := dataDir
+    tid := ChatDB.Thread_Create("Fault thread delete")
+    msg := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "attachment survives"})
+    filePath := "attachments\thread-delete.txt"
+    FileAppend("THREAD_DELETE_FILE", dataDir "\" filePath, "UTF-8-RAW")
+    ChatDB.Attachment_Insert(msg, {attachment_type: "text_file", file_path: filePath, mime_type: "text/plain", original_filename: "thread-delete.txt", file_size: 18})
+    try {
+        AttachmentRepo.DeleteByThread(tid)
+        throw Error("injected after attachment filesystem/row cleanup")
+    } catch Error as e {
+        Log("FAULT thread-delete error=" e.Message " fileExists=" (FileExist(dataDir "\" filePath) ? 1 : 0))
+    }
+    AuditAfterFault(dbPath, "thread-delete-after-attachments", tid)
+    try DirDelete(dataDir, true)
+}
+
+; Lock creation is INSERT metadata followed by the chat_threads flag update.
+; Inject a failure between those statements and reopen to show the mismatch.
+LockCreateFault() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("Fault lock create")
+    try {
+        ChatDB.db.Query("INSERT INTO chat_locks (thread_id, kdf, salt, hash, iterations) VALUES(?, 'pbkdf2-sha256', ?, ?, ?);", tid, "00112233445566778899aabbccddeeff", "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", 600000)
+        throw Error("injected after lock metadata insert")
+    } catch Error as e {
+        Log("FAULT lock-create error=" e.Message)
+    }
+    AuditAfterFault(dbPath, "lock-create-after-metadata", tid)
+}
+
+; ------------------------------------------------------------------
+; CHECK 32: ThreadRepo.List in a ChatDB-only process. Config includes ChatDB
+; but not chat/ChatUtils (the file that supplies ThreadLockService), so the
+; service is deliberately unavailable here.
+; ------------------------------------------------------------------
+ListWithoutLockService() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("Salary negotiation - PRIVATE")
+    ChatDB.db.Query("UPDATE chat_threads SET is_locked=1 WHERE id=?;", tid)
+    rows := ChatDB.Thread_List()
+    title := rows.Length ? rows[1].title : "MISSING"
+    Log("LIST_NO_LOCK_SERVICE title=" title " serviceDefined=" (IsSet(ThreadLockService) ? 1 : 0))
+    CloseDb(dbPath)
+}
+
+; ------------------------------------------------------------------
+; CHECK 33: Callback ownership. The active thread is A, but the supplied
+; message/attachment IDs belong to B (or a locked L). Invoke the real callback
+; functions after the same stale-event ordering used by the WebView.
+; ------------------------------------------------------------------
+CallbackOwnership() {
+    dbPath := OpenDb()
+    dataDir := A_Temp "\bughunt_callback_" A_TickCount
+    DirCreate(dataDir "\attachments")
+    AppInfo.DataDir := dataDir
+    aTid := ChatDB.Thread_Create("A")
+    bTid := ChatDB.Thread_Create("B")
+    lTid := ChatDB.Thread_Create("Locked B")
+    aMsg := ChatDB.Msg_Insert({thread_id: aTid, role: "user", content: "AAA_ONLY"})
+    bEdit := ChatDB.Msg_Insert({thread_id: bTid, role: "user", content: "BBB_EDIT_SENTINEL"})
+    bDelete := ChatDB.Msg_Insert({thread_id: bTid, role: "user", content: "BBB_DELETE_SENTINEL"})
+    lMsg := ChatDB.Msg_Insert({thread_id: lTid, role: "user", content: "LOCKED_ATTACHMENT_SENTINEL"})
+    filePath := "attachments\locked-callback.txt"
+    FileAppend("LOCKED_FILE_SENTINEL", dataDir "\" filePath, "UTF-8-RAW")
+    attId := ChatDB.Attachment_Insert(lMsg, {attachment_type: "text_file", file_path: filePath, mime_type: "text/plain", original_filename: "locked.txt", file_size: 20})
+    activeThreadId := aTid
+    ; These are the exact repository mutations reached by the callbacks. The
+    ; scenario separately verifies the callback/dispatch source and invokes the
+    ; same IPC payload shapes through the real app when profile isolation works.
+    ChatDB.Msg_Edit(bEdit, "BBB_EDITED_BY_STALE_EVENT")
+    ChatDB.Msg_HardDelete(bDelete)
+    ChatDB.Attachment_DeleteOne(attId)
+    edited := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", bEdit)
+    deleted := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE id=?;", bDelete)
+    attRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM message_attachments WHERE id=?;", attId)
+    fileExists := FileExist(dataDir "\" filePath)
+    Log("CALLBACK_OWNERSHIP edited=" (edited.count ? edited[1, "content"] : "MISSING") " deleted=" (deleted[1, "c"]) " attRows=" (attRows[1, "c"]) " fileExists=" (fileExists ? 1 : 0) " active=" activeThreadId)
+    CloseDb(dbPath)
+    try DirDelete(dataDir "\attachments", true)
+    try DirDelete(dataDir, true)
+}
+
+; ------------------------------------------------------------------
+; CHECK 34: Mirror the branch-edit callback's active-path search with the
+; actual repository insert. Every invalid source follows the current defaults
+; (assistant/root/empty model) into Msg_Insert because no found guard exists.
+; ------------------------------------------------------------------
+BranchInvalidIds() {
+    dbPath := OpenDb()
+    tid := ChatDB.Thread_Create("Branch invalid")
+    root := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "AAA_ROOT"})
+    active := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "AAA_ACTIVE", model: "openai/gpt-4", parent_id: root, sibling_group: "sg-invalid", sibling_index: 0})
+    off := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "AAA_OFF_PATH", model: "openai/gpt-4", parent_id: root, sibling_group: "sg-invalid", sibling_index: 1})
+    ; The active path is intentionally the active assistant only. Reproduce
+    ; the callback's default values for missing IDs three times.
+    for label, content in Map("missing", "BOGUS_NONEXISTENT", "foreign", "BOGUS_FOREIGN", "offpath", "BOGUS_OFF_PATH") {
+        parentId := "", siblingGroup := "", siblingIndex := 0, role := "assistant", model := ""
+        path := ChatDB.Msg_GetActivePath(tid)
+        for i, msg in path {
+            if msg.id = (label = "missing" ? "missing-id" : (label = "foreign" ? "foreign-id" : off)) {
+                parentId := msg.parent_id, role := msg.role, model := msg.model
+                siblingGroup := msg.sibling_group
+                siblingIndex := MessageRepo.GetMaxSiblingIndex(siblingGroup) + 1
+                break
+            }
+        }
+        ChatDB.Msg_Insert({thread_id: tid, role: role, content: content, model: model, parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex, local_copy: true})
+    }
+    roots := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND parent_id IS NULL;", tid)
+    bogus := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND content LIKE 'BOGUS_%';", tid)
+    leaf := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", tid)
+    Log("BRANCH_INVALID roots=" roots[1, "c"] " bogus=" bogus[1, "c"] " leaf=" leaf[1, "active_leaf_id"])
+    CloseDb(dbPath)
 }
 
 ; ------------------------------------------------------------------
@@ -1319,6 +1579,12 @@ switch check {
     case "titlegen-parse-throw": TitleGenParseGraceful()
     case "command-empty-models-crash": CommandEmptyModelsCrash()
     case "command-audit": CommandAudit()
+    case "foreign-switch-db": ForeignSwitchDb()
+    case "foreign-switch-reopen": ForeignSwitchReopen(A_Args.Length >= 3 ? A_Args[3] : "", A_Args.Length >= 4 ? A_Args[4] : "")
+    case "fault-injection": FaultInjectionAudit()
+    case "list-without-lock-service": ListWithoutLockService()
+    case "callback-ownership": CallbackOwnership()
+    case "branch-invalid-ids": BranchInvalidIds()
     default:
         Log("UNKNOWN CHECK " check)
 }

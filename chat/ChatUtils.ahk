@@ -19,6 +19,25 @@ cURLState(action, data := 0) {
     return 0
 }
 
+; Bug #212: is the current right-rail state still pristine (no assistant, no
+; overrides, the app default model)? This helper is included before both the
+; settings and callback modules so AHK #Warn cannot resolve the callback call
+; as an unassigned local function (which otherwise opens a blocking modal).
+_RequestParamsAreDefault() {
+    global requestParams, appDefaultModel
+    if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"]
+        return false
+    if requestParams.Has("systemOverride") && requestParams["systemOverride"]
+        return false
+    if requestParams.Has("reasoningOverride") && requestParams["reasoningOverride"]
+        return false
+    if requestParams.Has("temperatureOverride") && requestParams["temperatureOverride"] != ""
+        return false
+    if requestParams.Has("singleAPIModelName") && requestParams["singleAPIModelName"] != appDefaultModel
+        return false
+    return true
+}
+
 ; ----------------------------------------------------
 ; Post a message to the WebView
 ; ----------------------------------------------------

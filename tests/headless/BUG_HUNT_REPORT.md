@@ -154,9 +154,13 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 reported, 0 verified, 0 fix in progress, 0 fix applied** (2026-08-14). Scenario count is enforced by
+- **6 verified, 0 reported, 0 fix in progress, 2 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-14 - Web-search milestone COMPLETE: composer
+- **Where we left off:** 2026-08-26 - Phase 1 verified #1-#7 and added
+  invariant scenarios 307/309. Phase 2 has #1 and the user-reported #8
+  warning fix applied; await the user's manual verification/commit before
+  starting another production fix.
+  Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
   function tool. The right-rail Advanced collapsible was removed since it
@@ -217,7 +221,203 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-*No open bugs.*
+### 1. Cross-thread SwitchBranch can persist a foreign active leaf
+
+**Scenario:** 300
+
+**Status:** fix applied
+
+**Repro:** With chats A and B present, switch to A and deliver a stale
+`switchBranch` event carrying a branch message ID from B.
+
+**Expected:** The operation is rejected or is a no-op. A's `active_leaf_id`
+and active path remain unchanged and every persisted active leaf belongs to A.
+
+**Actual:** Fixed: `SwitchBranch` now rejects a message not owned by the
+caller thread, scopes leaf walking by thread, and scopes thread stats' leaf
+lookup by thread.
+
+**Evidence:** `chat/db/TreeRepo.ahk` `SwitchBranch` calls `GetSiblings(msgId)`
+and then updates `chat_threads` by `threadId` without a membership check.
+
+**Verification:** Bug reproduction passed before the fix in the DB probe; the
+flipped real WebView regression now passes with A's own leaf/path/stats
+preserved across reopen and a subsequent send continuing the existing root. A
+unit regression and the full release suite also pass.
+
+### 2. Stale message and attachment IDs can mutate another chat
+
+**Scenario:** 301
+
+**Status:** verified
+
+**Repro:** While A is active, deliver edit/delete/delete-attachment IPC
+messages carrying IDs belonging to B (including a B attachment ID).
+
+**Expected:** The persistence boundary rejects every object not owned by A;
+B's rows, content, and physical attachment files remain unchanged.
+
+**Actual:** The active-thread lock gate authorizes the callback, then the
+repository mutations query only the supplied object ID, so B can be edited or
+deleted while A is visible; attachment deletion also removes B's physical file.
+
+**Evidence:** `handleDelete`, overwrite `handleEdit`, and
+`handleDeleteAttachment` pass IDs directly to `Msg_HardDelete`, `Msg_Edit`,
+and `Attachment_DeleteOne`.
+
+**Verification:** The real WebView scenario passed: after opening B and
+switching to A, stale edit/delete/delete-attachment IPC changed B and removed
+the locked target's attachment/file while A remained active. The DB ownership
+probe independently reproduced the same three mutations.
+
+### 3. Invalid branch-edit IDs can create a bogus root message
+
+**Scenario:** 302
+
+**Status:** verified
+
+**Repro:** In active thread A, send an `editMessage` IPC action with
+`mode:"branch"` and a nonexistent ID, a B ID, or an off-active-path A ID.
+
+**Expected:** Branch edit fails closed unless the source is an allowed message
+owned by A; no new message is inserted for an invalid source.
+
+**Actual:** `handleEdit` initializes default source metadata and calls
+`Msg_Insert` even when its active-path search never finds `id`.
+
+**Evidence:** `chat/callbacks/Edit.ahk` branch mode has no `found` guard before
+the insert.
+
+**Verification:** The real WebView scenario passed for nonexistent, foreign,
+and off-active-path IDs: each inserted an assistant root with empty/default
+source metadata and advanced the active leaf; a subsequent send attached to
+the bogus root. The intended policy is active-path-only branching, so an
+off-path message must be navigated to before it can be branch-edited.
+
+### 4. Chat request temp files collide when requests share an A_TickCount
+
+**Scenario:** 303
+
+**Status:** verified
+
+**Repro:** Build two chat requests under the same tick value / request ID.
+
+**Expected:** Request, cURL, output, and error paths are distinct per request
+and cleanup is ownership-safe.
+
+**Actual:** `_WriteRequestFiles` uses only `A_TickCount`, so two requests in
+the same millisecond receive identical paths and can exchange payloads or
+cleanup each other's bearer-containing files.
+
+**Evidence:** `chat/ChatRequestBuilder.ahk` derives all four names from one
+`uniqueID := A_TickCount`; `InlineRequestRunner` already uses a UUID.
+
+**Verification:** Deterministic headless scenario passed with injected tick
+424242: both builds resolve to the same four request paths. The same probe
+also found title-generation temp names are tick-only. No timing-based clicking
+was used.
+
+### 5. Locked-chat API logs use the visible thread instead of the request owner
+
+**Scenario:** 304
+
+**Status:** verified
+
+**Repro:** Start a delayed request from an unlocked locked chat L, relock L,
+switch to ordinary chat U, and let the request complete, fail, or cancel.
+
+**Expected:** Logging redaction is decided from L, the request-owning thread,
+so L's plaintext never enters the API log. A U request remains governed by U
+even if L is visible when it finishes.
+
+**Actual:** Success, error, and cancellation redaction checks use mutable
+`activeThreadId` instead of captured `_streamThreadId`.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` and `StreamError.ahk` call
+`ShouldRedactContent(activeThreadId)`.
+
+**Verification:** Real delayed-stream scenario passed: L was unlocked for
+send, relocked, switched away to U, and completion logged
+`LOCKED_SECRET_73B91` in plaintext. Static inspection confirms the same wrong
+`activeThreadId` expression in success, error, and cancellation logging; the
+same owner decision therefore affects all three terminal paths.
+
+### 6. Multi-step persistence operations can leave durable partial state
+
+**Scenario:** 305
+
+**Status:** verified
+
+**Repro:** Inject a failure after meaningful steps in fork and hard-delete
+operations, close/reopen the SQLite database, and inspect rows, FTS, counters,
+and attachment references.
+
+**Expected:** A failed operation leaves the pre-operation state intact or
+performs complete compensation; no user-visible half-fork/half-delete remains.
+
+**Actual:** Fork, hard-delete, thread delete/purge, lock updates, and
+attachment filesystem changes are multi-statement sequences without an
+explicit transaction or complete compensation.
+
+**Evidence:** `TreeRepo.ForkThread`, `MessageRepo.HardDelete`,
+`ThreadRepo.Delete/PurgeExpired`, and `ThreadLockRepo.Set/Remove` issue
+multiple writes sequentially.
+
+**Verification:** Bounded AHK fault-injection probe passed. Failures after fork
+thread creation, after the first copied message, after hard-delete child
+reparenting, after thread attachment cleanup, and after lock metadata insertion
+remained after close/reopen. `PRAGMA integrity_check` and
+`foreign_key_check` stayed clean, demonstrating durable logical partial state;
+the attachment case also left the message without its physical file, and the
+lock case left metadata with `is_locked=0`.
+
+### 7. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+
+**Scenario:** 306
+
+**Status:** verified
+
+**Repro:** Call `ThreadRepo.List` from a process that has ChatDB but does not
+load `ThreadLockService`, with a locked thread containing a sensitive title.
+
+**Expected:** The title remains `Locked chat`; processes without the service
+must fail closed as the adjacent comment specifies.
+
+**Actual:** The condition skips redaction when `IsSet(ThreadLockService)` is
+false.
+
+**Evidence:** `chat/db/ThreadRepo.ahk` uses
+`isLocked && IsSet(ThreadLockService) && !ThreadLockService.IsUnlockedInSession(...)`.
+
+**Verification:** Standalone ChatDB-only probe passed: with
+`ThreadLockService` undefined, a locked title was returned as plaintext.
+Include/reachability audit found current `Main.ahk` does not call
+`Thread_List`, while `ChatWindow.ahk` loads `ChatUtils` and the service; this
+is verified as a latent API defect, not a currently reachable UI leak.
+
+### 8. Cross-include `_RequestParamsAreDefault` warning can open a blocking modal
+
+**Scenario:** 308
+
+**Status:** fix applied
+
+**Repro:** Launch the chat process with `#Warn` enabled and create the first
+message when `Message.ahk` calls `_RequestParamsAreDefault()`.
+
+**Expected:** The helper resolves as a defined global function and no warning
+dialog interrupts first-message processing.
+
+**Actual:** Observed warning: “This local variable appears to never be
+assigned a value. Specifically: `_RequestParamsAreDefault`,” at
+`chat/callbacks/Message.ahk:25`. AHK can show this as a modal popup and block
+the chat process.
+
+**Evidence:** The helper is now defined once in `ChatUtils.ahk`, loaded before
+the callback include; it is no longer defined in `ChatSettings.ahk`.
+
+**Verification:** Scenario 308 and the bounded AHK load suite pass with
+`#Warn All, StdOut`; the full release suite passes. Full GUI first-send replay
+is blocked by profile isolation.
 
 **Feature checks (web-search milestone):**
 
