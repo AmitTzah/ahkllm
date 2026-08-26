@@ -156,8 +156,8 @@ How to run AHK safely:
 
 - **0 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 306 fixed and fully verified;
-  report update is ready for commit. No verified release blockers remain.
+- **Where we left off:** 2026-08-26 - Scenario 306 fixed and committed as
+  efda6ab. No verified release blockers remain; final release gate is next.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -219,29 +219,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
-
-**Scenario:** 306
-
-**Status:** fix applied
-
-**Repro:** Call `ThreadRepo.List` from a process that has ChatDB but does not
-load `ThreadLockService`, with a locked thread containing a sensitive title.
-
-**Expected:** The title remains `Locked chat`; processes without the service
-must fail closed as the adjacent comment specifies.
-
-**Actual:** Fixed: locked titles are redacted unless the session-aware service
-proves that the thread was unlocked, and the no-service path now fails closed.
-
-**Evidence:** `chat/db/ThreadRepo.ahk` uses
-`isLocked && (!IsSet(ThreadLockService) || !ThreadLockService.IsUnlockedInSession(...))`.
-
-**Verification:** The fixed standalone ChatDB-only probe returns `Locked chat`
-with `ThreadLockService` undefined. A service-present unit regression confirms
-locked titles stay redacted before session unlock and become visible after a
-proven unlock.
-
 **Feature checks (web-search milestone):**
 
 ### 250. Web Search toggle: DeepSeek native search end-to-end
@@ -824,6 +801,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in 243914e: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304 and terminal-path unit coverage passed.
 - 2026-08-26 - "Chat request temp files collide when requests share an A_TickCount" - FIXED + COMMITTED in eb64f85: chat and title-generation temp files now use UUID-derived names; scenario 303 is a regression check with synchronous request-builder coverage.
 - 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in 784f79b: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
-- 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in the locked-title fix commit below: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
+- 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in efda6ab: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
 
 
