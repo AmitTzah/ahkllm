@@ -22,6 +22,10 @@ handleEdit(params, *) {
     removedIds := params.Has("removedAttachmentIds") ? params["removedAttachmentIds"] : []
 
     if mode = "branch" {
+        transactionStarted := false
+        try {
+        ChatDB.BeginTransaction()
+        transactionStarted := true
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         parentId := ""
         siblingGroup := ""
@@ -61,8 +65,11 @@ handleEdit(params, *) {
         ; Branching is only valid from a message on the current active path.
         ; Never let the default assistant/root metadata below turn a missing
         ; or off-path source into a durable bogus root.
-        if !found
+        if !found {
+            ChatDB.RollbackTransaction()
+            transactionStarted := false
             return
+        }
         ; Bug #118: this is a LOCAL DB copy - no API call happened, so Insert
         ; must not upsert chat_usage or re-charge the cumulative counters.
         ; Bug #123: carry the source message's token metadata (token_count,
@@ -84,18 +91,15 @@ handleEdit(params, *) {
         ; attachment (it stays in the tree with its original content), while
         ; the new branch is created without the removed one.
         ChatDB.Attachment_CopyForMessage(id, newMsgId, removedIds)
-        ; Save new attachments from edit (skip if already present on message)
-        for att in attachments {
-            if !IsObject(att)
-                continue
-            attBase64 := att.Has("base64") ? att["base64"] : ""
-            if attBase64 {
-                attFilename := att.Has("filename") ? att["filename"] : "unknown"
-                attHash := att.Has("contentHash") ? att["contentHash"] : ""
-                filePath := ImageUtils.SaveBase64ToFile(attBase64, newMsgId, attFilename, attHash)
-                if filePath && !_AttachmentExistsOnMessage(newMsgId, filePath)
-                    ChatDB.Attachment_Save(newMsgId, att)
-            }
+        ; Save new attachments from edit as part of the same transaction.
+        _SaveEditAttachments(newMsgId, attachments)
+        ChatDB.CommitTransaction()
+        transactionStarted := false
+        } catch Error as e {
+            if transactionStarted
+                ChatDB.RollbackTransaction()
+            postWebMessage("showError", { message: "Edit failed: " e.Message })
+            return
         }
         ; Trigger LLM request for the new branch (same as Retry flow)
         ; Only auto-fire when branching a user message - branching an assistant

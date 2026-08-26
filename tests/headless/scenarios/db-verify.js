@@ -1061,6 +1061,7 @@ scenarios.push({
 
 scenarios.push({
   id: 314,
+  regression: true,
   name: "Branch edit rolls back when a replacement attachment cannot be saved",
   mode: "sse-success",
   fixtures: {
@@ -1106,12 +1107,12 @@ scenarios.push({
     const requests = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, "utf8").split(/\r?\n/).filter(Boolean)
       .map((line) => { try { return JSON.parse(line); } catch { return null; } })
       .filter((entry) => entry && entry.modeUsed === "sse") : [];
-    if (!branch || !leaf || !leafMessage || leafMessage.parent_id !== branch.id || Number(branchAttachmentCount) !== 1 ||
-        Number(branchFtsCount) !== 1 || Number(sourceAttachmentCount) !== 2 || !sourceFilesExist || requests.length < 1)
-      throw new Error("branch partial state not reproduced: branch=" + !!branch + " leaf=" + (leaf && leaf.active_leaf_id) +
+    if (branch || !leaf || leaf.active_leaf_id !== "m-edit-314-u" || Number(branchAttachmentCount) !== 0 ||
+        Number(branchFtsCount) !== 0 || Number(sourceAttachmentCount) !== 2 || !sourceFilesExist || requests.length !== 0)
+      throw new Error("branch rollback failed: branch=" + !!branch + " leaf=" + (leaf && leaf.active_leaf_id) +
         " branchAttachments=" + branchAttachmentCount + " branchFts=" + branchFtsCount +
         " sourceAttachments=" + sourceAttachmentCount + " sourceFiles=" + sourceFilesExist + " requests=" + requests.length);
-    return "after reopen, an active branch with one remaining copied attachment but no replacement was durable, FTS was present, source files/rows stayed intact, and the branch request was sent";
+    return "after reopen, failed replacement left no branch or request; the source leaf, attachments, FTS, and files stayed intact";
   }
 });
 scenarios.push({

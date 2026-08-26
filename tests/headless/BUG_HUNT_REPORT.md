@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **0 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 311-313 fixed and committed; next
-  fix is bug 314 (branch attachment persistence failure).
+- **Where we left off:** 2026-08-26 - Bugs 311-313 fixed and committed; bug
+  314 is now in progress (branch attachment persistence failure).
   Scenario 315 was attempted twice; both targeted-kill runs failed during
   restart setup (`waitForChatTarget` timeout, diagnostics saw only
   `api-logs.html`), so entry 315 remains `reported` pending harness recovery.
@@ -259,40 +259,6 @@ answer live before completion, and the scenario asserts that live progress.
 The search call runs with reasoning effort "none" (reasoning-on searches can
 burn the whole output budget on internal search rounds and end with no answer
 at all - real-API report 2026-08-16). No real API calls are made by the suite.
-
-### 314. Branch edit activates a partial branch after attachment persistence failure
-
-**Scenario:** 314
-
-**Status:** verified
-
-**Repro:** Edit a user message with attachments using “Save as Branch”, remove
-one source attachment, add a replacement whose local save fails, and commit.
-Close and reopen the database before inspecting the new branch.
-
-**Expected:** Branch creation is atomic with its submitted attachment set. A
-failed attachment save must leave no durable branch, must not change
-`active_leaf_id`, and must not send the branch's LLM request. Existing source
-attachment rows/files and FTS remain unchanged.
-
-**Actual:** Suspected: branch mode inserts and activates the new message,
-copies source attachments, ignores failed new-attachment saves, and then
-fires `_BuildAndFireRequest()`. This can leave an active branch with only a
-subset of the requested attachments and a request based on that incomplete
-state.
-
-**Evidence:** `chat/callbacks/Edit.ahk` calls `ChatDB.Msg_Insert` and
-`Attachment_CopyForMessage` before the save loop, ignores both save semantics
-and a transactional rollback, then fires the request for a branched user
-message. `AttachmentRepo.CopyForMessage` shares files by row reference, so a
-fix must preserve reference counting and deferred deletion.
-
-**Verification:** Headless - scenario 314 drove the real branch callback with
-two source attachments plus a deterministic failed replacement, then opened a
-fresh SQLite connection and audited branch/active-leaf rows, attachment
-rows/files, FTS, and the mock request log. An active branch with one remaining
-copied attachment and no replacement was present, and the branch request was
-sent.
 
 ### 315. Web-search placeholder remains “Searching…” after process restart
 
@@ -877,5 +843,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Delayed title generation reads and logs a chat after relock" - FIXED + COMMITTED in this fix commit: delayed title callbacks fail closed for relocked threads and redact any lock transition observed before publication/logging; scenario 311 and ThreadTitleGen regression coverage passed.
 - 2026-08-26 - "Chat send ignores a failed attachment save and still sends" - FIXED + COMMITTED in this fix commit: sends now transact the user message, attachments, and FTS state, reject failed attachment saves, clean up created files on rollback, and surface an error without firing a request; scenario 312 and ChatFlow regression coverage passed.
 - 2026-08-26 - "Overwrite edit deletes old attachments before a failed replacement" - FIXED + COMMITTED in this fix commit: overwrite edits now transact attachment deletion, replacement saves, message content, and FTS updates; failed replacements restore the original message and file without firing a request; scenario 313 and BranchFlow regression coverage passed.
+- 2026-08-26 - "Branch edit activates a partial branch after attachment persistence failure" - FIXED + COMMITTED in this fix commit: branch creation now keeps message insertion, source-attachment copying, replacement saves, active-leaf changes, and FTS updates in one transaction; failed replacements leave the source tree intact and send no request; scenario 314 and BranchFlow regression coverage passed.
 
 

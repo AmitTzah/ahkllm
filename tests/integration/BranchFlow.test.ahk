@@ -115,6 +115,28 @@ class BranchFlowTest {
         }
     }
 
+    ; Regression (bug #314): branch edits must not activate a partially copied
+    ; branch when a replacement attachment cannot be saved.
+    EditBranch_FailedAttachment_RollsBack() {
+        global activeThreadId
+        threadId := this._setup()
+        activeThreadId := threadId
+        msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "source"})
+        ChatDB.Attachment_Insert(msgId, {attachment_type: "text_file", file_path: "attachments\source.txt", original_filename: "source.txt", file_size: 6})
+        try {
+            handleEdit(Map("id", msgId, "content", "branched", "mode", "branch",
+                "attachments", [{type: "text_file", filename: "replacement.txt", base64: ""}]))
+            branch := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND content=?;", threadId, "branched")
+            leaf := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
+            sourceAtts := ChatDB.Attachment_GetByMessage(msgId)
+            if Integer(branch[1, "c"]) != 0 || leaf[1, "active_leaf_id"] != msgId || sourceAtts.Length != 1
+                throw Error("branch failure left a partial branch or changed the source")
+        } finally {
+            activeThreadId := ""
+            this._teardown()
+        }
+    }
+
     ; Regression (bug #154): branch-edit of an ASSISTANT message must copy the
     ; source's reasoning/thinking CONTENT (like fork copies do) - not just the
     ; thinking token count, so the branch's Thought Process block and its token
