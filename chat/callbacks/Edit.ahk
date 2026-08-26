@@ -176,6 +176,9 @@ handleDelete(msgId, *) {
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
     postThreadStats(activeThreadId)  ; refresh token/cost bar after deletion
+    ; The active-path model badge is derived by ThreadRepo.List, so refresh
+    ; the sidebar immediately after the deletion changes the active leaf.
+    _postThreadListRefresh()
 }
 
 ; ----------------------------------------------------

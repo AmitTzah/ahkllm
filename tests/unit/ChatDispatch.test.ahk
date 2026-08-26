@@ -712,6 +712,28 @@ class ChatDispatchTest {
         }
     }
 
+    ; Regression (bug #321): deleting the active response changes the model
+    ; shown in the sidebar, so the handler must republish the thread list.
+    Dispatch_DeleteMessage_RefreshesThreadList() {
+        global activeThreadId
+        this._setupDb()
+        old := activeThreadId
+        threadId := ChatDB.Thread_Create("Delete response")
+        activeThreadId := threadId
+        userId := ChatDB.Msg_Insert({ thread_id: threadId, role: "user", content: "question" })
+        assistantId := ChatDB.Msg_Insert({ thread_id: threadId, role: "assistant", content: "answer", model: "openai/gpt-5-mini", parent_id: userId })
+        web := this._captureWebView()
+        try {
+            handleDelete(assistantId)
+            if !this._findCaptured(web.captured, "threadList")
+                throw Error("deleting an active response should refresh the thread list")
+        } finally {
+            web.restore()
+            activeThreadId := old
+            this._teardownDb()
+        }
+    }
+
     ; Regression (bug #210): deleting the ACTIVE thread must reset the
     ; chat-window title - the deleteThread/deleteThreadForever/emptyTrash paths
     ; cleared activeThreadId and posted loadThread+initChatMode but left the

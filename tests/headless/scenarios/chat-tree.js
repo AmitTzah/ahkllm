@@ -2233,7 +2233,8 @@ scenarios.push({
 
 scenarios.push({
   id: 321,
-  name: 'Deleting the active assistant response leaves the sidebar model badge stale',
+  name: 'Deleting the active assistant response refreshes the sidebar model badge',
+  regression: true,
   mode: null,
   settings: { threadTitles: { enabled: false } },
   fixtures: {
@@ -2259,17 +2260,15 @@ scenarios.push({
     await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete confirmation');
     await cdp.click('#customConfirmOverlay .yes-confirm-btn');
     await cdp.waitFor('chatMessages.length === 3', 15000, 300, 'active response deleted');
-    await sleep(800); // updateChatView + token stats, without a thread-list refresh
+    await sleep(800); // updateChatView + token stats + thread-list refresh
 
     const dbState = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-badge-321'");
     if (!dbState.length || dbState[0].active_leaf_id !== 'm-321-u2')
       throw new Error('setup: delete did not move active leaf to u2: ' + JSON.stringify(dbState));
     const after = await cdp.eval('document.querySelector("#thread-list .chat-item[data-chat=\\"t-badge-321\\"] .chat-icon img").getAttribute("src")');
-    // PASS means the suspected bug is reproduced: the DB now resolves model A
-    // but the live sidebar still renders model B from its old list payload.
-    if (String(after).indexOf('deepseek.ico') < 0)
-      throw new Error('sidebar badge refreshed after delete (lead not reproduced): before=' + before + ' after=' + after);
-    return 'deleted active model-B response; DB active leaf is m-321-u2 (model A), but live sidebar badge stayed ' + JSON.stringify(after);
+    if (String(after).indexOf('openai.ico') < 0)
+      throw new Error('sidebar badge did not refresh to model A after delete: before=' + before + ' after=' + after);
+    return 'deleted active model-B response; sidebar badge refreshed from ' + JSON.stringify(before) + ' to model A ' + JSON.stringify(after);
   }
 });
 

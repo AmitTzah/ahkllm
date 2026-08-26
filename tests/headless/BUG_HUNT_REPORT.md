@@ -154,7 +154,7 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-26 - Bugs 316-318 fixed and committed; no verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass; next round is fresh intake when the user asks. Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
@@ -169,7 +169,7 @@ How to run AHK safely:
   suite); scenario 20 flipped to a regression check for the stub removal.
   Full headless suite PASS and `npm run test:fast` green. Next round: fresh
   intake when the user asks. Reviewer candidates 319-322 are all verified and
-  ranked below; bug 321 is next in rank order.
+  ranked below; bug 322 is next in rank order.
 
 ## Bug entry template
 
@@ -222,22 +222,6 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 321. Deleting the active assistant response leaves the sidebar model badge stale
-
-**Scenario:** 321 (scenario code in `scenarios/chat-tree.js`)
-
-**Status:** verified
-
-**Repro:** On a path whose earlier assistant response used model A and active latest response used model B, delete the latest response.
-
-**Expected:** The sidebar badge immediately changes to model A, the remaining active path's model.
-
-**Actual:** The message and token bar refresh, but the sidebar keeps model B because `handleDelete()` does not post a thread-list refresh.
-
-**Evidence:** `chat/callbacks/Edit.ahk:164-179` posts `updateChatView` and `postThreadStats` without `_postThreadListRefresh()`; `chat/db/ThreadRepo.ahk` derives the badge model from the active path.
-
-**Verification:** Scenario 321 deletes the active B response and checks the live sidebar icon without navigation or reload.
-
 ### 322. Assistant picker followed by an immediate Send can revert to the old direct model
 
 **Scenario:** 322 (scenario code in `scenarios/chat-ui.js`)
@@ -259,6 +243,7 @@ one at a time, in rank order.
 - 2026-08-26 - Web-search scenarios 250-255 were reclassified as regression coverage, not bug-hunt entries; their end-to-end checks remain in the suite.
 - 2026-08-26 - "Explicit Model Default reasoning/temperature selections are lost on reload" - FIXED + COMMITTED in this fix commit: per-thread override-set flags distinguish intentional empty defaults from inherited assistant values; scenario 319 is now a regression check with ThreadSettings, persistence, and UI payload coverage.
 - 2026-08-26 - "Clearing an assistant system prompt is not a stable per-thread choice" - FIXED + COMMITTED in this fix commit: explicit blank system overrides now survive the immediate-send settings flush and reload; scenario 320 is now a regression check with request-payload and ThreadSettings coverage.
+- 2026-08-26 - "Deleting the active assistant response leaves the sidebar model badge stale" - FIXED + COMMITTED in this fix commit: message deletion now posts a thread-list refresh after the active path changes; scenario 321 is now a regression check with live badge and dispatch coverage.
 - 2026-08-26 - "Message edit updates thread recency but leaves the sidebar stale" - FIXED + COMMITTED in this fix commit: branch and overwrite edits now post `_postThreadListRefresh()` after persistence; scenario 318 is a regression check and verifies live sidebar order/date updates.
 - 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED in this fix commit: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
 - 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.
