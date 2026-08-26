@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 310 cleanup fix is applied and
-  verified; commit and final release gate are next.
+- **Where we left off:** 2026-08-26 - Scenario 310 cleanup fix committed as
+  b4fa670; final release gate and artifact inspection completed successfully.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -219,30 +219,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. Force-killed ChatWindow runs can leave credential-bearing temp files
-
-**Scenario:** 310
-
-**Status:** fix applied
-
-**Repro:** Run the headless suite, or force-kill ChatWindow during a request,
-then inspect `%TEMP%` for `ChatWindow_*` request/title files.
-
-**Expected:** Startup and exit cleanup remove stale app-owned request, cURL,
-output, error, and title-generation files without touching unrelated files.
-
-**Actual:** Fixed: ChatWindow startup and exit cleanup scan the explicit
-ChatWindow, title-generation, DeepSeek-search, and Tavily prefixes, removing
-stale app-owned files while leaving unrelated temp files untouched.
-
-**Evidence:** `chat/ChatUtils.ahk` implements `CleanupOwnedTempFiles()` and
-`ChatWindow.ahk` invokes it during startup and graceful exit.
-
-**Verification:** Scenario 310 verifies all 12 explicit cleanup prefixes and
-startup/exit wiring; its AHK regression creates each stale file, confirms
-cleanup removes them, and confirms an unrelated file survives. The final
-artifact audit found no locked sentinels in the API log.
-
 **Feature checks (web-search milestone):**
 
 ### 250. Web Search toggle: DeepSeek native search end-to-end
@@ -826,6 +802,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Chat request temp files collide when requests share an A_TickCount" - FIXED + COMMITTED in eb64f85: chat and title-generation temp files now use UUID-derived names; scenario 303 is a regression check with synchronous request-builder coverage.
 - 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in 784f79b: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
 - 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in efda6ab: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
-- 2026-08-26 - "Force-killed ChatWindow runs can leave credential-bearing temp files" - FIXED + COMMITTED in the cleanup fix commit below: explicit app-owned temp prefixes are removed at startup and exit; scenario 310 and the AHK cleanup regression passed.
+- 2026-08-26 - "Force-killed ChatWindow runs can leave credential-bearing temp files" - FIXED + COMMITTED in b4fa670: explicit app-owned temp prefixes are removed at startup and exit; scenario 310 and the AHK cleanup regression passed.
 
 
