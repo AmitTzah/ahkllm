@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **1 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 311 and 312 fixed and committed;
-  next fix is bug 313 (overwrite attachment persistence failure).
+- **Where we left off:** 2026-08-26 - Bugs 311-313 fixed and committed; next
+  fix is bug 314 (branch attachment persistence failure).
   Scenario 315 was attempted twice; both targeted-kill runs failed during
   restart setup (`waitForChatTarget` timeout, diagnostics saw only
   `api-logs.html`), so entry 315 remains `reported` pending harness recovery.
@@ -259,37 +259,6 @@ answer live before completion, and the scenario asserts that live progress.
 The search call runs with reasoning effort "none" (reasoning-on searches can
 burn the whole output budget on internal search rounds and end with no answer
 at all - real-API report 2026-08-16). No real API calls are made by the suite.
-
-### 313. Overwrite edit deletes old attachments before a failed replacement
-
-**Scenario:** 313
-
-**Status:** verified
-
-**Repro:** Edit a user message that has an existing attachment, remove that
-attachment, add a replacement whose local save fails, and commit the overwrite
-edit. Close and reopen the database and inspect the old content, attachment
-rows, and physical files.
-
-**Expected:** The overwrite edit commits as one logical operation. If a new
-attachment cannot be persisted, the old message content, old attachment row,
-and old physical file remain intact; no partial edit is durable.
-
-**Actual:** Suspected: overwrite mode calls `Attachment_DeleteOne` for removed
-attachments before saving replacements and before `Msg_Edit`. An empty
-`Attachment_Save` result is ignored, so the old attachment can be permanently
-deleted while the edited content commits without the replacement.
-
-**Evidence:** `chat/callbacks/Edit.ahk` deletes `removedAttachmentIds` first,
-then calls `ImageUtils.SaveBase64ToFile`/`Attachment_Save` without checking a
-failure result, and only afterwards calls `ChatDB.Msg_Edit`; these mutations
-are not enclosed in one transaction/deferred-file-delete scope.
-
-**Verification:** Headless - scenario 313 drove the real edit callback with an
-existing physical attachment, removed it, submitted a deterministic empty-save
-replacement, then opened a fresh SQLite connection and checked message content,
-attachment rows, FTS, and the old file. The edit survived while the old
-attachment row/file was gone and the replacement was absent.
 
 ### 314. Branch edit activates a partial branch after attachment persistence failure
 
@@ -907,5 +876,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Force-killed ChatWindow runs can leave credential-bearing temp files" - FIXED + COMMITTED in b4fa670: explicit app-owned temp prefixes are removed at startup and exit; scenario 310 and the AHK cleanup regression passed.
 - 2026-08-26 - "Delayed title generation reads and logs a chat after relock" - FIXED + COMMITTED in this fix commit: delayed title callbacks fail closed for relocked threads and redact any lock transition observed before publication/logging; scenario 311 and ThreadTitleGen regression coverage passed.
 - 2026-08-26 - "Chat send ignores a failed attachment save and still sends" - FIXED + COMMITTED in this fix commit: sends now transact the user message, attachments, and FTS state, reject failed attachment saves, clean up created files on rollback, and surface an error without firing a request; scenario 312 and ChatFlow regression coverage passed.
+- 2026-08-26 - "Overwrite edit deletes old attachments before a failed replacement" - FIXED + COMMITTED in this fix commit: overwrite edits now transact attachment deletion, replacement saves, message content, and FTS updates; failed replacements restore the original message and file without firing a request; scenario 313 and BranchFlow regression coverage passed.
 
 

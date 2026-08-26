@@ -1016,7 +1016,7 @@ scenarios.push({
 
 scenarios.push({
   id: 313,
-  name: "Overwrite edit deletes old attachments before a failed replacement",
+  name: "Overwrite edit rolls back when a replacement attachment cannot be saved",
   mode: null,
   fixtures: {
     threads: [{ id: "t-edit-313", title: "Edit Attachments", active_leaf_id: "m-edit-313-u" }],
@@ -1051,17 +1051,17 @@ scenarios.push({
     const ftsCount = reopened.prepare("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id=?").get("m-edit-313-u").c;
     reopened.close();
     const oldFileExists = fs.existsSync(path.join(dataDir, oldPath));
-    if (!msg || msg.content !== "EDITED_WITH_FAILED_REPLACEMENT_313" || Number(attachmentCount) !== 0 ||
-        Number(ftsCount) !== 1 || oldFileExists)
-      throw new Error("overwrite partial state not reproduced: content=" + (msg && msg.content) +
+    if (!msg || msg.content !== "ORIGINAL_EDIT_313" || Number(attachmentCount) !== 1 ||
+        Number(ftsCount) !== 1 || !oldFileExists)
+      throw new Error("overwrite rollback failed: content=" + (msg && msg.content) +
         " attachments=" + attachmentCount + " fts=" + ftsCount + " oldFile=" + oldFileExists);
-    return "after reopen, overwrite content committed but the failed replacement was absent and the removed old attachment row/file was permanently gone";
+    return "after reopen, failed replacement left the original content, attachment row/file, and FTS row intact";
   }
 });
 
 scenarios.push({
   id: 314,
-  name: "Branch edit activates a partial branch after attachment persistence failure",
+  name: "Branch edit rolls back when a replacement attachment cannot be saved",
   mode: "sse-success",
   fixtures: {
     threads: [{ id: "t-edit-314", title: "Branch Attachments", active_leaf_id: "m-edit-314-u" }],

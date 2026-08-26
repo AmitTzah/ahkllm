@@ -109,6 +109,10 @@ handleEdit(params, *) {
             _BuildAndFireRequest()
         }
     } else {
+        transactionStarted := false
+        try {
+        ChatDB.BeginTransaction()
+        transactionStarted := true
         ; Overwrite mode: delete attachments explicitly removed during edit
         ; (deferred deletion) - the original message IS being rewritten, so the
         ; removal applies to it.
@@ -116,23 +120,30 @@ handleEdit(params, *) {
             ChatDB.Attachment_DeleteOne(removedId, activeThreadId)
         }
         ; Append any new attachments - never delete existing ones (× button handles removal)
-        for att in attachments {
-            if !IsObject(att)
-                continue
-            attBase64 := att.Has("base64") ? att["base64"] : ""
-            if attBase64 {
-                attFilename := att.Has("filename") ? att["filename"] : "unknown"
-                attHash := att.Has("contentHash") ? att["contentHash"] : ""
-                filePath := ImageUtils.SaveBase64ToFile(attBase64, id, attFilename, attHash)
-                if filePath && !_AttachmentExistsOnMessage(id, filePath)
-                    ChatDB.Attachment_Save(id, att)
-            }
-        }
+        _SaveEditAttachments(id, attachments)
         ChatDB.Msg_Edit(id, content, activeThreadId)
+        ChatDB.CommitTransaction()
+        transactionStarted := false
+        } catch Error as e {
+            if transactionStarted
+                ChatDB.RollbackTransaction()
+            postWebMessage("showError", { message: "Edit failed: " e.Message })
+            return
+        }
         debugLog("[EDIT] Message - id=" id " thread=" activeThreadId)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
+    }
+}
+
+; Save every submitted attachment as part of the caller's transaction.
+_SaveEditAttachments(msgId, attachments) {
+    for att in attachments {
+        if !IsObject(att)
+            throw Error("Attachment could not be saved.")
+        if !ChatDB.Attachment_Save(msgId, att)
+            throw Error("Attachment could not be saved.")
     }
 }
 

@@ -86,6 +86,35 @@ class BranchFlowTest {
         }
     }
 
+    ; Regression (bug #313): overwrite edits must keep the original message
+    ; and attachment when a submitted replacement cannot be saved.
+    EditOverwrite_FailedAttachment_RollsBack() {
+        global activeThreadId
+        threadId := this._setup()
+        oldDataDir := AppInfo.DataDir
+        testDataDir := A_Temp "\branch_edit_313_" A_TickCount
+        AppInfo.DataDir := testDataDir
+        DirCreate(testDataDir "\attachments")
+        activeThreadId := threadId
+        msgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "original"})
+        filePath := "attachments\original.txt"
+        FileAppend("original", testDataDir "\" filePath, "UTF-8-RAW")
+        attId := ChatDB.Attachment_Insert(msgId, {attachment_type: "text_file", file_path: filePath, original_filename: "original.txt", file_size: 8})
+        try {
+            handleEdit(Map("id", msgId, "content", "edited", "mode", "overwrite",
+                "removedAttachmentIds", [attId], "attachments", [{type: "text_file", filename: "replacement.txt", base64: ""}]))
+            msg := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", msgId)
+            atts := ChatDB.Attachment_GetByMessage(msgId)
+            if msg[1, "content"] != "original" || atts.Length != 1 || atts[1].id != attId || !FileExist(testDataDir "\" filePath)
+                throw Error("overwrite failure did not restore original state")
+        } finally {
+            activeThreadId := ""
+            AppInfo.DataDir := oldDataDir
+            try DirDelete(testDataDir, true)
+            this._teardown()
+        }
+    }
+
     ; Regression (bug #154): branch-edit of an ASSISTANT message must copy the
     ; source's reasoning/thinking CONTENT (like fork copies do) - not just the
     ; thinking token count, so the branch's Thought Process block and its token
