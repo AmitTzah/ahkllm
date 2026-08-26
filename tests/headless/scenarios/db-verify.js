@@ -6,9 +6,10 @@ const os=require("node:os");
 const { spawn, spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
+const { CDP } = require("../cdp");
 const seed=require("../seed");
 const launcher=require("../launch");
-const { sleep, showChat, waitStreamingIdle } = require("./helpers");
+const { sleep, runProbe, showChat, waitStreamingIdle } = require("./helpers");
 const { assertInvariants } = require("../invariant-audit");
 const scenarios=[];
 
@@ -965,6 +966,213 @@ scenarios.push({
     return 'v5 DB upgraded to user_version=' + v1 + '; the one-time backfill priced the legacy assistant row at cost1=' + cost1 +
       '; after doubling the model price and reopening, user_version=' + v2 + ' and cost2=' + cost2 +
       ' (unchanged) - the guard prevents double-application (known limitation: pre-upgrade rows are priced at first-open prices, the only data available)';
+  }
+});
+
+scenarios.push({
+  id: 312,
+  name: "Chat send ignores a failed attachment save and still sends",
+  mode: "sse-success",
+  fixtures: { threads: [], messages: [] },
+  async body({ cdp, dbPath, dataDir, mockLog }) {
+    await showChat();
+    await post(cdp, {
+      action: "chatSend",
+      message: "SEND_ATTACHMENT_SECRET_312",
+      attachments: [{
+        type: "text_file",
+        filename: "required-312.txt",
+        mimeType: "text/plain",
+        size: 21,
+        extractedText: "ATTACHMENT_SECRET_312",
+        base64: ""
+      }]
+    });
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(700);
+
+    // Open/close a fresh SQLite connection for the durable-state audit. The
+    // empty base64 payload deterministically makes Attachment_Save return "".
+    const reopened = new DatabaseSync(dbPath);
+    const thread = reopened.prepare("SELECT id FROM chat_threads ORDER BY rowid DESC LIMIT 1").get();
+    const user = thread && reopened.prepare("SELECT id FROM messages WHERE thread_id=? AND content=?").get(thread.id, "SEND_ATTACHMENT_SECRET_312");
+    const attachmentCount = user ? reopened.prepare("SELECT COUNT(*) AS c FROM message_attachments WHERE message_id=?").get(user.id).c : 0;
+    const ftsCount = user ? reopened.prepare("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id=?").get(user.id).c : 0;
+    reopened.close();
+
+    const attachmentDir = path.join(dataDir, "attachments");
+    const physicalFiles = fs.existsSync(attachmentDir) ? fs.readdirSync(attachmentDir) : [];
+    const requests = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, "utf8").split(/\r?\n/).filter(Boolean)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter((entry) => entry && entry.modeUsed === "sse") : [];
+
+    if (!user || Number(attachmentCount) !== 0 || Number(ftsCount) !== 1 || physicalFiles.length !== 0 || requests.length < 1)
+      throw new Error("empty attachment-save failure did not reproduce the durable ghost/send: user=" + !!user +
+        " attachments=" + attachmentCount + " fts=" + ftsCount + " files=" + physicalFiles.length + " requests=" + requests.length);
+    return "after reopen, the submitted attachment had no row/file but the user message remained FTS-indexed and the mock received " + requests.length + " chat request(s)";
+  }
+});
+
+scenarios.push({
+  id: 313,
+  name: "Overwrite edit deletes old attachments before a failed replacement",
+  mode: null,
+  fixtures: {
+    threads: [{ id: "t-edit-313", title: "Edit Attachments", active_leaf_id: "m-edit-313-u" }],
+    messages: [{ id: "m-edit-313-u", thread_id: "t-edit-313", role: "user", content: "ORIGINAL_EDIT_313" }]
+  },
+  async body({ cdp, dbPath, dataDir }) {
+    const oldPath = "attachments/old-313.txt";
+    fs.mkdirSync(path.join(dataDir, "attachments"), { recursive: true });
+    fs.writeFileSync(path.join(dataDir, oldPath), "old attachment 313");
+    const setup = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    setup.prepare("INSERT INTO message_attachments (id,message_id,attachment_type,file_path,mime_type,original_filename,file_size,extracted_text) VALUES (?,?,?,?,?,?,?,?)")
+      .run("att-313-old", "m-edit-313-u", "text_file", oldPath, "text/plain", "old-313.txt", 19, "");
+    setup.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, "edit thread");
+    await cdp.click('#thread-list .chat-item[data-chat="t-edit-313"]');
+    await cdp.waitFor('window.activeThreadId === "t-edit-313" && document.querySelectorAll("#chat-messages .msg").length === 1', 15000, 300, "edit message loaded");
+    await post(cdp, {
+      action: "editMessage",
+      id: "m-edit-313-u",
+      content: "EDITED_WITH_FAILED_REPLACEMENT_313",
+      mode: "overwrite",
+      removedAttachmentIds: ["att-313-old"],
+      attachments: [{ type: "text_file", filename: "replacement-313.txt", mimeType: "text/plain", size: 22, extractedText: "replacement", base64: "" }]
+    });
+    await sleep(1200);
+
+    const reopened = new DatabaseSync(dbPath);
+    const msg = reopened.prepare("SELECT content FROM messages WHERE id=?").get("m-edit-313-u");
+    const attachmentCount = reopened.prepare("SELECT COUNT(*) AS c FROM message_attachments WHERE message_id=?").get("m-edit-313-u").c;
+    const ftsCount = reopened.prepare("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id=?").get("m-edit-313-u").c;
+    reopened.close();
+    const oldFileExists = fs.existsSync(path.join(dataDir, oldPath));
+    if (!msg || msg.content !== "EDITED_WITH_FAILED_REPLACEMENT_313" || Number(attachmentCount) !== 0 ||
+        Number(ftsCount) !== 1 || oldFileExists)
+      throw new Error("overwrite partial state not reproduced: content=" + (msg && msg.content) +
+        " attachments=" + attachmentCount + " fts=" + ftsCount + " oldFile=" + oldFileExists);
+    return "after reopen, overwrite content committed but the failed replacement was absent and the removed old attachment row/file was permanently gone";
+  }
+});
+
+scenarios.push({
+  id: 314,
+  name: "Branch edit activates a partial branch after attachment persistence failure",
+  mode: "sse-success",
+  fixtures: {
+    threads: [{ id: "t-edit-314", title: "Branch Attachments", active_leaf_id: "m-edit-314-u" }],
+    messages: [{ id: "m-edit-314-u", thread_id: "t-edit-314", role: "user", content: "ORIGINAL_BRANCH_314" }]
+  },
+  async body({ cdp, dbPath, dataDir, mockLog }) {
+    const firstPath = "attachments/source-314-a.txt";
+    const secondPath = "attachments/source-314-b.txt";
+    fs.mkdirSync(path.join(dataDir, "attachments"), { recursive: true });
+    fs.writeFileSync(path.join(dataDir, firstPath), "source attachment A");
+    fs.writeFileSync(path.join(dataDir, secondPath), "source attachment B");
+    const setup = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
+    const insert = setup.prepare("INSERT INTO message_attachments (id,message_id,attachment_type,file_path,mime_type,original_filename,file_size,extracted_text) VALUES (?,?,?,?,?,?,?,?)");
+    insert.run("att-314-a", "m-edit-314-u", "text_file", firstPath, "text/plain", "source-a.txt", 19, "");
+    insert.run("att-314-b", "m-edit-314-u", "text_file", secondPath, "text/plain", "source-b.txt", 19, "");
+    setup.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, "branch thread");
+    await cdp.click('#thread-list .chat-item[data-chat="t-edit-314"]');
+    await cdp.waitFor('window.activeThreadId === "t-edit-314" && document.querySelectorAll("#chat-messages .msg").length === 1', 15000, 300, "branch message loaded");
+    await post(cdp, {
+      action: "editMessage",
+      id: "m-edit-314-u",
+      content: "BRANCH_WITH_FAILED_REPLACEMENT_314",
+      mode: "branch",
+      removedAttachmentIds: ["att-314-a"],
+      attachments: [{ type: "text_file", filename: "replacement-314.txt", mimeType: "text/plain", size: 22, extractedText: "replacement", base64: "" }]
+    });
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(800);
+
+    const reopened = new DatabaseSync(dbPath);
+    const branch = reopened.prepare("SELECT id FROM messages WHERE thread_id=? AND content=?").get("t-edit-314", "BRANCH_WITH_FAILED_REPLACEMENT_314");
+    const leaf = reopened.prepare("SELECT active_leaf_id FROM chat_threads WHERE id=?").get("t-edit-314");
+    const leafMessage = leaf ? reopened.prepare("SELECT parent_id FROM messages WHERE id=?").get(leaf.active_leaf_id) : null;
+    const branchAttachmentCount = branch ? reopened.prepare("SELECT COUNT(*) AS c FROM message_attachments WHERE message_id=?").get(branch.id).c : 0;
+    const branchFtsCount = branch ? reopened.prepare("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id=?").get(branch.id).c : 0;
+    const sourceAttachmentCount = reopened.prepare("SELECT COUNT(*) AS c FROM message_attachments WHERE message_id=?").get("m-edit-314-u").c;
+    reopened.close();
+    const sourceFilesExist = fs.existsSync(path.join(dataDir, firstPath)) && fs.existsSync(path.join(dataDir, secondPath));
+    const requests = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, "utf8").split(/\r?\n/).filter(Boolean)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter((entry) => entry && entry.modeUsed === "sse") : [];
+    if (!branch || !leaf || !leafMessage || leafMessage.parent_id !== branch.id || Number(branchAttachmentCount) !== 1 ||
+        Number(branchFtsCount) !== 1 || Number(sourceAttachmentCount) !== 2 || !sourceFilesExist || requests.length < 1)
+      throw new Error("branch partial state not reproduced: branch=" + !!branch + " leaf=" + (leaf && leaf.active_leaf_id) +
+        " branchAttachments=" + branchAttachmentCount + " branchFts=" + branchFtsCount +
+        " sourceAttachments=" + sourceAttachmentCount + " sourceFiles=" + sourceFilesExist + " requests=" + requests.length);
+    return "after reopen, an active branch with one remaining copied attachment but no replacement was durable, FTS was present, source files/rows stayed intact, and the branch request was sent";
+  }
+});
+scenarios.push({
+  id: 315,
+  name: "Web-search placeholder remains Searching after process restart",
+  mode: "sse-tool-call",
+  settings: { threadTitles: { enabled: false } },
+  mockOpts: {
+    searchQuery: "Crash recovery 315",
+    searchDelay: 5000,
+    searchText: "Search result that should not be mistaken for a live operation."
+  },
+  fixtures: { threads: [], messages: [] },
+  async body({ cdp, dbPath, dataDir }) {
+    await showChat();
+    await cdp.eval('document.getElementById("webSearchToggle").click(); true');
+    await sleep(900);
+    await post(cdp, { action: "chatSend", message: "CRASH_PLACEHOLDER_315" });
+    await cdp.waitFor('document.querySelector(".msg.search-context") !== null', 20000, 100, "search placeholder in UI");
+    await sleep(300);
+    const beforeKill = seed.query(dbPath, "SELECT id, content FROM messages WHERE content LIKE '%Searching%' ORDER BY rowid DESC LIMIT 1");
+    if (!beforeKill.length) throw new Error("placeholder row was not durable before kill");
+
+    await cdp.close();
+    const killed = runProbe("kill-app");
+    if (!killed || Number(killed.closed) < 1) throw new Error("targeted kill-app did not close the scenario app: " + JSON.stringify(killed));
+    // kill-app targets only the app scripts; sweep the harness-owned
+    // WebView2 child before restarting on a new CDP port.
+    launcher.killRepoAppProcesses();
+    launcher.sweepWebView2Dirs();
+    await sleep(1200);
+
+    const restartPort = await launcher.findFreePort();
+    const restarted = launcher.launch({ sandbox: dataDir, port: restartPort });
+    let restartedCdp = null;
+    try {
+      let target;
+      try {
+        target = await launcher.waitForChatTarget(restartPort, 30000);
+      } catch (error) {
+        let targets = [];
+        try { targets = await launcher.listTargets(restartPort); } catch {}
+        throw new Error(error.message + "; restart app-pids=" + JSON.stringify(runProbe("app-pids")) +
+          "; restart targets=" + JSON.stringify(targets.map((item) => ({ type: item.type, url: item.url }))));
+      }
+      restartedCdp = await CDP.connect(target.webSocketDebuggerUrl);
+      await restartedCdp.installPostMessageHook();
+      await restartedCdp.waitFor('document.readyState === "complete" && typeof chatMessages !== "undefined"', 60000, 400, "restarted chat ready");
+      await restartedCdp.waitFor('document.querySelector("#thread-list .chat-item") !== null', 20000, 300, "restarted thread list");
+      await restartedCdp.click("#thread-list .chat-item");
+      await restartedCdp.waitFor('window.activeThreadId !== "" && document.querySelector(".msg.search-context") !== null', 20000, 200, "reloaded thread");
+      const cardText = await restartedCdp.text(".msg.search-context");
+      if (String(cardText).indexOf("Searching") < 0)
+        throw new Error("placeholder was recovered instead of remaining stale: " + cardText);
+      const afterRestart = seed.query(dbPath, "SELECT id, content FROM messages WHERE id=?", [beforeKill[0].id]);
+      if (!afterRestart.length || String(afterRestart[0].content).indexOf("Searching") < 0)
+        throw new Error("placeholder content changed unexpectedly after restart: " + JSON.stringify(afterRestart));
+      return "targeted app kill during a slow search left the durable placeholder row and reloaded card as Searching after restart (row " + beforeKill[0].id + ")";
+    } finally {
+      if (restartedCdp) await restartedCdp.close();
+      launcher.teardown(restarted.mainPid);
+    }
   }
 });
 module.exports=scenarios;

@@ -653,4 +653,71 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 311,
+  name: 'Delayed title generation reads and logs a chat after relock',
+  mode: 'sse-success',
+  fixtures: {
+    threads: [{ id: 't-title-relock-311', title: 'New Chat', active_leaf_id: null, is_locked: 1 }],
+    messages: [],
+    chatLocks: [{
+      thread_id: 't-title-relock-311',
+      salt: LOCK_SALT,
+      hash: lockHash(LOCK_PASSWORD, LOCK_SALT, LOCK_ITERATIONS),
+      iterations: LOCK_ITERATIONS
+    }]
+  },
+  async body({ cdp, mockLog }) {
+    const apiLogPath = require('node:path').join(require('node:os').tmpdir(), 'LLM_API_Log.json');
+    try { require('node:fs').unlinkSync(apiLogPath); } catch {}
+
+    await showChat();
+    await cdp.waitFor('document.querySelector(' + JSON.stringify(lockedItem('t-title-relock-311')) + ') !== null', 15000, 300, 'locked title thread in sidebar');
+    await cdp.click(lockedItem('t-title-relock-311'));
+    await cdp.waitFor('document.getElementById("threadLockOverlay") !== null', 15000, 300, 'title-thread lock overlay');
+    await cdp.type('#lockPasswordInput', LOCK_PASSWORD);
+    await cdp.click('#lockUnlockBtn');
+    await cdp.waitFor('window.activeThreadId === "t-title-relock-311" && document.getElementById("threadLockOverlay") === null', 30000, 300, 'title thread unlocked');
+
+    await cdp.eval(`window.chrome.webview.postMessage(JSON.stringify({ action: 'chatSend', message: 'TITLE_SECRET_311' })); true`);
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 100, 'first exchange streaming');
+
+    // Poll tightly instead of using waitStreamingIdle's 300ms cadence: the
+    // title timer is only -200ms, so this posts the relock at the first idle
+    // observation and exercises the intended race.
+    let idle = false;
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      if (await cdp.eval('typeof streamState !== "undefined" && !streamState.active && !isLoading')) {
+        idle = true;
+        break;
+      }
+      await sleep(20);
+    }
+    if (!idle) throw new Error('first exchange did not become idle');
+    await cdp.eval(`window.chrome.webview.postMessage(JSON.stringify({ action: 'lockChatNow', threadId: 't-title-relock-311' })); true`);
+    await cdp.waitFor('window.activeThreadId === ""', 15000, 100, 'title thread relocked');
+
+    // Allow the delayed callback and its bounded cURL attempt to finish.
+    await sleep(2500);
+    let titleRequests = [];
+    if (require('node:fs').existsSync(mockLog)) {
+      titleRequests = require('node:fs').readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean)
+        .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+        .filter((entry) => entry && entry.modeUsed === 'title');
+    }
+    let titleLogEntries = [];
+    if (require('node:fs').existsSync(apiLogPath)) {
+      try { titleLogEntries = JSON.parse(require('node:fs').readFileSync(apiLogPath, 'utf8')); } catch {}
+    }
+    const titleEntry = titleLogEntries.find((entry) => entry && entry.commandName === 'Thread Title Generation');
+    const outboundLeak = titleRequests.some((entry) => JSON.stringify(entry.body).includes('TITLE_SECRET_311'));
+    const apiLogLeak = !!titleEntry && JSON.stringify(titleEntry.request).includes('TITLE_SECRET_311');
+    if (!outboundLeak || !apiLogLeak)
+      throw new Error('title race did not reproduce both exposures: outbound=' + outboundLeak + ' apiLog=' + apiLogLeak +
+        ' titleRequests=' + titleRequests.length + ' titleEntry=' + !!titleEntry);
+    return 'relocked immediately after the first exchange; delayed title request still carried TITLE_SECRET_311 and the title-specific API log entry stored it in plaintext';
+  }
+});
+
 module.exports = scenarios;

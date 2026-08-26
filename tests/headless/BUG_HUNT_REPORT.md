@@ -154,10 +154,14 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **4 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 310 cleanup fix committed as
-  b4fa670; final release gate and artifact inspection completed successfully.
+- **Where we left off:** 2026-08-26 - Scenarios 311-314 PASSED and reproduced
+  delayed title exposure, send attachment omission, overwrite attachment loss,
+  and partial active branch creation. Entries 311-314 are `verified`.
+  Scenario 315 was attempted twice; both targeted-kill runs failed during
+  restart setup (`waitForChatTarget` timeout, diagnostics saw only
+  `api-logs.html`), so entry 315 remains `reported` pending harness recovery.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -256,6 +260,172 @@ answer live before completion, and the scenario asserts that live progress.
 The search call runs with reasoning effort "none" (reasoning-on searches can
 burn the whole output budget on internal search rounds and end with no answer
 at all - real-API report 2026-08-16). No real API calls are made by the suite.
+
+### 311. Delayed title generation reads and logs a chat after relock
+
+**Scenario:** 311
+
+**Status:** verified
+
+**Repro:** Open a password-protected empty chat, unlock it, send the first user
+message and wait for the assistant response, then relock the chat immediately
+before the delayed title callback runs.
+
+**Expected:** A title-generation job that has not started must not newly expose
+the relocked chat. It must either abort without an outbound title request or
+redact all title-request content, including the API log; ordinary unlocked
+chats must keep automatic title generation.
+
+**Actual:** Suspected: `_maybeGenerateTitle` schedules an unowned delayed
+callback, and `generateThreadTitle` reads the active path and logs its payload
+without checking `ThreadLockService.ShouldRedactContent(threadId)`. This may
+send the first exchange and write its plaintext to `LLM_API_Log.json` after
+the chat has been relocked.
+
+**Evidence:** `chat/streaming/StreamCompletion.ahk` schedules
+`SetTimer(generateThreadTitle.Bind(threadId), -200)`; `chat/ThreadTitleGen.ahk`
+calls `ChatDB.Msg_GetActivePath(threadId)` and `_TitleGen_LogRequest(...)`
+without a request-owned lock/redaction gate, while normal stream logging uses
+`ThreadLockService.ShouldRedactContent(streamThreadId)`.
+
+**Verification:** Headless - scenario 311 unlocked a real locked thread, sent
+the first exchange against the local mock, relocked at the first idle
+observation, and found `TITLE_SECRET_311` in both the mock title request and
+the `Thread Title Generation` entry in `LLM_API_Log.json`.
+
+### 312. Chat send ignores a failed attachment save and still sends
+
+**Scenario:** 312
+
+**Status:** verified
+
+**Repro:** Submit a chat message with an attachment whose local persistence
+returns an empty result (for example, an empty/corrupt attachment payload),
+then close and reopen the database before inspecting the message and
+attachment state.
+
+**Expected:** The user send is one durable operation. If any submitted
+attachment cannot be persisted, the message and its attachment set must not be
+committed as a half-operation, no request should be sent, and no FTS/file state
+should claim the attachment succeeded. The UI should surface the failure and
+remain usable.
+
+**Actual:** Suspected: `handleChatSend` inserts the user message, calls
+`ChatDB.Attachment_Save(msgId, att)` without checking its return value, and
+then builds/fires the LLM request. `Attachment_Save` returns `""` for empty or
+invalid base64, so the durable user row can remain with zero attachment rows
+while an LLM request is still sent.
+
+**Evidence:** `chat/callbacks/Message.ahk` performs `Msg_Insert` before the
+attachment loop and ignores the return from `Attachment_Save` before calling
+`_BuildAndFireRequest()`. `chat/db/AttachmentRepo.ahk:SaveAttachment` returns
+`""` when `base64` is empty or `SaveBase64ToFile` fails; no enclosing
+`ChatDB.BeginTransaction()` spans the message and attachment work.
+
+**Verification:** Headless - scenario 312 posted a real `chatSend` containing
+a deterministic empty-save attachment, then opened a fresh SQLite connection
+and audited the DB, FTS, and `dataDir\\attachments`. The user row survived
+with zero attachment rows/files, while the message had an FTS row and the mock
+received one chat request.
+
+### 313. Overwrite edit deletes old attachments before a failed replacement
+
+**Scenario:** 313
+
+**Status:** verified
+
+**Repro:** Edit a user message that has an existing attachment, remove that
+attachment, add a replacement whose local save fails, and commit the overwrite
+edit. Close and reopen the database and inspect the old content, attachment
+rows, and physical files.
+
+**Expected:** The overwrite edit commits as one logical operation. If a new
+attachment cannot be persisted, the old message content, old attachment row,
+and old physical file remain intact; no partial edit is durable.
+
+**Actual:** Suspected: overwrite mode calls `Attachment_DeleteOne` for removed
+attachments before saving replacements and before `Msg_Edit`. An empty
+`Attachment_Save` result is ignored, so the old attachment can be permanently
+deleted while the edited content commits without the replacement.
+
+**Evidence:** `chat/callbacks/Edit.ahk` deletes `removedAttachmentIds` first,
+then calls `ImageUtils.SaveBase64ToFile`/`Attachment_Save` without checking a
+failure result, and only afterwards calls `ChatDB.Msg_Edit`; these mutations
+are not enclosed in one transaction/deferred-file-delete scope.
+
+**Verification:** Headless - scenario 313 drove the real edit callback with an
+existing physical attachment, removed it, submitted a deterministic empty-save
+replacement, then opened a fresh SQLite connection and checked message content,
+attachment rows, FTS, and the old file. The edit survived while the old
+attachment row/file was gone and the replacement was absent.
+
+### 314. Branch edit activates a partial branch after attachment persistence failure
+
+**Scenario:** 314
+
+**Status:** verified
+
+**Repro:** Edit a user message with attachments using “Save as Branch”, remove
+one source attachment, add a replacement whose local save fails, and commit.
+Close and reopen the database before inspecting the new branch.
+
+**Expected:** Branch creation is atomic with its submitted attachment set. A
+failed attachment save must leave no durable branch, must not change
+`active_leaf_id`, and must not send the branch's LLM request. Existing source
+attachment rows/files and FTS remain unchanged.
+
+**Actual:** Suspected: branch mode inserts and activates the new message,
+copies source attachments, ignores failed new-attachment saves, and then
+fires `_BuildAndFireRequest()`. This can leave an active branch with only a
+subset of the requested attachments and a request based on that incomplete
+state.
+
+**Evidence:** `chat/callbacks/Edit.ahk` calls `ChatDB.Msg_Insert` and
+`Attachment_CopyForMessage` before the save loop, ignores both save semantics
+and a transactional rollback, then fires the request for a branched user
+message. `AttachmentRepo.CopyForMessage` shares files by row reference, so a
+fix must preserve reference counting and deferred deletion.
+
+**Verification:** Headless - scenario 314 drove the real branch callback with
+two source attachments plus a deterministic failed replacement, then opened a
+fresh SQLite connection and audited branch/active-leaf rows, attachment
+rows/files, FTS, and the mock request log. An active branch with one remaining
+copied attachment and no replacement was present, and the branch request was
+sent.
+
+### 315. Web-search placeholder remains “Searching…” after process restart
+
+**Scenario:** 315
+
+**Status:** reported
+
+**Repro:** Enable Web Search, start a deliberately slow search, wait until the
+durable `[Web search: ...]` placeholder row says `Searching…`, force-kill only
+the AhkLLM app process, restart the app against the same profile, and reload
+the thread.
+
+**Expected:** Restart recovery distinguishes an active search from an
+abandoned persisted placeholder. A placeholder from a prior process must be
+marked as abandoned/failed (or otherwise made actionable) and must not remain
+indefinitely as `Searching…`; legitimate completed search-context history must
+remain unchanged.
+
+**Actual:** Suspected: `SearchToolExecutor.PrepareFollowUp` inserts a durable
+placeholder, but the tool-loop state (`loopState`, backend PID, and active
+operation) is process-local. No startup path appears to reconcile a persisted
+`Searching…` row, so after a crash/restart it may remain permanently pending.
+
+**Evidence:** `chat/tools/SearchToolExecutor.ahk:PrepareFollowUp` persists the
+placeholder before `Execute`; `chat/streaming/StreamHandler.ahk` keeps the
+active loop in process memory, while the startup/load paths contain no
+abandoned-placeholder recovery keyed to a process or operation owner.
+
+**Verification:** Infrastructure-pending - scenario 315 enabled the real Web
+Search toggle and reached the persisted placeholder before using
+`runProbe('kill-app')`. Two bounded attempts then timed out in
+`waitForChatTarget` while restarting (the diagnostic target list contained only
+`api-logs.html`), before the stale-card assertion could run. This is not a
+refutation; rerun after the restart harness can reliably expose the chat page.
 
 ### 251. Web Search toggle: Tavily fallback end-to-end for non-DeepSeek providers
 
