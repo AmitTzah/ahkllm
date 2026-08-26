@@ -20,11 +20,14 @@ class AttachmentRepo {
             return ""
         attFilename := att.Has("filename") ? att["filename"] : "unknown"
         attHash := att.Has("contentHash") ? att["contentHash"] : ""
-        filePath := ImageUtils.SaveBase64ToFile(attBase64, msgId, attFilename, attHash)
+        created := false
+        filePath := ImageUtils.SaveBase64ToFile(attBase64, msgId, attFilename, attHash, &created)
         if !filePath {
             debugLog("[ATTACH] Save failed - file=" attFilename)
             return ""
         }
+        if created
+            ChatDB.TrackCreatedFile(filePath)
         return AttachmentRepo.Insert(msgId, {
             attachment_type: attType,
             file_path: filePath,

@@ -4,6 +4,7 @@
 
 handleChatSend(params, *) {
     global activeThreadId
+    transactionStarted := false
     try {
     message := params.Has("message") ? params["message"] : ""
     attachments := params.Has("attachments") ? params["attachments"] : []
@@ -34,6 +35,8 @@ handleChatSend(params, *) {
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     lastMsgId := path.Length ? path[path.Length].id : ""
 
+    ChatDB.BeginTransaction()
+    transactionStarted := true
     msgId := ChatDB.Msg_Insert({
         thread_id: activeThreadId,
         role: "user",
@@ -48,14 +51,18 @@ handleChatSend(params, *) {
     docCount := 0
     for att in attachments {
         if !IsObject(att)
-            continue
+            throw Error("Attachment could not be saved.")
+        savedId := ChatDB.Attachment_Save(msgId, att)
+        if !savedId
+            throw Error("Attachment could not be saved.")
         attType := att.Has("type") ? att["type"] : "text_file"
         if attType = "image"
             imageCount++
         else
             docCount++
-        ChatDB.Attachment_Save(msgId, att)
     }
+    ChatDB.CommitTransaction()
+    transactionStarted := false
     if (imageCount > 0 || docCount > 0)
         debugLog("[ATTACH] Sent — " (imageCount + docCount) " files (image=" imageCount " doc=" docCount ")")
 
@@ -70,6 +77,8 @@ handleChatSend(params, *) {
     _BuildAndFireRequest()
 
     } catch Error as e {
+        if transactionStarted
+            ChatDB.RollbackTransaction()
         debugLog("[ATTACH] CRASH in handleChatSend: " e.Message " at line " e.Line "`n" e.Stack, "ErrorHandler")
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)

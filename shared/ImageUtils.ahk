@@ -21,7 +21,8 @@ class ImageUtils {
     ; Decode base64 data and write to a file in the attachments directory.
     ; If contentHash is provided, uses hash-based filename for deduplication.
     ; Returns the relative file path.
-    static SaveBase64ToFile(base64Data, messageId, filename, contentHash := "") {
+    static SaveBase64ToFile(base64Data, messageId, filename, contentHash := "", &created := false) {
+        created := false
         ImageUtils.EnsureAttachmentDir()
         safeExt := ""
         SplitPath(filename, , , &ext)
@@ -39,7 +40,7 @@ class ImageUtils {
             }
         } else {
             ; Fallback: counter-based name for screenshots and legacy
-            safeName := messageId "_att" A_TickCount safeExt
+            safeName := messageId "_att" A_TickCount "_" Random(1000, 999999) safeExt
             filePath := "attachments\" safeName
             fullPath := AppInfo.DataDir "\" filePath
         }
@@ -49,6 +50,7 @@ class ImageUtils {
             f := FileOpen(fullPath, "w")
             f.RawWrite(binData, binData.Size)
             f.Close()
+            created := true
         } else {
             return ""
         }

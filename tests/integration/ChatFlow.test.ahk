@@ -68,6 +68,30 @@ class ChatFlowTest {
         this._teardown()
     }
 
+    ; Regression (bug #312): a send with an attachment that cannot be saved
+    ; must roll back the user message and its FTS row before any request.
+    Send_FailedAttachment_RollsBackMessage() {
+        global activeThreadId, requestParams
+        threadId := this._setup()
+        oldActive := activeThreadId
+        oldParams := requestParams
+        activeThreadId := threadId
+        requestParams := Map("uniqueID", "test", "mainScriptHiddenHwnd", 0)
+        try {
+            handleChatSend(Map("message", "message with failed attachment", "attachments", [{
+                type: "text_file", filename: "missing.txt", base64: ""
+            }]))
+            messageRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id=?;", threadId)
+            ftsRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id IN (SELECT id FROM messages WHERE thread_id=?);", threadId)
+            if Integer(messageRows[1, "c"]) != 0 || Integer(ftsRows[1, "c"]) != 0
+                throw Error("failed attachment send left durable message/FTS state")
+        } finally {
+            activeThreadId := oldActive
+            requestParams := oldParams
+            this._teardown()
+        }
+    }
+
     ; --------------------
     ; Delete → path changes
     ; --------------------

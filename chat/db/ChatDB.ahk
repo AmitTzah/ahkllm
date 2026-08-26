@@ -23,6 +23,7 @@ class ChatDB {
     static isOpen := false
     static _transactionDepth := 0
     static _deferredFileDeletes := []
+    static _createdFiles := []
 
     ; Notify the Main-owned BackupManager, or forward the notification when
     ; this facade is running inside ChatWindow.
@@ -72,6 +73,7 @@ class ChatDB {
         ChatDB.db.Exec("BEGIN;")
         ChatDB._transactionDepth := 1
         ChatDB._deferredFileDeletes := []
+        ChatDB._createdFiles := []
     }
 
     static CommitTransaction() {
@@ -81,15 +83,19 @@ class ChatDB {
         ChatDB._transactionDepth := 0
         pending := ChatDB._deferredFileDeletes
         ChatDB._deferredFileDeletes := []
+        ChatDB._createdFiles := []
         ChatDB._DeleteCommittedOrphanFiles(pending)
     }
 
     static RollbackTransaction() {
         if !ChatDB._transactionDepth
             return
+        created := ChatDB._createdFiles
         try ChatDB.db.Exec("ROLLBACK;")
         ChatDB._transactionDepth := 0
         ChatDB._deferredFileDeletes := []
+        ChatDB._createdFiles := []
+        ChatDB._DeleteRolledBackFiles(created)
     }
 
     static DeferFileDelete(filePath) {
@@ -100,6 +106,25 @@ class ChatDB {
                 return true
         ChatDB._deferredFileDeletes.Push(filePath)
         return true
+    }
+
+    ; Register an attachment file created during the current transaction. If
+    ; a later attachment or DB step fails, rollback removes the file too.
+    static TrackCreatedFile(filePath) {
+        if !ChatDB._transactionDepth || !filePath
+            return
+        for existing in ChatDB._createdFiles
+            if existing = filePath
+                return
+        ChatDB._createdFiles.Push(filePath)
+    }
+
+    static _DeleteRolledBackFiles(filePaths) {
+        for filePath in filePaths {
+            refs := ChatDB.db.Query("SELECT COUNT(*) AS c FROM message_attachments WHERE file_path=?;", filePath)
+            if (!refs.count || Integer(refs[1, "c"]) = 0)
+                try FileDelete(AppInfo.DataDir "\" filePath)
+        }
     }
 
     static _DeleteCommittedOrphanFiles(filePaths) {

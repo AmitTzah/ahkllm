@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **2 verified, 1 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bug 311 fixed and committed; next fix is
-  bug 312 (send attachment persistence failure).
+- **Where we left off:** 2026-08-26 - Bugs 311 and 312 fixed and committed;
+  next fix is bug 313 (overwrite attachment persistence failure).
   Scenario 315 was attempted twice; both targeted-kill runs failed during
   restart setup (`waitForChatTarget` timeout, diagnostics saw only
   `api-logs.html`), so entry 315 remains `reported` pending harness recovery.
@@ -259,41 +259,6 @@ answer live before completion, and the scenario asserts that live progress.
 The search call runs with reasoning effort "none" (reasoning-on searches can
 burn the whole output budget on internal search rounds and end with no answer
 at all - real-API report 2026-08-16). No real API calls are made by the suite.
-
-### 312. Chat send ignores a failed attachment save and still sends
-
-**Scenario:** 312
-
-**Status:** verified
-
-**Repro:** Submit a chat message with an attachment whose local persistence
-returns an empty result (for example, an empty/corrupt attachment payload),
-then close and reopen the database before inspecting the message and
-attachment state.
-
-**Expected:** The user send is one durable operation. If any submitted
-attachment cannot be persisted, the message and its attachment set must not be
-committed as a half-operation, no request should be sent, and no FTS/file state
-should claim the attachment succeeded. The UI should surface the failure and
-remain usable.
-
-**Actual:** Suspected: `handleChatSend` inserts the user message, calls
-`ChatDB.Attachment_Save(msgId, att)` without checking its return value, and
-then builds/fires the LLM request. `Attachment_Save` returns `""` for empty or
-invalid base64, so the durable user row can remain with zero attachment rows
-while an LLM request is still sent.
-
-**Evidence:** `chat/callbacks/Message.ahk` performs `Msg_Insert` before the
-attachment loop and ignores the return from `Attachment_Save` before calling
-`_BuildAndFireRequest()`. `chat/db/AttachmentRepo.ahk:SaveAttachment` returns
-`""` when `base64` is empty or `SaveBase64ToFile` fails; no enclosing
-`ChatDB.BeginTransaction()` spans the message and attachment work.
-
-**Verification:** Headless - scenario 312 posted a real `chatSend` containing
-a deterministic empty-save attachment, then opened a fresh SQLite connection
-and audited the DB, FTS, and `dataDir\\attachments`. The user row survived
-with zero attachment rows/files, while the message had an FTS row and the mock
-received one chat request.
 
 ### 313. Overwrite edit deletes old attachments before a failed replacement
 
@@ -941,5 +906,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in efda6ab: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
 - 2026-08-26 - "Force-killed ChatWindow runs can leave credential-bearing temp files" - FIXED + COMMITTED in b4fa670: explicit app-owned temp prefixes are removed at startup and exit; scenario 310 and the AHK cleanup regression passed.
 - 2026-08-26 - "Delayed title generation reads and logs a chat after relock" - FIXED + COMMITTED in this fix commit: delayed title callbacks fail closed for relocked threads and redact any lock transition observed before publication/logging; scenario 311 and ThreadTitleGen regression coverage passed.
+- 2026-08-26 - "Chat send ignores a failed attachment save and still sends" - FIXED + COMMITTED in this fix commit: sends now transact the user message, attachments, and FTS state, reject failed attachment saves, clean up created files on rollback, and surface an error without firing a request; scenario 312 and ChatFlow regression coverage passed.
 
 

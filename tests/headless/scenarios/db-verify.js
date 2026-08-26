@@ -971,7 +971,7 @@ scenarios.push({
 
 scenarios.push({
   id: 312,
-  name: "Chat send ignores a failed attachment save and still sends",
+  name: "Chat send rolls back when an attachment cannot be saved",
   mode: "sse-success",
   fixtures: { threads: [], messages: [] },
   async body({ cdp, dbPath, dataDir, mockLog }) {
@@ -1006,10 +1006,11 @@ scenarios.push({
       .map((line) => { try { return JSON.parse(line); } catch { return null; } })
       .filter((entry) => entry && entry.modeUsed === "sse") : [];
 
-    if (!user || Number(attachmentCount) !== 0 || Number(ftsCount) !== 1 || physicalFiles.length !== 0 || requests.length < 1)
-      throw new Error("empty attachment-save failure did not reproduce the durable ghost/send: user=" + !!user +
+    const errorVisible = await cdp.eval('document.body.innerText.indexOf("Attachment could not be saved") >= 0 || !!document.querySelector(".error-banner")');
+    if (user || Number(attachmentCount) !== 0 || Number(ftsCount) !== 0 || physicalFiles.length !== 0 || requests.length !== 0 || !errorVisible)
+      throw new Error("failed attachment save was not rolled back: user=" + !!user +
         " attachments=" + attachmentCount + " fts=" + ftsCount + " files=" + physicalFiles.length + " requests=" + requests.length);
-    return "after reopen, the submitted attachment had no row/file but the user message remained FTS-indexed and the mock received " + requests.length + " chat request(s)";
+    return "failed attachment save rolled back the user row/FTS transaction, sent no request, created no file, and surfaced an error";
   }
 });
 
