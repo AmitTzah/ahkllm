@@ -21,7 +21,7 @@ generateThreadTitle(threadId) {
     ; A delayed title callback can run after the user relocks its thread.
     ; Do not even read the active path in that case: title generation is an
     ; outbound plaintext sink just like the normal chat request/log path.
-    if ThreadLockService.ShouldRedactContent(threadId) {
+    if IsSet(ThreadLockService) && ThreadLockService.ShouldRedactContent(threadId) {
         debugLog("[TITLEGEN] skip locked thread=" threadId)
         return
     }
@@ -68,8 +68,9 @@ generateThreadTitle(threadId) {
 
     ; A lock may be applied by the other process while cURL is running. Do
     ; not publish or persist a title based on a now-protected exchange.
-    redacted := ThreadLockService.ShouldRedactContent(threadId)
-    if title && !redacted {
+    redacted := IsSet(ThreadLockService) && ThreadLockService.ShouldRedactContent(threadId)
+    if title {
+        if !redacted {
         ChatDB.Thread_Update(threadId, title)
         threads := ChatDB.Thread_List()
         folders := _GetFolders()
@@ -90,7 +91,8 @@ generateThreadTitle(threadId) {
         debugLog("[TITLEGEN] title='" title "' thread=" threadId
             . " dbFolderId='" dbFolderId "' resolvedFolderName='" folderName "'")
         postWebMessage("updateTopbarTitle", { text: title, folder: folderName })
-    } else if !title {
+        }
+    } else {
         ; Bug #151: a FAILED title request (no title parsed - transient network
         ; error, provider hiccup, timeout, empty response) must NOT permanently
         ; disable auto-titles. Clear the dispatch guard so the next trigger

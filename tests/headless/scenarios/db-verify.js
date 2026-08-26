@@ -1126,11 +1126,13 @@ scenarios.push({
   async body() {
     const executor = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "tools", "SearchToolExecutor.ahk"), "utf8");
     const window = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
+    const titleGen = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ThreadTitleGen.ahk"), "utf8");
     const hasRecovery = /static RecoverAbandonedPlaceholders\(\)[\s\S]*?Searching[\s\S]*?interrupted by application restart[\s\S]*?FTS_Sync/.test(executor);
     const runsAtStartup = /#Include tools\\SearchToolExecutor\.ahk\s*\r?\nSearchToolExecutor\.RecoverAbandonedPlaceholders\(\)/.test(window);
-    if (!hasRecovery || !runsAtStartup)
-      throw new Error("startup recovery contract missing: recovery=" + hasRecovery + " startup=" + runsAtStartup);
-    return "ChatWindow startup invokes SearchToolExecutor.RecoverAbandonedPlaceholders, which transactionally marks persisted Searching cards as interrupted failures and reindexes them; behavioral coverage is in SearchToolExecutorTest";
+    const titleLockGuard = /IsSet\(ThreadLockService\)\s*&&\s*ThreadLockService\.ShouldRedactContent/.test(titleGen);
+    if (!hasRecovery || !runsAtStartup || !titleLockGuard)
+      throw new Error("startup safety contract missing: recovery=" + hasRecovery + " startup=" + runsAtStartup + " titleLockGuard=" + titleLockGuard);
+    return "ChatWindow startup invokes SearchToolExecutor.RecoverAbandonedPlaceholders, which transactionally marks persisted Searching cards as interrupted failures and reindexes them; title generation guards optional ThreadLockService references against #Warn popups; behavioral coverage is in SearchToolExecutorTest";
   }
 });
 module.exports=scenarios;
