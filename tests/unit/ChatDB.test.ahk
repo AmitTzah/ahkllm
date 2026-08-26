@@ -673,6 +673,25 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #306): locked titles are redacted until the session
+    ; explicitly proves an unlock; the service path still permits the title
+    ; after that proof.
+    ThreadList_RedactsLockedTitleUntilSessionUnlock() {
+        threadId := this._setup()
+        ChatDB.Thread_Update(threadId, "Sensitive title")
+        ChatDB.ThreadLock_Set(threadId, "00112233445566778899aabbccddeeff", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 10000)
+        ThreadLockService.sessionUnlocked.Clear()
+        lockedTitle := ChatDB.Thread_List()[1].title
+        if lockedTitle != "Locked chat"
+            throw Error("locked title must be redacted before session unlock")
+        ThreadLockService.Unlock(threadId)
+        unlockedTitle := ChatDB.Thread_List()[1].title
+        if unlockedTitle != "Sensitive title"
+            throw Error("session-unlocked title should be visible")
+        ThreadLockService.sessionUnlocked.Clear()
+        this._teardown()
+    }
+
     ; Regression (bug #1): a stale branch event from another thread must not
     ; write that thread's leaf into the caller's active_leaf_id.
     SwitchBranch_RejectsForeignMessage() {

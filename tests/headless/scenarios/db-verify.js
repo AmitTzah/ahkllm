@@ -263,18 +263,19 @@ scenarios.push({
 scenarios.push({
   id: 306,
   name: "ThreadRepo.List exposes a locked title when ThreadLockService is unavailable",
+  regression: true,
   mode: null,
   noApp: true,
   async body() {
     const text = runProbeCheck("list-without-lock-service");
     const match = text.match(/LIST_NO_LOCK_SERVICE title=(.*) serviceDefined=(\d+)/);
     if (!match) throw new Error("lock-service probe output missing: " + text);
-    if (match[1] !== "Salary negotiation - PRIVATE" || match[2] !== "0") throw new Error("probe setup changed: " + text);
+    if (match[1] !== "Locked chat" || match[2] !== "0") throw new Error("locked title was not redacted without the service: " + text);
     const main = fs.readFileSync(path.join(launcher.REPO_ROOT, "Main.ahk"), "utf8");
     const chatWindow = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
     if (!main.includes("#Include <Config>") || main.includes("Thread_List()") || !chatWindow.includes("#Include ChatUtils.ahk"))
       throw new Error("include/reachability classification changed unexpectedly");
-    return "ChatDB-only probe returned the plaintext locked title with ThreadLockService undefined; current Main.ahk does not call Thread_List, while ChatWindow loads ChatUtils and the service, so this is a latent API defect rather than a current reachable leak";
+    return "ChatDB-only probe returned Locked chat with ThreadLockService undefined; locked titles now fail closed without a session service, while ChatWindow permits real titles only for session-unlocked threads";
   }
 });
 

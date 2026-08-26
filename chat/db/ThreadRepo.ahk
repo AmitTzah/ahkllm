@@ -128,7 +128,9 @@ class ThreadRepo {
             ; simply keep the redacted title.
             isLocked := Integer(row.is_locked ? row.is_locked : 0)
             title := row.title
-            if isLocked && IsSet(ThreadLockService) && !ThreadLockService.IsUnlockedInSession(row.id)
+            ; Fail closed when this process has no session-aware lock service:
+            ; a locked title is confidential unless unlock has been proven.
+            if isLocked && (!IsSet(ThreadLockService) || !ThreadLockService.IsUnlockedInSession(row.id))
                 title := "Locked chat"
             threads.Push({
                 id: row.id,

@@ -154,10 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **1 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 305 fixed and fully verified;
-  report update is ready for commit. Next: locked-title fallback in scenario 306.
+- **Where we left off:** 2026-08-26 - Scenario 306 fixed and fully verified;
+  report update is ready for commit. No verified release blockers remain.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -219,37 +219,11 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. Multi-step persistence operations can leave durable partial state
-
-**Scenario:** 305
-
-**Status:** fix applied
-
-**Repro:** Inject a failure after meaningful steps in fork and hard-delete
-operations, close/reopen the SQLite database, and inspect rows, FTS, counters,
-and attachment references.
-
-**Expected:** A failed operation leaves the pre-operation state intact or
-performs complete compensation; no user-visible half-fork/half-delete remains.
-
-**Actual:** Fixed: structural DB mutations now run in explicit transactions;
-attachment file deletion is deferred until commit, and rollback clears staged
-filesystem work.
-
-**Evidence:** `ChatDB` owns transaction state and deferred file cleanup;
-`TreeRepo`, `MessageRepo`, `ThreadRepo`, and `ThreadLockRepo` roll back on
-failure and expose bounded fault points for the audit.
-
-**Verification:** Fixed no-app fault-injection probe invokes the public
-operations, closes/reopens SQLite after each injected failure, and confirms
-pre-operation rows/files, clean `PRAGMA integrity_check`, and clean
-`foreign_key_check`. Scenario 305 is now a regression check.
-
-### 2. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+### 1. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
 **Scenario:** 306
 
-**Status:** verified
+**Status:** fix applied
 
 **Repro:** Call `ThreadRepo.List` from a process that has ChatDB but does not
 load `ThreadLockService`, with a locked thread containing a sensitive title.
@@ -257,17 +231,16 @@ load `ThreadLockService`, with a locked thread containing a sensitive title.
 **Expected:** The title remains `Locked chat`; processes without the service
 must fail closed as the adjacent comment specifies.
 
-**Actual:** The condition skips redaction when `IsSet(ThreadLockService)` is
-false.
+**Actual:** Fixed: locked titles are redacted unless the session-aware service
+proves that the thread was unlocked, and the no-service path now fails closed.
 
 **Evidence:** `chat/db/ThreadRepo.ahk` uses
-`isLocked && IsSet(ThreadLockService) && !ThreadLockService.IsUnlockedInSession(...)`.
+`isLocked && (!IsSet(ThreadLockService) || !ThreadLockService.IsUnlockedInSession(...))`.
 
-**Verification:** Standalone ChatDB-only probe passed: with
-`ThreadLockService` undefined, a locked title was returned as plaintext.
-Include/reachability audit found current `Main.ahk` does not call
-`Thread_List`, while `ChatWindow.ahk` loads `ChatUtils` and the service; this
-is verified as a latent API defect, not a currently reachable UI leak.
+**Verification:** The fixed standalone ChatDB-only probe returns `Locked chat`
+with `ThreadLockService` undefined. A service-present unit regression confirms
+locked titles stay redacted before session unlock and become visible after a
+proven unlock.
 
 **Feature checks (web-search milestone):**
 
@@ -850,6 +823,7 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Invalid branch-edit IDs can create a bogus root message" - FIXED + COMMITTED in fa0bd21: branch edits now require a source on the active path before inserting a copy; scenario 302 is a regression check with handler and invariant coverage.
 - 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in 243914e: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304 and terminal-path unit coverage passed.
 - 2026-08-26 - "Chat request temp files collide when requests share an A_TickCount" - FIXED + COMMITTED in eb64f85: chat and title-generation temp files now use UUID-derived names; scenario 303 is a regression check with synchronous request-builder coverage.
-- 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in the atomicity fix commit below: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
+- 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in 784f79b: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
+- 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in the locked-title fix commit below: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
 
 
