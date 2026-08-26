@@ -154,11 +154,10 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 303 fixed and fully verified;
-  report update is ready for commit. Next: multi-step persistence atomicity in
-  scenario 305.
+- **Where we left off:** 2026-08-26 - Scenario 303 fixed and committed as
+  eb64f85. Next: multi-step persistence atomicity in scenario 305.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -220,29 +219,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. Chat request temp files collide when requests share an A_TickCount
-
-**Scenario:** 303
-
-**Status:** fix in progress
-
-**Repro:** Build two chat requests under the same tick value / request ID.
-
-**Expected:** Request, cURL, output, and error paths are distinct per request
-and cleanup is ownership-safe.
-
-**Actual:** Fixed: chat requests and title-generation calls now derive their
-temporary filenames from UUIDs, so simultaneous requests own distinct files.
-
-**Evidence:** `chat/ChatRequestBuilder.ahk` and `chat/ThreadTitleGen.ahk` use
-`ChatDB._UUID()` for their request/output/error path suffixes.
-
-**Verification:** The fixed no-app scenario injects identical tick 424242 and
-checks distinct UUID-derived request/cURL/output/error paths plus the title
-path. A direct request-builder regression creates two synchronous requests and
-confirms all four paths differ; the full AHK, fast, and headless gates pass.
-
-### 2. Multi-step persistence operations can leave durable partial state
+### 1. Multi-step persistence operations can leave durable partial state
 
 **Scenario:** 305
 
@@ -271,7 +248,7 @@ remained after close/reopen. `PRAGMA integrity_check` and
 the attachment case also left the message without its physical file, and the
 lock case left metadata with `is_locked=0`.
 
-### 3. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+### 2. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
 **Scenario:** 306
 
@@ -875,5 +852,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Stale message and attachment IDs can mutate another chat" - FIXED + COMMITTED in df1d0fb: message edits/hard-deletes and attachment deletion now require the expected thread, callbacks validate ownership before processing attachments, and delayed search-card edits retain their originating thread. Scenario 301 is now a regression check; AHK, invariant, fast, and full headless gates passed.
 - 2026-08-26 - "Invalid branch-edit IDs can create a bogus root message" - FIXED + COMMITTED in fa0bd21: branch edits now require a source on the active path before inserting a copy; scenario 302 is a regression check with handler and invariant coverage.
 - 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in 243914e: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304 and terminal-path unit coverage passed.
+- 2026-08-26 - "Chat request temp files collide when requests share an A_TickCount" - FIXED + COMMITTED in eb64f85: chat and title-generation temp files now use UUID-derived names; scenario 303 is a regression check with synchronous request-builder coverage.
 
 
