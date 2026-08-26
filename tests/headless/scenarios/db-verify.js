@@ -75,6 +75,7 @@ scenarios.push({
 scenarios.push({
   id: 301,
   name: "Stale message and attachment IDs mutate another chat while A is active",
+  regression: true,
   mode: null,
   fixtures: {
     threads: [
@@ -113,9 +114,12 @@ scenarios.push({
     const deleted = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-b-301-delete'")[0].c;
     const attRows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM message_attachments WHERE id='att-l-301'")[0].c;
     const fileExists = fs.existsSync(path.join(dataDir, attPath));
-    if (edited !== "BBB_EDITED_BY_STALE_EVENT" || deleted !== 0 || attRows !== 0 || fileExists)
-      throw new Error(`cross-chat mutation did not reproduce consistently: edited=${edited} deleted=${deleted} attRows=${attRows} file=${fileExists}`);
-    return "after opening B then switching to A, stale IPC edited B, deleted B's message, and deleted the locked target's attachment/file while A remained active";
+    if (edited !== "BBB_EDIT_SENTINEL" || deleted !== 1 || attRows !== 1 || !fileExists)
+      throw new Error(`cross-chat mutation was not rejected: edited=${edited} deleted=${deleted} attRows=${attRows} file=${fileExists}`);
+    const probe = runProbeCheck("callback-ownership");
+    if (!/CALLBACK_OWNERSHIP edited=BBB_EDIT_SENTINEL deleted=1 attRows=1 fileExists=1 legit=AAA_EDITED_LEGITIMATELY missing=0/.test(probe))
+      throw new Error("ownership probe did not preserve foreign state and allow owned mutation: " + probe);
+    return "stale edit/delete/delete-attachment IPC from B while A was active were rejected; B's rows and attachment file survived, while an owned A edit succeeded";
   }
 });
 
@@ -142,15 +146,17 @@ scenarios.push({
       await sleep(450);
     }
     const bogus = seed.query(dbPath, "SELECT id, parent_id, role, model, content FROM messages WHERE thread_id='t-a-302' AND content LIKE 'BOGUS_%'");
-    if (bogus.length !== 3 || bogus.some((row) => row.parent_id !== null || row.role !== "assistant" || (row.model !== "" && row.model !== null)))
-      throw new Error("branch-invalid IDs did not create the expected bogus roots: " + JSON.stringify(bogus));
+    const foreign = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-a-302' AND content='BOGUS_FOREIGN'")[0].c;
+    const missing = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE thread_id='t-a-302' AND content='BOGUS_NONEXISTENT'")[0].c;
+    if (bogus.length !== 1 || foreign !== 0 || missing !== 0 || bogus[0]?.content !== "BOGUS_OFF_PATH" || bogus.some((row) => row.parent_id !== null || row.role !== "assistant" || (row.model !== "" && row.model !== null)))
+      throw new Error("branch-invalid IDs did not reproduce the remaining bogus roots after ownership hardening: " + JSON.stringify({ bogus, foreign }));
     const leaf = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-a-302'")[0].active_leaf_id;
     if (!bogus.some((row) => row.id === leaf)) throw new Error("active leaf did not move to bogus root: " + leaf);
     await post(cdp, { action: "chatSend", message: "AAA_AFTER_BOGUS_BRANCH" });
     await sleep(800);
     const follow = seed.query(dbPath, "SELECT parent_id FROM messages WHERE thread_id='t-a-302' AND content='AAA_AFTER_BOGUS_BRANCH'")[0];
     if (!follow || !bogus.some((row) => row.id === follow.parent_id)) throw new Error("subsequent send did not expose the bogus-root corruption");
-    return "three real stale branch-edit IPC events inserted assistant roots for nonexistent, foreign, and off-path IDs; the next send attached to the bogus active root";
+    return "ownership hardening rejects nonexistent and foreign branch IDs, but a same-thread off-path ID still inserts an assistant root; the next send attached to a bogus active root";
   }
 });
 

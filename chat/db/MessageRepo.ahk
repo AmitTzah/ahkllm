@@ -180,8 +180,11 @@ class MessageRepo {
         return new_input
     }
 
-    static HardDelete(msgId) {
-        parentTable := ChatDB.db.Query("SELECT parent_id, thread_id FROM messages WHERE id=?;", msgId)
+    static HardDelete(msgId, expectedThreadId := "") {
+        if expectedThreadId
+            parentTable := ChatDB.db.Query("SELECT parent_id, thread_id FROM messages WHERE id=? AND thread_id=?;", msgId, expectedThreadId)
+        else
+            parentTable := ChatDB.db.Query("SELECT parent_id, thread_id FROM messages WHERE id=?;", msgId)
         if !parentTable.count
             return
         parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
@@ -205,7 +208,7 @@ class MessageRepo {
 
         ; Delete attachments BEFORE the raw DELETE - ON DELETE CASCADE would remove
         ; message_attachments rows before we can read file_path for disk cleanup.
-        AttachmentRepo.DeleteByMessage(msgId)
+        AttachmentRepo.DeleteByMessage(msgId, threadId)
         ChatDB.FTS_Remove(msgId)
         ChatDB.db.Query("DELETE FROM messages WHERE id=?;", msgId)
 
@@ -280,10 +283,15 @@ class MessageRepo {
         ChatDB.db.Query("UPDATE chat_threads SET cumulative_input_tokens=?, cumulative_output_tokens=?, cumulative_cached_tokens=?, cumulative_cost=?, cumulative_input_cost=?, cumulative_cached_input_cost=?, cumulative_output_cost=? WHERE id=?;", input, output, cached, totalCost, inputCost, cachedInputCost, outputCost, threadId)
     }
 
-    static Edit(msgId, newContent) {
-        oldTable := ChatDB.db.Query("SELECT thread_id, role FROM messages WHERE id=?;", msgId)
-        threadId := oldTable.count ? oldTable[1, "thread_id"] : ""
-        role := oldTable.count ? oldTable[1, "role"] : ""
+    static Edit(msgId, newContent, expectedThreadId := "") {
+        if expectedThreadId
+            oldTable := ChatDB.db.Query("SELECT thread_id, role FROM messages WHERE id=? AND thread_id=?;", msgId, expectedThreadId)
+        else
+            oldTable := ChatDB.db.Query("SELECT thread_id, role FROM messages WHERE id=?;", msgId)
+        if !oldTable.count
+            return
+        threadId := oldTable[1, "thread_id"]
+        role := oldTable[1, "role"]
 
         ChatDB.db.Query("UPDATE messages SET content=? WHERE id=?;", newContent, msgId)
         ChatDB.FTS_Sync(msgId, newContent)

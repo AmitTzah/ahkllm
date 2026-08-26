@@ -1458,6 +1458,32 @@ class ChatDBTest {
         this._teardown()
     }
 
+    ; Regression (bug #301): ID-based mutations must accept the caller's
+    ; expected thread and no-op for stale, foreign, or nonexistent IDs.
+    Mutations_RequireExpectedThreadOwnership() {
+        threadA := this._setup()
+        threadB := ChatDB.Thread_Create("Other Thread")
+        aMsg := ChatDB.Msg_Insert({thread_id: threadA, role: "user", content: "A original"})
+        bEdit := ChatDB.Msg_Insert({thread_id: threadB, role: "user", content: "B original"})
+        bDelete := ChatDB.Msg_Insert({thread_id: threadB, role: "user", content: "B survives"})
+
+        ChatDB.Msg_Edit(bEdit, "B must not change", threadA)
+        ChatDB.Msg_HardDelete(bDelete, threadA)
+        ChatDB.Msg_Edit("missing-message", "must not insert", threadA)
+        ChatDB.Msg_HardDelete("missing-message", threadA)
+
+        bRow := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", bEdit)
+        bDeleteRow := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE id=?;", bDelete)
+        if bRow[1, "content"] != "B original" || bDeleteRow[1, "c"] != 1
+            throw Error("foreign message mutation bypassed expected thread ownership")
+
+        ChatDB.Msg_Edit(aMsg, "A changed legitimately", threadA)
+        aRow := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", aMsg)
+        if aRow[1, "content"] != "A changed legitimately"
+            throw Error("legitimate owned edit was rejected")
+        this._teardown()
+    }
+
     ; Trash lifecycle
     ; --------------------
 

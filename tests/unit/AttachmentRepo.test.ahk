@@ -86,6 +86,35 @@ class AttachmentRepoTest {
         this._teardown()
     }
 
+    ; Regression (bug #301): an attachment's owner is resolved through its
+    ; message, so a stale attachment ID from another thread cannot be deleted.
+    Attachment_DeleteOne_RequiresExpectedThreadOwnership() {
+        oldDataDir := AppInfo.DataDir
+        testDataDir := A_Temp "\llm_att_owner_" A_TickCount "_" Random(1000, 999999)
+        AppInfo.DataDir := testDataDir
+        DirCreate(testDataDir "\attachments")
+        try {
+            threadA := this._setup()
+            threadB := ChatDB.Thread_Create("Other Thread")
+            msgB := ChatDB.Msg_Insert({thread_id: threadB, role: "user", content: "B"})
+            filePath := "attachments\owned.txt"
+            FileAppend("owned", testDataDir "\" filePath, "UTF-8-RAW")
+            attId := ChatDB.Attachment_Insert(msgB, {attachment_type: "text_file", file_path: filePath, mime_type: "text/plain", original_filename: "owned.txt", file_size: 5})
+
+            ChatDB.Attachment_DeleteOne(attId, threadA)
+            if ChatDB.Attachment_GetByMessage(msgB).Length != 1 || !FileExist(testDataDir "\" filePath)
+                throw Error("foreign attachment was deleted through stale ID")
+
+            ChatDB.Attachment_DeleteOne(attId, threadB)
+            if ChatDB.Attachment_GetByMessage(msgB).Length != 0 || FileExist(testDataDir "\" filePath)
+                throw Error("legitimate attachment deletion failed")
+        } finally {
+            this._teardown()
+            AppInfo.DataDir := oldDataDir
+            try DirDelete(testDataDir, true)
+        }
+    }
+
     Attachment_CopyForMessage() {
         threadId := this._setup()
         srcMsgId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "source"})

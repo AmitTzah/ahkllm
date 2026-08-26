@@ -82,11 +82,11 @@ handleRetry(params := "") {
 }
 
 handleDeleteAttachment(params) {
-    attId := params.Has("id") ? params["id"] : ""
-    if !attId
-        return
-    ChatDB.Attachment_DeleteOne(attId)
     global activeThreadId
+    attId := params.Has("id") ? params["id"] : ""
+    if !attId || !activeThreadId
+        return
+    ChatDB.Attachment_DeleteOne(attId, activeThreadId)
     if activeThreadId {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         structuredMessages := buildStructuredMessagesFromPath(path, activeThreadId)

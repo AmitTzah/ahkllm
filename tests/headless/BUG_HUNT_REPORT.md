@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **6 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **5 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Baseline audit committed as 69761d8;
-  scenarios 300 and 308 were independently re-verified as fixed. Phase 2 next:
-  cross-chat mutation scenario 301.
+- **Where we left off:** 2026-08-26 - Scenario 301 fixed and committed with
+  ownership enforced at the persistence/application boundary. Next:
+  invalid branch-edit sources in scenario 302.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -220,32 +220,7 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-### 1. Stale message and attachment IDs can mutate another chat
-
-**Scenario:** 301
-
-**Status:** verified
-
-**Repro:** While A is active, deliver edit/delete/delete-attachment IPC
-messages carrying IDs belonging to B (including a B attachment ID).
-
-**Expected:** The persistence boundary rejects every object not owned by A;
-B's rows, content, and physical attachment files remain unchanged.
-
-**Actual:** The active-thread lock gate authorizes the callback, then the
-repository mutations query only the supplied object ID, so B can be edited or
-deleted while A is visible; attachment deletion also removes B's physical file.
-
-**Evidence:** `handleDelete`, overwrite `handleEdit`, and
-`handleDeleteAttachment` pass IDs directly to `Msg_HardDelete`, `Msg_Edit`,
-and `Attachment_DeleteOne`.
-
-**Verification:** The real WebView scenario passed: after opening B and
-switching to A, stale edit/delete/delete-attachment IPC changed B and removed
-the locked target's attachment/file while A remained active. The DB ownership
-probe independently reproduced the same three mutations.
-
-### 2. Invalid branch-edit IDs can create a bogus root message
+### 1. Invalid branch-edit IDs can create a bogus root message
 
 **Scenario:** 302
 
@@ -257,19 +232,21 @@ probe independently reproduced the same three mutations.
 **Expected:** Branch edit fails closed unless the source is an allowed message
 owned by A; no new message is inserted for an invalid source.
 
-**Actual:** `handleEdit` initializes default source metadata and calls
-`Msg_Insert` even when its active-path search never finds `id`.
+**Actual:** Cross-thread and nonexistent IDs are now rejected by the ownership
+boundary, but `handleEdit` still initializes default source metadata and calls
+`Msg_Insert` for a same-thread off-active-path ID.
 
 **Evidence:** `chat/callbacks/Edit.ahk` branch mode has no `found` guard before
 the insert.
 
-**Verification:** The real WebView scenario passed for nonexistent, foreign,
-and off-active-path IDs: each inserted an assistant root with empty/default
-source metadata and advanced the active leaf; a subsequent send attached to
-the bogus root. The intended policy is active-path-only branching, so an
-off-path message must be navigated to before it can be branch-edited.
+**Verification:** The real WebView scenario passes for a same-thread
+off-active-path ID: it inserts an assistant root with empty/default source
+metadata and advances the active leaf; nonexistent and foreign IDs are
+rejected by the ownership fix. A subsequent send attaches to the remaining
+bogus root. The intended policy is active-path-only branching, so an off-path
+message must be navigated to before it can be branch-edited.
 
-### 3. Chat request temp files collide when requests share an A_TickCount
+### 2. Chat request temp files collide when requests share an A_TickCount
 
 **Scenario:** 303
 
@@ -292,7 +269,7 @@ cleanup each other's bearer-containing files.
 also found title-generation temp names are tick-only. No timing-based clicking
 was used.
 
-### 4. Locked-chat API logs use the visible thread instead of the request owner
+### 3. Locked-chat API logs use the visible thread instead of the request owner
 
 **Scenario:** 304
 
@@ -317,7 +294,7 @@ send, relocked, switched away to U, and completion logged
 `activeThreadId` expression in success, error, and cancellation logging; the
 same owner decision therefore affects all three terminal paths.
 
-### 5. Multi-step persistence operations can leave durable partial state
+### 4. Multi-step persistence operations can leave durable partial state
 
 **Scenario:** 305
 
@@ -346,7 +323,7 @@ remained after close/reopen. `PRAGMA integrity_check` and
 the attachment case also left the message without its physical file, and the
 lock case left metadata with `is_locked=0`.
 
-### 6. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+### 5. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
 **Scenario:** 306
 
@@ -947,5 +924,6 @@ closure; never rewrite past entries.
 
 - 2026-08-26 - "Cross-thread SwitchBranch can persist a foreign active leaf" - FIXED + COMMITTED in 69761d8: ownership validation and thread-scoped leaf walking were added to TreeRepo, with scenario 300 and ChatDB regression coverage.
 - 2026-08-26 - "Cross-include `_RequestParamsAreDefault` warning can open a blocking modal" - FIXED + COMMITTED in 69761d8: the helper was relocated to the shared ChatUtils include loaded before callbacks, with scenario 308 and bounded `#Warn` load coverage.
+- 2026-08-26 - "Stale message and attachment IDs can mutate another chat" - FIXED + COMMITTED in the ownership fix commit below: message edits/hard-deletes and attachment deletion now require the expected thread, callbacks validate ownership before processing attachments, and delayed search-card edits retain their originating thread. Scenario 301 is now a regression check; AHK, invariant, fast, and full headless gates passed.
 
 

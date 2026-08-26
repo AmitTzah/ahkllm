@@ -11,6 +11,12 @@ handleEdit(params, *) {
 
     id := params["id"]
     content := params["content"]
+    ; The visible-thread gate protects the callback, but IDs are globally
+    ; unique and can be stale. Validate ownership before any attachment
+    ; mutation or branch/source lookup can touch another thread.
+    ownership := ChatDB.db.Query("SELECT id FROM messages WHERE id=? AND thread_id=?;", id, activeThreadId)
+    if !ownership.count
+        return
     mode := params.Has("mode") ? params["mode"] : "overwrite"
     attachments := params.Has("attachments") ? params["attachments"] : []
     removedIds := params.Has("removedAttachmentIds") ? params["removedAttachmentIds"] : []
@@ -100,7 +106,7 @@ handleEdit(params, *) {
         ; (deferred deletion) - the original message IS being rewritten, so the
         ; removal applies to it.
         for removedId in removedIds {
-            ChatDB.Attachment_DeleteOne(removedId)
+            ChatDB.Attachment_DeleteOne(removedId, activeThreadId)
         }
         ; Append any new attachments - never delete existing ones (× button handles removal)
         for att in attachments {
@@ -115,7 +121,7 @@ handleEdit(params, *) {
                     ChatDB.Attachment_Save(id, att)
             }
         }
-        ChatDB.Msg_Edit(id, content)
+        ChatDB.Msg_Edit(id, content, activeThreadId)
         debugLog("[EDIT] Message - id=" id " thread=" activeThreadId)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
@@ -136,7 +142,7 @@ handleDelete(msgId, *) {
     ; No need to manually find parent or update active leaf - the method
     ; re-parents children to the deleted message's parent and only moves
     ; active_leaf_id if the deleted message was the leaf itself.
-    ChatDB.Msg_HardDelete(msgId)
+    ChatDB.Msg_HardDelete(msgId, activeThreadId)
     debugLog("[DELETE] Message - id=" msgId " thread=" activeThreadId)
     
     path := ChatDB.Msg_GetActivePath(activeThreadId)

@@ -103,7 +103,7 @@ class SearchToolExecutor {
         ctxId := ""
         if loopState.placeholderId != "" {
             ctxId := loopState.placeholderId
-            try ChatDB.Msg_Edit(ctxId, execResult.contextText)
+            try ChatDB.Msg_Edit(ctxId, execResult.contextText, threadId)
             loopState.placeholderId := ""
             loopState.placeholderQuery := ""
         } else if threadId && parentId && execResult.contextText != "" {

@@ -1128,7 +1128,7 @@ _failToolLoop(message, contextText := "", loopState := "", stream := "") {
         ctxId := loopState.placeholderId
         q := loopState.placeholderQuery
         content := contextText != "" ? contextText : "[Web search: " q "]\n\n" message
-        try ChatDB.Msg_Edit(ctxId, content)
+        try ChatDB.Msg_Edit(ctxId, content, loopState.threadId)
         if activeThreadId = loopState.threadId
             postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
         loopState.placeholderId := ""
@@ -1180,7 +1180,7 @@ _handleSearchCancelledCard(loopState := "") {
         ctxId := loopState.placeholderId
         q := loopState.placeholderQuery
         content := "[Web search: " q "]\n\n**Search cancelled.**"
-        try ChatDB.Msg_Edit(ctxId, content)
+        try ChatDB.Msg_Edit(ctxId, content, loopState.threadId)
         if activeThreadId = loopState.threadId
             postWebMessage("updateChatMessage", { id: ctxId, role: "user", content: content })
     }

@@ -239,8 +239,8 @@ class ChatDB {
 
     ; Message operations - delegate to MessageRepo
     static Msg_Insert(msgObj) => MessageRepo.Insert(msgObj)
-    static Msg_HardDelete(msgId) => MessageRepo.HardDelete(msgId)
-    static Msg_Edit(msgId, newContent) => MessageRepo.Edit(msgId, newContent)
+    static Msg_HardDelete(msgId, expectedThreadId := "") => MessageRepo.HardDelete(msgId, expectedThreadId)
+    static Msg_Edit(msgId, newContent, expectedThreadId := "") => MessageRepo.Edit(msgId, newContent, expectedThreadId)
     static Msg_GetActivePath(threadId) => TreeRepo.GetActivePath(threadId)
     static Msg_GetPathToLeaf(threadId, leafId) => TreeRepo.GetPathToLeaf(threadId, leafId)
     static Msg_GetSiblings(msgId) => TreeRepo.GetSiblings(msgId)
@@ -255,9 +255,9 @@ class ChatDB {
     static Attachment_Save(msgId, att) => AttachmentRepo.SaveAttachment(msgId, att)
     static Attachment_GetByMessage(msgId) => AttachmentRepo.GetByMessage(msgId)
     static Attachment_GetByThread(threadId) => AttachmentRepo.GetByThread(threadId)
-    static Attachment_DeleteByMessage(msgId) => AttachmentRepo.DeleteByMessage(msgId)
+    static Attachment_DeleteByMessage(msgId, expectedThreadId := "") => AttachmentRepo.DeleteByMessage(msgId, expectedThreadId)
     static Attachment_DeleteByThread(threadId) => AttachmentRepo.DeleteByThread(threadId)
-    static Attachment_DeleteOne(attachmentId) => AttachmentRepo.DeleteOne(attachmentId)
+    static Attachment_DeleteOne(attachmentId, expectedThreadId := "") => AttachmentRepo.DeleteOne(attachmentId, expectedThreadId)
     static Attachment_CopyForMessage(srcMsgId, dstMsgId, excludeAttachmentIds := "") => AttachmentRepo.CopyForMessage(srcMsgId, dstMsgId, excludeAttachmentIds)
 
     ; Usage operations - delegate to UsageRepo

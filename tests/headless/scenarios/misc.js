@@ -884,7 +884,7 @@ scenarios.push({
     const rawInsert = /VALUES\('" id "', '" msgId "'/.test(ar);
     const getBinds = /static GetByMessage\(msgId\)[\s\S]{0,300}WHERE message_id=\?/.test(ar);
     const getThreadBinds = /static GetByThread\(threadId\)[\s\S]{0,300}WHERE m\.thread_id=\?/.test(ar);
-    const delBinds = /static DeleteByMessage\(msgId\)[\s\S]{0,300}DELETE FROM message_attachments WHERE message_id=\?/.test(ar);
+    const delBinds = /static DeleteByMessage\(msgId[^)]*\)[\s\S]{0,700}DELETE FROM message_attachments WHERE message_id=\?/.test(ar);
     const copyBinds = /static CopyForMessage\(sourceMsgId, targetMsgId[^)]*\)[\s\S]{0,500}WHERE message_id=\?[\s\S]{0,1300}VALUES\(\?, \?, \?/.test(ar);
     const ftsSyncBinds = /static FTS_Sync\(msgId, content\)[\s\S]{0,900}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);
     const ftsRemoveBinds = /static FTS_Remove\(msgId\)[\s\S]{0,200}DELETE FROM messages_fts WHERE msg_id=\?/.test(cd);

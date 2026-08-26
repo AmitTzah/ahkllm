@@ -327,16 +327,22 @@ CallbackOwnership() {
     attId := ChatDB.Attachment_Insert(lMsg, {attachment_type: "text_file", file_path: filePath, mime_type: "text/plain", original_filename: "locked.txt", file_size: 20})
     activeThreadId := aTid
     ; These are the exact repository mutations reached by the callbacks. The
-    ; scenario separately verifies the callback/dispatch source and invokes the
-    ; same IPC payload shapes through the real app when profile isolation works.
-    ChatDB.Msg_Edit(bEdit, "BBB_EDITED_BY_STALE_EVENT")
-    ChatDB.Msg_HardDelete(bDelete)
-    ChatDB.Attachment_DeleteOne(attId)
+    ; expected thread is part of every ID-based mutation, so stale IDs are
+    ; rejected at the persistence boundary rather than relying on WebView code.
+    ChatDB.Msg_Edit(bEdit, "BBB_EDITED_BY_STALE_EVENT", aTid)
+    ChatDB.Msg_HardDelete(bDelete, aTid)
+    ChatDB.Attachment_DeleteOne(attId, aTid)
+    ChatDB.Msg_Edit("missing-callback-id", "MISSING_EDIT", aTid)
+    ChatDB.Msg_HardDelete("missing-callback-id", aTid)
+    ChatDB.Attachment_DeleteOne("missing-callback-att-id", aTid)
+    ChatDB.Msg_Edit(aMsg, "AAA_EDITED_LEGITIMATELY", aTid)
     edited := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", bEdit)
     deleted := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE id=?;", bDelete)
     attRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM message_attachments WHERE id=?;", attId)
     fileExists := FileExist(dataDir "\" filePath)
-    Log("CALLBACK_OWNERSHIP edited=" (edited.count ? edited[1, "content"] : "MISSING") " deleted=" (deleted[1, "c"]) " attRows=" (attRows[1, "c"]) " fileExists=" (fileExists ? 1 : 0) " active=" activeThreadId)
+    legit := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", aMsg)
+    missing := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE id='missing-callback-id';")
+    Log("CALLBACK_OWNERSHIP edited=" (edited.count ? edited[1, "content"] : "MISSING") " deleted=" (deleted[1, "c"]) " attRows=" (attRows[1, "c"]) " fileExists=" (fileExists ? 1 : 0) " legit=" (legit.count ? legit[1, "content"] : "MISSING") " missing=" missing[1, "c"] " active=" activeThreadId)
     CloseDb(dbPath)
     try DirDelete(dataDir "\attachments", true)
     try DirDelete(dataDir, true)

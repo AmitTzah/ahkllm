@@ -104,9 +104,14 @@ class AttachmentRepo {
 
     ; Delete all attachments for a message - DB rows + disk files (reference-counted).
     ; MUST be called BEFORE DELETE FROM messages to read file_path before CASCADE.
-    static DeleteByMessage(msgId) {
+    static DeleteByMessage(msgId, expectedThreadId := "") {
         lockHandle := BackupManager.BeginAttachmentMutation()
         try {
+            if expectedThreadId {
+                ownership := ChatDB.db.Query("SELECT id FROM messages WHERE id=? AND thread_id=?;", msgId, expectedThreadId)
+                if !ownership.count
+                    return
+            }
             table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE message_id=?;", msgId)
             ChatDB.db.Query("DELETE FROM message_attachments WHERE message_id=?;", msgId)
             ; Bug #117: check the refcount AFTER the batch delete. Checking per-row
@@ -144,18 +149,24 @@ class AttachmentRepo {
     }
 
     ; Delete a single attachment by ID - DB row + disk file (reference-counted).
-    static DeleteOne(attachmentId) {
+    static DeleteOne(attachmentId, expectedThreadId := "") {
         lockHandle := BackupManager.BeginAttachmentMutation()
         try {
-            table := ChatDB.db.Query("SELECT DISTINCT file_path FROM message_attachments WHERE id=?;", attachmentId)
-            msgTable := ChatDB.db.Query("SELECT message_id FROM message_attachments WHERE id=?;", attachmentId)
+            if expectedThreadId {
+                table := ChatDB.db.Query("SELECT DISTINCT a.file_path, a.message_id FROM message_attachments a JOIN messages m ON a.message_id=m.id WHERE a.id=? AND m.thread_id=?;", attachmentId, expectedThreadId)
+            } else {
+                table := ChatDB.db.Query("SELECT DISTINCT file_path, message_id FROM message_attachments WHERE id=?;", attachmentId)
+            }
+            if !table.count
+                return
+            msgId := table[1, "message_id"]
             ChatDB.db.Query("DELETE FROM message_attachments WHERE id=?;", attachmentId)
             ; Bug #117: refcount check runs AFTER the row delete (see DeleteByMessage).
             for row in table.rows
                 AttachmentRepo._DeleteFileIfOrphaned(row.file_path)
             ; Bug #165: re-index the message without the removed attachment text.
-            if msgTable.count && msgTable[1, "message_id"]
-                ChatDB.FTS_ResyncForAttachments(msgTable[1, "message_id"])
+            if msgId
+                ChatDB.FTS_ResyncForAttachments(msgId)
             ChatDB._MarkPersistentDataChanged()
         } finally {
             BackupManager.EndAttachmentMutation(lockHandle)
