@@ -302,7 +302,9 @@ _ApplySystemOverride(apiMessages) {
 _WriteRequestFiles(requestObj, providerInfo) {
     payload := LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
 
-    uniqueID := A_TickCount
+    ; A_TickCount alone collides when requests start in the same millisecond.
+    ; Use the existing UUID generator so every request owns its files.
+    uniqueID := ChatDB._UUID()
     requestFile := A_Temp "\ChatWindow_Req_" uniqueID ".json"
     cURLFile := A_Temp "\ChatWindow_cURL_" uniqueID ".txt"
     outputFile := A_Temp "\ChatWindow_Out_" uniqueID ".json"

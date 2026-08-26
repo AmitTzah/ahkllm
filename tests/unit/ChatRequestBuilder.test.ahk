@@ -96,6 +96,42 @@ class ChatRequestBuilderTest {
         return result
     }
 
+    ; Regression (bug #303): two requests created synchronously under the same
+    ; tick must still get independent paths for every sensitive temp artifact.
+    RequestFiles_UseUniqueIdsUnderSameTick() {
+        global requestParams
+        this._setupDb()
+        oldParams := requestParams
+        requestParams := Map("stream", true)
+        providerInfo := { endpoint: "https://api.test/chat", apiKey: "test-key", providerKey: "openai" }
+        requestObj := { model: "openai/gpt-5-mini", messages: [] }
+        try {
+            firstId := ChatDB._UUID()
+            secondId := ChatDB._UUID()
+            if firstId = secondId
+                throw Error("UUID generator returned a duplicate under the same tick")
+            _WriteRequestFiles(requestObj, providerInfo)
+            first := requestParams.Clone()
+            _WriteRequestFiles(requestObj, providerInfo)
+            second := requestParams.Clone()
+            for key in ["chatHistoryJSONRequestFile", "cURLCommandFile", "cURLOutputFile", "cURLErrorFile"] {
+                if first[key] = second[key]
+                    throw Error(key " collided across synchronous requests")
+            }
+        } finally {
+            for params in [requestParams, first, second] {
+                if IsObject(params) {
+                    for key in ["chatHistoryJSONRequestFile", "cURLCommandFile", "cURLOutputFile", "cURLErrorFile"] {
+                        if params.Has(key)
+                            try FileDelete(params[key])
+                    }
+                }
+            }
+            requestParams := oldParams
+            this._teardownDb()
+        }
+    }
+
     ; --------------------------------------------------------
     ; Web Search OFF (the default): the request body carries no tools, so the
     ; model can never call web_search.

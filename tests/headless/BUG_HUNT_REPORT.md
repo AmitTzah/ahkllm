@@ -154,11 +154,11 @@ How to run AHK safely:
 
 ## Current state
 
-- **3 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
+- **2 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Scenario 304 fixed and fully verified;
-  report update is ready for commit. Next: request temp-file uniqueness in
-  scenario 303.
+- **Where we left off:** 2026-08-26 - Scenario 303 fixed and fully verified;
+  report update is ready for commit. Next: multi-step persistence atomicity in
+  scenario 305.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -224,53 +224,25 @@ one at a time, in rank order.
 
 **Scenario:** 303
 
-**Status:** verified
+**Status:** fix in progress
 
 **Repro:** Build two chat requests under the same tick value / request ID.
 
 **Expected:** Request, cURL, output, and error paths are distinct per request
 and cleanup is ownership-safe.
 
-**Actual:** `_WriteRequestFiles` uses only `A_TickCount`, so two requests in
-the same millisecond receive identical paths and can exchange payloads or
-cleanup each other's bearer-containing files.
+**Actual:** Fixed: chat requests and title-generation calls now derive their
+temporary filenames from UUIDs, so simultaneous requests own distinct files.
 
-**Evidence:** `chat/ChatRequestBuilder.ahk` derives all four names from one
-`uniqueID := A_TickCount`; `InlineRequestRunner` already uses a UUID.
+**Evidence:** `chat/ChatRequestBuilder.ahk` and `chat/ThreadTitleGen.ahk` use
+`ChatDB._UUID()` for their request/output/error path suffixes.
 
-**Verification:** Deterministic headless scenario passed with injected tick
-424242: both builds resolve to the same four request paths. The same probe
-also found title-generation temp names are tick-only. No timing-based clicking
-was used.
+**Verification:** The fixed no-app scenario injects identical tick 424242 and
+checks distinct UUID-derived request/cURL/output/error paths plus the title
+path. A direct request-builder regression creates two synchronous requests and
+confirms all four paths differ; the full AHK, fast, and headless gates pass.
 
-### 2. Locked-chat API logs use the visible thread instead of the request owner
-
-**Scenario:** 304
-
-**Status:** fix applied
-
-**Repro:** Start a delayed request from an unlocked locked chat L, relock L,
-switch to ordinary chat U, and let the request complete, fail, or cancel.
-
-**Expected:** Logging redaction is decided from L, the request-owning thread,
-so L's plaintext never enters the API log. A U request remains governed by U
-even if L is visible when it finishes.
-
-**Actual:** Fixed: success, error, and cancellation redaction checks use the
-request-owning thread captured at send time. DeepSeek and Tavily search log
-bodies follow the same owner-thread policy.
-
-**Evidence:** `chat/streaming/StreamCompletion.ahk` and `StreamError.ahk` use
-`ShouldRedactContent(streamThreadId)`; search loggers derive the thread from
-their loop state.
-
-**Verification:** The fixed delayed-stream scenario confirms that L was
-unlocked for send, relocked, switched away to U, and completion stored only
-`<hidden: locked chat>`. Unit coverage invokes success, error, and cancellation
-logging with a locked owner and a different visible thread, plus the inverse
-unlocked-owner case; static checks cover DeepSeek/Tavily search logs.
-
-### 3. Multi-step persistence operations can leave durable partial state
+### 2. Multi-step persistence operations can leave durable partial state
 
 **Scenario:** 305
 
@@ -299,7 +271,7 @@ remained after close/reopen. `PRAGMA integrity_check` and
 the attachment case also left the message without its physical file, and the
 lock case left metadata with `is_locked=0`.
 
-### 4. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
+### 3. ThreadRepo.List fails to redact locked titles when ThreadLockService is absent
 
 **Scenario:** 306
 
@@ -902,6 +874,6 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Cross-include `_RequestParamsAreDefault` warning can open a blocking modal" - FIXED + COMMITTED in 69761d8: the helper was relocated to the shared ChatUtils include loaded before callbacks, with scenario 308 and bounded `#Warn` load coverage.
 - 2026-08-26 - "Stale message and attachment IDs can mutate another chat" - FIXED + COMMITTED in df1d0fb: message edits/hard-deletes and attachment deletion now require the expected thread, callbacks validate ownership before processing attachments, and delayed search-card edits retain their originating thread. Scenario 301 is now a regression check; AHK, invariant, fast, and full headless gates passed.
 - 2026-08-26 - "Invalid branch-edit IDs can create a bogus root message" - FIXED + COMMITTED in fa0bd21: branch edits now require a source on the active path before inserting a copy; scenario 302 is a regression check with handler and invariant coverage.
-- 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in the log-redaction fix commit below: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304, terminal-path unit coverage, fast gates, and the full headless suite passed.
+- 2026-08-26 - "Locked-chat API logs use the visible thread instead of the request owner" - FIXED + COMMITTED in 243914e: success/error/cancellation and search-tool loggers now use captured request ownership; scenario 304 and terminal-path unit coverage passed.
 
 

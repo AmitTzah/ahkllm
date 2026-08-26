@@ -165,20 +165,22 @@ scenarios.push({
 scenarios.push({
   id: 303,
   name: "Chat request and title-generation temp filenames collide under an identical tick",
+  regression: true,
   mode: null,
   noApp: true,
   async body() {
     const requestSource = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatRequestBuilder.ahk"), "utf8");
     const titleSource = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ThreadTitleGen.ahk"), "utf8");
-    if (!/uniqueID\s*:=\s*A_TickCount\s*\r?\n\s*requestFile/.test(requestSource)) throw new Error("request builder no longer has the reported tick-only seam");
+    if (!/uniqueID\s*:=\s*ChatDB\._UUID\(\)\s*\r?\n\s*requestFile/.test(requestSource)) throw new Error("request builder is not using the UUID seam");
     const tick = 424242;
-    const paths = ["Req", "cURL", "Out", "Err"].map((kind) => `ChatWindow_${kind}_${tick}.${kind === "Req" ? "json" : kind === "cURL" || kind === "Err" ? "txt" : "json"}`);
-    if (new Set(paths).size !== 4) throw new Error("internal probe setup failed");
-    const first = paths.map((p) => path.join(os.tmpdir(), p));
-    const second = paths.map((p) => path.join(os.tmpdir(), p));
-    if (!first.every((p, i) => p === second[i])) throw new Error("identical tick did not produce identical request paths");
-    if (!/ChatWindow_TitleGen_\" A_TickCount/.test(titleSource)) throw new Error("title generation tick-only temp names were not found");
-    return `under injected tick ${tick}, two request builds receive identical paths: ${first.join(", ")}; title generation also uses tick-only temp names`;
+    const firstId = "00000000-0000-4000-8000-000000000001";
+    const secondId = "00000000-0000-4000-8000-000000000002";
+    const suffixes = ["Req", "cURL", "Out", "Err"];
+    const first = suffixes.map((kind) => path.join(os.tmpdir(), `ChatWindow_${kind}_${firstId}.${kind === "Req" || kind === "Out" ? "json" : "txt"}`));
+    const second = suffixes.map((kind) => path.join(os.tmpdir(), `ChatWindow_${kind}_${secondId}.${kind === "Req" || kind === "Out" ? "json" : "txt"}`));
+    if (first.some((p, i) => p === second[i]) || !/uniqueID\s*:=\s*ChatDB\._UUID\(\)/.test(titleSource))
+      throw new Error("UUID-derived request/title paths are not distinct");
+    return `under identical injected tick ${tick}, UUIDs ${firstId} and ${secondId} produce distinct request/cURL/output/error paths; title generation also uses ChatDB._UUID()`;
   }
 });
 

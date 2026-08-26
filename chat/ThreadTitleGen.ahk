@@ -112,8 +112,9 @@ _TitleGen_BuildPrompt(threadId) {
 
 ; Execute the title generation cURL request using CurlBuilder.
 _TitleGen_ExecuteRequest(payload, providerInfo) {
-    tmpFile := A_Temp "\ChatWindow_TitleGen_" A_TickCount ".json"
-    outFile := A_Temp "\ChatWindow_TitleGen_Out_" A_TickCount ".json"
+    uniqueID := ChatDB._UUID()
+    tmpFile := A_Temp "\ChatWindow_TitleGen_" uniqueID ".json"
+    outFile := A_Temp "\ChatWindow_TitleGen_Out_" uniqueID ".json"
     FileOpen(tmpFile, "w", "UTF-8-RAW").Write(payload)
 
     cURLCommand := CurlBuilder.Build(providerInfo, tmpFile, outFile)
