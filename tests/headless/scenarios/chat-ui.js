@@ -115,6 +115,70 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 322,
+  name: 'Selecting an assistant and sending immediately can submit the previous direct model',
+  mode: 'sse-success',
+  settings: {
+    assistants: [{
+      id: 'asst-322', name: 'Immediate Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+      systemMessage: 'assistant system 322', systemMessageFile: '', description: '', reasoning: '', temperature: ''
+    }],
+    threadTitles: { enabled: false }
+  },
+  fixtures: {
+    threads: [{ id: 't-race-322', title: 'Assistant Send Race', active_leaf_id: 'm-race-322', model_override: 'openai/gpt-5-mini' }],
+    messages: [{ id: 'm-race-322', thread_id: 't-race-322', role: 'user', content: 'existing message' }]
+  },
+  preLaunch(dataDir) {
+    const settingsPath = path.join(dataDir, 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8').replace(/^\uFEFF/, ''));
+    settings.newChatStartsWith = 'openai/gpt-5-mini';
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-race-322"); true');
+    await cdp.waitFor('window.activeThreadId === "t-race-322" && chatMessages.length === 1 && window._currentSettings && window._currentSettings.assistantName === ""', 15000, 300, 'direct-model thread loaded');
+    await sleep(600);
+    const directModel = await cdp.eval('window._currentSettings.model');
+    if (String(directModel).indexOf('gpt-5-mini') < 0)
+      throw new Error('setup: thread did not load the direct model: ' + JSON.stringify(directModel));
+    await cdp.type('#chat-input', 'send immediately after assistant selection');
+
+    await cdp.click('#modelCardTrigger');
+    await cdp.waitFor('document.getElementById("modelPopover").classList.contains("open")', 5000, 200, 'model popover');
+    await cdp.waitFor('[...document.querySelectorAll("#tab-assistants .selector-item .si-name")].some(e => e.textContent === "Immediate Assistant")', 10000, 250, 'assistant listed');
+    // Keep assistant selection and Send in the same renderer turn. The click
+    // posts switchAssistant, but the handler does not yet update assistantName;
+    // onChatSend therefore flushes the stale direct model first.
+    await cdp.eval(`(() => {
+      const item = [...document.querySelectorAll('#tab-assistants .selector-item')]
+        .find((el) => el.querySelector('.si-name') && el.querySelector('.si-name').textContent === 'Immediate Assistant');
+      if (!item) return false;
+      item.click();
+      document.getElementById('chat-send-btn').click();
+      return true;
+    })()`);
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active === true', 20000, 100, 'request started');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(700);
+
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const request = lines.find((entry) => entry.body && entry.body.stream === true);
+    if (!request) throw new Error('setup: no streaming request logged; lines=' + lines.length);
+    const thread = seed.query(dbPath, "SELECT assistant_id FROM chat_threads WHERE id='t-race-322'");
+    // PASS means the suspected race is reproduced: the stale update clears the
+    // assistant and the request is sent through the previous direct model.
+    if (request.body.model !== 'gpt-5-mini' || (thread[0] && thread[0].assistant_id))
+      throw new Error('assistant selection won the immediate-send race (lead not reproduced): model=' +
+        JSON.stringify(request.body.model) + ' thread=' + JSON.stringify(thread));
+    return 'selected Immediate Assistant and sent in one renderer turn; request used stale direct model ' +
+      JSON.stringify(request.body.model) + ' and DB assistant_id=' + JSON.stringify(thread[0] && thread[0].assistant_id);
+  }
+});
+
+scenarios.push({
   id: 6,
   name: 'Stream failure with no output file shows an error and re-enables the UI',
   regression: true, // FIXED bug kept as a regression check (stream errors must always surface + re-enable)

@@ -154,7 +154,7 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **4 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
 - **Where we left off:** 2026-08-26 - Bugs 316-318 fixed and committed; no verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass; next round is fresh intake when the user asks. Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
@@ -168,7 +168,8 @@ How to run AHK safely:
   both backends end-to-end against the local mock (no real API calls in the
   suite); scenario 20 flipped to a regression check for the stub removal.
   Full headless suite PASS and `npm run test:fast` green. Next round: fresh
-  intake when the user asks.
+  intake when the user asks. Reviewer candidates 319-322 are all verified and
+  ranked below; no fix has been started.
 
 ## Bug entry template
 
@@ -220,6 +221,70 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 319. Explicit Model Default reasoning/temperature resets are lost on reload
+
+**Scenario:** 319 (scenario code in `scenarios/settings.js`)
+
+**Status:** verified
+
+**Repro:** Open a chat using an assistant with Reasoning = high and Temperature = 0.3; select Model Default for reasoning and reset temperature to Default; wait for the settings save; reload the thread.
+
+**Expected:** The explicit default selections remain selected after reload.
+
+**Actual:** The assistant's high reasoning and 0.3 temperature return because empty overrides are stored as SQL NULL and treated as inheritance.
+
+**Evidence:** `chat/db/ThreadRepo.ahk:34-38` converts empty reasoning/temperature overrides to NULL; `chat/ThreadSettings.ahk:42-60` falls back to the assistant when those values are empty.
+
+**Verification:** Scenario 319 selects both defaults, confirms the persisted row is cleared, reloads the thread, and checks whether the assistant values return.
+
+### 320. Clearing an assistant system prompt is not a stable per-thread choice
+
+**Scenario:** 320 (scenario code in `scenarios/settings.js`)
+
+**Status:** verified
+
+**Repro:** Open a chat using an assistant with a distinctive system prompt; erase the right-rail System Prompt field; wait for the debounced save; send; reload the thread.
+
+**Expected:** Either the blank prompt remains a valid override, or the UI immediately restores the assistant prompt as the documented reset behavior.
+
+**Actual:** The current request omits the prompt and the field stays blank, but reload restores the assistant prompt because the empty override is stored as SQL NULL.
+
+**Evidence:** `webui/js/chat/model-picker/model-picker-config.js` sends an empty typed value; `chat/ChatRequestBuilder.ahk:284-299` omits an empty override; `chat/ThreadSettings.ahk:42-58` restores the assistant prompt on reload.
+
+**Verification:** Scenario 320 clears the field, checks the mock request has no assistant prompt, reloads, and checks whether the prompt returns.
+
+### 321. Deleting the active assistant response leaves the sidebar model badge stale
+
+**Scenario:** 321 (scenario code in `scenarios/chat-tree.js`)
+
+**Status:** verified
+
+**Repro:** On a path whose earlier assistant response used model A and active latest response used model B, delete the latest response.
+
+**Expected:** The sidebar badge immediately changes to model A, the remaining active path's model.
+
+**Actual:** The message and token bar refresh, but the sidebar keeps model B because `handleDelete()` does not post a thread-list refresh.
+
+**Evidence:** `chat/callbacks/Edit.ahk:164-179` posts `updateChatView` and `postThreadStats` without `_postThreadListRefresh()`; `chat/db/ThreadRepo.ahk` derives the badge model from the active path.
+
+**Verification:** Scenario 321 deletes the active B response and checks the live sidebar icon without navigation or reload.
+
+### 322. Assistant picker followed by an immediate Send can revert to the old direct model
+
+**Scenario:** 322 (scenario code in `scenarios/chat-ui.js`)
+
+**Status:** verified
+
+**Repro:** Start on a direct model, type a message, select an assistant, and click Send immediately in the same UI turn.
+
+**Expected:** The request uses the selected assistant and its base model.
+
+**Actual:** Before the assistant round trip updates `_currentSettings.assistantName`, `_sendAllSettings(true)` can resend the old direct model; `handleModelSettingsUpdate()` then clears the newly selected assistant.
+
+**Evidence:** `webui/js/chat/model-picker/model-picker.js:152-168` posts `switchAssistant` without updating assistant state; `webui/js/chat/chat-input.js:41-74` flushes settings before `chatSend`; `chat/ChatSettings.ahk:175-207` clears the active assistant for a non-empty model.
+
+**Verification:** Scenario 322 selects the assistant and sends in one CDP turn, then checks the mock request model and persisted assistant id.
 
 ## History (append-only)
 

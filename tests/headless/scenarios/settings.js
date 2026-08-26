@@ -24,6 +24,136 @@ const retentionFixtureDate = new Date(Date.now() - 19 * 24 * 60 * 60 * 1000)
   .toISOString().slice(0, 19).replace('T', ' ');
 
 scenarios.push({
+  id: 319,
+  name: 'Explicit Model Default reasoning and temperature selections return to assistant values after reload',
+  mode: null,
+  settings: {
+    assistants: [{
+      id: 'asst-319', name: 'Defaults Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+      systemMessage: 'assistant system 319', systemMessageFile: '', description: '',
+      reasoning: 'high', temperature: '0.3'
+    }]
+  },
+  fixtures: {
+    threads: [{ id: 't-defaults-319', title: 'Explicit Defaults', active_leaf_id: 'm-defaults-319', assistant_id: 'asst-319' }],
+    messages: [{ id: 'm-defaults-319', thread_id: 't-defaults-319', role: 'user', content: 'hello defaults' }]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1 && window._currentSettings && window._currentSettings.assistantName === "Defaults Assistant"', 15000, 300, 'assistant thread loaded');
+    await sleep(700);
+
+    const initial = await cdp.eval(`(() => ({
+      reasoning: document.getElementById('reasoningDropdown').value,
+      temperature: window._currentSettings.temperature,
+      assistant: window._currentSettings.assistantName
+    }))()`);
+    if (initial.reasoning !== 'high' || String(initial.temperature) !== '0.3')
+      throw new Error('setup: assistant defaults did not load: ' + JSON.stringify(initial));
+
+    await cdp.eval(`(() => {
+      const reasoning = document.getElementById('reasoningDropdown');
+      reasoning.value = '';
+      reasoning.dispatchEvent(new Event('change', { bubbles: true }));
+      const reset = document.getElementById('tempReset');
+      if (!reset || reset.style.display === 'none') return false;
+      reset.click();
+      return true;
+    })()`);
+    await sleep(900); // debounce + updateModelSettings persistence
+    const selected = await cdp.eval(`(() => ({
+      reasoning: document.getElementById('reasoningDropdown').value,
+      temperature: window._currentSettings.temperature,
+      tempDefault: document.getElementById('tempSlider').classList.contains('temp-default')
+    }))()`);
+    if (selected.reasoning !== '' || selected.temperature !== '' || !selected.tempDefault)
+      throw new Error('setup: explicit default controls were not selected: ' + JSON.stringify(selected));
+
+    const saved = seed.query(dbPath, "SELECT reasoning_override, temperature_override FROM chat_threads WHERE id='t-defaults-319'");
+    if (!saved.length || saved[0].reasoning_override !== null || saved[0].temperature_override !== null)
+      throw new Error('setup: expected empty overrides to be persisted as NULL: ' + JSON.stringify(saved));
+
+    await cdp.eval('window.loadThread("t-defaults-319"); true');
+    await cdp.waitFor('window.activeThreadId === "t-defaults-319" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread reloaded');
+    await sleep(700);
+    const reloaded = await cdp.eval(`(() => ({
+      reasoning: document.getElementById('reasoningDropdown').value,
+      temperature: window._currentSettings.temperature,
+      tempDefault: document.getElementById('tempSlider').classList.contains('temp-default'),
+      assistant: window._currentSettings.assistantName
+    }))()`);
+    // PASS means the suspected bug is reproduced: NULL is interpreted as
+    // inheritance, so the assistant's non-default values return.
+    if (reloaded.reasoning !== 'high' || String(reloaded.temperature) !== '0.3' || reloaded.tempDefault)
+      throw new Error('explicit defaults survived reload (lead not reproduced): ' + JSON.stringify(reloaded));
+    return 'selected Model Default and temperature Default; DB stored NULL overrides; reload restored reasoning=' +
+      JSON.stringify(reloaded.reasoning) + ' and temperature=' + JSON.stringify(reloaded.temperature);
+  }
+});
+
+scenarios.push({
+  id: 320,
+  name: 'Clearing an assistant system prompt omits it now but restores it after reload',
+  mode: 'sse-success',
+  settings: {
+    assistants: [{
+      id: 'asst-320', name: 'Prompt Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+      systemMessage: 'distinct assistant system 320', systemMessageFile: '', description: '',
+      reasoning: '', temperature: ''
+    }],
+    threadTitles: { enabled: false }
+  },
+  fixtures: {
+    threads: [{ id: 't-prompt-320', title: 'Cleared Prompt', active_leaf_id: 'm-prompt-320', assistant_id: 'asst-320' }],
+    messages: [{ id: 'm-prompt-320', thread_id: 't-prompt-320', role: 'user', content: 'hello prompt' }]
+  },
+  async body({ cdp, dbPath, mockLog }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1 && document.getElementById("sysMsgMini").value === "distinct assistant system 320"', 15000, 300, 'assistant prompt loaded');
+    await cdp.eval(`(() => {
+      const mini = document.getElementById('sysMsgMini');
+      mini.value = '';
+      mini.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(900); // debounce + updateModelSettings persistence
+    const current = await cdp.eval('({ prompt: document.getElementById("sysMsgMini").value, setting: window._currentSettings.systemMessage })');
+    if (current.prompt !== '' || current.setting !== '')
+      throw new Error('setup: prompt did not clear in the current session: ' + JSON.stringify(current));
+
+    await sendChatMessage(cdp, 'send with cleared prompt');
+    await waitStreamingIdle(cdp, 30000);
+    await sleep(500);
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const request = lines.find((entry) => entry.body && entry.body.stream === true);
+    if (!request) throw new Error('setup: no streaming request logged; lines=' + lines.length);
+    const systemMessages = (request.body.messages || [])
+      .filter((message) => message.role === 'system')
+      .map((message) => String(message.content || ''));
+    if (systemMessages.some((content) => content.indexOf('distinct assistant system 320') >= 0))
+      throw new Error('setup: cleared prompt still reached the current request: ' + JSON.stringify(systemMessages));
+
+    const saved = seed.query(dbPath, "SELECT system_override FROM chat_threads WHERE id='t-prompt-320'");
+    if (!saved.length || saved[0].system_override !== null)
+      throw new Error('setup: cleared prompt was not stored as NULL: ' + JSON.stringify(saved));
+    await cdp.eval('window.loadThread("t-prompt-320"); true');
+    await cdp.waitFor('window.activeThreadId === "t-prompt-320" && document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread reloaded');
+    await sleep(700);
+    const reloaded = await cdp.eval('document.getElementById("sysMsgMini").value');
+    // PASS means the suspected bug is reproduced: reload treats the blank as
+    // inheritance and restores the assistant prompt.
+    if (reloaded !== 'distinct assistant system 320')
+      throw new Error('blank prompt stayed blank after reload (lead not reproduced): ' + JSON.stringify(reloaded));
+    return 'cleared the assistant prompt; current request had system messages=' + JSON.stringify(systemMessages) +
+      '; reload restored ' + JSON.stringify(reloaded);
+  }
+});
+
+scenarios.push({
   id: 3,
   name: 'Removing models/providers in Settings persists (removed entries stay removed)',
   regression: true, // FIXED bug kept as a regression check (removals must not be resurrected by merge)

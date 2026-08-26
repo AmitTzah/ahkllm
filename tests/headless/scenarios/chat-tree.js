@@ -2232,6 +2232,48 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 321,
+  name: 'Deleting the active assistant response leaves the sidebar model badge stale',
+  mode: null,
+  settings: { threadTitles: { enabled: false } },
+  fixtures: {
+    threads: [{ id: 't-badge-321', title: 'Model Badge Delete', active_leaf_id: 'm-321-a2' }],
+    messages: [
+      { id: 'm-321-u1', thread_id: 't-badge-321', role: 'user', content: 'first question', token_count: 3, active_path_tokens: 3 },
+      { id: 'm-321-a1', thread_id: 't-badge-321', role: 'assistant', content: 'answer from model A', model: 'openai/gpt-5-mini', parent_id: 'm-321-u1', token_count: 3, prompt_tokens: 3, active_path_tokens: 6 },
+      { id: 'm-321-u2', thread_id: 't-badge-321', role: 'user', content: 'second question', parent_id: 'm-321-a1', token_count: 3, active_path_tokens: 9 },
+      { id: 'm-321-a2', thread_id: 't-badge-321', role: 'assistant', content: 'answer from model B', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-321-u2', token_count: 3, prompt_tokens: 9, active_path_tokens: 12 }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.waitFor('document.querySelector("#thread-list .chat-item[data-chat=\\"t-badge-321\\"] .chat-icon img") !== null', 5000, 200, 'initial model badge');
+    const before = await cdp.eval('document.querySelector("#thread-list .chat-item[data-chat=\\"t-badge-321\\"] .chat-icon img").getAttribute("src")');
+    if (String(before).indexOf('deepseek.ico') < 0)
+      throw new Error('setup: active model B did not produce the DeepSeek badge: ' + JSON.stringify(before));
+
+    await cdp.eval('window.loadThread("t-badge-321"); true');
+    await cdp.waitFor('window.activeThreadId === "t-badge-321" && chatMessages.length === 4', 15000, 300, 'four-message path loaded');
+    await cdp.click('#chat-messages .msg:nth-child(4) .msg-action-btn[title="Delete"]');
+    await cdp.waitFor('document.getElementById("customConfirmOverlay") !== null', 5000, 200, 'delete confirmation');
+    await cdp.click('#customConfirmOverlay .yes-confirm-btn');
+    await cdp.waitFor('chatMessages.length === 3', 15000, 300, 'active response deleted');
+    await sleep(800); // updateChatView + token stats, without a thread-list refresh
+
+    const dbState = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-badge-321'");
+    if (!dbState.length || dbState[0].active_leaf_id !== 'm-321-u2')
+      throw new Error('setup: delete did not move active leaf to u2: ' + JSON.stringify(dbState));
+    const after = await cdp.eval('document.querySelector("#thread-list .chat-item[data-chat=\\"t-badge-321\\"] .chat-icon img").getAttribute("src")');
+    // PASS means the suspected bug is reproduced: the DB now resolves model A
+    // but the live sidebar still renders model B from its old list payload.
+    if (String(after).indexOf('deepseek.ico') < 0)
+      throw new Error('sidebar badge refreshed after delete (lead not reproduced): before=' + before + ' after=' + after);
+    return 'deleted active model-B response; DB active leaf is m-321-u2 (model A), but live sidebar badge stayed ' + JSON.stringify(after);
+  }
+});
+
+scenarios.push({
   id: 220,
   name: 'Folder-delete confirmation double-escapes the folder name - _buildFolderSection passes escHtml(folder.name) into _showChatConfirm, which escapes the whole message again, so a folder named "A&B<C>" confirms as "A&amp;amp;B&amp;lt;C&amp;gt;" instead of showing the raw characters',
   regression: true, // FIXED bug #220 kept as a regression check (raw name, escaped exactly once)
