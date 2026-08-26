@@ -30,13 +30,6 @@
 
 .icon-rail-spacer { flex: 1; }
 
-.nav-avatar {
-  width: 44px; height: 44px; border-radius: var(--radius-full); background: var(--border-focus); 
-  color: var(--accent-primary); display: flex; align-items: center; justify-content: center;
-  font-weight: 600; font-size: 16px; cursor: pointer; border: 2px solid transparent; transition: border 0.2s;
-}
-.nav-avatar:hover { border-color: var(--accent-primary); }
-
 /* ============ Panels & Resizing ============ */
 .rail-left, .rail-right { background: var(--bg-main); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; transition: width 0.1s linear;}
 .rail-left { width: 340px; border-right: 1px solid var(--border-main); }
