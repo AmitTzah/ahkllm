@@ -165,6 +165,25 @@ describe('_makeModelClickHandler — keeps reasoning, clears assistant overrides
     });
 });
 
+describe('_makeAssistantClickHandler — updates mode before posting', () => {
+    it('sets assistant state synchronously so an immediate send cannot flush the old model', () => {
+        const ctx = loadSettingsModule();
+        ctx.window._currentSettings = { model: 'openai/gpt-5-mini', assistantName: '' };
+        ctx.window._assistantList = [{
+            id: 'a1', name: 'Immediate Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+            systemMessage: 'assistant prompt', description: 'description'
+        }];
+        const mockEl = {
+            parentElement: { querySelectorAll: () => [] },
+            classList: { add: () => {} }
+        };
+        ctx._makeAssistantClickHandler(mockEl, 'a1')();
+        assert.strictEqual(ctx.window._currentSettings.assistantName, 'Immediate Assistant');
+        assert.strictEqual(ctx.window._currentSettings.assistantBaseModel, 'deepseek/deepseek-v4-flash');
+        assert.strictEqual(ctx.window._currentSettings.systemMessage, 'assistant prompt');
+    });
+});
+
 describe('_sendAllSettings', () => {
     it('includes the right-rail Web Search flag in the payload (code execution removed)', () => {
         const ctx = loadSettingsModule();

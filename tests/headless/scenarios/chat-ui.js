@@ -116,7 +116,8 @@ scenarios.push({
 
 scenarios.push({
   id: 322,
-  name: 'Selecting an assistant and sending immediately can submit the previous direct model',
+  name: 'Selecting an assistant and sending immediately uses the assistant model',
+  regression: true,
   mode: 'sse-success',
   settings: {
     assistants: [{
@@ -150,8 +151,8 @@ scenarios.push({
     await cdp.waitFor('document.getElementById("modelPopover").classList.contains("open")', 5000, 200, 'model popover');
     await cdp.waitFor('[...document.querySelectorAll("#tab-assistants .selector-item .si-name")].some(e => e.textContent === "Immediate Assistant")', 10000, 250, 'assistant listed');
     // Keep assistant selection and Send in the same renderer turn. The click
-    // posts switchAssistant, but the handler does not yet update assistantName;
-    // onChatSend therefore flushes the stale direct model first.
+    // must update assistantName synchronously so the settings flush cannot
+    // submit the stale direct model.
     await cdp.eval(`(() => {
       const item = [...document.querySelectorAll('#tab-assistants .selector-item')]
         .find((el) => el.querySelector('.si-name') && el.querySelector('.si-name').textContent === 'Immediate Assistant');
@@ -168,13 +169,11 @@ scenarios.push({
     const request = lines.find((entry) => entry.body && entry.body.stream === true);
     if (!request) throw new Error('setup: no streaming request logged; lines=' + lines.length);
     const thread = seed.query(dbPath, "SELECT assistant_id FROM chat_threads WHERE id='t-race-322'");
-    // PASS means the suspected race is reproduced: the stale update clears the
-    // assistant and the request is sent through the previous direct model.
-    if (request.body.model !== 'gpt-5-mini' || (thread[0] && thread[0].assistant_id))
-      throw new Error('assistant selection won the immediate-send race (lead not reproduced): model=' +
+    if (request.body.model !== 'deepseek-v4-flash' || !thread[0] || thread[0].assistant_id !== 'asst-322')
+      throw new Error('assistant selection did not win the immediate-send race: model=' +
         JSON.stringify(request.body.model) + ' thread=' + JSON.stringify(thread));
-    return 'selected Immediate Assistant and sent in one renderer turn; request used stale direct model ' +
-      JSON.stringify(request.body.model) + ' and DB assistant_id=' + JSON.stringify(thread[0] && thread[0].assistant_id);
+    return 'selected Immediate Assistant and sent in one renderer turn; request used assistant model ' +
+      JSON.stringify(request.body.model) + ' and DB assistant_id=' + JSON.stringify(thread[0].assistant_id);
   }
 });
 

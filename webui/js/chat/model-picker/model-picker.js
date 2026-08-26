@@ -158,15 +158,26 @@ function _makeAssistantClickHandler(el, asstId) {
     for (var si = 0; si < allItems.length; si++) allItems[si].classList.remove('active');
     el.classList.add('active');
     var sysPrompt = '';
+    var selectedAssistant = null;
     if (window._assistantList) {
       for (var ai = 0; ai < window._assistantList.length; ai++) {
-        if (window._assistantList[ai].id === asstId) { sysPrompt = window._assistantList[ai].systemMessage || ''; break; }
+        if (window._assistantList[ai].id === asstId) {
+          selectedAssistant = window._assistantList[ai];
+          sysPrompt = selectedAssistant.systemMessage || '';
+          break;
+        }
       }
     }
     var mini = document.getElementById('sysMsgMini');
     if (mini) mini.value = sysPrompt;
     if (!window._currentSettings) window._currentSettings = {};
     window._currentSettings.systemMessage = sysPrompt;
+    // Update the renderer state before posting switchAssistant. Send can be
+    // clicked in the same turn, and _sendAllSettings must see assistant mode
+    // instead of flushing the previously selected direct model.
+    window._currentSettings.assistantName = selectedAssistant ? (selectedAssistant.name || '') : '';
+    window._currentSettings.assistantBaseModel = selectedAssistant ? (selectedAssistant.baseModel || '') : '';
+    window._currentSettings.assistantDescription = selectedAssistant ? (selectedAssistant.description || '') : '';
     window._currentSettings.systemOverrideSet = false;
     window._currentSettings.reasoningOverrideSet = false;
     window._currentSettings.temperatureOverrideSet = false;
