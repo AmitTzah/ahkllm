@@ -17,6 +17,102 @@ const { sleep, showChat, sendChatMessage, waitStreamingIdle, runProbe } = requir
 const scenarios = [];
 
 scenarios.push({
+  id: 316,
+  name: 'Right-rail system prompt debounce races with an immediate first Send - the first chat request is built before the delayed updateModelSettings IPC arrives',
+  mode: 'sse-success',
+  settings: { threadTitles: { enabled: false } },
+  async body({ cdp, mockLog }) {
+    await showChat();
+    await cdp.waitFor('window.activeThreadId === "" && document.getElementById("sysMsgMini") !== null', 15000, 300, 'fresh empty chat + system prompt field');
+
+    const distinctive = 'IMMEDIATE SYSTEM PROMPT 316';
+    // This is deliberately one CDP turn: typing schedules the 300 ms
+    // _sendAllSettings timer, and Send is clicked before that timer can fire.
+    await cdp.type('#sysMsgMini', distinctive);
+    const visible = await cdp.eval('document.getElementById("sysMsgMini").value');
+    if (visible !== distinctive)
+      throw new Error('setup: typed system prompt is not visible: ' + JSON.stringify(visible));
+    await sendChatMessage(cdp, 'send immediately after the right-rail change');
+    await waitStreamingIdle(cdp, 30000);
+
+    const lines = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const first = lines[0];
+    if (!first || !first.body)
+      throw new Error('setup: no first mock API request was logged; lines=' + lines.length);
+    const systemMessages = (first.body.messages || [])
+      .filter((message) => message.role === 'system')
+      .map((message) => String(message.content || ''));
+    const containsTyped = systemMessages.some((content) => content.indexOf(distinctive) >= 0);
+    // Phase-1 scenarios assert the suspected buggy outcome: the first request
+    // misses the newly typed setting. This must be flipped when fixing #316.
+    if (containsTyped)
+      throw new Error('settings update reached the first request (bug #316 not reproduced): ' + JSON.stringify(systemMessages));
+    return 'typed ' + JSON.stringify(distinctive) + ' and clicked Send in the same turn; first mock request system messages=' +
+      JSON.stringify(systemMessages) + ' (the delayed updateModelSettings arrived after chatSend)';
+  }
+});
+
+scenarios.push({
+  id: 317,
+  name: 'Two simultaneous message editors cross-contaminate deferred attachment removals - saving A deletes B attachment after B overwrites the global edit state',
+  mode: null,
+  settings: {},
+  fixtures: {
+    threads: [{ id: 't-att-317', title: 'Two Editors', active_leaf_id: 'm-317-b' }],
+    messages: [
+      { id: 'm-317-a', thread_id: 't-att-317', role: 'user', content: 'message A', token_count: 2, active_path_tokens: 2 },
+      { id: 'm-317-b', thread_id: 't-att-317', role: 'user', content: 'message B', parent_id: 'm-317-a', token_count: 2, active_path_tokens: 4 }
+    ]
+  },
+  async body({ cdp, dataDir, dbPath }) {
+    const { DatabaseSync } = require('node:sqlite');
+    const attachmentDir = path.join(dataDir, 'attachments');
+    fs.mkdirSync(attachmentDir, { recursive: true });
+    const attachmentFile = path.join(attachmentDir, 'b-317.txt');
+    fs.writeFileSync(attachmentFile, 'attachment owned by message B', 'utf8');
+    const db = new DatabaseSync(dbPath);
+    db.exec("INSERT INTO message_attachments (id, message_id, attachment_type, file_path, mime_type, original_filename, file_size, extracted_text) VALUES ('att-317-b', 'm-317-b', 'text_file', 'attachments/b-317.txt', 'text/plain', 'b-317.txt', 29, 'attachment owned by message B')");
+    db.close();
+
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
+    await cdp.click('#thread-list .chat-item');
+    await cdp.waitFor('chatMessages.length === 2', 15000, 300, 'two messages loaded');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2) .msg-attachment-delete") !== null', 15000, 300, 'B attachment loaded');
+    const before = seed.query(dbPath, "SELECT id, message_id, file_path FROM message_attachments WHERE id='att-317-b'");
+    if (before.length !== 1 || !fs.existsSync(attachmentFile))
+      throw new Error('setup: B attachment row/file missing before sequence: row=' + JSON.stringify(before) + ' file=' + fs.existsSync(attachmentFile));
+
+    // Open A, then B without closing A. Both editing classes prove the UI
+    // coexistence through the normal Edit buttons.
+    await cdp.click('#chat-messages .msg:nth-child(1) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(1)").classList.contains("editing")', 5000, 200, 'A editor open');
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(1)").classList.contains("editing") && document.querySelector("#chat-messages .msg:nth-child(2)").classList.contains("editing")', 5000, 200, 'both editors remain open');
+
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-attachment-delete');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2) .msg-attachment-file").style.display === "none"', 5000, 200, 'B removal deferred');
+    const deferred = await cdp.eval('({ editingId: window._editingMessageId, removed: (window._removedAttachmentIds || []).slice() })');
+    if (deferred.editingId !== 'm-317-b' || deferred.removed.indexOf('att-317-b') < 0)
+      throw new Error('setup: B removal was not selected under B editor: ' + JSON.stringify(deferred));
+
+    // A's original closure still targets A, but commitEdit reads the current
+    // global removal list now populated by B.
+    await cdp.click('#chat-messages .msg:nth-child(1) .save-overwrite');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(1)").classList.contains("editing") === false', 10000, 200, 'A overwrite committed');
+    await sleep(500);
+    const after = seed.query(dbPath, "SELECT id, message_id, file_path FROM message_attachments WHERE id='att-317-b'");
+    const fileExists = fs.existsSync(attachmentFile);
+    // Phase-1 scenarios assert the suspected buggy outcome: A's save deleted
+    // B's row and (when unreferenced) its physical file.
+    if (after.length !== 0 || fileExists)
+      throw new Error('B attachment survived A save (bug #317 not reproduced): row=' + JSON.stringify(after) + ' file=' + fileExists);
+    return 'A and B editors coexisted; B active editor deferred ' + JSON.stringify(deferred.removed) +
+      '; saving A removed B attachment row=' + JSON.stringify(after) + ' and fileExists=' + fileExists;
+  }
+});
+
+scenarios.push({
   id: 6,
   name: 'Stream failure with no output file shows an error and re-enables the UI',
   regression: true, // FIXED bug kept as a regression check (stream errors must always surface + re-enable)

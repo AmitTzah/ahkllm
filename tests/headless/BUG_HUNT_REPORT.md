@@ -154,12 +154,12 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **3 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 311-315 fixed and committed; no
-  verified or reported bugs remain. Scenario 315's live restart path was
-  infrastructure-blocked, so its regression contract and unit test cover the
-  startup recovery until the restart harness is repaired.
+- **Where we left off:** 2026-08-26 - Bugs 311-315 fixed and committed;
+  Candidates 1-3 are verified in the current verification queue. Scenario
+  315's live restart path was infrastructure-blocked, so its regression contract
+  and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
   Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
   Web Search toggle (composer toolbar button, default off) adds a web_search
@@ -221,6 +221,97 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 316. Right-rail settings debounce races with immediate Send
+
+**Scenario:** 316
+
+**Status:** verified
+
+**Repro:** In a fresh empty chat, type a distinctive system prompt directly into
+the right-rail `#sysMsgMini` field and immediately press Send with a message,
+without waiting 300 ms.
+
+**Expected:** The first outgoing API request contains the newly typed system
+prompt.
+
+**Actual:** The first request contained the previous/default conversational
+system prompt, not the newly typed prompt. `_sendAllSettings()` is debounced
+while `onChatSend()` posts `chatSend` immediately; the setting update arrived
+after the request had begun.
+
+**Evidence:** `webui/js/chat/model-picker/model-picker.js` delays
+`updateModelSettings` by 300 ms, while `webui/js/chat/chat-input.js` posts
+`chatSend` immediately. On a fresh chat, `chat/callbacks/Message.ahk` may apply
+the new-chat default and fire `_BuildAndFireRequest()` before the delayed
+settings callback reaches `chat/ChatSettings.ahk`.
+
+**Verification:** Headless scenario 316 PASSED: the real WebView typed
+`IMMEDIATE SYSTEM PROMPT 316` and clicked Send in the same CDP turn; the first
+local-mock request contained only the default conversational system prompt,
+not the typed prompt. The delayed `updateModelSettings` therefore arrived after
+`chatSend` had already started the request.
+
+### 317. Simultaneous message editors cross-contaminate attachment removals
+
+**Scenario:** 317
+
+**Status:** verified
+
+**Repro:** Open a chat containing messages A and B, with a persisted attachment
+on B. Click Edit on A, then click Edit on B without saving or cancelling A.
+Remove B's attachment, return to A's still-open editor, and click Save
+Overwrite on A.
+
+**Expected:** Saving A must not delete B's persisted attachment row or file.
+
+**Actual:** Opening B overwrote the global `_editingMessageId` and
+`_removedAttachmentIds` while A remained visually editable. B's removal was
+read by A's old Save closure and sent with A's id; `handleEdit(A)` deleted B's
+attachment row and file.
+
+**Evidence:** `webui/js/chat/chat-branching.js` stores edit state in the global
+`_editingMessageId` / `_removedAttachmentIds`, but does not close earlier
+`.msg.editing` bubbles. `commitEdit()` reads the current global removal list
+while its closure still supplies A's id; `chat/callbacks/Edit.ahk` then calls
+`Attachment_DeleteOne()` for each received id.
+
+**Verification:** Headless scenario 317 PASSED: real Edit clicks left both A
+and B bubbles with `.editing`; B was the active `_editingMessageId` and its
+`att-317-b` removal was deferred. Saving A then removed B's persisted database
+row and physical `attachments/b-317.txt` file, proving the stale global list was
+submitted with A's save closure.
+
+### 318. Message edit updates thread recency but leaves the sidebar stale
+
+**Scenario:** 318
+
+**Status:** verified
+
+**Repro:** Seed older chat A and newer chat B. Open A, edit an assistant
+message, choose Save as Branch, and inspect the sidebar immediately without
+reopening or toggling it.
+
+**Expected:** Because A's `updated_at` is now newest, A moves above B and its
+displayed date updates immediately.
+
+**Actual:** The DB order changed to A,B, but the sidebar DOM remained B,A and
+kept the old displayed date because `handleEdit()` does not post a `threadList`
+refresh.
+
+**Evidence:** `chat/db/MessageRepo.ahk` `Edit()` calls
+`_TouchThreadByMsg(msgId)`, and its `Insert()` path also updates
+`chat_threads.updated_at` when the assistant branch copy is created;
+`chat/callbacks/Edit.ahk` posts `updateChatView` and `postThreadStats` only.
+`chat/db/ThreadRepo.ahk` orders `List()` by `updated_at DESC`, and
+`webui/js/chat/chat-sidebar.js` only re-renders when a `threadList` message
+arrives.
+
+**Verification:** Headless scenario 318 PASSED: Save as Branch on assistant A
+changed the DB order from B,A to A,B and updated A's `updated_at`, but the live
+sidebar remained B,A with the old displayed date, without reopening or toggling
+the sidebar. This is the missing `threadList` refresh path.
+
 **Feature checks (web-search milestone):**
 
 ### 250. Web Search toggle: DeepSeek native search end-to-end

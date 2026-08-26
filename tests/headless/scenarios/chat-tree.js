@@ -2177,6 +2177,60 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 318,
+  name: 'Editing an assistant message bumps thread recency but does not refresh the sidebar - Save as Branch changes DB order while the live thread list stays stale',
+  mode: null,
+  settings: { threadTitles: { enabled: false } },
+  fixtures: {
+    threads: [
+      { id: 't-order-a-318', title: 'Thread A (older)', active_leaf_id: 'm-318-a1', created_at: '2026-08-20 10:00:00' },
+      { id: 't-order-b-318', title: 'Thread B (newer)', active_leaf_id: 'm-318-b1', created_at: '2026-08-21 10:00:00' }
+    ],
+    messages: [
+      { id: 'm-318-u1', thread_id: 't-order-a-318', role: 'user', content: 'question A', token_count: 3, active_path_tokens: 3, created_at: '2026-08-20 10:00:01' },
+      { id: 'm-318-a1', thread_id: 't-order-a-318', role: 'assistant', content: 'answer A', model: 'deepseek/deepseek-v4-flash', parent_id: 'm-318-u1', token_count: 3, prompt_tokens: 3, active_path_tokens: 6, created_at: '2026-08-20 10:00:02' },
+      { id: 'm-318-b1', thread_id: 't-order-b-318', role: 'user', content: 'question B', token_count: 3, active_path_tokens: 3, created_at: '2026-08-21 10:00:01' }
+    ]
+  },
+  async body({ cdp, dbPath }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'two seeded threads');
+    const orderBefore = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    if (orderBefore.join(',') !== 't-order-b-318,t-order-a-318')
+      throw new Error('setup: sidebar should start B-first, got ' + orderBefore.join(','));
+
+    await cdp.eval('window.loadThread("t-order-a-318"); true');
+    await cdp.waitFor('window.activeThreadId === "t-order-a-318" && chatMessages.length === 2', 15000, 300, 'older thread A loaded');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2) .msg-action-btn[title=\'Edit\']") !== null', 5000, 200, 'A assistant Edit action');
+    const dateBefore = await cdp.eval('document.querySelector("#thread-list .chat-item[data-chat=\\"t-order-a-318\\"] .chat-date").textContent');
+    const dbBefore = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-order-a-318'")[0].updated_at;
+
+    // Save as Branch on an assistant is local-only: it edits the DB and
+    // updates the visible chat but does not cause an LLM response refresh.
+    await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Edit"]');
+    await cdp.waitFor('document.querySelector("#chat-messages .msg:nth-child(2)").classList.contains("editing")', 5000, 200, 'assistant edit open');
+    await cdp.type('#chat-messages .msg:nth-child(2) .msg-edit-textarea', 'answer A branch 318');
+    await cdp.click('#chat-messages .msg:nth-child(2) .save-branch');
+    await cdp.waitFor('chatMessages.some((m) => m.content === "answer A branch 318")', 15000, 300, 'local branch created');
+
+    const dbAfter = seed.query(dbPath, "SELECT updated_at FROM chat_threads WHERE id='t-order-a-318'")[0].updated_at;
+    const dbOrder = seed.query(dbPath, 'SELECT id FROM chat_threads ORDER BY updated_at DESC').map((row) => row.id);
+    const orderAfter = await cdp.eval('[...document.querySelectorAll("#thread-list .chat-item")].map((el) => el.getAttribute("data-chat"))');
+    const dateAfter = await cdp.eval('document.querySelector("#thread-list .chat-item[data-chat=\\"t-order-a-318\\"] .chat-date").textContent');
+    if (dbAfter <= dbBefore || dbOrder[0] !== 't-order-a-318')
+      throw new Error('setup: branch edit did not make A newest in DB: ' + dbBefore + ' -> ' + dbAfter + ' order=' + dbOrder.join(','));
+    // Phase-1 assertion: the live sidebar remains in its original B,A order
+    // and retains A's old date even though the DB is now A,B.
+    if (orderAfter.join(',') !== 't-order-b-318,t-order-a-318' || dateAfter !== dateBefore)
+      throw new Error('sidebar refreshed after edit (bug #318 not reproduced): before=' + orderBefore.join(',') +
+        ' after=' + orderAfter.join(',') + ' dates=' + JSON.stringify(dateBefore) + ' -> ' + JSON.stringify(dateAfter));
+    return 'Save as Branch on assistant A changed DB order to ' + dbOrder.join(',') + ' (' + dbBefore + ' -> ' + dbAfter +
+      ') but live sidebar stayed ' + orderAfter.join(',') + ' with date ' + JSON.stringify(dateAfter) +
+      ' (unchanged from ' + JSON.stringify(dateBefore) + ')';
+  }
+});
+
+scenarios.push({
   id: 220,
   name: 'Folder-delete confirmation double-escapes the folder name - _buildFolderSection passes escHtml(folder.name) into _showChatConfirm, which escapes the whole message again, so a folder named "A&B<C>" confirms as "A&amp;amp;B&amp;lt;C&amp;gt;" instead of showing the raw characters',
   regression: true, // FIXED bug #220 kept as a regression check (raw name, escaped exactly once)
