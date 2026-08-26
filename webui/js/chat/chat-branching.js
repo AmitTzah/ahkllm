@@ -5,15 +5,30 @@
 // D1: Edit message — opens inline textarea, two save modes
 var _editingMessageId = null;
 var _removedAttachmentIds = [];
+var _editStatesByMessageId = Object.create(null);
+
+function _syncActiveEditState() {
+  var ids = Object.keys(_editStatesByMessageId);
+  _editingMessageId = ids.length ? ids[ids.length - 1] : null;
+  _removedAttachmentIds = _editingMessageId ?
+    _editStatesByMessageId[_editingMessageId].removedAttachmentIds : [];
+}
+
+function _clearEditState(msgId) {
+  delete _editStatesByMessageId[msgId];
+  _syncActiveEditState();
+}
 
 function editMessage(index) {
   var msg = chatMessages[index];
-  _editingMessageId = msg.id;
-  _removedAttachmentIds = [];
   if (!msg || isLoading) return;
 
   var bubble = document.querySelectorAll('.msg')[index];
   if (!bubble) return;
+
+  var editState = { removedAttachmentIds: [] };
+  _editStatesByMessageId[msg.id] = editState;
+  _syncActiveEditState();
 
   // Use the pre-rendered .msg-edit-ui — just add the .editing class
   bubble.classList.add('editing');
@@ -28,40 +43,39 @@ function editMessage(index) {
     // while their DB rows survive (and get sent anyway), and later attachment
     // delete clicks keep deferring instead of deleting.
     bubble.classList.remove('editing');
-    _removedAttachmentIds.forEach(function(attId) {
+    editState.removedAttachmentIds.forEach(function(attId) {
       var delBtn = bubble.querySelector('[data-attachment-id="' + attId + '"]');
       if (delBtn) {
         var wrapper = delBtn.closest('.msg-attachment-image, .msg-attachment-file');
         if (wrapper) wrapper.style.display = '';
       }
     });
-    _removedAttachmentIds = [];
-    _editingMessageId = null;
+    _clearEditState(msg.id);
   };
 
   var overwriteBtn = bubble.querySelector('.save-overwrite');
   if (overwriteBtn) overwriteBtn.onclick = function() {
     var v = textarea.value.trim(); if (!v) return;
-    commitEdit(index, msg.id, v, 'overwrite');
+    commitEdit(index, msg.id, v, 'overwrite', editState.removedAttachmentIds);
     bubble.classList.remove('editing');
   };
 
   var branchBtn = bubble.querySelector('.save-branch');
   if (branchBtn) branchBtn.onclick = function() {
     var v = textarea.value.trim(); if (!v) return;
-    commitEdit(index, msg.id, v, 'branch');
+    commitEdit(index, msg.id, v, 'branch', editState.removedAttachmentIds);
     bubble.classList.remove('editing');
   };
 
 }
 
-function commitEdit(index, msgId, newContent, mode) {
+function commitEdit(index, msgId, newContent, mode, removedAttachmentIds) {
   var payload = { id: msgId, content: newContent, mode: mode };
-  if (_removedAttachmentIds.length > 0) {
-    payload.removedAttachmentIds = _removedAttachmentIds.slice();
+  var removedIds = removedAttachmentIds || _removedAttachmentIds;
+  if (removedIds.length > 0) {
+    payload.removedAttachmentIds = removedIds.slice();
   }
-  _editingMessageId = null;
-  _removedAttachmentIds = [];
+  _clearEditState(msgId);
   Ipc.postToHost('editMessage', payload);
 }
 

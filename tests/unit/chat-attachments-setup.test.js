@@ -75,6 +75,21 @@ describe('setupMessageAttachmentDeleteDelegation ownership (bug #217)', () => {
             'the edited message\'s own attachment must still defer to the edit commit');
     });
 
+    it('defers into the owning editor when multiple editors are open (bug #317)', () => {
+        const { ctx, click } = loadSetupModule();
+        ctx._editStatesByMessageId = {
+            'msg-1': { removedAttachmentIds: [] },
+            'msg-2': { removedAttachmentIds: [] }
+        };
+        ctx._editingMessageId = 'msg-2';
+        ctx._removedAttachmentIds = ctx._editStatesByMessageId['msg-2'].removedAttachmentIds;
+        click(deleteBtn('att-1', 'msg-1'));
+        assert.deepStrictEqual(ctx._editStatesByMessageId['msg-1'].removedAttachmentIds, ['att-1']);
+        assert.deepStrictEqual(ctx._editStatesByMessageId['msg-2'].removedAttachmentIds, []);
+        assert.strictEqual(ctx._removedAttachmentIds, ctx._editStatesByMessageId['msg-1'].removedAttachmentIds,
+            'the compatibility mirror follows the editor that received the click');
+    });
+
     it('deletes immediately when no editor is open', () => {
         const { ctx, click, postedMessages } = loadSetupModule();
         ctx._editingMessageId = null;

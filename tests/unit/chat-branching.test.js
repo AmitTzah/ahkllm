@@ -397,3 +397,50 @@ describe('cancel edit rolls back attachment removals (bug #49)', () => {
         assert.strictEqual(ctx._editingMessageId, null, 'cancel must clear the editing state');
     });
 });
+
+describe('simultaneous editors keep attachment removals scoped (bug #317)', () => {
+    it('saving A does not submit B\'s deferred removals', () => {
+        const ctx = loadBranchingModule();
+        ctx.chatMessages = [
+            { id: 'msg-a', role: 'user', content: 'A' },
+            { id: 'msg-b', role: 'user', content: 'B' }
+        ];
+        function editorBubble() {
+            const textarea = { value: '', focus: () => {} };
+            const cancel = { onclick: null };
+            const overwrite = { onclick: null };
+            const branch = { onclick: null };
+            return {
+                classList: { add: () => {}, remove: () => {} },
+                querySelector: (selector) => {
+                    if (selector === '.msg-edit-textarea') return textarea;
+                    if (selector === '.cancel-edit') return cancel;
+                    if (selector === '.save-overwrite') return overwrite;
+                    if (selector === '.save-branch') return branch;
+                    return null;
+                },
+                textarea, cancel, overwrite, branch
+            };
+        }
+        const bubbleA = editorBubble();
+        const bubbleB = editorBubble();
+        ctx.document.querySelectorAll = (selector) => selector === '.msg' ? [bubbleA, bubbleB] : [];
+
+        ctx.editMessage(0);
+        ctx.editMessage(1);
+        ctx._editStatesByMessageId['msg-b'].removedAttachmentIds.push('att-b');
+        bubbleA.textarea.value = 'A edited';
+        bubbleA.overwrite.onclick();
+
+        assert.strictEqual(ctx._postedMessages.length, 1);
+        assert.strictEqual(ctx._postedMessages[0].id, 'msg-a');
+        assert.strictEqual(ctx._postedMessages[0].removedAttachmentIds, undefined,
+            'A must not submit B\'s deferred attachment removal');
+        assert.strictEqual(JSON.stringify(ctx._editStatesByMessageId['msg-b'].removedAttachmentIds), '["att-b"]');
+
+        bubbleB.textarea.value = 'B edited';
+        bubbleB.overwrite.onclick();
+        assert.strictEqual(JSON.stringify(ctx._postedMessages[1].removedAttachmentIds), '["att-b"]',
+            'B must retain its own deferred attachment removal');
+    });
+});

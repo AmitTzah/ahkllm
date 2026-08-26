@@ -120,11 +120,23 @@ function setupMessageAttachmentDeleteDelegation() {
         // open; it is never deferred into this edit.
         var owningBubble = btn.closest('.msg');
         var owningMsgId = owningBubble ? owningBubble.getAttribute('data-msg-id') : null;
+        if (typeof _editStatesByMessageId !== 'undefined' && owningMsgId &&
+            _editStatesByMessageId[owningMsgId]) {
+            var editState = _editStatesByMessageId[owningMsgId];
+            if (editState && editState.removedAttachmentIds) {
+                editState.removedAttachmentIds.push(attId);
+                _editingMessageId = owningMsgId;
+                _removedAttachmentIds = editState.removedAttachmentIds;
+                var wrapper = btn.closest('.msg-attachment-image, .msg-attachment-file');
+                if (wrapper) wrapper.style.display = 'none';
+            }
+            return;
+        }
         if (typeof _editingMessageId !== 'undefined' && _editingMessageId) {
             if (owningMsgId === _editingMessageId && typeof _removedAttachmentIds !== 'undefined') {
                 _removedAttachmentIds.push(attId);
-                var wrapper = btn.closest('.msg-attachment-image, .msg-attachment-file');
-                if (wrapper) wrapper.style.display = 'none';
+                var activeWrapper = btn.closest('.msg-attachment-image, .msg-attachment-file');
+                if (activeWrapper) activeWrapper.style.display = 'none';
             }
             return;
         }

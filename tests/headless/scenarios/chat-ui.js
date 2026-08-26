@@ -56,6 +56,7 @@ scenarios.push({
 scenarios.push({
   id: 317,
   name: 'Two simultaneous message editors cross-contaminate deferred attachment removals - saving A deletes B attachment after B overwrites the global edit state',
+  regression: true, // FIXED bug #317 kept as a regression check (removals are editor-scoped)
   mode: null,
   settings: {},
   fixtures: {
@@ -104,12 +105,12 @@ scenarios.push({
     await sleep(500);
     const after = seed.query(dbPath, "SELECT id, message_id, file_path FROM message_attachments WHERE id='att-317-b'");
     const fileExists = fs.existsSync(attachmentFile);
-    // Phase-1 scenarios assert the suspected buggy outcome: A's save deleted
-    // B's row and (when unreferenced) its physical file.
-    if (after.length !== 0 || fileExists)
-      throw new Error('B attachment survived A save (bug #317 not reproduced): row=' + JSON.stringify(after) + ' file=' + fileExists);
+    // Fixed behavior: A's save uses A's own removal list, so B's persisted
+    // attachment row and physical file must survive.
+    if (after.length !== 1 || after[0].message_id !== 'm-317-b' || !fileExists)
+      throw new Error('B attachment was changed by A save (bug #317 fix incomplete): row=' + JSON.stringify(after) + ' file=' + fileExists);
     return 'A and B editors coexisted; B active editor deferred ' + JSON.stringify(deferred.removed) +
-      '; saving A removed B attachment row=' + JSON.stringify(after) + ' and fileExists=' + fileExists;
+      '; saving A preserved B attachment row=' + JSON.stringify(after) + ' and fileExists=' + fileExists;
   }
 });
 

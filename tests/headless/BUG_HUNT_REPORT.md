@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **2 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **1 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bug 316 fixed and committed; next fix is bug 317 (simultaneous message editors must keep attachment-removal state scoped to each editor). Candidates 1-3 are verified in the current verification queue. Scenario
+- **Where we left off:** 2026-08-26 - Bugs 316-317 fixed and committed; next fix is bug 318 (refresh the sidebar after message edits change thread recency). Candidates 1-3 are verified in the current verification queue. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
   and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
@@ -220,36 +220,6 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
-
-### 317. Simultaneous message editors cross-contaminate attachment removals
-
-**Scenario:** 317
-
-**Status:** verified
-
-**Repro:** Open a chat containing messages A and B, with a persisted attachment
-on B. Click Edit on A, then click Edit on B without saving or cancelling A.
-Remove B's attachment, return to A's still-open editor, and click Save
-Overwrite on A.
-
-**Expected:** Saving A must not delete B's persisted attachment row or file.
-
-**Actual:** Opening B overwrote the global `_editingMessageId` and
-`_removedAttachmentIds` while A remained visually editable. B's removal was
-read by A's old Save closure and sent with A's id; `handleEdit(A)` deleted B's
-attachment row and file.
-
-**Evidence:** `webui/js/chat/chat-branching.js` stores edit state in the global
-`_editingMessageId` / `_removedAttachmentIds`, but does not close earlier
-`.msg.editing` bubbles. `commitEdit()` reads the current global removal list
-while its closure still supplies A's id; `chat/callbacks/Edit.ahk` then calls
-`Attachment_DeleteOne()` for each received id.
-
-**Verification:** Headless scenario 317 PASSED: real Edit clicks left both A
-and B bubbles with `.editing`; B was the active `_editingMessageId` and its
-`att-317-b` removal was deferred. Saving A then removed B's persisted database
-row and physical `attachments/b-317.txt` file, proving the stale global list was
-submitted with A's save closure.
 
 ### 318. Message edit updates thread recency but leaves the sidebar stale
 
@@ -456,6 +426,7 @@ done-phase tests, `DeepSeekSearch.FeedFixture_MultiItemStream_*`, and
 
 ## History (append-only)
 
+- 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED in this fix commit: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
 - 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
