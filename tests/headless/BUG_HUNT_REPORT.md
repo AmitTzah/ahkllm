@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 1 fix applied** (2026-08-27). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-27). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-27 - Bug #1 fix applied: per-group command order persistence and native menu ordering pass scenario 324 and the full fast suite; next is manual verification and user commit. Bugs 316-318 were fixed and committed; Full fast suite and scenarios 316-318 pass. Scenario
+- **Where we left off:** 2026-08-27 - Bug #1 was manually verified and committed in `b3786c1`; it has been moved to History. No verified open bugs remain in this queue. Next: fresh intake when the user asks. Bugs 316-318 were fixed and committed; Full fast suite and scenarios 316-318 pass. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
   and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
@@ -222,24 +222,9 @@ one at a time, in rank order.
 
 **Ranked (1 = highest):**
 
-### 1. Command reorder snaps back after saving
-
-**Scenario:** 324 (scenario code in e2e-suite.js)
-
-**Status:** fix applied
-
-**Repro:** Settings → Commands → hold and drag Refine to a different position within the Text manipulation group → click Save Changes.
-
-**Expected:** Refine remains at its new position after the save completes.
-
-**Actual:** Fixed — Refine remains at the dragged position after Save Changes and host reload; its per-group order is persisted in `commandGroupOrders` alongside the flat `commands` list.
-
-**Evidence:** `webui/js/settings/sections/commands/commands-core.js` now saves/restores `commandGroupOrders`; `app/settings/SettingsApply.ahk` converts WebView zero-based indexes for AHK; `app/menu/CommandMenu.ahk` consumes the saved order for Main Menu and tagged groups.
-
-**Verification:** Fixed scenario PASS — scenario 324 dragged Refine from the bottom to the top through the live handlers, clicked Save Changes, confirmed the post-save DOM retained the dragged order, and confirmed `settings.json` persisted `commandGroupOrders`. Regression coverage also passes in `commands-save-reorder.test.js`, `SettingsHandler.test.ahk`, and `UserConfig.test.ahk`; full `npm run test:fast` passed (725 AHK, 617 JS).
-
 ## History (append-only)
 
+- 2026-08-27 - "Command reorder snaps back after saving" - FIXED + COMMITTED in `b3786c1`: per-group command order is persisted through settings saves/reloads and consumed by both the WebView list and native menu; scenario 324 remains as a regression check, with full AHK + JS suites passed.
 - 2026-08-27 - "Provider error warning leaks into a different chat after switching threads" - FIXED + COMMITTED in `8125c9c`: error payloads now carry their originating thread, inactive-thread errors are not rendered, and per-thread banners persist across chat switches until dismissed. Scenario 323 verifies both immediate and delayed error timing, return-to-origin behavior, and dismissal; full AHK + JS suites passed.
 - 2026-08-26 - Web-search scenarios 250-255 were reclassified as regression coverage, not bug-hunt entries; their end-to-end checks remain in the suite.
 - 2026-08-26 - "Explicit Model Default reasoning/temperature selections are lost on reload" - FIXED + COMMITTED in this fix commit: per-thread override-set flags distinguish intentional empty defaults from inherited assistant values; scenario 319 is now a regression check with ThreadSettings, persistence, and UI payload coverage.
