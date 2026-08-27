@@ -358,10 +358,20 @@ commands := [
         thinking: { type: "enabled", level: "none" },  ; disabled — fast rephrase
         pasteMode: "replace",
         tags: ["&Text manipulation"],
-        directAccelerator: "&5"
-
 
     },
+     {
+        commandName: "Custom Prompt → Paste",
+        menuText: "&5 - Custom Prompt → Paste",
+        APIModels: "deepseek/deepseek-v4-flash",
+        showInputBox: true,
+        userMessage: "{{input}}`n`n{{selection}}",
+        pasteMode: "replace",
+        directAccelerator: "&5",
+        tags: ["&Text manipulation"],
+    },
+
+
     {
         commandName: "Refine",
         menuText: "&4 - Refine",
@@ -371,22 +381,9 @@ commands := [
         pasteMode: "replace",
         thinking: { type: "enabled", level: "none" },  ; disabled — fast refine
         tags: ["&Text manipulation"],
-        directAccelerator: "&6"
+        directAccelerator: "&8"
 
     },
-
-
-
-     {
-        commandName: "Auto-paste custom command",
-        menuText: "&5 - Auto-paste custom command",
-        APIModels: "deepseek/deepseek-v4-flash",
-        showInputBox: true,
-        userMessage: "{{input}}`n`n{{selection}}",
-        pasteMode: "replace",
-        tags: ["&Text manipulation"],
-    },
-
 
      {
         commandName: "Summarize",
@@ -397,7 +394,8 @@ commands := [
         thinking: { type: "enabled", level: "high" },
         pasteMode: "chat",
         stream: true,
-        tags: ["&Digest"]
+        tags: ["&Digest"],
+        directAccelerator: "&6"
 
     }
     , {
@@ -434,7 +432,8 @@ commands := [
         stream: true,
         includeImageContext:true,
         thinking: { type: "enabled", level: "medium" },
-        tags: ["&Digest"]
+        tags: ["&Digest"],
+        directAccelerator: "&7"
     }
 
 

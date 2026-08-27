@@ -31,3 +31,21 @@ describe('Quick Access Settings shortcut', () => {
     assert.match(contract, /'showSettings':\s*\{\s*dir: 'ahk->web'/);
   });
 });
+
+describe('Default command accelerators', () => {
+  it('puts Custom Prompt -> Paste, Refine, Summarize, and Send Screenshot in the main command menu', () => {
+    const defaults = read('default-settings/DefaultSettings.ahk');
+    const commandBlock = (name) => {
+      const start = defaults.indexOf(`commandName: "${name}"`);
+      assert.notStrictEqual(start, -1, `${name} command is missing`);
+      const next = defaults.indexOf('commandName:', start + 1);
+      return defaults.slice(start, next === -1 ? defaults.length : next);
+    };
+
+    assert.doesNotMatch(commandBlock('Rephrase in Context'), /directAccelerator:/);
+    assert.match(commandBlock('Custom Prompt → Paste'), /directAccelerator:\s*"&5"/);
+    assert.match(commandBlock('Refine'), /directAccelerator:\s*"&8"/);
+    assert.match(commandBlock('Summarize'), /directAccelerator:\s*"&6"/);
+    assert.match(commandBlock('Screenshot'), /directAccelerator:\s*"&7"/);
+  });
+});
