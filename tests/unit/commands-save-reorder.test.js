@@ -109,6 +109,32 @@ function loadCommandsCoreWithMocks() {
 }
 
 describe('commands save reorder — _selectedIdx remapping', () => {
+    it('preserves the selected command when the host reloads settings after save', () => {
+        const ctx = loadCommandsCoreWithMocks();
+        const C = ctx.Cmds;
+        const quickAsk = { commandName: 'Quick Ask', menuText: 'Quick Ask', tags: [] };
+        const summarize = { commandName: 'Summarize', menuText: '&1 - Summarize', tags: ['&Digest'] };
+
+        C.setCommands([quickAsk, summarize]);
+        C.setSubmenuOrder(['&Digest']);
+        C.setGroupOrders({ '__main__': [0], '&Digest': [1] });
+        C.setSelectedIdx(1);
+
+        // The host sends fresh objects back after save; the selected command
+        // must be restored by its command identity instead of resetting to 0.
+        C.load({
+            commands: [
+                { commandName: 'Quick Ask', menuText: 'Quick Ask', tags: [] },
+                { commandName: 'Summarize', menuText: '&1 - Summarize', tags: ['&Digest'] }
+            ],
+            submenuOrder: ['&Digest'],
+            commandGroupOrders: { '__main__': [0], '&Digest': [1] }
+        });
+
+        assert.strictEqual(C.selectedIdx(), 1,
+            'settings reload should keep Summarize selected instead of selecting Quick Ask');
+    });
+
     it('persists independent tagged-group order across the host settings reload', () => {
         const ctx = loadCommandsCoreWithMocks();
         const C = ctx.Cmds;

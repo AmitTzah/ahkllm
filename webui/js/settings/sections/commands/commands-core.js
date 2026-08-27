@@ -67,6 +67,8 @@
   }
 
   function load(data) {
+    var previous = (_selectedIdx >= 0 && _selectedIdx < _commands.length)
+      ? _commands[_selectedIdx] : null;
     _commands = (data && data.commands) ? data.commands : [];
     _submenuOrder = (data && data.submenuOrder) ? data.submenuOrder : [];
     _models = (data && data.models) ? data.models : null;
@@ -76,11 +78,27 @@
     _defaultModel = (data && data.newChatStartsWith && data.newChatStartsWith.indexOf('asst:') !== 0)
         ? data.newChatStartsWith
         : 'deepseek/deepseek-v4-flash';
-    _selectedIdx = -1;
+    // The host re-sends the merged settings after every save. Preserve the
+    // command the user was editing instead of jumping back to the first
+    // command (usually Quick Ask). Commands have no persistent id, so match
+    // the stable name + menu label pair; edited values are already present on
+    // the previous in-memory command because save() syncs it first.
+    var restoredIdx = -1;
+    if (previous) {
+      for (var i = 0; i < _commands.length; i++) {
+        if (_commands[i].commandName === previous.commandName &&
+            _commands[i].menuText === previous.menuText) {
+          restoredIdx = i;
+          break;
+        }
+      }
+    }
+    _selectedIdx = restoredIdx;
     _groupOrders = _readGroupOrders(data && data.commandGroupOrders);
     _ensureGroupOrders();
-    window.Cmds.renderList(0);
-    if (_commands.length > 0) window.Cmds.selectCommand(0);
+    var selectIdx = restoredIdx >= 0 ? restoredIdx : 0;
+    window.Cmds.renderList(selectIdx);
+    if (_commands.length > 0) window.Cmds.selectCommand(selectIdx);
     else window.Cmds.showPlaceholder();
   }
 

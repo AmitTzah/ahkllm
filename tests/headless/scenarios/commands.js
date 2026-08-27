@@ -370,16 +370,24 @@ scenarios.push({
 
 scenarios.push({
   id: 325,
-  name: 'Disabling Show Input Box for a Digest command survives a second Settings save',
+  name: 'Settings saves preserve the selected command and Show Input Box state',
   regression: true, // REFUTED report kept as a regression check for the two-save round-trip
   mode: null,
   settings: {
-    commands: [{
-      commandName: 'Summarize', menuText: '&1 - Summarize',
-      APIModels: 'deepseek/deepseek-v4-pro', pasteMode: 'chat',
-      userMessage: '{{selection}}', stream: true, isFIM: false,
-      showInputBox: false, tags: ['&Digest']
-    }]
+    commands: [
+      {
+        commandName: 'Quick Ask', menuText: 'Quick Ask',
+        APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'chat',
+        userMessage: '{{selection}}', stream: true, isFIM: false,
+        showInputBox: true, tags: []
+      },
+      {
+        commandName: 'Summarize', menuText: '&1 - Summarize',
+        APIModels: 'deepseek/deepseek-v4-pro', pasteMode: 'chat',
+        userMessage: '{{selection}}', stream: true, isFIM: false,
+        showInputBox: false, tags: ['&Digest']
+      }
+    ]
   },
   async body({ cdp, dataDir }) {
     await showChat();
@@ -425,12 +433,18 @@ scenarios.push({
     await cdp.click('#cmdShowInputBox');
     await saveSettings(cdp, dataDir);
     await savedShowInputBox(true);
+    const selectedAfterFirstSave = await cdp.eval('document.getElementById("cmdDetailTitle").value');
+    if (selectedAfterFirstSave !== 'Summarize')
+      throw new Error('selected command jumped to ' + JSON.stringify(selectedAfterFirstSave) + ' after the first save');
     const enabledUi = await cdp.eval('document.getElementById("cmdShowInputBox").classList.contains("on")');
     if (!enabledUi) throw new Error('setup: first save did not leave Show Input Box enabled in the UI');
 
     await cdp.click('#cmdShowInputBox');
     await saveSettings(cdp, dataDir);
     const saved = await savedShowInputBox(false);
+    const selectedAfterSecondSave = await cdp.eval('document.getElementById("cmdDetailTitle").value');
+    if (selectedAfterSecondSave !== 'Summarize')
+      throw new Error('selected command jumped to ' + JSON.stringify(selectedAfterSecondSave) + ' after the second save');
     const disabledUi = await cdp.eval('document.getElementById("cmdShowInputBox").classList.contains("on")');
     const runtimeCommand = await cdp.eval(`(() => {
       const c = (window.Cmds && window.Cmds.commands() || []).find((x) => x.commandName === 'Summarize');
