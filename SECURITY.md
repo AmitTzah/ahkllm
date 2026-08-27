@@ -1,33 +1,33 @@
-# Security policy
+# Security
 
-## Private vulnerability reports
+AhkLLM handles API keys, local chat history, attachments, clipboard text, screenshots, and data sent to external model providers, so security reports are taken seriously.
 
-GitHub Security Advisories are the preferred private reporting mechanism, but
-their availability for this repository has not been verified. The owner must
-enable and verify that feature before launch. Do not open a public issue for an
-undisclosed vulnerability, and do not send API keys, tokens, passwords, chat
-exports, database files, or attachments in an issue or pull request.
+If you find a vulnerability, please do not post the details in a public issue before it has been looked at. If GitHub's private vulnerability reporting option is available on the repository, use that. If it is not available, open a short issue saying you need a private way to report a security problem, without including the vulnerability details or any sensitive data.
 
-Reports are most useful when they include the affected version/commit, the
-smallest safe reproduction, impact, and any relevant logs with secrets and
-personal data removed. The project does not promise a fixed response time.
+A useful report includes the affected version or commit, what you expected to happen, what actually happened, and the smallest safe reproduction you can provide. Logs can help, but please remove API keys, passwords, prompts, chat content, filesystem usernames, and other personal data before attaching anything.
+
+I can't promise a particular response time, but reproducible security issues affecting the current version will be treated as a priority.
+
+## What is and is not protected
+
+Some parts of AhkLLM are security-sensitive by design: provider credential handling, WebView/IPC messages, attachment parsing, local SQLite persistence, API logging, locked chats, temporary request files, and the headless test harness.
+
+Locked chats are an application-level access control feature. They hide locked content inside the app until the password is entered, remove it from normal search results, and redact locked-chat bodies in the API log viewer.
+
+They are not encrypted storage. The SQLite database and attachment files are still stored on disk under the user's Windows profile. A process or user that can directly read those files can bypass the in-app lock. Chat passwords themselves are stored as PBKDF2-SHA-256 hashes rather than plaintext.
+
+API logs and temporary request files can contain prompts, responses, selected text, or attachment-derived content. Logging can be disabled in Settings, but if it is enabled you should treat those files as potentially sensitive.
+
+AhkLLM also sends data to whichever external providers you configure. Prompts, selected text, screenshots, uploaded files, and search queries may leave your machine as part of normal use. The security of those third-party services is outside this project's control.
 
 ## Supported versions
 
-This is a small project with a rolling support policy: security fixes target
-the latest tagged release and the default branch. Older releases are not
-maintained unless the owner explicitly announces otherwise. Users should
-upgrade before reporting issues against an old build.
+Security fixes target the current codebase and the latest release. Older builds are not maintained unless explicitly stated otherwise.
 
-## Scope notes
+If you are reporting a problem against an older version, please check whether it still exists on the latest release or current default branch first.
 
-Security-sensitive areas include API-key handling, provider requests,
-WebView/IPC messages, attachment parsing, local SQLite storage, locked-chat
-gates, and the headless test harness. Locked chats are an application-level
-access gate; chat content and attachments are not encrypted at rest. API logs
-and temporary request files can contain user data. Never include their raw
-contents in a report.
+## Out of scope
 
-This policy does not promise security for a compromised Windows account,
-malware with access to the user's profile, a malicious provider, or arbitrary
-third-party AutoHotkey scripts loaded alongside AhkLLM.
+This project cannot protect data from a compromised Windows account, malware already running with access to your profile, a malicious model provider, or arbitrary third-party AutoHotkey code running with the same user permissions.
+
+That does not mean reports involving those areas are useless, but the bug needs to be something AhkLLM can realistically prevent or mitigate.
