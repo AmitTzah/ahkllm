@@ -156,7 +156,7 @@ How to run AHK safely:
 
 - **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-27). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-27 - Bug #1 was manually verified and committed in `b3786c1`; it has been moved to History. No verified open bugs remain in this queue. Next: fresh intake when the user asks. Bugs 316-318 were fixed and committed; Full fast suite and scenarios 316-318 pass. Scenario
+- **Where we left off:** 2026-08-27 - Scenario 325 ran against the real app and refuted the Digest input-box report: after enable/save then disable/save, the persisted value was `0`, the Settings UI was off, and the live command object was false. The scenario remains as regression coverage; no production fix is needed. Bug #1 was manually verified and committed in `b3786c1`; it has been moved to History. Bugs 316-318 were fixed and committed; Full fast suite and scenarios 316-318 pass. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
   and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
@@ -223,6 +223,8 @@ one at a time, in rank order.
 **Ranked (1 = highest):**
 
 ## History (append-only)
+
+- 2026-08-27 - "Digest command keeps showing the input box after disabling it" - REFUTED: live scenario 325 enabled Show Input Box, saved, disabled it, saved again, and observed `settings.json` value `0`, Settings UI off, and the live command object false. No production change required; scenario 325 remains as a regression check.
 
 - 2026-08-27 - "Command reorder snaps back after saving" - FIXED + COMMITTED in `b3786c1`: per-group command order is persisted through settings saves/reloads and consumed by both the WebView list and native menu; scenario 324 remains as a regression check, with full AHK + JS suites passed.
 - 2026-08-27 - "Provider error warning leaks into a different chat after switching threads" - FIXED + COMMITTED in `8125c9c`: error payloads now carry their originating thread, inactive-thread errors are not rendered, and per-thread banners persist across chat switches until dismissed. Scenario 323 verifies both immediate and delayed error timing, return-to-origin behavior, and dismissal; full AHK + JS suites passed.

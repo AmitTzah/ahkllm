@@ -369,6 +369,84 @@ scenarios.push({
 });
 
 scenarios.push({
+  id: 325,
+  name: 'Disabling Show Input Box for a Digest command survives a second Settings save',
+  regression: true, // REFUTED report kept as a regression check for the two-save round-trip
+  mode: null,
+  settings: {
+    commands: [{
+      commandName: 'Summarize', menuText: '&1 - Summarize',
+      APIModels: 'deepseek/deepseek-v4-pro', pasteMode: 'chat',
+      userMessage: '{{selection}}', stream: true, isFIM: false,
+      showInputBox: false, tags: ['&Digest']
+    }]
+  },
+  async body({ cdp, dataDir }) {
+    await showChat();
+    await openSettings(cdp);
+    await openSection(cdp, 'commands');
+    await cdp.waitFor('document.querySelectorAll("#commandsListBody .cmd-item").length > 0', 10000, 250, 'command list');
+
+    const selectSummarize = async () => {
+      const found = await cdp.eval(`(() => {
+        const item = [...document.querySelectorAll('#commandsListBody .cmd-item')]
+          .find((el) => el.textContent.includes('Summarize'));
+        if (!item) return false;
+        item.click();
+        return true;
+      })()`);
+      if (!found) throw new Error('Digest Summarize command was not found');
+      await sleep(300);
+    };
+    const savedShowInputBox = async (expected) => {
+      const start = Date.now();
+      let latest = null;
+      for (;;) {
+        try {
+          const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+          const command = (saved.commands || []).find((c) => c.commandName === 'Summarize');
+          latest = command || null;
+          if (command && !!command.showInputBox === expected) return command;
+        } catch {}
+        if (Date.now() - start > 10000)
+          throw new Error('settings.json did not reach showInputBox=' + expected +
+            ' latest=' + JSON.stringify(latest) +
+            ' ui=' + await cdp.eval('document.getElementById("cmdShowInputBox") ? document.getElementById("cmdShowInputBox").classList.contains("on") : null') +
+            ' saveDisabled=' + await cdp.eval('document.querySelector(".nav-footer .btn-primary") ? document.querySelector(".nav-footer .btn-primary").disabled : null') +
+            ' posted=' + JSON.stringify((await cdp.postedMessages()).slice(-4)));
+        await sleep(250);
+      }
+    };
+
+    await selectSummarize();
+    const initial = await cdp.eval('document.getElementById("cmdShowInputBox").classList.contains("on")');
+    if (initial) throw new Error('setup: Summarize unexpectedly starts with Show Input Box enabled');
+
+    await cdp.click('#cmdShowInputBox');
+    await saveSettings(cdp, dataDir);
+    await savedShowInputBox(true);
+    const enabledUi = await cdp.eval('document.getElementById("cmdShowInputBox").classList.contains("on")');
+    if (!enabledUi) throw new Error('setup: first save did not leave Show Input Box enabled in the UI');
+
+    await cdp.click('#cmdShowInputBox');
+    await saveSettings(cdp, dataDir);
+    const saved = await savedShowInputBox(false);
+    const disabledUi = await cdp.eval('document.getElementById("cmdShowInputBox").classList.contains("on")');
+    const runtimeCommand = await cdp.eval(`(() => {
+      const c = (window.Cmds && window.Cmds.commands() || []).find((x) => x.commandName === 'Summarize');
+      return c ? !!c.showInputBox : null;
+    })()`);
+
+    // The reported bug would leave the second saved/runtime value true. Keep
+    // this as a regression check: false in all three observations is the
+    // expected behavior.
+    if (!!saved.showInputBox !== false || disabledUi !== false || runtimeCommand !== false)
+      throw new Error('Show Input Box remained enabled after the second save (saved=' + saved.showInputBox + ', ui=' + disabledUi + ', runtime=' + runtimeCommand + ')');
+    return 'REFUTED: two-save sequence correctly cleared Show Input Box (saved=' + saved.showInputBox + ', ui=' + disabledUi + ', runtime=' + runtimeCommand + ')';
+  }
+});
+
+scenarios.push({
   id: 234,
   name: 'COMMAND AUDIT (config plumbing): every default command survives _extractCommandParams -> request building with consistent values - chat-mode commands stream (bug #230 invariant), every APIModels resolves in the real models map, and each command builds a real JSON/FIM request carrying its model + provider-family thinking config',
   regression: true, // audit guard: the full default command set stays internally consistent
