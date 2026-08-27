@@ -70,6 +70,40 @@ describe('_providerIconFile', () => {
         const ctx = loadSettingsModule();
         assert.ok(ctx._providerIconFile('unknown/model').indexOf('openrouter.ico') >= 0);
     });
+
+    it('returns the packaged OpenRouter icon for OpenRouter models', () => {
+        const ctx = loadSettingsModule();
+        assert.ok(ctx._providerIconFile('openrouter/free').indexOf('openrouter.ico') >= 0);
+        assert.ok(fs.existsSync(path.resolve(__dirname, '..', '..', 'icons', 'openrouter.ico')),
+            'the packaged OpenRouter icon must exist');
+    });
+});
+
+describe('OpenRouter model selector priority', () => {
+    it('places the OpenRouter group before alphabetical provider groups', () => {
+        const ctx = loadSettingsModule();
+        const pane = {
+            innerHTML: '',
+            children: [],
+            appendChild(child) { this.children.push(child); }
+        };
+        ctx.document.getElementById = (id) => id === 'tab-models' ? pane : null;
+        ctx.window.modelList = {
+            google: [{ id: 'gemini', fullId: 'google/gemini' }],
+            openrouter: [{ id: 'free', fullId: 'openrouter/free' }],
+            deepseek: [{ id: 'deepseek-v4', fullId: 'deepseek/deepseek-v4' }]
+        };
+        ctx.escHtml = (value) => String(value || '');
+        ctx.window._currentSettings = { model: '', assistantName: '' };
+        ctx._populateModelsTab();
+        assert.strictEqual(pane.children[0].textContent, 'Openrouter');
+        assert.ok(pane.children[1].innerHTML.indexOf('>free<') >= 0,
+            'openrouter/free must be the first model shown');
+        assert.ok(pane.children[1].innerHTML.indexOf('openrouter.ico') >= 0,
+            'the first model must use the OpenRouter icon');
+        assert.ok(pane.children[1].innerHTML.indexOf('background:#7c3aed') >= 0,
+            'the OpenRouter icon must have a visible purple backdrop');
+    });
 });
 
 describe('_updateModelCard', () => {

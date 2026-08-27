@@ -50,6 +50,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 
     Run(cURLCommand, , "Hide", &cURLPID)
     cURLState("set", cURLPID)
+    debugLog("cURL started provider=" providerInfo.providerKey " model=" providerInfo.modelName " endpoint=" providerInfo.endpoint " pid=" cURLPID, "StreamHandler")
 
     sanitizedModel := ModelParser.Sanitize(requestParams["singleAPIModelName"])
 

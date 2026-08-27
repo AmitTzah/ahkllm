@@ -127,6 +127,17 @@ describe('SettingsModels.parsePricingRaw', () => {
   });
 });
 
+describe('OpenRouter synthetic model metadata', () => {
+  it('keeps openrouter/free vision-capable in the generator and generated defaults', () => {
+    const generator = fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'Refresh-Models.ps1'), 'utf8');
+    const generated = fs.readFileSync(path.resolve(__dirname, '..', '..', 'default-settings', 'DefaultModels.ahk'), 'utf8');
+    assert.match(generator, /openrouter\/free[\s\S]*?vision: true/,
+      'Refresh-Models.ps1 must emit the synthetic router with vision:true');
+    assert.match(generated, /"openrouter\/free", \{[\s\S]*?reasoning: false, vision: true/,
+      'DefaultModels.ahk must retain vision:true for openrouter/free');
+  });
+});
+
 describe('SettingsModels.filterAvailableModels', () => {
   it('returns all models for an empty or whitespace query', () => {
     const { SM } = loadModule();

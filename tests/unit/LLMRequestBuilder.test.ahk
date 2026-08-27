@@ -249,6 +249,8 @@ class LLMRequestBuilderTest {
             throw Error("Expected cURL.exe in FIM command")
         if !InStr(cmd, "fim-req.json")
             throw Error("Expected FIM request file in command")
+        if !InStr(cmd, "https://api.deepseek.com/beta/completions")
+            throw Error("DeepSeek FIM must use its explicit beta completions endpoint")
     }
 
     ; Regression (bug #112): CurlBuilder must not build a URL-less cURL
@@ -261,6 +263,9 @@ class LLMRequestBuilderTest {
             throw Error("BuildStream should return empty for an empty endpoint")
         if CurlBuilder.BuildFIM(pi, "req.json", "out.json") != ""
             throw Error("BuildFIM should return empty when both endpoints are empty")
+        piNoFim := { providerKey: "openrouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", fimEndpoint: "", apiKey: "sk-test" }
+        if CurlBuilder.BuildFIM(piNoFim, "req.json", "out.json") != ""
+            throw Error("BuildFIM must reject providers without an explicit FIM endpoint")
         pi2 := { providerKey: "test", endpoint: "https://api.test/v1", fimEndpoint: "https://api.test/fim", apiKey: "sk-test" }
         cmd := CurlBuilder.BuildFIM(pi2, "req.json", "out.json")
         if !InStr(cmd, "https://api.test/fim")
@@ -431,6 +436,55 @@ class LLMRequestBuilderTest {
             throw Error("Expected providerKey 'deepseek', got '" info.providerKey "'")
         if info.modelName != "deepseek-v4-flash"
             throw Error("Expected modelName 'deepseek-v4-flash', got '" info.modelName "'")
+    }
+
+    ResolveProvider_OpenRouterFree() {
+        EnvSet("OPENROUTER_API_KEY", "sk-openrouter-test")
+        try {
+            info := ProviderResolver.Resolve("openrouter/free")
+            if info.providerKey != "openrouter"
+                throw Error("Expected providerKey 'openrouter', got '" info.providerKey "'")
+            if info.modelName != "openrouter/free"
+                throw Error("Expected API modelName 'openrouter/free', got '" info.modelName "'")
+            if info.endpoint != "https://openrouter.ai/api/v1/chat/completions"
+                throw Error("Unexpected OpenRouter endpoint: " info.endpoint)
+            if info.apiKey != "sk-openrouter-test"
+                throw Error("OpenRouter API key was not read from OPENROUTER_API_KEY")
+            if info.fimEndpoint != ""
+                throw Error("OpenRouter Free must not advertise an FIM endpoint")
+        } finally {
+            EnvSet("OPENROUTER_API_KEY", "")
+        }
+    }
+
+    ProviderResolver_AuthDiagnostic_IsRedacted() {
+        p := { displayName: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", authEnvVar: "OPENROUTER_API_KEY", authMode: "env", apiKey: "" }
+        secretSentinel := "diagnostic-secret-value"
+        msg := ProviderResolver._AuthDiagnostic("openrouter", "openrouter/free", p, secretSentinel)
+        if InStr(msg, secretSentinel)
+            throw Error("Provider auth diagnostics must not contain the API key")
+        if !InStr(msg, "provider=openrouter") || !InStr(msg, "model=openrouter/free")
+            throw Error("Provider auth diagnostics must identify the resolved OpenRouter model")
+        if !InStr(msg, "authSource=env") || !InStr(msg, "keyPresent=true") || !InStr(msg, "keyLength=" StrLen(secretSentinel))
+            throw Error("Provider auth diagnostics must report redacted env-key state: " msg)
+    }
+
+    OpenRouterFree_NormalRequest_UsesChatPath() {
+        EnvSet("OPENROUTER_API_KEY", "sk-openrouter-test")
+        try {
+            request := LLMRequestBuilder.createJSONRequest("openrouter/free", "You are helpful", "Hello", "", "", "", false, "")
+            parsed := jsongo.Parse(request)
+            if parsed["model"] != "openrouter/free"
+                throw Error("OpenRouter request should send model 'openrouter/free'")
+            if !parsed.Has("messages") || parsed.Has("prompt") || parsed.Has("suffix")
+                throw Error("OpenRouter normal request must use chat message format")
+            info := ProviderResolver.Resolve("openrouter/free")
+            cmd := CurlBuilder.Build(info, "req.json", "out.json")
+            if !InStr(cmd, "https://openrouter.ai/api/v1/chat/completions")
+                throw Error("OpenRouter normal request must use the chat-completions cURL path")
+        } finally {
+            EnvSet("OPENROUTER_API_KEY", "")
+        }
     }
 
     ResolveProvider_UnknownModel_FallsBackToDeepSeek() {

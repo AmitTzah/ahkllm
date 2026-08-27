@@ -84,10 +84,35 @@ class InlineRequestRunnerTest {
             throw Error("Run must surface failed inline requests via _HandleInlineError")
     }
 
+    FIMWithoutEndpoint_IsRejectedBeforeCurl() {
+        srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
+        src := FileRead(srcPath)
+        runBlock := SubStr(src, InStr(src, "static Run(commandName"), 1200)
+        if !InStr(runBlock, "isFIM && !providerInfo.fimEndpoint")
+            throw Error("FIM commands must be rejected when the provider has no explicit FIM endpoint")
+        if !InStr(src, "_HandleUnsupportedFIM(")
+            throw Error("Unsupported FIM must have a user-facing error path")
+        if !InStr(src, "normal chat endpoint is not a safe fallback")
+            throw Error("Unsupported FIM guard must document the no-chat-fallback rule")
+    }
+
+    FIMWithoutEndpoint_ShowsUsefulError() {
+        global _mockToolTipCalls
+        _mockToolTipCalls := []
+        InlineRequestRunner.Run("FIM Fill", "openrouter/free", "openrouter", "free", {}, true, "", "replace", "", "", "", false, "")
+        found := false
+        for _, msg in _mockToolTipCalls {
+            if InStr(msg, "FIM is not supported by OpenRouter") && InStr(msg, "free")
+                found := true
+        }
+        if !found
+            throw Error("Unsupported FIM should show a specific OpenRouter capability error")
+    }
+
     Run_UsesUniqueId() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         src := FileRead(srcPath)
-        runBlock := SubStr(src, InStr(src, "static Run(commandName"), 700)
+        runBlock := SubStr(src, InStr(src, "static Run(commandName"), 1000)
         if !InStr(runBlock, "ChatDB._UUID()")
             throw Error("Run must use a unique per-request id - A_TickCount collides for commands started in the same millisecond")
     }

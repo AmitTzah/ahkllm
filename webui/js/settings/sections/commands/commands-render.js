@@ -33,7 +33,11 @@
   // so it stays visible and isn't silently dropped on save.
   function _modelOptionsHtml(current) {
     var models = C.models();
-    var keys = models ? Object.keys(models).sort() : [];
+    var keys = models ? Object.keys(models).sort(function(a, b) {
+      if (a === 'openrouter/free') return b === 'openrouter/free' ? 0 : -1;
+      if (b === 'openrouter/free') return 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    }) : [];
     // "Default" is selected whenever the command has no explicit model.
     var html = '<option value=""' + (current ? '' : ' selected') + '>Default</option>';
     var all = keys.slice();

@@ -71,7 +71,15 @@ function _providerIconFile(model) {
   if (m.indexOf('claude') >= 0 || m.indexOf('anthropic') >= 0) return '../icons/anthropic.ico';
   if (m.indexOf('gemini') >= 0 || m.indexOf('gemma') >= 0 || m.indexOf('google') >= 0) return '../icons/google.ico';
   if (m.indexOf('perplexity') >= 0) return '../icons/perplexity.ico';
+  if (m.indexOf('openrouter') >= 0) return '../icons/openrouter.ico';
   return '../icons/openrouter.ico';
+}
+
+function _providerIconImgStyle(model) {
+  var m = model ? model.toLowerCase() : '';
+  if (m.indexOf('openrouter') >= 0)
+    return 'width:22px;height:22px;background:#7c3aed;border-radius:50%;padding:2px;mix-blend-mode:normal;';
+  return 'width:22px;height:22px;mix-blend-mode:multiply;';
 }
 
 function populateAssistantDropdown(assistants) {
@@ -141,7 +149,7 @@ function _populateAssistantsTab() {
     }
     var iconSrc = _providerIconFile(asst.baseModel);
     item.innerHTML =
-      '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="width:22px;height:22px;mix-blend-mode:multiply;" alt=""></div>' +
+      '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="' + _providerIconImgStyle(asst.baseModel) + '" alt=""></div>' +
       '<div class="si-text">' +
         '<div class="si-name">' + escHtml(asst.name || '') + '</div>' +
         '<div class="si-desc">' + escHtml(asst.description || '') + (asst.baseModel ? ' · ' + escHtml(asst.baseModel) : '') + '</div>' +
@@ -191,7 +199,11 @@ function _populateModelsTab() {
   var pane = document.getElementById('tab-models');
   if (!pane || !window.modelList) return;
   pane.innerHTML = '';
-  var providerKeys = Object.keys(window.modelList).sort();
+  var providerKeys = Object.keys(window.modelList).sort(function(a, b) {
+    if (a === 'openrouter') return b === 'openrouter' ? 0 : -1;
+    if (b === 'openrouter') return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
   for (var p = 0; p < providerKeys.length; p++) {
     var provider = providerKeys[p];
     var models = window.modelList[provider];
@@ -212,7 +224,7 @@ function _populateModelsTab() {
       }
       var iconSrc = _providerIconFile(model.fullId);
       mItem.innerHTML =
-        '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="width:22px;height:22px;mix-blend-mode:multiply;" alt=""></div>' +
+        '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="' + _providerIconImgStyle(model.fullId) + '" alt=""></div>' +
         '<div class="si-text">' +
           '<div class="si-name">' + escHtml(model.id || '') + '</div>' +
           '<div class="si-desc">' + escHtml(provider) + '</div>' +

@@ -42,6 +42,13 @@ global models := Map(
         thinkingOff: "none",
         input: 0.25, cachedInput: 0.025, output: 2.0, context: 400000, reasoning: true, vision: true
     },
+    "openrouter/free", {
+        provider: "openrouter", api: "openai-completions",
+        compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", false, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
+        thinkingLevelMap: Map(),
+        thinkingOff: "",
+        input: 0, cachedInput: 0, output: 0, context: 0, reasoning: false, vision: true
+    },
     "google/gemini-2.5-flash", {
         provider: "google", api: "openai-completions",
         compat: Map("thinkingFormat", "google", "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
@@ -68,6 +75,7 @@ global models := Map(
 global providers := Map(
     "deepseek", { displayName: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", authEnvVar: "DEEPSEEK_API_KEY", fimEndpoint: "https://api.deepseek.com/beta/completions", icon: "" },
     "openai",   { displayName: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", authEnvVar: "OPENAI_API_KEY", fimEndpoint: "", icon: "" },
+    "openrouter", { displayName: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", authEnvVar: "OPENROUTER_API_KEY", fimEndpoint: "", icon: "" },
     "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GOOGLE_API_KEY", fimEndpoint: "", icon: "" }
 )
 
@@ -79,7 +87,8 @@ global newChatStartsWith := ""
 
 global providerMap := Map(
     "deepseek", "deepseek",
-    "gpt",      "openai"
+    "gpt",      "openai",
+    "openrouter", "openrouter"
 )
 
 global trayMenuItems := []

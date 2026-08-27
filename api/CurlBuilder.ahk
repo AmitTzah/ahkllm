@@ -22,6 +22,7 @@ class CurlBuilder {
         ; "No endpoint configured" error instead of raw cURL stderr.
         if !providerInfo.endpoint
             return ""
+        CurlBuilder._LogBuild("chat", providerInfo, providerInfo.endpoint, requestFile, outputFile)
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . providerInfo.endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
@@ -40,6 +41,7 @@ class CurlBuilder {
         ; a stalled upstream that accepts the connection and then sends
         ; nothing would otherwise hang the chat UI forever (the non-streaming
         ; Build already had one).
+        CurlBuilder._LogBuild("stream", providerInfo, providerInfo.endpoint, requestFile, outputFile)
         return 'cURL.exe -s --no-buffer --connect-timeout 30 --max-time 120 -X POST '
             . providerInfo.endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
@@ -49,21 +51,35 @@ class CurlBuilder {
             . '2>"' errorFile '"'
     }
 
-    ; Build the FIM cURL command (uses FIM endpoint, falls back to chat endpoint).
+    ; Build the FIM cURL command. FIM payloads are completion-style and must
+    ; never be sent to a provider's normal chat endpoint.
     static BuildFIM(providerInfo, requestFile, outputFile) {
         endpoint := providerInfo.fimEndpoint
+        ; An empty FIM endpoint means this provider does not support AhkLLM's
+        ; FIM workflow. Callers surface that capability failure to the user.
         if !endpoint {
-            endpoint := providerInfo.endpoint
-        }
-        ; Bug #112: same empty-endpoint guard as Build.
-        if !endpoint
+            debugLog("FIM rejected provider=" providerInfo.providerKey " model=" (providerInfo.HasOwnProp("modelName") ? providerInfo.modelName : "") " reason=no-explicit-fim-endpoint normalEndpoint=" providerInfo.endpoint, "CurlBuilder")
             return ""
+        }
+        CurlBuilder._LogBuild("fim", providerInfo, endpoint, requestFile, outputFile)
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '
             . '-d @"' requestFile '" '
             . '-o "' outputFile '"'
+    }
+
+    ; Log transport selection without exposing the bearer token or command.
+    static _LogBuild(mode, providerInfo, endpoint, requestFile, outputFile) {
+        safeAuthLength := StrLen(CurlBuilder._SafeApiKey(providerInfo.apiKey))
+        debugLog("mode=" mode " provider=" (providerInfo.HasOwnProp("providerKey") ? providerInfo.providerKey : "")
+            . " model=" (providerInfo.HasOwnProp("modelName") ? providerInfo.modelName : "")
+            . " endpoint=" endpoint
+            . " authPresent=" (providerInfo.apiKey != "" ? "true" : "false")
+            . " authLength=" StrLen(providerInfo.apiKey)
+            . " safeAuthLength=" safeAuthLength
+            . " requestFile=" requestFile " outputFile=" outputFile, "CurlBuilder")
     }
 
     ; Bug #89 (security): the API key is embedded in a "..."-quoted header on

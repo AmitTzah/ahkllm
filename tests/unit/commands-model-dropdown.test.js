@@ -152,7 +152,8 @@ describe('commands API Model dropdown', () => {
     const models = {
       'deepseek/deepseek-v4-flash': { provider: 'deepseek' },
       'openai/gpt-4o': { provider: 'openai' },
-      'google/gemini-2.5-flash': { provider: 'google' }
+      'google/gemini-2.5-flash': { provider: 'google' },
+      'openrouter/free': { provider: 'openrouter' }
     };
     C.load({ commands: [{ commandName: 'A', menuText: 'A', APIModels: 'openai/gpt-4o' }], models: models, ui: {} });
 
@@ -167,6 +168,7 @@ describe('commands API Model dropdown', () => {
     assert.strictEqual(values[0], '', 'first option must be the empty Default entry');
     assert.ok(values.indexOf('deepseek/deepseek-v4-flash') >= 0, 'deepseek model must be listed');
     assert.ok(values.indexOf('openai/gpt-4o') >= 0, 'openai model must be listed');
+    assert.strictEqual(values[1], 'openrouter/free', 'openrouter/free must be the first explicit model option');
     assert.ok(values.indexOf('google/gemini-2.5-flash') >= 0, 'google model must be listed');
     // Sorted order: deepseek < google < openai
     assert.ok(values.indexOf('deepseek/deepseek-v4-flash') < values.indexOf('google/gemini-2.5-flash'), 'models must be sorted');

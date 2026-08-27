@@ -142,12 +142,25 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
 
     foreach ($p in $targetProviders) {
         $pd = $response.$p
-        if ($null -eq $pd -or $null -eq $pd.models) { Write-Color "  $p : NOT FOUND" "Yellow"; continue }
+        # openrouter/free is a router pseudo-model, not a stable models.dev
+        # catalog entry. It is emitted below whenever OpenRouter is a built-in
+        # provider so a metadata refresh cannot remove the free router option.
+        $modelNames = @()
+        if ($p -eq "openrouter") {
+            # Do not import the provider's large, fast-changing model catalog:
+            # this built-in option is specifically the stable free router.
+            Write-Color "  $p : adding built-in router" "Yellow"
+        } elseif ($null -eq $pd -or $null -eq $pd.models) {
+            Write-Color "  $p : NOT FOUND" "Yellow"
+            continue
+        } else {
+            $modelNames = $pd.models.PSObject.Properties.Name
+        }
         $count = 0
-        $dn = if ($p -eq "google") { "Google Gemini" } elseif ($p -eq "openai") { "OpenAI" } elseif ($p -eq "deepseek") { "DeepSeek" } else { $p }
+        $dn = if ($p -eq "google") { "Google Gemini" } elseif ($p -eq "openai") { "OpenAI" } elseif ($p -eq "deepseek") { "DeepSeek" } elseif ($p -eq "openrouter") { "OpenRouter" } else { $p }
         $lines.Add("    ; -- $dn --")
 
-        foreach ($mid in ($pd.models.PSObject.Properties.Name | Sort-Object)) {
+        foreach ($mid in ($modelNames | Sort-Object)) {
             $m = $pd.models.$mid
             if ($m.tool_call -ne $true) { continue }
 
@@ -198,6 +211,18 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
             $lines.Add('        thinkingLevelMap: ' + $tlm + ',')
             $lines.Add('        thinkingOff: "' + $to + '",')
             $lines.Add('        input: ' + $ic + ', cachedInput: ' + $cr + ', output: ' + $oc + ', context: ' + $cw + ', reasoning: ' + $hr + ', vision: ' + $hv)
+            $lines.Add('    },')
+            $count++; $totalModels++
+        }
+        if ($p -eq "openrouter") {
+            $lines.Add('    ; Built-in router pseudo-model; retained by Refresh-Models.ps1 because it')
+            $lines.Add('    ; is not a stable models.dev catalog model. OpenRouter Free is non-FIM.')
+            $lines.Add('    "openrouter/free", {')
+            $lines.Add('        provider: "openrouter", api: "openai-completions",')
+            $lines.Add('        compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", false, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),')
+            $lines.Add('        thinkingLevelMap: Map(),')
+            $lines.Add('        thinkingOff: "",')
+            $lines.Add('        input: 0, cachedInput: 0, output: 0, context: 0, reasoning: false, vision: true')
             $lines.Add('    },')
             $count++; $totalModels++
         }

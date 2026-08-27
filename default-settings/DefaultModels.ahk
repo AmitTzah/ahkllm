@@ -301,6 +301,16 @@ models := Map(    ; -- DeepSeek --
         thinkingOff: "low",
         input: 1.1, cachedInput: 0.275, output: 4.4, context: 200000, reasoning: true, vision: true
     },
+    ; -- OpenRouter --
+    ; Built-in router pseudo-model; retained by Refresh-Models.ps1 because it
+    ; is not a stable models.dev catalog model. OpenRouter Free is non-FIM.
+    "openrouter/free", {
+        provider: "openrouter", api: "openai-completions",
+        compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", false, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),
+        thinkingLevelMap: Map(),
+        thinkingOff: "",
+        input: 0, cachedInput: 0, output: 0, context: 0, reasoning: false, vision: true
+    },
     ; -- Google Gemini --
     "google/deep-research-max-preview-04-2026", {
         provider: "google", api: "openai-completions",

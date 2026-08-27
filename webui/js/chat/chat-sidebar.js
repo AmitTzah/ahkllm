@@ -56,6 +56,7 @@ function formatRelativeDate(dateStr) {
 // Provider-specific colored badge for chat items
 function _providerIconHtml(model) {
   var iconFile = '../icons/openrouter.ico';
+  var iconStyle = 'width:20px;height:20px;flex-shrink:0;mix-blend-mode:multiply;';
   if (model) {
     var m = model.toLowerCase();
     if (m.indexOf('deepseek') >= 0) iconFile = '../icons/deepseek.ico';
@@ -63,8 +64,12 @@ function _providerIconHtml(model) {
     else if (m.indexOf('claude') >= 0 || m.indexOf('anthropic') >= 0) iconFile = '../icons/anthropic.ico';
     else if (m.indexOf('gemini') >= 0 || m.indexOf('gemma') >= 0 || m.indexOf('google') >= 0) iconFile = '../icons/google.ico';
     else if (m.indexOf('perplexity') >= 0) iconFile = '../icons/perplexity.ico';
+    else if (m.indexOf('openrouter') >= 0) {
+      iconFile = '../icons/openrouter.ico';
+      iconStyle = 'width:20px;height:20px;flex-shrink:0;background:#7c3aed;border-radius:50%;padding:2px;mix-blend-mode:normal;';
+    }
   }
-  return '<img src="' + iconFile + '" style="width:20px;height:20px;flex-shrink:0;mix-blend-mode:multiply;" alt="">';
+  return '<img src="' + iconFile + '" style="' + iconStyle + '" alt="">';
 }
 
 // -----------------------------------------------------------

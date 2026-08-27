@@ -17,6 +17,10 @@ global IUIAutomationActivateScreenReader := false  ; Prevent UIA from setting SP
 #Include UIA.ahk                      ; UI Automation library (Descolada) — programmatic access to UI controls
 DetectHiddenWindows true            ; Enables detection of hidden windows for inter-process communication
 
+; The API transport modules emit redacted diagnostics. Load the logger before
+; them so they can call it directly without an include-order warning.
+#Include ..\shared\DebugLog.ahk
+
 ; Shared utilities
 #Include ..\shared\SharedLib.ahk
 

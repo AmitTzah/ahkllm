@@ -9,6 +9,12 @@
 class InlineRequestRunner {
 
     static Run(commandName, fullAPIModelName, providerName, singleAPIModelName, captured, isFIM, systemMessage, pasteMode, temperature, maxTokens, stop, stream, thinking, thinkingLevel := "") {
+        providerInfo := ProviderResolver.Resolve(fullAPIModelName)
+        if isFIM && !providerInfo.fimEndpoint {
+            InlineRequestRunner._HandleUnsupportedFIM(commandName, providerName, singleAPIModelName, providerInfo)
+            return
+        }
+
         ; Bug (inline collision): A_TickCount repeats when two commands start in
         ; the same millisecond (or wrap after ~49 days), which made concurrent
         ; commands share temp-file names and the getActiveModels() entry - a
@@ -225,6 +231,19 @@ class InlineRequestRunner {
             status: "error",
             responseTimeMs: result.responseTimeMs
         })
+    }
+
+    ; FIM is a separate completion-style API workflow. Providers without an
+    ; explicit FIM endpoint must fail before a request file or cURL process is
+    ; created; their normal chat endpoint is not a safe fallback.
+    static _HandleUnsupportedFIM(commandName, providerName, singleAPIModelName, providerInfo) {
+        displayName := providerName
+        global providers
+        if providers.Has(providerInfo.providerKey) && providers[providerInfo.providerKey].HasOwnProp("displayName")
+            displayName := providers[providerInfo.providerKey].displayName
+        message := "FIM is not supported by " displayName " for model '" singleAPIModelName "'. Select a provider with an explicit FIM endpoint (DeepSeek supports FIM)."
+        ToolTip("Command '" commandName "' failed: " message, , , 19)
+        SetTimer(() => ToolTip(, , , 19), -5000)
     }
 
     ; ----------------------------------------------------

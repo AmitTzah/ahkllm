@@ -40,6 +40,7 @@ class ChatRequestBuilderTest {
         EnvSet("DEEPSEEK_API_KEY", "sk-test-deepseek-key")
         EnvSet("OPENAI_API_KEY", "sk-test-openai-key")
         EnvSet("GOOGLE_API_KEY", "sk-test-gemini-key")
+        EnvSet("OPENROUTER_API_KEY", "sk-test-openrouter-key")
 
         this._setupDb()
 
@@ -94,6 +95,77 @@ class ChatRequestBuilderTest {
             try FileDelete(requestParams["cURLErrorFile"])
 
         return result
+    }
+
+    OpenRouterFree_ChatRequestKeepsRouterModelId() {
+        payload := this._buildRequest("openrouter/free")
+        parsed := jsongo.Parse(payload)
+        if parsed["model"] != "openrouter/free"
+            throw Error("OpenRouter chat request should send model 'openrouter/free', got '" parsed["model"] "'")
+        if !parsed.Has("messages") || parsed.Has("prompt") || parsed.Has("suffix")
+            throw Error("OpenRouter chat request must use normal chat message format")
+    }
+
+    OpenRouterFree_ImageAttachment_PassesVisionGate() {
+        global activeThreadId, requestParams
+
+        this._setupDb()
+        oldDataDir := AppInfo.DataDir
+        testDataDir := A_Temp "\llm_openrouter_vision_test_" A_TickCount
+        AppInfo.DataDir := testDataDir
+        DirCreate(testDataDir "\attachments")
+        imgPath := testDataDir "\attachments\img.png"
+        FileAppend("fake-png-bytes", imgPath)
+
+        try {
+            ChatDB.Thread_Create("OpenRouter Vision")
+            threads := ChatDB.Thread_List()
+            activeThreadId := threads[threads.Length].id
+            userId := ChatDB.Msg_Insert({
+                thread_id: activeThreadId, role: "user", content: "Describe this image",
+                parent_id: "", sibling_group: "", sibling_index: 0
+            })
+            ChatDB.Attachment_Insert(userId, {
+                attachment_type: "image", file_path: "attachments\img.png",
+                mime_type: "image/png", original_filename: "img.png",
+                file_size: 14, extracted_text: ""
+            })
+            requestParams := Map(
+                "singleAPIModelName", "openrouter/free",
+                "stream", true,
+                "pasteMode", "chat",
+                "windowTitle", "test",
+                "providerName", "",
+                "uniqueID", A_TickCount
+            )
+
+            result := buildRequest()
+            if !result
+                throw Error("openrouter/free image request was rejected by the vision gate")
+            parsed := jsongo.Parse(result)
+            content := parsed["messages"][1]["content"]
+            if Type(content) != "Array"
+                throw Error("openrouter/free image request did not produce multipart chat content")
+            hasImage := false
+            for part in content {
+                if part.Has("type") && part["type"] = "image_url" && InStr(part["image_url"]["url"], "data:image/png;base64,")
+                    hasImage := true
+            }
+            if !hasImage
+                throw Error("openrouter/free chat request did not include the image attachment")
+        } finally {
+            AppInfo.DataDir := oldDataDir
+            if requestParams.Has("chatHistoryJSONRequestFile")
+                try FileDelete(requestParams["chatHistoryJSONRequestFile"])
+            if requestParams.Has("cURLCommandFile")
+                try FileDelete(requestParams["cURLCommandFile"])
+            if requestParams.Has("cURLOutputFile")
+                try FileDelete(requestParams["cURLOutputFile"])
+            if requestParams.Has("cURLErrorFile")
+                try FileDelete(requestParams["cURLErrorFile"])
+            try DirDelete(testDataDir, true)
+            this._teardownDb()
+        }
     }
 
     ; Regression (bug #303): two requests created synchronously under the same

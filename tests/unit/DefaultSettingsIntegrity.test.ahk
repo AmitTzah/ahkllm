@@ -62,6 +62,27 @@ class DefaultSettingsIntegrityTest {
         }
     }
 
+    OpenRouterFree_IsBuiltInDefault() {
+        settingsPath := A_ScriptDir "\..\default-settings\DefaultSettings.ahk"
+        modelsPath := A_ScriptDir "\..\default-settings\DefaultModels.ahk"
+        settings := FileRead(settingsPath)
+        models := FileRead(modelsPath)
+        if !InStr(settings, '"openrouter", {')
+            throw Error("DefaultSettings must define the built-in OpenRouter provider")
+        if !InStr(settings, 'endpoint: "https://openrouter.ai/api/v1/chat/completions"')
+            throw Error("DefaultSettings must use OpenRouter chat completions")
+        if !InStr(settings, 'authEnvVar: "OPENROUTER_API_KEY"')
+            throw Error("DefaultSettings must use OPENROUTER_API_KEY")
+        if !InStr(models, '"openrouter/free", {')
+            throw Error("DefaultModels must contain the built-in openrouter/free model")
+        modelStart := InStr(models, '"openrouter/free", {')
+        modelEntry := SubStr(models, modelStart, 600)
+        if !InStr(modelEntry, 'provider: "openrouter"')
+            throw Error("openrouter/free metadata must resolve to OpenRouter")
+        if !InStr(modelEntry, "reasoning: false, vision: true")
+            throw Error("openrouter/free metadata must advertise vision support without enabling reasoning")
+    }
+
     ; --------------------------------------------------------
     ; Verify each model has required metadata fields.
     ; --------------------------------------------------------

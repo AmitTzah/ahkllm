@@ -42,6 +42,14 @@ providers := Map(
         icon: "icons/openai.ico",
         collapseThinking: true
     },
+    "openrouter", {
+        displayName: "OpenRouter",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        fimEndpoint: "",
+        authEnvVar: "OPENROUTER_API_KEY",
+        icon: "icons/openrouter.ico",
+        collapseThinking: false
+    },
     "google", {
         displayName: "Google Gemini",
         endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
@@ -80,6 +88,7 @@ providerMap := Map(
     "gpt",      "openai",
     "o1",       "openai",
     "o3",       "openai",
+    "openrouter", "openrouter",
     "claude",   "anthropic",
     "gemini",   "google",
     "gemma",    "google"

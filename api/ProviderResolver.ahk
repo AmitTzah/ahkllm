@@ -13,13 +13,33 @@ class ProviderResolver {
     }
 
     static _buildResult(providerKey, modelName, p) {
+        ; OpenRouter's built-in free router is itself addressed by the full
+        ; model id "openrouter/free". Other built-in providers receive the
+        ; provider-stripped model name (for example "deepseek-v4-flash").
+        apiModelName := providerKey = "openrouter" ? providerKey "/" modelName : modelName
+        resolvedKey := ProviderResolver._getApiKey(p)
+        debugLog(ProviderResolver._AuthDiagnostic(providerKey, apiModelName, p, resolvedKey), "ProviderResolver")
         return {
             providerKey: providerKey,
-            modelName: modelName,
-            apiKey: ProviderResolver._getApiKey(p),
+            modelName: apiModelName,
+            apiKey: resolvedKey,
             endpoint: p.endpoint,
-            fimEndpoint: p.fimEndpoint
+            fimEndpoint: p.HasOwnProp("fimEndpoint") ? p.fimEndpoint : ""
         }
+    }
+
+    ; Redacted provider-auth diagnostics. Never include the credential itself
+    ; or the cURL command line: both may contain sensitive bearer tokens.
+    static _AuthDiagnostic(providerKey, apiModelName, p, resolvedKey) {
+        authMode := p.HasOwnProp("authMode") ? p.authMode : "env"
+        envVar := p.HasOwnProp("authEnvVar") ? p.authEnvVar : ""
+        directConfigured := authMode = "direct" && p.HasOwnProp("apiKey") && p.apiKey != ""
+        source := !resolvedKey ? "none" : (directConfigured ? "direct" : "env")
+        return "provider=" providerKey " model=" apiModelName
+            . " endpoint=" (p.HasOwnProp("endpoint") ? p.endpoint : "")
+            . " authSource=" source " authEnvVar=" envVar
+            . " keyPresent=" (resolvedKey != "" ? "true" : "false")
+            . " keyLength=" StrLen(resolvedKey)
     }
 
     ; Given a model string like "deepseek/deepseek-v4-pro" or "deepseek-v4-pro",

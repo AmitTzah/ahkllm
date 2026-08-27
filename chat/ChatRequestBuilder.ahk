@@ -234,8 +234,10 @@ _BuildRequestObj(apiMessages, providerInfo) {
     ; Apply system message override
     _ApplySystemOverride(apiMessages)
 
-    ; Strip provider prefix from model name for API call
-    apiModelName := ModelParser.StripProvider(requestParams["singleAPIModelName"])
+    ; ProviderResolver returns the API model name. Most providers use the
+    ; provider-stripped id, while OpenRouter's router id must remain
+    ; "openrouter/free" for the API call.
+    apiModelName := providerInfo.modelName
     requestObj := { model: apiModelName, messages: apiMessages }
 
     ; Look up model metadata for thinking/compat

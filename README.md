@@ -54,7 +54,7 @@ The biggest one is branching. Editing or retrying an earlier message creates ano
 Other chat features currently include:
 
 - Streaming responses with Markdown, syntax highlighting, math rendering, quote, copy, edit, retry, and export.
-- DeepSeek, OpenAI, Gemini, and user-added OpenAI-compatible providers.
+- DeepSeek, OpenAI, Gemini, OpenRouter, and user-added OpenAI-compatible providers.
 - Per-chat model, reasoning, and temperature settings.
 - Configurable assistants with their own system prompts.
 - Images, PDFs, scanned PDFs, DOCX, PPTX, XLSX, EPUB, text files, and a fairly long list of code formats as attachments.
@@ -81,7 +81,7 @@ Until then, run AhkLLM from the repository:
 1. Install [AutoHotkey v2.0.18 or later](https://www.autohotkey.com/download/ahk-v2.exe).
 2. Make sure the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) is installed. Windows 11 normally already has it.
 3. Clone or download this repository.
-4. Set the API key for whichever provider you want to use, or enter it later in Settings.
+4. Set the API key for whichever provider you want to use, or enter it later in Settings. If you just want to try AhkLLM without paying for API usage, see [Try AhkLLM for free](#try-ahkllm-for-free).
 5. Run `Main.ahk`.
 
 For example, to store a DeepSeek key in your Windows environment:
@@ -98,10 +98,28 @@ Supported environment-variable names are:
 DEEPSEEK_API_KEY
 OPENAI_API_KEY
 GOOGLE_API_KEY
+OPENROUTER_API_KEY
 TAVILY_API_KEY
 ```
 
 This installation section will stay after the release is published. The only difference is that the normal path will become: download `AhkLLM.zip`, extract it somewhere, set up your API key, and run `Main.ahk`. Cloning the repository will remain here as the from-source option.
+
+## Try AhkLLM for free
+
+If you just want to try AhkLLM without paying for API usage, you can use OpenRouter's free model router. Create a free OpenRouter API key and set it as `OPENROUTER_API_KEY`, either through a Windows environment variable or from AhkLLM's provider settings.
+
+For normal chat, open the model picker and choose `openrouter/free`.
+
+For commands such as **Refine**, **Summarize**, **Translate**, or **Explain**:
+
+1. Open **Settings -> Commands**.
+2. Choose the command you want to change.
+3. Set its model to `openrouter/free`.
+4. Save the settings.
+
+OpenRouter chooses from its currently available free models automatically, so the exact model can vary between requests. The free tier also has rate limits.
+
+**FIM Fill** and **FIM Continue** are the exception. They use a separate FIM completions endpoint, so `openrouter/free` cannot be used for those commands. AhkLLM uses DeepSeek's FIM endpoint for them by default.
 
 ## Basic controls
 
