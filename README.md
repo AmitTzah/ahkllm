@@ -1,101 +1,168 @@
 <h1 align="center">AhkLLM</h1>
 
+<p align="center"><b>LLM hotkeys and a full chat app for Windows.</b></p>
+
 <p align="center">
-  <a href="#requirements"><img src="https://img.shields.io/badge/Windows-10%2B-0078D6" alt="Windows"></a>
-  <a href="https://www.autohotkey.com/"><img src="https://img.shields.io/badge/AutoHotkey-v2.0.18%2B-5e81ac" alt="AutoHotkey"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/Install-AhkLLM-blue?style=for-the-badge" alt="Install AhkLLM"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License: GPL-3.0"></a>
 </p>
 
-<p align="center"><b>The AI assistant that's one keystroke away on Windows.</b></p>
+AhkLLM started as a fork of [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant), which had a simple idea I really liked: select some text, hit a hotkey, send it to an LLM, and put the result back where it came from.
 
-Select text in any app, press `` ` ``, and pick from a menu of commands. Explain a diff, translate a paragraph, rewrite an email, or keep typing and let AhkLLM pick up where you left off. You can also just open the chat window and talk. You never leave the app you're in.
+I ended up taking that idea quite a bit further.
 
-AhkLLM runs natively on Windows via AutoHotkey v2 with a WebView2 chat UI. It sits quietly in your system tray and preloads the chat window in the background, so it's ready the instant you hit the key.
+AhkLLM now has a configurable system-wide command menu for things like rewriting text in place, summarizing, translating, grabbing screenshots, sending selected text into a chat, and using DeepSeek's FIM endpoint to continue or replace text around your cursor. On top of that, it has a full WebView2 chat application with branching, file attachments, assistants, web search, usage tracking, locked chats, backups, and a bunch of other stuff I wanted from the LLM apps I was already using.
+
+The main point is that the two sides are connected. You can use AhkLLM as a normal chat application, but you can also call it from whatever application you're already working in instead of constantly copying text back and forth to a browser.
+
+<!-- DEMO SLOT 1: FIM Fill. Put the finished GIF here, directly after the intro and before the chat screenshots. This is the main demo and should be the first GIF people see. -->
 
 <p align="center">
-  <img src="docs/screenshots/chat-window.png" alt="AhkLLM chat window" width="320">
-  <img src="docs/screenshots/usage-dashboard.png" alt="Usage dashboard" width="320">
-  <img src="docs/screenshots/settings-providers.png" alt="Settings panel Providers tab" width="320">
+  <img src="docs/screenshots/chat-window.png" alt="AhkLLM chat window" width="380">
+  <img src="docs/screenshots/chat-tree.png" alt="AhkLLM conversation tree" width="380">
 </p>
 
-<p align="center"><em>Chat, the usage dashboard, and provider settings.</em></p>
+## The hotkey side
 
-## What you get
+By default, pressing the backtick key opens the command menu. The commands themselves are configurable, including the prompt, model, reasoning level, hotkey, and what AhkLLM should do with the result.
 
-- **A command menu you can shape.** Each command is a small config entry with its own model, prompt, thinking level, and output mode. The defaults cover summarize, translate, explain, refine, rephrase in context, FIM fill and continue, and a screenshot command that sends your screen as image context. Add your own in `DefaultSettings.ahk` and it shows up in the menu, no code changes needed.
-- **Rewrite or rephrase in place.** AhkLLM reads your selection through UI Automation, and when a command asks for it, the whole document around it. "Rephrase in Context" rewrites the highlighted text with the full page as context and drops the result back over the selection. You stay in the same app the whole time.
-- **Keep typing, it takes over.** FIM Continue and FIM Fill use DeepSeek's FIM completion API (beta), which handles text and code alike. Put your cursor mid-line, trigger the command, and the model continues your sentence, your paragraph, or your function. No selection needed.
-- **A real chat window.** Streaming responses, markdown with syntax highlighting and math rendering, edit, retry, quote, copy, and export.
-- **Branching you can see.** Fork any message and explore alternate replies. Conversations render as an interactive tree, so you can hop between branches instead of scrolling a flat wall of text.
-- **Drag in files.** Images, PDFs (scanned pages included), DOCX, and code, straight into the conversation.
-- **Bring your own model.** DeepSeek, OpenAI, and Google Gemini out of the box, plus any OpenAI-compatible provider you add (OpenRouter, local servers, whatever has an API endpoint). Model selection is per conversation, per command, and per assistant.
-- **Everything stays organized.** Folders, trash with auto-retention, real-time search across all your chats, assistant profiles with custom system prompts, and per-thread model, reasoning, and temperature settings.
-- **Lock sensitive chats.** Protect any chat with a password: locked chats show a generic title + lock icon, are hidden from search, and refuse to load until unlocked. See [docs/locked-chats.md](docs/locked-chats.md) for exactly what the lock protects.
-- **Know what it costs.** The usage dashboard charts tokens, spend, speed, and latency per model and provider, with filters and CSV export. A built-in API logs viewer lets you inspect requests and responses when something looks off.
+A few examples:
 
-## Requirements
+- Select a paragraph in an email, run **Refine**, and AhkLLM replaces the selection with the rewritten version.
+- Use **Rephrase in Context** to send both the selection and the surrounding document text, then replace only the selected part.
+- Put your cursor in the middle of some prose or code and use **FIM Fill** to generate what belongs between the text before and after the cursor.
+- Use **FIM Continue** to continue writing from where your cursor is sitting.
+- Capture a screenshot and send it as image context.
+- Send selected text into the full chat window and continue the conversation there.
 
-- Windows 10 or later
-- [AutoHotkey v2.0.18+](https://www.autohotkey.com/)
-- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11)
-- [Node.js 22+](https://nodejs.org/) (tests only)
-- API keys for the providers you want to use, set as environment variables or entered directly in Settings:
-  - `DEEPSEEK_API_KEY`
-  - `OPENAI_API_KEY`
-  - `GOOGLE_API_KEY`
+<!-- DEMO SLOT 2: Hotkey to chat. Show selected text being sent from another application into AhkLLM, then ask a short follow-up in the chat. -->
 
-## Quick Start
+Text capture uses Windows UI Automation where the target application exposes it, with clipboard fallbacks for normal selection-based commands where possible. FIM depends on UIA text access because AhkLLM needs the text on both sides of the cursor.
 
-1. Install [AutoHotkey v2](https://www.autohotkey.com/download/ahk-v2.exe)
-2. Clone this repo
-3. Install Node.js 22+ if you want to run the tests. No `npm install` is required: runtime JavaScript dependencies are vendored under `webui/`.
-4. Set your API keys:
-   ```cmd
-   setx DEEPSEEK_API_KEY "sk-your-key"
-   ```
-   Start a new terminal or sign out/in after `setx` so the environment change is visible. Never commit a real key, settings file, log, database, or user attachment.
-5. Double-click `Main.ahk` (or run `AutoHotkey64.exe Main.ahk`)
-6. Press `` ` `` to open the command menu
-7. Press `` ` `` then `1` to open the chat window, or right-click the tray icon
+FIM Fill and Continue use DeepSeek's beta FIM completions endpoint by default. They work with normal writing as well as code.
 
-## Configuration
+<!-- DEMO SLOT 3: Refine in place or FIM Continue. Put the finished GIF here, at the end of the hotkey section and before "The chat side". -->
 
-Most settings live in the in-app Settings panel (gear icon in the chat window): providers, models, commands, assistants, hotkeys, theme, icons, and menu items. Add any OpenAI-compatible provider from the Providers tab, or refresh model metadata (pricing, capabilities) from the Models tab.
+## The chat side
 
-For power users, everything is also editable in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Save the file and the script auto-reloads (Ctrl+S).
+I originally only wanted the hotkey workflow. The chat GUI mostly happened because I was tired of bouncing between different LLM frontends and still not having a few things I consider pretty basic.
 
-Default hotkeys: `` ` `` (backtick) opens the command menu, Ctrl+Alt+R reloads the script, Ctrl+W closes pop-ups, and CapsLock+`` ` `` suspends and resumes. All of them are remappable.
+The biggest one is branching. Editing or retrying an earlier message creates another branch instead of destroying what came after it, and the conversation map lets you see the whole tree and jump between branches. You can also fork part of a conversation into a separate chat.
 
-## Where your data lives
+<!-- DEMO SLOT 4: Branching / conversation tree. Put the finished GIF here, immediately after the branching explanation and before the rest of the chat feature list. -->
 
-Chats, settings, and attachments are stored locally under `%APPDATA%\AhkLLM\`: `settings.json`, a SQLite chat database with real-time search, and your uploaded files. API request/response logs and the diagnostic debug log are written under `%TEMP%` and can contain prompt, response, or attachment-derived data; logging can be disabled in Settings. Directly entered provider keys are stored in `settings.json`; environment variables are preferred. The app has no telemetry, but prompts, selected text, and uploaded attachments leave your machine when you send them to the configured provider. With Web Search enabled, DeepSeek may search through its Responses API, while other providers use Tavily; those services receive the relevant search query.
+Other chat features currently include:
 
-Chat passwords are stored as PBKDF2-SHA-256 hashes and gate access inside the app. Locked-chat bodies are redacted in the API log viewer, but the chat database and attachments remain **unencrypted at rest** (see [Locked Chats](docs/locked-chats.md)). This is an app-level lock, not protection from another process that can read your Windows profile.
+- Streaming responses with Markdown, syntax highlighting, math rendering, quote, copy, edit, retry, and export.
+- DeepSeek, OpenAI, Gemini, and user-added OpenAI-compatible providers.
+- Per-chat model, reasoning, and temperature settings.
+- Configurable assistants with their own system prompts.
+- Images, PDFs, scanned PDFs, DOCX, PPTX, XLSX, EPUB, text files, and a fairly long list of code formats as attachments.
+- Web search. DeepSeek can use its Responses API search path, while other providers can use Tavily.
+- Folders, trash, and real-time chat search.
+- Password-locked chats. This is an application-level lock, not encryption at rest. The exact security model is documented in [docs/locked-chats.md](docs/locked-chats.md).
+- Optional local backups.
+- A usage dashboard for token counts, estimated cost, response speed, and latency, with filtering and CSV export.
+- An API log viewer for inspecting requests and responses when something behaves strangely.
 
-## Running Tests
+<p align="center">
+  <img src="docs/screenshots/usage-dashboard.png" alt="AhkLLM usage dashboard" width="380">
+  <img src="docs/screenshots/settings-providers.png" alt="AhkLLM provider settings" width="380">
+</p>
+
+There is currently no dark mode. I know. I'll add one if people actually want it.
+
+## Installation
+
+There isn't a packaged release yet. The first release will be a clean `AhkLLM.zip` containing the files needed to run the app. Once that exists, the button at the top of this README will download the latest ZIP directly.
+
+Until then, run AhkLLM from the repository:
+
+1. Install [AutoHotkey v2.0.18 or later](https://www.autohotkey.com/download/ahk-v2.exe).
+2. Make sure the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) is installed. Windows 11 normally already has it.
+3. Clone or download this repository.
+4. Set the API key for whichever provider you want to use, or enter it later in Settings.
+5. Run `Main.ahk`.
+
+For example, to store a DeepSeek key in your Windows environment:
 
 ```cmd
-# Unit + integration tests (AHK + JS)
-tests\run_all_tests.bat
-
-# Or individually:
-tests\run_js_tests.bat    # Node.js unit tests (requires Node.js)
-tests\run_ahk_tests.ahk   # AHK unit & integration tests
-
-# Headless end-to-end GUI suite (launches the real app; needs an interactive session)
-node tests\headless\e2e-suite.js --all
+setx DEEPSEEK_API_KEY "your-key-here"
 ```
 
-The headless harness manual is `tests/headless/README.md`; the live bug report is `tests/headless/BUG_HUNT_REPORT.md`.
+Open a new terminal or sign out and back in after using `setx` so Windows picks up the new value.
+
+Supported environment-variable names are:
+
+```text
+DEEPSEEK_API_KEY
+OPENAI_API_KEY
+GOOGLE_API_KEY
+TAVILY_API_KEY
+```
+
+This installation section will stay after the release is published. The only difference is that the normal path will become: download `AhkLLM.zip`, extract it somewhere, set up your API key, and run `Main.ahk`. Cloning the repository will remain here as the from-source option.
+
+## Basic controls
+
+The defaults are:
+
+- `` ` `` opens the command menu.
+- `` ` `` followed by `1` opens the chat window.
+- `Ctrl+Alt+R` reloads AhkLLM.
+- `Ctrl+W` closes pop-ups.
+- `CapsLock` + `` ` `` suspends or resumes the hotkeys.
+
+They are all remappable from Settings.
+
+Most configuration is available from the gear icon in the chat window, including providers, models, commands, assistants, hotkeys, icons, menu items, and UI appearance settings.
+
+If you prefer editing the config directly, the defaults live in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Saving that file reloads the script automatically.
+
+## Where the data goes
+
+Chats, settings, and attachments are stored locally under `%APPDATA%\AhkLLM\`. Chat history lives in SQLite and uploaded files are stored alongside the application data.
+
+AhkLLM has no telemetry.
+
+That does not mean your prompts stay on your machine. Selected text, prompts, screenshots, and attachments are sent to whichever model provider you configure when you make a request. Web search queries are also sent to the relevant search provider.
+
+API request/response logs and the diagnostic log are written under `%TEMP%` and can contain prompt or response data. Logging can be disabled in Settings.
+
+If you enter provider keys directly in Settings, they are stored in `settings.json`. Environment variables are preferable if that matters to you.
+
+Locked chats are also worth being clear about: the password stops the chat from being opened through AhkLLM, but the underlying database and attachments are not encrypted at rest. See [docs/locked-chats.md](docs/locked-chats.md) for the details.
+
+## Testing and contributing
+
+This project has a normal unit/integration test suite and a fairly large headless E2E harness that launches and drives the real application.
+
+For the regular test suite:
+
+```cmd
+npm run test:fast
+```
+
+For the full E2E suite:
+
+```cmd
+npm run test:e2e
+```
+
+The E2E harness temporarily isolates your real AhkLLM profile and restores it when the suite finishes. Back up any data you care about before running it anyway. More details are in [`tests/headless/README.md`](tests/headless/README.md).
+
+The running history of bugs found through that harness is in [`tests/headless/BUG_HUNT_REPORT.md`](tests/headless/BUG_HUNT_REPORT.md). If you want to contribute but have no idea what to work on, that is a pretty good place to point yourself, or your LLM, first.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR.
 
 ## Architecture
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for a deep dive into the data model, IPC, WebView communication, and module dependency graph.
+If you want to understand how the AHK side, WebView2 UI, SQLite layer, IPC, streaming, attachments, and branching system fit together, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-## License
+## License and original project
 
-GNU General Public License v3.0. See [`LICENSE`](LICENSE).
+AhkLLM is GPL-3.0. See [`LICENSE`](LICENSE).
 
-AhkLLM is a derivative of [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant) by [kdalanon](https://github.com/kdalanon), extended with a full WebView2 chat GUI, message branching, multi-provider streaming, file attachments, and a comprehensive test suite.
+It is based on [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant) by [kdalanon](https://github.com/kdalanon). The original project is what gave me the idea to build this in the first place.
 
-See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for vendored libraries, binaries, fonts, icons, licenses, and attribution requirements.
+Third-party libraries and redistributed assets are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
