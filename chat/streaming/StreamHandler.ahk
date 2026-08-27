@@ -83,7 +83,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         debugLog("sendStreamingRequest error: " e.Message)
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
-        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _PostChatError("Request failed: " e.Message, activeThreadId)
     }
 }
 
@@ -155,7 +155,7 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
         debugLog("sendNonStreamingRequest error: " e.Message)
         if IsSet(scope)
             _RemoveNonStreamRequest(scope)
-        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _PostChatError("Request failed: " e.Message, IsSet(scope) && IsObject(scope) ? scope.threadId : activeThreadId)
         if !_HasOtherActiveOperations()
             postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
         _cleanupStreamState()
@@ -1026,7 +1026,7 @@ _finalizeStreaming() {
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         }
-        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _PostChatError("Request failed: " e.Message, requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId)
         _cleanupStreamState()
         _FinishStreamFinalize()
     }
@@ -1135,7 +1135,12 @@ _failToolLoop(message, contextText := "", loopState := "", stream := "") {
         loopState.placeholderId := ""
         loopState.placeholderQuery := ""
     }
-    postWebMessage("showError", { message: message })
+    errorThreadId := activeThreadId
+    if IsObject(loopState)
+        errorThreadId := loopState.threadId
+    else if IsObject(stream)
+        errorThreadId := stream.threadId
+    _PostChatError(message, errorThreadId)
     if IsObject(loopState)
         _FinishToolLoop(loopState, stream)
     else

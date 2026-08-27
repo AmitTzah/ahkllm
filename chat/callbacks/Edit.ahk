@@ -98,7 +98,7 @@ handleEdit(params, *) {
         } catch Error as e {
             if transactionStarted
                 ChatDB.RollbackTransaction()
-            postWebMessage("showError", { message: "Edit failed: " e.Message })
+            _PostChatError("Edit failed: " e.Message)
             return
         }
         ; Trigger LLM request for the new branch (same as Retry flow)
@@ -134,7 +134,7 @@ handleEdit(params, *) {
         } catch Error as e {
             if transactionStarted
                 ChatDB.RollbackTransaction()
-            postWebMessage("showError", { message: "Edit failed: " e.Message })
+            _PostChatError("Edit failed: " e.Message)
             return
         }
         debugLog("[EDIT] Message - id=" id " thread=" activeThreadId)

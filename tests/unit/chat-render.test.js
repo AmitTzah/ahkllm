@@ -527,6 +527,21 @@ describe('_restoreThinkingBlockStates', () => {
 });
 
 describe('renderChatMessages preserves thinking block state', () => {
+    it('requests the active thread error banners during a thread render (bug #1)', () => {
+        const ctx = loadRenderModule();
+        ctx.activeThreadId = 'thread-b';
+        const container = ctx.document.getElementById('chat-messages');
+        var calledWith = null;
+        ctx._renderThreadErrorBanners = function(target, threadId) {
+            calledWith = { target, threadId };
+        };
+
+        ctx.renderChatMessages([]);
+
+        assert.strictEqual(calledWith.target, container, 'the message container should receive the stored banners');
+        assert.strictEqual(calledWith.threadId, 'thread-b', 'only the active thread should be rendered');
+    });
+
     it('does not throw with messages containing reasoning', () => {
         const ctx = loadRenderModule();
         ctx.chatMessages = [

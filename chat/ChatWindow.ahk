@@ -19,7 +19,7 @@
 ; modal error dialog (the UI banner + log already carry the details).
 OnError((err, mode) => (
     debugLog("RUNTIME ERROR: " err.Message "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler"),
-    (IsSet(postWebMessage) ? postWebMessage("showError", { message: "Runtime Error: " err.Message }) : ""),
+    (IsSet(postWebMessage) ? postWebMessage("showError", { message: "Runtime Error: " err.Message, threadId: (IsSet(requestParams) && IsObject(requestParams) && requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : (IsSet(activeThreadId) ? activeThreadId : "")) }) : ""),
     (IsSet(startLoadingCursor) ? startLoadingCursor(false) : ""),
     (IsSet(postWebMessage) ? postWebMessage("setChatButtonsEnabled", true) : ""),
     true

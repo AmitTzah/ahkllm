@@ -159,6 +159,34 @@ class ChatUtilsTest {
             responseWindow := saved
         }
     }
+
+    PostChatError_ScopesToOwnerThread() {
+        mockJson := ""
+        mockResponseWindow := { PostWebMessageAsJSON: (self, json) => mockJson := json }
+        global responseWindow, activeThreadId
+        savedWindow := responseWindow
+        savedThread := activeThreadId
+        try {
+            responseWindow := mockResponseWindow
+            activeThreadId := "visible-thread-b"
+            _PostChatError("request failed", "owner-thread-a")
+            parsed := jsongo.Parse(mockJson)
+            if parsed["target"] != "showError"
+                throw Error("Expected showError target")
+            if parsed["data"]["message"] != "request failed"
+                throw Error("Expected request failure message")
+            if parsed["data"]["threadId"] != "owner-thread-a"
+                throw Error("Expected owner thread id, got '" parsed["data"]["threadId"] "'")
+
+            _PostChatError("visible failure")
+            parsed := jsongo.Parse(mockJson)
+            if parsed["data"]["threadId"] != "visible-thread-b"
+                throw Error("Expected active thread fallback, got '" parsed["data"]["threadId"] "'")
+        } finally {
+            responseWindow := savedWindow
+            activeThreadId := savedThread
+        }
+    }
     ; --- buildStructuredMessagesFromPath includes createdAt ---
 
     StructuredMessages_IncludesCreatedAt() {

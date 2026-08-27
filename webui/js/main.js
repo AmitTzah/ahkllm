@@ -522,19 +522,60 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 
+var _threadErrorBanners = {};
+var _nextErrorBannerId = 0;
+
+function _createErrorBanner(entry) {
+  var el = document.createElement('div');
+  el.className = 'error-banner';
+  if (entry.threadId) el.dataset.threadId = entry.threadId;
+  if (entry.id) el.dataset.errorId = entry.id;
+  el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
+  el.innerHTML = '<span>' + String(entry.message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span><button onclick="dismissThreadError(this)" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
+  return el;
+}
+
+function dismissThreadError(button) {
+  var banner = button && button.parentElement;
+  if (!banner) return;
+  var threadId = banner.dataset ? banner.dataset.threadId : '';
+  var errorId = banner.dataset ? banner.dataset.errorId : '';
+  if (threadId && errorId && _threadErrorBanners[threadId]) {
+    _threadErrorBanners[threadId] = _threadErrorBanners[threadId].filter(function(entry) {
+      return entry.id !== errorId;
+    });
+  }
+  banner.remove();
+}
+
+function _renderThreadErrorBanners(container, threadId) {
+  if (!container || !threadId) return;
+  var entries = _threadErrorBanners[threadId] || [];
+  for (var i = 0; i < entries.length; i++) {
+    container.appendChild(_createErrorBanner(entries[i]));
+  }
+}
+
 function showError(data) {
-  // data is { message: string }
+  // data is { message: string, threadId?: string }
+  var errorThreadId = (data && typeof data === 'object' && data.threadId) ? String(data.threadId) : '';
+  var msg = (typeof data === 'string') ? data : (data && data.message ? data.message : 'An error occurred');
+  var entry = { message: msg, threadId: errorThreadId };
+  if (errorThreadId) {
+    entry.id = 'error-' + (++_nextErrorBannerId);
+    if (!_threadErrorBanners[errorThreadId]) _threadErrorBanners[errorThreadId] = [];
+    _threadErrorBanners[errorThreadId].push(entry);
+  }
+  // Async request failures can arrive after the user has switched chats. A
+  // provider error must only be rendered in the chat that owns the request,
+  // but it remains queued there until dismissed if that chat is not visible.
+  if (errorThreadId && (typeof activeThreadId === 'undefined' || errorThreadId !== activeThreadId)) return;
   hideLoadingIndicator();
   // Bug #169: a FAILED retry must restore the original response the UI
   // removed when the retry started (the DB row was never touched).
   if (typeof restoreRetryMessagesOnError === 'function') restoreRetryMessagesOnError();
-  var msg = (typeof data === 'string') ? data : (data && data.message ? data.message : 'An error occurred');
   var chatMessages = document.getElementById('chat-messages');
   if (!chatMessages) return;
-  var el = document.createElement('div');
-  el.className = 'error-banner';
-  el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
-  el.innerHTML = '<span>' + String(msg).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
-  chatMessages.appendChild(el);
+  chatMessages.appendChild(_createErrorBanner(entry));
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }

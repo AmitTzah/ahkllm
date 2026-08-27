@@ -74,16 +74,14 @@ function renderChatMessages(messages) {
   if (!container) return;
   _saveThinkingBlockStates();
   _saveSearchCardStates();
-  // Preserve error banners across re-render (e.g. vision gate error on first send)
-  // so they survive initChatMode when loadThread triggers _LoadThreadAndRefreshUI.
-  var errorBanners = container.querySelectorAll('.error-banner');
   container.innerHTML = '';
   for (var i = 0; i < messages.length; i++) {
     container.appendChild(createMessageBubble(messages[i], i));
   }
-  for (var i = 0; i < errorBanners.length; i++) {
-    container.appendChild(errorBanners[i]);
-  }
+  // Error banners are stored per thread by main.js so they survive a chat
+  // switch, but never cross into another thread.
+  if (typeof _renderThreadErrorBanners === 'function')
+    _renderThreadErrorBanners(container, activeThreadId);
   _restoreThinkingBlockStates();
   _restoreSearchCardStates();
   // Render Lucide icons now that bubbles are in the DOM

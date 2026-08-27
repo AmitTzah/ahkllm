@@ -84,7 +84,7 @@ _ShowApiKeyError(providerInfo) {
         pInfo := providers[providerInfo.providerKey]
     envVar := pInfo && pInfo.HasOwnProp("authEnvVar") ? pInfo.authEnvVar : providerInfo.providerKey
     errorMsg := "No API key configured for " providerInfo.providerKey ". Set " envVar " environment variable."
-    postWebMessage("showError", { message: errorMsg })
+    _PostChatError(errorMsg)
     if !_HasActiveOperationForUi()
         postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
     debugLog("ERROR: " errorMsg)
@@ -94,7 +94,7 @@ _ShowApiKeyError(providerInfo) {
 ; Show "endpoint missing" error and return "" so caller aborts (bug #112).
 _ShowEndpointError(providerInfo) {
     errorMsg := "No endpoint configured for provider '" providerInfo.providerKey "'. Set it in Settings → Providers."
-    postWebMessage("showError", { message: errorMsg })
+    _PostChatError(errorMsg)
     if !_HasActiveOperationForUi()
         postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
     debugLog("ERROR: " errorMsg)
@@ -150,7 +150,7 @@ _ProcessAttachmentsForPath(&apiMessages, modelName) {
         attachments := ChatDB.Attachment_GetByMessage(msg._msgId)
         if attachments.Length && _HasImageAttachments(attachments) && !AttachmentUtils.HasVision(modelName) {
             errorMsg := "Model '" modelName "' does not support vision. Remove images or switch models."
-            postWebMessage("showError", { message: errorMsg })
+            _PostChatError(errorMsg)
             if !_HasActiveOperationForUi()
                 postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
             return false
@@ -366,7 +366,7 @@ _BuildAndFireRequest() {
     return true
     } catch Error as e {
         debugLog("_BuildAndFireRequest error: " e.Message "`n" e.Stack, "ErrorHandler")
-        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _PostChatError("Request failed: " e.Message)
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
         return false

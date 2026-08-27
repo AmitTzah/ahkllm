@@ -1621,4 +1621,72 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 323,
+  name: 'Provider error banners stay scoped when the user switches chats mid-request',
+  regression: true,
+  mode: 'sse-lateerror',
+  mockOpts: { lateErrorDelay: 1500 },
+  settings: { threadTitles: { enabled: false } },
+  fixtures: {
+    threads: [
+      { id: 't-error-a-323', title: 'Gemini 3.1 Pro', active_leaf_id: 'm-error-a-323', model_override: 'google/gemini-3.1-pro-preview' },
+      { id: 't-error-b-323', title: 'DeepSeek V4 Pro', active_leaf_id: 'm-error-b-323', model_override: 'deepseek/deepseek-v4-pro' }
+    ],
+    messages: [
+      { id: 'm-error-a-323', thread_id: 't-error-a-323', role: 'user', content: 'Gemini request that will fail', token_count: 5, active_path_tokens: 5 },
+      { id: 'm-error-b-323', thread_id: 't-error-b-323', role: 'user', content: 'DeepSeek conversation', token_count: 5, active_path_tokens: 5 }
+    ]
+  },
+  async body({ cdp }) {
+    await showChat();
+    await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
+    await cdp.eval('window.loadThread("t-error-a-323"); true');
+    await cdp.waitFor('window.activeThreadId === "t-error-a-323" && chatMessages.length === 1', 15000, 300, 'Gemini chat loaded');
+
+    // First let an error render in Gemini, then switch to DeepSeek. This is
+    // the screenshot's timing: initChatMode must not preserve Gemini's banner.
+    await sendChatMessage(cdp, 'trigger the Gemini billing error');
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 20000, 50, 'Gemini request in flight');
+    await cdp.waitFor('document.querySelector("#chat-messages .error-banner") !== null', 20000, 200, 'Gemini error banner');
+    const geminiBanner = await cdp.text('#chat-messages .error-banner');
+    if (!geminiBanner)
+      throw new Error('Gemini error banner was not rendered before switching');
+
+    await cdp.eval('window.loadThread("t-error-b-323"); true');
+    await cdp.waitFor('window.activeThreadId === "t-error-b-323" && chatMessages.length === 1', 15000, 300, 'DeepSeek chat loaded');
+    const switchedBanner = await cdp.text('#chat-messages .error-banner');
+    const activeThread = await cdp.eval('window.activeThreadId');
+    if (activeThread !== 't-error-b-323')
+      throw new Error('setup: active thread changed unexpectedly: ' + activeThread);
+    if (switchedBanner && String(switchedBanner).trim())
+      throw new Error('Gemini error banner leaked into the visible DeepSeek chat: ' + JSON.stringify(switchedBanner));
+
+    await cdp.eval('window.loadThread("t-error-a-323"); true');
+    await cdp.waitFor('window.activeThreadId === "t-error-a-323" && chatMessages.length === 2', 15000, 300, 'Gemini chat returned');
+    const returnedBanner = await cdp.text('#chat-messages .error-banner');
+    if (!returnedBanner)
+      throw new Error('Gemini error banner was not retained while its chat was inactive');
+    await cdp.click('#chat-messages .error-banner button');
+    await cdp.waitFor('document.querySelector("#chat-messages .error-banner") === null', 5000, 100, 'dismissed Gemini error banner');
+
+    // Then repeat with the switch happening BEFORE the delayed error arrives;
+    // the payload thread guard must cover this race too.
+    await sendChatMessage(cdp, 'trigger the Gemini late error');
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 20000, 50, 'second Gemini request in flight');
+    await cdp.eval('window.loadThread("t-error-b-323"); true');
+    await cdp.waitFor('window.activeThreadId === "t-error-b-323" && chatMessages.length === 1', 15000, 300, 'DeepSeek chat reloaded');
+    await sleep(2500);
+    const lateBanner = await cdp.text('#chat-messages .error-banner');
+    if (lateBanner && String(lateBanner).trim())
+      throw new Error('late Gemini error banner leaked into DeepSeek: ' + JSON.stringify(lateBanner));
+    await cdp.eval('window.loadThread("t-error-a-323"); true');
+    await cdp.waitFor('window.activeThreadId === "t-error-a-323" && chatMessages.length === 3', 15000, 300, 'Gemini chat returned after delayed error');
+    const retainedLateBanner = await cdp.text('#chat-messages .error-banner');
+    if (!retainedLateBanner)
+      throw new Error('delayed Gemini error was not retained for its originating chat');
+    return 'Gemini errors remain in Gemini across chat switches until dismissed; neither the immediate nor delayed error appeared in DeepSeek';
+  }
+});
+
 module.exports = scenarios;

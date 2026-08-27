@@ -42,7 +42,7 @@
     'trashList': { dir: 'ahk->web', data: 'array' },
     'loadThread': { dir: 'ahk->web', data: 'string' },
     'threadForked': { dir: 'ahk->web', fields: ['newThreadId'], required: ['newThreadId'] },
-    'showError': { dir: 'ahk->web', fields: ['message'], required: ['message'] },
+    'showError': { dir: 'ahk->web', fields: ['message', 'threadId'], required: ['message'] },
     'showDashboard': { dir: 'ahk->web', data: 'any' },
     'showSettings': { dir: 'ahk->web', data: 'any' },
     'threadSettings': { dir: 'ahk->web', fields: ['model', 'systemMessage', 'systemOverrideSet', 'reasoning', 'temperature', 'reasoningOverrideSet', 'temperatureOverrideSet', 'webSearch', 'fontSize', 'assistantName', 'assistantBaseModel', 'assistantDescription', 'thinkingLevels'], required: ['model'] },

@@ -58,7 +58,7 @@ _handleStreamError() {
         errMsg := stderrText
     if !errMsg
         errMsg := "Request failed. Check your API key and try again."
-    postWebMessage("showError", { message: errMsg })
+    _PostChatError(errMsg, streamThreadId)
     ; Diagnostics have been read into memory; remove the request files before
     ; any later logging/UI work can return control to another request.
     deleteTempFiles()
@@ -94,7 +94,7 @@ _handleStreamError() {
 
     } catch Error as e {
         debugLog("_handleStreamError crashed: " e.Message "`n" e.Stack, "ErrorHandler")
-        postWebMessage("showError", { message: "Request failed: " e.Message })
+        _PostChatError("Request failed: " e.Message, IsSet(streamThreadId) ? streamThreadId : activeThreadId)
         currentStream := _FindStreamByKey(_currentStreamKey)
         if !_HasOtherActiveOperations("", currentStream) {
             postWebMessage("setChatButtonsEnabled", true)
@@ -192,7 +192,7 @@ _handleStreamCancelled() {
             startLoadingCursor(false)
             postWebMessage("setChatButtonsEnabled", true)
         }
-        postWebMessage("showError", { message: "Cancellation error: " e.Message })
+        _PostChatError("Cancellation error: " e.Message, IsSet(streamThreadId) ? streamThreadId : activeThreadId)
     }
 }
 

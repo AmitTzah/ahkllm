@@ -154,9 +154,9 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-26). Scenario count is enforced by
+- **0 verified, 0 reported, 0 fix in progress, 0 fix applied, 1 awaiting user commit** (2026-08-27). Scenario count is enforced by
   `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-26 - Bugs 316-318 fixed and committed; no verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass; next round is fresh intake when the user asks. Candidates 1-3 are verified in the current verification queue. Scenario
+- **Where we left off:** 2026-08-27 - Bug #1 was manually verified and is awaiting the user's commit. Error payloads carry request ownership; banners persist per originating chat until dismissed; scenario 323 and the full fast suite pass. Next: commit the reviewed worktree, then move bug #1 to History and run `--check-sync`. Bugs 316-318 were fixed and committed; no other verified open bugs remain in this queue. Full fast suite and scenarios 316-318 pass. Scenario
   315's live restart path was infrastructure-blocked, so its regression contract
   and unit test cover the startup recovery until the restart harness is repaired.
   Previous web-search milestone: composer
@@ -221,6 +221,22 @@ one at a time, in rank order.
 ## Open bugs (ranked)
 
 **Ranked (1 = highest):**
+
+### 1. Provider error warning leaks into a different chat after switching threads
+
+**Scenario:** 323 (scenario code in e2e-suite.js)
+
+**Status:** awaiting user commit
+
+**Repro:** Open separate Gemini 3.1 Pro and DeepSeek V4 Pro chats. Trigger a Gemini request that returns the red prepayment-credits warning, then switch to the DeepSeek chat while the warning is present or before the request's error callback finishes.
+
+**Expected:** The warning is scoped to the Gemini request/chat that caused it. Switching to DeepSeek must not display a Gemini/Google billing warning there unless DeepSeek produced the same warning itself.
+
+**Actual:** Fixed. Previously, the same Gemini prepayment-credits warning was visible in the DeepSeek V4 Pro chat, even though that chat had its own successful response. Two paths caused this: the `showError` payload lacked request ownership for late errors, and `renderChatMessages` preserved every existing `.error-banner` when switching threads. Warnings are now retained per originating chat until dismissed.
+
+**Evidence:** The supplied screenshot pair shows the Google Gemini prepayment warning in the selected Gemini chat and then again in the selected DeepSeek chat. Before the fix, `webui/js/shared/ipc-contract.js:45` defined `showError` with only `message`, `webui/js/main.js:525-539` appended the banner to the current chat container, and `webui/js/chat/chat-render.js:77-87` restored all banners across thread renders. The contract now includes optional `threadId`; `showError` rejects inactive-thread errors; and chat rendering preserves only the active thread's banner.
+
+**Verification:** The pre-fix live reproduction passed and showed the banner in DeepSeek. After the corrected fix, scenario 323 verifies an error shown in Gemini is absent in DeepSeek, returns when Gemini is reopened, disappears when dismissed, and a second delayed Gemini error is queued for Gemini without appearing in DeepSeek. Full AHK and JS suites also pass.
 
 ## History (append-only)
 

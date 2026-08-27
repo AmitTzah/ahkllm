@@ -5,15 +5,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadMainModule() {
+function loadMainModule({ chatMessages = null } = {}) {
     const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'main.js'), 'utf-8');
     let receivedCalls = {};
     const sandbox = {
         document: {
-            getElementById: () => null,
+            getElementById: (id) => id === 'chat-messages' ? chatMessages : null,
             querySelectorAll: () => [],
             addEventListener: () => {},
-            createElement: () => ({ style: {}, appendChild: () => {}, querySelector: () => null, querySelectorAll: () => [] }),
+            createElement: () => ({ style: {}, dataset: {}, appendChild: () => {}, querySelector: () => null, querySelectorAll: () => [] }),
             documentElement: { setAttribute: () => {}, getAttribute: () => null }
         },
         window: {
@@ -179,6 +179,29 @@ describe('handleWebMessage routing', () => {
         const ctx = loadMainModule();
         // showError tries to access #chat-messages which returns null, so it short-circuits
         assert.doesNotThrow(() => ctx.handleWebMessage({ data: JSON.stringify({ target: 'showError', data: { message: 'Oops' } }) }));
+    });
+
+    it('does not render an error from another thread into the active chat (bug #1)', () => {
+        const chatMessages = {
+            children: [],
+            scrollTop: 0,
+            appendChild(element) { this.children.push(element); }
+        };
+        const ctx = loadMainModule({ chatMessages });
+        ctx.activeThreadId = 'thread-b';
+
+        ctx.handleWebMessage({ data: JSON.stringify({
+            target: 'showError', data: { message: 'Gemini billing failure', threadId: 'thread-a' }
+        }) });
+        assert.strictEqual(chatMessages.children.length, 0, 'a thread-A error must be ignored while thread B is active');
+        ctx._renderThreadErrorBanners(chatMessages, 'thread-a');
+        assert.strictEqual(chatMessages.children.length, 1, 'a foreign error must remain available when its thread is reopened');
+        chatMessages.children = [];
+
+        ctx.handleWebMessage({ data: JSON.stringify({
+            target: 'showError', data: { message: 'DeepSeek failure', threadId: 'thread-b' }
+        }) });
+        assert.strictEqual(chatMessages.children.length, 1, 'an error for the active thread must render');
     });
 
     it('handles string message that is JSON', () => {

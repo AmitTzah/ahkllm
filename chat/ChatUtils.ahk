@@ -61,6 +61,19 @@ postWebMessage(target, data := unset, reqId := "") {
     try responseWindow.PostWebMessageAsJSON(jsonStr)
 }
 
+; Post a chat error with the request's owning thread when available. Errors can
+; arrive after the user switches chats, so callers handling asynchronous work
+; must pass their captured thread id instead of relying on activeThreadId.
+_PostChatError(message, threadId := "") {
+    global activeThreadId
+    if !threadId && IsSet(activeThreadId)
+        threadId := activeThreadId
+    data := { message: message }
+    if threadId
+        data.threadId := threadId
+    postWebMessage("showError", data)
+}
+
 ; ----------------------------------------------------
 ; Delete temp files
 ; ----------------------------------------------------

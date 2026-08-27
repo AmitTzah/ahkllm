@@ -10,7 +10,7 @@
 _SurfaceError(context, err) {
     errorMsg := "[" context "] " err.Message
     debugLog("ERROR: " errorMsg "`nStack: " (err.HasProp("Stack") ? err.Stack : "none"), "ErrorHandler")
-    postWebMessage("showError", { message: errorMsg })
+    _PostChatError(errorMsg)
     postWebMessage("setChatButtonsEnabled", true)
     startLoadingCursor(false)
 }

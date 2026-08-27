@@ -82,7 +82,7 @@ handleChatSend(params, *) {
         debugLog("[ATTACH] CRASH in handleChatSend: " e.Message " at line " e.Line "`n" e.Stack, "ErrorHandler")
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)
-        postWebMessage("showError", { message: "Attachment processing failed: " e.Message })
+        _PostChatError("Attachment processing failed: " e.Message)
     }
 }
 
