@@ -50,7 +50,7 @@ Sync-Pi-Corrections.ps1
 | File | Purpose | Who runs it |
 |---|---|---|
 | `Fetch-Models.ps1` | Dumb fetcher, saves raw JSON | Devs (optional) |
-| `Refresh-Models.ps1` | Main script: corrections + generate | Users (Quick Access) |
+| `Refresh-Models.ps1` | Main script: corrections + generate | Users (Settings) |
 | `Sync-Pi-Corrections.ps1` | Sync corrections from pi repo | Devs (occasionally) |
 | `models-corrections.json` | Single source of truth for overrides | Maintained manually |
 | `models-dev-raw.json` | Cached raw models.dev data (gitignored) | Auto-generated |
@@ -76,7 +76,7 @@ provides the correct values.
 ```
 Right-click Refresh-Models.bat -> Run
 ```
-Or from the app: Quick Access -> Refresh Models
+Or from the app: Quick Access -> Settings -> Models -> Fetch Latest Models
 
 ### For devs adding a correction
 

@@ -252,6 +252,10 @@ SetTimer(InitApiLogsViewer, -2000)
 ; ----------------------------------------------------
 #Include app\viewers\UsageDashboard.ahk
 
+; Settings panel — inline in ChatWindow via IPC
+; ----------------------------------------------------
+#Include app\viewers\SettingsPanel.ahk
+
 ; ----------------------------------------------------
 ; UIA COM initialization sets SPI_SETSCREENREADER
 ; (a system-wide flag) during CoCreateInstance. This

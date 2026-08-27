@@ -21,6 +21,7 @@ class CustomMessages {
     static WM_BACKUP_NOW := 0x500 + 11
     static WM_BACKUP_STATUS := 0x500 + 12
     static WM_BACKUP_STATUS_REQUEST := 0x500 + 13
+    static WM_SHOW_SETTINGS := 0x500 + 14
 
     static registerHandlers(origin, handle) {
         switch origin {
@@ -70,6 +71,11 @@ class CustomMessages {
     ; Main → ChatWindow: show inline dashboard
     static notifyShowDashboard(chatWindowhWnd) {
         try PostMessage(this.WM_SHOW_DASHBOARD, 0, 0, , "ahk_id " chatWindowhWnd)
+    }
+
+    ; Main -> ChatWindow: show the Settings panel
+    static notifyShowSettings(chatWindowhWnd) {
+        try PostMessage(this.WM_SHOW_SETTINGS, 0, 0, , "ahk_id " chatWindowhWnd)
     }
 
     ; ChatWindow → Main: open API logs viewer

@@ -29,6 +29,8 @@ class CustomMessagesTest {
             throw Error("WM_LOAD_THREAD wrong")
         if CustomMessages.WM_TRIGGER_LLM != 0x500 + 4
             throw Error("WM_TRIGGER_LLM wrong")
+        if CustomMessages.WM_SHOW_SETTINGS != 0x500 + 14
+            throw Error("WM_SHOW_SETTINGS wrong")
     }
 
     ; --------------------

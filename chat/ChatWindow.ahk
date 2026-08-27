@@ -161,6 +161,12 @@ OnMessage(CustomMessages.WM_SHOW_DASHBOARD, (*) => (
     chatWindow.Show(),
     WinActivate("ahk_id " chatWindow.hWnd)
 ))
+; Handle Settings-panel IPC from Main.ahk
+OnMessage(CustomMessages.WM_SHOW_SETTINGS, (*) => (
+    postWebMessage("showSettings"),
+    chatWindow.Show(),
+    WinActivate("ahk_id " chatWindow.hWnd)
+))
 OnMessage(CustomMessages.WM_BACKUP_STATUS, _OnBackupStatus)
 
 _OnBackupStatus(*) {

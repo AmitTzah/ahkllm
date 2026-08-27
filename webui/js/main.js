@@ -199,6 +199,10 @@ function handleWebMessage(event) {
         if (typeof window._showDashboard === 'function') window._showDashboard();
         break;
 
+      case 'showSettings':
+        if (typeof window._showSettings === 'function') window._showSettings();
+        break;
+
       case 'dropdownLabel':
         window._dropdownLabel = data;
         if (typeof updateDropdownLabel === 'function') updateDropdownLabel(data);

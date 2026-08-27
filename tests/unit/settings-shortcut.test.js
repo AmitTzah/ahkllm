@@ -1,0 +1,33 @@
+// settings-shortcut.test.js — Quick Access -> Settings wiring checks
+const { describe, it } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..', '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+
+describe('Quick Access Settings shortcut', () => {
+  it('uses the internal settings action instead of running the refresh script', () => {
+    const defaults = read('default-settings/DefaultSettings.ahk');
+    assert.match(defaults, /menuText: "&5 - Settings"\s*,\s*command: "settings:"/);
+    assert.doesNotMatch(defaults, /menuText: "&5 - Refresh Models"/);
+  });
+
+  it('keeps the Settings action wired through Main, ChatWindow, and WebView', () => {
+    const requestProcessor = read('app/RequestProcessor.ahk');
+    const launcher = read('app/viewers/SettingsPanel.ahk');
+    const messages = read('ipc/CustomMessages.ahk');
+    const chatWindow = read('chat/ChatWindow.ahk');
+    const main = read('webui/js/main.js');
+    const contract = read('webui/js/shared/ipc-contract.js');
+
+    assert.match(requestProcessor, /command = "settings:"[\s\S]*?ShowSettingsPanel\(\)/);
+    assert.match(launcher, /CustomMessages\.notifyShowSettings\(hwnd\)/);
+    assert.match(messages, /WM_SHOW_SETTINGS\s*:=\s*0x500 \+ 14/);
+    assert.match(messages, /notifyShowSettings\(chatWindowhWnd\)/);
+    assert.match(chatWindow, /WM_SHOW_SETTINGS[\s\S]*?postWebMessage\("showSettings"\)/);
+    assert.match(main, /case 'showSettings':[\s\S]*?_showSettings\(\)/);
+    assert.match(contract, /'showSettings':\s*\{\s*dir: 'ahk->web'/);
+  });
+});

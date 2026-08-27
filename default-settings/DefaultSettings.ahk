@@ -594,7 +594,7 @@ quickAccessMenuItems := [
     { menuText: "&2 - OpenAI Usage",         command: "https://platform.openai.com/settings/organization/usage" },
     { menuText: "&3 - Gemini Usage",         command: "https://aistudio.google.com/spend" },
     { menuText: "&4 - API Logs",               command: "apilogs:" },
-    { menuText: "&5 - Refresh Models",         command: "cmd /c powershell -ExecutionPolicy Bypass -File " A_ScriptDir "\scripts\Refresh-Models.ps1 -NoPause" },
+    { menuText: "&5 - Settings",               command: "settings:" },
     { menuText: "&6 - Debug Log",              command: A_Temp "\LLM_Debug_Log.txt" },
     { menuText: "&7 - Usage Dashboard",        command: "usage:" },
 

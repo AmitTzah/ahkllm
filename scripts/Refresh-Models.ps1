@@ -5,7 +5,7 @@
 # Pipeline: models.dev (raw) -> models-corrections.json (override) -> DefaultModels.ahk
 #
 # Run from terminal: powershell -ExecutionPolicy Bypass -File "scripts\Refresh-Models.ps1"
-# Also accessible from Quick Access menu in the app.
+# Also accessible from Settings -> Models -> Fetch Latest Models.
 #
 # See README.md in this directory for the full pipeline explanation.
 

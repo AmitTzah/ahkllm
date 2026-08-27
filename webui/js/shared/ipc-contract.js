@@ -44,6 +44,7 @@
     'threadForked': { dir: 'ahk->web', fields: ['newThreadId'], required: ['newThreadId'] },
     'showError': { dir: 'ahk->web', fields: ['message'], required: ['message'] },
     'showDashboard': { dir: 'ahk->web', data: 'any' },
+    'showSettings': { dir: 'ahk->web', data: 'any' },
     'threadSettings': { dir: 'ahk->web', fields: ['model', 'systemMessage', 'systemOverrideSet', 'reasoning', 'temperature', 'reasoningOverrideSet', 'temperatureOverrideSet', 'webSearch', 'fontSize', 'assistantName', 'assistantBaseModel', 'assistantDescription', 'thinkingLevels'], required: ['model'] },
     'appSettings': { dir: 'ahk->web', data: 'object' },
     'defaultSettings': { dir: 'ahk->web', data: 'object' },

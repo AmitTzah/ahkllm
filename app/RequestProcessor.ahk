@@ -149,6 +149,10 @@ runOptionsMenuAction(command, *) {
         ShowUsageDashboard()
         return
     }
+    if command = "settings:" {
+        ShowSettingsPanel()
+        return
+    }
     if (spacePos := InStr(command, " ")) {
         firstWord := SubStr(command, 1, spacePos - 1)
         if !InStr(firstWord, "\") && !InStr(firstWord, ":") {
