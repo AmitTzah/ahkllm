@@ -240,6 +240,31 @@ class UserConfigTest {
             throw Error("Expected &z second (command order), got '" orderedTags[2] "'")
     }
 
+    ; Regression (bug #1): the native menu must use the saved per-group order
+    ; instead of deriving tagged groups from the flat commands array.
+    CommandGroupOrder_UsesSavedOrder() {
+        global commands, commandGroupOrders
+        oldCommands := commands
+        oldOrders := IsSet(commandGroupOrders) ? commandGroupOrders.Clone() : Map()
+        try {
+            commands := [
+                { commandName: "Direct A", directAccelerator: "&a", tags: ["&Work"] },
+                { commandName: "Tagged B", tags: ["&Work"] },
+                { commandName: "Direct C", directAccelerator: "&c", tags: ["&Work"] }
+            ]
+            commandGroupOrders := Map("__main__", [3, 1], "&Work", [3, 1, 2])
+            workOrder := _CommandIndexesForGroup("&Work")
+            mainOrder := _CommandIndexesForGroup("__main__")
+            if workOrder.Length != 3 || workOrder[1] != 3 || workOrder[2] != 1 || workOrder[3] != 2
+                throw Error("saved tagged order was not used")
+            if mainOrder.Length != 2 || mainOrder[1] != 3 || mainOrder[2] != 1
+                throw Error("saved main-menu order was not used")
+        } finally {
+            commands := oldCommands
+            commandGroupOrders := oldOrders
+        }
+    }
+
     ; --------------------------------------------------------
     ; UTF-8 encoding regression — em dash should survive
     ; --------------------------------------------------------

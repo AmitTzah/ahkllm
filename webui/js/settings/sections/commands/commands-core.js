@@ -9,26 +9,61 @@
   var _models = null;
   var _defaultModel = '';
 
+  function _belongsToGroup(cmd, tag) {
+    var tags = cmd.tags || [];
+    if (tag === '__main__') return tags.length === 0 || !!cmd.directAccelerator;
+    for (var i = 0; i < tags.length; i++) {
+      if (tags[i].trim() === tag) return true;
+    }
+    return false;
+  }
+
   function _ensureGroupOrders() {
-    _groupOrders['__main__'] = _groupOrders['__main__'] || [];
+    var knownGroups = { '__main__': true };
     _commands.forEach(function(cmd, i) {
       var tags = cmd.tags || [];
-      var hasDirect = !!cmd.directAccelerator;
-      // Always rebuild main: untagged AND direct commands
-      if (tags.length === 0 || hasDirect) {
-        if (_groupOrders['__main__'].indexOf(i) < 0) _groupOrders['__main__'].push(i);
-      }
-      // Tag groups: tagged commands appear there regardless of direct
-      // accelerator (direct commands show in both Main Menu and the tag).
-      if (!hasDirect || tags.length > 0) {
-        tags.forEach(function(t) {
-          var tag = t.trim();
-          if (!tag) return;
-          _groupOrders[tag] = _groupOrders[tag] || [];
-          if (_groupOrders[tag].indexOf(i) < 0) _groupOrders[tag].push(i);
-        });
-      }
+      if (tags.length === 0 || cmd.directAccelerator) knownGroups.__main__ = true;
+      tags.forEach(function(t) { if (t.trim()) knownGroups[t.trim()] = true; });
     });
+
+    Object.keys(_groupOrders).forEach(function(tag) {
+      if (!knownGroups[tag]) {
+        delete _groupOrders[tag];
+        return;
+      }
+      var valid = [], seen = {};
+      (_groupOrders[tag] || []).forEach(function(idx) {
+        if (typeof idx !== 'number' || idx % 1 !== 0 || idx < 0 || idx >= _commands.length ||
+            !_belongsToGroup(_commands[idx], tag) || seen[idx]) return;
+        valid.push(idx);
+        seen[idx] = true;
+      });
+      _groupOrders[tag] = valid;
+    });
+
+    Object.keys(knownGroups).forEach(function(tag) {
+      _groupOrders[tag] = _groupOrders[tag] || [];
+      _commands.forEach(function(cmd, i) {
+        if (_belongsToGroup(cmd, tag) && _groupOrders[tag].indexOf(i) < 0)
+          _groupOrders[tag].push(i);
+      });
+    });
+  }
+
+  function _readGroupOrders(saved) {
+    var result = {};
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return result;
+    Object.keys(saved).forEach(function(tag) {
+      if (!Array.isArray(saved[tag])) return;
+      result[tag] = saved[tag].map(Number).filter(function(idx) { return isFinite(idx) && idx % 1 === 0; });
+    });
+    return result;
+  }
+
+  function _copyGroupOrders() {
+    var result = {};
+    Object.keys(_groupOrders).forEach(function(tag) { result[tag] = _groupOrders[tag].slice(); });
+    return result;
   }
 
   function load(data) {
@@ -42,7 +77,7 @@
         ? data.newChatStartsWith
         : 'deepseek/deepseek-v4-flash';
     _selectedIdx = -1;
-    _groupOrders = {};
+    _groupOrders = _readGroupOrders(data && data.commandGroupOrders);
     _ensureGroupOrders();
     window.Cmds.renderList(0);
     if (_commands.length > 0) window.Cmds.selectCommand(0);
@@ -67,7 +102,7 @@
     _groupOrders = mappedOrders;
     // Re-render to update DOM data-index attributes with new indices
     window.Cmds.renderList(_selectedIdx >= 0 ? _selectedIdx : 0);
-    return { commands: _commands, submenuOrder: _submenuOrder };
+    return { commands: _commands, submenuOrder: _submenuOrder, commandGroupOrders: _copyGroupOrders() };
   }
 
   // Rebuild _commands from group orders (main first, then tagged groups) and

@@ -11,6 +11,7 @@ class SettingsApply {
         SettingsApply._ApplyAssistants(settings)
         SettingsApply._ApplyCommands(settings)
         SettingsApply._ApplySubmenuOrder(settings)
+        SettingsApply._ApplyCommandGroupOrders(settings)
         SettingsApply._ApplyThreadTitles(settings)
         SettingsApply._ApplyUI(settings)
         SettingsApply._ApplyIcons(settings)
@@ -212,6 +213,32 @@ class SettingsApply {
         for _, tag in settings["submenuOrder"]
             newSO.Push(tag)
         submenuOrder := newSO
+    }
+
+    ; Convert the Settings UI's zero-based command indexes to the one-based
+    ; indexes used by AHK arrays. The native menu uses these per-group orders
+    ; so a tagged-group drag remains visible after the settings reload.
+    static _ApplyCommandGroupOrders(settings) {
+        global commandGroupOrders
+        commandGroupOrders := Map()
+        if !settings.Has("commandGroupOrders") || !IsObject(settings["commandGroupOrders"])
+            return
+        for tag, rawOrder in settings["commandGroupOrders"] {
+            if !IsObject(rawOrder)
+                continue
+            order := []
+            seen := Map()
+            for _, rawIndex in rawOrder {
+                if !IsInteger(rawIndex)
+                    continue
+                index := rawIndex + 1
+                if index > 0 && !seen.Has(index) {
+                    order.Push(index)
+                    seen[index] := true
+                }
+            }
+            commandGroupOrders[tag] := order
+        }
     }
 
     static _ApplyThreadTitles(settings) {

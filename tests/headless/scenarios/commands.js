@@ -392,4 +392,84 @@ scenarios.push({
   }
 });
 
+scenarios.push({
+  id: 324,
+  name: 'Dragging a command to a new position survives a Settings save',
+  regression: true, // FIXED bug #1: per-group order persists through host reload
+  mode: null,
+  settings: {
+    submenuOrder: ['&Text manipulation'],
+    commands: [
+      { commandName: 'FIM Continue', menuText: '&1 - FIM Continue', APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'append', isFIM: true, tags: ['&Text manipulation'], directAccelerator: '&3' },
+      { commandName: 'FIM Fill', menuText: '&2 - FIM Fill', APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'replace', isFIM: true, tags: ['&Text manipulation'] },
+      { commandName: 'Rephrase', menuText: '&3 - Rephrase', APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'replace', tags: ['&Text manipulation'] },
+      { commandName: 'Custom Prompt', menuText: '&5 - Custom Prompt', APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'replace', tags: ['&Text manipulation'], directAccelerator: '&5' },
+      { commandName: 'Refine', menuText: '&4 - Refine', APIModels: 'deepseek/deepseek-v4-flash', pasteMode: 'replace', tags: ['&Text manipulation'], directAccelerator: '&8' }
+    ]
+  },
+  async body({ cdp, dataDir }) {
+    await openSettings(cdp);
+    await openSection(cdp, 'commands');
+    await cdp.waitFor('document.querySelectorAll("#commandsListBody .cmd-group-body[data-group=\\"&Text manipulation\\"] .cmd-item").length === 5', 10000, 250, 'text manipulation command list');
+
+    const dragResult = await cdp.eval(`(async () => {
+      const body = document.querySelector('#commandsListBody .cmd-group-body[data-group="&Text manipulation"]');
+      const source = Array.from(body.querySelectorAll('.cmd-item')).find((el) => el.textContent.includes('Refine'));
+      const original = Array.from(body.querySelectorAll('.cmd-item')).map((el) => el.textContent.trim());
+      if (!source) return { error: 'Refine item not found', original };
+      const dataTransfer = {
+        effectAllowed: '',
+        setData() {},
+        setDragImage() {}
+      };
+      const makeEvent = (type, clientY) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+        if (clientY !== undefined) Object.defineProperty(event, 'clientY', { value: clientY });
+        return event;
+      };
+      source.dispatchEvent(makeEvent('dragstart', source.getBoundingClientRect().top + 5));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const first = body.querySelector('.cmd-item:not(.is-dragging)');
+      if (!first) return { error: 'dragging state did not start', original };
+      body.dispatchEvent(makeEvent('dragover', first.getBoundingClientRect().top - 1));
+      const dragged = Array.from(body.querySelectorAll('.cmd-item')).map((el) => el.textContent.trim());
+      source.dispatchEvent(makeEvent('dragend'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const afterDrag = Array.from(body.querySelectorAll('.cmd-item')).map((el) => el.textContent.trim());
+      return { original, dragged, afterDrag, groupOrder: window.Cmds.groupOrders()['&Text manipulation'].slice() };
+    })()`);
+    if (dragResult.error) throw new Error('setup -> ' + dragResult.error + ': ' + JSON.stringify(dragResult));
+    const expected = ['Refine', 'FIM Continue', 'FIM Fill', 'Rephrase', 'Custom Prompt'];
+    const simplify = (items) => items.map((item) => item.replace(/^☰/, '').replace(/^&\S+\s*/, '').trim());
+    const draggedNames = simplify(dragResult.afterDrag);
+    if (JSON.stringify(draggedNames) !== JSON.stringify(expected))
+      throw new Error('setup -> drag did not move Refine to the top: ' + JSON.stringify(dragResult));
+
+    await saveSettings(cdp, dataDir);
+    await sleep(500);
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    const savedNames = (saved.commands || []).map((command) => command.commandName);
+    const postSave = await cdp.eval(`(() => {
+      const body = document.querySelector('#commandsListBody .cmd-group-body[data-group="&Text manipulation"]');
+      return body ? Array.from(body.querySelectorAll('.cmd-item')).map((el) => el.textContent.trim()) : [];
+    })()`);
+    const postSaveNames = simplify(postSave);
+    const originalNames = simplify(dragResult.original);
+    const savedGroupOrder = saved.commandGroupOrders && saved.commandGroupOrders['&Text manipulation'];
+    // FIXED (bug #1): the group order is saved explicitly and restored when
+    // the host pushes appSettings back to the WebView after Save Changes.
+    if (JSON.stringify(postSaveNames) !== JSON.stringify(draggedNames))
+      throw new Error('dragged order was lost during Save Changes: before=' + JSON.stringify(originalNames) +
+        ' dragged=' + JSON.stringify(draggedNames) + ' afterSave=' + JSON.stringify(postSaveNames) +
+        ' savedCommands=' + JSON.stringify(savedNames) + ' savedGroupOrder=' + JSON.stringify(savedGroupOrder));
+    if (!Array.isArray(savedGroupOrder) || savedGroupOrder.length !== 5)
+      throw new Error('commandGroupOrders was not persisted for Text manipulation: ' + JSON.stringify(savedGroupOrder));
+    return 'dragged Refine from the bottom to the top of Text manipulation; before=' + JSON.stringify(originalNames) +
+      ' dragged=' + JSON.stringify(draggedNames) + ' after Save Changes=' + JSON.stringify(postSaveNames) +
+      ' and settings.json main-first order=' + JSON.stringify(savedNames) + ' with commandGroupOrders=' + JSON.stringify(savedGroupOrder) +
+      ' - Refine remained at the dragged position';
+  }
+});
+
 module.exports = scenarios;

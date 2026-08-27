@@ -40,6 +40,7 @@ class SettingsDefaults {
         d["assistants"] := SettingsDefaults._DefaultsAssistants()
         d["commands"] := SettingsDefaults._DefaultsCommands()
         d["submenuOrder"] := SettingsDefaults._DefaultsSubmenuOrder()
+        d["commandGroupOrders"] := Map()
         d["threadTitles"] := SettingsDefaults._DefaultsThreadTitles()
         d["ui"] := SettingsDefaults._DefaultsUI()
         d["icons"] := SettingsDefaults._DefaultsIcons()

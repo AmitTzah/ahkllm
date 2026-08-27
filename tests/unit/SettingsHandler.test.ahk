@@ -104,7 +104,7 @@ class SettingsHandlerTest {
     GetDefaults_HasAllTopLevelKeys() {
         defaults := SettingsHandler.GetDefaults()
         expectedKeys := ["version", "providers", "models", "assistants", "commands",
-                          "submenuOrder", "threadTitles", "ui", "icons",
+                          "submenuOrder", "commandGroupOrders", "threadTitles", "ui", "icons",
                           "hotkeys", "apiLogs", "trash", "backup", "menuItems"]
         for _, k in expectedKeys {
             if !defaults.Has(k)
@@ -247,6 +247,33 @@ class SettingsHandlerTest {
                 throw Error("empty tags should persist, got " (cmd.HasOwnProp("tags") ? "non-empty/array" : "(absent)"))
         } finally {
             commands := oldCommands
+        }
+    }
+
+    ; Regression (bug #1): the WebView stores zero-based per-group command
+    ; indexes, while the native menu walks one-based AHK arrays. Applying the
+    ; saved metadata must convert the indexes without accepting invalid ones.
+    ApplyCommandGroupOrders_ConvertsWebIndexes() {
+        global commandGroupOrders
+        saved := IsSet(commandGroupOrders) ? commandGroupOrders.Clone() : Map()
+        try {
+            SettingsApply._ApplyCommandGroupOrders(Map(
+                "commandGroupOrders", Map(
+                    "__main__", [0, 2, 2, -1],
+                    "&Work", [2, 0, 1],
+                    "ignored", ["bad", 4]
+                )
+            ))
+            if commandGroupOrders["__main__"].Length != 2
+                throw Error("expected valid, unique main indexes to convert")
+            if commandGroupOrders["__main__"][1] != 1 || commandGroupOrders["__main__"][2] != 3
+                throw Error("main indexes were not converted from zero-based values")
+            if commandGroupOrders["&Work"][1] != 3 || commandGroupOrders["&Work"][2] != 1 || commandGroupOrders["&Work"][3] != 2
+                throw Error("tagged indexes were not converted from zero-based values")
+            if commandGroupOrders["ignored"].Length != 1 || commandGroupOrders["ignored"][1] != 5
+                throw Error("numeric values in an otherwise invalid group should still convert")
+        } finally {
+            commandGroupOrders := saved
         }
     }
 

@@ -4,6 +4,68 @@
 
 #Include ..\..\shared\SystemMessageResolver.ahk
 
+; Return command indexes in the saved order for a group, then append any
+; commands missing from an older/corrupt order. AHK arrays are one-based;
+; commandGroupOrders is populated by SettingsApply from the UI's saved order.
+_CommandIndexesForGroup(tag) {
+    global commands, commandGroupOrders
+    result := []
+    seen := Map()
+    if IsSet(commandGroupOrders) && IsObject(commandGroupOrders) && commandGroupOrders.Has(tag) {
+        for _, index in commandGroupOrders[tag] {
+            if index >= 1 && index <= commands.Length && !seen.Has(index) && _CommandBelongsToGroup(commands[index], tag) {
+                result.Push(index)
+                seen[index] := true
+            }
+        }
+    }
+    for index, command in commands {
+        if !seen.Has(index) && _CommandBelongsToGroup(command, tag) {
+            result.Push(index)
+            seen[index] := true
+        }
+    }
+    return result
+}
+
+_CommandBelongsToGroup(command, tag) {
+    hasTags := command.HasProp("tags") && command.tags && command.tags.Length > 0
+    if tag = "__main__"
+        return !hasTags || (command.HasProp("directAccelerator") && command.directAccelerator)
+    if !hasTags
+        return false
+    for commandTag in command.tags {
+        if StrLower(Trim(commandTag)) = StrLower(Trim(tag))
+            return true
+    }
+    return false
+}
+
+_OrderTaggedCommands(tagInfo) {
+    global commandGroupOrders
+    if !IsSet(commandGroupOrders) || !IsObject(commandGroupOrders) || !commandGroupOrders.Has(tagInfo.displayName)
+        return
+    original := tagInfo.commands
+    ordered := []
+    seen := Map()
+    for _, index in commandGroupOrders[tagInfo.displayName] {
+        for _, item in original {
+            if item.index = index && !seen.Has(index) {
+                ordered.Push(item)
+                seen[index] := true
+                break
+            }
+        }
+    }
+    for _, item in original {
+        if !seen.Has(item.index) {
+            ordered.Push(item)
+            seen[item.index] := true
+        }
+    }
+    tagInfo.commands := ordered
+}
+
 buildCommandMenu() {
     commandMenu := Menu()
     tagsMap := Map()
@@ -13,8 +75,10 @@ buildCommandMenu() {
     if IsSet(chatShortcut) && chatShortcut != ""
         commandMenu.Add("&" chatShortcut " - Open Chat", (*) => OpenChatCommandHandler())
 
-    ; First pass: collect all commands by tag, build tagsMap
-    for index, command in commands {
+    ; First pass: add Main Menu commands in its saved order. Tagged commands
+    ; are collected below so their own group order can remain independent.
+    for _, index in _CommandIndexesForGroup("__main__") {
+        command := commands[index]
         hasTags := command.HasProp("tags") && command.tags && command.tags.Length > 0
 
         ; If command has a directAccelerator, add a top-level shortcut
@@ -30,9 +94,15 @@ buildCommandMenu() {
         ; If no tags, add directly to menu and continue
         if !hasTags {
             commandMenu.Add(command.HasProp("menuText") ? command.menuText : "", onCommandSelected.Bind(index))
-            continue
         }
+    }
 
+    ; Collect every tagged command in the global order as the fallback for
+    ; groups without saved metadata, and to determine first-seen tag order.
+    for index, command in commands {
+        hasTags := command.HasProp("tags") && command.tags && command.tags.Length > 0
+        if !hasTags
+            continue
         for tag in command.tags {
             normalizedTag := StrLower(Trim(tag))
 
@@ -67,6 +137,7 @@ buildCommandMenu() {
     ; Third pass: add submenus and populate them
     for normalizedTag in orderedTags {
         tagInfo := tagsMap[normalizedTag]
+        _OrderTaggedCommands(tagInfo)
         commandMenu.Add(tagInfo.displayName, tagInfo.menu)
         for cmd in tagInfo.commands {
             tagInfo.menu.Add(cmd.HasProp("menuText") ? cmd.menuText : "", onCommandSelected.Bind(cmd.index))

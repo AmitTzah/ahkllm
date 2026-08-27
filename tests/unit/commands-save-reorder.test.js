@@ -109,6 +109,42 @@ function loadCommandsCoreWithMocks() {
 }
 
 describe('commands save reorder — _selectedIdx remapping', () => {
+    it('persists independent tagged-group order across the host settings reload', () => {
+        const ctx = loadCommandsCoreWithMocks();
+        const C = ctx.Cmds;
+        const commands = [
+            { commandName: 'Direct A', menuText: 'Direct A', directAccelerator: '&a', tags: ['&Work'] },
+            { commandName: 'Tagged B', menuText: 'Tagged B', tags: ['&Work'] },
+            { commandName: 'Direct C', menuText: 'Direct C', directAccelerator: '&c', tags: ['&Work'] }
+        ];
+
+        C.setCommands(commands);
+        C.setSubmenuOrder(['&Work']);
+        C.setGroupOrders({ '__main__': [0, 2], '&Work': [2, 0, 1] });
+        C.setSelectedIdx(0);
+        C.ensureGroupOrders();
+        ctx.formValues['cmdDetailTitle'] = 'Direct A';
+        ctx.formValues['cmdMenuLabel'] = 'Direct A';
+        ctx.formValues['cmdTags'] = ['&Work'];
+
+        const saved = C.save();
+        assert.strictEqual(JSON.stringify(saved.commandGroupOrders), JSON.stringify({
+            '__main__': [0, 1],
+            '&Work': [1, 0, 2]
+        }), 'save should include the remapped per-group order');
+
+        // The host sends the persisted settings back after saving. Reloading
+        // must use commandGroupOrders instead of deriving every group from the
+        // flat command array (which loses the tagged-group drag).
+        C.load({
+            commands: saved.commands,
+            submenuOrder: saved.submenuOrder,
+            commandGroupOrders: saved.commandGroupOrders
+        });
+        assert.strictEqual(JSON.stringify(C.groupOrders()['&Work']), JSON.stringify([1, 0, 2]),
+            'tagged-group order should survive the settings reload');
+    });
+
     it('should remap _selectedIdx after save with reordered group orders', () => {
         const ctx = loadCommandsCoreWithMocks();
         const C = ctx.Cmds;
