@@ -7,11 +7,11 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License: GPL-3.0"></a>
 </p>
 
-AhkLLM started as a fork of [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant), which had a simple idea I really liked: select some text, hit a hotkey, send it to an LLM, and put the result back where it came from.
+AhkLLM is a Windows LLM assistant built around two things: system-wide hotkeys and a full chat application.
 
-I ended up taking that idea quite a bit further.
+You can select text in another application and rewrite it in place, summarize it, translate it, send it into a chat, grab screenshots, use FIM to continue or fill in text around your cursor, or create your own commands entirely.
 
-AhkLLM now has a configurable system-wide command menu for things like rewriting text in place, summarizing, translating, grabbing screenshots, sending selected text into a chat, and using DeepSeek's FIM endpoint to continue or replace text around your cursor. On top of that, it has a full WebView2 chat application with branching, file attachments, assistants, web search, usage tracking, locked chats, backups, and a bunch of other stuff I wanted from the LLM apps I was already using.
+The other half is a full WebView2 chat client with branching, conversation trees, assistants, file attachments, web search, usage tracking, backups, API logs, and a bunch of the other stuff I wanted from the LLM apps I was already using.
 
 The main point is that the two sides are connected. You can use AhkLLM as a normal chat application, but you can also call it from whatever application you're already working in instead of constantly copying text back and forth to a browser.
 
@@ -181,6 +181,8 @@ If you want to understand how the AHK side, WebView2 UI, SQLite layer, IPC, stre
 
 AhkLLM is GPL-3.0. See [`LICENSE`](LICENSE).
 
-It is based on [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant) by [kdalanon](https://github.com/kdalanon). The original project is what gave me the idea to build this in the first place.
+AhkLLM started as a fork of [LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant) by [kdalanon](https://github.com/kdalanon), which had the original hotkey workflow that gave me the idea for this project.
+
+It has since grown into a much larger application, but that project is where the whole thing started.
 
 Third-party libraries and redistributed assets are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
