@@ -11,8 +11,11 @@ OnMessage(CustomMessages.WM_LOAD_THREAD, OnLoadThread)
 OnMessage(CustomMessages.WM_TRIGGER_LLM, OnTriggerLLM)
 
 OnLoadThread(wParam, lParam, msg, hWnd) {
-    ; Read threadId from temp file (set by notifyLoadThread via PostMessage)
-    threadFile := A_Temp "\chat_load_thread.txt"
+    global chatWindow
+    ; Read threadId from the target ChatWindow's private handoff file. The
+    ; receiving window handle prevents another AhkLLM instance (or a headless
+    ; runner) from consuming this process's load request.
+    threadFile := A_Temp "\chat_load_thread_" hWnd ".txt"
     if !FileExist(threadFile)
         return
     threadId := FileOpen(threadFile, "r", "UTF-8-RAW").Read()
@@ -20,6 +23,17 @@ OnLoadThread(wParam, lParam, msg, hWnd) {
     if !threadId
         return
     LoadThreadIntoUI(threadId, false)
+    ; Main hides the persistent window before requesting a thread switch. Do
+    ; not reveal it until LoadThreadIntoUI has posted the new thread state, or
+    ; the previous chat is briefly visible during command navigation.
+    ; Background loads show without activating. User-facing opens pass
+    ; activate=1 so the new chat receives focus only after it is loaded.
+    activate := wParam ? true : false
+    chatWindow.Show(activate ? "" : "NA")
+    if activate
+        WinActivate("ahk_id " chatWindow.hWnd)
+    if requestParams["mainScriptHiddenHwnd"]
+        CustomMessages.notifyThreadLoaded(requestParams["mainScriptHiddenHwnd"])
 }
 
 ; Explicit trigger: fire LLM for the current thread if there's a pending user message.

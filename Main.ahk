@@ -83,6 +83,7 @@ SetTimer(TrashRetentionPurge, 3600000)
 ; ----------------------------------------------------
 global chatWindowPID := 0
 global chatWindowhWnd := 0
+global chatOpeningCount := 0
 
 ; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
 ; The "prewarm" arg tells ChatWindow to stay hidden after init
@@ -98,27 +99,74 @@ Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ah
 ; Chat window state (single persistent window)
 ; ----------------------------------------------------
 
-_spawnChatWindow(threadId := "") {
+_spawnChatWindow(threadId := "", activate := true) {
     global chatWindowPID
     ; Bug #227: same as the prewarm spawn - A_ScriptHwnd is Main's own window.
     mainScriptHiddenHwnd := A_ScriptHwnd
-    if threadId
-        Run(Format('"{}" "{}" {} "{}"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, threadId), , , &chatWindowPID)
+    if threadId {
+        noActivateArg := activate ? "" : ' "noactivate"'
+        Run(Format('"{}" "{}" {} "{}"{}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, threadId, noActivateArg), , , &chatWindowPID)
+    }
     else
         Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , , &chatWindowPID)
 }
 
-openChatWindow(threadId := "") {
+prepareChatWindow() {
+    global chatWindowhWnd
+    if IsSet(chatWindowhWnd) && chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd)
+        WinHide("ahk_id " chatWindowhWnd)
+}
+
+beginChatOpeningIndicator() {
+    global chatOpeningCount
+    chatOpeningCount++
+    updateLoadingUI("Loading")
+    CoordMode("ToolTip", "Screen")
+    _followChatOpeningTooltip()
+    SetTimer(_followChatOpeningTooltip, 30)
+}
+
+endChatOpeningIndicator() {
+    global chatOpeningCount
+    if chatOpeningCount > 0
+        chatOpeningCount--
+    if chatOpeningCount = 0 {
+        SetTimer(_followChatOpeningTooltip, 0)
+        ToolTip(,,, 20)
+        updateLoadingUI("Reset")
+    }
+}
+
+; Keep the command-progress tooltip anchored to the cursor. ToolTipEX's
+; generic follow mode can lag or jump when the pointer moves quickly, while a
+; short screen-coordinate update keeps this transient indicator smooth.
+_followChatOpeningTooltip(*) {
+    global chatOpeningCount
+    if !chatOpeningCount {
+        SetTimer(_followChatOpeningTooltip, 0)
+        ToolTip(,,, 20)
+        return
+    }
+    MouseGetPos(&x, &y)
+    ToolTip("Opening chat...", x + 16, y + 16, 20)
+}
+
+openChatWindow(threadId := "", activate := true) {
     global chatWindowPID, chatWindowhWnd
 
     if IsSet(chatWindowhWnd) && chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
-        WinShow("ahk_id " chatWindowhWnd)
-        WinActivate("ahk_id " chatWindowhWnd)
         if threadId {
-            CustomMessages.notifyLoadThread(threadId, chatWindowhWnd)
+            ; Load the requested thread while the window is hidden. The
+            ; ChatWindow process reveals it after the WebView has received the
+            ; new thread state, so the old chat cannot flash first.
+            WinHide("ahk_id " chatWindowhWnd)
+            CustomMessages.notifyLoadThread(threadId, chatWindowhWnd, activate)
+        } else {
+            WinShow("ahk_id " chatWindowhWnd)
+            WinActivate("ahk_id " chatWindowhWnd)
         }
     } else {
-        _spawnChatWindow(threadId)
+        _spawnChatWindow(threadId, activate)
     }
 }
 

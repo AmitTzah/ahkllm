@@ -314,11 +314,17 @@ scenarios.push({
     const utils = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatUtils.ahk"), "utf8");
     const settings = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatSettings.ahk"), "utf8");
     const window = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatWindow.ahk"), "utf8");
+    const ipc = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "ChatIPC.ahk"), "utf8");
     const dispatch = fs.readFileSync(path.join(launcher.REPO_ROOT, "chat", "callbacks", "Dispatch.ahk"), "utf8");
     if (!utils.includes("_RequestParamsAreDefault()") || settings.includes("_RequestParamsAreDefault() {"))
       throw new Error("helper was not moved to the shared pre-callback module");
     if (window.indexOf("#Include ChatUtils.ahk") > window.indexOf("#Include callbacks\\Dispatch.ahk"))
       throw new Error("ChatUtils must load before Dispatch callbacks");
+    if (window.indexOf("#Include ChatUtils.ahk") > window.indexOf("#Include ChatRequestBuilder.ahk"))
+      throw new Error("ChatUtils must load before ChatRequestBuilder so _PostChatError is resolved before #Warn parses its calls");
+    if (!ipc.includes('chatWindow.Show(activate ? "" : "NA")') ||
+        !ipc.includes('if activate') || !ipc.includes('WinActivate("ahk_id " chatWindow.hWnd)'))
+      throw new Error("IPC thread loads must make activation explicit (non-activating background loads, activating user commands)");
     if (!dispatch.includes("#Include Message.ahk")) throw new Error("Message callback include missing");
     return "_RequestParamsAreDefault is defined once in ChatUtils, loaded before Dispatch/Message, so the first-send call cannot resolve as an unassigned local and show the blocking #Warn modal";
   }
@@ -932,8 +938,8 @@ scenarios.push({
       throw new Error('FTS index diverged after the race (BUG present): messages=' + msgCount + ' fts=' + ftsCount);
     if (dups.length > 0)
       throw new Error('FTS index has duplicated entries after the race (BUG present): ' + JSON.stringify(dups));
-    if (ver !== 7)
-      throw new Error('user_version not guarded at 7: ' + ver);
+    if (ver !== 8)
+      throw new Error('user_version not guarded at 8: ' + ver);
     return 'two AHK processes raced ChatDB.Open (schema + migrations + FTS rebuild) on one WAL DB: both exited 0, user_version=' + ver +
       ', messages=' + msgCount + ' = messages_fts=' + ftsCount + ', 0 duplicated index entries - the startup path stays idempotent under busy_timeout';
   }
@@ -941,7 +947,7 @@ scenarios.push({
 
 scenarios.push({
   id: 188,
-  regression: true, // REFUTED lead (2026-08-10): the user_version=7 guard holds - the v6 cost backfill runs exactly once; a reopen after a price change never re-prices legacy rows
+  regression: true, // REFUTED lead (2026-08-10): the user_version=8 guard holds - the v6 cost backfill runs exactly once; a reopen after a price change never re-prices legacy rows
   name: 'Legacy schema-v6 migration backfill applies ONCE (user_version guard): reopening after a price change keeps the first-open snapshot prices',
   mode: null,
   noApp: true,
@@ -960,7 +966,7 @@ scenarios.push({
     const c2M = text.match(/cost2=([\d.]+)/);
     if (!v1M || !v2M || !c1M || !c2M) throw new Error('probe output missing fields: ' + text);
     const v1 = Number(v1M[1]), v2 = Number(v2M[1]), cost1 = Number(c1M[1]), cost2 = Number(c2M[1]);
-    if (v1 !== 7 || v2 !== 7) throw new Error('user_version not 7 after migration: ' + text);
+    if (v1 !== 8 || v2 !== 8) throw new Error('user_version not 8 after migration: ' + text);
     if (cost1 <= 0) throw new Error('backfill did not run on the first open: ' + text);
     if (cost1 !== cost2) throw new Error('reopen re-priced the legacy row (guard FAILED): cost1=' + cost1 + ' cost2=' + cost2);
     return 'v5 DB upgraded to user_version=' + v1 + '; the one-time backfill priced the legacy assistant row at cost1=' + cost1 +

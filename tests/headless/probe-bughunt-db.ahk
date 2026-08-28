@@ -69,6 +69,12 @@ openChatWindow(threadId := "") {
     return ""
 }
 global commandInputWindow := { guiObj: { hWnd: 0 }, EditControl: { Value: "" } }
+; ChatRequestBuilder's preflight error path uses this helper, which normally
+; comes from ChatUtils in ChatWindow. Define it before the standalone include
+; so #Warn cannot reinterpret the call as an unassigned local variable.
+_PostChatError(message, threadId := "") {
+    return ""
+}
 #Include ..\..\chat\ChatRequestBuilder.ahk
 postWebMessage(target, data := unset) {
     return ""

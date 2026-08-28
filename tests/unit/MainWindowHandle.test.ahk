@@ -49,4 +49,28 @@ class MainWindowHandleTest {
         if InStr(src, 'mainScriptHiddenHwnd := WinExist("ahk_class AutoHotkey")')
             throw Error('mainScriptHiddenHwnd still uses the ambiguous WinExist("ahk_class AutoHotkey") class lookup (bug #227 not fixed)')
     }
+
+    ; Regression: switching the persistent chat window to a command-created
+    ; thread must hide the old view before the asynchronous load and carry an
+    ; explicit activation request for user-facing opens.
+    CommandChatSwitch_HidesBeforeLoadAndRefreshesWithoutReopen() {
+        src := this._readMainAhk()
+        preparePos := InStr(src, "prepareChatWindow()")
+        hidePos := InStr(src, 'WinHide("ahk_id " chatWindowhWnd)')
+        notifyPos := InStr(src, "CustomMessages.notifyLoadThread(threadId, chatWindowhWnd, activate)")
+        if !preparePos || !hidePos || !notifyPos
+            throw Error("thread switch must hide before notifying the ChatWindow")
+        if hidePos > notifyPos
+            throw Error("WinHide must occur before notifyLoadThread")
+        if !InStr(src, 'openChatWindow(threadId := "", activate := true)')
+            throw Error("openChatWindow must expose an explicit activation option")
+    }
+
+    CommandChatOpeningIndicator_FollowsCursorWithDedicatedTimer() {
+        src := this._readMainAhk()
+        if !InStr(src, "SetTimer(_followChatOpeningTooltip, 30)")
+            throw Error("chat opening indicator must use a dedicated follow timer")
+        if !InStr(src, 'ToolTip("Opening chat...", x + 16, y + 16, 20)')
+            throw Error("chat opening indicator must update in screen coordinates near the cursor")
+    }
 }

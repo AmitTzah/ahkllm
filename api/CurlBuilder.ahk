@@ -57,10 +57,8 @@ class CurlBuilder {
         endpoint := providerInfo.fimEndpoint
         ; An empty FIM endpoint means this provider does not support AhkLLM's
         ; FIM workflow. Callers surface that capability failure to the user.
-        if !endpoint {
-            debugLog("FIM rejected provider=" providerInfo.providerKey " model=" (providerInfo.HasOwnProp("modelName") ? providerInfo.modelName : "") " reason=no-explicit-fim-endpoint normalEndpoint=" providerInfo.endpoint, "CurlBuilder")
+        if !endpoint
             return ""
-        }
         CurlBuilder._LogBuild("fim", providerInfo, endpoint, requestFile, outputFile)
         return 'cURL.exe -s --max-time 120 --connect-timeout 30 -X POST '
             . endpoint ' '

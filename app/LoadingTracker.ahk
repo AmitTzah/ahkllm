@@ -46,6 +46,13 @@ handleLoadingState(uniqueID, responseWindowhWnd, state, mainScriptHiddenHwnd) {
         case CustomMessages.WM_CHAT_WINDOW_OPENED:
             onChatWindowOpened(uniqueID, responseWindowhWnd, state, mainScriptHiddenHwnd)
 
+        case CustomMessages.WM_CHAT_THREAD_LOADED:
+            ; A command may defer showing the new chat until its first
+            ; messages are ready. End only that opening indicator; ordinary
+            ; API-operation indicators are tracked separately.
+            if IsSet(endChatOpeningIndicator)
+                endChatOpeningIndicator()
+
         case CustomMessages.WM_SHOW_API_LOGS:
             ShowApiLogs()
     }

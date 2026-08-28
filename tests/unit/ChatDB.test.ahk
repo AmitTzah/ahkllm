@@ -83,6 +83,10 @@ class ChatDBTest {
         ; Simulate a v0 database: tables without the later columns.
         db := SQLite(oldDbPath)
         db.Exec("CREATE TABLE chat_threads (id TEXT PRIMARY KEY, title TEXT);")
+        db.Exec("INSERT INTO chat_threads (id, title) VALUES ('legacy-overrides', 'Legacy overrides');")
+        db.Exec("ALTER TABLE chat_threads ADD COLUMN reasoning_override TEXT;")
+        db.Exec("ALTER TABLE chat_threads ADD COLUMN temperature_override REAL;")
+        db.Exec("UPDATE chat_threads SET reasoning_override='high', temperature_override=0 WHERE id='legacy-overrides';")
         db.Exec("CREATE TABLE messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0);")
         db.Exec("CREATE TABLE assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0);")
         db.Close()
@@ -126,6 +130,9 @@ class ChatDBTest {
               }
               if !hasLock
                   throw Error("migration did not add chat_threads.is_locked")
+              flags := ChatDB.db.Query("SELECT reasoning_override_set, temperature_override_set FROM chat_threads WHERE id=?;", "legacy-overrides")
+              if !flags.count || Integer(flags[1, "reasoning_override_set"]) != 1 || Integer(flags[1, "temperature_override_set"]) != 1
+                  throw Error("migration did not preserve non-empty legacy overrides")
         } finally {
             ChatDB.Close()
             try FileDelete(oldDbPath)

@@ -116,6 +116,7 @@ CleanupOwnedTempFiles()
 ; ----------------------------------------------------
 
 #Include ChatSettings.ahk
+#Include ChatUtils.ahk
 #Include ChatRequestBuilder.ahk
 #Include ChatIPC.ahk
 #Include tools\SearchToolExecutor.ahk
@@ -192,7 +193,6 @@ _OnBackupStatus(*) {
     }
 }
 
-#Include ChatUtils.ahk
 #Include ThreadTitleGen.ahk
 #Include streaming\StreamHandler.ahk
 #Include callbacks\Dispatch.ahk
@@ -207,15 +207,18 @@ responseWindow.Load("..\webui\index.html")
 ; Show window
 ; ----------------------------------------------------
 
-showChatWindow(initialRequest := true) {
+showChatWindow(initialRequest := true, activate := true) {
     if initialRequest {
         _SetChatWindowSize()
-        chatWindow.Show(_WindowPosStr(), "Chat")
+        options := _WindowPosStr() (activate ? "" : " NA")
+        chatWindow.Show(options, "Chat")
     } else {
-        chatWindow.Show()
+        chatWindow.Show(activate ? "" : "NA")
     }
-    if !WinActive("ahk_id " chatWindow.hWnd)
+    if activate && !WinActive("ahk_id " chatWindow.hWnd)
         chatWindow.Flash()
+    if activate
+        WinActivate("ahk_id " chatWindow.hWnd)
     Sleep 500
     if initialRequest && requestParams["mainScriptHiddenHwnd"] {
         CustomMessages.notifyLoadingState(CustomMessages.WM_CHAT_WINDOW_OPENED,
@@ -237,7 +240,8 @@ if prewarming {
         requestParams["uniqueID"], chatWindow.hWnd, requestParams["mainScriptHiddenHwnd"])
     debugLog("[APP] ChatWindow prewarmed — hWnd=" chatWindow.hWnd)
 } else {
-    showChatWindow(true)
+    noActivate := A_Args.Length >= 3 && A_Args[3] = "noactivate"
+    showChatWindow(true, !noActivate)
     postWebMessage("setChatButtonsEnabled", true)
 }
 
@@ -250,6 +254,8 @@ if (A_Args.Length >= 2 && A_Args[2] != "" && A_Args[2] != "prewarm") {
     LoadThreadIntoUI(A_Args[2], true)  ; autoFire=true for command-line-arg path
     Sleep 500
     postWebMessage("setChatButtonsEnabled", true)
+    if requestParams["mainScriptHiddenHwnd"]
+        CustomMessages.notifyThreadLoaded(requestParams["mainScriptHiddenHwnd"])
 }
 
 ; Default chat window dimensions used by showChatWindow and prewarm.

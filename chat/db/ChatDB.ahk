@@ -260,6 +260,12 @@ class ChatDB {
             ChatDB._AddColumnIfMissing("chat_threads", "system_override_set", "INTEGER DEFAULT 0")
             ChatDB._AddColumnIfMissing("chat_threads", "reasoning_override_set", "INTEGER DEFAULT 0")
             ChatDB._AddColumnIfMissing("chat_threads", "temperature_override_set", "INTEGER DEFAULT 0")
+            ; Older databases only stored the override value, so the new
+            ; explicit flags are initially 0 after ALTER TABLE. Preserve
+            ; those existing non-empty overrides during the migration.
+            ChatDB.db.Query("UPDATE chat_threads SET system_override_set=1 WHERE system_override IS NOT NULL AND system_override != '' AND system_override_set=0;")
+            ChatDB.db.Query("UPDATE chat_threads SET reasoning_override_set=1 WHERE reasoning_override IS NOT NULL AND reasoning_override != '' AND reasoning_override_set=0;")
+            ChatDB.db.Query("UPDATE chat_threads SET temperature_override_set=1 WHERE temperature_override IS NOT NULL AND temperature_override_set=0;")
             ChatDB.db.Exec("PRAGMA user_version = 8;")
         }
     }

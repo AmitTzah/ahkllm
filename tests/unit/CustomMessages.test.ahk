@@ -67,12 +67,13 @@ class CustomMessagesTest {
 
     NotifyLoadThread_WritesThreadIdToTempFile() {
         testThreadId := "regression-test-thread-123"
-        tempFile := A_Temp "\chat_load_thread.txt"
+        targetHwnd := 12345
+        tempFile := A_Temp "\chat_load_thread_" targetHwnd ".txt"
         ; Clean up any leftover
         if FileExist(tempFile)
             FileDelete(tempFile)
         try {
-            CustomMessages.notifyLoadThread(testThreadId, 12345)
+            CustomMessages.notifyLoadThread(testThreadId, targetHwnd)
         } catch Error as err {
             throw Error("notifyLoadThread should not throw: " err.Message)
         }

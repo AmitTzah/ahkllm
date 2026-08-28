@@ -258,7 +258,7 @@ class TreeRepo {
             ChatDB.db.Query("UPDATE chat_threads SET reasoning_override=?, reasoning_override_set=? WHERE id=?;", settings.reasoningOverride != "" ? settings.reasoningOverride : SQLite.Null, settings.reasoningOverrideSet ? 1 : 0, targetThreadId)
         ; Bug #62: temperature 0 is a valid override - AHK treats the numeric
         ; 0 as falsy, so use an explicit empty check (same class as bug #35).
-        if settings.temperatureOverrideSet || settings.temperatureOverride != ""
+        if settings.temperatureOverride != "" || settings.temperatureOverrideSet
             ChatDB.db.Query("UPDATE chat_threads SET temperature_override=?, temperature_override_set=? WHERE id=?;", settings.temperatureOverride != "" ? settings.temperatureOverride : SQLite.Null, settings.temperatureOverrideSet ? 1 : 0, targetThreadId)
         if settings.assistantId
             ChatDB.db.Query("UPDATE chat_threads SET assistant_id=? WHERE id=?;", settings.assistantId, targetThreadId)

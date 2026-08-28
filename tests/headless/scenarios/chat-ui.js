@@ -972,9 +972,9 @@ scenarios.push({
     await cdp.eval('window.loadThread("t-retry-b-216"); true');
     await cdp.waitFor('window.activeThreadId === "t-retry-b-216"', 15000, 300, 'thread B loaded');
     await sleep(300);
-    // Wait for the retry to fail (showError arrives; the retry's stream had no
-    // content, so _handleStreamError posts the error banner).
-    await cdp.waitFor('document.querySelector(".error-banner") !== null', 20000, 200, 'retry error banner');
+    // Wait for the retry to finish. The error belongs to thread A and is
+    // queued there; it must not render in thread B after error scoping.
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === false && typeof streamState !== "undefined" && streamState.active === false', 20000, 200, 'retry finished');
     await sleep(600);
     const uiMsgs = await cdp.eval('chatMessages.map(function(m){ return m.id + ":" + m.content; })');
     const stillOnB = await cdp.eval('window.activeThreadId === "t-retry-b-216"');

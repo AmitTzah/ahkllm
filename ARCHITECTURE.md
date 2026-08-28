@@ -56,7 +56,7 @@ All temporary data lives in `%TEMP%\`:
 | `ChatWindow_Out_*.json` | API response output | Per request |
 | `ChatWindow_Err_*.txt` | cURL stderr | Per request |
 | `ChatWindow_TitleGen_*.json` / `ChatWindow_TitleGen_Out_*.json` | Title generation payload / output | Per request |
-| `chat_load_thread.txt` | Thread ID handed from Main to ChatWindow via `WM_LOAD_THREAD` | Per load request |
+| `chat_load_thread_<chat-hwnd>.txt` | Thread ID handed from Main to its ChatWindow via `WM_LOAD_THREAD` | Per ChatWindow and load request |
 | `chatHistoryJSONRequest_*.json` | Inline command request | Per request |
 | `cURLCommand_*.txt` | Inline command cURL | Per request |
 | `cURLOutput_*.json` | Inline command output | Per request |

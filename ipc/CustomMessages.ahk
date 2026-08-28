@@ -22,6 +22,7 @@ class CustomMessages {
     static WM_BACKUP_STATUS := 0x500 + 12
     static WM_BACKUP_STATUS_REQUEST := 0x500 + 13
     static WM_SHOW_SETTINGS := 0x500 + 14
+    static WM_CHAT_THREAD_LOADED := 0x500 + 15
 
     static registerHandlers(origin, handle) {
         switch origin {
@@ -29,6 +30,7 @@ class CustomMessages {
                 for msg in [this.WM_LOADING_START,
                     this.WM_LOADING_FINISH,
                     this.WM_CHAT_WINDOW_OPENED,
+                    this.WM_CHAT_THREAD_LOADED,
                     this.WM_SHOW_API_LOGS]
                     OnMessage(msg, handle)
 
@@ -51,14 +53,24 @@ class CustomMessages {
 
     ; --- Single-window chat IPC helpers ---
 
-    ; Main → ChatWindow: tell it to load a different thread
+    ; Main → ChatWindow: tell it to load a different thread. activate=1 is
+    ; reserved for a user-facing open/command completion; background loads
+    ; keep the user's current foreground application focused. The target
+    ; window handle namespaces the handoff file so separate app instances
+    ; cannot consume one another's thread IDs.
     ; Uses PostMessage (async) via a temp file — avoids blocking the main script
     ; on slow WebView2 ExecuteScript calls in the ChatWindow process.
-    static notifyLoadThread(threadId, chatWindowhWnd) {
+    static notifyLoadThread(threadId, chatWindowhWnd, activate := false) {
         try {
-            FileOpen(A_Temp "\chat_load_thread.txt", "w", "UTF-8-RAW").Write(threadId)
-            PostMessage(this.WM_LOAD_THREAD, 0, 0, , "ahk_id " chatWindowhWnd)
+            FileOpen(A_Temp "\chat_load_thread_" chatWindowhWnd ".txt", "w", "UTF-8-RAW").Write(threadId)
+            PostMessage(this.WM_LOAD_THREAD, activate ? 1 : 0, 0, , "ahk_id " chatWindowhWnd)
         }
+    }
+
+    ; ChatWindow -> Main: a deferred thread load has finished posting its
+    ; initial state and the window is ready to be used.
+    static notifyThreadLoaded(mainScriptHiddenHwnd) {
+        try PostMessage(this.WM_CHAT_THREAD_LOADED, 0, 0, , "ahk_id " mainScriptHiddenHwnd)
     }
 
     ; Main → ChatWindow: trigger LLM for the current thread (command-triggered chats).

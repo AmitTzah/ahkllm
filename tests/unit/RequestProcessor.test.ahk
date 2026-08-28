@@ -158,4 +158,22 @@ class RequestProcessorTest {
             throw Error("temperature/reasoning overrides missing from the unconditional command settings object")
     }
 
+    ; Regression: chat-mode commands must prepare and open their new thread
+    ; before selection capture. Clipboard/UIA fallback can take long enough to
+    ; expose the old chat after the command input window closes.
+    ChatModeCommand_PreparesThreadBeforeCapture() {
+        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        src := FileRead(srcPath)
+
+        preparePos := InStr(src, "prepareChatWindow()")
+        indicatorPos := InStr(src, "beginChatOpeningIndicator()")
+        capturePos := InStr(src, "captured := TextCapture.Capture")
+        if !preparePos || !indicatorPos || !capturePos
+            throw Error("chat command pre-open sequence is missing")
+        if preparePos > capturePos || indicatorPos > capturePos
+            throw Error("chat command must hide the old thread and show an opening indicator before text capture")
+        if !InStr(src, "openChatWindow(threadId, true)")
+            throw Error("chat command must open the populated thread after inserting messages")
+    }
+
 }

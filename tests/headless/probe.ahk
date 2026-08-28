@@ -400,7 +400,7 @@ switch command {
 
     case "load-thread":
         ; Mirror CustomMessages.notifyLoadThread (Main -> ChatWindow): write the
-        ; thread id to the shared temp file, then post WM_LOAD_THREAD (0x502) to
+        ; thread id to the target ChatWindow's private temp file, then post WM_LOAD_THREAD (0x502) to
         ; the chat window. Used by the chat-command race scenarios to reproduce
         ; the command path (processInitialRequest -> openChatWindow) without
         ; touching the real menu.
@@ -408,7 +408,7 @@ switch command {
         threadId := A_Args.Length > 2 ? A_Args[3] : ""
         ok := 0
         if hwnd && threadId {
-            FileOpen(A_Temp "\chat_load_thread.txt", "w", "UTF-8-RAW").Write(threadId)
+            FileOpen(A_Temp "\chat_load_thread_" hwnd ".txt", "w", "UTF-8-RAW").Write(threadId)
             PostMessage(0x502, 0, 0, , "ahk_id " hwnd)
             ok := 1
         }

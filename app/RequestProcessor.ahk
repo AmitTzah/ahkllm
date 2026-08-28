@@ -16,9 +16,27 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     ; Determine if fullText is needed (lazy — avoid capturing 1M-word docs unnecessarily)
     includeFullText := InStr(systemMessage, "{{fullText}}") || InStr(userMessageTemplate, "{{fullText}}")
 
+    ; Prepare the chat before capturing selection/input. Text capture can take
+    ; a noticeable amount of time when it falls back through clipboard APIs;
+    ; opening the new thread first makes that work invisible behind the new
+    ; chat instead of leaving the previous chat on screen.
+    commandThreadId := ""
+    if pasteMode = "chat" {
+        commandThreadId := ChatDB.Thread_Create(commandName)
+        ; Hide the old chat immediately, but defer loading/showing the new
+        ; thread until its system/user messages are ready. This prevents a
+        ; blank new chat from appearing while capture is still in progress.
+        prepareChatWindow()
+        beginChatOpeningIndicator()
+    }
+
     ; STEP 1: Capture text
     captured := TextCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines, maxContextWords)
     if !captured.success {
+        if commandThreadId
+            ChatDB.Thread_Delete(commandThreadId)
+        if commandThreadId
+            endChatOpeningIndicator()
         updateLoadingUI("Reset")
         MsgBox captured.error, (isFIM ? "FIM" : "No text copied"), "IconX"
         return
@@ -58,6 +76,11 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     if includeImageContext {
         ; Vision gate: check model supports images
         if !AttachmentUtils.HasVision(APIModelsArr[1]) {
+            if commandThreadId {
+                ChatDB.Thread_Delete(commandThreadId)
+                endChatOpeningIndicator()
+                openChatWindow()
+            }
             ToolTip("This model does not support images", , , 19)
             SetTimer(() => ToolTip(, , , 19), -3000)
             return
@@ -73,7 +96,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         singleAPIModelName := providerInfo.modelName
 
         if pasteMode = "chat" {
-            threadId := ChatDB.Thread_Create(commandName)
+            threadId := commandThreadId ? commandThreadId : ChatDB.Thread_Create(commandName)
             if systemMessage {
                 ChatDB.Msg_Insert({
                     thread_id: threadId, role: "system",
@@ -125,7 +148,9 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
                 commandThreadSettings.modelOverride := fullAPIModelName
             ChatDB.Thread_UpdateSettings(threadId, commandThreadSettings)
 
-            openChatWindow(threadId)
+            ; Show only after the system/user messages have been inserted, so
+            ; the first visible frame is already the populated new chat.
+            openChatWindow(threadId, true)
             ; Bug #203: the command's Stream Response toggle must reach the
             ; chat process - notifyTriggerLLM carries it in the WM wParam.
             SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd, stream), -100)
