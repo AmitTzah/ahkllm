@@ -3,7 +3,7 @@
 <p align="center"><b>LLM hotkeys and a full chat app for Windows.</b></p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Install-AhkLLM-blue?style=for-the-badge" alt="Install AhkLLM"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/Install-AhkLLM-blue" alt="Install AhkLLM"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License: GPL-3.0"></a>
 </p>
 
@@ -14,6 +14,8 @@ You can select text in another application and rewrite it in place, summarize it
 The other half is a full WebView2 chat client with branching, conversation trees, assistants, file attachments, web search, usage tracking, backups, API logs, and a bunch of the other stuff I wanted from the LLM apps I was already using.
 
 The main point is that the two sides are connected. You can use AhkLLM as a normal chat application, but you can also call it from whatever application you're already working in instead of constantly copying text back and forth to a browser.
+
+**FIM Fill:** generate missing text using what comes before and after it.
 
 <p align="center">
   <img src="docs/gifs/FIM-fill.gif" alt="AhkLLM FIM Fill generating text between existing text" width="760">
