@@ -3,7 +3,8 @@
 <p align="center"><b>LLM hotkeys and a full chat app for Windows.</b></p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Install-AhkLLM-blue" alt="Install AhkLLM"></a>
+  <a href="https://github.com/AmitTzah/ahkllm/releases/latest/download/AhkLLM.zip"><img src="https://img.shields.io/badge/Download-AhkLLM.zip-blue" alt="Download AhkLLM.zip"></a>
+  <a href="https://github.com/AmitTzah/ahkllm/releases"><img src="https://img.shields.io/github/downloads/AmitTzah/ahkllm/AhkLLM.zip?label=downloads" alt="AhkLLM downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License: GPL-3.0"></a>
 </p>
 
@@ -92,15 +93,15 @@ There is currently no dark mode. I know. I'll add one if people actually want it
 
 ## Installation
 
-There isn't a packaged release yet. The first release will be a clean `AhkLLM.zip` containing the files needed to run the app. Once that exists, the button at the top of this README will download the latest ZIP directly.
+The normal download is the latest [`AhkLLM.zip`](https://github.com/AmitTzah/ahkllm/releases/latest/download/AhkLLM.zip). It is a portable ZIP rather than an installer.
 
-Until then, run AhkLLM from the repository:
-
-1. Install [AutoHotkey v2.0.18 or later](https://www.autohotkey.com/download/ahk-v2.exe).
-2. Make sure the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) is installed. Windows 11 normally already has it.
-3. Clone or download this repository.
+1. Download and extract `AhkLLM.zip` somewhere.
+2. Install [AutoHotkey v2.0.18 or later](https://www.autohotkey.com/download/ahk-v2.exe).
+3. Make sure the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) is installed. Windows 11 normally already has it.
 4. Set the API key for whichever provider you want to use, or enter it later in Settings. If you just want to try AhkLLM without paying for API usage, see [Try AhkLLM for free](#try-ahkllm-for-free).
 5. Run `Main.ahk`.
+
+If you want to run directly from source instead, clone the repository and follow the same steps.
 
 For example, to store a DeepSeek key in your Windows environment:
 
@@ -119,8 +120,6 @@ GOOGLE_API_KEY
 OPENROUTER_API_KEY
 TAVILY_API_KEY
 ```
-
-This installation section will stay after the release is published. The only difference is that the normal path will become: download `AhkLLM.zip`, extract it somewhere, set up your API key, and run `Main.ahk`. Cloning the repository will remain here as the from-source option.
 
 ## Try AhkLLM for free
 
