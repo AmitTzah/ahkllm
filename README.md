@@ -15,11 +15,8 @@ The other half is a full WebView2 chat client with branching, conversation trees
 
 The main point is that the two sides are connected. You can use AhkLLM as a normal chat application, but you can also call it from whatever application you're already working in instead of constantly copying text back and forth to a browser.
 
-<!-- DEMO SLOT 1: FIM Fill. Put the finished GIF here, directly after the intro and before the chat screenshots. This is the main demo and should be the first GIF people see. -->
-
 <p align="center">
-  <img src="docs/screenshots/chat-window.png" alt="AhkLLM chat window" width="380">
-  <img src="docs/screenshots/chat-tree.png" alt="AhkLLM conversation tree" width="380">
+  <img src="docs/gifs/FIM-fill.gif" alt="AhkLLM FIM Fill generating text between existing text" width="760">
 </p>
 
 ## The hotkey side
@@ -28,20 +25,36 @@ By default, pressing the backtick key opens the command menu. The commands thems
 
 A few examples:
 
-- Select a paragraph in an email, run **Refine**, and AhkLLM replaces the selection with the rewritten version.
 - Use **Rephrase in Context** to send both the selection and the surrounding document text, then replace only the selected part.
 - Put your cursor in the middle of some prose or code and use **FIM Fill** to generate what belongs between the text before and after the cursor.
 - Use **FIM Continue** to continue writing from where your cursor is sitting.
-- Capture a screenshot and send it as image context.
+- Capture a screenshot, send it into chat as image context, and include an instruction for what AhkLLM should do with it.
 - Send selected text into the full chat window and continue the conversation there.
+- Select a paragraph in an email, run **Refine**, and AhkLLM replaces the selection with the rewritten version.
 
-<!-- DEMO SLOT 2: Hotkey to chat. Show selected text being sent from another application into AhkLLM, then ask a short follow-up in the chat. -->
+<p align="center">
+  <img src="docs/gifs/refine.gif" alt="AhkLLM refining selected text in place" width="760">
+</p>
+
+Custom commands can use the same capture-and-paste flow. This one turns selected text into a bullet list and pastes the result back into the original application:
+
+<p align="center">
+  <img src="docs/gifs/custom-paste-bullet-list.gif" alt="AhkLLM custom command turning selected text into a bullet list" width="760">
+</p>
 
 Text capture uses Windows UI Automation where the target application exposes it, with clipboard fallbacks for normal selection-based commands where possible. FIM depends on UIA text access because AhkLLM needs the text on both sides of the cursor.
 
 FIM Fill and Continue use DeepSeek's beta FIM completions endpoint by default. They work with normal writing as well as code.
 
-<!-- DEMO SLOT 3: Refine in place or FIM Continue. Put the finished GIF here, at the end of the hotkey section and before "The chat side". -->
+<p align="center">
+  <img src="docs/gifs/FIM-continue.gif" alt="AhkLLM FIM Continue extending text from the cursor" width="760">
+</p>
+
+In this example, the Screenshot command grabs VS Code and sends the image into chat with an instruction to explain what's on screen:
+
+<p align="center">
+  <img src="docs/gifs/screenshot.gif" alt="AhkLLM capturing a screenshot and sending it as image context" width="760">
+</p>
 
 ## The chat side
 
@@ -49,7 +62,10 @@ I originally only wanted the hotkey workflow. The chat GUI mostly happened becau
 
 The biggest one is branching. Editing or retrying an earlier message creates another branch instead of destroying what came after it, and the conversation map lets you see the whole tree and jump between branches. You can also fork part of a conversation into a separate chat.
 
-<!-- DEMO SLOT 4: Branching / conversation tree. Put the finished GIF here, immediately after the branching explanation and before the rest of the chat feature list. -->
+<p align="center">
+  <img src="docs/screenshots/chat-window.png" alt="AhkLLM chat window" width="380">
+  <img src="docs/screenshots/chat-tree.png" alt="AhkLLM conversation tree" width="380">
+</p>
 
 Other chat features currently include:
 
