@@ -79,13 +79,14 @@ async function showChat() {
 
 async function openSettings(cdp) {
   await cdp.click('#settings-icon');
-  await cdp.waitFor('document.getElementById("settingsNav").style.display !== "none" && document.querySelector("#providerGrid") !== null', 20000, 250, 'settings panel open');
-  await sleep(500);
+  await cdp.waitFor('document.getElementById("settingsNav").style.display !== "none" && document.querySelector("#providerGrid") !== null && document.querySelector("#providerGrid").children.length > 0', 20000, 100, 'settings data loaded');
 }
 
 async function openSection(cdp, name) {
   await cdp.click('.settings-nav .nav-item[data-section="' + name + '"]');
-  await sleep(400);
+  const selector = '#sec-' + name;
+  const navSelector = '.settings-nav .nav-item[data-section="' + name + '"]';
+  await cdp.waitFor('(() => { const section = document.querySelector(' + JSON.stringify(selector) + '); const nav = document.querySelector(' + JSON.stringify(navSelector) + '); return !!section && section.style.display !== "none" && !!nav && nav.classList.contains("active"); })()', 10000, 100, 'settings section ' + name);
 }
 
 async function saveSettings(cdp, dataDir, timeoutMs = 20000) {
@@ -99,13 +100,13 @@ async function saveSettings(cdp, dataDir, timeoutMs = 20000) {
       if (txt.includes('"models"')) return;
     } catch {}
     if (Date.now() - start > timeoutMs) throw new Error('saveSettings timeout');
-    await sleep(300);
+    await sleep(100);
   }
 }
 
 async function hideSettingsToChat(cdp) {
   await cdp.click('#sidebar-toggle');
-  await sleep(600);
+  await cdp.waitFor('document.getElementById("settingsNav").style.display === "none" && document.getElementById("chat-layout").style.display !== "none"', 10000, 100, 'chat layout visible');
 }
 
 async function sendChatMessage(cdp, text) {
@@ -116,7 +117,7 @@ async function sendChatMessage(cdp, text) {
 async function waitStreamingIdle(cdp, timeoutMs = 30000) {
   await cdp.waitFor(
     'typeof streamState !== "undefined" && !streamState.active && !isLoading',
-    timeoutMs, 300, 'stream idle'
+    timeoutMs, 100, 'stream idle'
   );
 }
 

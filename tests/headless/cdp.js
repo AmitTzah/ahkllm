@@ -77,7 +77,7 @@ class CDP {
   }
 
   // Poll a page expression until truthy.
-  async waitFor(expression, timeoutMs = 30000, intervalMs = 250, label = expression) {
+  async waitFor(expression, timeoutMs = 30000, intervalMs = 100, label = expression) {
     const start = Date.now();
     for (;;) {
       const v = await this.evalOrNull(expression);

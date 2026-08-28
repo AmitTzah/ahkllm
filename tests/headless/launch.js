@@ -32,6 +32,22 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function processExists(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e && e.code === 'EPERM';
+  }
+}
+
+function waitForProcessExit(pid, timeoutMs = 800) {
+  const start = Date.now();
+  while (processExists(pid) && Date.now() - start < timeoutMs)
+    sleepSync(50);
+}
+
 // Remove every leftover llm-webview2-* folder (they are all ours, unique per
 // run). The browser processes can hold files briefly after taskkill /F, so
 // retry until nothing remains or the bounded attempt budget runs out.
@@ -47,7 +63,7 @@ function sweepWebView2Dirs(maxAttempts = 8) {
     } catch {}
     if (removed === 0) break;
     total += removed;
-    sleepSync(500);
+    sleepSync(100);
   }
   return total;
 }
@@ -190,7 +206,7 @@ async function waitForChatTarget(port, timeoutMs = 30000) {
       if (chat && chat.webSocketDebuggerUrl) return chat;
     } catch {}
     if (Date.now() - start > timeoutMs) throw new Error('waitForChatTarget timeout (port ' + port + ')');
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 100));
   }
 }
 
@@ -203,7 +219,7 @@ async function findTarget(port, urlPart, timeoutMs = 30000) {
       if (t && t.webSocketDebuggerUrl) return t;
     } catch {}
     if (Date.now() - start > timeoutMs) return null;
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 100));
   }
 }
 
@@ -298,9 +314,7 @@ function teardown(mainPid) {
     try {
       spawnSync(AHK, [PROBE_AHK, 'kill-chat'], { windowsHide: true, timeout: 10000 });
     } catch {}
-    try {
-      spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 800'], { windowsHide: true, timeout: 5000 });
-    } catch {}
+    waitForProcessExit(mainPid, 800);
     try {
       spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
     } catch {}

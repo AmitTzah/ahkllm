@@ -78,11 +78,10 @@ async function runScenario(sc, iso, opts) {
       target = await launcher.waitForChatTarget(port);
       cdp = await CDP.connect(target.webSocketDebuggerUrl);
       await cdp.installPostMessageHook();
-      await cdp.waitFor('document.readyState === "complete" && typeof chatMessages !== "undefined"', 60000, 400, 'chat page ready');
+      await cdp.waitFor('document.readyState === "complete" && typeof chatMessages !== "undefined"', 60000, 100, 'chat page ready');
       // AHK wires the send button (onclick) after webViewReady — wait for it so
       // clicks/typing work on the very first interaction.
-      await cdp.waitFor('document.getElementById("chat-send-btn") && document.getElementById("chat-send-btn").onclick !== null', 30000, 300, 'send button wired');
-      await sleep(500);
+      await cdp.waitFor('document.getElementById("chat-send-btn") && document.getElementById("chat-send-btn").onclick !== null', 30000, 100, 'send button wired');
       if (!diagShown) {
         diagShown = true;
         try {
