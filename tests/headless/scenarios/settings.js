@@ -27,7 +27,7 @@ scenarios.push({
   id: 319,
   name: 'Explicit Model Default reasoning and temperature selections survive reload',
   regression: true,
-  mode: null,
+  mode: 'sse-success',
   settings: {
     assistants: [{
       id: 'asst-319', name: 'Defaults Assistant', baseModel: 'deepseek/deepseek-v4-flash',
@@ -39,7 +39,7 @@ scenarios.push({
     threads: [{ id: 't-defaults-319', title: 'Explicit Defaults', active_leaf_id: 'm-defaults-319', assistant_id: 'asst-319' }],
     messages: [{ id: 'm-defaults-319', thread_id: 't-defaults-319', role: 'user', content: 'hello defaults' }]
   },
-  async body({ cdp, dbPath }) {
+  async body({ cdp, dbPath, mockLog }) {
     await showChat();
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length > 0', 15000, 300, 'thread list');
     await cdp.click('#thread-list .chat-item');
@@ -53,6 +53,28 @@ scenarios.push({
     }))()`);
     if (initial.reasoning !== 'high' || String(initial.temperature) !== '0.3')
       throw new Error('setup: assistant defaults did not load: ' + JSON.stringify(initial));
+
+    // Concrete reasoning is also an explicit per-thread choice. Exercise the
+    // non-empty path before the existing Model Default round-trip below.
+    await cdp.eval(`(() => {
+      const reasoning = document.getElementById('reasoningDropdown');
+      reasoning.value = 'high';
+      reasoning.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(900);
+    const concrete = seed.query(dbPath, "SELECT reasoning_override, reasoning_override_set FROM chat_threads WHERE id='t-defaults-319'")[0];
+    if (!concrete || concrete.reasoning_override !== 'high' || Number(concrete.reasoning_override_set) !== 1)
+      throw new Error('concrete reasoning override was not persisted explicitly: ' + JSON.stringify(concrete));
+    await cdp.eval('window.loadThread("t-defaults-319"); true');
+    await cdp.waitFor('window.activeThreadId === "t-defaults-319" && document.getElementById("reasoningDropdown").value === "high"', 15000, 300, 'concrete reasoning reloaded');
+    await sendChatMessage(cdp, 'verify concrete reasoning after reload');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(700);
+    const requests = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const concreteRequest = requests.find((entry) => entry.body && entry.body.stream === true && entry.body.messages && entry.body.messages.some((m) => String(m.content || '').includes('verify concrete reasoning')));
+    if (!concreteRequest || concreteRequest.body.reasoning_effort !== 'high')
+      throw new Error('reloaded concrete reasoning did not reach the request: ' + JSON.stringify(concreteRequest && concreteRequest.body));
 
     await cdp.eval(`(() => {
       const reasoning = document.getElementById('reasoningDropdown');

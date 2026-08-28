@@ -164,6 +164,25 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
     thinkingTokens := usage.HasProp("thinkingTokens") ? usage.thinkingTokens : 0
     promptTokens := usage.HasProp("promptTokens") ? usage.promptTokens : 0
 
+    ; The user may permanently delete a chat while its request is in flight.
+    ; The conversation row must not become an orphan, but the completed API
+    ; call is still historical usage and must remain visible in the dashboard.
+    if !ChatDB.db.Query("SELECT id FROM chat_threads WHERE id=?;", streamThreadId).count {
+        orphanCosts := CostCalculator.ComputeTokenCosts(modelName, { promptTokens: promptTokens, completionTokens: completionTokens, cachedTokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0 })
+        ChatDB.ChatUsage_Upsert({
+            date: FormatTime(, "yyyy-MM-dd"), model: modelName,
+            provider: ModelParser.Split(modelName).provider,
+            prompt_tokens: promptTokens, completion_tokens: completionTokens,
+            thinking_tokens: thinkingTokens, cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0,
+            input_cost: orphanCosts.inputCost != "" ? orphanCosts.inputCost : 0,
+            cached_input_cost: orphanCosts.cachedInputCost != "" ? orphanCosts.cachedInputCost : 0,
+            output_cost: orphanCosts.outputCost != "" ? orphanCosts.outputCost : 0,
+            total_cost: orphanCosts.totalCost != "" ? orphanCosts.totalCost : 0,
+            response_time_ms: responseTimeMs, ttft_ms: ttftMs, ttft_measured: ttftMs > 0
+        })
+        return
+    }
+
     ChatDB.Msg_Insert({
         thread_id: streamThreadId, role: "assistant", content: content, model: modelName,
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
@@ -174,6 +193,7 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0,
         response_time_ms: responseTimeMs,
         ttft_ms: ttftMs,
+        ttft_measured: ttftMs > 0,
         token_attribution_path: attributionPath,
         update_active_leaf: !preserveActiveLeaf
     })

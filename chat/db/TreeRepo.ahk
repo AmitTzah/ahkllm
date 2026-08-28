@@ -26,7 +26,7 @@ class TreeRepo {
 
         ; Hardening item 1: threadId is a bound parameter - crafted ids can
         ; never alter the SQL text.
-        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
+        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
 
         msgMap := Map()
         for row in allTable.rows {
@@ -45,6 +45,7 @@ class TreeRepo {
                 ttft_ms: row.Has("ttft_ms") && row.ttft_ms ? Integer(row.ttft_ms) : 0,
                 active_path_tokens: row.Has("active_path_tokens") && row["active_path_tokens"] ? Integer(row["active_path_tokens"]) : 0,
                 is_local_copy: row.Has("is_local_copy") ? Integer(row["is_local_copy"]) : 0,
+                api_output_tokens: row.Has("api_output_tokens") ? Integer(row["api_output_tokens"]) : 0,
                 ; Bug #177: carry each message's cost SNAPSHOT (the prices in
                 ; effect when its API call was made) into the path so forks can
                 ; copy it - otherwise a Settings price change re-prices history.
@@ -321,7 +322,8 @@ class TreeRepo {
         costs := TreeRepo._MessageCostSnapshot(msg)
 
         isLocal := msg.HasProp("is_local_copy") ? Integer(msg.is_local_copy) : 0
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, isLocal, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
+        apiOutput := msg.HasOwnProp("api_output_tokens") ? msg.api_output_tokens : (!isLocal && msg.role = "assistant" ? tc : 0)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, isLocal, apiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
     }
 
     ; Extract the per-message cost snapshot (bug #153 columns) from a source
@@ -395,11 +397,12 @@ class TreeRepo {
         sTtft := row.ttft_ms ? row.ttft_ms : 0
         sApt := row.Has("active_path_tokens") && row.active_path_tokens ? Integer(row.active_path_tokens) : 0
         sLocal := row.Has("is_local_copy") ? Integer(row.is_local_copy) : 0
+        sApiOutput := row.Has("api_output_tokens") ? Integer(row.api_output_tokens) : (!sLocal && row.role = "assistant" ? sTc : 0)
         ; Bug #177: copy the cost snapshot so off-path fork rows are also
         ; priced at the original call-time prices.
         costs := TreeRepo._MessageCostSnapshot(row)
 
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt, sLocal, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt, sLocal, sApiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
         AttachmentRepo.CopyForMessage(row.id, newId)
     }
 
@@ -448,9 +451,8 @@ class TreeRepo {
 
     ; Returns token/cost stats for the token bar. activePathTokens is read from
     ; the leaf message's active_path_tokens column (O(1) primary key lookup).
-    ; The column stores: prompt_tokens + token_count for assistants (API ground truth),
-    ; parent + token_count for others (prefix sum). No more thread-level storage
-    ; or path summation needed in the common case.
+    ; The column stores the current-path token estimate. Historical API
+    ; prompt/output snapshots are kept separately for accounting.
     static GetThreadStats(threadId) {
         ; Read active_path_tokens from the leaf message (O(1))
         threadRow := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
@@ -547,28 +549,22 @@ class TreeRepo {
         return currentId
     }
 
-    ; Walk the active path and recompute active_path_tokens as prefix sums
-    ; (each msg = previous msg's total + this msg's token_count).
+    ; Walk the active path and recompute active_path_tokens as the current
+    ; context estimate. Historical API prompt_tokens remain untouched, but
+    ; cannot override an ancestor edited locally before the next request.
     ; Called after: insert with backfill, hard delete, edit.
-    ; This overwrites any API ground truth on assistants with computed prefix
-    ; sums - acceptable because the ground truth is stale after structural changes.
-    ; The next API call restores ground truth via Insert().
+    ; Historical API prompt/output/cost fields stay untouched; this field is
+    ; deliberately the current editable-path estimate used by the header.
     static _RecomputeActivePath(threadId) {
         path := TreeRepo.GetActivePath(threadId)
         prev := 0
         for msg in path {
-            if msg.role = "assistant" && msg.prompt_tokens {
-                ; Bug #107: assistants carry API ground truth - prompt_tokens
-                ; already covers the whole context up to this message, so keep
-                ; prompt + visible + thinking (matching Insert) instead of
-                ; reducing to a pure prefix sum that loses the prompt tokens.
-                prev := msg.prompt_tokens + msg.token_count + msg.thinking_tokens
-            } else {
-                prev += msg.token_count
-                ; Bug #64: thinking tokens occupy context - include them in the
-                ; prefix sums so recomputed active_path_tokens match the header.
-                prev += msg.thinking_tokens
-            }
+            prev += msg.token_count
+            ; Thinking tokens occupy the context window too. Do not use a
+            ; downstream assistant's historical prompt_tokens here: after an
+            ; ancestor edit that value describes an old request, not today's
+            ; active conversation.
+            prev += msg.thinking_tokens
             ChatDB.db.Query("UPDATE messages SET active_path_tokens=? WHERE id=?;", prev, msg.id)
         }
     }

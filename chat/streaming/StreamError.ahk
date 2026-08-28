@@ -22,6 +22,7 @@ _extractErrorMsg(rawOutput) {
 _handleStreamError() {
     try {
     streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
+    _RestoreFailedRetryLeaf()
     errorFile := requestParams["cURLErrorFile"]
     stderrText := ""
     if FileExist(errorFile) {

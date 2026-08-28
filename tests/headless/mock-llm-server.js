@@ -329,14 +329,18 @@ function tavilySearchBody(parsed, opts) {
 //                    (real APIs do this; lets scenarios verify per-command
 //                    model attribution end-to-end). Default: the hardcoded
 //                    'deepseek-v4-flash' response model.
+//   opts.failFirstRequests - return a provider error for the first N requests,
+//                            then continue with the selected normal mode.
 function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
   const toolRoundCounters = new Map();
+  let requestCount = 0;
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       let parsed = {};
       try { parsed = JSON.parse(body); } catch {}
+      requestCount++;
       if (logFile) {
         try {
           const modeUsed = parsed.stream ? 'sse' : (parsed.max_tokens === 50 ? 'title' : 'json');
@@ -420,6 +424,10 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         } else {
           json(tavilySearchBody(parsed, opts), res);
         }
+        return;
+      }
+      if (opts.failFirstRequests && requestCount <= opts.failFirstRequests) {
+        json({ error: { message: 'intentional first-request failure (mock)' } }, res, 503);
         return;
       }
       if (mode === 'drop') {

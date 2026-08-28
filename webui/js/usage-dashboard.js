@@ -112,7 +112,7 @@ function renderAll() {
 }
 
 function renderSummary() {
-  var cost = 0, calls = 0, tokens = 0, responseTimeMs = 0, ttftMs = 0, outputTokens = 0;
+  var cost = 0, calls = 0, tokens = 0, responseTimeMs = 0, ttftMs = 0, ttftCalls = 0, outputTokens = 0;
   var costBreakdown = { cacheHit: 0, cacheMiss: 0, output: 0 };
   for (var i=0; i<allData.chat.length; i++) {
     var c = allData.chat[i];
@@ -122,6 +122,7 @@ function renderSummary() {
     calls += (c.message_count||0);
     responseTimeMs += (c.total_response_time_ms||0);
     ttftMs += (c.total_ttft_ms||0);
+    ttftCalls += (c.ttft_count||0);
     costBreakdown.cacheHit += (c.cached_input_cost||0);
     costBreakdown.cacheMiss += (c.input_cost||0) - (c.cached_input_cost||0);
     costBreakdown.output += (c.output_cost||0);
@@ -138,6 +139,7 @@ function renderSummary() {
     calls += (c.call_count||0);
     responseTimeMs += (c.total_response_time_ms||0);
     ttftMs += (c.total_ttft_ms||0);
+    ttftCalls += (c.ttft_count||0);
     costBreakdown.cacheHit += (c.cached_input_cost||0);
     costBreakdown.cacheMiss += (c.input_cost||0) - (c.cached_input_cost||0);
     costBreakdown.output += (c.output_cost||0);
@@ -161,7 +163,7 @@ function renderSummary() {
     var speed = Math.round(outputTokens / (responseTimeMs / 1000));
     speedEl.textContent = fmtNum(speed) + ' tok/s';
 
-    var avgTtftMs = ttftMs / calls;
+    var avgTtftMs = ttftCalls > 0 ? ttftMs / ttftCalls : 0;
     var ttftDisplay = avgTtftMs >= 1000 ? (avgTtftMs / 1000).toFixed(1) + 's' : Math.round(avgTtftMs) + 'ms';
     ttftEl.textContent = ttftDisplay;
   } else {

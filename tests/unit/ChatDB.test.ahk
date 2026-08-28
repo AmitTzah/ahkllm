@@ -40,14 +40,14 @@ class ChatDBTest {
     }
 
     ; ----------------------------------------------------
-    ; Schema migrations + foreign keys (hardening item 2)
+    ; Fresh canonical schema + foreign keys
     ; ----------------------------------------------------
 
-    Schema_IsMigratedToLatest() {
+    Schema_IsCanonical() {
         this._setup()
         version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-        if Integer(version) != 8
-            throw Error("expected user_version 8, got " version)
+        if Integer(version) != 0
+            throw Error("fresh schema must not use migration user_version, got " version)
         cols := [
             { t: "chat_threads", c: "font_size" },
             { t: "chat_threads", c: "advanced_toggles" },
@@ -59,7 +59,9 @@ class ChatDBTest {
             { t: "messages", c: "cached_input_cost" },
             { t: "messages", c: "output_cost" },
             { t: "messages", c: "total_cost" },
-            { t: "assistants", c: "description" }
+            { t: "messages", c: "api_output_tokens" },
+            { t: "chat_usage", c: "ttft_count" },
+            { t: "command_usage", c: "ttft_count" }
         ]
         for item in cols {
             found := false
@@ -72,71 +74,14 @@ class ChatDBTest {
         }
         if !ChatDB.db.Exec("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_locks';").count
             throw Error("chat_locks table missing after schema creation")
+        if ChatDB.db.Exec("SELECT name FROM sqlite_master WHERE type='table' AND name='assistants';").count
+            throw Error("dead assistants table must not be created")
+        if ChatDB.db.Exec("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_chat_locks_thread';").count
+            throw Error("redundant chat-lock primary-key index must not be created")
+        vacuum := ChatDB.db.Exec("PRAGMA auto_vacuum;")
+        if !vacuum.count || Integer(vacuum[1, "auto_vacuum"]) != 2
+            throw Error("fresh schema must use incremental auto_vacuum")
         this._teardown()
-    }
-
-    Schema_MigratesOldDatabase() {
-        if ChatDB.isOpen
-            ChatDB.Close()
-        oldDbPath := A_Temp "\test_schema_old_" A_TickCount "_" Random(1000, 999999) ".db"
-        try FileDelete(oldDbPath)
-        ; Simulate a v0 database: tables without the later columns.
-        db := SQLite(oldDbPath)
-        db.Exec("CREATE TABLE chat_threads (id TEXT PRIMARY KEY, title TEXT);")
-        db.Exec("INSERT INTO chat_threads (id, title) VALUES ('legacy-overrides', 'Legacy overrides');")
-        db.Exec("ALTER TABLE chat_threads ADD COLUMN reasoning_override TEXT;")
-        db.Exec("ALTER TABLE chat_threads ADD COLUMN temperature_override REAL;")
-        db.Exec("UPDATE chat_threads SET reasoning_override='high', temperature_override=0 WHERE id='legacy-overrides';")
-        db.Exec("CREATE TABLE messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0);")
-        db.Exec("CREATE TABLE assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0);")
-        db.Close()
-          ChatDB.Open(oldDbPath)
-          try {
-              version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-              if Integer(version) != 8
-                  throw Error("expected user_version 8 after migration, got " version)
-            hasPrompt := false
-            for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
-                if row.name = "prompt_tokens"
-                    hasPrompt := true
-            }
-            if !hasPrompt
-                throw Error("migration did not add messages.prompt_tokens")
-            hasLocalCopy := false
-            for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
-                if row.name = "is_local_copy"
-                    hasLocalCopy := true
-            }
-            if !hasLocalCopy
-                throw Error("migration did not add messages.is_local_copy")
-            hasCost := false
-            for row in ChatDB.db.Exec("PRAGMA table_info(messages);").rows {
-                if row.name = "total_cost"
-                    hasCost := true
-            }
-            if !hasCost
-                throw Error("migration did not add messages cost snapshots")
-            hasFont := false
-            for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows {
-                if row.name = "font_size"
-                    hasFont := true
-            }
-              if !hasFont
-                  throw Error("migration did not add chat_threads.font_size")
-              hasLock := false
-              for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows {
-                  if row.name = "is_locked"
-                      hasLock := true
-              }
-              if !hasLock
-                  throw Error("migration did not add chat_threads.is_locked")
-              flags := ChatDB.db.Query("SELECT reasoning_override_set, temperature_override_set FROM chat_threads WHERE id=?;", "legacy-overrides")
-              if !flags.count || Integer(flags[1, "reasoning_override_set"]) != 1 || Integer(flags[1, "temperature_override_set"]) != 1
-                  throw Error("migration did not preserve non-empty legacy overrides")
-        } finally {
-            ChatDB.Close()
-            try FileDelete(oldDbPath)
-        }
     }
 
     ForeignKeys_OnDeleteSetNull() {
@@ -1359,10 +1304,9 @@ class ChatDBTest {
         this._teardown()
     }
 
-    ; Regression (bug #107): _RecomputeActivePath must keep an assistant's API
-    ; ground truth (prompt + visible + thinking) instead of reducing it to a
-    ; pure prefix sum of visible tokens.
-    RecomputeActivePath_PreservesAssistantPromptTokens() {
+    ; Historical API prompt_tokens stays persisted, while the current-path
+    ; estimate is recomputed from the editable message contributions.
+    RecomputeActivePathUsesCurrentPathEstimate() {
         threadId := this._setup()
         uId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "hello", token_count: 10})
         aId := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "answer", parent_id: uId, prompt_tokens: 100, token_count: 20})
@@ -1374,8 +1318,8 @@ class ChatDBTest {
         ; Simulate the structural-change recompute (delete/edit path).
         TreeRepo._RecomputeActivePath(threadId)
         leaf := ChatDB.db.Exec("SELECT active_path_tokens FROM messages WHERE id='" aId "';")
-        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 120
-            throw Error("recompute must keep prompt+visible (120), got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
+        if !leaf.count || Integer(leaf[1, "active_path_tokens"]) != 30
+            throw Error("recompute must use current path estimate (30), got " (leaf.count ? leaf[1, "active_path_tokens"] : "none"))
         this._teardown()
     }
 
@@ -1922,8 +1866,8 @@ class ChatDBTest {
         after := Integer(ChatDB.db.Query("SELECT cumulative_output_tokens FROM chat_threads WHERE id=?;", threadId)[1, "cumulative_output_tokens"])
         if a1tc <= 9
             throw Error("setup: edited assistant token_count should be refreshed (bug #181), got " a1tc)
-        if after != a1tc
-            throw Error("assistant edit must recompute cumulative_output_tokens (bug #194): message=" a1tc " thread=" after)
+        if after != 9
+            throw Error("assistant edit must preserve historical cumulative output 9, got " after)
         this._teardown()
     }
 

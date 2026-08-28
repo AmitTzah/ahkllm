@@ -308,8 +308,8 @@ scenarios.push({
 
 scenarios.push({
   id: 123,
-  name: '"Save as Branch" on an assistant message drops the branch copy\'s token metadata (Context Used falls back to the parent, token popover is blank)',
-  regression: true, // FIXED bug kept as a regression check (branch copies carry the source token metadata)
+  name: '"Save as Branch" uses an estimate for edited assistant text while preserving historical API metadata',
+  regression: true,
   mode: null,
   settings: {},
   fixtures: {
@@ -343,25 +343,24 @@ scenarios.push({
     const rows = seed.query(dbPath, "SELECT token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE content='edited answer branch'");
     if (rows.length !== 1) throw new Error('branch copy row missing: ' + JSON.stringify(rows));
     const r = rows[0];
-    // FIXED (bug #123): Edit.ahk branch mode copies the source assistant's
-    // token metadata, so the branch copy keeps active_path_tokens 21 (prompt
-    // 12 + output 9) and the full token attribution instead of zeroing it.
-    if (Number(r.active_path_tokens) !== 21)
-      throw new Error('branch copy active_path_tokens = ' + r.active_path_tokens + ' (expected the copied 21)');
-    if (Number(r.token_count) !== 9 || Number(r.prompt_tokens) !== 12)
-      throw new Error('branch copy lost token attribution: ' + JSON.stringify(r));
-    // Header keeps the copied message's context (21), not the parent's 12.
+    // The edited local copy has no historical prompt/cost attribution. Its
+    // current context uses the text estimate: ceil(19/3)=7, so 12+7=19.
+    if (Number(r.active_path_tokens) !== 19)
+      throw new Error('branch copy active_path_tokens = ' + r.active_path_tokens + ' (expected current estimate 19)');
+    if (Number(r.token_count) !== 7 || Number(r.prompt_tokens) !== 0)
+      throw new Error('branch copy should use current text estimate without historical prompt tokens: ' + JSON.stringify(r));
+    // Header reflects the edited content estimate, not the source API prompt.
     const barAfter = await cdp.text('#tokenBar .tu-item:first-child .tu-val');
-    if (String(barAfter).indexOf('21') !== 0)
-      throw new Error('header context after branch edit = ' + JSON.stringify(barAfter) + ' (expected 21)');
-    // Per-message popover on the branch copy shows the same 9 output tokens.
+    if (String(barAfter).indexOf('19') !== 0)
+      throw new Error('header context after branch edit = ' + JSON.stringify(barAfter) + ' (expected 19)');
+    // Per-message popover shows the current text estimate, not stale API data.
     await cdp.click('#chat-messages .msg:nth-child(2) .stat-btn');
     await cdp.waitFor('document.querySelector(".stat-toggle.pop-open") !== null', 5000, 200, 'popover open');
     const pop = await cdp.text('.stat-toggle.pop-open .stat-popover');
-    if (String(pop).indexOf('Output: 9 tokens') < 0)
+    if (String(pop).indexOf('Output: 7 tokens') < 0)
       throw new Error('branch popover lost the output attribution: ' + JSON.stringify(pop));
     return 'branch copy DB=' + JSON.stringify(r) + ', header context before=' + JSON.stringify(barBefore) +
-      ' after=' + JSON.stringify(barAfter) + ' popover=' + JSON.stringify(pop) + ' (copy kept a1\'s 21/9 attribution)';
+      ' after=' + JSON.stringify(barAfter) + ' popover=' + JSON.stringify(pop) + ' (copy uses 19/7 current estimate; historical a1 remains unchanged)';
   }
 });
 
@@ -1099,7 +1098,7 @@ scenarios.push({
 
 scenarios.push({
   id: 194,
-  name: 'Overwrite-editing an assistant message leaves the thread\'s CUMULATIVE output tokens stale - MessageRepo.Edit re-estimates the message token_count (bug #181) and recomputes active_path_tokens, but never calls _RecomputeCumulativeCounters, so the header ledger disagrees with the per-message popover until the next API call',
+  name: 'Overwrite-editing an assistant updates current context without changing historical cumulative output',
   mode: null,
   noApp: true,
   regression: true, // FIXED bug #194 kept as a regression check
@@ -1118,13 +1117,13 @@ scenarios.push({
     const afterM = text.match(/afterCumOut=(\d+)/);
     if (!a1M || !beforeM || !afterM) throw new Error('probe output missing fields: ' + text);
     const a1tc = Number(a1M[1]), beforeCumOut = Number(beforeM[1]), afterCumOut = Number(afterM[1]);
-    // FIXED (bug #194): Msg_Edit recomputes the cumulative ledger, so the
-    // header output total follows the refreshed message token count.
-    if (!(a1tc > 9 && beforeCumOut === 9 && afterCumOut === a1tc))
-      throw new Error('assistant edit cumulative ledger was not recomputed (fix incomplete): a1tc=' + a1tc + ' before=' + beforeCumOut + ' after=' + afterCumOut);
+    // The edited text gets a new current-path estimate, but the billed API
+    // output snapshot remains the original 9-token historical call.
+    if (!(a1tc > 9 && beforeCumOut === 9 && afterCumOut === 9))
+      throw new Error('assistant edit changed historical cumulative output: a1tc=' + a1tc + ' before=' + beforeCumOut + ' after=' + afterCumOut);
     return 'assistant overwrite-edit refreshed token_count=' + a1tc +
-      ' and chat_threads.cumulative_output_tokens followed to ' + afterCumOut +
-      ' (was ' + beforeCumOut + ' before the edit) - header ledger and per-message token count agree';
+      ' and chat_threads.cumulative_output_tokens stayed at historical ' + afterCumOut +
+      ' (was ' + beforeCumOut + ' before the edit) - current context estimate and billed history are separate';
   }
 });
 

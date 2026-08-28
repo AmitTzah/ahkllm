@@ -339,6 +339,42 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
         sendNonStreamingRequest(&chatHistoryJSONRequest)
 }
 
+_ClearRetryRollbackState() {
+    global requestParams
+    for key in ["pendingRetryThreadId", "pendingRetryOriginalLeaf", "pendingRetryRewoundLeaf"] {
+        if requestParams.Has(key)
+            requestParams.Delete(key)
+    }
+}
+
+; A retry temporarily moves the durable active leaf to the target's parent so
+; the request history excludes the old answer. If request construction or the
+; provider fails before a replacement is committed, put that leaf back. Only
+; restore when the DB still points at this retry's rewound branch (or its
+; partial-error child), so a user branch switch made meanwhile wins.
+_RestoreFailedRetryLeaf() {
+    global requestParams
+    if !requestParams.Has("pendingRetryThreadId") || !requestParams.Has("pendingRetryOriginalLeaf") {
+        _ClearRetryRollbackState()
+        return
+    }
+    threadId := requestParams["pendingRetryThreadId"]
+    originalLeaf := requestParams["pendingRetryOriginalLeaf"]
+    rewoundLeaf := requestParams.Has("pendingRetryRewoundLeaf") ? requestParams["pendingRetryRewoundLeaf"] : ""
+    current := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
+    if current.count {
+        activeLeaf := current[1, "active_leaf_id"] ? current[1, "active_leaf_id"] : ""
+        shouldRestore := activeLeaf = rewoundLeaf
+        if !shouldRestore && activeLeaf {
+            child := ChatDB.db.Query("SELECT id FROM messages WHERE id=? AND thread_id=? AND parent_id=? AND sibling_group IS NOT NULL;", activeLeaf, threadId, rewoundLeaf)
+            shouldRestore := child.count
+        }
+        if shouldRestore
+            ChatDB.Msg_SetActiveLeaf(threadId, originalLeaf)
+    }
+    _ClearRetryRollbackState()
+}
+
 ; Build request, fire to LLM, handle errors. Replaces 5 duplicate call sites.
 _BuildAndFireRequest() {
     try {
@@ -354,6 +390,7 @@ _BuildAndFireRequest() {
         ; headless DB-audit probe WITHOUT the chat-process modules - AHK v2
         ; treats a call whose callee is only defined in a later #Include as an
         ; unassigned local variable and pops a #Warn modal that hangs the run.
+        _RestoreFailedRetryLeaf()
         if requestParams.Has("pendingRetrySiblingGroup")
             requestParams.Delete("pendingRetrySiblingGroup")
         if requestParams.Has("pendingRetryIsRoot")
@@ -366,6 +403,7 @@ _BuildAndFireRequest() {
     return true
     } catch Error as e {
         debugLog("_BuildAndFireRequest error: " e.Message "`n" e.Stack, "ErrorHandler")
+        _RestoreFailedRetryLeaf()
         _PostChatError("Request failed: " e.Message)
         postWebMessage("setChatButtonsEnabled", true)
         startLoadingCursor(false)

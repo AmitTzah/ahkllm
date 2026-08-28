@@ -1083,8 +1083,8 @@ scenarios.push({
 
 scenarios.push({
   id: 107,
-  name: "TreeRepo._RecomputeActivePath keeps assistant prompt_tokens ground truth (bug fixed)",
-  regression: true, // FIXED bug kept as a regression check (recompute must not drop assistant prompt tokens)
+  name: "TreeRepo._RecomputeActivePath uses current editable-path estimates",
+  regression: true,
   mode: null,
   noApp: true,
   async body() {
@@ -1094,14 +1094,12 @@ scenarios.push({
     const tr=fs.readFileSync(path.join(launcher.REPO_ROOT,"chat","db","TreeRepo.ahk"),"utf8");
     const defIdx=tr.indexOf("static _RecomputeActivePath");
     const body=tr.slice(defIdx, defIdx+700);
-    // FIXED (bug #107): assistants keep API ground truth (prompt + visible +
-    // thinking); other messages still prefix-sum.
-    const keepsPrompt = /msg\.role = "assistant" && msg\.prompt_tokens/.test(body);
-    const usesGroundTruth = /prev := msg\.prompt_tokens \+ msg\.token_count \+ msg\.thinking_tokens/.test(body);
     const stillPrefixSums = /prev \+= msg\.token_count/.test(body);
-    if(!keepsPrompt || !usesGroundTruth || !stillPrefixSums)
-      throw new Error("bug #107 not fixed: keepsPrompt="+keepsPrompt+" usesGroundTruth="+usesGroundTruth+" stillPrefixSums="+stillPrefixSums);
-    return "_RecomputeActivePath keeps assistant prompt_tokens (+ visible + thinking) as ground truth and prefix-sums the rest, so Context Used no longer drops after delete/edit";
+    const avoidsHistoricalPrompt = !/prev := msg\.prompt_tokens/.test(body);
+    const includesThinking = /prev \+= msg\.thinking_tokens/.test(body);
+    if(!stillPrefixSums || !avoidsHistoricalPrompt || !includesThinking)
+      throw new Error("current-path estimate contract broken: prefix="+stillPrefixSums+" avoidsPrompt="+avoidsHistoricalPrompt+" thinking="+includesThinking);
+    return "_RecomputeActivePath prefix-sums current message contributions (including thinking) while leaving historical assistant prompt_tokens for accounting only";
   }
 });
 
@@ -1609,6 +1607,37 @@ scenarios.push({
     if (!branchesOnSuccess || !errorPath || !uniqueId)
       throw new Error('inline failure/unique-id path missing (BUG present): ' + JSON.stringify({ branchesOnSuccess, errorPath, uniqueId }));
     return 'InlineRequestRunner.Run branches on result.success, surfaces failures via _HandleInlineError (tooltip + API-log error), and uses a unique per-request id - a failed inline command is no longer a silent no-op';
+  }
+});
+
+scenarios.push({
+  id: 327,
+  name: 'Headless window helpers never activate the chat window or steal the interactive desktop focus',
+  regression: true,
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const probe = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'probe.ahk'), 'utf8');
+    const showStart = probe.indexOf('case "show-chat":');
+    const resizeStart = probe.indexOf('case "resize-chat":');
+    const loadStart = probe.indexOf('case "load-thread":');
+    const triggerStart = probe.indexOf('case "trigger-llm":');
+    const iconStart = probe.indexOf('case "icon-check":');
+    const showBlock = showStart >= 0 && resizeStart > showStart ? probe.slice(showStart, resizeStart) : '';
+    const resizeBlock = resizeStart >= 0 && iconStart > resizeStart ? probe.slice(resizeStart, iconStart) : '';
+    const loadBlock = loadStart >= 0 && triggerStart > loadStart ? probe.slice(loadStart, triggerStart) : '';
+    const helperStart = probe.indexOf('MoveOffscreenNoActivate(hwnd');
+    const helperBlock = helperStart >= 0 && iconStart > helperStart ? probe.slice(helperStart, iconStart) : '';
+    const noActivateFlags = /0x0051/.test(helperBlock) && /0x0450/.test(helperBlock);
+    const noActivateShow = /ShowWindow[\s\S]*SW_SHOWNOACTIVATE/.test(helperBlock);
+    const loadPrepositions = /MoveOffscreenNoActivate\(hwnd\)[\s\S]*PostMessage\(0x502, 2/.test(loadBlock);
+    const ipc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
+    const ipcHeadlessMode = /headless := wParam = 2/.test(ipc) && /chatWindow\.Show\(headless \? "x-20000 y-20000 NA"/.test(ipc);
+    const legacyActivation = /WinShow\(/.test(showBlock) || /WinMove\(/.test(showBlock) || /WinShow\(/.test(resizeBlock) || /WinMove\(/.test(resizeBlock);
+    if (!noActivateFlags || !noActivateShow || !loadPrepositions || !ipcHeadlessMode || legacyActivation)
+      throw new Error('headless window helper can activate: ' + JSON.stringify({ noActivateFlags, noActivateShow, loadPrepositions, ipcHeadlessMode, legacyActivation }));
+    return 'show-chat, resize-chat, and load-thread use off-screen no-activate positioning; WM_LOAD_THREAD headless mode is explicit and no legacy WinShow/WinMove path remains';
   }
 });
 

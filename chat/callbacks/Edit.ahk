@@ -32,7 +32,7 @@ handleEdit(params, *) {
         siblingIndex := 0
         role := "assistant"
         model := ""
-        tokenCount := 0, promptTokens := 0, thinkingTokens := 0, cachedTokens := 0, activePathTokens := 0
+        tokenCount := 0, thinkingTokens := 0
         reasoning := ""
         found := false
         for i, msg in path {
@@ -48,13 +48,11 @@ handleEdit(params, *) {
                     ChatDB.db.Query("UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;", siblingGroup, id)
                 }
                 siblingIndex := MessageRepo.GetMaxSiblingIndex(siblingGroup) + 1
-                ; Bug #123: capture the source message's token metadata inside
-                ; the loop (the for-loop variable is not valid after it exits).
-                tokenCount := msg.HasProp("token_count") ? msg.token_count : 0
-                promptTokens := msg.HasProp("prompt_tokens") ? msg.prompt_tokens : 0
+                ; A local branch has new text and no new API usage. Estimate
+                ; its current context contribution from the edited content;
+                ; keep only reasoning metadata that still belongs to the copy.
+                tokenCount := Max(1, Ceil(StrLen(content) / 3))
                 thinkingTokens := msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
-                cachedTokens := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
-                activePathTokens := msg.HasProp("active_path_tokens") && msg.active_path_tokens != "" ? msg.active_path_tokens : 0
                 ; Bug #154: the branch copy must carry the source's reasoning/
                 ; thinking CONTENT too - the Thought Process block and the
                 ; thinking tokens must stay together (fork copies already do).
@@ -72,17 +70,14 @@ handleEdit(params, *) {
         }
         ; Bug #118: this is a LOCAL DB copy - no API call happened, so Insert
         ; must not upsert chat_usage or re-charge the cumulative counters.
-        ; Bug #123: carry the source message's token metadata (token_count,
-        ; prompt_tokens, thinking, cached, active_path_tokens) so the branch
-        ; copy's Context Used and token popover stay faithful to the original.
+        ; This is a local copy, so historical API prompt/output/cost metadata
+        ; is deliberately not copied. The new text gets an estimate above and
+        ; active_path_tokens is recomputed from the current branch.
         newMsgId := ChatDB.Msg_Insert({
             thread_id: activeThreadId, role: role, content: content, model: model,
             parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex,
             token_count: tokenCount,
-            prompt_tokens: promptTokens,
             thinking_tokens: thinkingTokens,
-            cached_tokens: cachedTokens,
-            active_path_tokens: activePathTokens,
             reasoning: reasoning,
             local_copy: true
         })

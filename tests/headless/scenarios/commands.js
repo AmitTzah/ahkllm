@@ -302,6 +302,7 @@ scenarios.push({
   },
   async body({ cdp, dbPath }) {
     await sleep(500);
+    const focusBefore = runProbe('active-window').active;
     // Command 1: load thread A and trigger the LLM - mirrors the command path
     // processInitialRequest -> openChatWindow(threadId) + notifyTriggerLLM(1).
     const p1 = runProbe('load-thread', ['t-221-a']);
@@ -313,10 +314,28 @@ scenarios.push({
     // Command 2: load thread B and trigger while command 1 is still streaming.
     runProbe('load-thread', ['t-221-b']);
     runProbe('trigger-llm', ['1']);
-    // Let both streams settle (sse-slow total ~3s; generous margin).
-    await sleep(9000);
-    const aAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
-    const bAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-b' AND role='assistant'");
+    const focusAfterDispatch = runProbe('active-window').active;
+    const windowAfterDispatch = runProbe('chat-info');
+    if (focusBefore && focusAfterDispatch && focusBefore !== focusAfterDispatch)
+      throw new Error('headless command dispatch changed the foreground window: before=' + focusBefore + ' after=' + focusAfterDispatch);
+    if (Number(windowAfterDispatch.x) > -1000 || Number(windowAfterDispatch.y) > -1000)
+      throw new Error('headless command dispatch left the ChatWindow on-screen: ' + JSON.stringify(windowAfterDispatch));
+    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active && isLoading', 10000, 200, 'second command in flight');
+    // Wait for both persisted responses instead of relying on a fixed sleep.
+    // The streams are intentionally concurrent, and machine load can delay
+    // the second cURL beyond the old 9-second margin.
+    const settleDeadline = Date.now() + 20000;
+    let aAsst = [], bAsst = [];
+    while (Date.now() < settleDeadline) {
+      try {
+        aAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
+        bAsst = seed.query(dbPath, "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id='t-221-b' AND role='assistant'");
+      } catch {}
+      if (Number(aAsst[0]?.cnt || 0) >= 1 && Number(bAsst[0]?.cnt || 0) >= 1)
+        break;
+      await sleep(300);
+    }
+    await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active && !isLoading', 20000, 300, 'both command streams idle');
     const aContent = seed.query(dbPath, "SELECT content FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
     const uiState = await cdp.eval('({ active: streamState.active, loading: isLoading, msgs: chatMessages.length })');
     // FIXED (bug #221): each request owns its own stream state (output file,

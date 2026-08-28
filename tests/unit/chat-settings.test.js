@@ -216,6 +216,24 @@ describe('_makeAssistantClickHandler — updates mode before posting', () => {
         assert.strictEqual(ctx.window._currentSettings.assistantBaseModel, 'deepseek/deepseek-v4-flash');
         assert.strictEqual(ctx.window._currentSettings.systemMessage, 'assistant prompt');
     });
+
+    it('also replaces direct-model reasoning and temperature before an immediate send', () => {
+        const ctx = loadSettingsModule();
+        ctx.window._currentSettings = {
+            model: 'openai/gpt-5-mini', assistantName: '', reasoning: 'high', temperature: 1.2
+        };
+        ctx.window._assistantList = [{
+            id: 'a1', name: 'Configured Assistant', baseModel: 'deepseek/deepseek-v4-flash',
+            systemMessage: 'assistant prompt', reasoning: 'low', temperature: 0.2, description: ''
+        }];
+        const mockEl = {
+            parentElement: { querySelectorAll: () => [] },
+            classList: { add: () => {} }
+        };
+        ctx._makeAssistantClickHandler(mockEl, 'a1')();
+        assert.strictEqual(ctx.window._currentSettings.reasoning, 'low');
+        assert.strictEqual(ctx.window._currentSettings.temperature, 0.2);
+    });
 });
 
 describe('_sendAllSettings', () => {

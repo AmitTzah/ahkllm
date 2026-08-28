@@ -2,7 +2,7 @@
 ; ThreadLockRepo.test.ahk - Locked-chat persistence +
 ; ThreadLockService unit tests
 ;
-; Covers: schema migration v7, lock CRUD, sidebar title
+; Covers: canonical lock schema, lock CRUD, sidebar title
 ; redaction, search exclusion, hash verification with
 ; cooldown, session unlock state, and cascade delete.
 ; ======================================================
@@ -42,8 +42,8 @@ class ThreadLockRepoTest {
         this._openDb()
         try {
             version := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-            if Integer(version) != 8
-                throw Error("expected user_version 8, got " version)
+            if Integer(version) != 0
+                throw Error("fresh lock schema must not use migration user_version, got " version)
             hasCol := false
             for row in ChatDB.db.Exec("PRAGMA table_info(chat_threads);").rows
                 if row.name = "is_locked"

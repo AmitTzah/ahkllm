@@ -981,7 +981,7 @@ scenarios.push({
     if (leaf.active_leaf_id !== 'm-139-a2b')
       throw new Error('DB active leaf after search nav wrong: ' + JSON.stringify(leaf));
     const ctx = await cdp.text('#tokenBar .tu-item:first-child .tu-val');
-    if (String(ctx).indexOf('45') !== 0)
+    if (String(ctx).indexOf('65') !== 0)
       throw new Error('header context after search nav wrong: ' + JSON.stringify(ctx));
     return 'searched "needle": result preview=' + JSON.stringify(preview) + ' -> navigated to leaf m-139-a2b ' +
       '(context ' + JSON.stringify(ctx) + '), DB active_leaf=' + leaf.active_leaf_id + ' (consistent)';
@@ -1387,7 +1387,8 @@ scenarios.push({
 scenarios.push({
   id: 169,
   name: 'Retry failure hides the original response - retryLastAssistantMessage splices the retried message out of chatMessages immediately, and a failed retry never restores it (bubble gone + error banner until reload; DB row intact)',
-  mode: null, // no mock server -> connection refused
+  mode: 'sse-success',
+  mockOpts: { failFirstRequests: 1 },
   regression: true,
   settings: {},
   fixtures: {
@@ -1406,7 +1407,8 @@ scenarios.push({
     // Click Retry on the assistant. The UI immediately removes it from chatMessages.
     await cdp.click('#chat-messages .msg:nth-child(2) .msg-action-btn[title="Retry"]');
     await cdp.waitFor('chatMessages.length === 1 && chatMessages[0].role === "user"', 15000, 300, 'retried message removed from UI');
-    // The retry request hits a refused endpoint (mode null) -> error path.
+    // The mock returns a provider error for the retry, then resumes normal
+    // streaming for the next exchange.
     await waitStreamingIdle(cdp, 30000);
     await sleep(800);
     const dbRow = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-169-a1'")[0].c;
@@ -1418,10 +1420,19 @@ scenarios.push({
     // the retry failed and the error banner is shown.
     // BUG present: DB row intact but the UI bubble was gone (domBubbles=1)
     // until reload.
-    if (dbRow !== 1 || domBubbles !== 2)
+    if (dbRow !== 1 || domBubbles !== 2 || leaf !== 'm-169-a1')
       throw new Error('retry-failure state changed: dbRow=' + dbRow + ' domBubbles=' + domBubbles + ' leaf=' + leaf + ' banner=' + errBanner);
-    return 'retry against refused endpoint: a1 still in DB (rows=' + dbRow + ', leaf=' + leaf + ') and the bubble is RESTORED in the DOM (bubbles=' + domBubbles +
-      ', error banner shown=' + errBanner + ') - the failed retry keeps the original response visible';
+    await sendChatMessage(cdp, 'follow-up after failed retry');
+    await waitStreamingIdle(cdp, 40000);
+    await sleep(800);
+    const u2 = seed.query(dbPath, "SELECT id, parent_id FROM messages WHERE content='follow-up after failed retry'")[0];
+    const a2 = seed.query(dbPath, "SELECT id, parent_id FROM messages WHERE thread_id='t-retry-169' AND role='assistant' AND id <> 'm-169-a1' ORDER BY rowid DESC LIMIT 1")[0];
+    const finalLeaf = seed.query(dbPath, "SELECT active_leaf_id FROM chat_threads WHERE id='t-retry-169'")[0].active_leaf_id;
+    if (!u2 || u2.parent_id !== 'm-169-a1' || !a2 || a2.parent_id !== u2.id || finalLeaf !== a2.id)
+      throw new Error('next exchange did not follow restored path: u2=' + JSON.stringify(u2) + ' a2=' + JSON.stringify(a2) + ' leaf=' + finalLeaf);
+    await cdp.eval('window.loadThread("t-retry-169"); true');
+    await cdp.waitFor('chatMessages.length === 4', 15000, 300, 'reloaded active path');
+    return 'failed provider retry restored a1 (DB leaf=' + leaf + ', DOM bubbles=' + domBubbles + '); next exchange attached u2 to a1 and reload showed u1 -> a1 -> u2 -> a2';
   }
 });
 
@@ -1507,7 +1518,7 @@ scenarios.push({
 
 scenarios.push({
   id: 172,
-  name: 'Hard-deleting (deleteThreadForever/emptyTrash) the streaming thread mid-stream silently DROPS the completed response - no dangling row (activeThreadId is cleared) but the billed response is never persisted anywhere',
+  name: 'Hard-deleting a streaming thread mid-stream never leaves an orphan message and retains historical usage',
   mode: 'sse-slow',
   regression: true,
   settings: {},
@@ -1558,16 +1569,13 @@ scenarios.push({
     const dangling = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads)')[0].c;
     const anyAssistant = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE role='assistant'")[0].c;
     const usage = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM chat_usage')[0].c;
-    // Fixed: the completion uses the thread captured at send time, so the
-    // billed response is persisted (as a dangling row under the removed thread
-    // id) and usage-tracked - the API call never silently vanishes.
-    // BUG present: activeThreadId was cleared, _persistStreamResponse was
-    // SKIPPED, and the billed response vanished (no persistence, no usage).
+    // The thread row is gone, so the response cannot be retained as a message;
+    // the historical API usage row must still be recorded independently.
     if (!activeAtStart || !activeAtHardDelete) throw new Error('setup: stream finished before the delete - timing not mid-stream (' + activeAtStart + '/' + activeAtHardDelete + ')');
-    if (dangling !== 1 || anyAssistant !== 1 || usage !== 1)
-      throw new Error('billed response still lost on hard-delete mid-stream (BUG present): dangling=' + dangling + ' assistantRows=' + anyAssistant + ' usage=' + usage);
-    return 'hard-delete mid-stream: thread A removed while streaming; on completion the captured thread id persists the response (dangling rows=' + dangling +
-      ', any assistant row=' + anyAssistant + ', chat_usage rows=' + usage + ' (activeAtStart=' + activeAtStart + ' activeAtHardDelete=' + activeAtHardDelete + ') - the billed call leaves a trace and is usage-tracked';
+    if (dangling !== 0 || anyAssistant !== 0 || usage !== 1)
+      throw new Error('hard-delete completion left an orphan or lost historical usage: dangling=' + dangling + ' assistantRows=' + anyAssistant + ' usage=' + usage);
+    return 'hard-delete mid-stream: thread A removed while streaming; completion left no orphan message (dangling=' + dangling +
+      ', assistant rows=' + anyAssistant + ') and retained the billed call in chat_usage=' + usage + ' (activeAtStart=' + activeAtStart + ' activeAtHardDelete=' + activeAtHardDelete + ')';
   }
 });
 

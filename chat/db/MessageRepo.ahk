@@ -23,6 +23,7 @@ class MessageRepo {
         ; cumulative counters/costs, or upsert chat_usage (which would show a
         ; fake API request in the dashboard).
         isLocalCopy := msgObj.HasProp("local_copy") && msgObj.local_copy
+        apiOutputTokens := msgObj.HasProp("api_output_tokens") ? msgObj.api_output_tokens : (!isLocalCopy && msgObj.role = "assistant" ? tc : 0)
 
         ; Per-message attribution: if this is an assistant with API data,
         ; backfill the user message's token_count via subtraction.
@@ -51,16 +52,15 @@ class MessageRepo {
                 activePathTokens := Integer(parentRow[1, "active_path_tokens"]) + tc
         }
 
-        ; Bug #107: persist prompt_tokens (API ground truth for assistants) so
-        ; _RecomputeActivePath can restore prompt+completion after structural
-        ; changes instead of reducing to a visible-token prefix sum.
+        ; Persist prompt_tokens as historical API ground truth. It is not used
+        ; to rebuild the current editable-path estimate after local changes.
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
 
         ; Bug #153: snapshot the COSTS at the prices in effect when this API
         ; call was made, so a later price change in Settings never re-prices
         ; historical calls in the thread's cumulative counters.
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
-        if msgObj.HasProp("model") && msgObj.model {
+        if !isLocalCopy && msgObj.HasProp("model") && msgObj.model {
             usage := { promptTokens: promptTotal, completionTokens: tc + tht, totalTokens: promptTotal + tc + tht, cachedTokens: ckt }
             costs := CostCalculator.ComputeTokenCosts(msgObj.model, usage)
             if costs.inputCost != "" {
@@ -70,7 +70,7 @@ class MessageRepo {
                 totalCost := costs.totalCost != "" ? costs.totalCost : 0
             }
         }
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0, inputCost, cachedInputCost, outputCost, totalCost)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0, apiOutputTokens, inputCost, cachedInputCost, outputCost, totalCost)
 
         ; Sync FTS5 index
         ChatDB.FTS_Sync(id, msgObj.content)
@@ -117,7 +117,8 @@ class MessageRepo {
                 output_cost: outputCost,
                 total_cost: totalCost,
                 response_time_ms: lat,
-                ttft_ms: ttft
+                ttft_ms: ttft,
+                ttft_measured: msgObj.HasProp("ttft_measured") ? msgObj.ttft_measured : (ttft > 0)
             })
         }
 
@@ -220,6 +221,7 @@ class MessageRepo {
         ; header totals - recompute the cumulative counters from the remaining
         ; messages (they were previously left stale and forever inflated).
         MessageRepo._RecomputeCumulativeCounters(threadId)
+        ChatDB.RequestSpaceReclaim()
         ChatDB.CommitTransaction()
         ChatDB._MarkPersistentDataChanged()
         } catch Error as e {
@@ -239,7 +241,7 @@ class MessageRepo {
     ; actually saw. Output/cached only count assistant rows (bug #128) - user
     ; token_counts are backfilled INPUT contributions, never output.
     static _RecomputeCumulativeCounters(threadId) {
-        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens, is_local_copy, input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE thread_id=?;", threadId)
+        table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE thread_id=?;", threadId)
         rowMap := Map()
         for row in table.rows {
             rowMap[row.id] := row
@@ -285,7 +287,9 @@ class MessageRepo {
             outputCost += rowOutputCost
             totalCost += rowTotalCost
             input += promptTotal
-            output += tc + tht
+            ; token_count is the current visible text estimate after a local
+            ; edit; api_output_tokens remains the historical billed output.
+            output += row.api_output_tokens + tht
             cached += ckt
         }
         ChatDB.db.Query("UPDATE chat_threads SET cumulative_input_tokens=?, cumulative_output_tokens=?, cumulative_cached_tokens=?, cumulative_cost=?, cumulative_input_cost=?, cumulative_cached_input_cost=?, cumulative_output_cost=? WHERE id=?;", input, output, cached, totalCost, inputCost, cachedInputCost, outputCost, threadId)

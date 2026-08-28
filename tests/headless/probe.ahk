@@ -63,6 +63,14 @@ ChatHwnd() {
     return 0
 }
 
+MoveOffscreenNoActivate(hwnd, w := 0, h := 0) {
+    ; HWND_BOTTOM + SWP_NOACTIVATE + SWP_SHOWWINDOW. When dimensions are
+    ; supplied, also retain the render size and avoid sending a redraw storm.
+    flags := (w && h) ? 0x0450 : 0x0051
+    DllCall("user32.dll\SetWindowPos", "ptr", hwnd, "ptr", 1, "int", -20000, "int", -20000, "int", w, "int", h, "uint", flags)
+    DllCall("user32.dll\ShowWindow", "ptr", hwnd, "int", 4) ; SW_SHOWNOACTIVATE
+}
+
 ; Render an HICON into a 32x32 BGRA DIB and return its bytes as hex. Two
 ; LoadPicture calls for the same file return different handles, so handle
 ; equality cannot prove two icons are the same image — rendered bytes can.
@@ -305,8 +313,12 @@ switch command {
         ; staying "shown" (IsWindowVisible = true, rendered on its desktop).
         hwnd := ChatHwnd()
         if hwnd {
-            WinMove(-20000, -20000, , , "ahk_id " hwnd)
-            WinShow("ahk_id " hwnd)
+            ; WinMove/WinShow are normally harmless, but their shell-level
+            ; implementation can activate a newly-created GUI on some Windows
+            ; builds. Use the no-activate Win32 forms explicitly: the user's
+            ; foreground window must remain untouched while the app is moved
+            ; to its off-screen render position.
+            MoveOffscreenNoActivate(hwnd)
         }
         Write(Map("shown", hwnd ? 1 : 0))
 
@@ -317,8 +329,7 @@ switch command {
         h := A_Args[4] ? Integer(A_Args[4]) : 900
         hwnd := ChatHwnd()
         if hwnd {
-            WinMove(-20000, -20000, w, h, "ahk_id " hwnd)
-            WinShow("ahk_id " hwnd)
+            MoveOffscreenNoActivate(hwnd, w, h)
         }
         Write(Map("resized", hwnd ? 1 : 0))
 
@@ -408,8 +419,14 @@ switch command {
         threadId := A_Args.Length > 2 ? A_Args[3] : ""
         ok := 0
         if hwnd && threadId {
+            ; OnLoadThread reveals the ChatWindow with the no-activate AHK
+            ; option. Put it off-screen BEFORE that asynchronous message is
+            ; handled as well, so there is no on-screen/foreground flash.
+            MoveOffscreenNoActivate(hwnd)
             FileOpen(A_Temp "\chat_load_thread_" hwnd ".txt", "w", "UTF-8-RAW").Write(threadId)
-            PostMessage(0x502, 0, 0, , "ahk_id " hwnd)
+            ; wParam=2 is the private headless form of WM_LOAD_THREAD: the
+            ; real handler keeps the render window off-screen and inactive.
+            PostMessage(0x502, 2, 0, , "ahk_id " hwnd)
             ok := 1
         }
         Write(Map("hwnd", hwnd ? hwnd : 0, "threadId", threadId, "posted", ok))

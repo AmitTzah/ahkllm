@@ -270,6 +270,7 @@ async function main() {
   process.on('SIGINT', onInterrupt);
   process.on('SIGTERM', onInterrupt);
   const lines = [];
+  const durations = [];
   let passCount = 0;
   let iso = null;
   let restored = 'not attempted';
@@ -282,6 +283,7 @@ async function main() {
     fs.writeFileSync(RESULTS_FILE, '# ' + new Date().toISOString() + ' | run of ' + selected.length + ' scenario(s)\n', 'utf-8');
     for (const sc of selected) {
       const started = Date.now();
+      console.log('START | #' + String(sc.id).padStart(2, '0') + ' | ' + sc.name);
       const r = await runScenario(sc, iso, {});
       if (r.dataDir) {
         const dataDirLine = '  (data dir for inspection: ' + r.dataDir + ')';
@@ -289,10 +291,11 @@ async function main() {
         fs.appendFileSync(RESULTS_FILE, dataDirLine + '\n', 'utf-8');
       }
       const secs = ((Date.now() - started) / 1000).toFixed(1);
+      durations.push({ id: r.id, name: r.name, seconds: Number(secs) });
       const tag = r.pass ? 'PASS' : 'FAIL';
       if (r.pass) passCount++;
       const line = tag + ' | #' + String(r.id).padStart(2, '0') + ' | ' + r.name + ' | ' + r.detail + (r.pass ? '' : '');
-      console.log(line);
+      console.log(line + ' | ' + secs + 's');
       lines.push(line + ' | ' + secs + 's');
       fs.appendFileSync(RESULTS_FILE, line + ' | ' + secs + 's\n', 'utf-8');
     }
@@ -319,10 +322,13 @@ async function main() {
   const failedScenarios = lines.filter((l) => l.startsWith('FAIL | ')).map((l) => l.split('|')[1].trim());
   const summary = 'Summary: ' + passCount + '/' + selected.length + ' scenarios PASS' +
     (failedScenarios.length ? ' — FAILED: ' + failedScenarios.join(', ') : '');
+  const slowest = durations.slice().sort((a, b) => b.seconds - a.seconds).slice(0, 10);
+  const slowLine = 'Slowest scenarios: ' + (slowest.length ? slowest.map((d) => '#' + String(d.id).padStart(2, '0') + '=' + d.seconds.toFixed(1) + 's').join(', ') : 'none');
   const syncOk = checkReportSync();
   const syncLine = syncOk ? 'OK' : 'MISMATCH — update BUG_HUNT_REPORT.md or scenarios/*.js';
-  fs.appendFileSync(RESULTS_FILE, '\n' + summary + '\nReal profile restored: ' + restored + '\nReport sync: ' + syncLine + '\n', 'utf-8');
+  fs.appendFileSync(RESULTS_FILE, '\n' + summary + '\n' + slowLine + '\nReal profile restored: ' + restored + '\nReport sync: ' + syncLine + '\n', 'utf-8');
   console.log('\n' + summary);
+  console.log(slowLine);
   console.log('Results written to ' + RESULTS_FILE);
   console.log('Real profile restored: ' + restored);
   console.log('Report sync: ' + syncLine);

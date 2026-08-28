@@ -745,12 +745,11 @@ class UsageTrackingTest {
         ; Delete a1 — a2 gets re-parented to uId
         ChatDB.Msg_HardDelete(a1Id)
 
-        ; Bug #107: the recompute keeps the assistant's API ground truth, so
-        ; the re-parented a2 leaf still reports prompt(15)+completion(8)=23
-        ; (the pure prefix sum u(5)+a2(8)=13 would drop its prompt tokens).
+        ; Structural recompute uses the current editable path estimate. The
+        ; historical prompt_tokens=15 remains persisted separately.
         stats2 := ChatDB.Msg_GetThreadStats(threadId)
-        if stats2.activePathTokens != 23
-            throw Error("Expected activePathTokens=23 after hard delete re-parenting (ground truth), got " stats2.activePathTokens)
+        if stats2.activePathTokens != 13
+            throw Error("Expected activePathTokens=13 after hard delete re-parenting, got " stats2.activePathTokens)
 
         this._closeDb()
     }

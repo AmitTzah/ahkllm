@@ -438,6 +438,56 @@ class LLMRequestBuilderTest {
             throw Error("Expected modelName 'deepseek-v4-flash', got '" info.modelName "'")
     }
 
+    ; Disabling API logging removes the previously retained log instead of
+    ; leaving a stale file behind in TEMP.
+    LogRequest_DisabledClearsExistingFile() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath
+        oldLimit := apiLogMaxEntries
+        target := A_Temp "\test_api_log_disabled_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := target
+        apiLogMaxEntries := 5
+        try {
+            ApiLogger.LogRequest({ promptName: "retained", request: "{}", response: "{}", status: "success" })
+            if !FileExist(target)
+                throw Error("setup: expected retained log file")
+            apiLogMaxEntries := 0
+            ApiLogger.TrimToLimit()
+            if FileExist(target)
+                throw Error("disabling API logging must remove the existing log file")
+        } finally {
+            ApiLogger.logFilePath := oldPath
+            apiLogMaxEntries := oldLimit
+            try FileDelete(target)
+        }
+    }
+
+    ; The byte budget protects TEMP even when a small number of entries carry
+    ; very large request/response bodies.
+    LogRequest_ByteBudgetBoundsEntries() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath
+        oldLimit := apiLogMaxEntries
+        oldBytes := ApiLogger.maxLogBytes
+        target := A_Temp "\test_api_log_bytes_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := target
+        ApiLogger.maxLogBytes := 200
+        apiLogMaxEntries := 20
+        try {
+            large := ""
+            loop 1000
+                large .= "x"
+            ApiLogger.LogRequest({ promptName: "huge", request: large, response: "", status: "success" })
+            if FileExist(target) && FileGetSize(target) > ApiLogger.maxLogBytes
+                throw Error("API log exceeded byte budget: " FileGetSize(target))
+        } finally {
+            ApiLogger.logFilePath := oldPath
+            ApiLogger.maxLogBytes := oldBytes
+            apiLogMaxEntries := oldLimit
+            try FileDelete(target)
+        }
+    }
+
     ResolveProvider_OpenRouterFree() {
         EnvSet("OPENROUTER_API_KEY", "sk-openrouter-test")
         try {

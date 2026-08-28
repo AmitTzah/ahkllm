@@ -49,7 +49,7 @@ class ThreadLockRepo {
     static Update(threadId, salt, hash, iterations) {
         ChatDB.BeginTransaction()
         try {
-        ChatDB.db.Query("UPDATE chat_locks SET salt=?, hash=?, iterations=?, updated_at=datetime('now') WHERE thread_id=?;", salt, hash, iterations, threadId)
+        ChatDB.db.Query("UPDATE chat_locks SET salt=?, hash=?, iterations=? WHERE thread_id=?;", salt, hash, iterations, threadId)
         ChatDB.CommitTransaction()
         ChatDB._MarkPersistentDataChanged()
         } catch Error as e {

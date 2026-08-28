@@ -59,11 +59,12 @@ the `chat_locks` table and setting `chat_threads.is_locked = 0` in
 
 ## Database
 
-Migration v7 (automatic, versioned via `PRAGMA user_version`):
-
-- `chat_threads.is_locked INTEGER DEFAULT 0`
-- New table `chat_locks (thread_id PK REFERENCES chat_threads ON DELETE CASCADE,
-  kdf, salt, hash, iterations, created_at, updated_at)`
+Fresh installs include `chat_threads.is_locked INTEGER DEFAULT 0` and the
+`chat_locks` table (`thread_id` primary key, foreign-keyed to
+`chat_threads`, with `kdf`, `salt`, `hash`, and `iterations`). The first public
+release has one canonical schema and does not migrate unpublished development
+databases; close the app and reset/export a personal development database if
+needed.
 
 Locked threads are excluded from FTS5, LIKE, and title search; their sidebar and
 trash titles are redacted to "Locked chat"; deleting them requires the password.

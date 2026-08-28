@@ -24,6 +24,7 @@ class ChatDB {
     static _transactionDepth := 0
     static _deferredFileDeletes := []
     static _createdFiles := []
+    static _reclaimRequested := false
 
     ; Notify the Main-owned BackupManager, or forward the notification when
     ; this facade is running inside ChatWindow.
@@ -44,6 +45,9 @@ class ChatDB {
         if !DirExist(dirPath)
             DirCreate(dirPath)
         ChatDB.db := SQLite(ChatDB.dbPath)
+        ; This file-reclamation mode must be selected before journal setup or
+        ; any table is created on a fresh database.
+        ChatDB.db.Exec("PRAGMA auto_vacuum=INCREMENTAL;")
         ChatDB.db.Exec("PRAGMA journal_mode=WAL;")
         ChatDB.db.Exec("PRAGMA busy_timeout=5000;")
         ; Hardening item 2: enforce referential integrity (ON DELETE CASCADE /
@@ -74,6 +78,7 @@ class ChatDB {
         ChatDB._transactionDepth := 1
         ChatDB._deferredFileDeletes := []
         ChatDB._createdFiles := []
+        ChatDB._reclaimRequested := false
     }
 
     static CommitTransaction() {
@@ -81,10 +86,14 @@ class ChatDB {
             return
         ChatDB.db.Exec("COMMIT;")
         ChatDB._transactionDepth := 0
+        reclaim := ChatDB._reclaimRequested
         pending := ChatDB._deferredFileDeletes
         ChatDB._deferredFileDeletes := []
         ChatDB._createdFiles := []
+        ChatDB._reclaimRequested := false
         ChatDB._DeleteCommittedOrphanFiles(pending)
+        if reclaim
+            ChatDB._ReclaimSpace()
     }
 
     static RollbackTransaction() {
@@ -95,7 +104,31 @@ class ChatDB {
         ChatDB._transactionDepth := 0
         ChatDB._deferredFileDeletes := []
         ChatDB._createdFiles := []
+        ChatDB._reclaimRequested := false
         ChatDB._DeleteRolledBackFiles(created)
+    }
+
+    static RequestSpaceReclaim() {
+        if ChatDB._transactionDepth
+            ChatDB._reclaimRequested := true
+    }
+
+    ; Reclaim only substantial free space after a permanent purge. Incremental
+    ; vacuum avoids the long full-database rewrite on every message delete;
+    ; the WAL checkpoint also prevents the deleted pages remaining in -wal.
+    static _ReclaimSpace() {
+        try {
+            pageCount := ChatDB.db.Exec("PRAGMA page_count;")
+            freeCount := ChatDB.db.Exec("PRAGMA freelist_count;")
+            pages := pageCount.count ? Integer(pageCount[1, "page_count"]) : 0
+            free := freeCount.count ? Integer(freeCount[1, "freelist_count"]) : 0
+            if free < 256 || free * 4 < pages
+                return
+            ChatDB.db.Exec("PRAGMA incremental_vacuum(" free ");")
+            ChatDB.db.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
+        } catch Error as e {
+            debugLog("[DB] Space reclaim skipped: " e.Message)
+        }
     }
 
     static DeferFileDelete(filePath) {
@@ -146,23 +179,17 @@ class ChatDB {
     }
 
     static _CreateSchema() {
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL, system_override_set INTEGER DEFAULT 0, reasoning_override_set INTEGER DEFAULT 0, temperature_override_set INTEGER DEFAULT 0);")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_model TEXT NOT NULL, system_prompt TEXT DEFAULT '', description TEXT DEFAULT '', reasoning TEXT DEFAULT '', temperature REAL DEFAULT NULL, is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_locks (thread_id TEXT PRIMARY KEY REFERENCES chat_threads(id) ON DELETE CASCADE, kdf TEXT NOT NULL DEFAULT 'pbkdf2-sha256', salt TEXT NOT NULL, hash TEXT NOT NULL, iterations INTEGER NOT NULL DEFAULT 600000, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_folders (id TEXT PRIMARY KEY, name TEXT NOT NULL);")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL, system_override_set INTEGER DEFAULT 0, reasoning_override_set INTEGER DEFAULT 0, temperature_override_set INTEGER DEFAULT 0, font_size INTEGER DEFAULT 17, folder_id TEXT, is_locked INTEGER DEFAULT 0, advanced_toggles TEXT DEFAULT '', FOREIGN KEY (folder_id) REFERENCES chat_folders(id) ON DELETE SET NULL);")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, api_output_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE);")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_locks (thread_id TEXT PRIMARY KEY REFERENCES chat_threads(id) ON DELETE CASCADE, kdf TEXT NOT NULL DEFAULT 'pbkdf2-sha256', salt TEXT NOT NULL, hash TEXT NOT NULL, iterations INTEGER NOT NULL DEFAULT 600000);")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS message_attachments (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, attachment_type TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT, original_filename TEXT, file_size INTEGER DEFAULT 0, extracted_text TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE);")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS command_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, command_name TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider, command_name));")
-        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS command_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, command_name TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, ttft_count INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider, command_name));")
+        ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS chat_usage (date TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL, call_count INTEGER DEFAULT 1, prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, input_cost REAL DEFAULT 0, cached_input_cost REAL DEFAULT 0, output_cost REAL DEFAULT 0, total_cost REAL DEFAULT 0, total_response_time_ms INTEGER DEFAULT 0, total_ttft_ms INTEGER DEFAULT 0, ttft_count INTEGER DEFAULT 0, PRIMARY KEY (date, model, provider));")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_attachments_message ON message_attachments(message_id);")
-        ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_chat_locks_thread ON chat_locks(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);")
         ChatDB.db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_sibling ON messages(sibling_group, sibling_index);")
-
-        ; Hardening item 2: schema evolution is versioned (PRAGMA user_version)
-        ; instead of unconditional try/catch ALTER TABLEs.
-        ChatDB._Migrate()
 
         ; FTS5 full-text search - maintained incrementally by MessageRepo (FTS_Sync).
         ; Repair on startup only if counts mismatch (first run or corruption).
@@ -180,105 +207,6 @@ class ChatDB {
             debugLog("[DB] FTS5 rebuilt - " Integer(msgCount[1, "cnt"]) " messages indexed")
         }
 
-    }
-
-    ; Versioned migrations. Each step runs only when user_version is behind,
-    ; and _AddColumnIfMissing skips columns that already exist, so old
-    ; databases are brought forward exactly once and fresh databases no-op.
-    static _Migrate() {
-        versionRow := ChatDB.db.Exec("PRAGMA user_version;")
-        version := versionRow.count ? Integer(versionRow[1, "user_version"]) : 0
-
-        ; v1: per-thread font size + right-rail Advanced toggles.
-        if version < 1 {
-            ChatDB._AddColumnIfMissing("chat_threads", "font_size", "INTEGER DEFAULT 17")
-            ChatDB._AddColumnIfMissing("chat_threads", "advanced_toggles", "TEXT DEFAULT ''")
-            ChatDB.db.Exec("PRAGMA user_version = 1;")
-        }
-        ; v2: folder membership.
-        if version < 2 {
-            ChatDB._AddColumnIfMissing("chat_threads", "folder_id", "TEXT REFERENCES chat_folders(id) ON DELETE SET NULL")
-            ChatDB.db.Exec("PRAGMA user_version = 2;")
-        }
-        ; v3: assistant API prompt_tokens ground truth (bug #107).
-        if version < 3 {
-            ChatDB._AddColumnIfMissing("messages", "prompt_tokens", "INTEGER DEFAULT 0")
-            ChatDB.db.Exec("PRAGMA user_version = 3;")
-        }
-        ; v4: assistant description.
-        if version < 4 {
-            ChatDB._AddColumnIfMissing("assistants", "description", "TEXT DEFAULT ''")
-            ChatDB.db.Exec("PRAGMA user_version = 4;")
-        }
-        ; v5: persisted local-copy flag (bug #144) so cumulative counters and
-        ; token backfills can distinguish a local branch-edit copy from a real
-        ; API call.
-        if version < 5 {
-            ChatDB._AddColumnIfMissing("messages", "is_local_copy", "INTEGER DEFAULT 0")
-            ChatDB.db.Exec("PRAGMA user_version = 5;")
-        }
-        ; v6: per-message COST snapshots (bug #153) - a later price change in
-        ; Settings must never re-price a thread's HISTORICAL calls. New inserts
-        ; snapshot their costs at the price in effect when the call was made;
-        ; legacy rows are backfilled once from the current model prices (best
-        ; effort - a fresh open without pricing data simply leaves them 0, and
-        ; _RecomputeCumulativeCounters falls back to current prices for those).
-        if version < 6 {
-            ChatDB._AddColumnIfMissing("messages", "input_cost", "REAL DEFAULT 0")
-            ChatDB._AddColumnIfMissing("messages", "cached_input_cost", "REAL DEFAULT 0")
-            ChatDB._AddColumnIfMissing("messages", "output_cost", "REAL DEFAULT 0")
-            ChatDB._AddColumnIfMissing("messages", "total_cost", "REAL DEFAULT 0")
-            try {
-                legacyRows := ChatDB.db.Query("SELECT id, model, token_count, prompt_tokens, thinking_tokens, cached_tokens FROM messages WHERE role='assistant' AND model IS NOT NULL AND model != '';")
-                for legacyRow in legacyRows.rows {
-                    pt := Integer(legacyRow.prompt_tokens ? legacyRow.prompt_tokens : 0)
-                    ct := Integer(legacyRow.token_count ? legacyRow.token_count : 0)
-                    tht := Integer(legacyRow.thinking_tokens ? legacyRow.thinking_tokens : 0)
-                    ckt := Integer(legacyRow.cached_tokens ? legacyRow.cached_tokens : 0)
-                    if pt = 0 && ct = 0 && tht = 0 && ckt = 0
-                        continue
-                    usage := { promptTokens: pt, completionTokens: ct + tht, totalTokens: pt + ct + tht, cachedTokens: ckt }
-                    costs := CostCalculator.ComputeTokenCosts(legacyRow.model, usage)
-                    if costs.totalCost != "" {
-                        ChatDB.db.Query("UPDATE messages SET input_cost=?, cached_input_cost=?, output_cost=?, total_cost=? WHERE id=?;", costs.inputCost != "" ? costs.inputCost : 0, costs.cachedInputCost != "" ? costs.cachedInputCost : 0, costs.outputCost != "" ? costs.outputCost : 0, costs.totalCost, legacyRow.id)
-                    }
-                }
-            }
-            ChatDB.db.Exec("PRAGMA user_version = 6;")
-        }
-        ; v7: locked chats - app-level password gate (Tier 1). The lock
-        ; secrets live in chat_locks; is_locked is the fast user-visible
-        ; flag used by the sidebar and every access gate.
-        if version < 7 {
-            ChatDB._AddColumnIfMissing("chat_threads", "is_locked", "INTEGER DEFAULT 0")
-            ChatDB.db.Exec("PRAGMA user_version = 7;")
-        }
-        ; v8: explicit empty per-thread overrides. NULL/empty values used to
-        ; mean "inherit from assistant", which made an intentional Model
-        ; Default selection indistinguishable from no override.
-        if version < 8 {
-            ChatDB._AddColumnIfMissing("chat_threads", "system_override_set", "INTEGER DEFAULT 0")
-            ChatDB._AddColumnIfMissing("chat_threads", "reasoning_override_set", "INTEGER DEFAULT 0")
-            ChatDB._AddColumnIfMissing("chat_threads", "temperature_override_set", "INTEGER DEFAULT 0")
-            ; Older databases only stored the override value, so the new
-            ; explicit flags are initially 0 after ALTER TABLE. Preserve
-            ; those existing non-empty overrides during the migration.
-            ChatDB.db.Query("UPDATE chat_threads SET system_override_set=1 WHERE system_override IS NOT NULL AND system_override != '' AND system_override_set=0;")
-            ChatDB.db.Query("UPDATE chat_threads SET reasoning_override_set=1 WHERE reasoning_override IS NOT NULL AND reasoning_override != '' AND reasoning_override_set=0;")
-            ChatDB.db.Query("UPDATE chat_threads SET temperature_override_set=1 WHERE temperature_override IS NOT NULL AND temperature_override_set=0;")
-            ChatDB.db.Exec("PRAGMA user_version = 8;")
-        }
-    }
-
-    ; Add a column only when it is missing (table/column names are trusted
-    ; constants, never user input).
-    static _AddColumnIfMissing(tableName, columnName, definition) {
-        cols := ChatDB.db.Exec("PRAGMA table_info(" tableName ");")
-        for row in cols.rows {
-            if row.name = columnName
-                return
-        }
-        ChatDB.db.Exec("ALTER TABLE " tableName " ADD COLUMN " columnName " " definition ";")
     }
 
     ; FTS5 sync - called from MessageRepo on Insert/Edit.

@@ -29,6 +29,30 @@ class StreamErrorTest {
         }
     }
 
+    ; Regression: a retry that fails after rewinding the durable leaf must
+    ; restore the original answer before the next normal send builds history.
+    FailedRetry_RestoresActiveLeafForNextSend() {
+        global requestParams
+        threadId := this._setup()
+        u1 := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u1"})
+        a1 := ChatDB.Msg_Insert({thread_id: threadId, role: "assistant", content: "a1", model: "deepseek/test", parent_id: u1, token_count: 5})
+        ChatDB.Msg_SetActiveLeaf(threadId, u1)
+        requestParams["pendingRetryThreadId"] := threadId
+        requestParams["pendingRetryOriginalLeaf"] := a1
+        requestParams["pendingRetryRewoundLeaf"] := u1
+
+        _RestoreFailedRetryLeaf()
+
+        leaf := ChatDB.db.Query("SELECT active_leaf_id FROM chat_threads WHERE id=?;", threadId)
+        if !leaf.count || leaf[1, "active_leaf_id"] != a1
+            throw Error("failed retry did not restore active leaf to a1")
+        u2 := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "u2", parent_id: a1})
+        parent := ChatDB.db.Query("SELECT parent_id FROM messages WHERE id=?;", u2)
+        if !parent.count || parent[1, "parent_id"] != a1
+            throw Error("next user message did not attach to restored a1")
+        this._teardown()
+    }
+
     ; ----------------------------------------------------
     ; Regression: Cancelled retry uses pendingRetrySiblingGroup
     ; ----------------------------------------------------

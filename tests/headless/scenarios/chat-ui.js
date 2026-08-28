@@ -122,7 +122,7 @@ scenarios.push({
   settings: {
     assistants: [{
       id: 'asst-322', name: 'Immediate Assistant', baseModel: 'deepseek/deepseek-v4-flash',
-      systemMessage: 'assistant system 322', systemMessageFile: '', description: '', reasoning: '', temperature: ''
+      systemMessage: 'assistant system 322', systemMessageFile: '', description: '', reasoning: 'low', temperature: '0.2'
     }],
     threadTitles: { enabled: false }
   },
@@ -145,6 +145,18 @@ scenarios.push({
     const directModel = await cdp.eval('window._currentSettings.model');
     if (String(directModel).indexOf('gpt-5-mini') < 0)
       throw new Error('setup: thread did not load the direct model: ' + JSON.stringify(directModel));
+    // Establish deliberately different direct-model settings, then select the
+    // assistant and send before its IPC round-trip can complete.
+    await cdp.eval(`(() => {
+      const reasoning = document.getElementById('reasoningDropdown');
+      reasoning.value = 'high';
+      reasoning.dispatchEvent(new Event('change', { bubbles: true }));
+      const slider = document.getElementById('tempSlider');
+      slider.value = '1.2';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(800);
     await cdp.type('#chat-input', 'send immediately after assistant selection');
 
     await cdp.click('#modelCardTrigger');
@@ -169,11 +181,15 @@ scenarios.push({
     const request = lines.find((entry) => entry.body && entry.body.stream === true);
     if (!request) throw new Error('setup: no streaming request logged; lines=' + lines.length);
     const thread = seed.query(dbPath, "SELECT assistant_id FROM chat_threads WHERE id='t-race-322'");
-    if (request.body.model !== 'deepseek-v4-flash' || !thread[0] || thread[0].assistant_id !== 'asst-322')
+    const systemMessages = (request.body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || ''));
+    const assistantConfig = request.body.reasoning_effort === 'low' && Number(request.body.temperature) === 0.2;
+    if (request.body.model !== 'deepseek-v4-flash' || !thread[0] || thread[0].assistant_id !== 'asst-322' ||
+        !systemMessages.some((text) => text.includes('assistant system 322')) || !assistantConfig)
       throw new Error('assistant selection did not win the immediate-send race: model=' +
-        JSON.stringify(request.body.model) + ' thread=' + JSON.stringify(thread));
+        JSON.stringify({ model: request.body.model, thread, systemMessages, reasoning: request.body.reasoning_effort, temperature: request.body.temperature }));
     return 'selected Immediate Assistant and sent in one renderer turn; request used assistant model ' +
-      JSON.stringify(request.body.model) + ' and DB assistant_id=' + JSON.stringify(thread[0].assistant_id);
+      JSON.stringify(request.body.model) + ', system prompt/reasoning/temperature=' + JSON.stringify({ system: systemMessages, reasoning: request.body.reasoning_effort, temperature: request.body.temperature }) +
+      ' and DB assistant_id=' + JSON.stringify(thread[0].assistant_id);
   }
 });
 
@@ -1582,7 +1598,7 @@ scenarios.push({
       const p = runProbe('trigger-llm', ['1']);
       if (!p.posted) throw new Error(c.name + ': trigger probe did not post');
       await waitStreamingIdle(cdp, 30000);
-      await sleep(600);
+      await cdp.waitFor('chatMessages.some((m) => m.role === "assistant" && m.content && m.content.indexOf("Hello from the mock LLM.") >= 0)', 15000, 250, c.name + ' response rendered');
 
       // The mock received a STREAMING request for this command's model with
       // the family-appropriate thinking config.
@@ -1607,8 +1623,6 @@ scenarios.push({
 
       // Response rendered in the REAL WebView (streamed bubble).
       const rendered = await cdp.eval('chatMessages.some((m) => m.role === "assistant" && m.content && m.content.indexOf("Hello from the mock LLM.") >= 0)');
-      if (!rendered)
-        throw new Error(c.name + ': response not rendered in the WebView');
 
       // Sidebar shows the thread with the provider icon.
       const icon = await cdp.eval('(() => { const img = document.querySelector("#thread-list .chat-item[data-chat=\\"' + c.id + '\\"] .chat-icon img"); return img ? img.getAttribute("src") : "(no img)"; })()');

@@ -34,9 +34,10 @@ function assertCanonicalToolOrder(log) {
 // posted payload.
 async function enableWebSearch(cdp) {
   await showChat();
+  await cdp.waitFor('document.getElementById("webSearchToggle") !== null', 10000, 200, 'Web Search toggle');
   await cdp.clearPosted();
   await cdp.eval('document.getElementById("webSearchToggle").click()');
-  await sleep(1000); // debounce 300ms + IPC round trip
+  await cdp.waitFor('window.__posted && window.__posted.some((m) => m.includes("updateModelSettings"))', 5000, 100, 'Web Search settings update');
   const posted = await cdp.postedMessages();
   const last = posted.filter((m) => m.includes('"updateModelSettings"')).pop();
   if (!last) throw new Error('no updateModelSettings posted after enabling web search');
@@ -674,8 +675,8 @@ scenarios.push({
     const branchUsers = seed.query(dbPath, "SELECT id, content, token_count, active_path_tokens FROM messages WHERE thread_id='t-branch-search-259' AND role='user' ORDER BY rowid");
     if (!a1User || Number(a1User.token_count) !== 0 || Number(a1User.active_path_tokens) !== 15)
       throw new Error('A1 branch user attribution changed unexpectedly: ' + JSON.stringify({ a1User, branchUsers }));
-    if (!a2User || Number(a2User.token_count) !== 0 || Number(a2User.active_path_tokens) !== 15)
-      throw new Error('A2 prompt attribution changed after the off-path response: ' + JSON.stringify(a2User));
+    if (!a2User || Number(a2User.token_count) !== 0 || Number(a2User.active_path_tokens) !== 10)
+      throw new Error('A2 current-path estimate changed after the off-path response: ' + JSON.stringify(a2User));
     if (!a1Response || Number(a1Response.active_path_tokens) !== 26)
       throw new Error('A1 assistant active_path_tokens is wrong: ' + JSON.stringify(a1Response));
     if (!contextRows[0] || !answer || Number(answer.prompt_tokens) !== 16)

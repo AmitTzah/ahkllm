@@ -33,7 +33,7 @@ function q(sql){ return seed.query(dbPath, sql); }
 console.log("\n1. Schema checks");
 const tables=q("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").map(r=>r.name);
 console.log(" tables:",tables.join(", "));
-const expected=["chat_threads","messages","chat_folders","message_attachments","chat_usage","command_usage","assistants"];
+const expected=["chat_threads","messages","chat_folders","message_attachments","chat_usage","command_usage","chat_locks"];
 for(const t of expected){ console.log(`  ${t}: ${tables.includes(t)?"OK":"MISSING"}`); }
 // Check columns for chat_threads
 const cols=q("PRAGMA table_info(chat_threads)").map(r=>r.name);
@@ -95,7 +95,7 @@ console.log("\n5. active_path_tokens recompute");
 const tree=fs.readFileSync(path.join(__dirname,"../../chat/db/TreeRepo.ahk"),"utf8");
 const recompute=tree.slice(tree.indexOf("_RecomputeActivePath"), tree.indexOf("_RecomputeActivePath")+800);
 console.log(recompute.trim().split("\n").slice(0,5).join("\n"));
-console.log(" Recompute does prev+=token_count only (no prompt_tokens) — underreports for assistants after delete");
+console.log(" Recompute uses current editable-path contributions; historical prompt/output snapshots remain separate");
 
 // 6. SQL injection via parent_id
 console.log("\n6. SQL injection parent_id");

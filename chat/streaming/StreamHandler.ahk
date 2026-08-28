@@ -1277,6 +1277,12 @@ _cleanupStreamState() {
         requestParams.Delete("pendingRetrySiblingGroup")
     if requestParams.Has("pendingRetryIsRoot")
         requestParams.Delete("pendingRetryIsRoot")
+    if requestParams.Has("pendingRetryThreadId")
+        requestParams.Delete("pendingRetryThreadId")
+    if requestParams.Has("pendingRetryOriginalLeaf")
+        requestParams.Delete("pendingRetryOriginalLeaf")
+    if requestParams.Has("pendingRetryRewoundLeaf")
+        requestParams.Delete("pendingRetryRewoundLeaf")
 }
 
 ; Bug #219: a mid-stream SSE error event is a real provider failure after
@@ -1288,6 +1294,16 @@ _cleanupStreamState() {
 ; finalizes the partial before setChatButtonsEnabled(true) resets the
 ; composer.
 _handleMidStreamError() {
+    ; A failed retry is a transactional UI/DB operation: do not turn a
+    ; provider error's partial text into a new active branch. The normal
+    ; non-retry path keeps its existing partial-response behavior.
+    if requestParams.Has("pendingRetryOriginalLeaf") {
+        streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
+        _RestoreFailedRetryLeaf()
+        postWebMessage("streamCancelled", { dbMsg: "", threadId: streamThreadId })
+        _handleStreamError()
+        return
+    }
     dbMsgData := _persistPartialStreamContent()
     streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
     postWebMessage("streamCancelled", { dbMsg: dbMsgData, threadId: streamThreadId })

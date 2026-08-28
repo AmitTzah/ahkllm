@@ -245,7 +245,11 @@ document.addEventListener('DOMContentLoaded', function() {
   var thinkingDropdown = document.getElementById('reasoningDropdown');
   if (thinkingDropdown) thinkingDropdown.addEventListener('change', function() {
     window._currentSettings.reasoning = thinkingDropdown.value;
-    window._currentSettings.reasoningOverrideSet = thinkingDropdown.value === '';
+    // Both a concrete level and an explicit Model Default are per-thread
+    // choices.  The empty value means "inherit/default" only when its flag is
+    // true; a non-empty value must also be marked explicit or it is discarded
+    // on the next ThreadSettings restore.
+    window._currentSettings.reasoningOverrideSet = true;
     _sendAllSettings();
   });
 

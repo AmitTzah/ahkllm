@@ -75,7 +75,7 @@ class UsageRepo {
                 }
             }
 
-            chatSql := "SELECT date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM chat_usage " chatWhere.sql " ORDER BY date DESC, model"
+            chatSql := "SELECT date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms, ttft_count FROM chat_usage " chatWhere.sql " ORDER BY date DESC, model"
             chatTable := ChatDB.db.Query(chatSql, chatParams*)
             for row in chatTable.rows {
                 result.chat.Push({
@@ -90,7 +90,8 @@ class UsageRepo {
                     cached_input_cost: Number(row.cached_input_cost),
                     output_cost: Number(row.output_cost),
                     total_response_time_ms: Integer(row.total_response_time_ms),
-                    total_ttft_ms: Integer(row.total_ttft_ms)
+                    total_ttft_ms: Integer(row.total_ttft_ms),
+                    ttft_count: Integer(row.ttft_count)
                 })
             }
         }
@@ -114,7 +115,7 @@ class UsageRepo {
                 }
             }
 
-            cmdSql := "SELECT date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms FROM command_usage " cmdWhere.sql " ORDER BY date DESC"
+            cmdSql := "SELECT date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms, ttft_count FROM command_usage " cmdWhere.sql " ORDER BY date DESC"
             cmdTable := ChatDB.db.Query(cmdSql, cmdParams*)
             for row in cmdTable.rows {
                 result.commands.Push({
@@ -129,7 +130,8 @@ class UsageRepo {
                     output_cost: Number(row.output_cost),
                     total_cost: Number(row.total_cost),
                     total_response_time_ms: Integer(row.total_response_time_ms),
-                    total_ttft_ms: Integer(row.total_ttft_ms)
+                    total_ttft_ms: Integer(row.total_ttft_ms),
+                    ttft_count: Integer(row.ttft_count)
                 })
             }
         }
@@ -157,11 +159,12 @@ class UsageRepo {
         cci := data.HasProp("cached_input_cost") ? data.cached_input_cost : 0
         lat := data.HasProp("response_time_ms") ? data.response_time_ms : 0
         ttft := data.HasProp("ttft_ms") ? data.ttft_ms : 0
+        ttftMeasured := data.HasProp("ttft_measured") ? data.ttft_measured : (data.HasProp("ttft_ms") && data.ttft_ms > 0)
         existing := ChatDB.db.Query("SELECT call_count FROM command_usage WHERE date=? AND model=? AND provider=? AND command_name=?;", date, model, provider, cmd)
         if existing.count {
-            ChatDB.db.Query("UPDATE command_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+?, completion_tokens=completion_tokens+?, thinking_tokens=thinking_tokens+?, cached_tokens=cached_tokens+?, input_cost=input_cost+?, cached_input_cost=cached_input_cost+?, output_cost=output_cost+?, total_cost=total_cost+?, total_response_time_ms=total_response_time_ms+?, total_ttft_ms=total_ttft_ms+? WHERE date=? AND model=? AND provider=? AND command_name=?;", data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, date, model, provider, cmd)
+            ChatDB.db.Query("UPDATE command_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+?, completion_tokens=completion_tokens+?, thinking_tokens=thinking_tokens+?, cached_tokens=cached_tokens+?, input_cost=input_cost+?, cached_input_cost=cached_input_cost+?, output_cost=output_cost+?, total_cost=total_cost+?, total_response_time_ms=total_response_time_ms+?, total_ttft_ms=total_ttft_ms+?, ttft_count=ttft_count+? WHERE date=? AND model=? AND provider=? AND command_name=?;", data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, ttftMeasured ? 1 : 0, date, model, provider, cmd)
         } else {
-            ChatDB.db.Query("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES(?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, cmd, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft)
+            ChatDB.db.Query("INSERT INTO command_usage (date, model, provider, command_name, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms, ttft_count) VALUES(?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, cmd, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, ttftMeasured ? 1 : 0)
         }
         ChatDB._MarkPersistentDataChanged()
     }
@@ -174,11 +177,12 @@ class UsageRepo {
         cci := data.HasProp("cached_input_cost") ? data.cached_input_cost : 0
         lat := data.HasProp("response_time_ms") ? data.response_time_ms : 0
         ttft := data.HasProp("ttft_ms") ? data.ttft_ms : 0
+        ttftMeasured := data.HasProp("ttft_measured") ? data.ttft_measured : (data.HasProp("ttft_ms") && data.ttft_ms > 0)
         existing := ChatDB.db.Query("SELECT call_count FROM chat_usage WHERE date=? AND model=? AND provider=?;", date, model, provider)
         if existing.count {
-            ChatDB.db.Query("UPDATE chat_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+?, completion_tokens=completion_tokens+?, thinking_tokens=thinking_tokens+?, cached_tokens=cached_tokens+?, input_cost=input_cost+?, cached_input_cost=cached_input_cost+?, output_cost=output_cost+?, total_cost=total_cost+?, total_response_time_ms=total_response_time_ms+?, total_ttft_ms=total_ttft_ms+? WHERE date=? AND model=? AND provider=?;", data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, date, model, provider)
+            ChatDB.db.Query("UPDATE chat_usage SET call_count=call_count+1, prompt_tokens=prompt_tokens+?, completion_tokens=completion_tokens+?, thinking_tokens=thinking_tokens+?, cached_tokens=cached_tokens+?, input_cost=input_cost+?, cached_input_cost=cached_input_cost+?, output_cost=output_cost+?, total_cost=total_cost+?, total_response_time_ms=total_response_time_ms+?, total_ttft_ms=total_ttft_ms+?, ttft_count=ttft_count+? WHERE date=? AND model=? AND provider=?;", data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, ttftMeasured ? 1 : 0, date, model, provider)
         } else {
-            ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms) VALUES(?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft)
+            ChatDB.db.Query("INSERT INTO chat_usage (date, model, provider, call_count, prompt_tokens, completion_tokens, thinking_tokens, cached_tokens, input_cost, cached_input_cost, output_cost, total_cost, total_response_time_ms, total_ttft_ms, ttft_count) VALUES(?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", date, model, provider, data.prompt_tokens, data.completion_tokens, tht, ckt, data.input_cost, cci, data.output_cost, data.total_cost, lat, ttft, ttftMeasured ? 1 : 0)
         }
         ChatDB._MarkPersistentDataChanged()
     }

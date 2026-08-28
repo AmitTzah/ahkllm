@@ -238,9 +238,8 @@ class StreamHandlerTest {
         requestParams.Delete("_streamLogPasteMode")
     }
 
-    ; Regression (bug #172): hard-deleting the streaming thread mid-stream must
-    ; not silently DROP the billed response - the completion still persists it
-    ; (a dangling row under the removed thread id) and tracks its usage.
+    ; Regression: hard-deleting the streaming thread mid-stream must not create
+    ; an orphan message. The completed API call remains historical usage.
     PersistStreamResponse_AfterThreadHardDelete_KeepsTrace() {
         global activeThreadId, requestParams
         this._setupDb()
@@ -255,8 +254,8 @@ class StreamHandlerTest {
         _persistStreamResponse("Hello from the mock LLM", "deepseek/deepseek-v4-flash", "", { promptTokens: 12, completionTokens: 9, cachedTokens: 4 }, 500, 100, threadIdA)
 
         dangling := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads);")
-        if Integer(dangling[1, "c"]) != 1
-            throw Error("billed response must persist as a dangling row (bug #172), got " dangling[1, "c"])
+        if Integer(dangling[1, "c"]) != 0
+            throw Error("deleted-thread completion must not create an orphan message, got " dangling[1, "c"])
         usage := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_usage;")
         if Integer(usage[1, "c"]) != 1
             throw Error("billed response must be usage-tracked (bug #172), got " usage[1, "c"])

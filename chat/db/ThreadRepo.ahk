@@ -209,6 +209,8 @@ class ThreadRepo {
         if ThreadRepo._Changes() > 0
             changed := true
         if changed
+            ChatDB.RequestSpaceReclaim()
+        if changed
             ChatDB._MarkPersistentDataChanged()
         ChatDB.CommitTransaction()
         } catch Error as e {
@@ -240,6 +242,7 @@ class ThreadRepo {
         ChatDB.MaybeFault("thread-delete-after-attachments")
         ChatDB.db.Query("DELETE FROM messages WHERE thread_id=?;", threadId)
         ChatDB.db.Query("DELETE FROM chat_threads WHERE id=?;", threadId)
+        ChatDB.RequestSpaceReclaim()
         ChatDB.CommitTransaction()
         ChatDB._MarkPersistentDataChanged()
         } catch Error as e {

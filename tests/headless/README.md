@@ -158,13 +158,13 @@ The next scenario run also auto-recovers as a fallback.
 | File | Purpose |
 |---|---|
 | `cdp.js` | Minimal CDP client (fetch + built-in WebSocket): evaluate, click, type, waitFor, postMessage hook |
-| `mock-llm-server.js` | Local fake LLM (SSE / JSON / title / error / scripted / mid-fail / late-fail / slow / hang / split-line / tool-call modes) so send/stream/title-gen paths are deterministic; `sse-split-line` writes one `data:` line in two writes across a poll boundary (scenario 178); `sse-hang` leaves the stream open forever (harness mode for the bug #204 stalled-stream family); `sse-lateerror` sends streaming headers + keepalive and then a JSON error body after a delay (scenario 216 - a request that fails BEFORE any content/reasoning chunk); `sse-tool-call` drives the web-search tool loop (first request streams a `web_search` function call, the follow-up streams the final answer) and answers the DeepSeek `/responses` + Tavily `/search` backends from the real captured API shapes (scenarios 250 + 251 - the headless suite never calls the real APIs). Scenarios can pass `mockOpts: { echoModel: true }` to make the streaming finish chunk echo the REQUEST's model (real-API behavior; used by the command audit scenario 233 to verify per-command model attribution) |
+| `mock-llm-server.js` | Local fake LLM (SSE / JSON / title / error / scripted / mid-fail / late-fail / slow / hang / split-line / tool-call modes) so send/stream/title-gen paths are deterministic; `sse-split-line` writes one `data:` line in two writes across a poll boundary (scenario 178); `sse-hang` leaves the stream open forever (harness mode for the bug #204 stalled-stream family); `sse-lateerror` sends streaming headers + keepalive and then a JSON error body after a delay (scenario 216 - a request that fails BEFORE any content/reasoning chunk); `sse-tool-call` drives the web-search tool loop (first request streams a `web_search` function call, the follow-up streams the final answer) and answers the DeepSeek `/responses` + Tavily `/search` backends from the real captured API shapes (scenarios 250 + 251 - the headless suite never calls the real APIs). Scenarios can pass `mockOpts: { echoModel: true }` to echo the request model, or `mockOpts: { failFirstRequests: 1 }` to fail only the first request and then resume the selected mode (retry-rollback coverage) |
 | `seed.js` | Writes `settings.json` and creates/seeds the SQLite DB (schema mirrors `chat/db/ChatDB.ahk`; message fixtures support `prompt_tokens` alongside the other token fields) |
 | `launch.js` | Profile isolation (junction), app launch with WebView2 remote-debugging args, CDP discovery, teardown |
   | `probe.ahk` | Win32 checks the browser can't see: window titles, icons via `WM_GETICON` + pixel fingerprint, hotkey presses, suspend banner, input window; also `load-thread`/`trigger-llm` to drive the real Main â†’ ChatWindow command IPC (`WM_LOAD_THREAD` + `WM_TRIGGER_LLM`) headlessly |
   | `probe-thinking.ahk` | Standalone AHK check used by one scenario (see report) |
   | `probe-utf8.ahk` | Standalone AHK check for `_readFileChunk`'s UTF-8-RAW byte-seek semantics (multibyte poll-split corruption, scenario 160) |
-  | `probe-bughunt-db.ahk` | Standalone AHK check that runs the REAL ChatDB/repo code against a temp SQLite DB and prints token-accounting / tree-copy / cost-snapshot / provider-resolution / edit-cumulative / default-assistant / fork-local-copy / provider-empty results (used by the DB-audit scenarios; see report). `open-race <dbPath>` opens a shared DB so two spawned processes can race the startup schema/FTS-rebuild path (scenario 185); `command-empty-models-crash <settingsPath>` applies a saved settings.json through the REAL SettingsHandler/SettingsApply chain and checks whether an empty-APIModels command throws at menu dispatch (scenario 228) |
+  | `probe-bughunt-db.ahk` | Standalone AHK check that runs the REAL ChatDB/repo code against a temp SQLite DB and prints token-accounting / tree-copy / cost-snapshot / provider-resolution / edit-cumulative / default-assistant / fork-local-copy / provider-empty results (used by the DB-audit scenarios; see report). `command-empty-models-crash <settingsPath>` applies a saved settings.json through the REAL SettingsHandler/SettingsApply chain and checks whether an empty-APIModels command throws at menu dispatch (scenario 228) |
   | `invariant-audit.js` | Reusable Node/SQLite audit for tree ownership, active leaves, parent cycles, sibling groups/indexes, attachments/files, locks, FTS, cumulative counters, and active-path token totals |
 | `e2e-suite.js` | Scenario runner: CLI, profile isolation, CDP wiring, cleanup/recovery |
 | `scenarios/*.js` | Scenario definitions, grouped by area (the files to extend) |
@@ -172,6 +172,11 @@ The next scenario run also auto-recovers as a fallback.
 | `verify-cleanup.js` | Offscreen-pipeline leak verification: self-healing sweep, hung-scene watchdog reaping, teardown with unknown PID |
 | `capture-screenshots.js` | Generates README screenshots: runs the real app off-screen, captures WebView2 pages via CDP `Page.captureScreenshot` |
 | `BUG_HUNT_REPORT.md` | Live bug list + agent workflow (start here) |
+
+The runner prints `START` before each scenario and includes elapsed seconds on
+each `PASS`/`FAIL` line, both live and in `results/headless-verification.txt`.
+The normal app window is kept off-screen with Win32 no-activate calls; normal
+headless probes must not show, activate, or send keys to a visible window.
 
 ## Capturing screenshots
 

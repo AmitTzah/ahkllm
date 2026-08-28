@@ -201,6 +201,22 @@ describe('renderSummary', () => {
         // Double-counting the command's thinking would yield 260.
         assert.strictEqual(ctx.document.getElementById('totalTokens').textContent, '220');
     });
+
+    it('averages TTFT only across calls with a measured TTFT', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [{
+                input_tokens: 10, output_tokens: 5, total_cost: 0, message_count: 1,
+                total_response_time_ms: 1000, total_ttft_ms: 400, ttft_count: 1
+            }],
+            commands: [{
+                prompt_tokens: 10, completion_tokens: 5, total_cost: 0, call_count: 1,
+                total_response_time_ms: 1000, total_ttft_ms: 0, ttft_count: 0
+            }]
+        };
+        ctx.renderSummary();
+        assert.strictEqual(ctx.document.getElementById('ttftValue').textContent, '400ms');
+    });
 });
 
 describe('populateFilters', () => {

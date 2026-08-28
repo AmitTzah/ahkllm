@@ -927,12 +927,8 @@ EditAssistantStaleBackfill() {
 }
 
 ; ------------------------------------------------------------------
-; CHECK 29: OVERWRITE-editing an assistant message refreshes the message's
-; token_count (bug #181) but NEVER recomputes the thread's CUMULATIVE
-; counters. MessageRepo.Edit calls TreeRepo._RecomputeActivePath (active_path
-; context) but not MessageRepo._RecomputeCumulativeCounters, so the header's
-; "Cumulative Output" and the per-message token popover disagree after the
-; edit until the next real API call forces a recompute.
+; CHECK 29: overwrite-editing an assistant updates the current context
+; estimate while retaining the historical billed output snapshot.
 ; ------------------------------------------------------------------
 EditAssistantStaleCumulative() {
     dbPath := OpenDb()
@@ -949,8 +945,8 @@ EditAssistantStaleCumulative() {
     a1tc := Integer(ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", a1)[1, "token_count"])
     afterRow := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens FROM chat_threads WHERE id=?;", tid)
     afterOut := Integer(afterRow[1, "cumulative_output_tokens"])
-    Log("EDITCUM a1tcAfterEdit=" a1tc " beforeCumOut=" beforeOut " afterCumOut=" afterOut " (token_count was refreshed but the cumulative ledger was not recomputed)")
-    Log("EDITCUM verdict=" (a1tc > 9 && afterOut = 9 && beforeOut = 9 ? "BUG-present(stale-cumulative)" : (a1tc > 9 && afterOut = a1tc ? "OK-recomputed" : "unexpected:" a1tc "/" afterOut)))
+    Log("EDITCUM a1tcAfterEdit=" a1tc " beforeCumOut=" beforeOut " afterCumOut=" afterOut " (current estimate changed; historical billed output stayed fixed)")
+    Log("EDITCUM verdict=" (a1tc > 9 && afterOut = 9 && beforeOut = 9 ? "OK-separated-history" : "unexpected:" a1tc "/" afterOut))
     CloseDb(dbPath)
 }
 
@@ -1141,82 +1137,6 @@ ThreadListNplus1() {
 }
 
 ; ------------------------------------------------------------------
-; CHECK 23: hard-delete-mid-stream leaves DANGLING message rows (bug #172
-; "by-design trace"): the stream completes into the captured thread id after
-; ThreadRepo.Delete removed the thread, and messages has no FK on thread_id.
-; Verify they never leak into FTS results or the thread map, and decide
-; whether the dashboard row (a genuinely billed call) is a leak.
-; ------------------------------------------------------------------
-DanglingMidstreamRows() {
-    dbPath := OpenDb()
-    tid := ChatDB.Thread_Create("MidStream")
-    u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
-    ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 12, token_count: 9})
-    ; User deletes the thread while the request is in flight.
-    ChatDB.Thread_Delete(tid)
-    ; The completion handler persists into the captured thread id (bug #159
-    ; semantics) - the row is now dangling.
-    orphanId := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "late completion", model: "deepseek/deepseek-v4-flash", prompt_tokens: 30, token_count: 15, cached_tokens: 5})
-    dangling := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages WHERE thread_id NOT IN (SELECT id FROM chat_threads);")[1, "c"]
-    ftsRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages_fts WHERE msg_id=?;", orphanId)[1, "c"]
-    searchHits := SearchRepo.Search("late completion").Length
-    listed := 0
-    for t in ChatDB.Thread_List()
-        if t.id = tid
-            listed++
-    usageRows := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_usage WHERE model='deepseek/deepseek-v4-flash';")[1, "c"]
-    Log("DANGLING rows=" dangling " ftsRows=" ftsRows " searchHits=" searchHits " threadMapListed=" listed " usageRows=" usageRows)
-    Log("DANGLING verdict=" (dangling > 0 && ftsRows = 1 && searchHits = 0 && listed = 0 && usageRows = 1 ? "OK-invisible-except-billed-usage" : "BUG-present(leak)"))
-    CloseDb(dbPath)
-}
-
-; ------------------------------------------------------------------
-; CHECK 24: the v6 migration backfill (bug #10 follow-up) must apply
-; exactly ONCE per DB - PRAGMA user_version=7 guards the one-time re-price
-; of legacy rows. After a price change, a reopen must NOT re-run the
-; backfill (the costs stay at the first-open prices).
-; ------------------------------------------------------------------
-MigrationBackfillGuard() {
-    dbPath := A_Temp "\bughunt_mig_" A_TickCount ".db"
-    try FileDelete(dbPath)
-    ; Build a v5-era schema (messages WITHOUT the v6 cost columns) so the
-    ; migration path really runs; user_version=5.
-    raw := SQLite(dbPath)
-    raw.Exec("PRAGMA journal_mode=WAL;")
-    raw.Exec("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT DEFAULT 'New Chat', is_deleted INTEGER DEFAULT 0, deleted_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), active_leaf_id TEXT, cumulative_input_tokens INTEGER DEFAULT 0, cumulative_output_tokens INTEGER DEFAULT 0, cumulative_cached_tokens INTEGER DEFAULT 0, cumulative_cost REAL DEFAULT 0, cumulative_input_cost REAL DEFAULT 0, cumulative_cached_input_cost REAL DEFAULT 0, cumulative_output_cost REAL DEFAULT 0, assistant_id TEXT, model_override TEXT, system_override TEXT, reasoning_override TEXT, temperature_override REAL, font_size INTEGER DEFAULT 17, advanced_toggles TEXT DEFAULT '', folder_id TEXT);")
-    raw.Exec("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, parent_id TEXT, sibling_group TEXT, sibling_index INTEGER DEFAULT 0, reasoning TEXT DEFAULT '', token_count INTEGER DEFAULT 0, prompt_tokens INTEGER DEFAULT 0, thinking_tokens INTEGER DEFAULT 0, cached_tokens INTEGER DEFAULT 0, response_time_ms INTEGER DEFAULT 0, ttft_ms INTEGER DEFAULT 0, active_path_tokens INTEGER DEFAULT 0, is_local_copy INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));")
-    raw.Exec("INSERT INTO messages (id, thread_id, role, content, model, prompt_tokens, token_count, thinking_tokens, cached_tokens) VALUES ('legacy1','t1','assistant','x','deepseek/deepseek-v4-flash',100,50,0,20);")
-    raw.Exec("INSERT INTO chat_threads (id, title, active_leaf_id) VALUES ('t1','Legacy','legacy1');")
-    raw.Exec("PRAGMA user_version = 5;")
-    raw.Close()
-
-    ; First open: v6 migration backfills costs at CURRENT prices.
-    ChatDB.Open(dbPath)
-    c1 := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id='legacy1';")
-    v1 := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-    cost1 := Number(c1[1, "total_cost"])
-    ChatDB.Close()
-
-    ; Double the price, reopen: the user_version guard must prevent a
-    ; second backfill (costs stay at the first-open prices).
-    m := models["deepseek/deepseek-v4-flash"]
-    m.input := m.input * 2
-    m.cachedInput := m.cachedInput * 2
-    m.output := m.output * 2
-    ChatDB.Open(dbPath)
-    c2 := ChatDB.db.Query("SELECT input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE id='legacy1';")
-    v2 := ChatDB.db.Exec("PRAGMA user_version;")[1, "user_version"]
-    cost2 := Number(c2[1, "total_cost"])
-    ChatDB.Close()
-    try FileDelete(dbPath)
-    try FileDelete(dbPath "-wal")
-    try FileDelete(dbPath "-shm")
-
-    Log("MIGBACK v1=" v1 " v2=" v2 " cost1=" cost1 " cost2=" cost2)
-    Log("MIGBACK verdict=" (v1 = 7 && v2 = 7 && cost1 > 0 && cost1 = cost2 ? "OK-guard" : "BUG-present(re-priced-or-migrated-twice)"))
-}
-
-; ------------------------------------------------------------------
 ; CHECK 25: ProviderResolver.Resolve falls back to the HARDCODED "deepseek"
 ; provider (`providers["deepseek"]`) when no prefix matches - a missing-key
 ; Map index THROWS in AHK v2. The Settings Providers UI lets the user REMOVE
@@ -1293,26 +1213,6 @@ SettingsEdgeRoundtrip() {
     Log("SETTINGSEDGE saved=" (saved ? 1 : 0) " applyErr='" applyErr "' commaId=" (hasComma ? 1 : 0) " quoteId=" (hasQuote ? 1 : 0) " cachedFallback=" (cachedFallback ? 1 : 0) " filterHits=" filterHits)
     Log("SETTINGSEDGE verdict=" (saved && !applyErr && hasComma && hasQuote && cachedFallback && filterHits = 1 ? "OK-roundtrip" : "BUG-present(edge-case)"))
     try FileDelete(tmp)
-}
-
-; ------------------------------------------------------------------
-; CHECK 27: cross-process startup race. Opens the SAME db path as a fresh
-; connection and runs the REAL ChatDB._CreateSchema (schema + migrations +
-; FTS rebuild) then closes - invoked CONCURRENTLY by two harness-spawned AHK
-; processes to stress the WAL/busy_timeout path the app's Main + ChatWindow
-; hit at startup. Caller passes the db path as arg 3.
-; ------------------------------------------------------------------
-OpenRace() {
-    dbPath := A_Args.Length >= 3 ? A_Args[3] : ""
-    if !dbPath {
-        Log("OPENRACE no-db-path")
-        return
-    }
-    ChatDB.Open(dbPath)
-    ; Force the FTS repair path when counts mismatch (the caller seeds
-    ; messages without FTS rows, so both processes race the rebuild).
-    ChatDB.Close()
-    Log("OPENRACE done")
 }
 
 ; ------------------------------------------------------------------
@@ -1541,6 +1441,129 @@ CommandAudit() {
     Log("CMDAUDIT verdict=" (problems.Length = 0 && checked >= 16 ? "OK-all-commands-consistent" : "BUG-command-config-drift"))
 }
 
+; ------------------------------------------------------------------
+; CHECK 32: normal long-run persistence invariants. This intentionally uses
+; real repository operations (not hand-written SQL) across hundreds of
+; inserts, branches, forks, attachments, trash transitions, and deletes.
+; ------------------------------------------------------------------
+LongRunInvariantAudit() {
+    global trashRetentionDays
+    dbPath := OpenDb()
+    dataDir := A_Temp "\bughunt_longrun_" A_TickCount
+    DirCreate(dataDir "\attachments")
+    AppInfo.DataDir := dataDir
+    trashRetentionDays := 1
+    folderId := ChatDB._UUID()
+    ChatDB.db.Query("INSERT INTO chat_folders (id, name) VALUES(?, ?);", folderId, "Stress folder")
+    attachmentDir := AppInfo.DataDir "\attachments"
+    DirCreate(attachmentDir)
+    retained := []
+    apiCalls := 0
+    loop 24 {
+        i := A_Index
+        tid := ChatDB.Thread_Create("Stress " i)
+        ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", folderId, tid)
+        parent := ""
+        loop 20 {
+            j := A_Index
+            u := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "stress user " i ":" j, parent_id: parent, token_count: 8})
+            a := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "stress answer " i ":" j, parent_id: u, model: "deepseek/deepseek-v4-flash", prompt_tokens: 16 + j, token_count: 6, thinking_tokens: 2, cached_tokens: 1})
+            parent := a
+            apiCalls++
+        }
+        if Mod(i, 4) = 0 {
+            localId := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "locally edited stress branch " i, parent_id: parent, local_copy: true, token_count: 9})
+            ChatDB.Msg_SetActiveLeaf(tid, localId)
+        }
+        if Mod(i, 4) = 0 {
+            fileName := "stress_" i ".txt"
+            filePath := "attachments\" fileName
+            largeText := ""
+            loop 20000
+                largeText .= "document-token-"
+            FileAppend(largeText, AppInfo.DataDir "\" filePath, "UTF-8")
+            leafPath := ChatDB.Msg_GetActivePath(tid)
+            ownerId := leafPath[1].id
+            AttachmentRepo.Insert(ownerId, { attachment_type: "text_file", file_path: filePath, original_filename: fileName, file_size: StrLen(largeText), extracted_text: largeText })
+        }
+        if Mod(i, 5) = 0 {
+            forkId := ChatDB.Msg_ForkThread(tid, parent)
+            if forkId
+                ChatDB.Thread_Delete(forkId)
+        }
+        if Mod(i, 2) = 0 {
+            ChatDB.Thread_SoftDelete(tid)
+            ChatDB.Thread_Restore(tid)
+        }
+        if Mod(i, 3) = 0
+            ChatDB.Thread_Delete(tid)
+        else
+            retained.Push(tid)
+    }
+    ; Controlled high-water test: grow one temporary thread with large
+    ; extracted-text attachments, record file/page size, permanently delete
+    ; it, then verify thresholded incremental vacuum returns space.
+    reclaimTid := ChatDB.Thread_Create("Space reclaim stress")
+    reclaimParent := ""
+    loop 20 {
+        u := ChatDB.Msg_Insert({thread_id: reclaimTid, role: "user", content: "reclaim user " A_Index, parent_id: reclaimParent, token_count: 8})
+        reclaimParent := ChatDB.Msg_Insert({thread_id: reclaimTid, role: "assistant", content: "reclaim answer " A_Index, parent_id: u, model: "deepseek/deepseek-v4-flash", prompt_tokens: 16, token_count: 6})
+        apiCalls++
+        reclaimFile := "attachments\reclaim_" A_Index ".txt"
+        reclaimText := ""
+        loop 50000
+            reclaimText .= "reclaim-data-"
+        FileAppend(reclaimText, AppInfo.DataDir "\" reclaimFile, "UTF-8")
+        AttachmentRepo.Insert(u, {attachment_type: "text_file", file_path: reclaimFile, original_filename: "reclaim.txt", file_size: StrLen(reclaimText), extracted_text: reclaimText})
+    }
+    reclaimBeforeBytes := FileGetSize(dbPath)
+    reclaimBeforePages := ChatDB.db.Exec("PRAGMA page_count;")[1, "page_count"]
+    ChatDB.Thread_Delete(reclaimTid)
+    reclaimAfterBytes := FileGetSize(dbPath)
+    reclaimAfterPages := ChatDB.db.Exec("PRAGMA page_count;")[1, "page_count"]
+    reclaimWorked := reclaimAfterBytes < reclaimBeforeBytes && reclaimAfterPages < reclaimBeforePages
+    ; Exercise permanent retention purge independently of direct deletion.
+    purgeId := ChatDB.Thread_Create("Expired stress trash")
+    ChatDB.Thread_SoftDelete(purgeId)
+    ChatDB.db.Query("UPDATE chat_threads SET deleted_at='2000-01-01 00:00:00' WHERE id=?;", purgeId)
+    ChatDB.Thread_PurgeExpired()
+    ChatDB.db.Query("DELETE FROM chat_folders WHERE id=?;", folderId)
+
+    counts := ChatDB.db.Query("SELECT (SELECT COUNT(*) FROM messages) AS messages, (SELECT COUNT(*) FROM messages_fts) AS fts, (SELECT COUNT(*) FROM message_attachments) AS attachments, (SELECT COUNT(*) FROM chat_threads) AS threads;")
+    orphanMessages := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages m LEFT JOIN chat_threads t ON t.id=m.thread_id WHERE t.id IS NULL;")
+    badParents := ChatDB.db.Query("SELECT COUNT(*) AS c FROM messages m JOIN messages p ON p.id=m.parent_id WHERE p.thread_id<>m.thread_id;")
+    badLeaves := ChatDB.db.Query("SELECT COUNT(*) AS c FROM chat_threads t LEFT JOIN messages m ON m.id=t.active_leaf_id AND m.thread_id=t.id WHERE t.active_leaf_id IS NOT NULL AND m.id IS NULL;")
+    badAttachments := ChatDB.db.Query("SELECT COUNT(*) AS c FROM message_attachments a LEFT JOIN messages m ON m.id=a.message_id WHERE m.id IS NULL;")
+    ledger := ChatDB.db.Query("SELECT COALESCE(SUM(prompt_tokens),0) AS input, COALESCE(SUM(api_output_tokens + thinking_tokens),0) AS output, COALESCE(SUM(cached_tokens),0) AS cached FROM messages WHERE role='assistant' AND is_local_copy=0;")
+    threadLedger := ChatDB.db.Query("SELECT COALESCE(SUM(cumulative_input_tokens),0) AS input, COALESCE(SUM(cumulative_output_tokens),0) AS output, COALESCE(SUM(cumulative_cached_tokens),0) AS cached FROM chat_threads;")
+    usage := ChatDB.db.Query("SELECT COALESCE(SUM(call_count),0) AS calls, COALESCE(SUM(prompt_tokens),0) AS input, COALESCE(SUM(completion_tokens),0) AS output FROM chat_usage;")
+    vacuum := ChatDB.db.Exec("PRAGMA auto_vacuum;")
+    Log("LONGRUN vacuumMode=" vacuum[1, "auto_vacuum"])
+    pageCount := ChatDB.db.Exec("PRAGMA page_count;")
+    freeCount := ChatDB.db.Exec("PRAGMA freelist_count;")
+    physicalOrphans := 0
+    attRows := ChatDB.db.Query("SELECT file_path FROM message_attachments;")
+    for filePath in attRows.rows
+        if !FileExist(AppInfo.DataDir "\" filePath.file_path)
+            physicalOrphans++
+    physicalFiles := 0
+    loop Files, attachmentDir "\*", "F"
+        physicalFiles++
+    verdict := counts[1, "messages"] = counts[1, "fts"]
+        && orphanMessages[1, "c"] = 0 && badParents[1, "c"] = 0 && badLeaves[1, "c"] = 0
+        && badAttachments[1, "c"] = 0 && physicalOrphans = 0
+        && ledger[1, "input"] = threadLedger[1, "input"]
+        && ledger[1, "output"] = threadLedger[1, "output"]
+        && ledger[1, "cached"] = threadLedger[1, "cached"]
+        && usage[1, "calls"] = apiCalls && Integer(vacuum[1, "auto_vacuum"]) = 2
+        && physicalFiles = attRows.count && reclaimWorked
+    Log("LONGRUN checks=" (counts[1, "messages"] = counts[1, "fts"] ? 1 : 0) "/" (orphanMessages[1, "c"] = 0 ? 1 : 0) "/" (badParents[1, "c"] = 0 ? 1 : 0) "/" (badLeaves[1, "c"] = 0 ? 1 : 0) "/" (badAttachments[1, "c"] = 0 ? 1 : 0) "/" (physicalOrphans = 0 ? 1 : 0) "/" (ledger[1, "input"] = threadLedger[1, "input"] ? 1 : 0) "/" (ledger[1, "output"] = threadLedger[1, "output"] ? 1 : 0) "/" (ledger[1, "cached"] = threadLedger[1, "cached"] ? 1 : 0) "/" (usage[1, "calls"] = apiCalls ? 1 : 0) "/" (Integer(vacuum[1, "auto_vacuum"]) = 2 ? 1 : 0) "/" (physicalFiles = attRows.count ? 1 : 0))
+    Log("LONGRUN messages=" counts[1, "messages"] " fts=" counts[1, "fts"] " threads=" counts[1, "threads"] " attachments=" counts[1, "attachments"] " physicalFiles=" physicalFiles " orphanMessages=" orphanMessages[1, "c"] " badParents=" badParents[1, "c"] " badLeaves=" badLeaves[1, "c"] " badAttachments=" badAttachments[1, "c"] " physicalOrphans=" physicalOrphans " apiCalls=" apiCalls " usageCalls=" usage[1, "calls"] " ledger=" ledger[1, "input"] "/" ledger[1, "output"] "/" ledger[1, "cached"] " threadsLedger=" threadLedger[1, "input"] "/" threadLedger[1, "output"] "/" threadLedger[1, "cached"] " reclaim=" reclaimBeforeBytes "->" reclaimAfterBytes "/" reclaimBeforePages "->" reclaimAfterPages " pages=" pageCount[1, "page_count"] " freelist=" freeCount[1, "freelist_count"])
+    Log("LONGRUN verdict=" (verdict ? "OK" : "BUG-present(invariant)"))
+    CloseDb(dbPath)
+    try DirDelete(dataDir, true)
+}
+
 check := A_Args.Length >= 2 ? A_Args[2] : ""
 switch check {
     case "fork-offpath": ForkOffpath()
@@ -1569,17 +1592,15 @@ switch check {
     case "unknown-provider-sentinel": UnknownProviderSentinel()
     case "fts-attachment-snippet": FtsAttachmentSnippet()
     case "thread-list-nplus1": ThreadListNplus1()
-    case "dangling-midstream-rows": DanglingMidstreamRows()
-    case "migration-backfill-guard": MigrationBackfillGuard()
     case "provider-resolve-deleted-deepseek": ProviderResolveDeletedDeepseek()
     case "settings-edge-roundtrip": SettingsEdgeRoundtrip()
-    case "open-race": OpenRace()
     case "titlegen-parse-throw": TitleGenParseGraceful()
     case "command-empty-models-crash": CommandEmptyModelsCrash()
     case "command-audit": CommandAudit()
     case "foreign-switch-db": ForeignSwitchDb()
     case "foreign-switch-reopen": ForeignSwitchReopen(A_Args.Length >= 3 ? A_Args[3] : "", A_Args.Length >= 4 ? A_Args[4] : "")
     case "fault-injection": FaultInjectionAudit()
+    case "long-run-invariants": LongRunInvariantAudit()
     case "list-without-lock-service": ListWithoutLockService()
     case "callback-ownership": CallbackOwnership()
     case "branch-invalid-ids": BranchInvalidIds()

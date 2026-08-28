@@ -8,6 +8,7 @@
 
 class ApiLogger {
     static logFilePath := A_Temp "\LLM_API_Log.json"
+    static maxLogBytes := 10 * 1024 * 1024
 
     ; Reads the log file and returns the entries array (newest first). A
     ; missing, unparseable, or non-array log file yields [] - logging is
@@ -45,6 +46,7 @@ class ApiLogger {
         while logs.Length > apiLogMaxEntries {
             logs.RemoveAt(logs.Length)
         }
+        this._TrimToByteLimit(logs)
 
         this._WriteLogs(logs)
     }
@@ -57,14 +59,29 @@ class ApiLogger {
     ; Clears the log file entirely
     ; Trim existing log entries to the current max limit (called when settings change)
     static TrimToLimit() {
-        if (apiLogMaxEntries <= 0)
+        if (apiLogMaxEntries <= 0) {
+            this.ClearLogs()
             return
+        }
         logs := this._readLogFile()
-        if logs.Length <= apiLogMaxEntries
-            return
-        while logs.Length > apiLogMaxEntries
+        changed := false
+        while logs.Length > apiLogMaxEntries {
             logs.RemoveAt(logs.Length)
-        this._WriteLogs(logs)
+            changed := true
+        }
+        before := jsongo.Stringify(logs)
+        this._TrimToByteLimit(logs)
+        if changed || before != jsongo.Stringify(logs)
+            this._WriteLogs(logs)
+    }
+
+    ; Entry count alone is not a byte bound because request/response bodies can
+    ; contain images or large documents. Drop oldest entries until the retained
+    ; JSON fits the fixed temporary-storage budget; a single oversized entry is
+    ; dropped as well.
+    static _TrimToByteLimit(logs) {
+        while logs.Length > 0 && StrPut(jsongo.Stringify(logs), "UTF-8") - 1 > this.maxLogBytes
+            logs.RemoveAt(logs.Length)
     }
 
     ; Write the log array atomically (bug #111): write a temp file in the same

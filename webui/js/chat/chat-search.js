@@ -267,6 +267,10 @@ function createDropdownElement(wrapper) {
 }
 
 function closeSearchDropdown() {
+    // A response for the dismissed query may already be in flight.  Advance
+    // the generation so it cannot recreate the dropdown after Escape, an
+    // outside click, a scroll, or clearing the input below the minimum length.
+    _activeQueryId++;
     clearTimeout(_debounceTimer);
     clearTimeout(_searchTimeout);
     _debounceTimer = null;

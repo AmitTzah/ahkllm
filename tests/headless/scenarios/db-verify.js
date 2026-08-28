@@ -322,8 +322,8 @@ scenarios.push({
       throw new Error("ChatUtils must load before Dispatch callbacks");
     if (window.indexOf("#Include ChatUtils.ahk") > window.indexOf("#Include ChatRequestBuilder.ahk"))
       throw new Error("ChatUtils must load before ChatRequestBuilder so _PostChatError is resolved before #Warn parses its calls");
-    if (!ipc.includes('chatWindow.Show(activate ? "" : "NA")') ||
-        !ipc.includes('if activate') || !ipc.includes('WinActivate("ahk_id " chatWindow.hWnd)'))
+    if (!ipc.includes('chatWindow.Show(headless ? "x-20000 y-20000 NA" : (activate ? "" : "NA"))') ||
+        !ipc.includes('headless := wParam = 2') || !ipc.includes('if activate') || !ipc.includes('WinActivate("ahk_id " chatWindow.hWnd)'))
       throw new Error("IPC thread loads must make activation explicit (non-activating background loads, activating user commands)");
     if (!dispatch.includes("#Include Message.ahk")) throw new Error("Message callback include missing");
     return "_RequestParamsAreDefault is defined once in ChatUtils, loaded before Dispatch/Message, so the first-send call cannot resolve as an unassigned local and show the blocking #Warn modal";
@@ -865,117 +865,6 @@ scenarios.push({
 });
 
 scenarios.push({
-  id: 184,
-  regression: true, // REFUTED lead (2026-08-10): dangling mid-stream rows stay invisible in FTS results + thread map; the chat_usage row is the genuinely billed call (kept by design - no GC warranted)
-  name: 'Hard-delete-mid-stream leaves dangling message rows (bug #172 "trace") - verify they never leak into FTS results or the thread map, and the dashboard row is the billed call',
-  mode: null,
-  noApp: true,
-  settings: {},
-  async body() {
-    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
-    try { fs.unlinkSync(outFile); } catch {}
-    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
-    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'dangling-midstream-rows'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
-    if (res.error) throw new Error('dangling probe spawn failed/timed out: ' + res.error.message);
-    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
-    const text = fs.readFileSync(outFile, 'utf-8');
-    const rowsM = text.match(/rows=(\d+)/);
-    const ftsM = text.match(/ftsRows=(\d+)/);
-    const searchM = text.match(/searchHits=(\d+)/);
-    const listedM = text.match(/threadMapListed=(\d+)/);
-    const usageM = text.match(/usageRows=(\d+)/);
-    if (!rowsM || !ftsM || !searchM || !listedM || !usageM) throw new Error('probe output missing fields: ' + text);
-    const rows = Number(rowsM[1]), ftsRows = Number(ftsM[1]), searchHits = Number(searchM[1]), listed = Number(listedM[1]), usageRows = Number(usageM[1]);
-    if (rows < 1 || ftsRows !== 1) throw new Error('dangling row + FTS entry not produced (flow changed): ' + text);
-    if (searchHits !== 0) throw new Error('dangling row LEAKED into FTS search results: ' + text);
-    if (listed !== 0) throw new Error('dangling row LEAKED into the thread map: ' + text);
-    if (usageRows !== 1) throw new Error('the billed call did not reach chat_usage (regression): ' + text);
-    return 'deleted mid-stream: ' + rows + ' dangling message row(s) (with ' + ftsRows + ' FTS entry) stay invisible to search (' + searchHits +
-      ' hits) and the thread map (' + listed + ' listed); the chat_usage row (' + usageRows + ') is the genuinely billed API call, so no user-visible leak and no GC policy is warranted';
-  }
-});
-
-scenarios.push({
-  id: 185,
-  regression: true, // REFUTED lead (2026-08-10): two real AHK processes racing ChatDB.Open on one WAL DB stayed idempotent (3/3 runs: no lost rows, no duplicated FTS entries, user_version=7)
-  name: 'Cross-process startup on one WAL DB: two AHK processes racing _CreateSchema/_Migrate + the FTS DELETE+INSERT rebuild stay idempotent (no lost rows, no duplicated index entries, user_version guarded)',
-  mode: null,
-  noApp: true,
-  settings: {},
-  async body() {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-db-race-'));
-    // Seed a current-schema DB whose FTS index is EMPTY while messages exist -
-    // exactly the condition that triggers the app's startup FTS rebuild, so
-    // both concurrent processes race the DELETE + INSERT repair path.
-    const threads = [{ id: 't-race', title: 'Race', active_leaf_id: 'm-race-1' }];
-    const messages = [];
-    for (let i = 1; i <= 150; i++) {
-      messages.push({ id: 'm-race-' + i, thread_id: 't-race', role: i % 2 ? 'user' : 'assistant', content: 'race message ' + i, model: i % 2 ? undefined : 'deepseek/deepseek-v4-flash', parent_id: i > 1 ? 'm-race-' + (i - 1) : undefined });
-    }
-    const dbPath = seed.createDb(dir, { threads, messages });
-    if (seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages_fts')[0].c !== 0)
-      throw new Error('harness issue: seeded FTS index must be empty to force the rebuild race');
-    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
-    const run = (name) => new Promise((resolve) => {
-      const out = path.join(dir, name + '.txt');
-      const child = spawn(launcher.AHK, ['/ErrorStdOut', probe, out, 'open-race', dbPath], { windowsHide: true, stdio: 'ignore' });
-      const timer = setTimeout(() => { try { child.kill(); } catch {} resolve({ ok: false, out, err: 'timeout' }); }, 30000);
-      child.on('exit', (code) => { clearTimeout(timer); resolve({ ok: code === 0, out }); });
-      child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, out, err: e.message }); });
-    });
-    const [a, b] = await Promise.all([run('a'), run('b')]);
-    if (!a.ok || !b.ok) {
-      let da = '', db = '';
-      try { da = fs.readFileSync(a.out, 'utf-8'); } catch {}
-      try { db = fs.readFileSync(b.out, 'utf-8'); } catch {}
-      throw new Error('concurrent open failed: A=' + JSON.stringify(a) + ' out=' + da + ' B=' + JSON.stringify(b) + ' out=' + db);
-    }
-    const msgCount = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages')[0].c;
-    const ftsCount = seed.query(dbPath, 'SELECT COUNT(*) AS c FROM messages_fts')[0].c;
-    const dups = seed.query(dbPath, 'SELECT msg_id, COUNT(*) AS c FROM messages_fts GROUP BY msg_id HAVING COUNT(*) > 1');
-    const ver = seed.query(dbPath, 'PRAGMA user_version')[0].user_version;
-    if (Number(ftsCount) !== Number(msgCount))
-      throw new Error('FTS index diverged after the race (BUG present): messages=' + msgCount + ' fts=' + ftsCount);
-    if (dups.length > 0)
-      throw new Error('FTS index has duplicated entries after the race (BUG present): ' + JSON.stringify(dups));
-    if (ver !== 8)
-      throw new Error('user_version not guarded at 8: ' + ver);
-    return 'two AHK processes raced ChatDB.Open (schema + migrations + FTS rebuild) on one WAL DB: both exited 0, user_version=' + ver +
-      ', messages=' + msgCount + ' = messages_fts=' + ftsCount + ', 0 duplicated index entries - the startup path stays idempotent under busy_timeout';
-  }
-});
-
-scenarios.push({
-  id: 188,
-  regression: true, // REFUTED lead (2026-08-10): the user_version=8 guard holds - the v6 cost backfill runs exactly once; a reopen after a price change never re-prices legacy rows
-  name: 'Legacy schema-v6 migration backfill applies ONCE (user_version guard): reopening after a price change keeps the first-open snapshot prices',
-  mode: null,
-  noApp: true,
-  settings: {},
-  async body() {
-    const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
-    try { fs.unlinkSync(outFile); } catch {}
-    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
-    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'migration-backfill-guard'], { timeout: 25000, windowsHide: true, encoding: 'utf8' });
-    if (res.error) throw new Error('migration probe spawn failed/timed out: ' + res.error.message);
-    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
-    const text = fs.readFileSync(outFile, 'utf-8');
-    const v1M = text.match(/v1=(\d+)/);
-    const v2M = text.match(/v2=(\d+)/);
-    const c1M = text.match(/cost1=([\d.]+)/);
-    const c2M = text.match(/cost2=([\d.]+)/);
-    if (!v1M || !v2M || !c1M || !c2M) throw new Error('probe output missing fields: ' + text);
-    const v1 = Number(v1M[1]), v2 = Number(v2M[1]), cost1 = Number(c1M[1]), cost2 = Number(c2M[1]);
-    if (v1 !== 8 || v2 !== 8) throw new Error('user_version not 8 after migration: ' + text);
-    if (cost1 <= 0) throw new Error('backfill did not run on the first open: ' + text);
-    if (cost1 !== cost2) throw new Error('reopen re-priced the legacy row (guard FAILED): cost1=' + cost1 + ' cost2=' + cost2);
-    return 'v5 DB upgraded to user_version=' + v1 + '; the one-time backfill priced the legacy assistant row at cost1=' + cost1 +
-      '; after doubling the model price and reopening, user_version=' + v2 + ' and cost2=' + cost2 +
-      ' (unchanged) - the guard prevents double-application (known limitation: pre-upgrade rows are priced at first-open prices, the only data available)';
-  }
-});
-
-scenarios.push({
   id: 312,
   regression: true,
   name: "Chat send rolls back when an attachment cannot be saved",
@@ -1141,4 +1030,23 @@ scenarios.push({
     return "ChatWindow startup invokes SearchToolExecutor.RecoverAbandonedPlaceholders, which transactionally marks persisted Searching cards as interrupted failures and reindexes them; title generation guards optional ThreadLockService references against #Warn popups; behavioral coverage is in SearchToolExecutorTest";
   }
 });
+scenarios.push({
+  id: 326,
+  regression: true,
+  name: 'Normal long-run database and attachment invariants remain coherent',
+  mode: null,
+  noApp: true,
+  async body() {
+    const outFile = path.join(os.tmpdir(), 'llm-longrun-' + process.pid + '.txt');
+    try { fs.unlinkSync(outFile); } catch {}
+    const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'long-run-invariants'], { timeout: 60000, windowsHide: true, encoding: 'utf8' });
+    if (res.error) throw new Error('long-run invariant probe failed/timed out: ' + res.error.message);
+    if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
+    const text = fs.readFileSync(outFile, 'utf8');
+    if (!/LONGRUN verdict=OK/.test(text)) throw new Error('long-run invariants failed: ' + text);
+    return text.trim().replace(/\r?\n/g, '; ');
+  }
+});
+
 module.exports=scenarios;

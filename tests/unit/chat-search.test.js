@@ -375,6 +375,26 @@ describe('chat-search', function() {
 
             assert.strictEqual(dropdown.style.display, 'none', 'dropdown should be hidden after Escape');
         });
+
+        it('invalidates a late response for a dismissed query', function() {
+            var ctx = loadSearchModule();
+            var input = ctx.makeEl('input');
+            input.value = 'late result';
+            var wrap = ctx.makeEl('div');
+            wrap.className = 'search-wrap';
+            wrap.appendChild(input);
+            input._closestWrap = wrap;
+
+            ctx.handleSearchInput({ target: input }, false);
+            var queryId = ctx._activeQueryId;
+            ctx.handleSearchKeydown({ key: 'Escape', target: input, preventDefault: function() {}, stopPropagation: function() {} });
+            ctx.handleSearchResults({ queryId: queryId, results: [{
+                messageId: 'late', threadId: 't1', threadTitle: 'Late', contentPreview: 'late result', role: 'user'
+            }], query: 'late result' });
+
+            assert.strictEqual(ctx._searchDropdownEl.style.display, 'none',
+                'a response arriving after dismissal must not reopen the dropdown');
+        });
     });
 
     describe('highlightTerm with snippet format (search repo now extracts window around match)', function() {

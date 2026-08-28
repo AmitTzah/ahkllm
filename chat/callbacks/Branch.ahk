@@ -85,10 +85,14 @@ retryAction(messageId := "") {
     target := _findRetryTarget(path, messageId)
 
     if target.targetMsg {
+        requestParams["pendingRetryThreadId"] := activeThreadId
+        requestParams["pendingRetryOriginalLeaf"] := path[path.Length].id
         requestParams["pendingRetrySiblingGroup"] := _setupSiblingGroup(target.targetMsg)
-        if target.parentMsg
+        if target.parentMsg {
+            requestParams["pendingRetryRewoundLeaf"] := target.parentMsg.id
             ChatDB.Msg_SetActiveLeaf(activeThreadId, target.parentMsg.id)
-        else {
+        } else {
+            requestParams["pendingRetryRewoundLeaf"] := path[path.Length].id
             ; Bug #147: the retry target is the thread ROOT (no parent). The
             ; leaf must stay on the original so the request can still be built,
             ; but the pending response must be inserted with parent_id NULL as

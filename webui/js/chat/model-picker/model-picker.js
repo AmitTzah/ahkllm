@@ -186,6 +186,10 @@ function _makeAssistantClickHandler(el, asstId) {
     window._currentSettings.assistantName = selectedAssistant ? (selectedAssistant.name || '') : '';
     window._currentSettings.assistantBaseModel = selectedAssistant ? (selectedAssistant.baseModel || '') : '';
     window._currentSettings.assistantDescription = selectedAssistant ? (selectedAssistant.description || '') : '';
+    window._currentSettings.reasoning = selectedAssistant && selectedAssistant.reasoning != null
+      ? selectedAssistant.reasoning : '';
+    window._currentSettings.temperature = selectedAssistant && selectedAssistant.temperature != null
+      ? selectedAssistant.temperature : '';
     window._currentSettings.systemOverrideSet = false;
     window._currentSettings.reasoningOverrideSet = false;
     window._currentSettings.temperatureOverrideSet = false;
