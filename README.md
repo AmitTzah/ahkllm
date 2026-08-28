@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/AmitTzah/ahkllm/releases/latest/download/AhkLLM.zip"><img src="https://img.shields.io/badge/Download-AhkLLM.zip-blue" alt="Download AhkLLM.zip"></a>
-  <a href="https://github.com/AmitTzah/ahkllm/releases"><img src="https://img.shields.io/github/downloads/AmitTzah/ahkllm/AhkLLM.zip?label=downloads" alt="AhkLLM downloads"></a>
+  <a href="https://github.com/AmitTzah/ahkllm/releases"><img src="https://img.shields.io/github/downloads/AmitTzah/ahkllm/total?label=downloads" alt="AhkLLM downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License: GPL-3.0"></a>
 </p>
 
@@ -24,7 +24,7 @@ The main point is that the two sides are connected. You can use AhkLLM as a norm
 
 ## The hotkey side
 
-By default, pressing the backtick key opens the command menu. The commands themselves are configurable, including the prompt, model, reasoning level, hotkey, and what AhkLLM should do with the result.
+By default, pressing <kbd>&#96;</kbd> (the backtick key, usually below Esc) opens the command menu. The commands themselves are configurable, including the prompt, model, reasoning level, hotkey, and what AhkLLM should do with the result.
 
 A few examples:
 
@@ -103,15 +103,7 @@ The normal download is the latest [`AhkLLM.zip`](https://github.com/AmitTzah/ahk
 
 If you want to run directly from source instead, clone the repository and follow the same steps.
 
-For example, to store a DeepSeek key in your Windows environment:
-
-```cmd
-setx DEEPSEEK_API_KEY "your-key-here"
-```
-
-Open a new terminal or sign out and back in after using `setx` so Windows picks up the new value.
-
-Supported environment-variable names are:
+If you prefer storing API keys in Windows environment variables, AhkLLM recognizes:
 
 ```text
 DEEPSEEK_API_KEY
@@ -120,6 +112,30 @@ GOOGLE_API_KEY
 OPENROUTER_API_KEY
 TAVILY_API_KEY
 ```
+
+For example:
+
+```cmd
+setx DEEPSEEK_API_KEY "your-key-here"
+```
+
+Open a new terminal or sign out and back in after using `setx` so Windows picks up the new value.
+
+## Basic controls
+
+By default:
+
+- <kbd>&#96;</kbd> opens the command menu.
+- <kbd>&#96;</kbd> followed by <kbd>1</kbd> opens the chat window.
+- <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>R</kbd> reloads AhkLLM.
+- <kbd>Ctrl</kbd> + <kbd>W</kbd> closes pop-ups.
+- <kbd>CapsLock</kbd> + <kbd>&#96;</kbd> suspends or resumes the hotkeys.
+
+They are all remappable from Settings.
+
+Most configuration is available from the gear icon in the chat window, including providers, models, commands, assistants, hotkeys, icons, menu items, and UI appearance settings.
+
+If you prefer editing the config directly, the defaults live in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Saving that file reloads the script automatically.
 
 ## Try AhkLLM for free
 
@@ -137,22 +153,6 @@ For commands such as **Refine**, **Summarize**, **Translate**, or **Explain**:
 OpenRouter chooses from its currently available free models automatically, so the exact model can vary between requests. The free tier also has rate limits.
 
 **FIM Fill** and **FIM Continue** are the exception. They use a separate FIM completions endpoint, so `openrouter/free` cannot be used for those commands. AhkLLM uses DeepSeek's FIM endpoint for them by default.
-
-## Basic controls
-
-The defaults are:
-
-- `` ` `` opens the command menu.
-- `` ` `` followed by `1` opens the chat window.
-- `Ctrl+Alt+R` reloads AhkLLM.
-- `Ctrl+W` closes pop-ups.
-- `CapsLock` + `` ` `` suspends or resumes the hotkeys.
-
-They are all remappable from Settings.
-
-Most configuration is available from the gear icon in the chat window, including providers, models, commands, assistants, hotkeys, icons, menu items, and UI appearance settings.
-
-If you prefer editing the config directly, the defaults live in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Saving that file reloads the script automatically.
 
 ## Where the data goes
 
