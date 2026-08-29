@@ -1,6 +1,6 @@
 {
   "name": "ahkllm",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "AhkLLM - a Windows-native AI assistant built on AutoHotkey v2 with a WebView2 chat UI",
   "scripts": {

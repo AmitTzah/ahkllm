@@ -55,7 +55,7 @@ FIM Fill and Continue use DeepSeek's beta FIM completions endpoint by default. T
   <img src="docs/gifs/FIM-continue.gif" alt="AhkLLM FIM Continue extending text from the cursor" width="760">
 </p>
 
-In this example, the Screenshot command lets you drag over part of VS Code, then sends that capture into chat with an instruction to explain what's on screen:
+In this example, the Screenshot command lets you drag over part of Excel, then sends that capture into chat with an instruction to explain what's on screen:
 
 <p align="center">
   <img src="docs/gifs/screenshot.gif" alt="AhkLLM capturing a screenshot and sending it as image context" width="760">

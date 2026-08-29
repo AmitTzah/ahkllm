@@ -2376,12 +2376,12 @@ class ChatDBTest {
         ; Insert message with SQL-significant chars in content (but search term is safe due to SQLite.Escape)
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "test with apostrophe's and quotes"})
         ; Search for a term containing apostrophe — should be safe due to SQLite.Escape
-        results := ChatDB.SearchMessages("apostrophe's")
+        results := ChatDB.SearchMessages("apostrophe's", threadId)
         if results.Length != 1
             throw Error("Expected 1 match for term with apostrophe, got " results.Length)
         ; Search for % sign — SQL LIKE wildcard, should be escaped
         ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "50% discount"})
-        results2 := ChatDB.SearchMessages("50%")
+        results2 := ChatDB.SearchMessages("50%", threadId)
         if results2.Length != 1
             throw Error("Expected 1 match for term with percent sign, got " results2.Length)
         this._teardown()
