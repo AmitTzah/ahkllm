@@ -19,6 +19,12 @@ const RESULTS_FILE = path.join(os.tmpdir(), 'test_results.txt');
 
 try { fs.unlinkSync(RESULTS_FILE); } catch {}
 
+function readResultsTail(maxChars = 4000) {
+  if (!fs.existsSync(RESULTS_FILE)) return '';
+  const text = fs.readFileSync(RESULTS_FILE, 'utf8');
+  return text.slice(-maxChars);
+}
+
 const res = spawnSync(AHK, [path.join(REPO_ROOT, 'tests', 'run_ahk_tests.ahk')], {
   timeout: TIMEOUT_MS,
   windowsHide: true,
@@ -27,6 +33,12 @@ const res = spawnSync(AHK, [path.join(REPO_ROOT, 'tests', 'run_ahk_tests.ahk')],
 
 if (res.error && res.error.code === 'ETIMEDOUT') {
   console.error('AHK suite TIMEOUT after ' + TIMEOUT_MS + 'ms (hang)');
+  const tail = readResultsTail();
+  if (tail) {
+    console.error('Last AHK test log output before timeout:\n' + tail);
+  } else {
+    console.error('AHK suite produced no test log before timeout.');
+  }
   process.exit(1);
 }
 if (res.error) {

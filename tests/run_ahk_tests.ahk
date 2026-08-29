@@ -189,12 +189,14 @@ RunAllTests(*) {
 RunTestClass(className) {
     global __TestClasses, totalPassed, totalFailed, failedDetails, TEST_LOG
     try {
+        Log("[RUN] " className " (class init)`n")
         obj := %className%()
         proto := %className%.Prototype
         for methodName in proto.OwnProps() {
             if SubStr(methodName, 1, 1) = "_"
                 continue
             try {
+                Log("[RUN] " className "." methodName "`n")
                 obj.%methodName%()
                 Log("[PASS] " className "." methodName "`n")
                 totalPassed++
