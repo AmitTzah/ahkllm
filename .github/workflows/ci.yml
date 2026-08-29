@@ -14,13 +14,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install AutoHotkey v2
+      - name: Install AutoHotkey v2.0.18
         shell: pwsh
         run: |
-          $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest'
-          $asset = $latest.assets | Where-Object { $_.name -match '^AutoHotkey_2\.\d+\.\d+\.zip$' } | Select-Object -First 1
-          if (-not $asset) { throw 'AutoHotkey v2 zip asset not found in latest release' }
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ahk.zip"
+          $version = '2.0.18'
+          $url = "https://github.com/AutoHotkey/AutoHotkey/releases/download/v$version/AutoHotkey_$version.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ahk.zip"
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\ahk" | Out-Null
           Expand-Archive -Path "$env:RUNNER_TEMP\ahk.zip" -DestinationPath "$env:RUNNER_TEMP\ahk" -Force
           $exe = Get-ChildItem -Path "$env:RUNNER_TEMP\ahk" -Filter AutoHotkey64.exe -Recurse | Select-Object -First 1
@@ -42,13 +41,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install AutoHotkey v2
+      - name: Install AutoHotkey v2.0.18
         shell: pwsh
         run: |
-          $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest'
-          $asset = $latest.assets | Where-Object { $_.name -match '^AutoHotkey_2\.\d+\.\d+\.zip$' } | Select-Object -First 1
-          if (-not $asset) { throw 'AutoHotkey v2 zip asset not found in latest release' }
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ahk.zip"
+          $version = '2.0.18'
+          $url = "https://github.com/AutoHotkey/AutoHotkey/releases/download/v$version/AutoHotkey_$version.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ahk.zip"
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\ahk" | Out-Null
           Expand-Archive -Path "$env:RUNNER_TEMP\ahk.zip" -DestinationPath "$env:RUNNER_TEMP\ahk" -Force
           $exe = Get-ChildItem -Path "$env:RUNNER_TEMP\ahk" -Filter AutoHotkey64.exe -Recurse | Select-Object -First 1
