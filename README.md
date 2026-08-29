@@ -24,14 +24,14 @@ The main point is that the two sides are connected. You can use AhkLLM as a norm
 
 ## The hotkey side
 
-By default, pressing <kbd>&#96;</kbd> (the backtick key, usually below Esc) opens the command menu. The commands themselves are configurable, including the prompt, model, reasoning level, hotkey, and what AhkLLM should do with the result.
+By default, pressing <kbd>&#96;</kbd> (the backtick key, usually below Esc) opens the command menu. The commands themselves are configurable, including the prompt, model, reasoning level, hotkey, whether to ask for extra input or attach a screenshot, and what AhkLLM should do with the result.
 
 A few examples:
 
 - Use **Rephrase in Context** to send both the selection and the surrounding document text, then replace only the selected part.
 - Put your cursor in the middle of some prose or code and use **FIM Fill** to generate what belongs between the text before and after the cursor.
 - Use **FIM Continue** to continue writing from where your cursor is sitting.
-- Capture a screenshot, send it into chat as image context, and include an instruction for what AhkLLM should do with it.
+- Drag over a screen region, preview the screenshot, add a prompt if you want, and send that exact capture into chat as image context.
 - Send selected text into the full chat window and continue the conversation there.
 - Select a paragraph in an email, run **Refine**, and AhkLLM replaces the selection with the rewritten version.
 
@@ -45,6 +45,8 @@ Custom commands can use the same capture-and-paste flow. This one turns selected
   <img src="docs/gifs/custom-paste-bullet-list.gif" alt="AhkLLM custom command turning selected text into a bullet list" width="760">
 </p>
 
+Screenshot capture is not hardwired to the built-in Screenshot command either. Any normal chat command can turn on **Attach Screenshot**. It can run immediately with a fixed prompt, or open the input box after the capture so you can type an instruction. When the input box is on, AhkLLM shows a small proportional preview of the exact PNG that will be attached. Attach Screenshot requires a vision-capable model and `pasteMode: "chat"`, and it cannot be combined with FIM.
+
 Text capture uses Windows UI Automation where the target application exposes it, with clipboard fallbacks for normal selection-based commands where possible. FIM depends on UIA text access because AhkLLM needs the text on both sides of the cursor.
 
 FIM Fill and Continue use DeepSeek's beta FIM completions endpoint by default. They work with normal writing as well as code.
@@ -53,7 +55,7 @@ FIM Fill and Continue use DeepSeek's beta FIM completions endpoint by default. T
   <img src="docs/gifs/FIM-continue.gif" alt="AhkLLM FIM Continue extending text from the cursor" width="760">
 </p>
 
-In this example, the Screenshot command grabs VS Code and sends the image into chat with an instruction to explain what's on screen:
+In this example, the Screenshot command lets you drag over part of VS Code, then sends that capture into chat with an instruction to explain what's on screen:
 
 <p align="center">
   <img src="docs/gifs/screenshot.gif" alt="AhkLLM capturing a screenshot and sending it as image context" width="760">
