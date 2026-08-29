@@ -53,13 +53,15 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
 sendNonStreamingRequest(&chatHistoryJSONRequest) {
     return ""
 }
+; Config.ahk includes SharedLib.ahk, which provides the production
+; ScreenRegionSelector. Do not redeclare it in this probe.
 #Include ..\..\app\menu\CommandMenu.ahk
 ; Stubs for identifiers CommandMenu.ahk's function bodies reference but that
 ; live in Main.ahk / CommandState.ahk (not part of the probe chain).
 runOptionsMenuAction(*) {
     return ""
 }
-setSelectedCommand(cmd) {
+setSelectedCommand(*) {
     return ""
 }
 processInitialRequest(*) {

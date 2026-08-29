@@ -49,6 +49,7 @@ scenarios.push({
     const t = await launcher.findTarget(port, 'api-logs.html', 30000);
     if (!t) throw new Error('api-logs viewer target not found');
     const logs = await CDP.connect(t.webSocketDebuggerUrl);
+    await logs.waitFor('typeof reloadLogs === "function"', 15000, 100, 'API logs page ready');
     await logs.eval('reloadLogs()');
     await logs.waitFor('document.querySelectorAll("#logBody tr.clickable").length > 0', 15000, 300, 'log rows');
     const latency = await logs.eval('document.querySelector("#logBody tr.clickable td:nth-child(4)").textContent');

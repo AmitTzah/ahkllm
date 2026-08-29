@@ -307,12 +307,14 @@ scenarios.push({
     // processInitialRequest -> openChatWindow(threadId) + notifyTriggerLLM(1).
     const p1 = runProbe('load-thread', ['t-221-a']);
     if (!p1.posted) throw new Error('setup: load-thread probe did not post to the chat window: ' + JSON.stringify(p1));
+    await cdp.waitFor('window.activeThreadId === "t-221-a" && chatMessages.length > 0', 10000, 100, 'first command thread loaded');
     runProbe('trigger-llm', ['1']);
     await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 10000, 200, 'first command in flight');
     // The first stream is still running (sse-slow delivers chunks over ~3s).
     await sleep(300);
     // Command 2: load thread B and trigger while command 1 is still streaming.
     runProbe('load-thread', ['t-221-b']);
+    await cdp.waitFor('window.activeThreadId === "t-221-b" && chatMessages.length > 0', 10000, 100, 'second command thread loaded');
     runProbe('trigger-llm', ['1']);
     const focusAfterDispatch = runProbe('active-window').active;
     const windowAfterDispatch = runProbe('chat-info');

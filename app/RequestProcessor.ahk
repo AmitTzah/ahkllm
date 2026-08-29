@@ -10,7 +10,7 @@
 ; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
 processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode, isFIM,
-    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0, includeImageContext := false) {
+    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0, includeImageContext := false, preselectedScreenshotArea := false) {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
 
     ; Determine if fullText is needed (lazy — avoid capturing 1M-word docs unnecessarily)
@@ -30,8 +30,20 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         beginChatOpeningIndicator()
     }
 
-    ; STEP 1: Capture text
-    captured := TextCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines, maxContextWords)
+    ; STEP 1: Capture text only when the command actually needs text from the
+    ; foreground application. Prompt-only commands such as Screenshot already
+    ; have their user input, so running the clipboard fallback here can waste up
+    ; to three seconds trying Ctrl+C / Ctrl+Insert when nothing is selected.
+    needsSelectionCapture := isFIM
+        || inputText = ""
+        || includeFullText
+        || InStr(systemMessage, "{{selection}}")
+        || InStr(userMessageTemplate, "{{selection}}")
+
+    if needsSelectionCapture
+        captured := TextCapture.Capture(isFIM, pasteMode, inputText, includeFullText, expandNewlines, maxContextWords)
+    else
+        captured := { success: true, userMessage: "", fullText: "", modelsStr: "", isFIM: false }
     if !captured.success {
         if commandThreadId
             ChatDB.Thread_Delete(commandThreadId)
@@ -86,7 +98,31 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
             return
         }
         captureMsgId := ChatDB._UUID()
-        screenshotPath := ImageUtils.CaptureScreen(captureMsgId)
+        screenshotArea := preselectedScreenshotArea ? preselectedScreenshotArea : ScreenRegionSelector.Select()
+        if !screenshotArea {
+            if commandThreadId {
+                ChatDB.Thread_Delete(commandThreadId)
+                endChatOpeningIndicator()
+                openChatWindow()
+            }
+            updateLoadingUI("Reset")
+            return
+        }
+
+        ; Give Windows a moment to repaint after the selection overlay closes.
+        Sleep 30
+        screenshotPath := ImageUtils.CaptureRegion(captureMsgId, screenshotArea)
+        if !screenshotPath {
+            if commandThreadId {
+                ChatDB.Thread_Delete(commandThreadId)
+                endChatOpeningIndicator()
+                openChatWindow()
+            }
+            updateLoadingUI("Reset")
+            ToolTip("Screenshot capture failed", , , 19)
+            SetTimer(() => ToolTip(, , , 19), -3000)
+            return
+        }
     }
 
     ; STEP 2: Build request and execute

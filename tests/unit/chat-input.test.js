@@ -108,6 +108,26 @@ describe('onChatSend — payload construction', () => {
             'Enter/click during an active stream must cancel, not send a second request');
     });
 
+    it('shows loading dots when AHK starts a request before streaming begins', () => {
+        const { ctx } = loadInputModule();
+        let shown = 0;
+        ctx.showLoadingIndicator = () => { shown++; };
+        ctx.streamState = { active: false };
+        ctx.setChatButtonsEnabled(false);
+        assert.strictEqual(shown, 1,
+            'command-triggered requests must show loading dots before the first stream chunk');
+    });
+
+    it('does not show pre-stream dots over an active stream', () => {
+        const { ctx } = loadInputModule();
+        let shown = 0;
+        ctx.showLoadingIndicator = () => { shown++; };
+        ctx.streamState = { active: true };
+        ctx.setChatButtonsEnabled(false);
+        assert.strictEqual(shown, 0,
+            'an active stream should keep its streaming UI');
+    });
+
     it('clears the loading indicator when the composer is enabled (bug #215)', () => {
         const { ctx } = loadInputModule();
         let hidden = 0;

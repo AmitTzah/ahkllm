@@ -205,8 +205,15 @@ onCommandSelected(index, *) {
     showInput := cmd.HasProp("showInputBox") && cmd.showInputBox
 
     if showInput {
-        ; Save the command for future reference in onCommandInputSend
-        setSelectedCommand(cmd)
+        screenshotArea := false
+        if cmd.HasProp("includeImageContext") && cmd.includeImageContext {
+            screenshotArea := ScreenRegionSelector.Select()
+            if !screenshotArea
+                return
+        }
+
+        ; Save the command and any preselected screenshot area for onCommandInputSend.
+        setSelectedCommand(cmd, screenshotArea)
 
         inputDefault := cmd.HasProp("inputBoxDefault") ? cmd.inputBoxDefault : ""
         commandInputWindow.showInputWindow(inputDefault, cmd.commandName,

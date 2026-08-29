@@ -92,6 +92,10 @@ async function openSection(cdp, name) {
 async function saveSettings(cdp, dataDir, timeoutMs = 20000) {
   const file = path.join(dataDir, 'settings.json');
   await cdp.click('.nav-footer .btn-primary');
+  // The host saves synchronously, then sends settingsSaved; the page clears
+  // the dirty state only after that acknowledgement. Waiting for the button
+  // transition prevents a second save from racing the first one.
+  await cdp.waitFor('document.querySelector(".nav-footer .btn-primary") && document.querySelector(".nav-footer .btn-primary").disabled === true', timeoutMs, 100, 'settings save acknowledgement');
   // Poll until the merged settings (with the models key) is on disk.
   const start = Date.now();
   for (;;) {

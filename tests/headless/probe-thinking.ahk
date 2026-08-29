@@ -32,6 +32,9 @@ global commandInputWindow := {
     closeButtonAction: (*) => "",
     validateInputAndHide: (*) => true
 }
+class ScreenRegionSelector {
+    static Select(*) => false
+}
 setSelectedCommand(*) => ""
 processInitialRequest(*) => ""
 openChatWindow(*) => ""

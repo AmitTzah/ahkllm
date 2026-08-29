@@ -98,6 +98,76 @@ class ImageUtils {
         return pBitmap ? filePath : ""
     }
 
+    ; Capture an arbitrary screen rectangle to PNG without touching the clipboard.
+    ; Negative X/Y coordinates are valid for monitors left of or above primary.
+    static CaptureRegion(messageId, area) {
+        if !IsObject(area)
+            return ""
+        for prop in ["X", "Y", "W", "H"] {
+            if !area.HasOwnProp(prop)
+                return ""
+        }
+
+        x := Round(area.X)
+        y := Round(area.Y)
+        width := Round(area.W)
+        height := Round(area.H)
+        if width <= 0 || height <= 0
+            return ""
+
+        ImageUtils.EnsureAttachmentDir()
+        ImageUtils._EnsureGdiPlusInitialized()
+        fileName := messageId "_screenshot.png"
+        filePath := "attachments\" fileName
+        fullPath := AppInfo.DataDir "\" filePath
+
+        hdcScreen := DllCall("user32\GetDC", "Ptr", 0, "Ptr")
+        if !hdcScreen
+            return ""
+
+        hdcMem := DllCall("gdi32\CreateCompatibleDC", "Ptr", hdcScreen, "Ptr")
+        if !hdcMem {
+            DllCall("user32\ReleaseDC", "Ptr", 0, "Ptr", hdcScreen)
+            return ""
+        }
+
+        hBitmap := DllCall("gdi32\CreateCompatibleBitmap", "Ptr", hdcScreen, "Int", width, "Int", height, "Ptr")
+        if !hBitmap {
+            DllCall("gdi32\DeleteDC", "Ptr", hdcMem)
+            DllCall("user32\ReleaseDC", "Ptr", 0, "Ptr", hdcScreen)
+            return ""
+        }
+
+        oldBitmap := DllCall("gdi32\SelectObject", "Ptr", hdcMem, "Ptr", hBitmap, "Ptr")
+        pBitmap := 0
+        saved := false
+        try {
+            copied := DllCall("gdi32\BitBlt",
+                "Ptr", hdcMem, "Int", 0, "Int", 0, "Int", width, "Int", height,
+                "Ptr", hdcScreen, "Int", x, "Int", y, "UInt", 0x00CC0020, "Int") ; SRCCOPY
+            if copied {
+                createStatus := DllCall("gdiplus.dll\GdipCreateBitmapFromHBITMAP",
+                    "Ptr", hBitmap, "Ptr", 0, "PtrP", &pBitmap, "UInt")
+                if createStatus = 0 && pBitmap {
+                    pngEncoder := ImageUtils._GetEncoderCLSID("image/png")
+                    saveStatus := DllCall("gdiplus.dll\GdipSaveImageToFile",
+                        "Ptr", pBitmap, "WStr", fullPath, "Ptr", pngEncoder.Ptr, "Ptr", 0, "UInt")
+                    saved := saveStatus = 0
+                }
+            }
+        } finally {
+            if pBitmap
+                DllCall("gdiplus.dll\GdipDisposeImage", "Ptr", pBitmap)
+            if oldBitmap
+                DllCall("gdi32\SelectObject", "Ptr", hdcMem, "Ptr", oldBitmap)
+            DllCall("gdi32\DeleteObject", "Ptr", hBitmap)
+            DllCall("gdi32\DeleteDC", "Ptr", hdcMem)
+            DllCall("user32\ReleaseDC", "Ptr", 0, "Ptr", hdcScreen)
+        }
+
+        return saved ? filePath : ""
+    }
+
     ; Read file and base64-encode its content.
     ; Used by buildRequest to read attachment files for API calls.
     static ReadAndEncode(filePath) {

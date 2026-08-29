@@ -108,6 +108,7 @@ RegisterTestClass(className) {
 #Include unit\ThreadLockRepo.test.ahk
 #Include unit\AttachmentRepo.test.ahk
 #Include unit\ImageUtils.test.ahk
+#Include unit\ScreenRegionSelector.test.ahk
 #Include unit\SQLiteEscape.test.ahk
 #Include unit\TextCapture.test.ahk
 #Include unit\LLMRequestBuilder.test.ahk

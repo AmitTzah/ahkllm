@@ -95,6 +95,28 @@ class RequestProcessorTest {
     
     }
 
+    ; Prompt-only commands already have their text from the input window. They
+    ; must not spend up to three seconds in TextCapture's clipboard fallback
+    ; probing for a selection that the command never uses. Screenshot is the
+    ; default example: userMessage={{input}}, no selection/fullText placeholders.
+    PromptOnlyCommand_SkipsUnusedSelectionCapture() {
+        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        src := FileRead(srcPath)
+
+        if !InStr(src, "needsSelectionCapture := isFIM")
+            throw Error("prompt-only capture gate missing in RequestProcessor.ahk")
+        if !InStr(src, 'inputText = ""')
+            throw Error("prompt-only capture gate must treat non-empty input as sufficient")
+        if !InStr(src, 'InStr(systemMessage, "{{selection}}")')
+            throw Error("system-message selection placeholders must still force capture")
+        if !InStr(src, 'InStr(userMessageTemplate, "{{selection}}")')
+            throw Error("user-message selection placeholders must still force capture")
+        if !InStr(src, "if needsSelectionCapture")
+            throw Error("TextCapture.Capture must be conditional for prompt-only commands")
+        if !InStr(src, 'captured := { success: true, userMessage: "", fullText: ""')
+            throw Error("prompt-only path must synthesize an empty capture result")
+    }
+
     ; Verifies that Sleep exists after ^v for scroll-to-cursor stability
     FIMPaste_HasSleepAfterPaste() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"

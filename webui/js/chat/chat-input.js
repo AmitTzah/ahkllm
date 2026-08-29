@@ -66,6 +66,8 @@ function onChatSend() {
 
 // Show the loading dots indicator
 function showLoadingIndicator() {
+  // Typed sends and AHK-triggered commands can both request this state.
+  if (document.getElementById('chat-loading')) return;
   var container = document.getElementById('chat-messages');
   if (!container) return;
   var indicator = document.createElement('div');
@@ -100,6 +102,11 @@ function setChatButtonsEnabled(enabled) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   if (input) input.disabled = !enabled;
+  // Command-triggered chats bypass onChatSend(), so AHK disabling the
+  // composer is also the signal to show pre-stream loading dots. Active
+  // streams already have their assistant/reasoning UI.
+  if (!enabled && (typeof streamState === 'undefined' || !streamState.active))
+    showLoadingIndicator();
   if (enabled) {
     // Bug #219: re-enabling the composer is the "no request in flight"
     // signal, so it must fully reset the stream state. Before this fix, a

@@ -17,6 +17,7 @@
 #Include SystemMessageResolver.ahk
 #Include ModelPricingParser.ahk
 #Include DebugLog.ahk
+#Include ScreenRegionSelector.ahk
 #Include ImageUtils.ahk
 #Include AttachmentUtils.ahk
 #Include AppInfo.ahk
