@@ -178,6 +178,16 @@ assistants := [
 ;   inputBoxDefault:  Text pre-filled in the input box.  Only meaningful when
 ;                     showInputBox is true.
 ;
+;   includeImageContext:
+;                     (Optional) When true, lets the user select a screen
+;                     region when the command runs and attaches that image to
+;                     the chat message. Requires pasteMode: "chat", cannot be
+;                     used with isFIM: true, and the selected model must support
+;                     vision/image input. Works with or without showInputBox.
+;                     With showInputBox enabled, the screenshot is captured
+;                     first and shown as a preview above the prompt field.
+;                     Default: false.
+;
 ;   --- Template Variables ---
 ;   These placeholders work in systemMessage, systemMessageFile, and userMessage.
 ;   They are replaced at runtime with the actual captured text.
@@ -282,6 +292,7 @@ assistants := [
         ; userMessage: "{{selection}}",
         showInputBox: true,
         inputBoxDefault: "",
+        includeImageContext: false,
 
         pasteMode: "replace",
         stream: false,
@@ -425,13 +436,13 @@ commands := [
   , {
         commandName: "Screenshot",
         menuText: "&4 - Send Screenshot",
-        APIModels: "openai/gpt-5.4-mini",
+        APIModels: "openai/gpt-5.6-luna",
         showInputBox: true,
         userMessage: "{{input}}",
         pasteMode: "chat",
         stream: true,
         includeImageContext:true,
-        thinking: { type: "enabled", level: "medium" },
+        thinking: { type: "disabled", level: "none" },
         tags: ["&Digest"],
         directAccelerator: "&7"
     }

@@ -25,6 +25,7 @@ OnError((e, m) => (Log("ERROR: " e.Message), Finish(), ExitApp(1)), -1)
 ; standalone probe does not define. In this environment, unresolved identifier
 ; references in function bodies hang the script at load, so define stubs first.
 global commands := [], chatShortcut := "", quickAccessMenuItems := [], submenuOrder := [], selectedCommand := {}
+global appDefaultModel := "probe/default-model"
 global commandInputWindow := {
     guiObj: { hWnd: 0 },
     EditControl: { Value: "" },
@@ -34,6 +35,15 @@ global commandInputWindow := {
 }
 class ScreenRegionSelector {
     static Select(*) => false
+}
+class AttachmentUtils {
+    static HasVision(*) => true
+}
+class ImageUtils {
+    static CaptureRegion(*) => ""
+}
+class ChatDB {
+    static _UUID(*) => "probe-screenshot"
 }
 setSelectedCommand(*) => ""
 processInitialRequest(*) => ""

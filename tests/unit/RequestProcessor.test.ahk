@@ -105,8 +105,8 @@ class RequestProcessorTest {
 
         if !InStr(src, "needsSelectionCapture := isFIM")
             throw Error("prompt-only capture gate missing in RequestProcessor.ahk")
-        if !InStr(src, 'inputText = ""')
-            throw Error("prompt-only capture gate must treat non-empty input as sufficient")
+        if !InStr(src, 'needsImplicitSelection := !includeImageContext && inputText = "" && !userMessageTemplate')
+            throw Error("implicit-selection fallback must not make screenshot-only commands probe the clipboard")
         if !InStr(src, 'InStr(systemMessage, "{{selection}}")')
             throw Error("system-message selection placeholders must still force capture")
         if !InStr(src, 'InStr(userMessageTemplate, "{{selection}}")')
@@ -115,6 +115,17 @@ class RequestProcessorTest {
             throw Error("TextCapture.Capture must be conditional for prompt-only commands")
         if !InStr(src, 'captured := { success: true, userMessage: "", fullText: ""')
             throw Error("prompt-only path must synthesize an empty capture result")
+    }
+
+    ScreenshotCommand_ReusesPrecapturedPng() {
+        srcPath := A_ScriptDir "\\..\\app\\RequestProcessor.ahk"
+        src := FileRead(srcPath)
+        if !InStr(src, "preselectedScreenshotPath")
+            throw Error("RequestProcessor must accept the pre-captured screenshot path")
+        if !InStr(src, "FileExist(AppInfo.DataDir") || !InStr(src, "screenshotPath)")
+            throw Error("pre-captured screenshot must be verified before attachment")
+        if !InStr(src, "screenshotArea := ScreenRegionSelector.Select()")
+            throw Error("non-prompted screenshot commands must still be able to select a region")
     }
 
     ; Verifies that Sleep exists after ^v for scroll-to-cursor stability
@@ -175,9 +186,24 @@ class RequestProcessorTest {
         objPos := InStr(src, "commandThreadSettings := {")
         if !objPos
             throw Error("unconditional command settings object not found in RequestProcessor.ahk")
-        objBlock := SubStr(src, objPos, 500)
+        objBlock := SubStr(src, objPos, 1200)
         if !InStr(objBlock, "temperatureOverride") || !InStr(objBlock, "reasoningOverride")
             throw Error("temperature/reasoning overrides missing from the unconditional command settings object")
+    }
+
+    ; A command configured as thinking:{type:"disabled", level:"none"}
+    ; must open its chat with the right rail set to None. Persisting the raw
+    ; string "disabled" makes the dropdown fall back to Model Default and
+    ; prevents the chat request builder from applying the explicit off level.
+    ChatModeCommand_DisabledThinkingPersistsNone() {
+        srcPath := A_ScriptDir "\..\app\RequestProcessor.ahk"
+        src := FileRead(srcPath)
+        objPos := InStr(src, "commandThreadSettings := {")
+        if !objPos
+            throw Error("command settings block not found")
+        objBlock := SubStr(src, objPos, 1000)
+        if !InStr(objBlock, 'thinking = "disabled"') || !InStr(objBlock, 'thinkingLevel != "" ? thinkingLevel : "none"')
+            throw Error("disabled command thinking must persist the explicit none level")
     }
 
     ; Regression: chat-mode commands must prepare and open their new thread

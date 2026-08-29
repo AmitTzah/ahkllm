@@ -257,7 +257,7 @@ scenarios.push({
     const handler = mainAhk.slice(updStart, reloadStart > updStart ? reloadStart : updStart + 1200);
     if (!/SettingsService\.ReloadFromDisk\(\)/.test(handler))
       throw new Error('Main.ahk settings-updated handler does not reload through SettingsService');
-    if (!/SettingsService\.RegisterHook\("inputWindow", _rebuildInputWindow\.Bind\(onCommandInputSend\)\)/.test(mainAhk))
+    if (!/SettingsService\.RegisterHook\("inputWindow", _rebuildInputWindow\.Bind\(onCommandInputSend(?:,\s*onCommandInputCancel)?\)\)/.test(mainAhk))
       throw new Error('Main.ahk does not register the input window rebuild hook');
     if (!/w" inputWindowWidth " h" inputWindowHeight/.test(iw))
       throw new Error('InputWindow does not apply the configured width/height');

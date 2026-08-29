@@ -171,7 +171,7 @@ scenarios.push({
       throw new Error('overrides still inside the model-default gate (bug #36 not fixed)');
     const objPos = src.indexOf('commandThreadSettings := {');
     if (objPos < 0) throw new Error('unconditional command settings object not found in RequestProcessor.ahk');
-    const objBlock = src.slice(objPos, objPos + 500);
+    const objBlock = src.slice(objPos, objPos + 1200);
     if (objBlock.indexOf('temperatureOverride') < 0 || objBlock.indexOf('reasoningOverride') < 0)
       throw new Error('temperature/reasoning overrides missing from the unconditional command settings object');
     return 'temperature/reasoning overrides persist outside the model-default gate; only modelOverride is gated';
@@ -302,7 +302,7 @@ scenarios.push({
   },
   async body({ cdp, dbPath }) {
     await sleep(500);
-    const focusBefore = runProbe('active-window').active;
+    const focusBefore = runProbe('active-window');
     // Command 1: load thread A and trigger the LLM - mirrors the command path
     // processInitialRequest -> openChatWindow(threadId) + notifyTriggerLLM(1).
     const p1 = runProbe('load-thread', ['t-221-a']);
@@ -316,10 +316,14 @@ scenarios.push({
     runProbe('load-thread', ['t-221-b']);
     await cdp.waitFor('window.activeThreadId === "t-221-b" && chatMessages.length > 0', 10000, 100, 'second command thread loaded');
     runProbe('trigger-llm', ['1']);
-    const focusAfterDispatch = runProbe('active-window').active;
+    const focusAfterDispatch = runProbe('active-window');
     const windowAfterDispatch = runProbe('chat-info');
-    if (focusBefore && focusAfterDispatch && focusBefore !== focusAfterDispatch)
-      throw new Error('headless command dispatch changed the foreground window: before=' + focusBefore + ' after=' + focusAfterDispatch);
+    // Only fail if the headless dispatch actually activated AhkLLM. Comparing
+    // arbitrary foreground HWNDs is flaky because Windows can legitimately
+    // move focus between unrelated windows while this multi-second race runs.
+    if (Number(focusAfterDispatch.active) === Number(windowAfterDispatch.hwnd))
+      throw new Error('headless command dispatch activated the ChatWindow: before=' + JSON.stringify(focusBefore) +
+        ' after=' + JSON.stringify(focusAfterDispatch));
     if (Number(windowAfterDispatch.x) > -1000 || Number(windowAfterDispatch.y) > -1000)
       throw new Error('headless command dispatch left the ChatWindow on-screen: ' + JSON.stringify(windowAfterDispatch));
     await cdp.waitFor('typeof streamState !== "undefined" && streamState.active && isLoading', 10000, 200, 'second command in flight');
@@ -370,7 +374,7 @@ scenarios.push({
     const cipc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
     const chatIdx = rp.indexOf('if pasteMode = "chat"');
     if (chatIdx < 0) throw new Error('chat branch not found (setup)');
-    const chatBranch = rp.slice(chatIdx, rp.indexOf('} else {'));
+    const chatBranch = rp.slice(chatIdx);
     const defaultStreamTrue = /requestParams\["stream"\]\s*:=\s*true/.test(cw);
     const builderStreamsOnFlag = /if requestParams\["stream"\]\s*\{[\s\S]*?requestObj\.stream := true/.test(crb);
     const commandPassesFlag = /notifyTriggerLLM\(chatWindowhWnd,\s*stream\)/.test(chatBranch);

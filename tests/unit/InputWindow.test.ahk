@@ -89,6 +89,41 @@ class InputWindowTest {
         }
     }
 
+    ScreenshotPreview_FitPreservesWideAndTallAspectRatios() {
+        wide := InputWindow._FitPreviewSize(1800, 200)
+        if wide.W != 180 || wide.H != 20
+            throw Error("wide screenshot should fit as 180x20, got " wide.W "x" wide.H)
+
+        tall := InputWindow._FitPreviewSize(200, 2200)
+        if tall.W != 10 || tall.H != 110
+            throw Error("tall screenshot should fit as 10x110, got " tall.W "x" tall.H)
+    }
+
+    ScreenshotPreview_ShowsAndClears() {
+        this._setGlobals()
+        win := InputWindow("test")
+        previewPath := A_ScriptDir "\\..\\docs\\screenshots\\chat-window.png"
+        if !FileExist(previewPath)
+            throw Error("preview fixture missing: " previewPath)
+        try {
+            win.showInputWindow("prompt", "test", "", previewPath)
+            if !win.PreviewControl.Visible
+                throw Error("screenshot preview should be visible when a preview image is supplied")
+            sourceSize := ImageUtils.GetImageDimensions(previewPath)
+            win.PreviewControl.GetPos(, , &previewW, &previewH)
+            if sourceSize && Abs((previewW / previewH) - (sourceSize.W / sourceSize.H)) > 0.02
+                throw Error("screenshot preview should preserve the image aspect ratio")
+            win.EditControl.GetPos(, &editY)
+            if editY <= 10
+                throw Error("prompt field should move below the screenshot preview")
+            win.clearPreview()
+            if win.PreviewControl.Visible
+                throw Error("clearPreview should hide the screenshot thumbnail")
+        } finally {
+            win.guiObj.Destroy()
+        }
+    }
+
     Validate_RejectsEmpty() {
         this._setGlobals()
         win := InputWindow("test")

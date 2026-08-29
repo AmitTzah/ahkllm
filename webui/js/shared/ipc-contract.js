@@ -29,9 +29,9 @@
     'appendChatMessage': { dir: 'ahk->web', data: 'object' },
     'updateChatMessage': { dir: 'ahk->web', data: 'object' },
     'streamContent': { dir: 'ahk->web', data: 'string' },
-    'streamReasoning': { dir: 'ahk->web', data: 'string' },
+    'streamReasoning': { dir: 'ahk->web', data: 'object' },
     'streamModelName': { dir: 'ahk->web', data: 'string' },
-    'streamDone': { dir: 'ahk->web', fields: ['model', 'displayName', 'dbMsg', 'userTokenCount'], required: ['model'] },
+    'streamDone': { dir: 'ahk->web', fields: ['model', 'displayName', 'dbMsg', 'userTokenCount', 'threadId'], required: ['model'] },
     'streamCancelled': { dir: 'ahk->web', data: 'any' },
     'setChatButtonsEnabled': { dir: 'ahk->web', data: 'boolean' },
     'updateTokenUsage': { dir: 'ahk->web', data: 'object' },
@@ -117,6 +117,7 @@
 
   function typeOf(value) {
     if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
     return typeof value;
   }
 
@@ -134,7 +135,9 @@
       return problems;
     }
     if (m.data) {
-      if (m.data !== 'any' && typeOf(data) !== m.data) {
+      var typeMatches = typeOf(data) === m.data;
+      if (m.data === 'boolean' && (typeof data === 'boolean' || data === 0 || data === 1)) typeMatches = true;
+      if (m.data !== 'any' && !typeMatches) {
         problems.push('payload should be ' + m.data + ', got ' + typeOf(data));
       }
       return problems;

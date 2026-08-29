@@ -2,8 +2,9 @@
 //
 // A single model-scoped dropdown (Model Default + the model's supported levels,
 // like the chat sidebar / assistant settings) replaces the old type+level pair.
-// Selecting a level saves as {type:'enabled', level}; "Model Default" saves as no
-// config; the options only include levels the command's model actually supports.
+// Selecting a normal level saves as {type:'enabled', level}; selecting "none"
+// saves as {type:'disabled', level:'none'}; "Model Default" saves as no config.
+// The options only include levels the command's model actually supports.
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -117,6 +118,24 @@ describe('commands thinking dropdown', () => {
     const thinking = C.commands()[0].thinking;
     assert.strictEqual(thinking.type, 'enabled');
     assert.strictEqual(thinking.level, 'high');
+  });
+
+  it('loads and saves None as an explicit disabled command setting', () => {
+    const ctx = loadModules();
+    const C = ctx.Cmds;
+    const models = {
+      'openai/gpt-test': { thinkingLevelMap: { none: 'none', low: 'low', high: 'high' } }
+    };
+    C.load({
+      commands: [{ commandName: 'C', menuText: 'C', APIModels: 'openai/gpt-test', thinking: { type: 'disabled', level: 'none' } }],
+      models: models,
+      ui: {}
+    });
+    assert.strictEqual(ctx.formValues['cmdThinking'], 'none', 'disabled+none must display as None, not Model Default');
+    C.syncDetail(0);
+    const thinking = C.commands()[0].thinking;
+    assert.strictEqual(thinking.type, 'disabled');
+    assert.strictEqual(thinking.level, 'none');
   });
 
   it('saves Model Default (empty) as no thinking config', () => {

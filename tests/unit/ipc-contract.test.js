@@ -36,8 +36,13 @@ describe('ipc-contract validate', () => {
     assert.deepStrictEqual(contract.validate('initChatMode', { messages: [], threadId: 't1' }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('threadLocked', { threadId: 't1', salt: 'ab', iterations: 1000 }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('threadLockInfo', { threadId: 't1' }, 'ahk->web'), []);
-    assert.deepStrictEqual(contract.validate('streamDone', { model: 'm', displayName: '', dbMsg: '', userTokenCount: 0 }, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('streamDone', { model: 'm', displayName: '', dbMsg: '', userTokenCount: 0, threadId: 't1' }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('setChatButtonsEnabled', true, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('setChatButtonsEnabled', 1, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('setChatButtonsEnabled', 0, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('trashList', [], 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('assistantList', [], 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('streamReasoning', { content: 'thinking', collapsed: 0 }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi' }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('unlockThread', { threadId: 't1', passwordHash: 'h' }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('setThreadLock', { threadId: 't1', mode: 'set', passwordHash: 'h', salt: 's', iterations: 1000, currentPasswordHash: '' }, 'web->ahk'), []);
@@ -81,6 +86,16 @@ describe('ipc-contract validate', () => {
     assert.ok(unknown.some((p) => p.indexOf('undeclared sidebarAction') >= 0));
     const missing = contract.validate('sidebarAction', { subAction: 'renameThread', threadId: 't' }, 'web->ahk');
     assert.ok(missing.some((p) => p.indexOf('sidebarAction "renameThread" is missing field "title"') >= 0));
+  });
+
+  it('distinguishes arrays from plain objects', () => {
+    const problems = contract.validate('trashList', {}, 'ahk->web');
+    assert.ok(problems.some((p) => p.indexOf('payload should be array') >= 0));
+  });
+
+  it('rejects numeric values other than 0/1 for boolean payloads', () => {
+    const problems = contract.validate('setChatButtonsEnabled', 2, 'ahk->web');
+    assert.ok(problems.some((p) => p.indexOf('payload should be boolean') >= 0));
   });
 
   it('flags wrong scalar payload types', () => {

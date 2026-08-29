@@ -168,6 +168,50 @@ class ImageUtils {
         return saved ? filePath : ""
     }
 
+    ; Read image dimensions without decoding the file into the GUI first.
+    ; Returns {W, H}, or false if the image cannot be opened.
+    static GetImageDimensions(filePath) {
+        if !filePath || !FileExist(filePath)
+            return false
+
+        ImageUtils._EnsureGdiPlusInitialized()
+        pImage := 0
+        status := DllCall("gdiplus.dll\GdipLoadImageFromFile",
+            "WStr", filePath, "PtrP", &pImage, "UInt")
+        if status != 0 || !pImage
+            return false
+
+        width := 0
+        height := 0
+        try {
+            if DllCall("gdiplus.dll\GdipGetImageWidth", "Ptr", pImage, "UIntP", &width, "UInt") != 0
+                return false
+            if DllCall("gdiplus.dll\GdipGetImageHeight", "Ptr", pImage, "UIntP", &height, "UInt") != 0
+                return false
+        } finally {
+            DllCall("gdiplus.dll\GdipDisposeImage", "Ptr", pImage)
+        }
+
+        return width > 0 && height > 0 ? { W: width, H: height } : false
+    }
+
+    ; Delete a stored attachment file before it has been handed to ChatDB.
+    ; Used for command screenshots that are cancelled from the input window or
+    ; rejected before an attachment row is created.
+    static DeleteStoredFile(filePath) {
+        if !filePath
+            return false
+        fullPath := AppInfo.DataDir "\" filePath
+        try {
+            if FileExist(fullPath)
+                FileDelete(fullPath)
+            return true
+        } catch Error as e {
+            debugLog("ImageUtils.DeleteStoredFile failed: " e.Message, "ImageUtils")
+            return false
+        }
+    }
+
     ; Read file and base64-encode its content.
     ; Used by buildRequest to read attachment files for API calls.
     static ReadAndEncode(filePath) {

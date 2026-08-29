@@ -200,24 +200,71 @@ _extractCommandParams(cmd, inputText := "") {
     ]
 }
 
+_CommandPrimaryModel(cmd) {
+    global appDefaultModel
+    modelText := cmd.HasProp("APIModels") ? Trim(cmd.APIModels) : ""
+    if !modelText
+        return appDefaultModel
+    models := StrSplit(RegExReplace(modelText, "\\s+", ""), ",")
+    return models.Length ? models[1] : appDefaultModel
+}
+
+_CaptureCommandScreenshot(cmd) {
+    pasteMode := cmd.HasProp("pasteMode") ? cmd.pasteMode : "chat"
+    if pasteMode != "chat" {
+        ToolTip("Attach Screenshot requires Paste Mode: chat", , , 19)
+        SetTimer(() => ToolTip(, , , 19), -3000)
+        return ""
+    }
+    if cmd.HasProp("isFIM") && cmd.isFIM {
+        ToolTip("Attach Screenshot cannot be used with FIM Mode", , , 19)
+        SetTimer(() => ToolTip(, , , 19), -3000)
+        return ""
+    }
+
+    model := _CommandPrimaryModel(cmd)
+    if !AttachmentUtils.HasVision(model) {
+        ToolTip("This model does not support images", , , 19)
+        SetTimer(() => ToolTip(, , , 19), -3000)
+        return ""
+    }
+
+    area := ScreenRegionSelector.Select()
+    if !area
+        return ""
+
+    ; Let the selection overlay disappear before copying screen pixels.
+    Sleep 30
+    screenshotPath := ImageUtils.CaptureRegion(ChatDB._UUID(), area)
+    if !screenshotPath {
+        ToolTip("Screenshot capture failed", , , 19)
+        SetTimer(() => ToolTip(, , , 19), -3000)
+    }
+    return screenshotPath
+}
+
 onCommandSelected(index, *) {
     cmd := commands[index]
     showInput := cmd.HasProp("showInputBox") && cmd.showInputBox
 
     if showInput {
-        screenshotArea := false
+        screenshotPath := ""
         if cmd.HasProp("includeImageContext") && cmd.includeImageContext {
-            screenshotArea := ScreenRegionSelector.Select()
-            if !screenshotArea
+            ; Capture now rather than after the user types. The input window can
+            ; preview the exact PNG that will later be attached, and screen
+            ; contents cannot change between preview and send.
+            screenshotPath := _CaptureCommandScreenshot(cmd)
+            if !screenshotPath
                 return
         }
 
-        ; Save the command and any preselected screenshot area for onCommandInputSend.
-        setSelectedCommand(cmd, screenshotArea)
+        ; Save the command and any pre-captured screenshot for onCommandInputSend.
+        setSelectedCommand(cmd, screenshotPath)
 
         inputDefault := cmd.HasProp("inputBoxDefault") ? cmd.inputBoxDefault : ""
+        previewPath := screenshotPath ? AppInfo.DataDir "\" screenshotPath : ""
         commandInputWindow.showInputWindow(inputDefault, cmd.commandName,
-            "ahk_id " commandInputWindow.guiObj.hWnd)
+            "ahk_id " commandInputWindow.guiObj.hWnd, previewPath)
     } else {
         params := _extractCommandParams(cmd, "")  ; no user input
         ; Bug #228: the command's API Model can be "Default" (empty

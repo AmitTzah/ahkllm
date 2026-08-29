@@ -10,8 +10,23 @@
 ; debugLog() is in lib/DebugLog.ahk — included via Config.ahk
 
 processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode, isFIM,
-    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0, includeImageContext := false, preselectedScreenshotArea := false) {
+    inputText := "", temperature := "", maxTokens := "", stop := "", stream := false, thinking := "", thinkingLevel := "", userMessageTemplate := "", expandNewlines := false, maxContextWords := 0, includeImageContext := false, preselectedScreenshotPath := "") {
     debugLog("processInitialRequest: " commandName " stream=" stream " pasteMode=" pasteMode, "RequestProcessor")
+
+    screenshotPath := preselectedScreenshotPath
+    if screenshotPath && !includeImageContext {
+        ; Defensive cleanup for stale/malformed command state.
+        ImageUtils.DeleteStoredFile(screenshotPath)
+        screenshotPath := ""
+    }
+    if includeImageContext && (pasteMode != "chat" || isFIM) {
+        if screenshotPath
+            ImageUtils.DeleteStoredFile(screenshotPath)
+        msg := isFIM ? "Attach Screenshot cannot be used with FIM Mode" : "Attach Screenshot requires Paste Mode: chat"
+        ToolTip(msg, , , 19)
+        SetTimer(() => ToolTip(, , , 19), -3000)
+        return
+    }
 
     ; Determine if fullText is needed (lazy — avoid capturing 1M-word docs unnecessarily)
     includeFullText := InStr(systemMessage, "{{fullText}}") || InStr(userMessageTemplate, "{{fullText}}")
@@ -31,11 +46,12 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     }
 
     ; STEP 1: Capture text only when the command actually needs text from the
-    ; foreground application. Prompt-only commands such as Screenshot already
-    ; have their user input, so running the clipboard fallback here can waste up
-    ; to three seconds trying Ctrl+C / Ctrl+Insert when nothing is selected.
+    ; foreground application. Preserve the legacy implicit-selection behavior
+    ; for normal text commands, but a screenshot-only command with no prompt
+    ; template should not probe the clipboard just because inputText is empty.
+    needsImplicitSelection := !includeImageContext && inputText = "" && !userMessageTemplate
     needsSelectionCapture := isFIM
-        || inputText = ""
+        || needsImplicitSelection
         || includeFullText
         || InStr(systemMessage, "{{selection}}")
         || InStr(userMessageTemplate, "{{selection}}")
@@ -45,6 +61,8 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     else
         captured := { success: true, userMessage: "", fullText: "", modelsStr: "", isFIM: false }
     if !captured.success {
+        if screenshotPath
+            ImageUtils.DeleteStoredFile(screenshotPath)
         if commandThreadId
             ChatDB.Thread_Delete(commandThreadId)
         if commandThreadId
@@ -84,10 +102,14 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         APIModelsArr := [APIModelsArr[1]]
     }
 
-    ; STEP 1.5: Screenshot capture for includeImageContext
+    ; STEP 1.5: Screenshot capture for includeImageContext. Prompted screenshot
+    ; commands may already have captured the PNG so the input window can preview
+    ; it; non-prompted commands select and capture here.
     if includeImageContext {
         ; Vision gate: check model supports images
         if !AttachmentUtils.HasVision(APIModelsArr[1]) {
+            if screenshotPath
+                ImageUtils.DeleteStoredFile(screenshotPath)
             if commandThreadId {
                 ChatDB.Thread_Delete(commandThreadId)
                 endChatOpeningIndicator()
@@ -97,31 +119,45 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
             SetTimer(() => ToolTip(, , , 19), -3000)
             return
         }
-        captureMsgId := ChatDB._UUID()
-        screenshotArea := preselectedScreenshotArea ? preselectedScreenshotArea : ScreenRegionSelector.Select()
-        if !screenshotArea {
-            if commandThreadId {
-                ChatDB.Thread_Delete(commandThreadId)
-                endChatOpeningIndicator()
-                openChatWindow()
-            }
-            updateLoadingUI("Reset")
-            return
-        }
 
-        ; Give Windows a moment to repaint after the selection overlay closes.
-        Sleep 30
-        screenshotPath := ImageUtils.CaptureRegion(captureMsgId, screenshotArea)
-        if !screenshotPath {
-            if commandThreadId {
-                ChatDB.Thread_Delete(commandThreadId)
-                endChatOpeningIndicator()
-                openChatWindow()
+        if screenshotPath {
+            if !FileExist(AppInfo.DataDir "\" screenshotPath) {
+                if commandThreadId {
+                    ChatDB.Thread_Delete(commandThreadId)
+                    endChatOpeningIndicator()
+                    openChatWindow()
+                }
+                updateLoadingUI("Reset")
+                ToolTip("Screenshot capture was lost before sending", , , 19)
+                SetTimer(() => ToolTip(, , , 19), -3000)
+                return
             }
-            updateLoadingUI("Reset")
-            ToolTip("Screenshot capture failed", , , 19)
-            SetTimer(() => ToolTip(, , , 19), -3000)
-            return
+        } else {
+            screenshotArea := ScreenRegionSelector.Select()
+            if !screenshotArea {
+                if commandThreadId {
+                    ChatDB.Thread_Delete(commandThreadId)
+                    endChatOpeningIndicator()
+                    openChatWindow()
+                }
+                updateLoadingUI("Reset")
+                return
+            }
+
+            ; Give Windows a moment to repaint after the selection overlay closes.
+            Sleep 30
+            screenshotPath := ImageUtils.CaptureRegion(ChatDB._UUID(), screenshotArea)
+            if !screenshotPath {
+                if commandThreadId {
+                    ChatDB.Thread_Delete(commandThreadId)
+                    endChatOpeningIndicator()
+                    openChatWindow()
+                }
+                updateLoadingUI("Reset")
+                ToolTip("Screenshot capture failed", , , 19)
+                SetTimer(() => ToolTip(, , , 19), -3000)
+                return
+            }
         }
     }
 
@@ -148,7 +184,8 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
                     content: captured.userMessage, parent_id: parentId
                 })
             } else if includeImageContext && screenshotPath {
-                ; No user message text, but we have a screenshot — insert empty user message
+                ; No user message text, but we have a screenshot — insert a
+                ; useful default prompt so image-only commands remain valid.
                 path := ChatDB.Msg_GetActivePath(threadId)
                 parentId := path.Length ? path[path.Length].id : ""
                 userMsgId := ChatDB.Msg_Insert({
@@ -174,7 +211,13 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
             commandThreadSettings := {
                 assistantId: "",
                 systemOverride: systemMessage,
-                reasoningOverride: thinking = "enabled" ? (thinkingLevel != "" ? thinkingLevel : "medium") : thinking,
+                ; Thread settings store the effective reasoning level used by
+                ; the right rail and ChatRequestBuilder. A command-level
+                ; type="disabled" therefore maps to the explicit "none" level,
+                ; not the literal string "disabled".
+                reasoningOverride: thinking = "enabled"
+                    ? (thinkingLevel != "" ? thinkingLevel : "medium")
+                    : (thinking = "disabled" ? (thinkingLevel != "" ? thinkingLevel : "none") : ""),
                 temperatureOverride: temperature
             }
             ; Bug #36: temperature/reasoning overrides must persist even when the

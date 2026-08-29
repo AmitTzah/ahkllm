@@ -161,12 +161,15 @@
     _setField('cmdTemperature', cmd.temperature || '');
     _setField('cmdUserMessage', cmd.userMessage || '');
     _setToggle('cmdShowInputBox', !!cmd.showInputBox);
+    _setToggle('cmdIncludeImageContext', !!cmd.includeImageContext);
     _setToggle('cmdStream', !!cmd.stream);
     _setToggle('cmdFim', !!cmd.isFIM);
     var thinkingSel = d.getElementById('cmdThinking');
     if (thinkingSel) {
       thinkingSel.innerHTML = _thinkingOptionsHtml(cmd.APIModels || '');
-      thinkingSel.value = (cmd.thinking && cmd.thinking.type === 'enabled' && cmd.thinking.level) ? cmd.thinking.level : '';
+      // The dropdown stores the effective level. "none" is an explicit off
+      // choice even though the persisted command shape uses type:"disabled".
+      thinkingSel.value = (cmd.thinking && cmd.thinking.level) ? cmd.thinking.level : '';
     }
     _setField('cmdMaxTokens', cmd.maxTokens || '');
     var td = d.getElementById('cmdTags'); if (td) { td.innerHTML = ''; (cmd.tags||[]).forEach(function(t){td.appendChild(C.createTagBadge(t));}); }
@@ -212,7 +215,7 @@
       '</div>' +
       '<div class="grid-2">' +
         '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>' +
-        '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="Model Default sends no thinking config. Pick a level to enable thinking at that level.">?</span></label><select class="settings-flex-1" id="cmdThinking"></select></div>' +
+        '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="Model Default sends no thinking config. Pick None to explicitly disable thinking when supported, or choose a level to enable it.">?</span></label><select class="settings-flex-1" id="cmdThinking"></select></div>' +
       '</div>' +
     '</div>';
   }
@@ -236,6 +239,7 @@
     return '<div class="cmd-card">' +
       '<div class="cmd-card-header">Behavior</div>' +
       '<div class="toggle-row"><div><div class="lbl">Show Input Box <span class="tt" data-tip="Opens a text box before sending. User input becomes {{input}}. Ignored in FIM mode.">?</span></div><div class="cmd-behavior-desc">Display a text field for typing a prompt before sending.</div></div><div class="switch" id="cmdShowInputBox"><div class="knob"></div></div></div>' +
+      '<div class="toggle-row"><div><div class="lbl">Attach Screenshot <span class="tt" data-tip="Lets you select a screen region when the command runs and attaches it to the chat message. Requires chat mode and a vision-capable model; cannot be used with FIM.">?</span></div><div class="cmd-behavior-desc">Select a screen region and attach it to the chat message.</div></div><div class="switch" id="cmdIncludeImageContext"><div class="knob"></div></div></div>' +
       '<div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div><div class="cmd-behavior-desc">Show output token-by-token as it\'s generated.</div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>' +
       '<div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, prompt fields above are ignored.">?</span></div><div class="cmd-behavior-desc">Fill-in-the-middle. When on, prompt fields above are ignored.</div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>' +
     '</div>';
@@ -332,10 +336,13 @@
     var t=d.getElementById('cmdTemperature').value; cmd.temperature = t===''?'':(isNaN(parseFloat(t))?'':parseFloat(t));
     cmd.userMessage = d.getElementById('cmdUserMessage').value;
     cmd.showInputBox = d.getElementById('cmdShowInputBox').classList.contains('on');
+    cmd.includeImageContext = d.getElementById('cmdIncludeImageContext').classList.contains('on');
     cmd.stream = d.getElementById('cmdStream').classList.contains('on');
     cmd.isFIM = d.getElementById('cmdFim').classList.contains('on');
     var thinkingLevel = d.getElementById('cmdThinking') ? d.getElementById('cmdThinking').value : '';
-    cmd.thinking = thinkingLevel ? {type:'enabled', level:thinkingLevel} : '';
+    if (!thinkingLevel) cmd.thinking = '';
+    else if (thinkingLevel === 'none') cmd.thinking = {type:'disabled', level:'none'};
+    else cmd.thinking = {type:'enabled', level:thinkingLevel};
     var mt=d.getElementById('cmdMaxTokens').value; cmd.maxTokens = mt===''?'':(isNaN(parseInt(mt,10))?'':parseInt(mt,10));
     var tags=[]; d.querySelectorAll('#cmdTags .badge').forEach(function(b){tags.push(b.textContent.replace('\u00D7','').trim());});
     cmd.tags = tags;

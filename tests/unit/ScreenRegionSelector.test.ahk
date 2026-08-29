@@ -26,7 +26,7 @@ class ScreenRegionSelectorTest {
         src := FileRead(srcPath)
 
         selectPos := InStr(src, "ScreenRegionSelector.Select()")
-        capturePos := InStr(src, "ImageUtils.CaptureRegion(captureMsgId, screenshotArea)")
+        capturePos := InStr(src, "ImageUtils.CaptureRegion(ChatDB._UUID(), screenshotArea)")
         cancelPos := InStr(src, "if !screenshotArea")
 
         if !selectPos || !capturePos || !cancelPos
@@ -35,32 +35,32 @@ class ScreenRegionSelectorTest {
             throw Error("Screenshot capture must happen after region selection")
     }
 
-    ScreenshotPrompt_SelectsRegionBeforeShowingInput() {
+    ScreenshotPrompt_CapturesBeforeShowingInput() {
         srcPath := A_ScriptDir "\\..\\app\\menu\\CommandMenu.ahk"
         src := FileRead(srcPath)
 
-        selectPos := InStr(src, "screenshotArea := ScreenRegionSelector.Select()")
+        capturePos := InStr(src, "screenshotPath := _CaptureCommandScreenshot(cmd)")
         inputPos := InStr(src, "commandInputWindow.showInputWindow")
-        statePos := InStr(src, "setSelectedCommand(cmd, screenshotArea)")
+        statePos := InStr(src, "setSelectedCommand(cmd, screenshotPath)")
 
-        if !selectPos || !inputPos || !statePos
-            throw Error("Prompted screenshot commands must preselect and preserve a screenshot area")
-        if selectPos > inputPos
-            throw Error("Screenshot region selection must happen before the prompt input window opens")
+        if !capturePos || !inputPos || !statePos
+            throw Error("Prompted screenshot commands must capture and preserve the PNG before opening the prompt")
+        if capturePos > inputPos
+            throw Error("Screenshot capture must happen before the prompt input window opens")
     }
 
-    ScreenshotPrompt_PassesPreselectedAreaToProcessor() {
+    ScreenshotPrompt_PassesPrecapturedPathToProcessor() {
         statePath := A_ScriptDir "\\..\\app\\menu\\CommandState.ahk"
         processorPath := A_ScriptDir "\\..\\app\\RequestProcessor.ahk"
         stateSrc := FileRead(statePath)
         processorSrc := FileRead(processorPath)
 
-        if !InStr(stateSrc, "params.Push(selectedScreenshotArea)")
-            throw Error("Prompted screenshot selection must be forwarded with command parameters")
-        if !InStr(processorSrc, "preselectedScreenshotArea := false")
-            throw Error("RequestProcessor must accept a preselected screenshot area")
-        if !InStr(processorSrc, "preselectedScreenshotArea ? preselectedScreenshotArea : ScreenRegionSelector.Select()")
-            throw Error("RequestProcessor must reuse the preselected area instead of asking for a second drag")
+        if !InStr(stateSrc, "params.Push(screenshotPath)")
+            throw Error("Prompted screenshot path must be forwarded with command parameters")
+        if !InStr(processorSrc, "preselectedScreenshotPath :=")
+            throw Error("RequestProcessor must accept a pre-captured screenshot path")
+        if !InStr(processorSrc, "if screenshotPath {")
+            throw Error("RequestProcessor must reuse the pre-captured PNG instead of asking for a second drag")
     }
 
     HeadlessProbe_AcceptsScreenshotStateArgument() {
@@ -68,7 +68,7 @@ class ScreenRegionSelectorTest {
         probeSrc := FileRead(probePath)
 
         if !InStr(probeSrc, "setSelectedCommand(*)")
-            throw Error("headless CommandMenu stub must accept the screenshot-area argument")
+            throw Error("headless CommandMenu stub must accept the screenshot state argument")
         if InStr(probeSrc, "class ScreenRegionSelector")
             throw Error("DB probe must not redeclare ScreenRegionSelector already loaded by Config/SharedLib")
         if !InStr(probeSrc, "Config.ahk") || !InStr(probeSrc, "Do not redeclare it in this probe")
@@ -78,6 +78,14 @@ class ScreenRegionSelectorTest {
         thinkingProbeSrc := FileRead(thinkingProbePath)
         if !InStr(thinkingProbeSrc, "class ScreenRegionSelector")
             throw Error("thinking probe must stub ScreenRegionSelector before including CommandMenu")
+        for dependency in ["AttachmentUtils", "ImageUtils", "ChatDB"] {
+            if !InStr(thinkingProbeSrc, "class " dependency)
+                throw Error("thinking probe must stub " dependency " before including CommandMenu")
+        }
+        if !InStr(thinkingProbeSrc, "global appDefaultModel :=")
+            throw Error("thinking probe must assign appDefaultModel before including CommandMenu")
+        if InStr(thinkingProbeSrc, "class AppInfo")
+            throw Error("thinking probe must not redeclare AppInfo supplied by CommandMenu's include chain")
     }
 
     static _AssertArea(area, x, y, w, h) {

@@ -232,7 +232,7 @@ llmClient := LLMRequestBuilder(APIKey)
 
 ; Create the command input window (rebuildable on settings updates so
 ; background/font/size edits apply live).
-_rebuildInputWindow(onCommandInputSend)
+_rebuildInputWindow(onCommandInputSend, onCommandInputCancel)
 
 ; ----------------------------------------------------
 ; Initialize Suspend GUI
@@ -250,7 +250,7 @@ _rebuildSuspendBanner()
 SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)
 SettingsService.RegisterHook("trayMenu", _rebuildTrayMenu)
 SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
-SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend))
+SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend, onCommandInputCancel))
 SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)
 SettingsService.RegisterHook("runtimeResolver", RuntimeResolver_ResolvePrimaryProvider)
 ; Bug #120: hooks are invoked via fn.Call(), and a bare static-method reference

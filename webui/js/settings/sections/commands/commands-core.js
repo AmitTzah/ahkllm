@@ -184,6 +184,18 @@
     return '';
   }
 
+  function _resolveCommandModelKey(cmd) {
+    var model = (cmd && cmd.APIModels) ? cmd.APIModels : (_defaultModel || '');
+    if (!_models || !model) return model;
+    if (_models[model]) return model;
+    var bare = model.indexOf('/') >= 0 ? model.split('/')[1] : model;
+    var keys = Object.keys(_models);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].split('/')[1] === bare) return keys[i];
+    }
+    return model;
+  }
+
   function validate() {
     window.Cmds.syncDetail();
     var cs = (document.getElementById('chatShortcut') || {}).value || '';
@@ -201,6 +213,16 @@
       var hasTagsI = ci.tags && ci.tags.length > 0;
       var msKey = _acceleratorKey(ci.menuText);
       var directKey = ci.directAccelerator ? ci.directAccelerator.replace('&', '').toLowerCase() : '';
+
+      if (ci.includeImageContext) {
+        if (ci.isFIM)
+          return { valid: false, message: 'Attach Screenshot cannot be used with FIM Mode.', selectIdx: i };
+        if ((ci.pasteMode || 'chat') !== 'chat')
+          return { valid: false, message: 'Attach Screenshot requires Paste Mode "chat".', selectIdx: i };
+        var imageModelKey = _resolveCommandModelKey(ci);
+        if (_models && imageModelKey && _models[imageModelKey] && !_models[imageModelKey].vision)
+          return { valid: false, message: 'Model "' + imageModelKey + '" does not support image input. Choose a vision-capable model or turn off Attach Screenshot.', selectIdx: i };
+      }
 
       // Check chatShortcut against command accelerators (existing logic)
       if (cs && ((!hasTagsI && msKey === cs) || (directKey === cs)))
@@ -225,7 +247,7 @@
   function mark() { S.markDirty(); }
 
   function addCommand() {
-    _commands.push({ commandName:'New Command', menuText:'New Command', APIModels:'', pasteMode:'chat', stream:false, isFIM:false, showInputBox:false, userMessage:'', tags:[] });
+    _commands.push({ commandName:'New Command', menuText:'New Command', APIModels:'', pasteMode:'chat', stream:false, isFIM:false, showInputBox:false, includeImageContext:false, userMessage:'', tags:[] });
     var idx = _commands.length - 1;
     _groupOrders['__main__'].push(idx);
     window.Cmds.selectCommand(idx);
