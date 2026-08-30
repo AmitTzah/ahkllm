@@ -251,7 +251,7 @@ SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)
 SettingsService.RegisterHook("trayMenu", _rebuildTrayMenu)
 SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
 SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend, onCommandInputCancel))
-SettingsService.RegisterHook("hotkeys", _registerAllHotkeys)
+SettingsService.RegisterHook("hotkeys", _registerAllHotkeys.Bind(true))
 SettingsService.RegisterHook("runtimeResolver", RuntimeResolver_ResolvePrimaryProvider)
 ; Bug #120: hooks are invoked via fn.Call(), and a bare static-method reference
 ; (ChatDB.Thread_PurgeExpired) throws "Missing a required parameter" in AHK v2

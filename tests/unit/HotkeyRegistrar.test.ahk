@@ -237,6 +237,33 @@ class HotkeyRegistrarTest {
             throw Error("expected reload/suspend On only, got " _mockHotkeyCalls.Length " calls")
     }
 
+    Register_RejectedKeyCanSurfaceVisibleError() {
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
+        global _activeHotkeys, _mockHotkeyCalls, _mockHotkeyThrowKey
+        global _mockToolTipCalls, _mockSetTimerCalls, _hotkeyRegistrationErrors
+        mainHotkey := "NotARealKey"
+        reloadHotkey := ""
+        closeWindowsHotkey := ""
+        suspendHotkey := ""
+        _activeHotkeys := { main: "", reload: "", closeWindows: "", suspend: "" }
+        _mockHotkeyCalls := []
+        _mockToolTipCalls := []
+        _mockSetTimerCalls := []
+        _mockHotkeyThrowKey := "NotARealKey"
+
+        _registerAllHotkeys(true)
+        _mockHotkeyThrowKey := ""
+
+        if _hotkeyRegistrationErrors.Length != 1
+            throw Error("Expected one captured registration error")
+        if _mockToolTipCalls.Length != 1
+            throw Error("Settings-driven registration failure should show a ToolTip")
+        if !InStr(_mockToolTipCalls[1], "Main Hotkey: NotARealKey")
+            throw Error("Visible registration error should identify the rejected field and value")
+        if _mockSetTimerCalls.Length != 1 || _mockSetTimerCalls[1].period != -7000
+            throw Error("Registration error ToolTip should auto-dismiss")
+    }
+
     Handle_Suspend() {
         global _mockKeyWaitCalls, _mockCapsLockCalls, _mockToggleSuspendCalls
         _mockKeyWaitCalls := []

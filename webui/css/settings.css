@@ -367,6 +367,21 @@
   font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); padding: 0;
 }
 
+/* Hotkey recorder */
+.hotkey-help code { font-family: var(--font-mono); color: var(--text-secondary); }
+.key-capture { flex-wrap: wrap; min-height: 38px; padding: 6px 8px 6px 12px; font-family: var(--font-ui); transition: border-color 0.2s, box-shadow 0.2s; }
+.key-capture:focus { outline: none; border-color: var(--accent-primary); }
+.key-capture .key-display { flex: 1; min-width: 120px; color: var(--text-primary); font-family: var(--font-ui); font-size: 13px; font-weight: 500; }
+.key-capture .status { white-space: nowrap; }
+.key-capture.listening .status { color: var(--accent-primary); font-weight: 500; }
+.key-capture.pending:not(.listening):not(.manual-open) .status { color: var(--accent-primary); font-weight: 500; }
+.key-capture .key-manual-toggle { border: 1px solid var(--border-main); border-radius: 4px; background: var(--bg-panel); color: var(--text-tertiary); padding: 3px 7px; font-family: var(--font-ui); font-size: 10px; font-weight: 600; cursor: pointer; }
+.key-capture .key-manual-toggle:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+.key-capture input[type="hidden"] { display: none; }
+.key-capture .key-manual-input { display: none; flex: 0 0 100%; width: 100%; box-sizing: border-box; border: 1px solid var(--border-main); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); padding: 6px 8px; font-family: var(--font-mono); font-size: 12px; }
+.key-capture.manual-open .key-manual-input { display: block; }
+.key-capture .key-manual-input:focus { outline: none; border-color: var(--accent-primary); }
+
 /* Horizontal rule / divider */
 .divider {
   border: none; border-top: 1px solid var(--border-main);
