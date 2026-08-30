@@ -18,18 +18,25 @@ class InputWindow {
         ; Screenshot commands can show the exact image that will be attached.
         ; The preview stays hidden for normal commands and uses a bounded size
         ; so a tall capture cannot make the prompt window enormous.
-        this.PreviewControl := this.guiObj.Add("Picture", "x20 y10 w180 h110 Hidden")
+        this.PreviewControl := this.guiObj.Add("Picture", "x20 y16 w180 h110 Hidden")
         this._previewVisible := false
         this._previewHeight := 0
         this._closeCallback := ""
 
-        ; The Edit control needs its own Background option: unlike the window,
-        ; it does not inherit Gui.BackColor, so without this the configured dark
-        ; background + light font would render as invisible light text on the
-        ; control's default white field.
-        this.EditControl := this.guiObj.Add("Edit", "-WantReturn x20 y10 w" inputWindowWidth " h" inputWindowHeight " Background" inputWindowBackground)
-        this.SendButton := this.guiObj.Add("Button", "x240 y" (inputWindowHeight + 20) " w80", "Send")
+        ; The chat composer is a soft rounded card with a borderless text area.
+        ; Reproduce that visual hierarchy with two static background layers, then
+        ; place the native Edit control inside with enough inset to act as padding.
+        ; The border is intentionally light rather than the stock Win32 client edge.
+        this.CardBorder := this.guiObj.Add("Text", "x20 y16 w" inputWindowWidth " h" inputWindowHeight " Background0xE5E7EB")
+        this.CardSurface := this.guiObj.Add("Text", "x21 y17 w" (inputWindowWidth - 2) " h" (inputWindowHeight - 2) " Background" inputWindowBackground)
+        this.EditControl := this.guiObj.Add("Edit", "-Border -E0x200 -WantReturn x32 y28 w" (inputWindowWidth - 24) " h" (inputWindowHeight - 24) " Background" inputWindowBackground)
+
+        ; There is only one action in this popup. A centered, comfortably sized
+        ; default button is easier to target and balances the card above it.
+        this.SendButton := this.guiObj.Add("Button", "x0 y0 w96 h34", "Send")
         this.SendButton.Opt("+Default")   ; Make Send the default button (Enter triggers it)
+
+        this._layoutControls()
     }
 
     showInputWindow(message := "", title := unset, windowID := unset, previewImagePath := "") {
@@ -52,7 +59,7 @@ class InputWindow {
             if imageSize {
                 previewSize := InputWindow._FitPreviewSize(imageSize.W, imageSize.H)
                 this.PreviewControl.Value := imagePath
-                this.PreviewControl.Move(20, 10, previewSize.W, previewSize.H)
+                this.PreviewControl.Move(20, 16, previewSize.W, previewSize.H)
                 this.PreviewControl.Visible := true
                 this._previewVisible := true
                 this._previewHeight := previewSize.H
@@ -86,10 +93,63 @@ class InputWindow {
         }
     }
 
-    _layoutControls() {
-        editY := this._previewVisible ? 20 + this._previewHeight : 10
-        this.EditControl.Move(20, editY, inputWindowWidth, inputWindowHeight)
-        this.SendButton.Move(240, editY + inputWindowHeight + 10, 80)
+    static _SetRoundedRegion(hwnd, width, height, radius := 12) {
+        if !hwnd || width <= 0 || height <= 0
+            return
+        diameter := Max(2, radius * 2)
+        region := DllCall("gdi32\CreateRoundRectRgn",
+            "Int", 0, "Int", 0, "Int", width + 1, "Int", height + 1,
+            "Int", diameter, "Int", diameter, "Ptr")
+        if !region
+            return
+        ; On success Windows owns the region handle. Delete it only if applying
+        ; the region failed.
+        if !DllCall("user32\SetWindowRgn", "Ptr", hwnd, "Ptr", region, "Int", true, "Int")
+            DllCall("gdi32\DeleteObject", "Ptr", region)
+    }
+
+    _layoutCard(cardX, cardY, cardW, cardH) {
+        surfaceW := Max(1, cardW - 2)
+        surfaceH := Max(1, cardH - 2)
+        padding := 12
+
+        this.CardBorder.Move(cardX, cardY, cardW, cardH)
+        this.CardSurface.Move(cardX + 1, cardY + 1, surfaceW, surfaceH)
+        this.EditControl.Move(
+            cardX + padding,
+            cardY + padding,
+            Max(40, cardW - (padding * 2)),
+            Max(32, cardH - (padding * 2))
+        )
+
+        InputWindow._SetRoundedRegion(this.CardBorder.Hwnd, cardW, cardH, 12)
+        InputWindow._SetRoundedRegion(this.CardSurface.Hwnd, surfaceW, surfaceH, 11)
+    }
+
+    _layoutControls(width := 0, height := 0) {
+        marginX := 20
+        topMargin := 16
+        previewGap := 14
+        buttonGap := 14
+        buttonW := 96
+        buttonH := 34
+        bottomMargin := 16
+
+        cardY := this._previewVisible ? topMargin + this._previewHeight + previewGap : topMargin
+
+        if width > 0 && height > 0 {
+            cardW := Max(180, width - (marginX * 2))
+            cardH := Max(80, height - cardY - buttonGap - buttonH - bottomMargin)
+        } else {
+            cardW := inputWindowWidth
+            cardH := inputWindowHeight
+        }
+
+        this._layoutCard(marginX, cardY, cardW, cardH)
+
+        buttonX := marginX + Max(0, (cardW - buttonW) // 2)
+        buttonY := cardY + cardH + buttonGap
+        this.SendButton.Move(buttonX, buttonY, buttonW, buttonH)
     }
 
     validateInputAndHide(*) {
@@ -123,11 +183,7 @@ class InputWindow {
     resizeAction(guiObj, minMax, width, height) {
         if minMax = -1
             return
-        editY := this._previewVisible ? 20 + this._previewHeight : 10
-        editW := Max(100, width - 40)
-        editH := Max(60, height - editY - 50)
-        this.EditControl.Move(20, editY, editW, editH)
-        this.SendButton.Move(Max(20, (width - 80) // 2), editY + editH + 10, 80)
+        this._layoutControls(width, height)
     }
 
 }

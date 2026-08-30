@@ -43,6 +43,38 @@ class InputWindowTest {
         }
     }
 
+    ; The command prompt uses a chat-composer style card. The native Edit
+    ; remains borderless inside the card so focus produces neither the blue
+    ; underline nor a harsh Win32 frame.
+    New_UsesSoftCardWithBorderlessEditSurface() {
+        this._setGlobals()
+        win := InputWindow("test")
+        try {
+            editStyle := DllCall("GetWindowLongPtr", "Ptr", win.EditControl.Hwnd, "Int", -16, "Ptr")
+            editExStyle := DllCall("GetWindowLongPtr", "Ptr", win.EditControl.Hwnd, "Int", -20, "Ptr")
+            if (editStyle & 0x00800000)
+                throw Error("Edit control should not use WS_BORDER")
+            if (editExStyle & 0x00000200)
+                throw Error("Edit control should not use WS_EX_CLIENTEDGE")
+
+            win.CardBorder.GetPos(&cardX, &cardY, &cardW, &cardH)
+            win.CardSurface.GetPos(&surfaceX, &surfaceY, &surfaceW, &surfaceH)
+            win.EditControl.GetPos(&editX, &editY, &editW, &editH)
+            win.SendButton.GetPos(&buttonX, , &buttonW)
+
+            if surfaceX <= cardX || surfaceY <= cardY || surfaceW >= cardW || surfaceH >= cardH
+                throw Error("card surface should sit inside the subtle border layer")
+            if editX <= surfaceX || editY <= surfaceY || editW >= surfaceW || editH >= surfaceH
+                throw Error("Edit control should be inset inside the card to provide padding")
+
+            expectedButtonX := cardX + (cardW - buttonW) // 2
+            if Abs(buttonX - expectedButtonX) > 1
+                throw Error("single Send action should stay centered below the input card")
+        } finally {
+            win.guiObj.Destroy()
+        }
+    }
+
     ; Rebuild must create a FRESH GUI from the current globals and destroy the
     ; previous one (the bug built it once at startup and never rebuilt).
     Rebuild_CreatesFreshGui_FromCurrentSettings() {
