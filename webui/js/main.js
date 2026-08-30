@@ -195,6 +195,10 @@ function handleWebMessage(event) {
         }
         break;
 
+      case 'systemMessageFiles':
+        if (typeof window.updateSystemMessageFiles === 'function') window.updateSystemMessageFiles(data);
+        break;
+
       case 'showDashboard':
         if (typeof window._showDashboard === 'function') window._showDashboard();
         break;

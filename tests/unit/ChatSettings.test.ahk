@@ -182,11 +182,11 @@ class ChatSettingsTest {
         }
     }
 
-    ; Regression (bug #166): when "New Chats Start With" is App Default (empty),
-    ; the assistant marked isDefault is the DEFAULT ASSISTANT - _applyNewChatDefault
-    ; must fall back to it before the app default model (restores the old
-    ; "Set as Default Assistant" toggle that newChatStartsWith replaced).
-    test_applyNewChatDefault_isDefaultAssistant_fallback() {
+    ; Legacy isDefault metadata must not override General > New Chats Start With.
+    ; App Default means the app default model even when an old settings file still
+    ; contains an assistant with isDefault:true.
+
+    test_applyNewChatDefault_ignoresLegacyIsDefaultAssistant() {
         global newChatStartsWith, requestParams, assistants
 
         oldDefault := newChatStartsWith
@@ -201,13 +201,18 @@ class ChatSettingsTest {
         try {
             applied := _applyNewChatDefault()
             if !applied
-                throw Error("isDefault assistant must apply when the default is App Default (bug #166)")
-            if requestParams["activeAssistantId"] != "asst-b"
-                throw Error("the isDefault assistant should be active, got '" requestParams["activeAssistantId"] "'")
-            if requestParams["singleAPIModelName"] != "deepseek/deepseek-v4-flash"
-                throw Error("the isDefault assistant's base model should apply")
-            if requestParams["systemOverride"] != "sysB"
-                throw Error("the isDefault assistant's system message should apply")
+                applied := false
+            if applied
+                throw Error("legacy isDefault must not override App Default")
+            if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"] = "asst-b"
+                throw Error("legacy isDefault assistant must not become active")
+            if requestParams["singleAPIModelName"] != oldModel
+                throw Error("App Default must leave the current default model intact")
+            if requestParams["systemOverride"] = "sysB"
+                throw Error("legacy isDefault assistant system message must not apply")
+            ; Keep the legacy cleanup path safe when there was no active assistant key.
+            if oldAsstId = "" && !requestParams.Has("activeAssistantId")
+                requestParams["activeAssistantId"] := ""
         } finally {
             newChatStartsWith := oldDefault
             assistants := oldAsst

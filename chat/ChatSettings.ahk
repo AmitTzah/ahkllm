@@ -67,21 +67,13 @@ _applyAssistantToRequestParams(asst) {
 ; "" = app default model (appDefaultModel); "asst:<id>" = an assistant;
 ; anything else is treated as a model id. Returns true when a default applied.
 _applyNewChatDefault() {
-    global newChatStartsWith, assistants
+    global newChatStartsWith
     value := IsSet(newChatStartsWith) ? newChatStartsWith : ""
-    ; Bug #166: an assistant marked isDefault is the DEFAULT ASSISTANT. When
-    ; "New Chats Start With" is App Default (empty), fall back to it before the
-    ; app default model - restoring the old "Set as Default Assistant" toggle
-    ; behavior that newChatStartsWith replaced (isDefault was dead metadata).
-    if value = "" {
-        for asst in assistants {
-            if asst.HasProp("isDefault") && asst.isDefault {
-                _applyAssistantToRequestParams(asst)
-                return true
-            }
-        }
+    ; App Default leaves the app default model in place. Assistants are chosen
+    ; explicitly through General > New Chats Start With, so there is one source
+    ; of truth for how a new chat starts.
+    if value = ""
         return false
-    }
     if SubStr(value, 1, 5) = "asst:" {
         asst := AssistantRepo.GetFromSettings(SubStr(value, 6))
         if !asst

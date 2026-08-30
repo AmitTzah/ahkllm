@@ -182,16 +182,42 @@ class HotkeyRegistrarTest {
     ; Regression: a rejected key name must not crash startup. It is logged and
     ; skipped, other hotkeys still register, and the failed key is not
     ; remembered as active (so the next pass won't try to turn it Off).
+    ; Regression: the default backtick is registered by physical scan code so
+    ; dynamic Hotkey() does not reject the literal character.
+    Register_NormalizesBacktickToScanCode() {
+        global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
+        global _activeHotkeys, _mockHotkeyCalls
+        mainHotkey := "``"
+        reloadHotkey := "^!r"
+        closeWindowsHotkey := ""
+        suspendHotkey := "CapsLock & ``"
+        _activeHotkeys := { main: "", reload: "", closeWindows: "", suspend: "" }
+        _mockHotkeyCalls := []
+
+        _registerAllHotkeys()
+
+        if _mockHotkeyCalls.Length != 3
+            throw Error("Expected main/reload/suspend registrations, got " _mockHotkeyCalls.Length)
+        if _mockHotkeyCalls[1].key != "SC029"
+            throw Error("Backtick main hotkey must register as SC029, got '" _mockHotkeyCalls[1].key "'")
+        if _mockHotkeyCalls[3].key != "CapsLock & SC029"
+            throw Error("Suspend combo must register the backtick as SC029, got '" _mockHotkeyCalls[3].key "'")
+        if _activeHotkeys.main != "SC029" || _activeHotkeys.suspend != "CapsLock & SC029"
+            throw Error("Active hotkey state must remember normalized registered names")
+        if mainHotkey != "``" || suspendHotkey != "CapsLock & ``"
+            throw Error("Configured hotkey values must remain unchanged")
+    }
+
     Register_SkipsRejectedKey_WithoutCrashing() {
         global mainHotkey, reloadHotkey, closeWindowsHotkey, suspendHotkey
         global _activeHotkeys, _mockHotkeyCalls, _mockHotkeyThrowKey
-        mainHotkey := "``"         ; the key AHK intermittently rejects (single backtick)
+        mainHotkey := "NotARealKey"
         reloadHotkey := "^!r"
         closeWindowsHotkey := ""
         suspendHotkey := "CapsLock & x"
         _activeHotkeys := { main: "", reload: "", closeWindows: "", suspend: "" }
         _mockHotkeyCalls := []
-        _mockHotkeyThrowKey := "``"
+        _mockHotkeyThrowKey := "NotARealKey"
 
         ; Must not throw.
         _registerAllHotkeys()

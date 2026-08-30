@@ -98,7 +98,8 @@ providerMap := Map(
 ; ============================================================================
 ; S4 ASSISTANTS -- Named chat profiles
 ; ============================================================================
-; Each assistant: name, baseModel ("provider/model"), systemMessage (or systemMessageFile), description, reasoning, temperature, isDefault.
+; Each assistant: name, baseModel ("provider/model"), systemMessage (or systemMessageFile), description, reasoning, temperature.
+;   Legacy isDefault values are retained for settings-file compatibility but no longer choose the new-chat default. Use newChatStartsWith instead.
 ;   description: short description shown in the model card (optional). Keep it one sentence or less.
 ;   Use systemMessageFile: "default-settings/system-messages/my-assistant.txt" for longer prompts.
 ;   reasoning: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" or "" for model default.

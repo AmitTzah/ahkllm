@@ -36,7 +36,7 @@ function makeEl(overrides) {
 }
 
 function loadSection(opts) {
-    const { els, target, cmds, withSettingsPanel, fileRadio, inlineRadio, modal } = opts || {};
+    const { els, target, cmds, withSettingsPanel, fileRadio, inlineRadio, modal, ipc } = opts || {};
     const elementMap = els || {};
     const domContentLoaded = [];
     const dirtyCalls = [];
@@ -64,6 +64,7 @@ function loadSection(opts) {
             addEventListener: () => {},
         },
         console,
+        Ipc: ipc || null,
     };
     sandbox.global = sandbox;
 
@@ -232,7 +233,7 @@ describe('System message modal', () => {
         saveBtn.fire('click');
         assert.ok(card.dataset.systemMessage === 'Inline msg');
         assert.ok(card.dataset.systemMessageFile === '');
-        assert.ok(label.textContent.indexOf('(inline)') >= 0);
+        assert.ok(label.textContent.indexOf('(inline) · Inline msg') >= 0);
         assert.ok(!ctx.modal.classList.contains('open'));
         assert.ok(ctx.dirtyCalls.length >= 1);
     });
@@ -311,6 +312,35 @@ describe('System message modal', () => {
         ctx.fireDomReady();
         saveBtn.fire('click');
         assert.ok(ctx.dirtyCalls.length >= 1);
+    });
+
+    it('open-folder and refresh controls send the expected IPC actions', () => {
+        const actions = [];
+        const openBtn = makeEl();
+        const refreshBtn = makeEl();
+        const ctx = loadSection({
+            els: { smOpenFolder: openBtn, smRefreshFiles: refreshBtn },
+            ipc: { postToHost: (action) => actions.push(action) },
+        });
+        ctx.fireDomReady();
+        openBtn.fire('click');
+        refreshBtn.fire('click');
+        assert.deepStrictEqual(actions, ['openSystemMessagesFolder', 'requestSystemMessageFiles']);
+    });
+
+    it('renders bundled and custom .txt files and exposes the real user folder', () => {
+        const defaults = makeEl({ innerHTML: '' });
+        const users = makeEl({ innerHTML: '' });
+        const folder = makeEl({ textContent: '' });
+        const ctx = loadSection({ els: { smDefaultFiles: defaults, smUserFiles: users, smUserFolderPath: folder } });
+        ctx.sandbox.window.updateSystemMessageFiles({
+            defaultFiles: ['refine.txt'],
+            userFiles: ['my-prompt.txt'],
+            userFolder: 'C:\\Users\\Test\\AppData\\Roaming\\AhkLLM\\system-messages',
+        });
+        assert.ok(defaults.innerHTML.indexOf('default-settings/system-messages/refine.txt') >= 0);
+        assert.ok(users.innerHTML.indexOf('system-messages/my-prompt.txt') >= 0);
+        assert.ok(folder.textContent.indexOf('AhkLLM\\system-messages') >= 0);
     });
 
     it('save button handler is not wired when button is missing', () => {

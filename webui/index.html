@@ -450,14 +450,23 @@
 
 <!-- System Message Edit Modal -->
 <div class="modal-overlay" id="sysMsgEditModal">
-  <div class="modal-box settings-w-640"><div class="modal-head"><div class="modal-title">Edit System Message</div><button class="icon-btn">?</button></div>
-  <div class="modal-body settings-column">
-    <div class="settings-flex-row"><label class="settings-radio-label"><input type="radio" name="sysMsgMode" value="file" checked> Load from file</label>
-    <label class="settings-radio-label"><input type="radio" name="sysMsgMode" value="inline"> Write inline</label></div>
-    <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select class="settings-w-100" id="smFileSelect"><option value="">(none)</option><optgroup label="App Defaults"><option value="natural-conversationalist.txt">natural-conversationalist.txt</option><option value="violet.txt">violet.txt</option><option value="summarize.txt">summarize.txt</option><option value="refine.txt">refine.txt</option><option value="translate-to-english.txt">translate-to-english.txt</option><option value="rephrase-in-context.txt">rephrase-in-context.txt</option><option value="brutal-critic.txt">brutal-critic.txt</option></optgroup><optgroup label="Your Files (AppData\\...\\system-messages\\)"></optgroup></select></div></div>
-    <div id="smInlineSection" ><div class="field"><label class="field-label">Write system message</label><textarea class="settings-sysmsg-textarea" id="smInlineText" placeholder="You are a helpful assistant..."></textarea></div></div>
+  <div class="modal-box settings-w-720">
+    <div class="modal-head">
+      <div class="modal-title">Edit System Message</div>
+      <div class="settings-modal-head-actions"><button class="icon-btn" type="button" aria-label="Close">×</button></div>
+    </div>
+    <div class="modal-body settings-column">
+      <div class="settings-sysmsg-help">
+        <div><strong>Write inline</strong> to store the prompt directly with this assistant or command, or <strong>Load from file</strong> to use a reusable .txt prompt.</div>
+        <div>Bundled prompts are in <code>default-settings\\system-messages</code>. Put your own files in <code>%APPDATA%\\AhkLLM\\system-messages</code>.</div>
+      </div>
+      <div class="settings-flex-row-16"><label class="settings-radio-label"><input type="radio" name="sysMsgMode" value="file" checked> Load from file</label>
+      <label class="settings-radio-label"><input type="radio" name="sysMsgMode" value="inline"> Write inline</label></div>
+      <div id="smFileSection"><div class="field"><label class="field-label">Select system message file</label><select class="settings-w-100" id="smFileSelect"><option value="">(none)</option><optgroup label="App Defaults" id="smDefaultFiles"></optgroup><optgroup label="Your Files" id="smUserFiles"></optgroup></select><div class="settings-sysmsg-file-info">Put custom .txt files in <code id="smUserFolderPath">%APPDATA%\\AhkLLM\\system-messages</code>. Then refresh the list and select the file here.</div><div class="settings-flex-row-16 settings-mt-8"><button class="settings-link-button" id="smOpenFolder" type="button">Open system messages folder</button><button class="settings-link-button" id="smRefreshFiles" type="button">Refresh files</button></div></div></div>
+      <div id="smInlineSection"><div class="field"><label class="field-label">Write system message</label><textarea class="settings-sysmsg-textarea" id="smInlineText" placeholder="You are a helpful assistant..."></textarea><div class="field-hint">This text is stored directly in settings for this assistant or command.</div></div></div>
   </div>
-  <div class="modal-foot"><button class="btn-ghost">Cancel</button><button class="btn-primary settings-text-sm" id="sysMsgEditSave">Save</button></div></div>
+    <div class="modal-foot"><button class="btn-ghost">Cancel</button><button class="btn-primary settings-text-sm" id="sysMsgEditSave">Save</button></div>
+  </div>
 </div>
 
 <!-- Tree Modal -->

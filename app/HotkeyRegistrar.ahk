@@ -26,14 +26,24 @@ _registerAllHotkeys() {
     ; Each registration is guarded: a rejected key name (e.g. a lone backtick
     ; that AHK intermittently refuses) must not crash the app at startup. Only
     ; keys that actually registered are remembered for the next Off pass.
-    _activeHotkeys.main := _HotkeyOn(mainHotkey, (*) => handleHotkey("showCommandMenu"))
-    _activeHotkeys.reload := _HotkeyOn(reloadHotkey, (*) => handleHotkey("reloadScript"))
-    _activeHotkeys.closeWindows := _HotkeyOn(closeWindowsHotkey, (*) => handleHotkey("closeWindows"))
-    _activeHotkeys.suspend := _HotkeyOn(suspendHotkey, (*) => handleHotkey("suspendHotkey"), "S On")
+    _activeHotkeys.main := _HotkeyOn(_NormalizeHotkeyKey(mainHotkey), (*) => handleHotkey("showCommandMenu"))
+    _activeHotkeys.reload := _HotkeyOn(_NormalizeHotkeyKey(reloadHotkey), (*) => handleHotkey("reloadScript"))
+    _activeHotkeys.closeWindows := _HotkeyOn(_NormalizeHotkeyKey(closeWindowsHotkey), (*) => handleHotkey("closeWindows"))
+    _activeHotkeys.suspend := _HotkeyOn(_NormalizeHotkeyKey(suspendHotkey), (*) => handleHotkey("suspendHotkey"), "S On")
 }
 
 ; Register one hotkey. Returns the key when it registered, "" when disabled or
 ; rejected (so _activeHotkeys only tracks keys that are actually active).
+; Dynamic Hotkey() can reject a literal backtick key name on some systems.
+; Register that physical key by scan code instead, while keeping the saved/UI
+; value as ` so existing settings remain readable. Modifiers/custom combos are
+; preserved, e.g. ^` -> ^SC029 and CapsLock & ` -> CapsLock & SC029.
+_NormalizeHotkeyKey(key) {
+    if !key
+        return ""
+    return StrReplace(key, "``", "SC029")
+}
+
 _HotkeyOn(key, callback, options := "On") {
     if !key
         return ""

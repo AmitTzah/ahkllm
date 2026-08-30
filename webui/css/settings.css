@@ -478,7 +478,7 @@
 .settings-flex-fixed-380 { flex: 0 0 380px; overflow: hidden; }
 .settings-mono-flex { flex: 1; font-family: var(--font-mono); font-size: 12px; }
 .settings-mono-muted { font-family: var(--font-mono); font-size: 14px; color: var(--text-tertiary); }
-.settings-sysmsg-textarea { width: 100%; min-height: 180px; font-family: var(--font-mono); font-size: 13px; }
+.settings-sysmsg-textarea { width: 100%; min-height: 300px; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; resize: vertical; }
 .settings-icon-xs { width: 12px; height: 12px; }
 .settings-icon-sm { width: 14px; height: 14px; }
 .settings-icon-md { width: 24px; height: 24px; }
@@ -532,7 +532,14 @@
 .settings-flex-row-24 { display: flex; gap: 24px; }
 .settings-provider-select { border: 1px solid transparent; font-size: 11px; }
 .settings-mono-input { font-family: var(--font-mono); font-size: 12px; }
-.settings-sysmsg-label { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); }
+.settings-sysmsg-label { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); min-width: 0; max-width: 85%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-sysmsg-summary-row { justify-content: flex-start; }
+.settings-modal-head-actions { display: flex; align-items: center; gap: 8px; }
+.settings-sysmsg-help { border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-main); padding: 12px 14px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; display: grid; gap: 6px; }
+.settings-sysmsg-file-info { margin-top: 8px; color: var(--text-tertiary); font-size: 11px; line-height: 1.5; }
+.settings-sysmsg-file-info code, .settings-sysmsg-help code { font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-hover); padding: 1px 4px; border-radius: 3px; }
+.settings-link-button { padding: 0; border: 0; background: transparent; color: var(--accent-primary); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.settings-link-button:hover { color: var(--accent-hover); }
 .settings-title-input-lg { border: 1px solid transparent; background: transparent; font-weight: 600; font-size: 18px; padding: 2px 4px; border-radius: 4px; width: auto; }
 .settings-card-title-input { border: none; font-weight: 600; font-size: 14px; background: transparent; width: auto; }
 .settings-advanced-body { padding-top: 12px; }

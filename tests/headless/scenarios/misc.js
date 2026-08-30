@@ -1,4 +1,4 @@
-﻿// scenarios/misc.js - Icons, model-id parsing, vision gating, API logs
+// scenarios/misc.js - Icons, model-id parsing, vision gating, API logs
 //
 // Part of the headless E2E suite (entry: ../e2e-suite.js). Scenarios launch
 // the REAL app against an isolated profile and drive it via WebView2 CDP +
@@ -1456,7 +1456,7 @@ scenarios.push({
 
 scenarios.push({
   id: 166,
-  name: 'Assistant "isDefault" is a dead setting - persisted/carried everywhere but never read for any behavior, and the Assistants UI has no field to change it',
+  name: 'Legacy assistant isDefault must not create a second new-chat default or override General > New Chats Start With',
   mode: null,
   regression: true,
   noApp: true,
@@ -1480,22 +1480,22 @@ scenarios.push({
       if (writes && readsBehavior) reads.push(rel + ':behavior');
       else if (writes) reads.push(rel + ':carry-only');
     }
-    // DefaultSettings defines the default assistant with isDefault:true; the
-    // flag now drives the default-assistant behavior again (bug #166).
+    // Legacy isDefault may still be carried for settings compatibility, but
+    // General > New Chats Start With is the only new-chat default.
     const assistantsUi = fs.readFileSync(path.join(launcher.REPO_ROOT, 'webui', 'js', 'settings', 'sections', 'assistants.js'), 'utf8');
-    const uiHasDefaultField = /isDefault|Set as Default|default assistant/i.test(assistantsUi);
-    // Fixed: _applyNewChatDefault falls back to the isDefault-marked assistant
-    // when "New Chats Start With" is App Default, and the Assistants settings
-    // card has a "Default assistant" switch (data-field="isDefault").
-    // BUG present: no consumer read isDefault for behavior and the UI had no
-    // isDefault control (only preserve-on-save).
+    const uiHasDefaultField = /data-field=["']isDefault["']|Set as Default|Default assistant/i.test(assistantsUi);
+    // It must have no runtime consumer and no user-facing default control.
+
+
+
+
     const behaviorReaders = reads.filter((r) => r.endsWith(':behavior'));
-    if (behaviorReaders.length === 0)
-      throw new Error('isDefault is still dead metadata (BUG present): ' + JSON.stringify({ behaviorReaders, uiHasDefaultField }));
-    if (!uiHasDefaultField)
-      throw new Error('Assistants UI still has no Default field (BUG present)');
-    return 'isDefault now drives behavior (' + behaviorReaders.map((r) => r.split(':')[0].split('/').pop()).join(', ') +
-      ' - _applyNewChatDefault falls back to the marked assistant) and the Assistants UI has a Default switch (field=' + uiHasDefaultField + ')';
+    if (behaviorReaders.length !== 0)
+      throw new Error('legacy isDefault still affects runtime behavior: ' + JSON.stringify(behaviorReaders));
+    if (uiHasDefaultField)
+      throw new Error('Assistants UI still exposes a second default selector');
+    return 'legacy isDefault is compatibility metadata only; it has no runtime behavior reader and the Assistants UI exposes no second default selector';
+
   }
 });
 

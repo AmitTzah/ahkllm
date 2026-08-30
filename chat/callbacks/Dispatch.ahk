@@ -80,6 +80,10 @@ OnWebMessageReceived(sender, args) {
                 _HandleRequestDefaultSettings()
             case "saveSettings":
                 _HandleSaveSettings(parsed)
+            case "requestSystemMessageFiles":
+                _HandleRequestSystemMessageFiles()
+            case "openSystemMessagesFolder":
+                _HandleOpenSystemMessagesFolder()
             case "refreshModelPricing":
                 _HandleRefreshModelPricing()
             case "reloadScript":
@@ -269,6 +273,34 @@ _HandleRefreshModelPricing() {
     } catch Error as e {
         postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
     }
+}
+
+_SystemMessageFilesIn(dirPath) {
+    files := []
+    if !DirExist(dirPath)
+        return files
+    Loop Files dirPath "\\*.txt", "F"
+        files.Push(A_LoopFileName)
+    return files
+}
+
+_HandleRequestSystemMessageFiles() {
+    userDir := AppInfo.DataDir "\\system-messages"
+    if !DirExist(userDir)
+        DirCreate(userDir)
+    defaultDir := A_ScriptDir "\\..\\default-settings\\system-messages"
+    postWebMessage("systemMessageFiles", {
+        defaultFiles: _SystemMessageFilesIn(defaultDir),
+        userFiles: _SystemMessageFilesIn(userDir),
+        userFolder: userDir
+    })
+}
+
+_HandleOpenSystemMessagesFolder() {
+    userDir := AppInfo.DataDir "\\system-messages"
+    if !DirExist(userDir)
+        DirCreate(userDir)
+    Run(userDir)
 }
 
 _HandleBrowseIcon(parsed) {

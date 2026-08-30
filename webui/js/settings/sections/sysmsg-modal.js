@@ -2,12 +2,58 @@
 (function() {
   var S = window.SettingsShared;
 
-  // Populate the modal when opening — called by both commands and assistants.
+  function postAction(action) {
+    if (typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function') Ipc.postToHost(action);
+  }
+  function requestSystemMessageFiles() { postAction('requestSystemMessageFiles'); }
+  function optionHtml(value, label) { return '<option value="' + S.escHtml(value) + '">' + S.escHtml(label) + '</option>'; }
+
+  function selectStoredFile(fileSelect, stored) {
+    if (!fileSelect || !stored) return;
+    fileSelect.value = stored;
+    if (fileSelect.selectedIndex !== -1) return;
+    var bareName = String(stored).replace(/^.*[\\/]/, '');
+    if (fileSelect.options) {
+      for (var i = 0; i < fileSelect.options.length; i++) {
+        var optionValue = String(fileSelect.options[i].value || '');
+        if (optionValue === bareName || optionValue.replace(/^.*[\\/]/, '') === bareName) {
+          fileSelect.selectedIndex = i;
+          return;
+        }
+      }
+    }
+    fileSelect.value = bareName;
+  }
+
+  function systemMessageSummary(filePath, inlineText) {
+    if (filePath) return '\uD83D\uDCC4 ' + String(filePath);
+    var normalized = String(inlineText || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return '\uD83D\uDCC4 (none)';
+    var preview = normalized.length > 96 ? normalized.slice(0, 93) + '...' : normalized;
+    return '\uD83D\uDCC4 (inline) \u00B7 ' + preview;
+  }
+
+  window.updateSystemMessageFiles = function(data) {
+    data = data || {};
+    var defaultGroup = document.getElementById('smDefaultFiles');
+    var userGroup = document.getElementById('smUserFiles');
+    var folderPath = document.getElementById('smUserFolderPath');
+    var fileSelect = document.getElementById('smFileSelect');
+    var modal = document.getElementById('sysMsgEditModal');
+    var defaultFiles = Array.isArray(data.defaultFiles) ? data.defaultFiles.slice().sort() : [];
+    var userFiles = Array.isArray(data.userFiles) ? data.userFiles.slice().sort() : [];
+    if (defaultGroup) defaultGroup.innerHTML = defaultFiles.map(function(name) { return optionHtml('default-settings/system-messages/' + name, name); }).join('');
+    if (userGroup) userGroup.innerHTML = userFiles.length
+      ? userFiles.map(function(name) { return optionHtml('system-messages/' + name, name); }).join('')
+      : '<option value="" disabled>(no custom .txt files yet)</option>';
+    if (folderPath) folderPath.textContent = data.userFolder || '%APPDATA%\\AhkLLM\\system-messages';
+    if (fileSelect && modal && modal.dataset) selectStoredFile(fileSelect, modal.dataset.sysMsgFile || '');
+  };
+
   window.populateSysMsgModal = function(opts) {
+    opts = opts || {};
     var modal = document.getElementById('sysMsgEditModal');
     if (!modal) return;
-    // Bug #39: remember the stored file so a custom (unlisted) file survives
-    // opening + saving the modal even though the select cannot display it.
     modal.dataset.sysMsgFile = opts.systemMessageFile || '';
     var fileRadio = modal.querySelector('input[name="sysMsgMode"][value="file"]');
     var inlineRadio = modal.querySelector('input[name="sysMsgMode"][value="inline"]');
@@ -15,34 +61,25 @@
     var inlineSection = document.getElementById('smInlineSection');
     var fileSelect = document.getElementById('smFileSelect');
     var inlineText = document.getElementById('smInlineText');
+    if (inlineText) inlineText.value = opts.systemMessage || '';
+    if (fileSelect) selectStoredFile(fileSelect, opts.systemMessageFile || '');
     if (opts.systemMessageFile) {
       if (fileRadio) fileRadio.checked = true;
       if (inlineRadio) inlineRadio.checked = false;
       if (fileSection) fileSection.style.display = '';
       if (inlineSection) inlineSection.style.display = 'none';
-      if (fileSelect) {
-        fileSelect.value = opts.systemMessageFile;
-        // Stored value may include a directory prefix (e.g. "default-settings/system-messages/refine.txt")
-        // while the select options are bare filenames. Strip the prefix if no match.
-        if (fileSelect.selectedIndex === -1 && opts.systemMessageFile.indexOf('/') >= 0) {
-          var bareName = opts.systemMessageFile.replace(/^.*[\\/]/, '');
-          fileSelect.value = bareName;
-        }
-      }
     } else {
       if (inlineRadio) inlineRadio.checked = true;
       if (fileRadio) fileRadio.checked = false;
       if (inlineSection) inlineSection.style.display = '';
       if (fileSection) fileSection.style.display = 'none';
-      if (inlineText) inlineText.value = opts.systemMessage || '';
     }
     modal.classList.add('open');
+    requestSystemMessageFiles();
   };
 
-  // Save button handler — wired once on DOMContentLoaded.
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
-      // File/inline radio: swap which section is visible.
       var modal = document.getElementById('sysMsgEditModal');
       var fileRadio = modal ? modal.querySelector('input[name="sysMsgMode"][value="file"]') : null;
       var inlineRadio = modal ? modal.querySelector('input[name="sysMsgMode"][value="inline"]') : null;
@@ -50,11 +87,19 @@
         var isInline = !!(inlineRadio && inlineRadio.checked);
         var fileSection = document.getElementById('smFileSection');
         var inlineSection = document.getElementById('smInlineSection');
+        var inlineText = document.getElementById('smInlineText');
         if (fileSection) fileSection.style.display = isInline ? 'none' : '';
         if (inlineSection) inlineSection.style.display = isInline ? '' : 'none';
+        if (isInline && inlineText && typeof inlineText.focus === 'function') inlineText.focus();
+        if (!isInline) requestSystemMessageFiles();
       }
       if (fileRadio) fileRadio.addEventListener('change', syncSysMsgSections);
       if (inlineRadio) inlineRadio.addEventListener('change', syncSysMsgSections);
+
+      var openFolder = document.getElementById('smOpenFolder');
+      if (openFolder) openFolder.addEventListener('click', function() { postAction('openSystemMessagesFolder'); });
+      var refreshFiles = document.getElementById('smRefreshFiles');
+      if (refreshFiles) refreshFiles.addEventListener('click', requestSystemMessageFiles);
 
       var saveBtn = document.getElementById('sysMsgEditSave');
       if (!saveBtn) return;
@@ -71,17 +116,16 @@
         } else {
           var fileSelect = document.getElementById('smFileSelect');
           sysMsgFile = fileSelect ? fileSelect.value : '';
-          // Bug #39: a custom file not in the hardcoded list leaves
-          // selectedIndex = -1 / value = "" - fall back to the stored value so
-          // the Save handler does not silently clear systemMessageFile.
-          if (fileSelect && fileSelect.selectedIndex === -1 && modal && modal.dataset && modal.dataset.sysMsgFile)
-            sysMsgFile = modal.dataset.sysMsgFile;
+          if (fileSelect && fileSelect.selectedIndex === -1 && modal && modal.dataset && modal.dataset.sysMsgFile) sysMsgFile = modal.dataset.sysMsgFile;
         }
         if (t.type === 'assistant') {
           t.card.dataset.systemMessage = sysMsg;
           t.card.dataset.systemMessageFile = sysMsgFile;
           var label = t.card.querySelector('.sysmsg-label');
-          if (label) label.textContent = '\uD83D\uDCC4 ' + (sysMsgFile || (sysMsg ? '(inline)' : '(none)'));
+          if (label) {
+            label.textContent = systemMessageSummary(sysMsgFile, sysMsg);
+            label.title = sysMsgFile || sysMsg || '';
+          }
         } else if (t.type === 'command') {
           var C = window.Cmds;
           if (C) {
@@ -95,5 +139,4 @@
       });
     });
   }
-
 })();

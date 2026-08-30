@@ -176,7 +176,7 @@ describe('General settings section', () => {
         assert.ok(groups.some((g) => g.label === 'Models'));
     });
 
-    it('labels App Default with the isDefault assistant when one is marked (bug #26 follow-up)', () => {
+    it('keeps App Default tied to the app model even when legacy isDefault metadata exists', () => {
         const ncs = makeEl();
         const created = [];
         const ctx = loadSection({ els: { newChatStartsWith: ncs } });
@@ -193,8 +193,8 @@ describe('General settings section', () => {
         });
         const opts = created.filter((el) => el.tagName === 'option');
         assert.strictEqual(opts[0].value, '');
-        assert.ok(opts[0].textContent.indexOf('App Default (My Assistant)') >= 0,
-            'App Default must name the isDefault assistant, got ' + opts[0].textContent);
+        assert.ok(opts[0].textContent.indexOf('App Default (deepseek/deepseek-v4-flash)') >= 0,
+            'App Default must not have a hidden assistant fallback, got ' + opts[0].textContent);
     });
 
     it('load tolerates missing data and missing elements', () => {

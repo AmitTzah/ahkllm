@@ -43,7 +43,10 @@ describe('ipc-contract validate', () => {
     assert.deepStrictEqual(contract.validate('trashList', [], 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('assistantList', [], 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('streamReasoning', { content: 'thinking', collapsed: 0 }, 'ahk->web'), []);
+    assert.deepStrictEqual(contract.validate('systemMessageFiles', { defaultFiles: ['a.txt'], userFiles: ['b.txt'], userFolder: 'C:\\Users\\Test\\AppData\\Roaming\\AhkLLM\\system-messages' }, 'ahk->web'), []);
     assert.deepStrictEqual(contract.validate('chatSend', { message: 'hi' }, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('requestSystemMessageFiles', {}, 'web->ahk'), []);
+    assert.deepStrictEqual(contract.validate('openSystemMessagesFolder', {}, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('unlockThread', { threadId: 't1', passwordHash: 'h' }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('setThreadLock', { threadId: 't1', mode: 'set', passwordHash: 'h', salt: 's', iterations: 1000, currentPasswordHash: '' }, 'web->ahk'), []);
     assert.deepStrictEqual(contract.validate('lockChatNow', { threadId: 't1' }, 'web->ahk'), []);

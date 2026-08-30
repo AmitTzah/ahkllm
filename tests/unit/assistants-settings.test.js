@@ -85,22 +85,23 @@ function loadModule() {
         };
         const baseSel = makeSelect('baseModel', el);
         const reasoningSel = makeSelect('reasoning', el);
-        // The "Default assistant" switch (bug #166) - its 'on' state mirrors
-        // the card's dataset.isDefault set by createCard (the innerHTML string
-        // is never parsed by the fake DOM).
-        const isDefaultSwitch = {
-          dataset: { field: 'isDefault' },
+        // Assistant cards no longer expose a second default selector.
+        // Legacy isDefault metadata is preserved internally only.
+
+        const noSwitch = {
+          dataset: {},
           addEventListener: () => {},
           classList: {
             add: () => {},
             remove: () => {},
-            contains: (c) => (c === 'on' && el.dataset.isDefault === 'true') || c === 'switch',
+            contains: () => false,
             toggle: () => {}
           }
         };
         el.querySelectorAll = (sel) => {
           if (sel === 'select' || sel === 'input, select') return [baseSel, reasoningSel];
-          if (sel === '.switch' || sel === '[data-field]') return [isDefaultSwitch];
+          if (sel === '.switch') return [];
+          if (sel === '[data-field]') return [baseSel, reasoningSel];
           return [];
         };
         el.querySelector = (sel) => {
@@ -242,7 +243,16 @@ describe('assistants.js reasoning dropdown', () => {
     assert.strictEqual(reasoningSel.value, '', 'an unsupported level must fall back to Model Default');
   });
 
-  it('preserves temperature and isDefault through load() -> save() (bug #122)', () => {
+  it('shows a useful preview for inline system messages', () => {
+    const { registered, cards } = loadModule();
+    registered.load({ assistants: [{ id: 'a-preview', name: 'Preview', baseModel: 'deepseek/deepseek-v4-flash', reasoning: '', systemMessage: 'You are concise and practical.\nAvoid filler.', systemMessageFile: '', isDefault: false }], models: null });
+    assert.ok(cards[0].innerHTML.indexOf('(inline) · You are concise and practical. Avoid filler.') >= 0,
+      'assistant card should preview inline system-message text instead of only saying inline');
+    assert.ok(cards[0].innerHTML.indexOf('settings-sysmsg-summary-row') >= 0,
+      'system-message summary should keep Edit next to the preview instead of pushing it to the far edge');
+  });
+
+  it('preserves temperature and legacy isDefault metadata through load() -> save()', () => {
     const { registered } = loadModule();
     const assistants = [{ id: 'a1', name: 'A', baseModel: 'deepseek/deepseek-v4-flash', reasoning: '', systemMessage: '', temperature: '0.7', isDefault: true }];
 
@@ -254,14 +264,14 @@ describe('assistants.js reasoning dropdown', () => {
     assert.strictEqual(a.isDefault, true, 'isDefault must survive the save round-trip (bug #122)');
   });
 
-  it('renders the Default assistant switch and round-trips isDefault (bug #166)', () => {
+  it('does not render a second default selector but keeps legacy isDefault metadata', () => {
     const { registered, cards } = loadModule();
     const assistants = [{ id: 'a1', name: 'A', baseModel: 'deepseek/deepseek-v4-flash', reasoning: '', systemMessage: '', isDefault: true }];
     registered.load({ assistants: assistants, models: null });
-    assert.ok(cards[0].innerHTML.indexOf('data-field="isDefault"') >= 0, 'card must render the Default assistant switch');
-    assert.ok(cards[0].innerHTML.indexOf('Default assistant') >= 0, 'switch must be labeled');
+    assert.ok(cards[0].innerHTML.indexOf('data-field="isDefault"') < 0, 'assistant card must not render an isDefault control');
+    assert.ok(cards[0].innerHTML.indexOf('Default assistant') < 0, 'assistant card must not expose a second default selector');
     const saved = registered.save();
-    assert.strictEqual(saved.assistants[0].isDefault, true, 'the switch state must drive the saved isDefault (bug #166)');
+    assert.strictEqual(saved.assistants[0].isDefault, true, 'legacy metadata should survive without being user-facing');
   });
 
   it('keeps a temperature of 0 as a real value through save() (bug #122)', () => {
