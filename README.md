@@ -168,7 +168,7 @@ API request/response logs and the diagnostic log are written under `%TEMP%` and 
 
 If you enter provider keys directly in Settings, they are stored in `settings.json`. Environment variables are preferable if that matters to you.
 
-Locked chats are also worth being clear about: the password stops the chat from being opened through AhkLLM, but the underlying database and attachments are not encrypted at rest. See [docs/locked-chats.md](docs/locked-chats.md) for the details.
+Password-protecting a chat will **not** hide it from anyone with direct filesystem access to `%APPDATA%\AhkLLM\`: the password stops the chat from being opened through AhkLLM, but the underlying database and attachments are not encrypted at rest. See [docs/locked-chats.md](docs/locked-chats.md) for the details.
 
 ## Testing and contributing
 
