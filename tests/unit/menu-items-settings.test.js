@@ -114,7 +114,7 @@ describe('Menu items settings section', () => {
         ctx.module.load({
             menuItems: {
                 quickAccess: [{ menuText: 'QA', command: 'qa-cmd' }],
-                tray: [{ menuText: 'Exit', action: 'exit' }],
+                tray: [{ menuText: 'E&xit', action: 'exit' }],
             },
         });
 
@@ -128,11 +128,15 @@ describe('Menu items settings section', () => {
 
         const trayRows = trayBody.querySelectorAll('tr');
         assert.ok(trayRows.length === 1);
+        const trayInput = trayRows[0].querySelectorAll('input')[0];
+        assert.strictEqual(trayInput.value, 'Exit');
         const traySelect = trayRows[0].querySelectorAll('select')[0];
         assert.ok(traySelect.children.length === 2);
         assert.ok(traySelect.children[0].value === 'reload');
         assert.ok(traySelect.children[1].value === 'exit');
         assert.ok(traySelect.children[1].selected === true);
+        const saved = JSON.parse(JSON.stringify(ctx.module.save()));
+        assert.strictEqual(saved.menuItems.tray[0].menuText, 'E&xit');
     });
 
     it('load handles missing menuItems and missing tbody', () => {

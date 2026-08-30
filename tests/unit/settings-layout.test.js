@@ -92,6 +92,25 @@ describe('index.html settings structure', () => {
         });
     });
 
+    it('presents Hotkeys as Shortcuts and keeps the Open Chat menu key in that section', () => {
+        const navSection = html.substring(html.indexOf('id="settingsNav"'), html.indexOf('id="settingsCenter"'));
+        const generalSection = html.substring(html.indexOf('id="sec-general"'), html.indexOf('id="sec-ui"'));
+        const shortcutsSection = html.substring(html.indexOf('id="sec-hotkeys"'), html.indexOf('id="sec-menu"'));
+        assert.ok(/data-section="hotkeys"[^>]*>[\s\S]*?Shortcuts/.test(navSection), 'hotkeys route should be labeled Shortcuts');
+        assert.ok(/section-card-header[^>]*>[\s\S]*?Shortcuts<\/div>/.test(shortcutsSection), 'section header should say Shortcuts');
+        assert.ok(shortcutsSection.includes('id="chatShortcut"'), 'Open Chat menu key should live in Shortcuts');
+        assert.ok(shortcutsSection.includes('Open Chat Menu Key'), 'Open Chat menu key should have a clear label');
+        assert.ok(!generalSection.includes('id="chatShortcut"'), 'General should no longer own chatShortcut');
+    });
+
+    it('uses Menu Key and Direct Key terminology for command accelerators', () => {
+        const commandsSection = html.substring(html.indexOf('id="sec-commands"'), html.indexOf('id="seamRight"'));
+        assert.ok(commandsSection.includes('>Menu Key <'));
+        assert.ok(commandsSection.includes('>Direct Key <'));
+        assert.ok(!commandsSection.includes('>Menu Shortcut <'));
+        assert.ok(!commandsSection.includes('>Direct Shortcut <'));
+    });
+
     it('setupResize for seamLeft passes a function referencing settingsNav', () => {
         assert.ok(html.includes("setupResize('seamLeft'"), 'setupResize for seamLeft must exist');
         // Get the surrounding 500 chars to verify the function pattern

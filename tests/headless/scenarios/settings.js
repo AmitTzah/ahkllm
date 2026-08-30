@@ -902,10 +902,10 @@ scenarios.push({
     // (loadSettings -> clearDirty disables the Save button; until then
     // _currentSettings is unset and clicking Save silently does nothing).
     await cdp.waitFor('document.querySelector(".nav-footer .btn-primary") && document.querySelector(".nav-footer .btn-primary").disabled === true', 15000, 250, 'settings payload loaded');
-    // Use a shortcut that cannot collide with any default command accelerator
-    // ('9' is unused) - a conflicting value would abort the save in the
-    // commands validator before it reaches AHK.
-    await cdp.type('#chatShortcut', '9');
+    // Make one harmless General change so Save is enabled. This scenario is
+    // about preserving assistant metadata, not command-menu key validation.
+
+    await cdp.type('#apiLogMaxEntries', '21');
     await cdp.waitFor('typeof window.SettingsPanel !== "undefined" && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === true', 5000, 200, 'settings marked dirty');
     await saveSettings(cdp, dataDir);
     await sleep(800);
@@ -975,9 +975,9 @@ scenarios.push({
 
 scenarios.push({
   id: 134,
-  name: 'General-tab settings round-trip and live application (New Chats Start With assistant, title-gen off, API log cap, trash days, chat shortcut)',
+  name: 'General and Shortcuts settings round-trip and live application (new-chat assistant, title-gen off, API log cap, trash days, Open Chat key)',
   mode: 'sse-success',
-  regression: true, // audit: General-tab settings persist, reload and apply live
+  regression: true, // audit: General + Shortcuts settings persist, reload and apply live
   settings: {},
   async body({ cdp, dataDir, mockLog, endpoint }) {
     const os = require('node:os');
@@ -993,10 +993,12 @@ scenarios.push({
     await cdp.eval('document.getElementById("newChatStartsWith").value = "asst:' + asst.id + '"; true');
     // Turn thread-title generation OFF (the toggle starts 'on').
     await cdp.eval('(() => { const t = document.getElementById("titleGenToggle"); if (t.classList.contains("on")) t.click(); return t.classList.contains("on"); })()');
-    // API log cap 3, trash retention 7, chat shortcut '9'.
+    // API log cap 3 and trash retention 7 stay in General.
     await cdp.eval('document.getElementById("apiLogMaxEntries").value = "3"; true');
     await cdp.eval('document.getElementById("trashRetentionDays").value = "7"; true');
-    await cdp.eval('document.getElementById("chatShortcut").value = "9"; true');
+    await openSection(cdp, 'hotkeys');
+    await cdp.waitFor('document.getElementById("chatShortcut") !== null', 10000, 250, 'shortcuts fields');
+    await cdp.type('#chatShortcut', '9');
     await saveSettings(cdp, dataDir);
     await sleep(800);
 
@@ -1014,9 +1016,11 @@ scenarios.push({
     await openSettings(cdp);
     await openSection(cdp, 'general');
     await sleep(400);
-    const reloaded = await cdp.eval('({ ncs: document.getElementById("newChatStartsWith").value, titleOn: document.getElementById("titleGenToggle").classList.contains("on"), logs: document.getElementById("apiLogMaxEntries").value, trash: document.getElementById("trashRetentionDays").value, cs: document.getElementById("chatShortcut").value })');
-    if (reloaded.ncs !== 'asst:' + asst.id || reloaded.titleOn !== false || reloaded.logs !== '3' || reloaded.trash !== '7' || reloaded.cs !== '9')
-      throw new Error('settings fields did not round-trip: ' + JSON.stringify(reloaded));
+    const reloadedGeneral = await cdp.eval('({ ncs: document.getElementById("newChatStartsWith").value, titleOn: document.getElementById("titleGenToggle").classList.contains("on"), logs: document.getElementById("apiLogMaxEntries").value, trash: document.getElementById("trashRetentionDays").value })');
+    await openSection(cdp, 'hotkeys');
+    const reloadedShortcut = await cdp.eval('document.getElementById("chatShortcut").value');
+    if (reloadedGeneral.ncs !== 'asst:' + asst.id || reloadedGeneral.titleOn !== false || reloadedGeneral.logs !== '3' || reloadedGeneral.trash !== '7' || reloadedShortcut !== '9')
+      throw new Error('settings fields did not round-trip: general=' + JSON.stringify(reloadedGeneral) + ' openChatKey=' + JSON.stringify(reloadedShortcut));
     await hideSettingsToChat(cdp);
 
     // Application 1: New Chat from the sidebar starts with the chosen assistant.
@@ -1053,7 +1057,7 @@ scenarios.push({
     if (apiCount > 3)
       throw new Error('API log not trimmed to maxEntries=3: ' + apiCount + ' entries');
 
-    return 'round-trip OK (newChatStartsWith=asst:' + asst.id + ', titleGen off, apiLogs=3, trash=7, shortcut=9); new chat card=' +
+    return 'round-trip OK (newChatStartsWith=asst:' + asst.id + ', titleGen off, apiLogs=3, trash=7, openChatKey=9); new chat card=' +
       JSON.stringify(cardName) + '; chat request model=' + lastChatModel + '; title requests=' + titleReqs.length +
       '; API log entries=' + apiCount;
   }

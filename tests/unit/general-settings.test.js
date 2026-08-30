@@ -83,7 +83,7 @@ function loadSection(opts) {
 }
 
 describe('General settings section', () => {
-    it('load populates thread title, api log, trash and shortcut fields', () => {
+    it('load populates thread title, api log and trash fields', () => {
         const toggle = makeEl({ classList: makeClassList() });
         const fields = makeEl({ classList: makeClassList(['fields-disabled']) });
         const modelSel = makeEl({ innerHTML: '' });
@@ -91,7 +91,7 @@ describe('General settings section', () => {
         const maxTok = makeEl({ value: '123' });
         const logEntries = makeEl({ value: '5' });
         const trashDays = makeEl({ value: '7' });
-        const shortcut = makeEl({ value: 'Ctrl+Space' });
+
         const optionEls = [];
         const els = {
             titleGenToggle: toggle,
@@ -101,7 +101,7 @@ describe('General settings section', () => {
             titleGenMaxTokens: maxTok,
             apiLogMaxEntries: logEntries,
             trashRetentionDays: trashDays,
-            chatShortcut: shortcut,
+
         };
         const ctx = loadSection({ els });
         ctx.fireDomReady();
@@ -121,7 +121,7 @@ describe('General settings section', () => {
             models: { 'gpt-5': {}, 'anthropic/claude-new': {}, 'deepseek/deepseek-v4-flash': {} },
             apiLogs: { maxEntries: 40 },
             trash: { retentionDays: 14 },
-            chatShortcut: 'Ctrl+Alt+C',
+
         });
 
         assert.ok(toggle.classList.contains('on'));
@@ -131,7 +131,7 @@ describe('General settings section', () => {
         assert.ok(String(maxTok.value) === '75');
         assert.ok(String(logEntries.value) === '40');
         assert.ok(String(trashDays.value) === '14');
-        assert.ok(shortcut.value === 'Ctrl+Alt+C');
+
         // fillSelect unshifted the unknown current model and set the value.
         assert.ok(modelSel.value === 'new-model');
         assert.ok(optionEls.length === 4, 'four model options created');
@@ -201,7 +201,7 @@ describe('General settings section', () => {
         const ctx = loadSection({});
         ctx.module.load(null);
         ctx.module.load({});
-        ctx.module.load({ threadTitles: { enabled: true }, apiLogs: {}, trash: {}, chatShortcut: 'x' });
+        ctx.module.load({ threadTitles: { enabled: true }, apiLogs: {}, trash: {} });
         assert.ok(true);
     });
 
@@ -215,7 +215,7 @@ describe('General settings section', () => {
                 titleGenMaxTokens: makeEl({ value: '99' }),
                 apiLogMaxEntries: makeEl({ value: '12' }),
                 trashRetentionDays: makeEl({ value: '3' }),
-                chatShortcut: makeEl({ value: 'Alt+Z' }),
+
                 newChatStartsWith: makeEl({ value: 'asst:asst-1' }),
             tavilyApiKey: makeEl({ value: 'tvly-test' }),
                 backupEnabledToggle: makeEl({ classList: makeClassList(['on']) }),
@@ -227,7 +227,7 @@ describe('General settings section', () => {
             threadTitles: { enabled: true, model: 'gpt-5', prompt: 'Sum', maxTokens: 99 },
             apiLogs: { maxEntries: 12 },
             trash: { retentionDays: 3 },
-            chatShortcut: 'Alt+Z',
+
             tavilyApiKey: 'tvly-test',
             newChatStartsWith: 'asst:asst-1',
             backup: { enabled: true, folder: 'C:\\Backups' },
@@ -265,7 +265,7 @@ describe('General settings section', () => {
         assert.ok(data.threadTitles.maxTokens === 50);
         assert.ok(data.apiLogs.maxEntries === 20);
         assert.ok(data.trash.retentionDays === 30);
-        assert.ok(data.chatShortcut === '');
+
         assert.ok(data.tavilyApiKey === '');
         assert.ok(data.newChatStartsWith === '');
     });

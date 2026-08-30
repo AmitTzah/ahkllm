@@ -1,4 +1,4 @@
-// hotkeys.js - Hotkeys settings section
+// hotkeys.js - Shortcuts settings section
 (function() {
   var sectionName = 'hotkeys';
   var S = window.SettingsShared;
@@ -197,6 +197,7 @@
       S.setVal('hkCloseWindows', data.hotkeys.closeWindows);
       S.setVal('hkSuspend', data.hotkeys.suspend);
     }
+    if (data && data.chatShortcut !== undefined) S.setVal('chatShortcut', data.chatShortcut || '');
     document.querySelectorAll('.key-capture').forEach(function(kc) {
       setPending(kc, false);
       renderCapture(kc);
@@ -204,7 +205,10 @@
   }
 
   function save() {
-    return { hotkeys: { main: S.getVal('hkMain'), reload: S.getVal('hkReload'), closeWindows: S.getVal('hkCloseWindows'), suspend: S.getVal('hkSuspend') } };
+    return {
+      hotkeys: { main: S.getVal('hkMain'), reload: S.getVal('hkReload'), closeWindows: S.getVal('hkCloseWindows'), suspend: S.getVal('hkSuspend') },
+      chatShortcut: S.getVal('chatShortcut')
+    };
   }
 
   function wireKeyCaptures() {

@@ -205,7 +205,7 @@
 
     // Check chatShortcut against submenu tag accelerators
     if (cs && tagAccels[cs]) {
-      return { valid: false, message: 'Chat Shortcut "' + cs.toUpperCase() + '" conflicts with submenu "' + tagAccels[cs].tag + '" (used by "' + tagAccels[cs].firstCmdName + '").' };
+      return { valid: false, message: 'Open Chat key "' + cs.toUpperCase() + '" conflicts with submenu "' + tagAccels[cs].tag + '" (used by "' + tagAccels[cs].firstCmdName + '").' };
     }
 
     for (var i = 0; i < _commands.length; i++) {
@@ -226,19 +226,19 @@
 
       // Check chatShortcut against command accelerators (existing logic)
       if (cs && ((!hasTagsI && msKey === cs) || (directKey === cs)))
-        return { valid: false, message: 'Chat Shortcut "' + cs.toUpperCase() + '" conflicts with "' + (ci.commandName||'Unnamed') + '".', selectIdx: i };
+        return { valid: false, message: 'Open Chat key "' + cs.toUpperCase() + '" conflicts with "' + (ci.commandName||'Unnamed') + '".', selectIdx: i };
 
       // Check directAccelerator / untagged menuText against submenu tag accelerators
       if (directKey && tagAccels[directKey])
-        return { valid: false, message: 'Direct accelerator "&' + directKey.toUpperCase() + '" in "' + (ci.commandName||'Unnamed') + '" conflicts with submenu "' + tagAccels[directKey].tag + '".', selectIdx: i };
+        return { valid: false, message: 'Direct key "&' + directKey.toUpperCase() + '" in "' + (ci.commandName||'Unnamed') + '" conflicts with submenu "' + tagAccels[directKey].tag + '".', selectIdx: i };
       if (!hasTagsI && msKey && tagAccels[msKey])
-        return { valid: false, message: 'Accelerator "&' + msKey.toUpperCase() + '" in "' + (ci.commandName||'Unnamed') + '" conflicts with submenu "' + tagAccels[msKey].tag + '".', selectIdx: i };
+        return { valid: false, message: 'Menu key "&' + msKey.toUpperCase() + '" in "' + (ci.commandName||'Unnamed') + '" conflicts with submenu "' + tagAccels[msKey].tag + '".', selectIdx: i };
 
       for (var j = i + 1; j < _commands.length; j++) {
         var cj = _commands[j];
         var conflictKey = _shortcutConflict(ci, cj);
         if (conflictKey)
-          return { valid: false, message: 'Shortcut "' + conflictKey + '" used by "' + (ci.commandName||'Unnamed') + '" and "' + (cj.commandName||'Unnamed') + '".', selectIdx: i };
+          return { valid: false, message: 'Menu key "' + conflictKey + '" is used by "' + (ci.commandName||'Unnamed') + '" and "' + (cj.commandName||'Unnamed') + '".', selectIdx: i };
       }
     }
     return { valid: true };

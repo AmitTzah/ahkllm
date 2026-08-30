@@ -76,7 +76,7 @@
       <div class="nav-item" data-section="ui"><i data-lucide="layout" style="width:16px;height:16px;"></i> UI & Theme</div>
       <div class="nav-item" data-section="icons"><i data-lucide="image" style="width:16px;height:16px;"></i> Icons</div>
       <div class="nav-section">Interaction</div>
-      <div class="nav-item" data-section="hotkeys"><i data-lucide="keyboard" style="width:16px;height:16px;"></i> Hotkeys</div>
+      <div class="nav-item" data-section="hotkeys"><i data-lucide="keyboard" style="width:16px;height:16px;"></i> Shortcuts</div>
       <div class="nav-item" data-section="menu"><i data-lucide="menu" style="width:16px;height:16px;"></i> Menu Items</div>
       <div class="nav-section">AI Configuration</div>
       <div class="nav-item" data-section="providers"><i data-lucide="cloud" style="width:16px;height:16px;"></i> Providers</div>
@@ -212,10 +212,6 @@
             <div class="field"><label class="field-label">System Prompt</label><textarea id="titleGenPrompt">Generate a short, descriptive title (max 6 words) for a conversation based on the first exchange. Respond with ONLY the title, no quotes, no punctuation, no commentary.</textarea></div>
           </div>
         </div>
-        <div class="field settings-mb-20">
-          <label class="field-label">Chat Shortcut Key <span class="hint">press backtick then this key to open chat. Leave empty to disable</span></label>
-          <input class="settings-w-60" type="text" id="chatShortcut" maxlength="1" placeholder="1">
-        </div>
         <div class="settings-group-title">Web Search</div>
         <div class="field settings-mb-20">
           <label class="field-label">Tavily API Key <span class="hint">used when the model provider is not DeepSeek; DeepSeek models search natively. Leave empty to use the TAVILY_API_KEY environment variable</span></label>
@@ -259,15 +255,24 @@
           <div class="field"><label class="field-label">Suspended Icon (iconOff)</label><div class="settings-flex-row"><input class="settings-flex-1" type="text" id="iconOffPath" value="icons\IconOff.ico"><button class="btn-sm" data-icon-field="iconOff">Browse</button></div></div>
         </div>
       </div></div>
-      <div class="section-card" id="sec-hotkeys" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="keyboard"></i> Hotkeys</div><div class="section-card-body">
-        <div class="settings-field-hint-top hotkey-help">Click a shortcut, then press the keys you want. Backspace clears it. Use <strong>AHK</strong> for custom AutoHotkey syntax such as <code>CapsLock & `</code>.</div>
+      <div class="section-card" id="sec-hotkeys" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="keyboard"></i> Shortcuts</div><div class="section-card-body">
+        <div class="settings-group-title">Global Shortcuts</div>
+        <div class="settings-field-hint-top hotkey-help">These work anywhere while AhkLLM is running. Click a shortcut, then press the keys you want. Backspace clears it. Use <strong>AHK</strong> for custom AutoHotkey syntax such as <code>CapsLock & `</code>.</div>
         <div class="grid-2">
-          <div class="field"><label class="field-label">Main Hotkey <span class="hint">opens command menu, leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkMain" tabindex="0" aria-label="Record Main Hotkey"><input type="hidden" id="hkMain" value="`"><span class="key-display">Backtick</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Main Hotkey AHK syntax" spellcheck="false"></div></div>
-          <div class="field"><label class="field-label">Reload Script <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkReload" tabindex="0" aria-label="Record Reload Script hotkey"><input type="hidden" id="hkReload" value="~^!r"><span class="key-display">Ctrl + Alt + R</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Reload Script AHK syntax" spellcheck="false"></div></div>
-          <div class="field"><label class="field-label">Close Windows <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkCloseWindows" tabindex="0" aria-label="Record Close Windows hotkey"><input type="hidden" id="hkCloseWindows" value="~^w"><span class="key-display">Ctrl + W</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Close Windows AHK syntax" spellcheck="false"></div></div>
-          <div class="field"><label class="field-label">Suspend Toggle <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkSuspend" tabindex="0" aria-label="Record Suspend Toggle hotkey"><input type="hidden" id="hkSuspend" value="CapsLock & `"><span class="key-display">Caps Lock + Backtick</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Suspend Toggle AHK syntax" spellcheck="false"></div></div>
+          <div class="field"><label class="field-label">Open Command Menu <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkMain" tabindex="0" aria-label="Record Open Command Menu shortcut"><input type="hidden" id="hkMain" value="`"><span class="key-display">Backtick</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Open Command Menu AHK syntax" spellcheck="false"></div></div>
+          <div class="field"><label class="field-label">Reload AhkLLM <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkReload" tabindex="0" aria-label="Record Reload AhkLLM shortcut"><input type="hidden" id="hkReload" value="~^!r"><span class="key-display">Ctrl + Alt + R</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Reload AhkLLM AHK syntax" spellcheck="false"></div></div>
+          <div class="field"><label class="field-label">Close Active Window <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkCloseWindows" tabindex="0" aria-label="Record Close Active Window shortcut"><input type="hidden" id="hkCloseWindows" value="~^w"><span class="key-display">Ctrl + W</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Close Active Window AHK syntax" spellcheck="false"></div></div>
+          <div class="field"><label class="field-label">Suspend / Resume <span class="hint">leave empty to disable</span></label><div class="key-capture" data-hotkey-input="hkSuspend" tabindex="0" aria-label="Record Suspend or Resume shortcut"><input type="hidden" id="hkSuspend" value="CapsLock & `"><span class="key-display">Caps Lock + Backtick</span><span class="status">click to record</span><button type="button" class="key-manual-toggle">AHK</button><input type="text" class="key-manual-input" aria-label="Suspend or Resume AHK syntax" spellcheck="false"></div></div>
         </div>
         <div class="settings-field-hint">Escape cancels shortcut recording. Escape still cancels an in-progress LLM stream elsewhere in the app.</div>
+        <hr class="divider">
+        <div class="settings-group-title">Command Menu</div>
+        <div class="settings-field-hint-top">These are single keys used after the command menu is open. Commands define their own Menu Key and Direct Key in the Commands tab.</div>
+        <div class="field settings-mb-0 settings-mt-12">
+          <label class="field-label">Open Chat Menu Key <span class="hint">default: 1. Clear this field to remove Open Chat from the command menu</span></label>
+          <input class="settings-w-60" type="text" id="chatShortcut" maxlength="1" placeholder="1">
+          <div class="settings-field-hint">Takes effect after Save Changes.</div>
+        </div>
       </div></div>
       <div class="section-card" id="sec-menu" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="list"></i> Menu Items — Quick Access & Tray Menu</div><div class="section-card-body">
         <div class="settings-field-group-title">Quick Access Menu</div>
@@ -295,9 +300,9 @@
           <div class="commands-list"><div class="commands-list-header">All Commands <span class="tt settings-fw-400" data-tip="Drag items or use ?? arrows to reorder. Order affects how commands appear in the menu.">?</span><button class="btn-sm" id="addCommandBtn">+ New</button></div><div class="commands-list-body" id="commandsListBody"></div></div>
           <div class="command-detail" id="cmdDetail">
             <div class="settings-title-label"><input class="settings-title-input" type="text" id="cmdDetailTitle" value="" placeholder="Command Title"></div>
-            <div class="grid-2"><div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask DeepSeek V4 Flash"></div>
-            <div class="field"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input class="settings-w-80" type="text" id="cmdMenuShortcut" placeholder="e.g. 2 or a" maxlength="1"><div class="settings-field-hint">Shows as: <code class="settings-code-inline" id="cmdMenuTextPreview"></code></div></div></div>
-            <div class="field"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input class="settings-w-80" type="text" id="cmdDirectShortcut" placeholder="e.g. 1 or a" maxlength="1"></div>
+            <div class="grid-2"><div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the command menu for this command.">?</span></label><input type="text" id="cmdMenuLabel" placeholder="Quick Ask DeepSeek V4 Flash"></div>
+            <div class="field"><label class="field-label">Menu Key <span class="tt" data-tip="With the command menu open, press this key. Use any letter or digit.">?</span></label><input class="settings-w-80" type="text" id="cmdMenuShortcut" placeholder="e.g. 2 or a" maxlength="1"><div class="settings-field-hint">Shows as: <code class="settings-code-inline" id="cmdMenuTextPreview"></code></div></div></div>
+            <div class="field"><label class="field-label">Direct Key <span class="tt" data-tip="For tagged commands, this key runs the command directly from the command menu without opening its submenu. Only useful with tags.">?</span></label><input class="settings-w-80" type="text" id="cmdDirectShortcut" placeholder="e.g. 1 or a" maxlength="1"></div>
             <div class="field"><label class="field-label">API Model <span class="tt" data-tip="Select the model for this command from the available models, or Default for the chat default model.">?</span></label><select id="cmdApiModel"><option value="">Default</option></select></div>
             <div class="grid-2"><div class="field"><label class="field-label">Paste Mode <span class="tt" data-tip="chat = show in chat window. replace = overwrite selection. append = after cursor.">?</span></label><select id="cmdPasteMode"><option>chat</option><option>replace</option><option>append</option></select></div>
             <div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0–2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div></div>
@@ -306,7 +311,7 @@
             <div class="toggle-row"><div><div class="lbl">Stream Response <span class="tt" data-tip="Real-time token-by-token output. Requires pasteMode: chat.">?</span></div></div><div class="switch" id="cmdStream"><div class="knob"></div></div></div>
             <div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, all prompt fields above are ignored. FIM Fill (replace) fills gap. FIM Continue (append) continues from cursor.">?</span></div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>
             <div class="field settings-mt-12"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers. Level defaults to medium.">?</span></label><div class="field-row"><select class="settings-flex-1" id="cmdThinkingType"><option>disabled</option><option>enabled</option></select><select class="settings-flex-1" id="cmdThinkingLevel"><option value="">Default level</option><option>low</option><option>medium</option><option>high</option></select></div></div>
-            <div class="field"><label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label><div class="settings-tag-list" id="cmdTags"></div><button class="btn-sm settings-mt-4" id="addCmdTagBtn">+ Add Tag</button></div>
+            <div class="field"><label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the command menu.">?</span></label><div class="settings-tag-list" id="cmdTags"></div><button class="btn-sm settings-mt-4" id="addCmdTagBtn">+ Add Tag</button></div>
             <div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>
             <div class="advanced-wrap settings-card-outline">
               <div class="advanced-toggle settings-advanced-toggle"><span>Advanced</span><span class="settings-text-tertiary">▾</span></div>
@@ -534,9 +539,9 @@
       <div class="settings-code-block">
         <div class="settings-label-strong">What are commands?</div>
         <div class="settings-text-secondary">
-          Commands appear in the <strong>backtick menu</strong> — press the backtick key (<code>`</code>) to open it.
+          Commands appear in the <strong>command menu</strong>. Open it with the shortcut configured in <strong>Settings &gt; Shortcuts</strong>.
           Each command sends selected text (or your input) to an LLM model and returns the response.
-          You can group commands into submenus with tags, assign keyboard shortcuts, and customize every aspect of how they work.
+          You can group commands into submenus with tags, assign menu keys, and customize every aspect of how they work.
           The app ships with several built-in commands — you can edit, delete, or create your own.
         </div>
       </div>
@@ -544,7 +549,7 @@
       <div>
         <div class="settings-subtitle">Required Fields</div>
         <div class="settings-doc-row"><code class="settings-code-ref">commandName</code> — Internal identifier, not shown to the user.</div>
-        <div class="settings-doc-row"><code class="settings-code-ref">menuText</code> — Label in the backtick menu. <code>&</code> sets an accelerator key (e.g. <code>&1 - My Command</code> lets user press 1).</div>
+        <div class="settings-doc-row"><code class="settings-code-ref">menuText</code>: Label in the command menu. <code>&</code> sets its menu key (for example, <code>&1 - My Command</code> lets the user press 1).</div>
         <div><code class="settings-code-ref">APIModels</code> — Model to use. Supports <code>provider/model</code> (e.g. <code>openai/gpt-4o</code>) or short name (e.g. <code>deepseek-v4-flash</code>).</div>
       </div>
 
@@ -592,7 +597,7 @@
       <div>
         <div class="settings-subtitle">Menu Organization</div>
         <div class="settings-doc-row"><code class="settings-code-ref">tags</code> — Array of submenu names. Each tag creates a submenu containing all commands with that tag.</div>
-        <div><code class="settings-code-ref">directAccelerator</code> — Keyboard shortcut for commands inside tagged submenus. Press backtick then the key (e.g. <code>&r</code>) to fire directly. Only useful with tags.</div>
+        <div><code class="settings-code-ref">directAccelerator</code>: Direct menu key for commands inside tagged submenus. After opening the command menu, press the key (e.g. <code>&r</code>) to fire directly. Only useful with tags.</div>
       </div>
 
     </div>

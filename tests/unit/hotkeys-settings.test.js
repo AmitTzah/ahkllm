@@ -75,23 +75,24 @@ function keyEvent(key, code, mods) {
     return Object.assign({ key, code: code || '', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, preventDefault() {}, stopPropagation() {} }, mods || {});
 }
 
-describe('Hotkeys settings section', () => {
-    it('load populates all hotkey fields and skips undefined values', () => {
-        const els = { hkMain: makeEl(), hkReload: makeEl(), hkCloseWindows: makeEl(), hkSuspend: makeEl() };
+describe('Shortcuts settings section', () => {
+    it('load populates global shortcuts and the Open Chat menu key', () => {
+        const els = { hkMain: makeEl(), hkReload: makeEl(), hkCloseWindows: makeEl(), hkSuspend: makeEl(), chatShortcut: makeEl() };
         const ctx = loadSection({ els });
-        ctx.module.load({ hotkeys: { main: '!m', reload: '^r', closeWindows: '^w' } });
+        ctx.module.load({ hotkeys: { main: '!m', reload: '^r', closeWindows: '^w' }, chatShortcut: '9' });
         assert.strictEqual(els.hkMain.value, '!m');
         assert.strictEqual(els.hkReload.value, '^r');
         assert.strictEqual(els.hkCloseWindows.value, '^w');
         assert.strictEqual(els.hkSuspend.value, '');
+        assert.strictEqual(els.chatShortcut.value, '9');
     });
 
-    it('save returns all four raw AHK hotkeys with empty fallback', () => {
-        const els = { hkMain: makeEl({ value: '!m' }), hkReload: makeEl({ value: '~^!r' }), hkCloseWindows: makeEl({ value: '~^w' }), hkSuspend: makeEl({ value: 'CapsLock & `' }) };
+    it('save returns global shortcuts plus the Open Chat menu key', () => {
+        const els = { hkMain: makeEl({ value: '!m' }), hkReload: makeEl({ value: '~^!r' }), hkCloseWindows: makeEl({ value: '~^w' }), hkSuspend: makeEl({ value: 'CapsLock & `' }), chatShortcut: makeEl({ value: '9' }) };
         const ctx = loadSection({ els });
-        assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.module.save())), { hotkeys: { main: '!m', reload: '~^!r', closeWindows: '~^w', suspend: 'CapsLock & `' } });
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.module.save())), { hotkeys: { main: '!m', reload: '~^!r', closeWindows: '~^w', suspend: 'CapsLock & `' }, chatShortcut: '9' });
         const empty = loadSection({});
-        assert.deepStrictEqual(JSON.parse(JSON.stringify(empty.module.save())), { hotkeys: { main: '', reload: '', closeWindows: '', suspend: '' } });
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(empty.module.save())), { hotkeys: { main: '', reload: '', closeWindows: '', suspend: '' }, chatShortcut: '' });
     });
 
     it('formats AHK syntax as readable shortcut labels', () => {

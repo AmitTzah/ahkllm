@@ -192,13 +192,13 @@
   function _identityCardHTML() {
     return '<div class="cmd-card">' +
       '<div class="cmd-card-header">Identity</div>' +
-      '<div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the backtick menu for this command.">?</span></label><input class="settings-max-w-400" type="text" id="cmdMenuLabel" placeholder="Quick Ask"></div>' +
+      '<div class="field"><label class="field-label">Menu Label <span class="tt" data-tip="The text shown in the command menu for this command.">?</span></label><input class="settings-max-w-400" type="text" id="cmdMenuLabel" placeholder="Quick Ask"></div>' +
       '<div class="settings-flex-row-24">' +
-        '<div class="field settings-mb-0"><label class="field-label">Menu Shortcut <span class="tt" data-tip="Press backtick then this key. Use any letter or digit.">?</span></label><input class="settings-w-70" type="text" id="cmdMenuShortcut" placeholder="e.g. 2" maxlength="1"></div>' +
-        '<div class="field settings-mb-0"><label class="field-label">Direct Shortcut <span class="tt" data-tip="For commands inside tagged submenus. Press backtick then this key to fire directly without navigating the submenu. Only useful with tags.">?</span></label><input class="settings-w-70" type="text" id="cmdDirectShortcut" placeholder="e.g. 1" maxlength="1"></div>' +
+        '<div class="field settings-mb-0"><label class="field-label">Menu Key <span class="tt" data-tip="With the command menu open, press this key. Use any letter or digit.">?</span></label><input class="settings-w-70" type="text" id="cmdMenuShortcut" placeholder="e.g. 2" maxlength="1"></div>' +
+        '<div class="field settings-mb-0"><label class="field-label">Direct Key <span class="tt" data-tip="For tagged commands, this key runs the command directly from the command menu without opening its submenu. Only useful with tags.">?</span></label><input class="settings-w-70" type="text" id="cmdDirectShortcut" placeholder="e.g. 1" maxlength="1"></div>' +
       '</div>' +
       '<div class="field settings-mb-0 settings-mt-8">' +
-        '<label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the backtick menu.">?</span></label>' +
+        '<label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the command menu.">?</span></label>' +
         '<div class="settings-tag-list" id="cmdTags"></div>' +
         '<button class="btn-sm settings-mt-4" id="addCmdTagBtn">+ Add Tag</button>' +
       '</div>' +

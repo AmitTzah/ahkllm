@@ -29,7 +29,21 @@
           td.appendChild(sel); tr.appendChild(td);
         } else {
           var inp = document.createElement('input');
-          inp.value = item[f] || ''; inp.addEventListener('input', S.markDirty);
+          var rawValue = item[f] || '';
+          if (tbodyId === 'trayTableBody' && f === 'menuText' && rawValue.indexOf('&') >= 0) {
+            // AHK uses & inside menu labels to mark keyboard accelerators. Keep
+            // that syntax in settings, but don't leak it into the editable UI.
+            inp.value = rawValue.replace(/&(?=.)/g, '');
+            inp._rawMenuText = rawValue;
+            inp._displayMenuText = inp.value;
+          } else {
+            inp.value = rawValue;
+          }
+          inp.addEventListener('input', function() {
+            inp._rawMenuText = undefined;
+            inp._displayMenuText = undefined;
+            S.markDirty();
+          });
           td.appendChild(inp); tr.appendChild(td);
         }
       });
@@ -45,7 +59,15 @@
     tbody.querySelectorAll('tr').forEach(function(tr) {
       var item = {};
       var inputs = tr.querySelectorAll('input, select');
-      inputs.forEach(function(inp, i) { if (i < fields.length) item[fields[i]] = inp.value; });
+      inputs.forEach(function(inp, i) {
+        if (i >= fields.length) return;
+        var value = inp.value;
+        if (tbodyId === 'trayTableBody' && fields[i] === 'menuText' &&
+            inp._rawMenuText !== undefined && value === inp._displayMenuText) {
+          value = inp._rawMenuText;
+        }
+        item[fields[i]] = value;
+      });
       result.push(item);
     });
     return result;
