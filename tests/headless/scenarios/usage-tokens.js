@@ -1,4 +1,4 @@
-﻿// scenarios/usage-tokens.js - Usage dashboards and token/cost accounting
+// scenarios/usage-tokens.js - Usage dashboards and token/cost accounting
 //
 // Part of the headless E2E suite (entry: ../e2e-suite.js). Scenarios launch
 // the REAL app against an isolated profile and drive it via WebView2 CDP +
@@ -14,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 const vm = require('node:vm');
 const launcher = require('../launch');
 const seed = require('../seed');
-const { sleep, showChat, sendChatMessage, waitStreamingIdle } = require('./helpers');
+const { sleep, showChat, openSettings, openSection, sendChatMessage, waitStreamingIdle } = require('./helpers');
 
 const scenarios = [];
 
@@ -1199,6 +1199,47 @@ scenarios.push({
     return 'source thread (1 real API call 12/9/4 + 1 local copy): cumulative=' + srcIn + '/' + srcOut + '/' + srcCk +
       '; fork has ' + copyFlags + ' is_local_copy row(s) and cumulative=' + forkIn + '/' + forkOut + '/' + forkCk +
       ' - the fork preserves the local-copy flag, so its header agrees with the source and the dashboard';
+  }
+});
+
+scenarios.push({
+  id: 267,
+  name: 'Quick Access > Usage Dashboard replaces open Commands Settings without side-by-side layout',
+  mode: null,
+  regression: true,
+  settings: {},
+  async body({ cdp }) {
+    await showChat();
+    await openSettings(cdp);
+    await openSection(cdp, 'commands');
+
+    // This is the same JS entry point reached by the showDashboard IPC sent
+    // from Quick Access. Previously it only showed the dashboard panel; the
+    // settings nav/center remained visible and squeezed Commands to the side.
+    await cdp.eval('window._showDashboard(); true');
+    await cdp.waitFor(
+      'document.getElementById("dashboard-panel").style.display === "flex" && ' +
+      'document.getElementById("settingsNav").style.display === "none" && ' +
+      'document.getElementById("settingsCenter").style.display === "none"',
+      10000, 100, 'dashboard replaces settings'
+    );
+
+    const state = await cdp.eval(`(() => ({
+      dashboard: document.getElementById('dashboard-panel').style.display,
+      chat: document.getElementById('chat-layout').style.display,
+      settingsNav: document.getElementById('settingsNav').style.display,
+      settingsCenter: document.getElementById('settingsCenter').style.display,
+      railLeft: document.getElementById('railLeft').style.display,
+      dashboardActive: document.getElementById('dashboard-icon').classList.contains('active'),
+      settingsActive: document.getElementById('settings-icon').classList.contains('active')
+    }))()`);
+
+    if (!(state.dashboard === 'flex' && state.chat === 'none' &&
+          state.settingsNav === 'none' && state.settingsCenter === 'none' &&
+          state.railLeft !== 'none' && state.dashboardActive && !state.settingsActive)) {
+      throw new Error('dashboard/settings navigation state is mixed: ' + JSON.stringify(state));
+    }
+    return 'Quick Access dashboard replaced Commands Settings cleanly: settings hidden, left rail restored, dashboard active';
   }
 });
 

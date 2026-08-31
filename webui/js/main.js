@@ -288,7 +288,14 @@ document.addEventListener('DOMContentLoaded', function () {
     var di = document.getElementById('dashboard-icon'); if (di) di.classList.remove('active');
     var st = document.getElementById('sidebar-toggle'); if (st) st.classList.add('active');
   }
-  window._showDashboard = showDashboard;
+  // Quick Access/IPC bypasses the dashboard rail click handler. Export the
+  // full navigation transition so Settings is never left mounted beside it.
+  window._showDashboard = function() {
+    confirmDiscardSettings(function() {
+      hideSettings();
+      showDashboard();
+    });
+  };
   window._showChat = showChat;
 
   // Settings show/hide — settingsNav replaces railLeft, settingsCenter replaces
