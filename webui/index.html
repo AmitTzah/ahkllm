@@ -312,7 +312,7 @@
             <div class="toggle-row"><div><div class="lbl">FIM Mode <span class="tt" data-tip="Uses DeepSeek FIM beta endpoint. When on, all prompt fields above are ignored. FIM Fill (replace) fills gap. FIM Continue (append) continues from cursor.">?</span></div></div><div class="switch" id="cmdFim"><div class="knob"></div></div></div>
             <div class="field settings-mt-12"><label class="field-label">Thinking <span class="tt" data-tip="{ type: enabled|disabled, level?: low|medium|high|xhigh }. Enabled works across providers. Level defaults to medium.">?</span></label><div class="field-row"><select class="settings-flex-1" id="cmdThinkingType"><option>disabled</option><option>enabled</option></select><select class="settings-flex-1" id="cmdThinkingLevel"><option value="">Default level</option><option>low</option><option>medium</option><option>high</option></select></div></div>
             <div class="field"><label class="field-label">Tags <span class="tt" data-tip="Array of submenu names. Each tag creates a grouped submenu in the command menu.">?</span></label><div class="settings-tag-list" id="cmdTags"></div><button class="btn-sm settings-mt-4" id="addCmdTagBtn">+ Add Tag</button></div>
-            <div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>
+            <div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum length of the generated response. Does not affect the prefix/suffix context sent to the model. Leave blank for the default; FIM uses a 4000-token limit.">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>
             <div class="advanced-wrap settings-card-outline">
               <div class="advanced-toggle settings-advanced-toggle"><span>Advanced</span><span class="settings-text-tertiary">▾</span></div>
               <div class="advanced-body settings-modal-foot">
@@ -325,7 +325,7 @@
                   <div class="field"><label class="field-label">Stop Sequences <span class="tt" data-tip="Array of strings that stop generation. e.g. \n\n. Leave empty for none.">?</span></label><input type="text" id="cmdStop" placeholder='e.g. ["\n\n"]'></div>
                 </div>
                 <div class="grid-2">
-                  <div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>
+                  <div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Maximum surrounding input context sent to the model. 0 = entire document. FIM Fill splits the limit between text before and after the cursor; FIM Continue applies it before the cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>
                   <div class="field"><label class="toggle-row settings-mt-8"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label></div>
                 </div>
               </div>

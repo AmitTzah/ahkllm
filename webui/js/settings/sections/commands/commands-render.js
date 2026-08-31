@@ -214,7 +214,7 @@
         '<div class="field"><label class="field-label">Temperature <span class="tt" data-tip="0-2. Higher = more creative. Leave empty for model default.">?</span></label><input type="text" id="cmdTemperature" placeholder="Model default"></div>' +
       '</div>' +
       '<div class="grid-2">' +
-        '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum tokens in the response. Leave empty for API default. FIM commands should set explicitly (default: 4000).">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>' +
+        '<div class="field"><label class="field-label">Max Tokens <span class="tt" data-tip="Maximum length of the generated response. Does not affect the prefix/suffix context sent to the model. Leave blank for the default; FIM uses a 4000-token limit.">?</span></label><input type="number" id="cmdMaxTokens" placeholder="Model default"></div>' +
         '<div class="field"><label class="field-label">Thinking <span class="tt" data-tip="Model Default sends no thinking config. Pick None to explicitly disable thinking when supported, or choose a level to enable it.">?</span></label><select class="settings-flex-1" id="cmdThinking"></select></div>' +
       '</div>' +
     '</div>';
@@ -257,7 +257,7 @@
           '<div class="field"><label class="field-label">Stop Sequences <span class="tt" data-tip="Array of strings that stop generation. e.g. \\n\\n. Leave empty for none.">?</span></label><input type="text" id="cmdStop" placeholder=\'e.g. ["\n\n\"]\'></div>' +
         '</div>' +
         '<div class="grid-2 settings-mb-0">' +
-          '<div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Max words of surrounding context sent to API. 0 = no limit. FIM Fill splits above/below cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>' +
+          '<div class="field"><label class="field-label">Max Context Words <span class="tt" data-tip="Maximum surrounding input context sent to the model. 0 = entire document. FIM Fill splits the limit between text before and after the cursor; FIM Continue applies it before the cursor.">?</span></label><input type="number" id="cmdMaxContextWords" placeholder="0 = no limit"></div>' +
           '<div class="field settings-mb-0">' +
             '<label class="toggle-row settings-pt-8"><span class="lbl">Expand Newlines <span class="tt" data-tip="Expands single newlines to double (standard LLM paragraph break). Useful for FIM and prose.">?</span></span><div class="switch" id="cmdExpandNewlines"><div class="knob"></div></div></label>' +
           '</div>' +

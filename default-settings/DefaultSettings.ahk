@@ -340,7 +340,6 @@ commands := [
         expandNewlines: true,
         temperature: 1,
         stop: ["\n"],
-        maxTokens: 300,
         directAccelerator: "&3",
         tags: ["&Text manipulation"],
 
@@ -354,7 +353,6 @@ commands := [
         pasteMode: "replace",
         isFIM: true,
         expandNewlines: true,
-        maxTokens: 300,
         directAccelerator: "&4",
 
         tags: ["&Text manipulation"],
