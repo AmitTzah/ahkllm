@@ -359,6 +359,15 @@ describe('global Escape handler', () => {
         assert.strictEqual(JSON.parse(ctx._postedMessages[0]).action, 'cancelStream');
     });
 
+    it('cancels when streamState is active even if isLoading is temporarily false', () => {
+        const ctx = loadModule();
+        ctx.isLoading = false;
+        ctx.streamState.active = true;
+        ctx.document._docListeners.keydown({ key: 'Escape' });
+        assert.strictEqual(ctx._postedMessages.length, 1);
+        assert.strictEqual(JSON.parse(ctx._postedMessages[0]).action, 'cancelStream');
+    });
+
     it('does nothing when not streaming (Escape must not hide the window)', () => {
         const ctx = loadModule();
         ctx.isLoading = false;

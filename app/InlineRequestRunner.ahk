@@ -20,6 +20,7 @@ class InlineRequestRunner {
         ; commands share temp-file names and the getActiveModels() entry - a
         ; UUID keeps each request's files and loading entry unique.
         uniqueID := ChatDB._UUID()
+        cancelState := { cancelOnEscape: true, cancelRequested: false, cancelled: false, pid: 0 }
 
         files := InlineRequestRunner._BuildAndWriteRequest(commandName, fullAPIModelName, singleAPIModelName, captured, isFIM, systemMessage, temperature, maxTokens, stop, stream, thinking, thinkingLevel, uniqueID)
 
@@ -37,10 +38,12 @@ class InlineRequestRunner {
         updateLoadingUI("Update")
 
         ; Execute cURL and parse response
-        result := InlineRequestRunner._ExecuteCurlAndParse(files, isFIM)
+        result := InlineRequestRunner._ExecuteCurlAndParse(files, isFIM, cancelState)
 
         ; Paste result if successful
-        if result.success {
+        if result.cancelled {
+            InlineRequestRunner._LogInlineCancellation(result, files, commandName, providerName, singleAPIModelName, isFIM, pasteMode)
+        } else if result.success {
             InlineRequestRunner._PasteAndLogResponse(result, captured, isFIM, pasteMode, commandName, providerName, singleAPIModelName, files)
         } else {
             ; Bug (inline silent failure): a failed inline request used to
@@ -107,13 +110,15 @@ class InlineRequestRunner {
     ; Execute cURL synchronously and parse the response.
     ; Uses ResponseParser directly (no more llmClient passthroughs).
     ; Returns { success: true/false, response: parsedResponse, rawJSON: rawResponseText }
-    static _ExecuteCurlAndParse(files, isFIM) {
+    static _ExecuteCurlAndParse(files, isFIM, cancelState := "") {
         requestStartTime := A_TickCount
         cURLCommand := FileOpen(files.curlFile, "r", "UTF-8-RAW").Read()
-        JSONResponseFromLLM := CurlExecutor.Run(cURLCommand, files.outputFile)
+        ; Poll quickly enough that a normal Escape tap is not missed.
+        JSONResponseFromLLM := CurlExecutor.Run(cURLCommand, files.outputFile, 25, cancelState)
+        wasCancelled := IsObject(cancelState) && cancelState.HasOwnProp("cancelled") && cancelState.cancelled
 
         responseFromLLM := ""
-        if JSONResponseFromLLM != "" {
+        if !wasCancelled && JSONResponseFromLLM != "" {
             try {
                 if isFIM
                     responseFromLLM := ResponseParser.ParseFIMResponse(jsongo.Parse(JSONResponseFromLLM))
@@ -125,7 +130,8 @@ class InlineRequestRunner {
         }
 
         return {
-            success: IsObject(responseFromLLM) && responseFromLLM.HasProp("response"),
+            success: !wasCancelled && IsObject(responseFromLLM) && responseFromLLM.HasProp("response"),
+            cancelled: wasCancelled,
             response: responseFromLLM,
             rawJSON: JSONResponseFromLLM,
             responseTimeMs: A_TickCount - requestStartTime
@@ -201,6 +207,24 @@ class InlineRequestRunner {
         FileDelete(files.curlFile)
         safeDelete(files.outputFile)
         safeDelete(files.errorFile)
+    }
+
+    ; Cancellation is a normal user action, not a request failure. Record it in
+    ; the API log without showing the failure tooltip or pasting partial output.
+    static _LogInlineCancellation(result, files, commandName, providerName, singleAPIModelName, isFIM, pasteMode) {
+        ApiLogger.LogRequest({
+            timestamp: FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+            commandName: commandName,
+            provider: providerName,
+            model: singleAPIModelName,
+            isFIM: isFIM,
+            endpoint: files.endpoint,
+            pasteMode: pasteMode,
+            request: files.requestJSON,
+            response: result.rawJSON ? result.rawJSON : '{"error":{"message":"Cancelled by user"}}',
+            status: "cancelled",
+            responseTimeMs: result.responseTimeMs
+        })
     }
 
     ; Surface a failed inline request: read the cURL stderr for a message,

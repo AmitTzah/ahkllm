@@ -84,6 +84,40 @@ class InlineRequestRunnerTest {
             throw Error("Run must surface failed inline requests via _HandleInlineError")
     }
 
+    ; Regression: the loading tooltip promises "Press ESC to cancel" for
+    ; inline replace/append/FIM commands. Those commands run synchronously in
+    ; Main and previously had no Escape handling at all, so whether ESC worked
+    ; depended on the command using chat mode instead.
+    InlineRun_PollsEscapeAndTreatsCancelSeparately() {
+        srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
+        curlPath := A_ScriptDir "\..\api\CurlExecutor.ahk"
+        src := FileRead(srcPath)
+        curlSrc := FileRead(curlPath)
+
+        executePos := InStr(src, 'static _ExecuteCurlAndParse(files, isFIM, cancelState := "")')
+        if !executePos
+            throw Error("inline executor must accept cancellation state")
+        executeBlock := SubStr(src, executePos, 2200)
+        if !InStr(executeBlock, "CurlExecutor.Run(cURLCommand, files.outputFile, 25, cancelState)")
+            throw Error("inline commands must poll cancellation frequently enough to catch a normal Escape tap")
+
+        runBlock := SubStr(src, InStr(src, "static Run(commandName"), 4200)
+        cancelPos := InStr(runBlock, "if result.cancelled")
+        successPos := InStr(runBlock, "else if result.success")
+        errorPos := InStr(runBlock, "_HandleInlineError(")
+        if !cancelPos || !successPos || !errorPos || !(cancelPos < successPos && successPos < errorPos)
+            throw Error("cancelled inline requests must bypass both paste and failure handling")
+        if !InStr(src, 'status: "cancelled"')
+            throw Error("inline cancellation should be logged as cancelled, not error")
+
+        if !InStr(curlSrc, 'GetKeyState("Esc", "P")')
+            throw Error("CurlExecutor must observe the physical Escape key for global inline cancellation")
+        if !InStr(curlSrc, "taskkill /PID") || !InStr(curlSrc, "/T /F")
+            throw Error("inline cancellation must terminate the cmd+cURL process tree")
+        if !InStr(curlSrc, "cancelState.cancelled := true")
+            throw Error("CurlExecutor must report cancellation back to InlineRequestRunner")
+    }
+
     FIMWithoutEndpoint_IsRejectedBeforeCurl() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         src := FileRead(srcPath)

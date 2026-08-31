@@ -201,7 +201,8 @@ document.addEventListener('keydown', function(e) {
   }
 
   // Streaming -- cancel it
-  if (typeof isLoading !== 'undefined' && isLoading) {
+  var streamActive = typeof streamState !== 'undefined' && streamState && streamState.active;
+  if ((typeof isLoading !== 'undefined' && isLoading) || streamActive) {
     Ipc.postToHost('cancelStream');
     return;
   }
