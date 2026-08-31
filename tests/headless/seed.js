@@ -44,6 +44,9 @@ function writeSettings(dir, overrides, endpoint) {
   const base = {
     providers: defaultProviders(endpoint),
     threadTitles: { enabled: true, model: 'deepseek/deepseek-v4-flash', prompt: 'Generate a short title.', maxTokens: 50 },
+    // Headless runs never inject hotkeys, and disabling the defaults prevents
+    // parallel workers from reacting to the user's real keyboard input.
+    hotkeys: { main: '', reload: '', closeWindows: '', suspend: '' },
     trash: { retentionDays: 30 },
     menuItems: { quickAccess: [{ menuText: '&7 - Usage Dashboard', command: 'usage:' }], tray: [] }
   };

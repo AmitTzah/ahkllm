@@ -29,7 +29,8 @@ Log(m) {
     global logLines
     logLines.Push(m)
 }
-SetTimer(ExitProbe, -15000)
+watchdogMs := EnvGet("AHKLLM_E2E_WORKER") != "" ? 60000 : 15000
+SetTimer(ExitProbe, -watchdogMs)
 ExitProbe(*) {
     Log("WATCHDOG fired")
     Finish()

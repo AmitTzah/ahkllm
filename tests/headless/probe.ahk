@@ -43,12 +43,28 @@ ChatHwnd() {
     ; teardown; if several are alive, prefer the most recently started one
     ; (highest PID) so probes never inspect a zombie window from a previous run.
     chatPid := 0
-    for h in WinGetList("ahk_class AutoHotkey") {
-        t := WinGetTitle("ahk_id " h)
-        if InStr(t, "ChatWindow.ahk") {
-            pid := WinGetPID("ahk_id " h)
-            if pid > chatPid
-                chatPid := pid
+    ; Prefer process enumeration: the harness may run on a different desktop,
+    ; where the ChatWindow's hidden script window is not visible to WinGetList.
+    ; The command line marker still keeps this worker separate from siblings.
+    for proc in ProcessList() {
+        if !InStr(proc["exe"], "AutoHotkey64.exe")
+            continue
+        cmd := ProcessCmdLine(proc["pid"])
+        if !InStr(cmd, "\ChatWindow.ahk`"") || !IsCurrentWorkerProcess(proc["pid"])
+            continue
+        if proc["pid"] > chatPid
+            chatPid := proc["pid"]
+    }
+    ; Fallback for the normal interactive desktop, where the script window is
+    ; visible even when process command-line access is unavailable.
+    if !chatPid {
+        for h in WinGetList("ahk_class AutoHotkey") {
+            t := WinGetTitle("ahk_id " h)
+            if InStr(t, "ChatWindow.ahk") {
+                pid := WinGetPID("ahk_id " h)
+                if IsCurrentWorkerProcess(pid) && pid > chatPid
+                    chatPid := pid
+            }
         }
     }
     if !chatPid
@@ -61,6 +77,11 @@ ChatHwnd() {
             return h
     }
     return 0
+}
+
+IsCurrentWorkerProcess(pid) {
+    worker := EnvGet("AHKLLM_E2E_WORKER")
+    return worker = "" || InStr(ProcessCmdLine(pid), "--e2e-worker=" worker)
 }
 
 MoveOffscreenNoActivate(hwnd, w := 0, h := 0) {
@@ -146,6 +167,8 @@ AppScriptPids(includeWebView2 := true) {
         cmd := ProcessCmdLine(proc["pid"])
         if !(InStr(cmd, "\Main.ahk`"") || InStr(cmd, "\ChatWindow.ahk`""))
             continue
+        if !IsCurrentWorkerProcess(proc["pid"])
+            continue
         if !HasVal(pids, proc["pid"])
             pids.Push(proc["pid"])
     }
@@ -170,6 +193,8 @@ AppScriptPids(includeWebView2 := true) {
         if !(InStr(t, "\Main.ahk - AutoHotkey") || InStr(t, "\ChatWindow.ahk - AutoHotkey"))
             continue
         pid := WinGetPID("ahk_id " h)
+        if !IsCurrentWorkerProcess(pid)
+            continue
         if !HasVal(pids, pid)
             pids.Push(pid)
     }
@@ -263,7 +288,7 @@ switch command {
         Write(Map("closed", closed, "pids", Join(",", pids)))
 
     case "kill-chat":
-        hwnd := WinExist("ChatWindow.ahk ahk_class AutoHotkey")
+        hwnd := ChatHwnd()
         if hwnd
             WinClose("ahk_id " hwnd)
         Write(Map("closed", hwnd ? 1 : 0))
@@ -271,7 +296,7 @@ switch command {
     case "chat-info":
         hwnd := ChatHwnd()
         title := hwnd ? WinGetTitle("ahk_id " hwnd) : ""
-        chatWin := WinExist("AhkLLM ahk_exe AutoHotkey64.exe") ? 1 : 0
+        chatWin := hwnd ? 1 : 0
         x := "", y := "", w := "", h := ""
         childClass := ""
         if hwnd {
@@ -295,6 +320,8 @@ switch command {
         for h in WinGetList("ahk_class AutoHotkey") {
             t := WinGetTitle("ahk_id " h)
             pid := WinGetPID("ahk_id " h)
+            if !IsCurrentWorkerProcess(pid)
+                continue
             parts.Push("script: " SubStr(t, 1, 50) " pid=" pid)
             ; All top-level windows of that process (any class)
             for w in WinGetList("ahk_pid " pid) {

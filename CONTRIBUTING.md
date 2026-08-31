@@ -32,17 +32,22 @@ If AutoHotkey is not installed at the normal path, set `AHK_EXE` before running 
 
 The E2E suite is a little unusual because it launches and interacts with the real AhkLLM application rather than testing a fake copy of the UI.
 
-Before it does that, the harness temporarily isolates your real `%APPDATA%\AhkLLM` profile and runs the app against a separate test profile. When the run finishes, it restores the real profile.
+The suite never moves, renames, junctions, modifies, or restores your real
+`%APPDATA%\AhkLLM` profile. Each worker receives a guarded explicit data
+directory, its own TEMP/TMP and WebView2 state, and a worker-specific process
+marker. Close the normal app before running the suite so its windows and global
+shortcuts cannot overlap the headless workers.
 
-I've put quite a bit of work into making that process recover safely, including recovery after interrupted runs, and it has worked reliably for me so far. That said, this is still a test harness that temporarily moves your real application profile around. I can't say for sure that every possible Windows/filesystem edge case has been covered.
-
-Please back up any AhkLLM data you care about before running the full E2E suite.
-
-If a run gets killed hard and the profile is not restored automatically, run:
+If a run gets interrupted, run the marker-scoped cleanup command:
 
 ```cmd
 node tests\headless\e2e-suite.js --cleanup
 ```
+
+`--cleanup` stops only marked AhkLLM E2E parents/workers and removes generated
+worker scripts and stale run roots. It does not touch the real profile or use a
+blanket AutoHotkey process kill. Automatic worker selection is capped at 8;
+use `--workers=N` to choose an explicit count.
 
 The full harness documentation is in `tests/headless/README.md`.
 

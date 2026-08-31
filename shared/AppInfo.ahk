@@ -10,5 +10,10 @@ class AppInfo {
     ; Display name used in the window title bar, tray tooltip, and web UI.
     static Name := "AhkLLM"
     ; Root data directory under %APPDATA% (e.g. ...\AppData\Roaming\AhkLLM).
-    static DataDir := A_AppData "\AhkLLM"
+    ; Parallel headless E2E workers use an explicit test-only data root. Both
+    ; variables are required so a stray data-dir environment variable cannot
+    ; redirect a normal AhkLLM launch.
+    static DataDir := (EnvGet("AHKLLM_E2E_WORKER") != "" && EnvGet("AHKLLM_E2E_DATA_DIR") != "")
+        ? EnvGet("AHKLLM_E2E_DATA_DIR")
+        : A_AppData "\AhkLLM"
 }

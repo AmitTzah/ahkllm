@@ -109,7 +109,7 @@ class CustomMessages {
     ; by the automatic timer, without creating a second backup lifecycle.
     static notifyBackupNow(mainScriptHiddenHwnd, backupConfig := "") {
         try {
-            requestPath := A_Temp "\AhkLLM_Backup_Request.json"
+            requestPath := this._BackupRequestPath()
             try FileDelete(requestPath)
             if IsObject(backupConfig) {
                 f := FileOpen(requestPath, "w", "UTF-8")
@@ -124,7 +124,7 @@ class CustomMessages {
     }
 
     static consumeBackupNowConfig() {
-        requestPath := A_Temp "\AhkLLM_Backup_Request.json"
+        requestPath := this._BackupRequestPath()
         if !FileExist(requestPath)
             return ""
         try {
@@ -135,6 +135,16 @@ class CustomMessages {
             try FileDelete(requestPath)
             return ""
         }
+    }
+
+    ; E2E workers share an explicit data root as well as a private TEMP. Keep
+    ; the cross-process backup handoff in that shared worker root so it cannot
+    ; race another worker's request file. Normal production launches retain
+    ; the historical A_Temp location exactly.
+    static _BackupRequestPath() {
+        if EnvGet("AHKLLM_E2E_WORKER") != "" && EnvGet("AHKLLM_E2E_DATA_DIR") != ""
+            return EnvGet("AHKLLM_E2E_DATA_DIR") "\.ahkllm-backup-request.json"
+        return A_Temp "\AhkLLM_Backup_Request.json"
     }
 
     static notifyBackupStatus(chatWindowhWnd) {

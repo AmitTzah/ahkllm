@@ -186,7 +186,7 @@ For the full E2E suite:
 npm run test:e2e
 ```
 
-The E2E harness temporarily isolates your real AhkLLM profile and restores it when the suite finishes. Back up any data you care about before running it anyway. More details are in [`tests/headless/README.md`](tests/headless/README.md).
+The E2E suite never moves or junctions your real AhkLLM profile. Each worker uses a guarded, explicit temporary data directory, plus its own TEMP/TMP and WebView2 state. Close the normal app before running it. Use `--workers=N` for explicit parallelism; automatic runs cap at 8 workers. More details are in [`tests/headless/README.md`](tests/headless/README.md).
 
 The running history of bugs found through that harness is in [`tests/headless/BUG_HUNT_REPORT.md`](tests/headless/BUG_HUNT_REPORT.md). If you want to contribute but have no idea what to work on, that is a pretty good place to point yourself, or your LLM, first.
 

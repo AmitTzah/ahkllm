@@ -409,7 +409,7 @@ async function encodeClip(framesDir, frameCount, fps, outName) {
   return finalPath;
 }
 
-// ---- Full scene: preflight, isolate, seed, mock, launch, viewport, capture ----
+// ---- Full scene: preflight, worker sandbox, seed, mock, launch, viewport, capture ----
 // seedFn(dataDir, endpoint) writes settings + DB. mock is
 // { mode, opts } passed to startMockServer. body({ cdp, cap, viewport }) runs
 // the scene steps; it must stop the capture and encode via encodeClip itself
@@ -417,10 +417,10 @@ async function encodeClip(framesDir, frameCount, fps, outName) {
 // (default 20 min); a hang past it triggers guaranteed cleanup + hard exit.
 async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFAULT_SCENE_TIMEOUT_MS }) {
   // Self-healing sweep: a previous run that hung (or was force-killed) must
-  // not leave orphaned node/app processes or temp dirs behind. Command-line
-  // matched only; the real profile is never touched here. Runs BEFORE the
-  // preflight check so a leftover app from a crashed run is reaped instead of
-  // blocking every subsequent run.
+  // not leave orphaned offscreen Node processes or temp dirs behind. E2E app
+  // processes are cleaned by their worker marker below; this sweep never kills
+  // a normal AhkLLM instance. Runs BEFORE preflight so stale scene artifacts do
+  // not obscure the diagnostic.
   const swept = launcher.sweepOffscreenArtifacts();
   if (swept && swept !== 'nothing to clean up')
     console.log('[' + outName + '] self-healing sweep: ' + swept);
@@ -430,8 +430,8 @@ async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFA
     throw new Error('AhkLLM is still running after the self-healing sweep. Close it, then rerun.');
   }
 
-  console.log('[' + outName + '] isolating profile...');
-  const iso = launcher.isolateProfile();
+  console.log('[' + outName + '] creating worker sandbox...');
+  const worker = launcher.createWorkerContext('offscreen-' + process.pid + '-' + Date.now().toString(36));
   let mainPid = 0;
   let server = null;
   let cdp = null;
@@ -442,7 +442,7 @@ async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFA
   // ONE cleanup path shared by normal completion, scene errors, watchdog
   // timeouts, unhandled rejections and uncaught exceptions: close the CDP
   // socket, kill spawned children, close the mock server (force-dropping
-  // keep-alive SSE connections), teardown the app, restore the real profile.
+  // keep-alive SSE connections), and tear down only this worker's app/artifacts.
   const cleanup = async (reason) => {
     if (cleanedUp) return;
     cleanedUp = true;
@@ -464,10 +464,10 @@ async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFA
         });
       }
     } catch {}
-    launcher.teardown(mainPid);
-    let ok = false;
-    try { ok = launcher.restoreProfile(iso); } catch (e) { console.error('[' + outName + '] restoreProfile error: ' + e.message); }
-    console.log('Real profile restored:', ok ? 'yes' : 'FAILED');
+    const processOk = launcher.teardownWorker(mainPid, worker.workerId);
+    const artifactOk = launcher.disposeWorkerContext(worker);
+    if (!processOk || !artifactOk)
+      console.error('[' + outName + '] worker cleanup incomplete');
   };
 
   // Hard per-scene watchdog: if anything keeps the event loop alive past
@@ -495,7 +495,7 @@ async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFA
   process.on('uncaughtException', onUncaughtException);
 
   try {
-    launcher.resetDataDir(iso.sandboxData);
+    launcher.resetDataDir(worker.dataDir);
     let endpoint = 'http://127.0.0.1:9';
     if (mock) {
       console.log('[' + outName + '] starting mock server...');
@@ -504,15 +504,15 @@ async function runOffscreenScene({ outName, seedFn, mock, body, timeoutMs = DEFA
       endpoint = 'http://127.0.0.1:' + started.port + '/v1/chat/completions';
     }
     console.log('[' + outName + '] seeding data dir...');
-    seedFn(iso.sandboxData, endpoint);
+    seedFn(worker.dataDir, endpoint);
 
     const port = await launcher.findFreePort();
     console.log('[' + outName + '] launching app (port ' + port + ')...');
-    const launched = launcher.launch({ sandbox: iso.sandboxData, port });
+    const launched = launcher.launch({ sandbox: worker.dataDir, port, workerId: worker.workerId, mainScript: worker.mainScript });
     mainPid = launched.mainPid;
 
     console.log('[' + outName + '] waiting for chat target...');
-    const target = await launcher.waitForChatTarget(port, 60000);
+    const target = await launcher.waitForChatTarget(port, 60000, launched);
     cdp = await CDP.connect(target.webSocketDebuggerUrl);
     runProbe('show-chat');
     await sleep(1500);
@@ -578,7 +578,9 @@ async function runSceneFile(scriptPath, { timeoutMs = DEFAULT_SCENE_TIMEOUT_MS }
       resolve('spawn-error: ' + err.message);
     });
   });
-  // Backstop: a force-killed child never ran its own cleanup, so sweep now.
+  // Backstop: a force-killed child never ran its own cleanup, so reap only
+  // marked E2E workers before sweeping offscreen artifacts.
+  launcher.killAllE2EProcesses();
   const swept = launcher.sweepOffscreenArtifacts();
   try { fs.unlinkSync(scriptPath); } catch {}
   return { outcome, swept };

@@ -46,6 +46,7 @@ attachments/
 
 # Headless test output is regenerated locally and is not a fixture.
 tests/headless/results/
+.ahkllm-e2e-main-*.ahk
 
 # Logs
 *.log

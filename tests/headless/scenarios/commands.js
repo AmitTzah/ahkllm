@@ -289,6 +289,7 @@ scenarios.push({
   id: 221,
   name: 'Two quick chat-mode commands (second triggered while the first is still streaming) - the second _BuildAndFireRequest overwrites the shared requestParams _stream* keys, cURL PID and temp-file paths, so the FIRST command response is never persisted: the first chat is left hanging with only its user message (loses the first chat command)',
   mode: 'sse-slow',
+  mockOpts: { chunkDelay: 2000 },
   regression: true, // FIXED bug #221 kept as a regression check (per-request stream state: both command responses persist)
   fixtures: {
     threads: [
@@ -300,7 +301,7 @@ scenarios.push({
       { id: 'm-221-u1b', thread_id: 't-221-b', role: 'user', content: 'second command request', token_count: 5, active_path_tokens: 5 }
     ]
   },
-  async body({ cdp, dbPath }) {
+  async body({ cdp, dbPath, mockLog }) {
     await sleep(500);
     const focusBefore = runProbe('active-window');
     // Command 1: load thread A and trigger the LLM - mirrors the command path
@@ -310,6 +311,18 @@ scenarios.push({
     await cdp.waitFor('window.activeThreadId === "t-221-a" && chatMessages.length > 0', 10000, 100, 'first command thread loaded');
     runProbe('trigger-llm', ['1']);
     await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 10000, 200, 'first command in flight');
+    const firstRequestDeadline = Date.now() + 30000;
+    for (;;) {
+      let firstRequests = 0;
+      try {
+        firstRequests = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean)
+          .map((line) => JSON.parse(line)).filter((entry) => String(entry.url).includes('/chat/completions')).length;
+      } catch {}
+      if (firstRequests >= 1) break;
+      if (Date.now() > firstRequestDeadline)
+        throw new Error('first command did not reach the mock before the overlap dispatch');
+      await sleep(200);
+    }
     // The first stream is still running (sse-slow delivers chunks over ~3s).
     await sleep(300);
     // Command 2: load thread B and trigger while command 1 is still streaming.
@@ -326,11 +339,22 @@ scenarios.push({
         ' after=' + JSON.stringify(focusAfterDispatch));
     if (Number(windowAfterDispatch.x) > -1000 || Number(windowAfterDispatch.y) > -1000)
       throw new Error('headless command dispatch left the ChatWindow on-screen: ' + JSON.stringify(windowAfterDispatch));
-    await cdp.waitFor('typeof streamState !== "undefined" && streamState.active && isLoading', 10000, 200, 'second command in flight');
+    const requestDeadline = Date.now() + 30000;
+    for (;;) {
+      let chatRequests = 0;
+      try {
+        chatRequests = fs.readFileSync(mockLog, 'utf8').split(/\r?\n/).filter(Boolean)
+          .map((line) => JSON.parse(line)).filter((entry) => String(entry.url).includes('/chat/completions')).length;
+      } catch {}
+      if (chatRequests >= 2) break;
+      if (Date.now() > requestDeadline)
+        throw new Error('second command did not reach the mock while the first was active (requests=' + chatRequests + ')');
+      await sleep(200);
+    }
     // Wait for both persisted responses instead of relying on a fixed sleep.
     // The streams are intentionally concurrent, and machine load can delay
     // the second cURL beyond the old 9-second margin.
-    const settleDeadline = Date.now() + 20000;
+    const settleDeadline = Date.now() + 30000;
     let aAsst = [], bAsst = [];
     while (Date.now() < settleDeadline) {
       try {
@@ -341,7 +365,7 @@ scenarios.push({
         break;
       await sleep(300);
     }
-    await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active && !isLoading', 20000, 300, 'both command streams idle');
+    await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active && !isLoading', 30000, 300, 'both command streams idle');
     const aContent = seed.query(dbPath, "SELECT content FROM messages WHERE thread_id='t-221-a' AND role='assistant'");
     const uiState = await cdp.eval('({ active: streamState.active, loading: isLoading, msgs: chatMessages.length })');
     // FIXED (bug #221): each request owns its own stream state (output file,

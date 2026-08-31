@@ -171,9 +171,9 @@ scenarios.push({
     if (!chatOverlay) throw new Error('customConfirmOverlay did not open');
     if (!overlayMsg.includes('Delete this chat?')) throw new Error('unexpected overlay message: ' + JSON.stringify(overlayMsg));
     await cdp.click('#customConfirmOverlay .yes-confirm-btn');
-    await sleep(600);
+    await cdp.waitFor('window.__posted && window.__posted.some((m) => m.includes("deleteThread"))', 5000, 100, 'deleteThread posted');
+    await sleep(300);
     const posted = await cdp.postedMessages();
-    if (!posted.some((m) => m.includes('deleteThread'))) throw new Error('deleteThread was not posted');
     const alive = seed.query(dbPath, "SELECT id FROM chat_threads WHERE id='t-del-1' AND is_deleted=0").length === 1;
     if (alive) throw new Error('thread survived the delete confirm');
     return 'delete confirm opens the chat overlay with the right message; clicking Delete posts deleteThread and deletes the chat';
@@ -712,7 +712,7 @@ scenarios.push({
     await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 2', 15000, 300, 'thread loaded');
     await sleep(600);
     await cdp.click('#treeBtn');
-    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open") && document.querySelector(".tree-modal-sub") && document.querySelector(".tree-modal-sub").textContent.indexOf("Viewing active path") === 0', 15000, 300, 'tree modal open');
+    await cdp.waitFor('document.getElementById("treeOverlay").classList.contains("open") && document.querySelector(".tree-modal-sub") && document.querySelector(".tree-modal-sub").textContent.indexOf("Viewing active path") === 0 && document.querySelector(".tree-modal-sub").textContent.indexOf("2 node") >= 0', 15000, 300, 'tree modal active-path count');
     const label = await cdp.text('.tree-modal-sub');
     // FIXED (bug #124): renderChatTree counts only the ACTIVE PATH nodes - the
     // active path here has 2 messages, so the label says 2 even though the

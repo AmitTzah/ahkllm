@@ -46,6 +46,12 @@ scenarios.push({
     await showChat();
     await sendChatMessage(cdp, 'hello from bug 16');
     await waitStreamingIdle(cdp);
+    // E2E workers skip the production API Logs prewarm to avoid a second
+    // WebView2 stealing the chat CDP endpoint. Open it through the same lazy
+    // dashboard path a user uses so this scenario still covers the viewer.
+    await cdp.eval('window._showDashboard(); true');
+    await cdp.waitFor('document.getElementById("apiLogsBtn") !== null', 10000, 100, 'usage dashboard');
+    await cdp.click('#apiLogsBtn');
     const t = await launcher.findTarget(port, 'api-logs.html', 30000);
     if (!t) throw new Error('api-logs viewer target not found');
     const logs = await CDP.connect(t.webSocketDebuggerUrl);
@@ -428,14 +434,25 @@ scenarios.push({
     await cdp.eval('document.getElementById("chat-input").value=""');
     await cdp.type("#chat-input", "verify usage parse");
     await cdp.click("#chat-send-btn");
+    await cdp.waitFor('typeof isLoading !== "undefined" && isLoading === true', 10000, 100, "stream started");
     await cdp.waitFor('typeof streamState !== "undefined" && !streamState.active', 30000, 300, "stream done");
-    await new Promise(r=>setTimeout(r,800));
-    const msgs=seed.query(dbPath, "SELECT role, token_count, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE thread_id='t-usage-67' ORDER BY created_at");
-    const asst=msgs.filter(m=>m.role==="assistant").pop();
+    // Stream completion and the final DB transaction are separate events. A
+    // fixed post-completion sleep was occasionally too short under parallel
+    // WebView2/AutoHotkey load, so wait for the durable assistant row.
+    const persistDeadline = Date.now() + 15000;
+    let msgs = [];
+    let asst = null;
+    while (Date.now() < persistDeadline) {
+      msgs = seed.query(dbPath, "SELECT role, token_count, thinking_tokens, cached_tokens, active_path_tokens FROM messages WHERE thread_id='t-usage-67' ORDER BY created_at");
+      asst = msgs.filter(m=>m.role==="assistant").pop() || null;
+      if (asst) break;
+      await new Promise(r=>setTimeout(r,100));
+    }
     if(!asst) throw new Error("no assistant: "+JSON.stringify(msgs));
     if(asst.token_count !== 9) throw new Error("assistant token_count wrong: "+JSON.stringify(asst));
     if(asst.cached_tokens !== 4) throw new Error("cached_tokens wrong: "+JSON.stringify(asst));
     if(asst.active_path_tokens !== 21) throw new Error("active_path wrong: "+JSON.stringify(asst));
+    await cdp.waitFor('document.getElementById("tokenBar") && (document.getElementById("tokenBar").innerText.includes("21") || [...document.querySelectorAll("#tokenBar .tu-item")].some((item) => item.title.includes("21")))', 15000, 200, "usage header refresh");
     const barTitles=await cdp.eval('[...document.querySelectorAll("#tokenBar .tu-item")].map(e=>e.title)');
     const barText=await cdp.eval('document.getElementById("tokenBar").innerText');
     const hasContext=barText.includes("21") || barTitles.join(" ").includes("21");
@@ -1656,59 +1673,31 @@ scenarios.push({
     const closeHides = /OnEvent\("Close"[\s\S]{0,80}responseWindow\.Hide\(\)/.test(cw);
     const onExitWired = /OnExit\(closeChatWindow\)/.test(main);
     const gracefulClose = /WinClose\("ahk_pid " chatWindowPID\)/.test(main);
-    const teardownGracefulFirst = /Graceful close FIRST/.test(launch) && /kill-chat/.test(launch);
-    const sweepByMarker = /sweepWebView2Dirs/.test(launch) && /llm-webview2/.test(launch);
+    const teardownGracefulFirst = /function teardownWorker\(mainPid, workerId\)/.test(launch) && /taskkill/.test(launch) && /killE2EWorkerProcesses/.test(launch);
+    const sweepByMarker = /sweepWebView2Dirs/.test(launch) && /llm-webview2/.test(launch) && /llm-webview2-.*worker/.test(launch);
     if (!closeHides || !onExitWired || !gracefulClose || !teardownGracefulFirst || !sweepByMarker)
       throw new Error('teardown contract broken: ' + JSON.stringify({ closeHides, onExitWired, gracefulClose, teardownGracefulFirst, sweepByMarker }));
-    return 'chat-window Close event hides the window (no per-open WebView2 teardown to orphan); Main.OnExit WinCloses ChatWindow before force-kill; the harness closes gracefully first then sweeps every llm-webview2-* user-data folder by marker - and every one of the 170 e2e scenarios already exercises launch + teardown';
+    return 'chat-window Close event hides the window (no per-open WebView2 teardown to orphan); Main.OnExit WinCloses ChatWindow before force-kill; worker teardown force-kills only the owned PID/marker and sweeps the worker WebView2 folder - every real-app E2E scenario exercises launch + teardown';
   }
 });
 
 scenarios.push({
   id: 189,
-  name: 'Harness interrupted-run recovery picks DIFFERENT backups: recoverInterruptedRun restores the LAST llm-profile-bak-* (sorted) while launch.isolateProfile restores the FIRST in readdirSync order - with multiple stale backups the next direct launch can restore an OLD profile',
+  name: 'Headless E2E never swaps the real AhkLLM profile; each worker launches against its own explicit data directory',
   mode: null,
-  regression: true, // FIXED: both recovery paths now restore the newest sorted backup
+  regression: true,
   noApp: true,
   settings: {},
   async body() {
     const suite = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'e2e-suite.js'), 'utf8');
     const launch = fs.readFileSync(path.join(launcher.REPO_ROOT, 'tests', 'headless', 'launch.js'), 'utf8');
-    // FIXED (bug #189): BOTH recovery paths must pick the same (newest)
-    // llm-profile-bak-* - recoverInterruptedRun sorts and takes the last, and
-    // isolateProfile now does the same instead of restoring the first
-    // readdirSync entry.
-    const recoverSorts = /backups\s*=\s*fs\.readdirSync\(os\.tmpdir\(\)\)\.filter\(\(n\) => n\.startsWith\('llm-profile-bak-'\)\)\.sort\(\)/.test(suite);
-    const recoverLast = /backups\[backups\.length - 1\]/.test(suite);
-    // isolateProfile: must sort + take the NEWEST backup (same selection as
-    // recoverInterruptedRun) - the old code restored the first readdirSync
-    // entry, which can be stale.
-    const isolateSorts = /backups\s*=\s*fs\.readdirSync\(tmp\)\.filter\(\(n\) => n\.startsWith\('llm-profile-bak-'\)\)\.sort\(\)/.test(launch);
-    const isolateLast = /backups\[backups\.length - 1\]/.test(launch);
-    const isolateRename = /fs\.renameSync\(bak, REAL_DATA_DIR\)/.test(launch);
-    if (!recoverSorts || !recoverLast || !isolateSorts || !isolateLast || !isolateRename)
-      throw new Error('backup-selection contract not found (fix incomplete): ' + JSON.stringify({ recoverSorts, recoverLast, isolateSorts, isolateLast, isolateRename }));
-    // Evidence that readdirSync order and sorted order can differ (so sorting
-    // actually matters): create three backups in a SAFE temp subdir (never in
-    // the real temp root, so the harness recovery can never pick them up) and
-    // compare the two orders.
-    const demo = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-bak-order-demo-'));
-    for (const n of ['llm-profile-bak-1000', 'llm-profile-bak-3000', 'llm-profile-bak-2000'])
-      fs.mkdirSync(path.join(demo, n));
-    const readdirOrder = fs.readdirSync(demo);
-    const sorted = readdirOrder.slice().sort();
-    const first = readdirOrder[0];
-    const lastSorted = sorted[sorted.length - 1];
-    const differ = first !== lastSorted;
-    try { fs.rmSync(demo, { recursive: true, force: true }); } catch {}
-    // With multiple backups, BOTH paths now restore the NEWEST sorted backup
-    // - readdirSync order may differ from sorted order, but neither path uses
-    // raw readdir order anymore.
-    if (!differ)
-      throw new Error('demo did not show a readdir/sorted divergence (fix assumes sorting matters): first=' + first + ' lastSorted=' + lastSorted);
-    return 'recoverInterruptedRun sorts and takes backups[length-1] (' + lastSorted + '), and isolateProfile now uses the SAME sort+last selection (' +
-      'in a 3-backup demo dir where readdir order is ' + JSON.stringify(readdirOrder) + ' and sorted order is ' + JSON.stringify(sorted) +
-      ') - both recovery paths restore the newest backup, so a directly-launched next run can never restore a stale profile';
+    const appInfo = fs.readFileSync(path.join(launcher.REPO_ROOT, 'shared', 'AppInfo.ahk'), 'utf8');
+    const suiteNeverSwaps = !/isolateProfile\s*\(/.test(suite) && !/restoreProfile\s*\(/.test(suite) && !/llm-profile-bak-/.test(suite);
+    const launchSetsDataDir = /env\.AHKLLM_E2E_DATA_DIR\s*=\s*sandbox/.test(launch);
+    const appUsesDataDir = /EnvGet\("AHKLLM_E2E_DATA_DIR"\)/.test(appInfo) && /EnvGet\("AHKLLM_E2E_WORKER"\)/.test(appInfo);
+    if (!suiteNeverSwaps || !launchSetsDataDir || !appUsesDataDir)
+      throw new Error('E2E profile isolation contract broken: ' + JSON.stringify({ suiteNeverSwaps, launchSetsDataDir, appUsesDataDir }));
+    return 'e2e-suite has no profile swap/restore path; launcher passes the worker sandbox through AHKLLM_E2E_DATA_DIR and AppInfo uses it only for marked E2E workers';
   }
 });
 

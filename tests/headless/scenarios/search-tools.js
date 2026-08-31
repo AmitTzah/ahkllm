@@ -364,7 +364,17 @@ scenarios.push({
 
     await cdp.eval('window.loadThread("t-search-b-256"); true');
     await cdp.waitFor('window.activeThreadId === "t-search-b-256"', 10000, 200, 'thread B loaded');
-    await sleep(2600);
+    // The Tavily delay starts after the first chat request reaches the mock;
+    // under parallel WebView2 startup that point can be several seconds later
+    // than the fixed delay. Wait for A's durable continuation instead of
+    // assuming a wall-clock offset, while B remains the visible thread.
+    const continuationDeadline = Date.now() + 15000;
+    for (;;) {
+      const aProgress = seed.query(dbPath, "SELECT role FROM messages WHERE thread_id='t-search-a-256' ORDER BY rowid");
+      if (aProgress.length >= 4) break;
+      if (Date.now() > continuationDeadline) throw new Error('A continuation was not persisted while B was active: ' + JSON.stringify(aProgress));
+      await sleep(200);
+    }
     await cdp.eval('window.loadThread("t-search-a-256"); true');
     await cdp.waitFor('window.activeThreadId === "t-search-a-256"', 10000, 200, 'thread A restored');
     await cdp.waitFor('document.querySelector(".msg.bot .msg-content") && document.querySelector(".msg.bot .msg-content").textContent.indexOf("thread A continuation") >= 0', 20000, 200, 'A continuation rendered');

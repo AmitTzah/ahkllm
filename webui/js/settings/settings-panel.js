@@ -151,6 +151,10 @@ window.SettingsPanel = (function() {
     _sectionModules[name] = module;
   }
 
+  function isSectionRegistered(name) {
+    return !!_sectionModules[name];
+  }
+
   // Called by main.js when settings data arrives from AHK
   function onSettingsReceived(data) {
     loadSettings(data);
@@ -171,6 +175,7 @@ window.SettingsPanel = (function() {
     resetToDefaults: resetToDefaults,
     handleSettingsSaved: handleSettingsSaved,
     registerSection: registerSection,
+    isSectionRegistered: isSectionRegistered,
     onSettingsReceived: onSettingsReceived,
     reloadWithDefaults: reloadWithDefaults
   };

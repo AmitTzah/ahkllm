@@ -811,15 +811,20 @@ committed sample of the gitignored generated metadata, so CI passes even when
 
 Headless end-to-end (GUI bug harness — launches the real app with the window kept
 off-screen and NO keystroke injection, so it never flashes, steals focus, or types into
-your session; needs elevated permissions for profile isolation; deliberately not part of
+your session; requires Windows process/window access; deliberately not part of
 `run_all_tests.bat`):
 
 ```
 node tests\headless\e2e-suite.js --all          # every scenario against the real app
 ```
 
+The harness never moves or junctions `%APPDATA%\AhkLLM`. Each worker uses an explicit
+guarded data directory, private TEMP/TMP and WebView2 state, a unique CDP port, and a
+worker-specific process marker. Use `--workers=N` for explicit parallelism; automatic
+selection is bounded by `min(8, availableParallelism - 2, memoryGiB - 2, scenarioCount)`.
 The harness also supports targeted re-runs (`--scenarios=...`), report/scenario sync
-checks (`--check-sync`), and PID-targeted cleanup after aborted runs (`--cleanup`) — see
+checks (`--check-sync`), progress diagnostics (`--status`), and PID/marker-targeted cleanup
+after aborted runs (`--cleanup`) — see
 `tests/headless/README.md` for the manual and `tests/headless/BUG_HUNT_REPORT.md` for the
 live bug list and workflow.
 
@@ -849,10 +854,9 @@ report** — this is the workflow to point an agent at when auditing or fixing t
   report and the scenario list stay in sync (no stale/dangling ids), and `--all` re-verifies
   every scenario against the real app.
 - `tests/headless/capture-screenshots.js` — generates the README screenshots by running
-  the real app with an isolated profile and capturing WebView2 pages through CDP
-  (`Page.captureScreenshot`), so vision-capable agents can take fresh UI shots without
-  anything flashing on screen. Same safety rules as scenarios: the app must not already
-  be running, and the real profile is restored on exit.
+  the real app off-screen and capturing WebView2 pages through CDP
+  (`Page.captureScreenshot`). It uses the same explicit worker data directory,
+  TEMP/TMP root, generated Main identity, and marker-scoped teardown as the E2E suite.
 
 **Lifecycle:** the full lifecycle (intake → `reported` → headless verification → `verified`
 → fix cycle → History) is defined in `tests/headless/BUG_HUNT_REPORT.md` — that file is the

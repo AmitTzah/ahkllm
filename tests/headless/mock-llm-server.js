@@ -532,7 +532,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       if (mode === 'sse-slow') {
-        makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: 700, responseModel: opts.echoModel ? parsed.model : '' })(req, res);
+        makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: opts.chunkDelay || 700, responseModel: opts.echoModel ? parsed.model : '' })(req, res);
         return;
       }
       if (mode === 'sse-error-event') {

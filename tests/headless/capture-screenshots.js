@@ -1,7 +1,7 @@
 // capture-screenshots.js — Generate README screenshots from the real app.
 //
 // Reuses the headless harness machinery (launch.js + seed.js + CDP) to run
-// the real AhkLLM app with an isolated profile, then captures WebView2 pages
+// the real AhkLLM app in an explicit worker sandbox, then captures WebView2 pages
 // via Chrome DevTools Protocol. Nothing flashes on screen: the chat window is
 // positioned off-screen, and Page.captureScreenshot reads the rendered page
 // directly from the browser surface.
@@ -222,14 +222,14 @@ async function main() {
     throw new Error('AhkLLM is already running. Close it, then rerun.');
   }
 
-  const iso = launcher.isolateProfile();
+  const worker = launcher.createWorkerContext('screenshots-' + process.pid + '-' + Date.now().toString(36));
   let mainPid = 0;
   try {
-    launcher.resetDataDir(iso.sandboxData);
-    seedData(iso.sandboxData);
+    launcher.resetDataDir(worker.dataDir);
+    seedData(worker.dataDir);
 
     const port = await launcher.findFreePort();
-    const launched = launcher.launch({ sandbox: iso.sandboxData, port });
+    const launched = launcher.launch({ sandbox: worker.dataDir, port, workerId: worker.workerId, mainScript: worker.mainScript });
     mainPid = launched.mainPid;
 
     const target = await launcher.waitForChatTarget(port, 60000);
@@ -302,9 +302,9 @@ async function main() {
     await cdp.close();
     console.log('Screenshots written to docs/screenshots/.');
   } finally {
-    launcher.teardown(mainPid);
-    const ok = launcher.restoreProfile(iso);
-    console.log('Real profile restored:', ok ? 'yes' : 'FAILED');
+    const processOk = launcher.teardownWorker(mainPid, worker.workerId);
+    const artifactOk = launcher.disposeWorkerContext(worker);
+    console.log('E2E screenshot worker cleanup:', processOk && artifactOk ? 'yes' : 'FAILED');
   }
 }
 

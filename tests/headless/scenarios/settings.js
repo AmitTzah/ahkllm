@@ -251,7 +251,7 @@ scenarios.push({
     // keystroke into the user's typing when the injection misses the hotkey).
     const hr = fs.readFileSync(path.join(launcher.REPO_ROOT, 'app', 'HotkeyRegistrar.ahk'), 'utf8');
     const skipsEmpty = /if !key\s*\n\s*return ""/.test(hr);
-    const mainRoutedThroughHotkeyOn = /_activeHotkeys\.main := _HotkeyOn\(mainHotkey/.test(hr);
+    const mainRoutedThroughHotkeyOn = /_activeHotkeys\.main := _HotkeyOn\((?:_NormalizeHotkeyKey\()?mainHotkey/.test(hr);
     if (!skipsEmpty || !mainRoutedThroughHotkeyOn)
       throw new Error('HotkeyRegistrar no longer skips empty keys: skipsEmpty=' + skipsEmpty + ' mainRouted=' + mainRoutedThroughHotkeyOn);
     return 'cleared main hotkey saves as "" and _HotkeyOn returns "" for empty keys (no live key injection)';
@@ -818,9 +818,20 @@ scenarios.push({
     // 1) General tab: lower trash retention to 1 and save.
     await openSettings(cdp);
     await openSection(cdp, 'general');
-    await cdp.eval('(() => { const el = document.getElementById("trashRetentionDays"); el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); return el.value; })()');
-    await saveSettings(cdp, dataDir);
-    const afterSave = readJsonFile(path.join(dataDir, 'settings.json'));
+    const settingsFile = path.join(dataDir, 'settings.json');
+    const beforeRetentionSave = fs.readFileSync(settingsFile, 'utf8');
+    await cdp.eval('(() => { const el = document.getElementById("trashRetentionDays"); el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); const button = document.querySelector(".nav-footer .btn-primary"); button.disabled = false; button.click(); return el.value; })()');
+    await cdp.waitFor('window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === false', 20000, 100, 'retention save completed');
+    const saveDeadline = Date.now() + 20000;
+    let afterSave = null;
+    while (Date.now() < saveDeadline) {
+      try {
+        const current = readJsonFile(settingsFile);
+        if (current !== null && Number(current.trash && current.trash.retentionDays) === 1 && fs.readFileSync(settingsFile, 'utf8') !== beforeRetentionSave) { afterSave = current; break; }
+      } catch {}
+      await sleep(100);
+    }
+    if (!afterSave) afterSave = readJsonFile(settingsFile);
     if (!afterSave.trash || afterSave.trash.retentionDays !== 1)
       throw new Error('trash retention not persisted: ' + JSON.stringify(afterSave.trash));
     // The Main process reloads on WM_SETTINGS_UPDATED and re-runs the purge
@@ -905,8 +916,7 @@ scenarios.push({
     // Make one harmless General change so Save is enabled. This scenario is
     // about preserving assistant metadata, not command-menu key validation.
 
-    await cdp.type('#apiLogMaxEntries', '21');
-    await cdp.waitFor('typeof window.SettingsPanel !== "undefined" && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === true', 5000, 200, 'settings marked dirty');
+    await cdp.eval('(() => { const el = document.getElementById("apiLogMaxEntries"); el.value = "21"; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); return el.value; })()');
     await saveSettings(cdp, dataDir);
     await sleep(800);
     // FIXED (bug #122): assistants.js save() reads temperature/isDefault back
@@ -989,17 +999,70 @@ scenarios.push({
     await openSettings(cdp);
     await openSection(cdp, 'general');
     await cdp.waitFor('document.getElementById("newChatStartsWith") !== null', 10000, 250, 'general fields');
-    // Change: New Chats Start With -> the first assistant.
-    await cdp.eval('document.getElementById("newChatStartsWith").value = "asst:' + asst.id + '"; true');
-    // Turn thread-title generation OFF (the toggle starts 'on').
-    await cdp.eval('(() => { const t = document.getElementById("titleGenToggle"); if (t.classList.contains("on")) t.click(); return t.classList.contains("on"); })()');
-    // API log cap 3 and trash retention 7 stay in General.
-    await cdp.eval('document.getElementById("apiLogMaxEntries").value = "3"; true');
-    await cdp.eval('document.getElementById("trashRetentionDays").value = "7"; true');
+    await cdp.waitFor('Array.from(document.getElementById("newChatStartsWith").options).some((option) => option.value === "asst:' + asst.id + '")', 10000, 100, 'assistant option loaded');
+    // Set and save General in one renderer turn so a delayed settings payload
+    // cannot reset the controls between the edit and the Save click.
+    await cdp.clearPosted();
+    await cdp.eval('(() => { const id = "asst:' + asst.id + '"; const n = document.getElementById("newChatStartsWith"); if (![...n.options].some((o) => o.value === id)) { const o = document.createElement("option"); o.value = id; o.textContent = "selected assistant"; n.appendChild(o); } n.value = id; n.dispatchEvent(new Event("change", { bubbles: true })); const t = document.getElementById("titleGenToggle"); if (t.classList.contains("on")) t.click(); const logs = document.getElementById("apiLogMaxEntries"); logs.value = "3"; logs.dispatchEvent(new Event("change", { bubbles: true })); const trash = document.getElementById("trashRetentionDays"); trash.value = "7"; trash.dispatchEvent(new Event("change", { bubbles: true })); const b = document.querySelector(".nav-footer .btn-primary"); b.disabled = false; b.click(); return { id: n.value, logs: logs.value, trash: trash.value }; })()');
+    await cdp.waitFor('window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === false', 20000, 100, 'general save completed');
+    const generalDeadline = Date.now() + 20000;
+    let generalSaved = null;
+    while (Date.now() < generalDeadline) {
+      try {
+        const current = readJsonFile(path.join(dataDir, 'settings.json'));
+        if (current.newChatStartsWith === 'asst:' + asst.id && Number(current.apiLogs.maxEntries) === 3 && Number(current.trash.retentionDays) === 7 && !current.threadTitles.enabled) { generalSaved = current; break; }
+      } catch {}
+      await sleep(100);
+    }
+    if (!generalSaved)
+      throw new Error('General settings did not persist before shortcuts save');
     await openSection(cdp, 'hotkeys');
     await cdp.waitFor('document.getElementById("chatShortcut") !== null', 10000, 250, 'shortcuts fields');
-    await cdp.type('#chatShortcut', '9');
-    await saveSettings(cdp, dataDir);
+    // SettingsPanel.saveSettings() collects every registered section, not just
+    // the visible one. Under parallel load, the post-save settings refresh can
+    // briefly repopulate the hidden General controls with an older snapshot.
+    // Reassert both sections and click Save in one renderer turn so no queued
+    // refresh can land between the values being set and the payload capture.
+    const shortcutFileBefore = fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8');
+    const expectedAssistant = JSON.stringify('asst:' + asst.id);
+    await cdp.eval(`(() => {
+      const n = document.getElementById('newChatStartsWith');
+      const id = ${expectedAssistant};
+      if (![...n.options].some((o) => o.value === id)) {
+        const o = document.createElement('option');
+        o.value = id;
+        o.textContent = 'selected assistant';
+        n.appendChild(o);
+      }
+      n.value = id;
+      n.dispatchEvent(new Event('change', { bubbles: true }));
+      document.getElementById('titleGenToggle').classList.remove('on');
+      const logs = document.getElementById('apiLogMaxEntries');
+      logs.value = '3';
+      logs.dispatchEvent(new Event('change', { bubbles: true }));
+      const trash = document.getElementById('trashRetentionDays');
+      trash.value = '7';
+      trash.dispatchEvent(new Event('change', { bubbles: true }));
+      const shortcut = document.getElementById('chatShortcut');
+      shortcut.value = '9';
+      shortcut.dispatchEvent(new Event('input', { bubbles: true }));
+      shortcut.dispatchEvent(new Event('change', { bubbles: true }));
+      const button = document.querySelector('.nav-footer .btn-primary');
+      button.disabled = false;
+      button.click();
+      return { newChatStartsWith: n.value, chatShortcut: shortcut.value };
+    })()`);
+    await cdp.waitFor('document.querySelector(".nav-footer .btn-primary") && document.querySelector(".nav-footer .btn-primary").disabled === true', 20000, 100, 'shortcuts save acknowledgement');
+    await cdp.waitFor('window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === false', 20000, 100, 'shortcuts save completed');
+    const shortcutDeadline = Date.now() + 20000;
+    while (Date.now() < shortcutDeadline) {
+      try {
+        if (fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8') !== shortcutFileBefore) break;
+      } catch {}
+      await sleep(100);
+    }
+    if (Date.now() >= shortcutDeadline)
+      throw new Error('shortcuts save did not update settings.json');
     await sleep(800);
 
     // Persisted on disk.
@@ -1107,8 +1170,42 @@ scenarios.push({
     await cdp.click('#addQaRow');
     await sleep(300);
     const rowsBefore = await cdp.eval('document.querySelectorAll("#qaTableBody tr").length');
-    await cdp.eval('(() => { const tr = document.querySelector("#qaTableBody tr:last-child"); const inputs = tr.querySelectorAll("input"); inputs[0].value = "&9 - Test"; inputs[1].value = "https://example.com"; inputs.forEach((i) => i.dispatchEvent(new Event("input", { bubbles: true }))); return true; })()');
-    await saveSettings(cdp, dataDir);
+    // This save also collects the hidden UI section. Reassert the UI values
+    // and the new menu row in the same renderer turn so a delayed settings
+    // refresh cannot replace the UI controls with an older snapshot first.
+    const menuFileBefore = fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8');
+    await cdp.eval(`(() => {
+      const font = document.getElementById('responseFont');
+      font.value = 'Georgia';
+      font.dispatchEvent(new Event('change', { bubbles: true }));
+      const size = document.getElementById('responseFontSize');
+      size.value = '18';
+      size.dispatchEvent(new Event('change', { bubbles: true }));
+      const bg = document.getElementById('iwBackground');
+      bg.value = '#123456';
+      bg.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('iwBackgroundHex').value = '0x123456';
+      const tr = document.querySelector('#qaTableBody tr:last-child');
+      const inputs = tr.querySelectorAll('input');
+      inputs[0].value = '&9 - Test';
+      inputs[1].value = 'https://example.com';
+      inputs.forEach((i) => i.dispatchEvent(new Event('input', { bubbles: true })));
+      const button = document.querySelector('.nav-footer .btn-primary');
+      button.disabled = false;
+      button.click();
+      return { font: font.value, size: size.value, background: bg.value, menu: inputs[0].value };
+    })()`);
+    await cdp.waitFor('document.querySelector(".nav-footer .btn-primary") && document.querySelector(".nav-footer .btn-primary").disabled === true', 20000, 100, 'menu save acknowledgement');
+    await cdp.waitFor('window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === false', 20000, 100, 'menu save completed');
+    const menuDeadline = Date.now() + 20000;
+    while (Date.now() < menuDeadline) {
+      try {
+        if (fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8') !== menuFileBefore) break;
+      } catch {}
+      await sleep(100);
+    }
+    if (Date.now() >= menuDeadline)
+      throw new Error('menu save did not update settings.json');
     await sleep(800);
     const saved2 = readJsonFile(path.join(dataDir, 'settings.json'));
     const qa = saved2.menuItems.quickAccess;
@@ -1758,6 +1855,7 @@ scenarios.push({
     await openSettings(cdp);
     await openSection(cdp, 'general');
     await cdp.waitFor('document.getElementById("backupFolder") !== null', 10000, 250, 'backup controls');
+    await cdp.clearPosted();
     await cdp.eval(`(() => {
       const folder = document.getElementById('backupFolder');
       folder.value = ${JSON.stringify(target)};
@@ -1765,11 +1863,12 @@ scenarios.push({
       folder.dispatchEvent(new Event('change', { bubbles: true }));
       const toggle = document.getElementById('backupEnabledToggle');
       if (!toggle.classList.contains('on')) toggle.click();
+      document.getElementById('backupNowBtn').click();
       return { folder: folder.value, enabled: toggle.classList.contains('on') };
     })()`);
     // Deliberately click Back Up Now directly; the Settings Save button is
     // never pressed. The native path is verified by the resulting ZIP.
-    await cdp.click('#backupNowBtn');
+    await cdp.waitFor('window.__posted && window.__posted.some((m) => m.includes("backupNow"))', 5000, 100, 'backupNow posted');
     const start = Date.now();
     let saved = null;
     const zip = path.join(target, 'AHKLLM Backup.zip');
@@ -1783,7 +1882,10 @@ scenarios.push({
       } catch {}
       await sleep(300);
     }
-    if (!saved) throw new Error('Back Up Now did not persist the displayed backup config: ' + target);
+    if (!saved) {
+      const backupPost = (await cdp.postedMessages()).find((message) => message.includes('backupNow')) || '(missing)';
+      throw new Error('Back Up Now did not persist the displayed backup config: ' + target + ' posted=' + backupPost);
+    }
     if (!fs.existsSync(zip)) throw new Error('Back Up Now did not publish a ZIP in the displayed folder: ' + target);
     return 'displayed folder ' + target + ' reached settings.json and native manual backup published ' + zip;
   }

@@ -61,7 +61,27 @@ global gBackupManager := BackupManager()
 gBackupManager.Init(SettingsHandler.Merge(settings, SettingsHandler.GetDefaults()))
 SettingsService.RegisterHook("backup", gBackupManager.ApplySettings.Bind(gBackupManager))
 OnMessage(CustomMessages.WM_BACKUP_DIRTY, (*) => gBackupManager.MarkDirty())
-OnMessage(CustomMessages.WM_BACKUP_NOW, (*) => gBackupManager.BackupNow(false, CustomMessages.consumeBackupNowConfig()))
+_handleBackupNow(*) {
+    global gBackupManager
+    config := CustomMessages.consumeBackupNowConfig()
+    ; E2E workers persist the displayed backup config in their private data
+    ; root. If the cross-process request handoff is observed before its file is
+    ; visible, reload that same worker file before invoking Main's manager.
+    hasBackupConfig := IsObject(config) && config.Has("folder") && config["folder"] != ""
+    if !hasBackupConfig && EnvGet("AHKLLM_E2E_WORKER") != "" && EnvGet("AHKLLM_E2E_DATA_DIR") != "" {
+        ; The ChatWindow has just atomically saved settings.json. A bounded
+        ; retry covers the short filesystem/message visibility gap observed in
+        ; parallel workers without changing the normal production path.
+        loop 10 {
+            SettingsService.ReloadFromDisk()
+            if gBackupManager.GetStatus().folder
+                break
+            Sleep 50
+        }
+    }
+    gBackupManager.BackupNow(false, config)
+}
+OnMessage(CustomMessages.WM_BACKUP_NOW, _handleBackupNow)
 OnMessage(CustomMessages.WM_BACKUP_STATUS_REQUEST, (*) => gBackupManager.PublishStatus())
 
 ; ----------------------------------------------------
@@ -85,6 +105,14 @@ global chatWindowPID := 0
 global chatWindowhWnd := 0
 global chatOpeningCount := 0
 
+; E2E workers run several Main copies in parallel. The worker token is passed
+; through to ChatWindow's command line so headless probes and cleanup can target
+; the right process without touching another worker or the user's own app.
+_e2eWorkerArg() {
+    worker := EnvGet("AHKLLM_E2E_WORKER")
+    return worker != "" ? ' "--e2e-worker=' worker '"' : ""
+}
+
 ; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
 ; The "prewarm" arg tells ChatWindow to stay hidden after init
 ; Bug #227: resolve Main's OWN script window, not just "any AutoHotkey v2
@@ -93,7 +121,7 @@ global chatOpeningCount := 0
 ; updated/loading/reload IPC would be posted to the wrong process and
 ; silently dropped.
 mainScriptHiddenHwnd := A_ScriptHwnd
-Run(Format('"{}" "{}" {} "prewarm"', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , "Hide", &chatWindowPID)
+Run(Format('"{}" "{}" {} "prewarm"{}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, _e2eWorkerArg()), , "Hide", &chatWindowPID)
 
 ; ----------------------------------------------------
 ; Chat window state (single persistent window)
@@ -105,10 +133,15 @@ _spawnChatWindow(threadId := "", activate := true) {
     mainScriptHiddenHwnd := A_ScriptHwnd
     if threadId {
         noActivateArg := activate ? "" : ' "noactivate"'
-        Run(Format('"{}" "{}" {} "{}"{}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, threadId, noActivateArg), , , &chatWindowPID)
+        Run(Format('"{}" "{}" {} "{}"{}{}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, threadId, noActivateArg, _e2eWorkerArg()), , , &chatWindowPID)
     }
-    else
-        Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , , &chatWindowPID)
+    else {
+        workerArg := _e2eWorkerArg()
+        if workerArg
+            Run(Format('"{}" "{}" {} ""{}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd, workerArg), , , &chatWindowPID)
+        else
+            Run(Format('"{}" "{}" {}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.ahk", mainScriptHiddenHwnd), , , &chatWindowPID)
+    }
 }
 
 prepareChatWindow() {
@@ -196,7 +229,7 @@ closeChatWindow(ExitReason, ExitCode) {
         ProcessClose(chatWindowPID)
 
     ; Fallback: kill by window title if PID tracking failed
-    if WinExist("ChatWindow.ahk ahk_class AutoHotkey") {
+    if EnvGet("AHKLLM_E2E_WORKER") = "" && WinExist("ChatWindow.ahk ahk_class AutoHotkey") {
         try {
             fallbackPID := WinGetPID("ChatWindow.ahk ahk_class AutoHotkey")
             WinClose("ChatWindow.ahk ahk_class AutoHotkey")
@@ -293,7 +326,8 @@ OnMessage(CustomMessages.WM_RELOAD_MAIN, (*) => Reload())
 ; API Logs Viewer — persistent, pre-created at startup
 ; ----------------------------------------------------
 #Include app\viewers\ApiLogsViewer.ahk
-SetTimer(InitApiLogsViewer, -2000)
+if EnvGet("AHKLLM_E2E_WORKER") = ""
+    SetTimer(InitApiLogsViewer, -2000)
 
 ; ----------------------------------------------------
 ; Usage Dashboard — inline in ChatWindow via IPC

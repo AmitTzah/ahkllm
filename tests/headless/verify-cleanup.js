@@ -1,9 +1,9 @@
 // Verification: the offscreen video pipeline must NEVER leak processes,
 // listeners, temp dirs, or an isolated profile. Covers:
 //   1. the self-healing sweep (orphaned offscreen node processes + temp dirs),
-//   2. a HUNG offscreen scene: the per-scene watchdog must clean up, restore
-//      the profile, and hard-exit; afterwards zero orphans/listeners/dirs,
-//   3. teardown(0) still closes repo app processes when the PID is unknown.
+//   2. a HUNG offscreen scene: the per-scene watchdog must clean up its marked
+//      worker and hard-exit; afterwards zero orphans/listeners/dirs,
+//   3. worker-scoped teardown still works when the PID is unknown.
 // Run (interactive session, elevated): node tests/headless/verify-cleanup.js
 'use strict';
 const fs = require('node:fs');
@@ -15,7 +15,6 @@ const { seedData } = require('./capture-screenshots');
 const pipeline = require('../../scripts/videos/offscreen-pipeline');
 
 const VIDEOS_DIR = path.join(launcher.REPO_ROOT, 'scripts', 'videos');
-const REAL_DATA_DIR = path.join(process.env.APPDATA || '', 'AhkLLM');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 
@@ -50,10 +49,6 @@ function countOffscreenListeners() {
 
 function countTempDirs(prefix) {
   try { return fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith(prefix)).length; } catch { return 0; }
-}
-
-function realProfileIsolated() {
-  try { return fs.lstatSync(REAL_DATA_DIR).isSymbolicLink(); } catch { return false; }
 }
 
 // ---------------------------------------------------------------- Phase 1 ---
@@ -102,8 +97,8 @@ async function testSelfHealingSweep() {
 
 // ---------------------------------------------------------------- Phase 2 ---
 // A scene that hangs (body never resolves, CDP socket keeps the loop alive)
-// must be reaped by the per-scene watchdog: mock server closed, app torn
-// down, profile restored, hard exit - and afterwards zero orphans/listeners.
+// must be reaped by the per-scene watchdog: mock server closed, marked app
+// worker torn down, hard exit - and afterwards zero orphans/listeners.
 async function testHungScene() {
   console.log('\n--- Phase 2: hung offscreen scene cleanup ---');
   const sceneFile = path.join(VIDEOS_DIR, '__hung_cleanup_offscreen_' + process.pid + '.js');
@@ -145,34 +140,33 @@ runOffscreenScene({
   check(!fs.existsSync(sceneFile), 'generated scene script deleted after the run');
   check(countTempDirs('llm-escape-') === 0 && countTempDirs('llm-webview2-') === 0 && countTempDirs('ahkllm-frames-') === 0,
     'no leftover llm-escape-*/llm-webview2-*/ahkllm-frames- dirs');
-  check(!realProfileIsolated(), 'real profile is not left isolated behind a junction');
+  check(!fs.existsSync(path.join(os.tmpdir(), 'ahkllm-e2e-parent.lock')), 'no E2E parent lock remains after the hang');
   check(!launcher.preflight(), 'app is not running after the hang');
 }
 
 // ---------------------------------------------------------------- Phase 3 ---
-// The original guarantee: teardown(0) closes every repo app process even when
-// the PID is unknown (the path that used to leak orphaned AhkLLM processes).
+// Worker cleanup must close every marked app process even when the Main PID is
+// unknown (the path that used to leak orphaned AhkLLM processes).
 async function testTeardownZero() {
-  console.log('\n--- Phase 3: teardown(0) with unknown PID ---');
-  const iso = launcher.isolateProfile();
+  console.log('\n--- Phase 3: worker teardown with unknown PID ---');
+  const worker = launcher.createWorkerContext('cleanup-' + process.pid + '-' + Date.now().toString(36));
   try {
-    launcher.resetDataDir(iso.sandboxData);
-    seedData(iso.sandboxData);
+    launcher.resetDataDir(worker.dataDir);
+    seedData(worker.dataDir);
     const port = await launcher.findFreePort();
-    const launched = launcher.launch({ sandbox: iso.sandboxData, port });
+    launcher.launch({ sandbox: worker.dataDir, port, workerId: worker.workerId, mainScript: worker.mainScript });
     await launcher.waitForChatTarget(port, 60000);
     await sleep(2500);
     const before = countRepoProcesses();
     console.log('repo processes while running:', before);
     check(before >= 1, 'expected the app to be running');
 
-    launcher.teardown(0); // simulate a run that crashed before capturing the PID
+    const cleaned = launcher.teardownWorker(0, worker.workerId); // simulate a run that crashed before capturing the PID
     await sleep(1500);
-    check(countRepoProcesses() === 0, 'teardown(0) cleaned up all repo app processes');
+    check(cleaned && countRepoProcesses() === 0, 'worker teardown cleaned up all repo app processes');
   } finally {
-    const ok = launcher.restoreProfile(iso);
-    console.log('Real profile restored:', ok ? 'yes' : 'FAILED');
-    check(ok, 'real profile restored after teardown test');
+    const ok = launcher.disposeWorkerContext(worker);
+    check(ok, 'worker artifacts removed after teardown test');
   }
 }
 

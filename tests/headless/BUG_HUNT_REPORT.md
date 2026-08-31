@@ -140,16 +140,13 @@ How to run AHK safely:
    The user runs their own AHK scripts on this machine, and a blanket kill closes
    ALL of them. This is the #1 way agents have destroyed unrelated user scripts.
 5. **After any aborted run, clean up with the targeted command instead:**
-   `node tests/headless/e2e-suite.js --cleanup`. It closes ONLY this repo's
-   app processes (`Main.ahk`, `chat/ChatWindow.ahk` - matched by process command
-   line, which works even when the user started the app on their own desktop
-   that this sandbox cannot see, plus script-window title; killed by PID) and
-   prints what it closed; every other AHK script keeps running. If it prints
-   `Closed 0` but the profile is still locked (EPERM when isolating), or
-   `AutoHotkey64.exe` processes linger with no recognizable cmdline/script
-   window (load-time hang / modal error dialog), they are NOT identifiable as
-   app scripts - do NOT kill them by guessing; report it and let the user close
-   their own scripts.
+   `node tests/headless/e2e-suite.js --cleanup`. It verifies the lock PID before
+   stopping an E2E parent, then closes only marked E2E workers, generated-Main
+   processes, and marked WebView2/worker processes. Every other AHK, Node, and
+   WebView2 process keeps running. It removes generated worker Main scripts and
+   stale E2E run roots, and reports if any cleanup operation remains incomplete.
+   The E2E suite never moves or junctions the real `%APPDATA%\AhkLLM` profile;
+   each worker uses `AHKLLM_E2E_WORKER` plus `AHKLLM_E2E_DATA_DIR`.
 6. Give the shell command itself a `timeout_ms`.
 
 ## Current state
@@ -329,10 +326,9 @@ closure; never rewrite past entries.
   (never indexes a missing Map key) when no prefix matches, so deleting deepseek in Settings no longer crashes
   requests for uncovered models; scenario 190 flipped to a regression check + LLMRequestBuilder unit test.
 - 2026-08-10 - "Harness interrupted-run recovery restores DIFFERENT backups (stale profile risk on direct
-  launch)" - FIXED: launch.isolateProfile now sorts llm-profile-bak-* and restores the NEWEST backup
-  (backups[length-1]), exactly like e2e-suite.recoverInterruptedRun, so a directly-launched next run can
-  never restore a stale profile over the newest one; scenario 189 flipped to a regression check + unit test
-  + README note.
+  launch)" - SUPERSEDED: the parallel harness no longer swaps or restores the real profile at all. Each
+  worker now uses an explicit guarded data directory and owns its cleanup; scenario 189 verifies that the
+  suite has no real-profile swap path, with unit-test and README coverage.
 - 2026-08-10 - "Search result snippets for attachment-text hits show the message content, not the match" -
   FIXED: SearchRepo._FTS5 now joins messages_fts and builds contentPreview from the FTS-indexed content
   (m.content + decoded attachment extracted_text, bug #165), so a term that exists only in an attachment

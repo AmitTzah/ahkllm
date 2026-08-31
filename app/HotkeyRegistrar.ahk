@@ -10,6 +10,13 @@ _registerAllHotkeys(showErrors := false) {
     global _activeHotkeys, _hotkeyRegistrationErrors
     _hotkeyRegistrationErrors := []
 
+    ; Parallel E2E workers must not register system-wide shortcuts. The suite
+    ; drives the app through CDP/IPC and verifies hotkey wiring separately.
+    if EnvGet("AHKLLM_E2E_WORKER") != "" {
+        _activeHotkeys := { main: "", reload: "", closeWindows: "", suspend: "" }
+        return
+    }
+
     _HotkeyOff(_activeHotkeys.main)
     _HotkeyOff(_activeHotkeys.reload)
     _HotkeyOff(_activeHotkeys.closeWindows)

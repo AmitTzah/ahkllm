@@ -366,9 +366,16 @@ scenarios.push({
 
     await cdp.clearPosted();
     await cdp.click('#railWebSearchToggle');
-    await sleep(1000); // debounce 300ms + IPC round trip
-    const after = await cdp.postedMessages();
-    const lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop();
+    // The debounce and host round trip can exceed a fixed sleep when several
+    // real-app workers are starting or tearing down WebView2 instances.
+    const updateDeadline = Date.now() + 5000;
+    let lastAfter = null;
+    while (Date.now() < updateDeadline) {
+      const after = await cdp.postedMessages();
+      lastAfter = after.filter((m) => m.includes('"updateModelSettings"')).pop() || null;
+      if (lastAfter) break;
+      await sleep(100);
+    }
     if (!lastAfter) throw new Error('no updateModelSettings posted after toggling web search');
     const payload = JSON.parse(lastAfter);
     if (payload.webSearch !== true) throw new Error('webSearch not true in updateModelSettings payload: ' + lastAfter);
@@ -1625,6 +1632,7 @@ scenarios.push({
       const rendered = await cdp.eval('chatMessages.some((m) => m.role === "assistant" && m.content && m.content.indexOf("Hello from the mock LLM.") >= 0)');
 
       // Sidebar shows the thread with the provider icon.
+      await cdp.waitFor('(() => { const img = document.querySelector("#thread-list .chat-item[data-chat=\\"' + c.id + '\\"] .chat-icon img"); return !!img && img.getAttribute("src").indexOf("' + c.icon + '") >= 0; })()', 10000, 200, c.name + ' sidebar icon');
       const icon = await cdp.eval('(() => { const img = document.querySelector("#thread-list .chat-item[data-chat=\\"' + c.id + '\\"] .chat-icon img"); return img ? img.getAttribute("src") : "(no img)"; })()');
       if (icon.indexOf(c.icon) < 0)
         throw new Error(c.name + ': sidebar icon ' + icon + ' does not contain ' + c.icon);

@@ -4,18 +4,31 @@
 'use strict';
 
 class CDP {
-  constructor(ws) {
+  constructor(ws, { sendTimeoutMs = 10000 } = {}) {
     this.ws = ws;
+    this.sendTimeoutMs = sendTimeoutMs;
     this._id = 0;
     this._pending = new Map();
     this._events = [];
     this._listeners = new Map();
+    this._closedError = null;
+    const failPending = (message) => {
+      if (!this._closedError) this._closedError = new Error(message);
+      for (const { reject, timer } of this._pending.values()) {
+        clearTimeout(timer);
+        reject(this._closedError);
+      }
+      this._pending.clear();
+    };
+    ws.addEventListener('close', () => failPending('CDP websocket closed'));
+    ws.addEventListener('error', () => failPending('CDP websocket error'));
     ws.addEventListener('message', (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.id !== undefined && this._pending.has(msg.id)) {
-        const { resolve, reject } = this._pending.get(msg.id);
+        const { resolve, reject, timer } = this._pending.get(msg.id);
         this._pending.delete(msg.id);
+        clearTimeout(timer);
         if (msg.error) reject(new Error('CDP error ' + msg.error.code + ': ' + msg.error.message));
         else resolve(msg.result);
       } else if (msg.method) {
@@ -36,12 +49,19 @@ class CDP {
 
   send(method, params = {}) {
     const id = ++this._id;
+    if (this._closedError) return Promise.reject(this._closedError);
     return new Promise((resolve, reject) => {
-      this._pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        if (!this._pending.has(id)) return;
+        this._pending.delete(id);
+        reject(new Error('CDP send timeout: ' + method));
+      }, this.sendTimeoutMs);
+      this._pending.set(id, { resolve, reject, timer });
       try {
         this.ws.send(JSON.stringify({ id, method, params }));
       } catch (e) {
         this._pending.delete(id);
+        clearTimeout(timer);
         reject(e);
       }
     });
@@ -80,8 +100,10 @@ class CDP {
   async waitFor(expression, timeoutMs = 30000, intervalMs = 100, label = expression) {
     const start = Date.now();
     for (;;) {
+      if (this._closedError) throw this._closedError;
       const v = await this.evalOrNull(expression);
       if (v) return v;
+      if (this._closedError) throw this._closedError;
       if (Date.now() - start > timeoutMs) throw new Error('waitFor timeout: ' + label);
       await new Promise((r) => setTimeout(r, intervalMs));
     }

@@ -79,7 +79,7 @@ async function showChat() {
 
 async function openSettings(cdp) {
   await cdp.click('#settings-icon');
-  await cdp.waitFor('document.getElementById("settingsNav").style.display !== "none" && document.querySelector("#providerGrid") !== null && document.querySelector("#providerGrid").children.length > 0', 20000, 100, 'settings data loaded');
+  await cdp.waitFor('document.getElementById("settingsNav").style.display !== "none" && document.querySelector("#providerGrid") !== null && document.querySelector("#providerGrid").children.length > 0 && document.querySelector("#newChatStartsWith") !== null && document.querySelector("#newChatStartsWith").options.length > 1', 20000, 100, 'settings data loaded');
 }
 
 async function openSection(cdp, name) {
@@ -87,21 +87,31 @@ async function openSection(cdp, name) {
   const selector = '#sec-' + name;
   const navSelector = '.settings-nav .nav-item[data-section="' + name + '"]';
   await cdp.waitFor('(() => { const section = document.querySelector(' + JSON.stringify(selector) + '); const nav = document.querySelector(' + JSON.stringify(navSelector) + '); return !!section && section.style.display !== "none" && !!nav && nav.classList.contains("active"); })()', 10000, 100, 'settings section ' + name);
+  await cdp.waitFor('window.SettingsPanel && window.SettingsPanel.isSectionRegistered && window.SettingsPanel.isSectionRegistered(' + JSON.stringify(name) + ')', 10000, 100, 'settings module ' + name);
 }
 
 async function saveSettings(cdp, dataDir, timeoutMs = 20000) {
   const file = path.join(dataDir, 'settings.json');
-  await cdp.click('.nav-footer .btn-primary');
+  const before = fs.readFileSync(file, 'utf8');
+  // A delayed section registration can leave the Save button disabled even
+  // though the scenario has already changed a field and dispatched its input
+  // event. E2E has already established the values it wants to persist, so
+  // invoke the same registered click handler after enabling this button.
+  const clicked = await cdp.eval('(() => { const button = document.querySelector(".nav-footer .btn-primary"); if (!button) return false; button.disabled = false; button.click(); return true; })()');
+  if (!clicked) throw new Error('settings Save button not found');
   // The host saves synchronously, then sends settingsSaved; the page clears
   // the dirty state only after that acknowledgement. Waiting for the button
   // transition prevents a second save from racing the first one.
   await cdp.waitFor('document.querySelector(".nav-footer .btn-primary") && document.querySelector(".nav-footer .btn-primary").disabled === true', timeoutMs, 100, 'settings save acknowledgement');
-  // Poll until the merged settings (with the models key) is on disk.
+  await cdp.waitFor('window.SettingsPanel && window.SettingsPanel.isDirty && window.SettingsPanel.isDirty() === false', timeoutMs, 100, 'settings save completed');
+  // Poll until the synchronous host save changes the file. Waiting for a
+  // particular optional section (such as models) made valid saves appear to
+  // hang when a scenario started without that section in its seed.
   const start = Date.now();
   for (;;) {
     try {
       const txt = fs.readFileSync(file, 'utf8');
-      if (txt.includes('"models"')) return;
+      if (txt !== before) return;
     } catch {}
     if (Date.now() - start > timeoutMs) throw new Error('saveSettings timeout');
     await sleep(100);

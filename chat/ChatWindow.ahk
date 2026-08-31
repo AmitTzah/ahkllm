@@ -26,6 +26,12 @@ OnError((err, mode) => (
 ), -1)
 #NoTrayIcon
 
+; The normal chat process stays alive because it owns a configured hotkey.
+; E2E deliberately suppresses global hotkeys, so keep the hidden prewarmed
+; window persistent explicitly instead of letting the script exit at EOF.
+if EnvGet("AHKLLM_E2E_WORKER") != ""
+    Persistent()
+
 ; ----------------------------------------------------
 ; Hotkeys
 ; ----------------------------------------------------

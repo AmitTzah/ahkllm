@@ -11,6 +11,7 @@ const AHK = process.env.AHK_EXE || 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotke
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const MAIN_AHK = path.join(REPO_ROOT, 'Main.ahk');
 const PROBE_AHK = path.join(__dirname, 'probe.ahk');
+const E2E_MAIN_PREFIX = '.ahkllm-e2e-main-';
 // Unique WebView2 user-data folder for the current run. The app's WebView2
 // defaults to the SHARED machine Edge folder (%LOCALAPPDATA%\Microsoft\Edge\
 // User Data), so a leftover browser process from an aborted run holds it and
@@ -18,14 +19,8 @@ const PROBE_AHK = path.join(__dirname, 'probe.ahk');
 // per-run folder removes the collision entirely, and doubles as a safe marker
 // for cleanup (only OUR msedgewebview2.exe processes carry it).
 let activeWebView2Dir = '';
-// The app resolves A_AppData via the Windows known-folder API, NOT the APPDATA
-// env var, so env-based isolation cannot work. Instead we temporarily move the
-// real profile aside and point it at a temp dir via a junction, restoring after.
-// The default is derived at runtime so this source does not contain a
-// developer-specific user path. The harness still temporarily swaps this
-// profile, so do not run the E2E suite against a profile containing data you
-// cannot restore; use a disposable Windows account for isolated runs.
-const REAL_DATA_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'AhkLLM');
+// Test data roots are passed explicitly through AHKLLM_E2E_DATA_DIR. The
+// launcher never moves, renames, junctions or restores the real user profile.
 
 // Synchronous short sleep for teardown retries without spawning child processes.
 function sleepSync(ms) {
@@ -83,97 +78,145 @@ function makeSandbox() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'llm-headless-'));
 }
 
+function sanitizeWorkerId(workerId) {
+  const id = String(workerId || '').replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80);
+  if (!id) throw new Error('worker id is required');
+  return id;
+}
+
+// Main.ahk is #SingleInstance in production. Parallel E2E workers use unique
+// copies in the repo root so A_ScriptDir remains exactly the production root
+// while each worker gets its own AutoHotkey script identity.
+function createWorkerMain(workerId) {
+  const id = sanitizeWorkerId(workerId);
+  const target = path.join(REPO_ROOT, E2E_MAIN_PREFIX + id + '.ahk');
+  let src = fs.readFileSync(MAIN_AHK, 'utf8');
+  if (!/^#SingleInstance\b/m.test(src)) throw new Error('Main.ahk is missing #SingleInstance');
+  src = src.replace(/^#SingleInstance\b.*$/m, '#SingleInstance Force\n#NoTrayIcon');
+  fs.writeFileSync(target, src, 'utf8');
+  return target;
+}
+
+// Standalone screenshot/video/cleanup tools use the same explicit worker
+// contract as e2e-suite.js. The returned restoreEnv callback affects only the
+// current Node process, so a child app sees the marker and private temp roots.
+function createWorkerContext(workerId) {
+  const id = sanitizeWorkerId(workerId);
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ahkllm-e2e-temp-'));
+  const dataDir = path.join(tempRoot, 'data');
+  let mainScript;
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    mainScript = createWorkerMain(id);
+  } catch (e) {
+    rmrf(tempRoot);
+    throw e;
+  }
+  const previous = new Map();
+  for (const [key, value] of Object.entries({
+    TEMP: tempRoot,
+    TMP: tempRoot,
+    AHKLLM_E2E_WORKER: id,
+    AHKLLM_E2E_DATA_DIR: dataDir
+  })) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  return {
+    workerId: id,
+    tempRoot,
+    dataDir,
+    mainScript,
+    restoreEnv() {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+}
+
+function disposeWorkerContext(context) {
+  if (!context) return true;
+  context.restoreEnv();
+  removeWorkerMain(context.mainScript);
+  return rmrf(context.tempRoot) && !fs.existsSync(context.tempRoot);
+}
+
+function removeWorkerMain(mainScript) {
+  if (!mainScript) return;
+  const resolved = path.resolve(mainScript);
+  if (path.dirname(resolved) !== REPO_ROOT || !path.basename(resolved).startsWith(E2E_MAIN_PREFIX)) return;
+  try { fs.unlinkSync(resolved); }
+  catch (e) {
+    if (e.code !== 'ENOENT') console.error('Could not remove generated E2E Main ' + resolved + ': ' + e.message);
+  }
+}
+
+function cleanupWorkerMainFiles() {
+  let removed = 0;
+  try {
+    for (const name of fs.readdirSync(REPO_ROOT)) {
+      if (!name.startsWith(E2E_MAIN_PREFIX) || !name.endsWith('.ahk')) continue;
+      try { fs.unlinkSync(path.join(REPO_ROOT, name)); removed++; }
+      catch (e) {
+        if (e.code !== 'ENOENT') console.error('Could not remove generated E2E Main ' + name + ': ' + e.message);
+      }
+    }
+  } catch (e) {
+    console.error('Could not enumerate generated E2E Main files: ' + e.message);
+  }
+  return removed;
+}
+
 function rmrf(dir) {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-}
-
-function isJunction(p) {
-  try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; }
-}
-
-// Move the real profile aside and install a junction to a fresh temp dir.
-// Recovers from a previously interrupted run (leftover junction + .bak).
-function isolateProfile() {
-  const tmp = os.tmpdir();
-  // 1. Recover leftovers from an interrupted run.
-  // Bug #189: pick the NEWEST backup (sort + last), matching
-  // e2e-suite.recoverInterruptedRun - the old readdirSync-order iteration
-  // restored the FIRST entry, which can be a STALE backup when multiple
-  // accumulate, silently restoring an old profile over the newest one.
-  let backups = [];
-  try { backups = fs.readdirSync(tmp).filter((n) => n.startsWith('llm-profile-bak-')).sort(); } catch {}
-  const newest = backups.length ? backups[backups.length - 1] : '';
-  if (newest) {
-    const name = newest;
-    const bak = path.join(tmp, name);
-    if (isJunction(REAL_DATA_DIR)) {
-      try { fs.unlinkSync(REAL_DATA_DIR); } catch {}
-    }
-    if (!fs.existsSync(REAL_DATA_DIR) && fs.existsSync(bak)) {
-      fs.mkdirSync(path.dirname(REAL_DATA_DIR), { recursive: true });
-      fs.renameSync(bak, REAL_DATA_DIR);
-    }
+  if (!dir) return true;
+  try { fs.rmSync(dir, { recursive: true, force: true }); return true; }
+  catch (e) {
+    console.error('Could not remove temporary directory ' + dir + ': ' + e.message);
+    return false;
   }
-  // 2. Move the real (non-junction) folder aside.
-  let backupDir = '';
-  if (fs.existsSync(REAL_DATA_DIR) && !isJunction(REAL_DATA_DIR)) {
-    backupDir = path.join(tmp, 'llm-profile-bak-' + Date.now());
-    fs.renameSync(REAL_DATA_DIR, backupDir);
-  }
-  // 3. Fresh data dir + junction.
-  const sandboxData = path.join(tmp, 'llm-data-' + Date.now());
-  fs.mkdirSync(sandboxData, { recursive: true });
-  fs.mkdirSync(path.dirname(REAL_DATA_DIR), { recursive: true });
-  const ps = spawnSync('powershell.exe', [
-    '-NoProfile', '-Command',
-    'New-Item -ItemType Junction -Path ' + JSON.stringify(REAL_DATA_DIR) +
-    ' -Target ' + JSON.stringify(sandboxData) + ' | Out-Null'
-  ], { timeout: 20000, windowsHide: true });
-  if (!isJunction(REAL_DATA_DIR)) throw new Error('failed to create junction at ' + REAL_DATA_DIR);
-  return { backupDir, sandboxData };
 }
 
-// Wipe the temp data dir so each scenario starts from a clean profile.
+// Wipe the worker data dir so each scenario starts from a clean profile.
 function resetDataDir(sandboxData) {
   fs.rmSync(sandboxData, { recursive: true, force: true });
   fs.mkdirSync(sandboxData, { recursive: true });
 }
 
-// Remove the junction and restore the real profile. A restore is only
-// successful when the backup was actually moved back into place; the profile
-// is NOT required to contain settings.json (a fresh or wiped profile has
-// none until the first Settings save, and that is legitimate).
-function restoreProfile(iso) {
-  let ok = false;
-  if (isJunction(REAL_DATA_DIR)) {
-    try { fs.unlinkSync(REAL_DATA_DIR); } catch {}
-  }
-  if (iso.backupDir && fs.existsSync(iso.backupDir)) {
-    if (!fs.existsSync(REAL_DATA_DIR)) {
-      fs.mkdirSync(path.dirname(REAL_DATA_DIR), { recursive: true });
-      fs.renameSync(iso.backupDir, REAL_DATA_DIR);
-      ok = fs.existsSync(REAL_DATA_DIR);
-    }
-  }
-  if (iso.sandboxData) rmrf(iso.sandboxData);
-  return ok;
-}
-
 // Pre-flight: bail out if the real app is already running (#SingleInstance).
 function preflight() {
-  const res = spawnSync(AHK, [PROBE_AHK, 'preflight', path.join(os.tmpdir(), 'llm-preflight.json')], {
-    timeout: 15000,
-    windowsHide: true
-  });
-  if (res.error) throw new Error('preflight probe failed: ' + res.error.message);
-  let out = {};
-  try { out = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), 'llm-preflight.json'), 'utf-8')); } catch {}
-  return out.running || false;
+  const outFile = path.join(os.tmpdir(), 'llm-preflight-' + process.pid + '-' + Date.now() + '.json');
+  try {
+    const res = spawnSync(AHK, [PROBE_AHK, 'preflight', outFile], {
+      timeout: 15000,
+      windowsHide: true,
+      encoding: 'utf8'
+    });
+    if (res.error) throw new Error('preflight probe failed: ' + res.error.message);
+    if (res.status !== 0) throw new Error('preflight probe exited with code ' + res.status + (res.stderr ? ': ' + res.stderr.trim() : ''));
+    if (!fs.existsSync(outFile)) throw new Error('preflight probe produced no output');
+    const out = {};
+    for (const line of fs.readFileSync(outFile, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
+      const separator = line.indexOf('|');
+      if (separator < 0) continue;
+      const key = line.slice(0, separator);
+      const value = line.slice(separator + 1);
+      out[key] = /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
+    }
+    return !!out.running;
+  } finally {
+    try { fs.unlinkSync(outFile); }
+    catch (e) {
+      if (e.code !== 'ENOENT') console.error('Could not remove preflight output ' + outFile + ': ' + e.message);
+    }
+  }
 }
 
 // Launch the app with an isolated environment. Returns { mainPid, port, cdpBase }.
-function launch({ sandbox, port }) {
-  activeWebView2Dir = path.join(os.tmpdir(), 'llm-webview2-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+function launch({ sandbox, port, workerId = '', mainScript = MAIN_AHK }) {
+  const worker = workerId ? sanitizeWorkerId(workerId) : '';
+  activeWebView2Dir = path.join(os.tmpdir(), 'llm-webview2-' + (worker ? worker + '-' : '') + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
   const env = Object.assign({}, process.env, {
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=' + port + ' --remote-allow-origins=*',
     WEBVIEW2_USER_DATA_FOLDER: activeWebView2Dir,
@@ -181,13 +224,22 @@ function launch({ sandbox, port }) {
     OPENAI_API_KEY: 'sk-headless-test',
     GOOGLE_API_KEY: 'sk-headless-test'
   });
-  const child = spawn(AHK, [MAIN_AHK], {
+  if (sandbox) env.AHKLLM_E2E_DATA_DIR = sandbox;
+  if (worker) env.AHKLLM_E2E_WORKER = worker;
+  const args = ['/ErrorStdOut', mainScript];
+  if (worker) args.push('--e2e-worker=' + worker);
+  const child = spawn(AHK, args, {
     env,
     cwd: REPO_ROOT,
     windowsHide: false, // the chat window must be visible to render
-    detached: false
+    detached: false,
+    stdio: ['ignore', 'pipe', 'pipe']
   });
-  return { mainPid: child.pid, port };
+  const diagnostics = { stdout: '', stderr: '', spawnError: '' };
+  child.stdout.on('data', (chunk) => { diagnostics.stdout += String(chunk); });
+  child.stderr.on('data', (chunk) => { diagnostics.stderr += String(chunk); });
+  child.on('error', (err) => { diagnostics.spawnError = err && err.message ? err.message : String(err); });
+  return { mainPid: child.pid, port, webView2Dir: activeWebView2Dir, child, diagnostics };
 }
 
 async function listTargets(port) {
@@ -197,7 +249,17 @@ async function listTargets(port) {
 }
 
 // Wait until the CDP endpoint reports the chat page (webui/index.html).
-async function waitForChatTarget(port, timeoutMs = 30000) {
+async function waitForChatTarget(port, timeoutMs = 30000, launched = null) {
+  const checkLaunch = () => {
+    if (!launched || !launched.child) return;
+    if (launched.diagnostics && launched.diagnostics.spawnError)
+      throw new Error('Main spawn failed: ' + launched.diagnostics.spawnError);
+    if (launched.child.exitCode !== null) {
+      const diag = launched.diagnostics || {};
+      const output = String(diag.stderr || diag.stdout || '').trim();
+      throw new Error('Main exited before WebView2 became ready (exit ' + launched.child.exitCode + ')' + (output ? ': ' + output : ''));
+    }
+  };
   const start = Date.now();
   for (;;) {
     try {
@@ -205,7 +267,11 @@ async function waitForChatTarget(port, timeoutMs = 30000) {
       const chat = targets.find((t) => t.type === 'page' && (t.url || '').includes('webui/index.html'));
       if (chat && chat.webSocketDebuggerUrl) return chat;
     } catch {}
-    if (Date.now() - start > timeoutMs) throw new Error('waitForChatTarget timeout (port ' + port + ')');
+    checkLaunch();
+    if (Date.now() - start > timeoutMs) {
+      const diag = launched && launched.diagnostics ? String(launched.diagnostics.stderr || launched.diagnostics.stdout || '').trim() : '';
+      throw new Error('waitForChatTarget timeout (port ' + port + ')' + (diag ? ': ' + diag : ''));
+    }
     await new Promise((r) => setTimeout(r, 100));
   }
 }
@@ -223,17 +289,68 @@ async function findTarget(port, urlPart, timeoutMs = 30000) {
   }
 }
 
-// Kill every leftover AhkLLM app process for THIS repo, matched by command line
-// (never by name, so the user's own AHK scripts are untouched). Covers runs
-// that crashed before a PID was captured, and WebView2 children whose process
-// tree escaped the main kill.
-function killRepoAppProcesses() {
+function killE2EWorkerProcesses(workerId) {
+  const worker = sanitizeWorkerId(workerId);
   const ps = [
     '-NoProfile', '-Command',
-    "$procs = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'AutoHotkey64.exe') -and ($_.CommandLine -match 'ahkllm') -and ($_.CommandLine -match 'Main\\.ahk|ChatWindow\\.ahk') }; foreach ($p in $procs) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
-    "$wv = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedgewebview2.exe') -and ($_.CommandLine -match 'llm-webview2') }; foreach ($p in $wv) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null }"
+    "$marker = [regex]::Escape('--e2e-worker=" + worker + "'); $procs = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'AutoHotkey64.exe') -and ($_.CommandLine -match ($marker + '(?=\"|\\s|$)')) }; foreach ($p in $procs) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
+    "$wv = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedgewebview2.exe') -and ($_.CommandLine -like '*llm-webview2-" + worker + "-*') }; foreach ($p in $wv) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
+    "for($attempt=0; $attempt -lt 20; $attempt++){ $leftA = @(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'AutoHotkey64.exe') -and ($_.CommandLine -match ($marker + '(?=\"|\\s|$)')) }).Count; $leftW = @(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedgewebview2.exe') -and ($_.CommandLine -like '*llm-webview2-" + worker + "-*') }).Count; if (($leftA + $leftW) -eq 0) { exit 0 }; Start-Sleep -Milliseconds 100 }; Write-Error ('E2E worker processes remain for ' + $marker); exit 1"
   ];
-  spawnSync('powershell.exe', ps, { timeout: 25000, windowsHide: true });
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', ps.slice(2).join(' ')], {
+    timeout: 25000, windowsHide: true, encoding: 'utf8'
+  });
+  if (result.error) console.error('E2E worker cleanup failed for ' + worker + ': ' + result.error.message);
+  if (result.status !== 0 && result.stderr) console.error(result.stderr.trim());
+  return result.status === 0;
+}
+
+function isE2EParentProcess(pid) {
+  const targetPid = Number(pid);
+  if (!Number.isInteger(targetPid) || targetPid <= 0) return false;
+  const script = "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=" + targetPid + "\" -ErrorAction SilentlyContinue; " +
+    "if ($p -and $p.Name -eq 'node.exe' -and $p.CommandLine -match 'e2e-suite\\.js' -and $p.CommandLine -notmatch '--internal-worker') { '1' } else { '0' }";
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
+    timeout: 15000, windowsHide: true, encoding: 'utf8'
+  });
+  return String(res.stdout || '').trim() === '1';
+}
+
+function killE2EParentProcess(pid) {
+  const targetPid = Number(pid);
+  if (!isE2EParentProcess(targetPid)) return false;
+  try {
+    const result = spawnSync('taskkill', ['/PID', String(targetPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
+    if (result.error) {
+      console.error('Could not stop E2E parent pid=' + targetPid + ': ' + result.error.message);
+      return false;
+    }
+    waitForProcessExit(targetPid, 2000);
+    if (processExists(targetPid)) {
+      console.error('E2E parent pid=' + targetPid + ' is still alive after taskkill (status ' + result.status + ').');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('Could not stop E2E parent pid=' + targetPid + ': ' + e.message);
+    return false;
+  }
+}
+
+function killAllE2EProcesses() {
+  const ps = [
+    '-NoProfile', '-Command',
+    "$procs = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'AutoHotkey64.exe') -and (($_.CommandLine -match '\\.ahkllm-e2e-main-') -or ($_.CommandLine -match '--e2e-worker=')) }; foreach ($p in $procs) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
+    "$wv = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedgewebview2.exe') -and ($_.CommandLine -match 'llm-webview2-w[0-9]+-') }; foreach ($p in $wv) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
+    "$nodes = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'node.exe') -and ($_.CommandLine -like '*e2e-suite.js*--internal-worker*') }; foreach ($p in $nodes) { taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null };",
+    "for($attempt=0; $attempt -lt 20; $attempt++){ $leftA = @(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'AutoHotkey64.exe') -and (($_.CommandLine -match '\\.ahkllm-e2e-main-') -or ($_.CommandLine -match '--e2e-worker=')) }).Count; $leftW = @(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedgewebview2.exe') -and ($_.CommandLine -match 'llm-webview2-w[0-9]+-') }).Count; $leftN = @(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'node.exe') -and ($_.CommandLine -like '*e2e-suite.js*--internal-worker*') }).Count; if (($leftA + $leftW + $leftN) -eq 0) { exit 0 }; Start-Sleep -Milliseconds 100 }; Write-Error 'marked E2E processes remain after cleanup'; exit 1"
+  ];
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', ps.slice(2).join(' ')], {
+    timeout: 25000, windowsHide: true, encoding: 'utf8'
+  });
+  if (result.error) console.error('E2E cleanup failed: ' + result.error.message);
+  if (result.status !== 0 && result.stderr) console.error(result.stderr.trim());
+  return result.status === 0;
 }
 
 // Kill every leftover node.exe running an offscreen video scene for THIS repo,
@@ -264,20 +381,16 @@ function countOffscreenNodeProcesses(excludePid = process.pid) {
 }
 
 // Remove every leftover temp dir the harness/scenes create: llm-webview2-*
-// (per-run WebView2 user-data folders), llm-escape-* (E2E SQL-injection proof
-// dirs), ahkllm-frames-* (offscreen capture frames). Stale llm-data-* profile
-// sandboxes are removed too, but ONLY when the real profile is not currently
-// isolated behind a junction (deleting an active sandbox would orphan the
-// junction). Never touches the real AhkLLM profile or llm-profile-bak-*.
+// (per-worker WebView2 user-data folders), llm-escape-* (E2E SQL-injection
+// proof dirs), and ahkllm-frames-* (offscreen capture frames). These prefixes
+// are private harness artifacts; this function never inspects or removes the
+// real AhkLLM profile.
 function sweepTempDirs() {
   let removed = 0;
   removed += sweepWebView2Dirs(8);
-  const profileIsolated = isJunction(REAL_DATA_DIR);
   try {
     for (const name of fs.readdirSync(os.tmpdir())) {
       if (name.startsWith('llm-escape-') || name.startsWith('ahkllm-frames-')) {
-        try { fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); removed++; } catch {}
-      } else if (!profileIsolated && name.startsWith('llm-data-')) {
         try { fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); removed++; } catch {}
       }
     }
@@ -285,14 +398,13 @@ function sweepTempDirs() {
   return removed;
 }
 
-// Self-healing sweep for the offscreen video pipeline: close leftover repo app
-// processes (AHK + WebView2, command-line matched only), kill orphaned
-// offscreen node processes, and clean our temp dirs. Safe by construction and
-// idempotent; run at the start of every offscreen run.
+// Self-healing sweep for the offscreen video pipeline: kill orphaned offscreen
+// Node processes and clean private temp artifacts. E2E app processes are
+// handled separately by their worker marker; this sweep never kills a normal
+// AhkLLM instance.
 function sweepOffscreenArtifacts() {
   const parts = [];
   const orphansBefore = countOffscreenNodeProcesses();
-  killRepoAppProcesses();
   killOffscreenNodeProcesses();
   const removed = sweepTempDirs();
   const orphansAfter = countOffscreenNodeProcesses();
@@ -302,32 +414,21 @@ function sweepOffscreenArtifacts() {
   return parts.join('; ') || 'nothing to clean up';
 }
 
-// Kill the tree we spawned (Main + its ChatWindow + WebView2 children), then
-// run the repo-scoped backstop so no orphan survives even when mainPid is
-// unknown (e.g. a run that crashed before launch returned).
-function teardown(mainPid) {
+// Parallel workers use PID-tree cleanup plus a worker-id backstop. This never
+// runs the legacy repo-wide sweep while sibling workers are alive.
+function teardownWorker(mainPid, workerId) {
+  const worker = sanitizeWorkerId(workerId);
   if (mainPid) {
-    // Graceful close FIRST: WinClose on the ChatWindow lets its OnExit handler
-    // run and lets in-flight WebView2 operations settle. Force-killing first
-    // raced those operations and popped modal AHK error dialogs
-    // (0x800700AA "the requested resource is in use").
     try {
-      spawnSync(AHK, [PROBE_AHK, 'kill-chat'], { windowsHide: true, timeout: 10000 });
-    } catch {}
-    waitForProcessExit(mainPid, 800);
-    try {
-      spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
-    } catch {}
+      const result = spawnSync('taskkill', ['/PID', String(mainPid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
+      if (result.error) console.error('Could not stop worker Main pid=' + mainPid + ': ' + result.error.message);
+      waitForProcessExit(mainPid, 1200);
+    } catch (e) { console.error('Could not stop worker Main pid=' + mainPid + ': ' + e.message); }
   }
-  killRepoAppProcesses();
-  // Remove our unique WebView2 user-data folder once the browser processes are
-  // dead. taskkill /F returns before the browser processes have fully released
-  // their file handles, so a single immediate rmSync routinely fails and leaves
-  // the folder behind. Sweep every leftover llm-webview2-* folder (they are
-  // all ours, unique per run) so a missed folder self-heals instead of
-  // accumulating in temp. Bounded: ~4s worst case.
+  const processCleanupOk = killE2EWorkerProcesses(worker);
   sweepWebView2Dirs(8);
   activeWebView2Dir = '';
+  return processCleanupOk;
 }
 
-module.exports = { findFreePort, rmrf, preflight, launch, waitForChatTarget, findTarget, teardown, killRepoAppProcesses, killOffscreenNodeProcesses, countOffscreenNodeProcesses, sweepTempDirs, sweepOffscreenArtifacts, isolateProfile, resetDataDir, restoreProfile, sweepWebView2Dirs, AHK, PROBE_AHK, REPO_ROOT, listTargets };
+module.exports = { findFreePort, makeSandbox, rmrf, preflight, launch, waitForChatTarget, findTarget, createWorkerMain, createWorkerContext, disposeWorkerContext, teardownWorker, killE2EWorkerProcesses, isE2EParentProcess, killE2EParentProcess, killAllE2EProcesses, killOffscreenNodeProcesses, countOffscreenNodeProcesses, sweepTempDirs, sweepOffscreenArtifacts, resetDataDir, sweepWebView2Dirs, removeWorkerMain, cleanupWorkerMainFiles, AHK, PROBE_AHK, REPO_ROOT, MAIN_AHK, listTargets };

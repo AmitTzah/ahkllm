@@ -13,6 +13,13 @@ global _activeChatHotkey := ""
 _registerChatHotkeys() {
     global closeWindowsHotkey, _activeChatHotkey
 
+    ; Headless E2E workers run in parallel and must never install global
+    ; shortcuts. The worker process is driven through CDP/IPC instead.
+    if EnvGet("AHKLLM_E2E_WORKER") != "" {
+        _activeChatHotkey := ""
+        return
+    }
+
     if _activeChatHotkey
         Hotkey(_activeChatHotkey, "Off")
 
