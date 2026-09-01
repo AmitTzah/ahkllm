@@ -83,6 +83,19 @@ class DefaultSettingsIntegrityTest {
             throw Error("openrouter/free metadata must advertise vision support without enabling reasoning")
     }
 
+    Commands_FIMContinueHasNoStopSequence() {
+        settingsPath := A_ScriptDir "\..\default-settings\DefaultSettings.ahk"
+        settings := FileRead(settingsPath)
+        start := InStr(settings, 'commandName: "FIM Continue"')
+        end := InStr(settings, 'commandName: "FIM Fill"', false, start)
+        if !start || !end
+            throw Error("Could not locate the FIM Continue and FIM Fill default commands")
+
+        continueBlock := SubStr(settings, start, end - start)
+        if InStr(continueBlock, "stop:")
+            throw Error("FIM Continue must not define a stop sequence")
+    }
+
     ; --------------------------------------------------------
     ; Verify each model has required metadata fields.
     ; --------------------------------------------------------

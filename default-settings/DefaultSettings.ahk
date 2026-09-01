@@ -339,7 +339,6 @@ commands := [
         isFIM: true,
         expandNewlines: true,
         temperature: 1,
-        stop: ["\n"],
         directAccelerator: "&3",
         tags: ["&Text manipulation"],
 
