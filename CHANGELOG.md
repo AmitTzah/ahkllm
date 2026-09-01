@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.1] - 2026-09-01
+
+### Fixed
+
+- Removed the default `\n` stop sequence from FIM Continue so continuation output is not cut off at the first newline.
+
 ## [1.2.0] - 2026-09-01
 
 ### Added
