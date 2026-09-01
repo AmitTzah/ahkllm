@@ -55,6 +55,12 @@ FIM Fill and Continue use DeepSeek's beta FIM completions endpoint by default. T
   <img src="docs/gifs/FIM-continue.gif" alt="AhkLLM FIM Continue extending text from the cursor" width="760">
 </p>
 
+FIM is also useful for building on structured text. Here, DeepSeek generates ASCII drawings in Notepad, then continues and regenerates them directly from the cursor:
+
+<p align="center">
+  <img src="docs/gifs/ASCII-DEMO.gif" alt="AhkLLM using DeepSeek FIM to generate, continue, and regenerate ASCII drawings in Notepad" width="760">
+</p>
+
 In this example, the Screenshot command lets you drag over part of Excel, then sends that capture into chat with an instruction to explain what's on screen:
 
 <p align="center">
