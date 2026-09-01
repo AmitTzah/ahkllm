@@ -139,9 +139,8 @@ function updateChatMessages(newMessages) {
   var prevScrollHeight = container.scrollHeight;
   replaceMessagesAfter(divIdx, newMessages, divIdx);
   chatMessages = newMessages;
-  // Bug #214: a branch switch (or any updateChatView rebuild) while a request
-  // is in flight must NOT re-enable the composer - a second send would
-  // overwrite the shared requestParams["_stream*"] state, orphaning the first
+  // Rebuilding the chat view during an in-flight request must not re-enable
+  // the composer; a second send would overwrite request stream state and orphan the first
   // billed response. Keep the composer in Stop mode for the whole in-flight
   // window (isLoading covers the pre-stream phase, streamState.active the
   // streaming phase); only re-enable when idle.
@@ -155,13 +154,8 @@ function updateChatMessages(newMessages) {
 }
 
 
-// Normalize message line endings before markdown rendering. Bugs #222/#224:
-// the old code only converted runs of 3+ newlines to a literal <br> tag -
-// which html:false markdown-it ESCAPES into "&lt;br&gt;" - and left single
-// newlines as markdown soft breaks that the .msg-content CSS collapsed to
-// spaces, so single-newline paragraph breaks rendered as one block. markdown-it
-// is now configured with breaks:true (soft break -> <br>), so the only
-// normalization needed here is CRLF/CR -> LF.
+// Normalize CRLF/CR to LF before markdown rendering. markdown-it is configured
+// with breaks:true so single-newline paragraph breaks remain visible.
 function _prepUserContent(content) {
   return (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
@@ -205,7 +199,7 @@ function createMessageBubble(msg, index) {
     roleClass = 'bot';
     authorName = msg.model || 'Assistant';
     if (window.ProviderIcons) headPrefixHtml = window.ProviderIcons.html(msg.model, msg.provider, 18, 'msg-provider-icon');
-    // Bug #222: assistant content must get the same line-ending normalization
+    // Normalize assistant line endings the same way as user content.
     // as user content - markdown-it's breaks:true then keeps single-newline
     // paragraph breaks visible instead of collapsing them into one block.
     contentHtml = md.render(_prepUserContent(msg.content));

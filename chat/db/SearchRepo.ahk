@@ -58,7 +58,7 @@ class SearchRepo {
                 firstWord := trimmed
             if StrLen(ftsExpr) > 0
                 ftsExpr .= " AND "
-            ; Bug #70: FTS5 MATCH treats " + - : ( ) * etc. as operators, so
+            ; FTS5 MATCH treats punctuation/operators specially, so
             ; quote each term to match it literally (a trailing * still does
             ; prefix matching on the quoted term).
             ftsExpr .= SearchRepo._FTS5QuoteTerm(trimmed)
@@ -67,10 +67,9 @@ class SearchRepo {
             return []
 
         ; Append * to the last word for prefix matching unless the query
-        ; already ends with *. (Bug #161: the old guard ALSO skipped the * when
-        ; the query ended in an apostrophe, assuming that meant "the last word
-        ; is quoted" - but terms are ALWAYS double-quoted by _FTS5QuoteTerm, so
-        ; "comp'" lost its prefix match and returned 0 while "comp" worked.)
+        ; already ends with *.
+        ; A trailing apostrophe remains part of the quoted term; it does not
+        ; change the quoting performed by _FTS5QuoteTerm.
         lastChar := SubStr(query, -1)
         if lastChar != "*" {
             ; Find the last word and append *
@@ -85,10 +84,9 @@ class SearchRepo {
         ; Extract a snippet window around the first match (case-insensitive).
         ; FTS5 MATCH is case-insensitive, so use LOWER() for INSTR to match.
         ; Only add "..." prefix/suffix when content is actually truncated.
-        ; Bug #183: the snippet is built from the FTS-INDEXED content
-        ; (messages_fts.content = m.content + decoded attachment extracted_text,
-        ; bug #165) instead of m.content alone, so a hit that exists only in an
-        ; attachment previews the matched attachment text, not the message.
+        ; Build snippets from FTS-indexed content, including attachment text.
+        ; messages_fts.content combines message content with decoded attachment text,
+        ; so attachment-only hits preview matched text.
         firstWordLower := StrLower(firstWord)
         snippetExpr := "CASE WHEN INSTR(LOWER(fts.content), ?) > 0 THEN"
                      . " CASE WHEN INSTR(LOWER(fts.content), ?) > 31 THEN '...' ELSE '' END"
@@ -115,8 +113,8 @@ class SearchRepo {
         return SearchRepo._BuildResults(sql, params*)
     }
 
-    ; Bug #70: wrap an FTS5 term in double quotes (quoted strings match
-    ; literally) and escape embedded quotes by doubling them.
+    ; Wrap FTS5 terms in double quotes so punctuation is matched literally.
+    ; Escape embedded quotes by doubling them.
     ; sql-lint: ok - the result is a MATCH expression VALUE (bound as a
     ; parameter), never interpolated into the SQL text itself.
     static _FTS5QuoteTerm(term) {
@@ -169,7 +167,7 @@ class SearchRepo {
         return SearchRepo._BuildResults(sql, likeQuery)
     }
 
-    ; Bug #69: escape SQL LIKE wildcards so user input is matched literally
+    ; Escape SQL LIKE wildcards so user input is matched literally
     ; (the SQL uses ESCAPE '\', so escape \ first, then % and _).
     static _EscapeLike(value) {
         value := StrReplace(value, "\", "\\")

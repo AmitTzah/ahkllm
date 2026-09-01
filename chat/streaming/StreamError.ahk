@@ -36,7 +36,7 @@ _handleStreamError() {
     if FileExist(requestParams["_streamOutputFile"]) {
         rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
         debugLog("[STREAM] Error — output: " SubStr(rawOutput, 1, 500))
-        ; Bug #219: a mid-stream SSE error event's message lives in the LAST
+        ; A mid-stream SSE error message lives in the last data event.
         ; `data:` JSON event (tracked by the stream reader as
         ; _streamRawLastResponse) - the output FILE holds multiple SSE events,
         ; so jsongo.Parse on the whole file fails and the provider message
@@ -52,9 +52,7 @@ _handleStreamError() {
     ; Surface the failure and re-enable the UI regardless of whether the
     ; output file exists. A connection failure (refused/DNS) makes cURL exit
     ; before it ever creates the output file — the stderr capture then holds
-    ; the only diagnostic. Previously the whole error/re-enable block was
-    ; inside the FileExist(outputFile) branch, so such failures left the UI
-    ; stuck in the Stop state with no error banner at all.
+    ; the only diagnostic, so error handling cannot depend on the output file.
     if !errMsg && stderrText
         errMsg := stderrText
     if !errMsg
@@ -107,10 +105,10 @@ _handleStreamError() {
 
 ; Persist a partial streamed response (user cancel or mid-stream error) into
 ; the thread that SENT the request, using the parent/retry metadata captured
-; at send time (same semantics as the completion path - bugs #159/#197/#205).
+; at send time, using the same ownership rules as the completion path.
 ; Returns the dbMsg payload for the streamCancelled post ("" when there is
 ; nothing to persist or no thread). Shared by _handleStreamCancelled and the
-; bug #219 mid-stream error path.
+; mid-stream error path.
 _persistPartialStreamContent() {
     content := requestParams.Has("_streamContent") ? requestParams["_streamContent"] : ""
     reasoning := requestParams.Has("_streamReasoning") ? requestParams["_streamReasoning"] : ""
@@ -120,8 +118,8 @@ _persistPartialStreamContent() {
     if !streamThreadId
         return ""
     path := ChatDB.Msg_GetActivePath(streamThreadId)
-    ; Bug #205: mirror the completion path's root-retry handling. A retried
-    ; ROOT assistant (no parent) must insert the cancelled partial as a
+    ; Mirror completion-path root-retry handling.
+    ; A root-assistant retry has no parent, so insert the cancelled partial as a
     ; SIBLING with parent_id NULL - never as a child of the original root.
     isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
     if isRootRetry
@@ -140,7 +138,7 @@ _persistPartialStreamContent() {
         provider: requestParams.Has("_streamProviderKey") ? requestParams["_streamProviderKey"] : "",
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
         reasoning: reasoning,
-        ; Bug #133: a cancelled stream never reported usage - LOCAL row:
+        ; Cancelled streams have no usage report, so persist them as local rows.
         ; local_copy skips the chat_usage upsert + cumulative recompute.
         local_copy: true,
         token_count: 0,
@@ -150,8 +148,8 @@ _persistPartialStreamContent() {
     })
     _maybeGenerateTitle(path, streamThreadId)
     postThreadStats(streamThreadId)
-    ; Bug #232: a cancelled/mid-error partial also changes the sidebar's model
-    ; badge and thread order - keep the sidebar in sync on the partial path
+    ; Cancelled/error partials also change sidebar model/order metadata.
+    ; Keep the sidebar in sync on the partial path
     ; too (mirrors _handleStreamComplete).
     _postThreadListRefresh()
     streamPath := ChatDB.Msg_GetActivePath(streamThreadId)
@@ -168,9 +166,8 @@ _handleStreamCancelled() {
 
     _logCancelledRequest()
 
-    ; Bug #171: cancel must persist into the thread that SENT the request
-    ; (captured at send time), not the currently-active thread - the user may
-    ; have switched threads between send and Stop.
+    ; Persist cancellation into the thread that sent the request.
+    ; The user may switch threads between send and Stop.
     streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
     dbMsgData := _persistPartialStreamContent()
     postWebMessage("streamCancelled", { dbMsg: dbMsgData, threadId: streamThreadId })
@@ -221,7 +218,7 @@ handleCancelStream() {
             postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
         return
     }
-    ; Bug #221: cancel the request that belongs to the CURRENT thread - with
+    ; Cancel the request associated with the current thread;
     ; concurrent command streams there is no single global cURL PID. Fall back
     ; to the most recent stream only when there is no visible thread (legacy
     ; flows); never cancel another thread's active request.
@@ -237,7 +234,7 @@ handleCancelStream() {
     ; Set the cancelled flag BEFORE killing the process tree. taskkill blocks,
     ; and if the poll finalizes after the PID dies but before the flag is set,
     ; the stream takes the COMPLETION path with a partial/zero-token response
-    ; and inflates the thread's cumulative counters (bug #133).
+    ; and would inflate cumulative counters.
     requestParams["_streamCancelled"] := true
     stream.cancelled := true
     pid := requestParams["_streamPID"]

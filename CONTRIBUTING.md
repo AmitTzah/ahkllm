@@ -79,6 +79,7 @@ Provider keys can be supplied through environment variables such as:
 DEEPSEEK_API_KEY
 OPENAI_API_KEY
 GOOGLE_API_KEY
+OPENROUTER_API_KEY
 TAVILY_API_KEY
 ```
 

@@ -216,7 +216,7 @@ function updateTokenUsage(data) {
   var bar = document.getElementById('tokenBar');
   if (!bar) return;
 
-  // Bug #207: stats are posted with their owning thread id; a completion in
+  // Stats carry their owning thread id so completions cannot repaint another thread.
   // thread A must not repaint thread B's header while B is the active thread.
   if (data && data.threadId && activeThreadId && data.threadId !== activeThreadId) return;
 
@@ -237,7 +237,7 @@ function updateTokenUsage(data) {
       '<i data-lucide="hash" class="tu-icon"></i>' +
       '<span class="tu-val">' + formatCompact(cu) + (cw ? ' / ' + formatCompact(cw) : '') + '</span>' +
     '</div>' +
-    // Bug #66: the tooltip label was misspelled; it now reads "Cumulative".
+    // This tooltip describes cumulative input/output usage across branches.
     '<div class="tu-item" title="Cumulative Input/output token usage across all conversation branches">' +
       '<i data-lucide="activity" class="tu-icon"></i>' +
       '<span class="tu-val">\u2191 ' + formatCompact(pt) + ' &nbsp;\u2193 ' + formatCompact(ct) + '</span>' +

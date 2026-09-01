@@ -19,8 +19,8 @@ class MessageRepo {
         lat := msgObj.HasProp("response_time_ms") ? msgObj.response_time_ms : 0
         ttft := msgObj.HasProp("ttft_ms") ? msgObj.ttft_ms : 0
 
-        ; Bug #118/#123: branch-edit copies are LOCAL DB duplicates - no API
-        ; call happens. They must not backfill user tokens, re-charge the
+        ; Branch-edit copies are local DB duplicates; no API call occurs.
+        ; They must not backfill user tokens or alter the
         ; cumulative counters/costs, or upsert chat_usage (which would show a
         ; fake API request in the dashboard).
         isLocalCopy := msgObj.HasProp("local_copy") && msgObj.local_copy
@@ -44,8 +44,8 @@ class MessageRepo {
             ; Local copies carry the source message's context total verbatim.
             activePathTokens := Integer(msgObj.active_path_tokens)
         } else if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") {
-            ; Bug #64: thinking tokens occupy the context window too - the
-            ; header "Context Used" must be prompt + visible output + thinking.
+            ; Thinking tokens also occupy the context window.
+            ; "Context Used" therefore includes prompt + visible output + thinking.
             activePathTokens := msgObj.prompt_tokens + tc + tht
         } else if msgObj.HasProp("parent_id") && msgObj.parent_id {
             parentRow := ChatDB.db.Query("SELECT active_path_tokens FROM messages WHERE id=?;", msgObj.parent_id)
@@ -57,8 +57,8 @@ class MessageRepo {
         ; to rebuild the current editable-path estimate after local changes.
         promptTotal := msgObj.HasProp("prompt_tokens") ? msgObj.prompt_tokens : new_input
 
-        ; Bug #153: snapshot the COSTS at the prices in effect when this API
-        ; call was made, so a later price change in Settings never re-prices
+        ; Snapshot costs at the prices in effect when this API call is made.
+        ; Later price changes in Settings must not re-price
         ; historical calls in the thread's cumulative counters.
         inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
         if !isLocalCopy && msgObj.HasProp("model") && msgObj.model {
@@ -79,11 +79,9 @@ class MessageRepo {
         if !msgObj.HasProp("update_active_leaf") || msgObj.update_active_leaf
             ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", id, msgObj.thread_id)
 
-        ; Hardening item 3: the thread's cumulative counters are DERIVED from
-        ; the messages in exactly one place (_RecomputeCumulativeCounters) -
-        ; never accumulated incrementally here - so the thread ledger can never
-        ; drift from the per-message token fields (ground truth). Local copies
-        ; (no API call) leave the ledger untouched.
+        ; The thread's cumulative counters are derived from message fields in
+        ; _RecomputeCumulativeCounters. Local copies (no API call) leave the
+        ; ledger untouched.
         if !isLocalCopy
             MessageRepo._RecomputeCumulativeCounters(msgObj.thread_id)
 
@@ -137,7 +135,7 @@ class MessageRepo {
         existing_sum := 0
         for msg in path {
             existing_sum += msg.HasProp("token_count") ? msg.token_count : 0
-            ; Bug #145: assistant token_count holds only VISIBLE output
+            ; Assistant token_count holds only visible output;
             ; (thinking is stored separately), so the prior assistant's thinking
             ; tokens must be subtracted too - otherwise they leak into the next
             ; user's backfilled "contribution" and its token popover over-counts.
@@ -153,8 +151,8 @@ class MessageRepo {
         while i >= 1 {
             if path[i].role = "user" {
                 currentTC := path[i].HasProp("token_count") ? path[i].token_count : 0
-                ; Bug #150: a local branch-edit copy carries the SOURCE
-                ; message's backfilled token_count (bug #123 copies it) - when
+                ; A local branch-edit copy carries the source
+                ; message's backfilled token_count; when
                 ; the branch's own real API response arrives, that stale
                 ; attribution must be REPLACED with the branch's real
                 ; contribution (otherwise the copy's token popover is wrong
@@ -165,7 +163,7 @@ class MessageRepo {
                     isLocalCopy := true
                 if currentTC = 0 || isLocalCopy {
                     ChatDB.db.Query("UPDATE messages SET token_count=? WHERE id=?;", new_input, path[i].id)
-                    ; Bug #157: the backfill must ALSO update the user
+                    ; Backfill must also update the user
                     ; message's active_path_tokens (parent context + own
                     ; contribution). Insert computed it with token_count still
                     ; 0, so forking AT this message under-reported the fork's
@@ -218,9 +216,9 @@ class MessageRepo {
         ChatDB.db.Query("DELETE FROM messages WHERE id=?;", msgId)
 
         TreeRepo._RecomputeActivePath(threadId)
-        ; Bug #65: the deleted message's tokens/cost must drop out of the
-        ; header totals - recompute the cumulative counters from the remaining
-        ; messages (they were previously left stale and forever inflated).
+        ; Deleted-message tokens/cost must drop out of thread totals.
+        ; Recompute cumulative counters from the remaining
+        ; messages.
         MessageRepo._RecomputeCumulativeCounters(threadId)
         ChatDB.RequestSpaceReclaim()
         ChatDB.CommitTransaction()
@@ -232,14 +230,13 @@ class MessageRepo {
     }
 
     ; Recompute a thread's cumulative counters from its remaining messages
-    ; (bug #65), mirroring the per-insert accumulation in Insert().
+    ; mirroring the per-insert accumulation in Insert().
     ;
-    ; Tree-accurate since bug #114: an assistant's prompt contribution is its
-    ; stored API prompt_tokens (bug #107 ground truth) - the old code rebuilt a
-    ; running sum in rowid (insertion) order, charging off-path branch messages
-    ; with tokens from the other branch. When prompt_tokens is missing (legacy
+    ; An assistant's prompt contribution uses its stored API prompt_tokens.
+    ; This preserves active-path context instead of reconstructing by insertion order.
+    ; When prompt_tokens is missing (legacy
     ; rows) the parent message's active_path_tokens is the context the API call
-    ; actually saw. Output/cached only count assistant rows (bug #128) - user
+    ; actually saw. Output/cached totals count assistant rows only; user
     ; token_counts are backfilled INPUT contributions, never output.
     static _RecomputeCumulativeCounters(threadId) {
         table := ChatDB.db.Query("SELECT id, role, model, parent_id, token_count, prompt_tokens, thinking_tokens, cached_tokens, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost FROM messages WHERE thread_id=?;", threadId)
@@ -251,8 +248,8 @@ class MessageRepo {
         input := 0, output := 0, cached := 0, inputCost := 0, cachedInputCost := 0, outputCost := 0, totalCost := 0
         for row in table.rows {
             ; Only assistant rows represent an API call. User/system token_counts
-            ; are backfilled input contributions (bug #128).
-            ; Bug #144: local branch-edit copies carry COPIED token metadata
+            ; are backfilled input contributions.
+            ; Local branch-edit copies carry copied token metadata
             ; from their source but are not API calls - they must not be
             ; charged to the thread's cumulative counters (which would make
             ; the header disagree with the dashboard).
@@ -264,7 +261,7 @@ class MessageRepo {
             promptTotal := row.prompt_tokens ? Integer(row.prompt_tokens) : 0
             if !promptTotal && row.parent_id && rowMap.Has(row.parent_id)
                 promptTotal := Integer(rowMap[row.parent_id]["active_path_tokens"])
-            ; Bug #153: each assistant row carries the COST SNAPSHOT taken at
+            ; Each assistant row carries the cost snapshot taken at
             ; insert time (the prices in effect when the API call was made), so
             ; a later price change in Settings never re-prices history. Legacy
             ; rows without a snapshot (all costs 0 but real tokens) fall back to
@@ -308,10 +305,8 @@ class MessageRepo {
 
         ChatDB.db.Query("UPDATE messages SET content=? WHERE id=?;", newContent, msgId)
         ChatDB.FTS_Sync(msgId, newContent)
-        ; Bug #156/#181: overwrite-editing a message keeps its OLD token_count
-        ; in place, so the NEXT user message's backfill subtracts the stale
-        ; value and its token popover over-counts. Re-estimate the edited
-        ; message's contribution (~1 token per 3 characters - a documented
+        ; Overwrite edits must invalidate/recompute stale token_count data.
+        ; Re-estimate the edited message's contribution (~1 token per 3 characters - a documented
         ; heuristic; the next API prompt then accounts for it exactly) for
         ; USER messages (backfilled input attribution) and ASSISTANT messages
         ; (their token_count feeds _BackfillUserTokens' existing_sum as
@@ -324,10 +319,7 @@ class MessageRepo {
 
         if threadId
             TreeRepo._RecomputeActivePath(threadId)
-        ; Bug #194: the edited message's token_count changed, so the thread's
-        ; CUMULATIVE ledger must be derived again - otherwise the header
-        ; keeps the pre-edit output total while the message popover shows the
-        ; refreshed count (until the next API call forces a recompute).
+        ; When an edit changes token_count, recompute the thread's cumulative ledger.
         if threadId
             MessageRepo._RecomputeCumulativeCounters(threadId)
         ChatDB._MarkPersistentDataChanged()

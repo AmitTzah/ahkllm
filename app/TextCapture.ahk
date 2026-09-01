@@ -311,7 +311,7 @@ class TextCapture {
 
         ; Normalise line endings — different apps produce different formats
         ; (Notepad = CRLF, Chrome = LF).  The LLM API expects consistent \n.
-        ; Bug #231: web selections commonly carry SINGLE newlines between
+        ; Web selections commonly carry single newlines between
         ; paragraphs (HTML collapses the original blank lines when copying), so
         ; ALWAYS expand a single \n between text to \n\n — the universal
         ; paragraph break LLMs were trained on — instead of only when the

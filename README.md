@@ -137,7 +137,7 @@ They are all remappable from Settings.
 
 Most configuration is available from the gear icon in the chat window, including providers, models, commands, assistants, hotkeys, icons, menu items, and UI appearance settings.
 
-If you prefer editing the config directly, the defaults live in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Saving that file reloads the script automatically.
+If you prefer editing the shipped defaults directly, they live in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Reload or restart AhkLLM after changing that file.
 
 ## Try AhkLLM for free
 

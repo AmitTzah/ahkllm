@@ -1,19 +1,6 @@
-// ======================================================
-// ipc.js - Typed WebView -> AHK sender.
-//
-// Every outgoing message goes through Ipc.postToHost,
-// which validates the action + payload against the shared
-// IPC contract (ipc-contract.js) and then posts it. This
-// is the single choke point the WebView uses to talk to
-// AHK.
-//
-// Step 2 of the IPC refactor: every outgoing message carries
-// a correlation id (reqId) and Ipc.request(action, payload)
-// returns a Promise resolved by the matching "ack" message
-// from AHK (Dispatch._AckWebMessage). This converts the
-// fire-and-forget posts into request/response calls so
-// failures surface instead of failing silently.
-// ======================================================
+// ipc.js — typed WebView -> AHK messaging.
+// Outgoing messages are validated against ipc-contract.js and carry a reqId.
+// Ipc.request() resolves or rejects from the matching host acknowledgement.
 (function(root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./ipc-contract'));
   else root.Ipc = factory(root.IPCMessages);

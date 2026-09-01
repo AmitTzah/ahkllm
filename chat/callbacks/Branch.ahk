@@ -15,8 +15,8 @@ handleBranchSwitch(params, *) {
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path, activeThreadId))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
-    ; Bug #174: the switch bumps the thread's updated_at - refresh the sidebar
-    ; list so the order (and the #155 model badge) follows the newly-active
+    ; A branch switch bumps the thread's updated_at; refresh the sidebar
+    ; list so its order and model badge follow the newly active
     ; branch instead of staying stale until some other action reposts it.
     _postThreadListRefresh()
 }
@@ -69,7 +69,7 @@ _setupSiblingGroup(msg) {
     sg := msg.sibling_group
     if !sg {
         sg := ChatDB._UUID()
-        ; Hardening item 1: msg.id and sg are bound parameters - crafted ids
+        ; msg.id and sg are bound parameters, so crafted ids
         ; can never alter the SQL text.
         ChatDB.db.Query("UPDATE messages SET sibling_group=?, sibling_index=0 WHERE id=?;", sg, msg.id)
         ChatDB._MarkPersistentDataChanged()
@@ -93,7 +93,7 @@ retryAction(messageId := "") {
             ChatDB.Msg_SetActiveLeaf(activeThreadId, target.parentMsg.id)
         } else {
             requestParams["pendingRetryRewoundLeaf"] := path[path.Length].id
-            ; Bug #147: the retry target is the thread ROOT (no parent). The
+            ; A root-assistant retry has no parent. The
             ; leaf must stay on the original so the request can still be built,
             ; but the pending response must be inserted with parent_id NULL as
             ; a SIBLING of the original - not as its CHILD. Flag it for
@@ -107,7 +107,7 @@ retryAction(messageId := "") {
     }
 
     if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user")
-        ; Bug #203: chat UI retries always stream.
+        ; Chat UI retries always stream.
         requestParams["stream"] := true
         _BuildAndFireRequest()
 }

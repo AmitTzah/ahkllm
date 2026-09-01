@@ -36,7 +36,7 @@ class GoogleChatCompletions {
         if (GoogleChatCompletions._IsGemma4(modelId))
             return { thinking_level: "MINIMAL" }
         ; Gemini 2.x: disable via budget 0; include_thoughts:false keeps the
-        ; payload symmetric with the enabled config (bug #73).
+        ; payload symmetric with the enabled config.
         return { include_thoughts: false, thinking_budget: 0 }
     }
 
@@ -85,7 +85,7 @@ class GoogleChatCompletions {
     ; Budget tables per Gemini 2.x model family.
     ; ----------------------------------------------------
     static _BudgetTable(modelId) {
-        ; Bug #75: match the Gemini FAMILY (gemini-2.5-pro), not any model whose
+        ; Match the Gemini family (gemini-2.5-pro), not any model whose
         ; name merely contains "2.5-pro" (e.g. my2.5-pro-custom).
         if InStr(modelId, "gemini-2.5-pro")
             return Map("minimal", 128, "low", 2048, "medium", 8192, "high", 32768)

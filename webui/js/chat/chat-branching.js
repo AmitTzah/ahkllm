@@ -1,4 +1,4 @@
-﻿// ======================================================
+// ======================================================
 // chat-branching.js — D1 Edit, D2 Delete, D3 Branch Nav
 // ======================================================
 
@@ -38,7 +38,7 @@ function editMessage(index) {
   // Wire buttons (use onclick to replace any previous handler)
   var cancelBtn = bubble.querySelector('.cancel-edit');
   if (cancelBtn) cancelBtn.onclick = function() {
-    // Bug #49: canceling an edit must roll back deferred attachment removals
+    // Canceling an edit rolls back deferred attachment removals and edit state.
     // and clear the edit state - otherwise attachments stay hidden in the UI
     // while their DB rows survive (and get sent anyway), and later attachment
     // delete clicks keep deferring instead of deleting.
@@ -101,7 +101,7 @@ function switchBranch(msgId, direction) {
   Ipc.postToHost('switchBranch', { id: msgId, direction: direction });
 }
 
-// D3b: AHK pushes position-based branch info after a branch switch (bug #125).
+// AHK pushes position-based branch info after a branch switch.
 // Keep chatMessages in sync; the following updateChatView rebuild re-renders
 // the labels from buildStructuredMessagesFromPath anyway, but the posted
 // message should not be a silent no-op.

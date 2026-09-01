@@ -39,8 +39,8 @@ function startStreaming() {
 
 // Called when streaming content arrives (token by token)
 function onStreamContent(text, threadId) {
-  // Bug #195: a stream that belongs to another thread/branch must never paint
-  // into the currently-visible conversation.
+  // Streams may paint only into the currently visible conversation when it
+  // belongs to the request's thread and branch.
   if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!streamState.active) {
     if (streamState.finalized) {
@@ -144,14 +144,13 @@ function _persistStreamedMessage(content, modelName, dbMsg) {
   }
 }
 
-// Bug #195: a streamed response may only be persisted into the CURRENT UI
-// array when that array is actually the request's own path. The DB row is the
-// source of truth; the completion/cancel message carries the sending
-// thread id and the persisted message's parent id.
+// Persist a streamed response into the UI array only when that array is the
+// request's own path. The DB row is the source of truth; completion/cancel
+// messages carry the sending thread id and the persisted message's parent id.
 function _streamBelongsToCurrentPath(dbMsg) {
   if (!dbMsg) return false;
-  // Legacy/unit-test payloads without a parent id are treated as current;
-  // production dbMsg always carries parentId (bug #195).
+  // Payloads without a parent id are treated as current for compatibility;
+  // normal completion payloads carry parentId.
   if (dbMsg.parentId === undefined) return true;
   if (!dbMsg.parentId) {
     // Root retry (or a response with no parent): only valid when the UI path
@@ -168,9 +167,8 @@ function onStreamDone(data) {
   var modelName = typeof data === 'string' ? data : (data && data.model ? data.model : '');
   var displayName = (data && data.displayName) ? data.displayName : modelName;
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
-  // Legacy payloads without a dbMsg are treated as current (they carry no
-  // thread/parent scoping info); production payloads always carry dbMsg +
-  // threadId, so a non-current stream can be scoped away (bugs #195/#221).
+  // Payloads without a dbMsg are treated as current for compatibility; normal
+  // completion payloads carry dbMsg and threadId for scoping.
   var isCurrent = (!dbMsg || _streamBelongsToCurrentPath(dbMsg)) &&
     (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
 
@@ -194,12 +192,9 @@ function onStreamDone(data) {
     _persistStreamedMessage(streamState.contentBuffer, modelName, dbMsg);
     if (streamState.bubble) addStreamingActions(streamState.bubble, chatMessages.length - 1);
   } else if (isCurrent && dbMsg && dbMsg.role === 'assistant') {
-    // Bug #229: a NON-STREAMING (single-shot) chat response never streams any
-    // content/reasoning chunks, so the buffers are empty and the branch above
-    // is skipped - AHK persisted the assistant row and posted streamDone with
-    // dbMsg, but the bubble never appeared until the thread was reloaded
-    // (e.g. chat-mode commands with "Stream Response" OFF, like the default
-    // Summarize command). Render the persisted DB message directly.
+    // Single-shot responses have empty streaming buffers, so use the persisted message payload.
+    // AHK persists the assistant row and posts streamDone with dbMsg, so render
+    // that row directly when no streaming chunks were received.
     _persistStreamedMessage(dbMsg.content || '', modelName, dbMsg);
     if (typeof renderChatMessages === 'function') renderChatMessages(chatMessages);
   }
@@ -212,10 +207,9 @@ function onStreamDone(data) {
   if (typeof _retryThreadId !== 'undefined') _retryThreadId = null;
   if (typeof _retryAnchorId !== 'undefined') _retryAnchorId = null;
 
-  // Bug #221: a NON-current stream's completion must not clear the global
-  // stream state - the CURRENT thread may still have its own stream in flight
-  // (two chat-mode commands can stream at once). AHK posts
-  // setChatButtonsEnabled(true) only once NO request remains, and that
+  // A non-current stream completion must not clear another thread's stream state.
+  // The current thread may still have its own stream in flight; the host posts
+  // setChatButtonsEnabled(true) only once no request remains, and that
   // (handled in setChatButtonsEnabled) is the signal to reset the composer.
   if (!isCurrent) return;
 
@@ -266,9 +260,8 @@ function _finalizeStreamContent() {
 }
 
 function _updateUserTokenCount(data) {
-  // Bug #150: a 0 contribution is a real value (e.g. a branch copy whose
-  // context already exceeds the new prompt) - it must still overwrite the
-  // stale UI token count, so only skip when the value is absent.
+  // A zero token contribution is real and must overwrite stale UI state;
+  // skip updates only when the value is absent.
   if (!(data && data.userTokenCount !== undefined && data.userTokenCount >= 0)) return;
   for (var i = chatMessages.length - 1; i >= 0; i--) {
     if (chatMessages[i].role === 'user') {
@@ -288,10 +281,8 @@ function createStreamingBubble() {
   html += '<div class="msg-body">';
   html += '<div class="msg-head">';
   if (window.ProviderIcons) html += window.ProviderIcons.html(streamState.modelName, streamState.provider, 18, 'msg-provider-icon');
-  // Bug #208: displayName comes from the AHK streamModelName post (assistant
-  // name or sanitized model name) and is user-controlled - escape it like
-  // createMessageBubble does, or markup in the name is parsed as HTML and
-  // inline handlers execute inside the WebView.
+  // displayName is user-controlled model/assistant text; escape it before HTML
+  // insertion so markup cannot execute inside the WebView.
   html += '<span class="msg-author">' + escHtml(displayName) + '</span>';
   html += '<span class="msg-meta"></span>';
   html += '</div>';
@@ -400,9 +391,8 @@ function cancelStreaming(data) {
   var dbMsg = (data && data.dbMsg) ? data.dbMsg : null;
   var isCurrent = (!dbMsg || _streamBelongsToCurrentPath(dbMsg)) &&
     (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
-  // Bug #221: a NON-current stream's cancel/error must not clear the current
-  // view's streaming state - the current thread may still be streaming its
-  // own response (two chat-mode commands can stream at once).
+  // A non-current stream cancel/error must not clear the current thread's
+  // streaming state; the current thread may still be streaming its own response.
   if (!isCurrent) return;
 
   streamState.active = false;
@@ -439,10 +429,8 @@ function cancelStreaming(data) {
     }
   }
 
-  // Bug #221: the composer re-enable is AHK's job (it posts
-  // setChatButtonsEnabled(true) only when NO other request is still in
-  // flight) - calling it here would un-wedge the composer while another
-  // concurrent command stream is still running.
+  // The host re-enables the composer only when no request remains in flight.
+  // calling it here could enable the composer while another stream runs.
   streamState.contentBuffer = '';
   streamState.thinkingBuffer = '';
   streamState.bubble = null;

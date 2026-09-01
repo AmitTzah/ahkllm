@@ -38,14 +38,14 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
     commandThreadId := ""
     if pasteMode = "chat" {
         commandThreadId := ChatDB.Thread_Create(commandName)
-        ; Hide the old chat immediately, but defer loading/showing the new
+        ; Hide the currently visible chat immediately, but defer loading/showing the new
         ; thread until its system/user messages are ready. This prevents a
         ; blank new chat from appearing while capture is still in progress.
         prepareChatWindow()
         beginChatOpeningIndicator()
     }
 
-    ; STEP 1: Capture text only when the command actually needs text from the
+    ; Capture text only when the command actually needs text from the
     ; foreground application. Preserve the legacy implicit-selection behavior
     ; for normal text commands, but a screenshot-only command with no prompt
     ; template should not probe the clipboard just because inputText is empty.
@@ -89,7 +89,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
 
     ; Parse models — multiple models are collapsed to the first as a safety net
     APIModelsArr := StrSplit(RegExReplace(APIModels, "\s+", ""), ",")
-    ; Bug #162: the command dropdown's "Default" option stores an EMPTY
+    ; The command dropdown's "Default" option stores an empty
     ; APIModels string. StrSplit("") returns an empty array, so the request
     ; loop below never ran and the command was a silent no-op. Substitute the
     ; app default model - the dropdown's documented behavior.
@@ -102,7 +102,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         APIModelsArr := [APIModelsArr[1]]
     }
 
-    ; STEP 1.5: Screenshot capture for includeImageContext. Prompted screenshot
+    ; Capture screenshot context after model selection. Prompted screenshot
     ; commands may already have captured the PNG so the input window can preview
     ; it; non-prompted commands select and capture here.
     if includeImageContext {
@@ -161,7 +161,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
         }
     }
 
-    ; STEP 2: Build request and execute
+    ; Build and execute the request.
     for i, fullAPIModelName in APIModelsArr {
         providerInfo := ProviderResolver.Resolve(fullAPIModelName)
         providerName := providerInfo.providerKey
@@ -220,7 +220,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
                     : (thinking = "disabled" ? (thinkingLevel != "" ? thinkingLevel : "none") : ""),
                 temperatureOverride: temperature
             }
-            ; Bug #36: temperature/reasoning overrides must persist even when the
+            ; Temperature/reasoning overrides must persist even when the
             ; command model equals the app default - only modelOverride is
             ; redundant in that case (the thread then uses the default model).
             if fullAPIModelName != appDefaultModel
@@ -230,7 +230,7 @@ processInitialRequest(commandName, menuText, systemMessage, APIModels, pasteMode
             ; Show only after the system/user messages have been inserted, so
             ; the first visible frame is already the populated new chat.
             openChatWindow(threadId, true)
-            ; Bug #203: the command's Stream Response toggle must reach the
+            ; The command's Stream Response toggle must reach the
             ; chat process - notifyTriggerLLM carries it in the WM wParam.
             SetTimer(() => CustomMessages.notifyTriggerLLM(chatWindowhWnd, stream), -100)
             break

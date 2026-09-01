@@ -1,6 +1,4 @@
-// ======================================================
-// settings-panel.js — Settings panel tab switching, IPC, dirty tracking
-// ======================================================
+// settings-panel.js — Settings navigation, persistence IPC, and dirty tracking.
 
 window.SettingsPanel = (function() {
   var _dirty = false;
@@ -107,9 +105,8 @@ window.SettingsPanel = (function() {
         }
       }
     }
-    // Step 2 of the IPC refactor: await the AHK acknowledgement so a
-    // dispatch failure or a dropped message surfaces instead of failing
-    // silently (the settingsSaved handler reports save-level errors).
+    // Await the host acknowledgement so dispatch failures and dropped messages
+    // surface immediately; settingsSaved reports persistence-level failures.
     _saveInFlight = true;
     Ipc.request('saveSettings', { data: data }).catch(function(err) {
       _saveInFlight = false;

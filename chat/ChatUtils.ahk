@@ -19,10 +19,9 @@ cURLState(action, data := 0) {
     return 0
 }
 
-; Bug #212: is the current right-rail state still pristine (no assistant, no
-; overrides, the app default model)? This helper is included before both the
-; settings and callback modules so AHK #Warn cannot resolve the callback call
-; as an unassigned local function (which otherwise opens a blocking modal).
+; True when the right-rail state is still pristine. This helper is loaded before
+; settings/callback modules because AHK #Warn can treat a later function reference
+; as an unassigned local and open a blocking modal.
 _RequestParamsAreDefault() {
     global requestParams, appDefaultModel
     if requestParams.Has("activeAssistantId") && requestParams["activeAssistantId"]
@@ -52,8 +51,7 @@ postWebMessage(target, data := unset, reqId := "") {
 
     ; If data is provided, add it to the message object
     msgObj.data := IsSet(data) ? data : unset
-    ; Correlation id from a WebView request (step 2 of the IPC refactor):
-    ; replies echo it so the WebView can match responses to requests.
+    ; Echo request correlation ids so the WebView can match replies.
     if reqId != ""
         msgObj.reqId := reqId
 
@@ -127,9 +125,8 @@ postThreadStats(threadId := "") {
     if !threadId
         return
     stats := ChatDB.Msg_GetThreadStats(threadId)
-    ; Bug #207: scope the token-bar payload to the thread it belongs to. The
-    ; WebView ignores stats for a thread that is no longer active, so a
-    ; completion in thread A can never repaint thread B's header.
+    ; Scope token-bar stats to their owning thread so asynchronous completions
+    ; cannot repaint another thread's header.
     stats.threadId := threadId
     postWebMessage("updateTokenUsage", stats)
 }
@@ -184,10 +181,8 @@ buildStructuredMessagesFromPath(path, threadId := "") {
         }
         if msg.sibling_group {
             siblings := ChatDB.Msg_GetSiblings(msg.id)
-            ; Bug #125: the branch label is the 1-based POSITION of this message
-            ; among the REMAINING siblings - the raw sibling_index+1 goes stale
-            ; after a sibling is deleted (B kept showing 2/2 after A vanished)
-            ; and grows with every retry.
+            ; Branch labels use the message's current 1-based position among
+            ; remaining siblings; stored sibling indexes can contain gaps.
             pos := 0
             for i, sib in siblings {
                 if sib.id = msg.id {
@@ -241,20 +236,12 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
         _sendDropdownLabel()
     ; Push per-thread settings (model, assistant, font size, etc.) to WebView
     postCurrentSettingsToWebView()
-    ; Bug #230: threads created by a chat-mode command (Main's
-    ; processInitialRequest -> openChatWindow -> LoadThreadIntoUI) never
-    ; appeared in the sidebar - nothing posted a threadList refresh after the
-    ; load, so the new "Summarize"-style chat was invisible until an unrelated
-    ; action reposted it (handleBranchSwitch #174 and navigateToMessage #209
-    ; both refresh after their loads; the unified loader did not).
+    ; Loading a thread also refreshes sidebar membership/order and restores any
+    ; in-flight partial response that belongs to it.
     _postThreadListRefresh()
-    ; Bug #195: if the loaded thread has an in-flight stream, re-paint its
-    ; accumulated partial content now that its UI is visible again.
     _RepostActiveStreamForThread(activeThreadId)
-    ; Bug #38: keep the window title in sync with the active thread. Only
-    ; renameThread updated chatWindow.Title before, so switching threads left
-    ; the previously renamed thread's title in the title bar.
-        threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
+    ; Keep the native window title aligned with the active thread.
+    threadInfo := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", activeThreadId)
     if threadInfo.count
         chatWindow.Title := AppInfo.Name " - " threadInfo[1, "title"]
 }

@@ -8,7 +8,7 @@ var allData = null, mainChart = null;
 const MODEL_COLORS = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
 var modelColors = {};
 
-// Bug #82 (XSS): provider/model names are user-controlled - escape them when
+// Provider/model names are user-controlled; escape them before HTML insertion.
 // injecting into HTML (filter dropdown options).
 function escHtml(s) {
   if (s === undefined || s === null) return '';
@@ -22,7 +22,7 @@ function getDateRangeLabels() {
   var today = new Date();
   var days;
   // Local date key (YYYY-MM-DD) - toISOString() shifts labels a day in UTC+x
-  // timezones because local midnight is still the previous UTC day (bug #42).
+  // timezones because local midnight can still be the previous UTC day.
   function localDateKey(d) {
     var m = String(d.getMonth() + 1);
     var day = String(d.getDate());
@@ -129,7 +129,7 @@ function renderSummary() {
   }
   for (var i=0; i<allData.commands.length; i++) {
     var c = allData.commands[i];
-    // Bug #52: command_usage.completion_tokens already includes thinking
+    // command_usage.completion_tokens already includes thinking tokens.
     // (same as chat's output_tokens), so adding thinking_tokens would
     // double-count it.
     var cmdOutput = (c.completion_tokens||0);
@@ -189,7 +189,7 @@ function renderMainChart() {
   }
   for (var i=0; i<allData.commands.length; i++) {
     var c = allData.commands[i], d = c.date;
-    // Bug #200: command rows must use the same provider fallback as chat rows
+    // Command rows use the same provider fallback as chat rows.
     // (extractProvider(c.model)) - otherwise a command row with provider=""
     // and model="deepseek/gpt-5" charts under an "" series that no filter
     // option can select.
@@ -252,7 +252,7 @@ function renderModelSections() {
     models[m].requests[d] = (models[m].requests[d]||0) + (c.call_count||0);
     models[m].cacheHit[d] = (models[m].cacheHit[d]||0) + cmdCached;
     models[m].cacheMiss[d] = (models[m].cacheMiss[d]||0) + Math.max(0, cmdPrompt - cmdCached);
-    // Bug #52: completion_tokens already includes thinking; do not add it again.
+    // completion_tokens already includes thinking; do not add it again.
     models[m].output[d] = (models[m].output[d]||0) + (c.completion_tokens||0);
   }
 
@@ -273,7 +273,7 @@ function renderModelSections() {
 
     var color = getColor(model, e);
     var div = document.createElement('div'); div.className = 'model-section chart-card';
-    // Bug #95 (XSS): model ids are user-controlled - escape the heading.
+    // Model ids are user-controlled; escape the heading.
     div.innerHTML = '<h6>'+escHtml(model)+'</h6><div class="row"><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="req-'+e+'"></canvas></div></div><div class="col-md-6"><div class="chart-container-sm" style="overflow:hidden"><canvas id="tok-'+e+'"></canvas></div></div></div>';
     container.appendChild(div);
 
@@ -332,15 +332,15 @@ function extractProvider(model) {
 }
 
 // Reserved sentinel for "Unknown (blank)" provider rows. "__unknown__" is NOT
-// safe as a sentinel because a real provider can be named "__unknown__" (bug
-// #182) - this value uses characters impossible in a provider name.
+// safe as a sentinel because a real provider can be named "__unknown__";
+// this value uses characters impossible in a provider name.
 var BLANK_PROVIDER_SENTINEL = '__BLANK_PROVIDER__';
 
 function populateFilters() {
   var provSel = document.getElementById('providerFilter'), curP = provSel.value;
   provSel.innerHTML = '<option value="">All Providers</option>';
   (allData.providers||[]).forEach(function(p){ provSel.innerHTML += '<option value="'+escHtml(p)+'">'+escHtml(p)+'</option>'; });
-  // Bug #168/#182: rows whose provider resolves to "" (model removed from
+  // Rows whose provider resolves to empty use a selectable reserved sentinel.
   // settings) render in the chart under an empty key - give them a selectable
   // option so that cost can be isolated (the backend scopes it via the
   // reserved "__BLANK_PROVIDER__" sentinel, which can never collide with a
@@ -381,7 +381,7 @@ document.getElementById('typeFilter').addEventListener('change', loadData);
 document.getElementById('refreshBtn').addEventListener('click', loadData);
 
 // RFC-4180 CSV field escaping: quote any field containing a comma, quote, or
-// line break, doubling embedded quotes (bug #163 - model/provider names are
+// line break, doubling embedded quotes because model/provider names are
 // user-editable and can contain commas).
 function csvField(v) {
   var s = String(v === undefined || v === null ? '' : v);

@@ -75,7 +75,7 @@ debugLog("[CHAT] Settings loaded" (settings.Count ? " from settings.json" : " fr
 _ChatWindowOnExit(*) {
     try ChatDB.Close()
     try {
-        ; Bug #221: close EVERY in-flight cURL process - two chat-mode
+        ; Close every in-flight cURL process; multiple chat-mode
         ; commands can be streaming at once, so the single global cURLState
         ; PID is not enough.
         if IsSet(_activeStreams) {
@@ -142,7 +142,7 @@ global chatWindow := responseWindow
 ; outside the repo) are used as-is; repo-relative paths resolve against the
 ; repo root. An empty value means no icon.
 ; Set the window icon (title bar / taskbar) and re-apply it on every settings
-; update, so "Active Icon" (iconOn) edits take effect live (bug #138) instead
+; update, so "Active Icon" (iconOn) edits take effect live instead
 ; of only at startup. The hook is registered AFTER the window exists: the
 ; initial SettingsService.Apply above ran before chatWindow was created.
 _applyChatWindowIcon()

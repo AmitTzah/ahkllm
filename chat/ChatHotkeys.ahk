@@ -3,9 +3,8 @@
 ;
 ; Sub-process (ChatWindow.ahk) counterpart of Main's HotkeyRegistrar:
 ; registers the configured "Close Windows" hotkey in the chat process so the
-; setting is honored there too (previously ChatWindow hardcoded ~^w and never
-; consulted closeWindowsHotkey). Empty value = disabled — the old binding is
-; turned Off and nothing re-registered.
+; configured setting is honored there too. Empty value disables the binding;
+; any currently registered binding is turned Off before reconfiguration.
 ; ======================================================
 
 global _activeChatHotkey := ""

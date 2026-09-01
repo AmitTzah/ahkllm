@@ -2,11 +2,11 @@
 // chat-input.js — Send, loading indicator, keyboard, retry
 // ======================================================
 
-// Bug #169: the messages removed when a retry starts (the retried assistant
+// Keep the messages removed when a retry starts so a failed retry can restore them.
 // and everything after it). If the retry FAILS, they are restored so the
 // original response stays visible instead of being lost until reload.
 var _retryRemovedMessages = null;
-// Bug #216: the retry restore must land back in the SAME thread/path the
+// Retry restoration is scoped to the same thread and visible path.
 // messages were removed from. _retryThreadId records the thread, and
 // _retryAnchorId the id of the last remaining message after truncation (the
 // anchor of the truncated path; null for a root retry that emptied the UI).
@@ -18,9 +18,9 @@ function onChatSend() {
   if (!input) return;
 
   // If streaming, treat click as "Stop". streamState.active is checked in
-  // addition to isLoading so a mismatched composer (bugs #214/#218: input
-  // re-enabled / isLoading reset while the first stream is still in flight)
-  // can never fire a second send that clobbers the first stream.
+  // addition to isLoading so a mismatched composer cannot send again while
+  // the first stream is still in flight, preventing a second send from
+  // clobbering the active stream.
   if (isLoading || (typeof streamState !== 'undefined' && streamState.active)) {
     onStopStreaming();
     return;
@@ -58,9 +58,8 @@ function onChatSend() {
     return;
   }
 
-  // Bug #77: an empty Send (no text, no attachments) must be a no-op - the
-  // old fall-through retried the last assistant/user message, so an
-  // accidental click/Enter duplicated a request and burned tokens/cost.
+  // An empty Send (no text and no attachments) is a no-op; do not reuse
+  // another message as an implicit request.
   return;
 }
 
@@ -108,12 +107,8 @@ function setChatButtonsEnabled(enabled) {
   if (!enabled && (typeof streamState === 'undefined' || !streamState.active))
     showLoadingIndicator();
   if (enabled) {
-    // Bug #219: re-enabling the composer is the "no request in flight"
-    // signal, so it must fully reset the stream state. Before this fix, a
-    // mid-stream provider error (real SSE `data: {"error": ...}` event) only
-    // posted setChatButtonsEnabled(true) - isLoading cleared but
-    // streamState.active stayed true, leaving the Send button wired to Stop
-    // and every subsequent Send swallowed as cancelStream until reload.
+    // Re-enabling the composer means no request is in flight, so reset stream
+    // state before allowing another send.
     if (typeof streamState !== 'undefined') {
       streamState.active = false;
       streamState.bubble = null;
@@ -122,7 +117,7 @@ function setChatButtonsEnabled(enabled) {
       streamState.contentBuffer = '';
       streamState.thinkingBuffer = '';
     }
-    // Bug #215: enabling the composer means no request is in flight, so any
+    // Enabling the composer also clears any visible loading indicator.
     // visible loading dots must clear. This matters when a stream completes
     // (or fails/cancels) while a DIFFERENT thread is visible: onStreamDone is
     // scoped away for the non-current thread and never reaches the indicator
@@ -178,7 +173,7 @@ function retryLastAssistantMessage(messageId) {
 // Restore the retry-removed messages after a failed retry (called from the
 // global showError path). The DB row was never touched - only the UI was
 // truncated - so this brings the conversation back exactly as it was.
-// Bug #216: the restore may ONLY repaint the array it came from - the same
+// Restore only into the same thread/path array that supplied the removed messages.
 // thread AND the same visible path (anchored by the last remaining message).
 // A failed retry while another thread/branch is visible must not push thread
 // A's messages into thread B's UI; the DB rows are intact, so the correct

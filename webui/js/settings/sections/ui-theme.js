@@ -6,7 +6,7 @@
   var sectionName = 'ui';
   var S = window.SettingsShared;
 
-  // Bug #130 (same class as #39): a fixed-option <select> cannot display a
+  // A fixed-option <select> cannot display a custom stored value; preserve it explicitly.
   // custom value, so load() records the stored value on the element and save()
   // falls back to it when the select has no matching option - otherwise the
   // first Settings save wipes the custom font (responseFont / iwFontFace /

@@ -55,7 +55,7 @@ handleEdit(params, *) {
                 ; keep only reasoning metadata that still belongs to the copy.
                 tokenCount := Max(1, Ceil(StrLen(content) / 3))
                 thinkingTokens := msg.HasProp("thinking_tokens") ? msg.thinking_tokens : 0
-                ; Bug #154: the branch copy must carry the source's reasoning/
+                ; Branch copies carry the source reasoning/thinking content.
                 ; thinking CONTENT too - the Thought Process block and the
                 ; thinking tokens must stay together (fork copies already do).
                 reasoning := msg.HasProp("reasoning") ? msg.reasoning : ""
@@ -70,7 +70,7 @@ handleEdit(params, *) {
             transactionStarted := false
             return
         }
-        ; Bug #118: this is a LOCAL DB copy - no API call happened, so Insert
+        ; This is a local DB copy: no API call occurred, so Insert
         ; must not upsert chat_usage or re-charge the cumulative counters.
         ; This is a local copy, so historical API prompt/output/cost metadata
         ; is deliberately not copied. The new text gets an estimate above and
@@ -83,7 +83,7 @@ handleEdit(params, *) {
             reasoning: reasoning,
             local_copy: true
         })
-        ; Bug #146: copy the source message's attachments EXCEPT the ones the
+        ; Copy source attachments except those removed during the edit.
         ; user removed during the edit - the ORIGINAL message keeps its
         ; attachment (it stays in the tree with its original content), while
         ; the new branch is created without the removed one.
@@ -104,11 +104,11 @@ handleEdit(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after branch edit
-        ; Bug #318: editing creates/updates a message and touches thread
+        ; Editing a message touches thread recency, so the sidebar must refresh.
         ; recency, so the sidebar must re-render its order and displayed date.
         _postThreadListRefresh()
         if (role = "user") {
-            ; Bug #203: branch-edit auto-fire is a normal chat exchange - stream.
+            ; Branch-edit auto-fire is a normal chat exchange, so stream it.
             requestParams["stream"] := true
             _BuildAndFireRequest()
         }
@@ -138,7 +138,7 @@ handleEdit(params, *) {
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         postWebMessage("updateChatView", buildStructuredMessagesFromPath(path, activeThreadId))
         postThreadStats(activeThreadId)  ; refresh token/cost bar after edit
-        ; Bug #318: overwrite edits also touch updated_at; keep the sidebar in
+        ; Overwrite edits also touch updated_at; keep the sidebar in sync.
         ; sync immediately instead of waiting for a later thread-list action.
         _postThreadListRefresh()
     }

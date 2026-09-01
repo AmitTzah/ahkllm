@@ -1,20 +1,5 @@
-; ======================================================
-; SystemMessageResolver.ahk - single resolver for object
-; system messages (assistants and commands).
-;
-; Step 5 of the architecture refactor: AssistantRepo and
-; CommandMenu used to carry identical-but-separate copies
-; of this search logic (bug #50: the command copy did not
-; search default-settings/system-messages/). Resolve() is
-; now the one implementation; callers keep their own
-; error reporting.
-;
-; Named SystemMessageResolver (not SystemMessage) for the
-; same AHK case-insensitivity reason as ModelResolver -
-; "systemMessage" is used as a local variable all over the
-; codebase, which would shadow a class named SystemMessage
-; inside functions.
-; ======================================================
+; SystemMessageResolver.ahk — resolves assistant and command system messages.
+; The class name avoids AHK v2's case-insensitive collision with systemMessage locals.
 
 #Include AppInfo.ahk
 
@@ -30,9 +15,7 @@ class SystemMessageResolver {
     static Resolve(obj) {
         if obj.HasProp("systemMessageFile") && obj.systemMessageFile {
             filePath := obj.systemMessageFile
-            ; Bug #72: UNC paths (\\server\share) and rooted paths (\foo) are
-            ; absolute even though they have no drive-letter colon - use them
-            ; as-is instead of searching the relative candidates.
+            ; UNC and rooted paths are absolute even without a drive-letter colon.
             if !InStr(filePath, ":") && !(SubStr(filePath, 1, 1) = "\") && !(SubStr(filePath, 1, 1) = "/") {
                 SplitPath(filePath, &name)
                 candidates := [A_ScriptDir "\" filePath

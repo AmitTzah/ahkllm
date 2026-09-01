@@ -153,7 +153,7 @@ class InputWindow {
     }
 
     validateInputAndHide(*) {
-        ; Bug #91: "0" is a valid input - only empty/whitespace counts as empty
+        ; "0" is valid input; only empty/whitespace counts as empty
         ; (AHK treats the numeric string "0" as falsy).
         if Trim(this.EditControl.Value) = "" {
             MsgBox "Please enter a message or close the window.", "No text entered", "IconX"
@@ -190,8 +190,7 @@ class InputWindow {
 
 ; Rebuild the command input window from the CURRENT settings globals. Called at
 ; startup and whenever settings change, so background/font/size edits apply
-; live instead of requiring a restart (the GUI was previously built once with
-; the startup values and never rebuilt).
+; immediately after background/font/size settings change.
 _rebuildInputWindow(sendCallback, closeCallback := "") {
     global commandInputWindow
 

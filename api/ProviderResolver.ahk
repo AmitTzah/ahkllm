@@ -14,8 +14,8 @@ class ProviderResolver {
 
     static _buildResult(providerKey, modelName, p) {
         ; OpenRouter uses an outer AhkLLM transport prefix plus an upstream slug.
-        ; Nested models send modelName directly; the legacy built-in free router
-        ; remains addressed as "openrouter/free" for backward compatibility.
+        ; Nested models send modelName directly; the built-in free router remains
+        ; addressed as "openrouter/free" for compatibility.
         apiModelName := providerKey = "openrouter" && modelName = "free" ? "openrouter/free" : modelName
         resolvedKey := ProviderResolver._getApiKey(p)
         debugLog(ProviderResolver._AuthDiagnostic(providerKey, apiModelName, p, resolvedKey), "ProviderResolver")
@@ -44,7 +44,7 @@ class ProviderResolver {
 
     ; Given a model string like "deepseek/deepseek-v4-pro" or "deepseek-v4-pro",
     ; returns { providerKey, modelName, apiKey, endpoint, fimEndpoint }.
-    ; Falls back to the old format (no provider prefix) resolving through providerMap.
+    ; Unprefixed model ids are resolved through providerMap.
     static Resolve(modelId) {
         parts := ModelParser.Split(modelId)
         if parts.provider {
@@ -54,10 +54,10 @@ class ProviderResolver {
             }
         }
 
-        ; Legacy format: no provider prefix — infer from providerMap
+        ; No provider prefix: infer the provider from providerMap.
         providerKey := "deepseek"
         for prefix, prov in providerMap {
-            ; Bug #68: match by PREFIX only - a substring match (InStr) made
+            ; Match by prefix only; substring matching can select the wrong provider.
             ; "mygpt-custom" resolve to the gpt provider.
             if SubStr(modelId, 1, StrLen(prefix)) = prefix {
                 providerKey := prov
@@ -68,7 +68,7 @@ class ProviderResolver {
         if providers.Has(providerKey)
             return ProviderResolver._buildResult(providerKey, modelId, providers[providerKey])
 
-        ; Bug #190: the old fallback was hardcoded to providers["deepseek"] -
+        ; Do not hardcode a fallback provider: users may remove any provider.
         ; the Settings UI lets the user DELETE the deepseek provider (>=1
         ; provider must remain), and a missing-key Map index THROWS in AHK v2,
         ; crashing EVERY request for a model whose prefix is not covered.

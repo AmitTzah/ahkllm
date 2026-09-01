@@ -115,7 +115,7 @@ _e2eWorkerArg() {
 
 ; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
 ; The "prewarm" arg tells ChatWindow to stay hidden after init
-; Bug #227: resolve Main's OWN script window, not just "any AutoHotkey v2
+; Resolve Main's own script window, not an arbitrary AutoHotkey v2
 ; script window" - the user may run other AHK scripts, and WinExist on the
 ; class alone can return one of THEIR windows, so ChatWindow's settings-
 ; updated/loading/reload IPC would be posted to the wrong process and
@@ -129,7 +129,7 @@ Run(Format('"{}" "{}" {} "prewarm"{}', A_AhkPath, A_ScriptDir "\chat\ChatWindow.
 
 _spawnChatWindow(threadId := "", activate := true) {
     global chatWindowPID
-    ; Bug #227: same as the prewarm spawn - A_ScriptHwnd is Main's own window.
+    ; A_ScriptHwnd is Main's own hidden window.
     mainScriptHiddenHwnd := A_ScriptHwnd
     if threadId {
         noActivateArg := activate ? "" : ' "noactivate"'
@@ -191,7 +191,7 @@ openChatWindow(threadId := "", activate := true) {
         if threadId {
             ; Load the requested thread while the window is hidden. The
             ; ChatWindow process reveals it after the WebView has received the
-            ; new thread state, so the old chat cannot flash first.
+            ; new thread state, so the previous chat cannot flash first.
             WinHide("ahk_id " chatWindowhWnd)
             CustomMessages.notifyLoadThread(threadId, chatWindowhWnd, activate)
         } else {
@@ -277,8 +277,7 @@ _rebuildSuspendBanner()
 ; ----------------------------------------------------
 ; Settings update hooks — single apply path (SettingsService)
 ; ----------------------------------------------------
-; SettingsService.Apply runs these after every settings reload, replacing the
-; old inline rebuild chain in the WM_SETTINGS_UPDATED handler. New settings-
+; SettingsService.Apply runs these after every settings reload. New settings-
 ; driven rebuilds register a hook here instead of adding another call site.
 SettingsService.RegisterHook("trayIcon", _rebuildTrayIcon)
 SettingsService.RegisterHook("trayMenu", _rebuildTrayMenu)
@@ -286,7 +285,7 @@ SettingsService.RegisterHook("suspendBanner", _rebuildSuspendBanner)
 SettingsService.RegisterHook("inputWindow", _rebuildInputWindow.Bind(onCommandInputSend, onCommandInputCancel))
 SettingsService.RegisterHook("hotkeys", _registerAllHotkeys.Bind(true))
 SettingsService.RegisterHook("runtimeResolver", RuntimeResolver_ResolvePrimaryProvider)
-; Bug #120: hooks are invoked via fn.Call(), and a bare static-method reference
+; Hooks are invoked via fn.Call(); wrap static methods where AHK would bind them incorrectly.
 ; (ChatDB.Thread_PurgeExpired) throws "Missing a required parameter" in AHK v2
 ; (probe-verified: even .Bind() throws). Register the plain zero-arg wrapper
 ; instead, so lowering Trash Retention purges expired trash immediately.

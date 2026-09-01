@@ -130,7 +130,7 @@ function renderChatTree(tree) {
 
   var sub = document.querySelector('.tree-modal-sub');
   if (sub) {
-    // Bug #124: the subtitle says "Viewing active path", so it must count the
+    // The "Viewing active path" subtitle counts active-path nodes only.
     // ACTIVE PATH nodes (the ones highlighted), not every node in the tree.
     var total = _countActivePathNodes(tree, activeIds);
     sub.textContent = 'Viewing active path · ' + total + ' node' + (total !== 1 ? 's' : '');
@@ -221,7 +221,7 @@ function _countTreeNodes(tree) {
   return count;
 }
 
-// Bug #124: count only the nodes on the ACTIVE path (the ids in activeIds).
+// Count only nodes on the active path (ids in activeIds).
 function _countActivePathNodes(nodes, activeIds) {
   var count = 0;
   for (var i = 0; i < nodes.length; i++) {
@@ -239,7 +239,7 @@ function _findDefaultLeaf(nodeId, tree) {
         var current = nodes[i];
         var children = current.children || [];
         while (children.length > 0) {
-          // Bug #148: GetTree sorts children by sibling_index DESC (newest
+          // GetTree sorts children by sibling_index descending (newest
           // retry first - retries get HIGHER indexes). Among EQUAL indexes
           // (messages without a sibling_group) the array keeps rowid order,
           // so the newest is the LAST element of the leading max-index run -

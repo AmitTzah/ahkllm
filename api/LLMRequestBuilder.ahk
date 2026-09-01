@@ -66,7 +66,7 @@ class LLMRequestBuilder {
 
         ; Apply thinking parameters via metadata-driven handler.
         ; Command type "enabled" + explicit level → use the level as the
-        ; reasoning value (the level was previously dropped). Command type
+        ; reasoning value. Command type
         ; "disabled" → "none" so ApplyThinking takes its disabled branch
         ; (a raw "disabled" string would wrongly hit the enabled branch).
         ; Empty type = "Model Default" — send NO thinking config.
@@ -76,12 +76,11 @@ class LLMRequestBuilder {
         else if (reasoningEffort = "disabled")
             effectiveReasoning := "none"
         global models
-        ; Bug #149: resolve the model metadata through ModelResolver.Lookup so
+        ; Resolve model metadata through ModelResolver.Lookup so
         ; SHORT ids (no provider prefix, e.g. the default commands' models) get
-        ; the same thinking config as full "provider/model" ids - the old
-        ; raw models.Has(APIModel) check only matched full-id keys and silently
-        ; dropped thinking for short ids (bug #43 fixed the chat path; this is
-        ; the command path).
+        ; the same thinking config as full "provider/model" ids; a direct
+        ; models.Has(APIModel) check would only match full-id keys and could
+        ; silently drop thinking for short ids.
         modelMeta := ModelResolver.Lookup(models, APIModel)
         if (effectiveReasoning != "" && modelMeta)
             OpenAIChatCompletions.ApplyThinking(&requestObj, modelMeta, effectiveReasoning, APIModel)
@@ -121,7 +120,7 @@ class LLMRequestBuilder {
     ; The rewrite is QUOTE-AWARE: it walks the JSON and only rewrites these
     ; key:value tokens outside string literals, so user content that merely
     ; contains `"stream":1` (escaped inside a string) is never corrupted
-    ; (bug #100).
+    ; without altering escaped string content.
     static _FixStreamBoolean(jsonStr) {
         replacements := Map(
             '"stream":1', '"stream":true',

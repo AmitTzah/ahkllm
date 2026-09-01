@@ -13,10 +13,8 @@ function _sendAllSettings(immediate) {
     // The assistant manages the model — sending it would cause AHK to treat it
     // as an explicit model switch and clear the assistant.
     var modelToSend = s.assistantName ? '' : (s.model || '');
-    // Bug #193: temperature 0 is a REAL override (bugs #35/#78) - JS 0 is
-    // falsy, so `s.temperature || ''` serialized it as "" and cleared the
-    // override whenever any other right-rail change re-sent settings. Only
-    // truly absent/empty values become "".
+    // Temperature 0 is a real override; JS truthiness must not serialize it as empty.
+    // Only absent/null/empty values clear it.
     var temperatureToSend = (s.temperature === undefined || s.temperature === null || s.temperature === '') ? '' : s.temperature;
     Ipc.postToHost('updateModelSettings', {
       model: modelToSend,
@@ -184,7 +182,7 @@ function _makeAssistantClickHandler(el, asstId) {
     window._currentSettings.systemMessage = sysPrompt;
     // Update the renderer state before posting switchAssistant. Send can be
     // clicked in the same turn, and _sendAllSettings must see assistant mode
-    // instead of flushing the previously selected direct model.
+    // before it serializes the current model selection.
     window._currentSettings.assistantName = selectedAssistant ? (selectedAssistant.name || '') : '';
     window._currentSettings.assistantBaseModel = selectedAssistant ? (selectedAssistant.baseModel || '') : '';
     window._currentSettings.assistantDescription = selectedAssistant ? (selectedAssistant.description || '') : '';

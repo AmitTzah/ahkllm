@@ -22,7 +22,7 @@ class AssistantRepo {
     }
 
     static _resolveSystemMessage(a) {
-        ; Single resolver shared with the command path (bug #50 family).
+        ; Use the shared system-message resolver.
         res := SystemMessageResolver.Resolve(a)
         if res.error != ""
             debugLog("[SETTINGS] Failed to read assistant system message: " res.error)

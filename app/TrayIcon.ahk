@@ -3,7 +3,7 @@
 ;
 ; The tray icon is re-applied from the current icons.iconOn/iconOff globals
 ; whenever settings change, so icon edits take effect live instead of after a
-; restart (bug #34). It honors the current suspend state (iconOff while
+; restart. It honors the current suspend state (iconOff while
 ; suspended, like toggleSuspend in LoadingUI.ahk) and is safe to call at
 ; startup and from Main's settings-updated hook chain.
 ; ======================================================

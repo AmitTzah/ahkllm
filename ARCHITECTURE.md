@@ -184,7 +184,7 @@ ahkllm/
 │   ├── ChatSettings.ahk         # Chat sidebar settings, postCurrentSettingsToWebView, assistant/model mgmt
 │   ├── ChatRequestBuilder.ahk   # buildRequest (chat payload + per-model thinking), sendRequestToLLM
 │   ├── ChatUtils.ahk            # Structured messages, cURL state, postWebMessage
-│   ├── ThreadSettings.ahk       # Single precedence for per-thread settings (ComputeEffective, Restore, ToDbObject, ToThreadSettingsMessage)
+│   ├── ThreadSettings.ahk       # Per-thread settings precedence, restore, persistence, and WebView payload
 │   ├── ThreadTitleGen.ahk       # Fire-and-forget thread title generation (thinking always disabled)
 │   ├── callbacks/               # WebMessage handlers (OnWebMessageReceived → Dispatch)
 │   │   ├── Dispatch.ahk         # Router + settings save/reset/all-settings handlers
@@ -208,11 +208,11 @@ ahkllm/
 │       └── UsageRepo.ahk        # Daily usage aggregation + dashboard queries
 │
 ├── shared/                      # Shared application utilities (self-including, order-independent)
-│   ├── SharedLib.ahk            # One-stop include manifest for the shared layer
-│   ├── AppInfo.ahk              # App name + %APPDATA% data dir (single source of truth)
+│   ├── SharedLib.ahk            # Include manifest for the shared layer
+│   ├── AppInfo.ahk              # App name + %APPDATA% data directory
 │   ├── ModelParser.ahk          # Model ID parsing ("provider/model" → provider + name)
-│   ├── ModelResolver.ahk        # Single full-id → short-name → version-stripped lookup
-│   ├── SystemMessageResolver.ahk# Single system-message search (inline text or file)
+│   ├── ModelResolver.ahk        # Full-id → short-name → version-stripped model lookup
+│   ├── SystemMessageResolver.ahk# Shared system-message search (inline text or file)
 │   ├── ModelPricingParser.ahk   # Parses the models_metadata.txt backup format
 │   ├── AttachmentUtils.ahk      # Vision gate, MIME classification, file size checks
 │   ├── ImageUtils.ahk           # Base64 encode/decode, GDI+ screenshot, file I/O
@@ -268,7 +268,7 @@ ahkllm/
 │       │       ├── assistants.js       # Chat profiles (single model-scoped reasoning dropdown)
 │       │       └── commands/           # Command editor (commands-core, -render, -actions, -drag)
 │       ├── shared/
-│       │   ├── ipc-contract.js        # Typed AHK ↔ WebView message contract (single source of truth)
+│       │   ├── ipc-contract.js        # Typed AHK ↔ WebView message contract
 │       │   ├── ipc.js                 # postToHost/request — validates, adds reqId, awaits acks
 │       │   ├── settings-shared.js     # Shared section helpers (escaping, select fill, registration)
 │       │   └── reasoning-levels.js    # Shared reasoning-level labels/ordering/options builder
@@ -297,7 +297,7 @@ ahkllm/
 ## Key Design Decisions
 
 - **Entry point**: `Main.ahk` — double-click to run. It includes `lib/Config.ahk` (the include chain) which loads `default-settings/DefaultSettings.ahk`, `shared/`, `api/`, `app/`, `chat/`, `ipc/`.
-- **Single app identity**: `shared/AppInfo.ahk` owns the app name and the `%APPDATA%` data directory; every title and data path derives from it, so the repo, the data dir, and the runtime UI can never drift apart again.
+- **App identity**: `shared/AppInfo.ahk` owns the app name and `%APPDATA%` data directory used by runtime titles and data paths.
 - **Settings are JSON**: `app/settings/SettingsHandler.ahk` loads/saves `%APPDATA%\AhkLLM\settings.json`, merging saved values with `DefaultSettings.ahk` defaults. See [Settings System](#settings-system).
 - **default-settings/DefaultSettings.ahk is the source of defaults**: it declares every default as a **top-level global** (`providers`, `assistants`, `commands`, hotkeys, `chatShortcut`, ...). `SettingsHandler.GetDefaults()` snapshots these; model metadata is generated into `default-settings/DefaultModels.ahk` by `scripts/Refresh-Models.ps1`.
 - **Persistent single-window model**: one `ChatWindow.ahk` sub-process handles all chat sessions. Close = hide (not terminate).
@@ -323,9 +323,9 @@ if settings.Has("chatShortcut")
     chatShortcut := settings["chatShortcut"]
 ```
 
-So after loading a customized `settings.json`, the globals no longer hold the defaults. If `GetDefaults()` simply re-read the globals it would return **applied** values, which broke "Reset to Defaults" (e.g. `chatShortcut` stayed `"b"` instead of reverting to `"1"`).
+After loading a customized `settings.json`, those globals hold applied values rather than pristine defaults. `GetDefaults()` therefore cannot reconstruct defaults from the live globals.
 
-The solution is [`CacheInitialDefaults()`](app/settings/SettingsDefaults.ahk:15): called **before** `ApplyToGlobals` at startup (in `Main.ahk` and `ChatWindow.ahk`), it snapshots the pristine defaults into a static `_initialDefaults` Map that nothing ever reassigns. `GetDefaults()` returns that snapshot (shallow-cloned) so the true defaults are always available.
+[`CacheInitialDefaults()`](app/settings/SettingsDefaults.ahk:15) runs **before** `ApplyToGlobals` at startup (in `Main.ahk` and `ChatWindow.ahk`) and snapshots the pristine defaults into `_initialDefaults`. `GetDefaults()` returns a clone of that snapshot.
 
 ### Key Functions (`app/settings/`)
 
@@ -375,7 +375,7 @@ Refresh-Models.ps1 ──► DefaultModels.ahk
 Sync-Pi-Corrections.ps1   (dev tool: extracts corrections from the pi repo)
 ```
 
-- `scripts/models-corrections.json` is the single, version-controlled override file (e.g. fixing deepseek-v4-flash's effort values to `["none","low","high","max"]`).
+- `scripts/models-corrections.json` is the version-controlled override file (for example, the DeepSeek effort/off-level correction).
 - `scripts/Refresh-Models.ps1` writes `default-settings/DefaultModels.ahk` (the committed generated model metadata) and keeps a timestamped backup at `scripts/models_metadata.txt`.
 - Each model entry carries: `provider`, `api`, `compat` (`thinkingFormat`, `supportsReasoningEffort`, `supportsUsageInStreaming`, `maxTokensField`), `thinkingLevelMap`, `thinkingOff`, pricing (`input`/`cachedInput`/`output`), `context`, `reasoning`, `vision`.
 - See `scripts/README.md` for the full pipeline explanation.
@@ -407,7 +407,7 @@ Both request paths only send a thinking config when the reasoning value is a lev
 
 ### One model-scoped dropdown everywhere
 
-The chat sidebar, assistant settings, and command settings each use a **single dropdown**: "Model Default" + the model's supported levels, sorted least→most thinking by the shared frontend helper [`webui/js/shared/reasoning-levels.js`](webui/js/shared/reasoning-levels.js) (`ReasoningLevels` — the single source for labels/order). The backend sends raw level values for the chat sidebar; assistants and commands build options from `data.models` metadata.
+The chat sidebar, assistant settings, and command settings each use one dropdown: "Model Default" plus the model's supported levels, sorted least→most thinking by [`webui/js/shared/reasoning-levels.js`](webui/js/shared/reasoning-levels.js). The backend sends raw level values for the chat sidebar; assistants and commands build options from `data.models` metadata.
 
 **Thread title generation** has no UI control — it always passes `"disabled"` so the cheap utility call never thinks.
 
@@ -513,7 +513,7 @@ Requests with `stream: true` are executed via cURL `-N`; `chat/streaming/StreamH
 | `cumulative_cost` | REAL | Total cost USD |
 | `cumulative_input_cost` / `cumulative_cached_input_cost` / `cumulative_output_cost` | REAL | Cost breakdown (input / cached-input / output) |
 | `font_size` | INTEGER | Per-thread chat font size (default 17) |
-| `advanced_toggles` | TEXT | JSON `{"codeExecution":..., "webSearch":...}` right-rail toggles |
+| `advanced_toggles` | TEXT | JSON for persisted per-thread tool state; currently used for Web Search |
 
 ### `messages`
 | Column | Type | Description |
@@ -580,7 +580,7 @@ Full-text search index over `messages.content`, kept in sync explicitly by `Mess
 ### Typed IPC contract
 
 Every message crossing the WebView boundary is declared in
-`webui/js/shared/ipc-contract.js` — the single source of truth for message
+`webui/js/shared/ipc-contract.js`, which declares message
 names, direction (`ahk->web` / `web->ahk`), allowed payload fields, and
 required fields. The contract works as a browser script (`window.IPCMessages`)
 and as a CommonJS module for tests.
@@ -615,18 +615,15 @@ The Settings Save flow is the first consumer: it awaits the ack and shows a
 
 Key targets: `initChatMode`, `appendChatMessage`, `streamContent`, `streamReasoning`, `streamModelName`, `streamDone`, `streamCancelled`, `setChatButtonsEnabled`, `updateTokenUsage`, `renderChatTree`, `threadList`, `trashList`, `loadThread`, `threadForked`, `showError`, `showDashboard`, `threadSettings`, `appSettings`, `defaultSettings`, `settingsSaved`, `dropdownLabel`, `assistantList`, `modelList`, `updateTopbarTitle`, `searchResults`, `updateBranchInfo`, `updateChatView`, `iconFileSelected`, `modelPricingRefresh`, `ack`.
 
-### `threadSettings` vs `appSettings` (no more dual-purpose payload)
+### `threadSettings` vs `appSettings`
 
-Step 3 of the IPC refactor split the old dual-purpose `currentSettings`
-message into two distinct messages, so a payload can no longer mean two
-things:
+The WebView boundary uses two distinct settings messages:
 
-- **`threadSettings`** (`chat/ChatSettings.ahk` → `postCurrentSettingsToWebView`): the right-rail per-thread payload — `model`, `systemMessage`, `reasoning`, `temperature`, `thinkingLevels`, assistant metadata, font size, Advanced toggles. Consumed only by `populateCurrentSettings` in `webui/js/chat/model-picker/model-picker-config.js`.
+- **`threadSettings`** (`chat/ChatSettings.ahk` → `postCurrentSettingsToWebView`): the right-rail per-thread payload — `model`, `systemMessage`, `reasoning`, `temperature`, `thinkingLevels`, assistant metadata, font size, and Web Search state. Consumed only by `populateCurrentSettings` in `webui/js/chat/model-picker/model-picker-config.js`.
 - **`appSettings`** (`chat/callbacks/Dispatch.ahk` → `_HandleRequestAllSettings`): the complete merged settings Map (`commands`, `assistants`, `models`, `providers`, ...). Consumed only by `SettingsPanel.onSettingsReceived` (each section's `load`).
 
-Routing the wrong one into the other consumer was bug #26 (full payload wiped
-the right rail) and an earlier Commands-tab-blanking bug; the split removes
-the ambiguity by construction.
+The payloads intentionally have separate consumers so app-level data is not
+interpreted as per-thread state, or vice versa.
 
 ### Settings update hooks (`SettingsService`)
 
@@ -645,79 +642,35 @@ process registers the hooks it owns:
 `SettingsService.SaveFromWebView()`. New settings-driven rebuilds register a
 hook instead of adding another call site to the message chain.
 
-### Thread settings are derived in one place (`ThreadSettings`)
+### Thread settings (`ThreadSettings`)
 
-`chat/ThreadSettings.ahk` owns a thread's effective per-thread settings:
+`chat/ThreadSettings.ahk` owns per-thread precedence and representation:
 
-- `ComputeEffective(dbRow, assistant)` — the single precedence
-  implementation: per-thread overrides win, the assistant's values are the
-  fallback (the restore path used to overwrite the edit path's overrides —
-  bug #47).
-- `RestoreIntoRequestParams(threadId)` — the thread-load path (was
-  `_restoreThreadSettings`).
-- `ToDbObject()` — persistence shape (was `_CurrentSettingsObject`).
-- `ToThreadSettingsMessage()` — the right-rail `threadSettings` payload (was
-  the body of `postCurrentSettingsToWebView`).
+- `ComputeEffective(dbRow, assistant)` — per-thread overrides win; assistant values are the fallback.
+- `RestoreIntoRequestParams(threadId)` — restores effective settings into request state.
+- `ToDbObject()` — builds the persisted thread-settings shape.
+- `ToThreadSettingsMessage()` — builds the right-rail `threadSettings` payload.
 
-`ChatSettings.ahk` now delegates to these, so the restore path, the DB
-serializer, and the WebView presenter read the same precedence rules.
+`ChatSettings.ahk` delegates to these methods so restore, persistence, and WebView presentation use the same precedence rules.
 
-### Model id and system-message resolution live in one shared module each
+### Model id and system-message resolution
 
-Step 5 consolidated the lookups that used to be re-implemented (or skipped) at
-each call site:
+Two shared resolvers define these lookup rules:
 
-- **`shared/ModelResolver.ahk`** - `ModelResolver.Lookup(models, id)` is the
-  single full-id -> short-name -> version-stripped fallback. It replaced
-  near-identical copies in `CostCalculator`, `TreeRepo._LookupPricing`, and
-  `AttachmentUtils.HasVision`, and added the fallback that was missing in
-  `ChatRequestBuilder` / `ThreadSettings` (the root cause of the short-form-id
-  bug cluster: #43 thinking dropped, #51 vision gate, #36 command
-  temperature/reasoning). Consumers call `ModelResolver.Lookup`/`Has` and pass
-  the raw id through unchanged.
-- **`shared/SystemMessageResolver.ahk`** - `SystemMessageResolver.Resolve(obj)`
-  is the single search for an object's system message (inline text, or a file
-  resolved against script dir, repo root, `default-settings/system-messages/`,
-  and the user AppData folder). It replaced duplicated search logic in
-  `AssistantRepo` and `CommandMenu`; the command copy had never searched
-  `default-settings/system-messages/` (bug #50).
+- **`shared/ModelResolver.ahk`** — `ModelResolver.Lookup(models, id)` tries the exact full id, short name, then version-stripped id. Callers pass the raw id through unchanged.
+- **`shared/SystemMessageResolver.ahk`** — `SystemMessageResolver.Resolve(obj)` accepts inline text or resolves a file against the script directory, repo root, `default-settings/system-messages/`, and the user AppData folder.
 
-Both are named `...Resolver` (not `ModelId`/`SystemMessage`) because AHK v2
-identifiers are case-insensitive: a class named `ModelId` is treated as an
-unset local inside any function that uses a `modelId` loop variable and
-triggers `#Warn` dialogs.
+The `...Resolver` class names avoid AHK v2's case-insensitive collisions with common `modelId` and `systemMessage` locals.
 
-### AHK module loading: self-contained dependencies (no include-order fragility)
+### AHK module loading: self-contained dependencies
 
-AHK v2 (2.0.18+) hangs at parse time when a function body references a name
-that is defined NOWHERE in the final script - even if the function is never
-called - and pops a `#Warn` modal when `#Warn` is enabled. The pre-refactor
-design relied on `lib/Config.ahk` including every dependency before its
-consumer, so any standalone loader (a probe, a test, a future entry point)
-that forgot the exact include order froze the process (the 20-minute
-`ModelResolver` / `#Warn` hang).
+AHK v2 (2.0.18+) can hang at parse time when a function body references a name that is absent from the final script, and `#Warn` can surface unresolved identifiers through a blocking dialog. Production modules therefore include the files that define the classes they reference.
 
-Fixes, verified empirically with bounded watchdog probes:
+- **Self-includes:** modules `#Include` their class/code dependencies. AHK v2 deduplicates included files, so repeated includes are safe.
+- **`shared/SharedLib.ahk`:** the shared-layer include manifest used by `lib/Config.ahk` and standalone loaders.
+- **Bounded load check:** `node scripts/check-ahk-load.js` loads the production chain and standalone-loadable modules with `#Warn All, StdOut`, a watchdog, and a hard `spawnSync` timeout. Unresolved identifiers or hangs fail the check without leaving the caller blocked indefinitely.
 
-- **Self-includes:** every module `#Include`s the files that define the
-  classes it references (`CostCalculator` -> `ModelResolver`,
-  `CommandMenu`/`AssistantRepo` -> `SystemMessageResolver`,
-  `AttachmentUtils` -> `ModelResolver`, `ModelResolver` -> `ModelParser`,
-  `ImageUtils` -> `DebugLog`, ...). AHK v2 deduplicates `#Include` (a file is
-  parsed at most once per process), so this is idempotent and include order no
-  longer matters.
-- **`shared/SharedLib.ahk`:** the one-stop manifest for the shared layer;
-  `lib/Config.ahk` and standalone loaders use it instead of hand-listing
-  shared files.
-- **Bounded load check:** `node scripts/check-ahk-load.js` loads the full
-  production chain and every standalone-loadable module with `#Warn All,
-  StdOut`, a watchdog timer, and a hard spawnSync timeout; any unresolved
-  identifier or hang fails the check with the offending text. Run it after
-  any AHK module change (it can never hang the caller).
-
-The guarantee is about class/code dependencies. Data dependencies (the
-`models` map, app globals such as `commands`/`requestParams`) are runtime
-state supplied by the loader, exactly as before.
+This rule covers class/code dependencies. Runtime data such as `models`, `commands`, and `requestParams` is supplied by the loader.
 
 ### WebView → AHK (`postMessage`)
 
@@ -866,7 +819,7 @@ fixed one at a time in rank order — each fix flips its scenario to assert the 
 behavior, turning it into a permanent regression check. Every status change is written before
 the work it describes, so a task closed midway resumes from "Where we left off".
 
-**How a developer points an agent at it:** "fix bug #5", "add more bugs to the bug hunt",
+**How a developer points an agent at it:** "fix a reported bug", "add more bugs to the bug hunt",
 "verify this repro: …", "continue", or "re-verify everything" — all are handled by the
 report's lifecycle rules (see `tests/headless/README.md → How a developer uses this`).
 

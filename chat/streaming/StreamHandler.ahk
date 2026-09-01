@@ -9,7 +9,7 @@
 #Include StreamCompletion.ahk
 #Include StreamError.ahk
 
-; Bug #221/#223: every in-flight request owns its own stream record (output
+; Every in-flight request owns its own stream record (output
 ; file, cURL PID, accumulated content, temp-file paths, ...). Two chat-mode
 ; commands can be streaming at once - the shared requestParams _stream* keys
 ; are only a WINDOW onto whichever stream is being processed right now (the
@@ -39,7 +39,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     }
 
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
-    ; Bug #112: never launch a URL-less cURL command - surface a friendly
+    ; Never launch a URL-less cURL command; surface a friendly
     ; "No endpoint configured" error (same helper as the chat request path).
     if !providerInfo.endpoint {
         _ShowEndpointError(providerInfo)
@@ -62,7 +62,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         displayName := sanitizedModel
     }
 
-    ; Bug #221/#223: register THIS request's own stream record (its output
+    ; Register this request's stream record (output
     ; file, cURL PID, accumulated content, temp-file paths, retry metadata -
     ; everything the completion/error/cancel handlers read) BEFORE any other
     ; request can overwrite the shared requestParams keys, then load it into
@@ -72,9 +72,9 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     _LoadStreamIntoParams(stream)
 
     ; Post display title to UI immediately for bubble author during streaming
-    ; (only when this request belongs to the currently-visible path - bug
-    ; #195: a mid-stream thread/branch switch must not paint A's stream into
-    ; B's UI).
+    ; Post only when this request belongs to the currently visible path;
+    ; a mid-stream thread/branch switch must not paint one request into
+    ; another view.
     if _shouldPostStreamToUI()
         postWebMessage("streamModelName", { name: displayName, provider: providerInfo.providerKey, threadId: activeThreadId })
 
@@ -87,7 +87,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     }
 }
 
-; Bug #203: single-shot (non-streaming) chat response path for chat-mode
+; Single-shot (non-streaming) response path for chat-mode
 ; commands with "Stream Response" OFF. Runs CurlBuilder.Build (plain JSON),
 ; parses with ResponseParser, then feeds the result through the SAME
 ; completion/error handlers as streaming (persistence, usage, API log,
@@ -110,7 +110,7 @@ sendNonStreamingRequest(&chatHistoryJSONRequest) {
         }
         scope.params["_requestPath"] := requestPath
         _activeNonStreamRequests.Push(scope)
-        ; Bug #221: the single-shot path runs synchronously and is NOT tracked
+        ; The single-shot path is synchronous and is not tracked
         ; in _activeStreams - clear the current-stream marker so the
         ; _finalizeStreaming cleanup below does not remove another request's
         ; in-flight stream, then restore that stream afterwards.
@@ -296,7 +296,7 @@ _handleNonStreamToolCalls(toolCalls, ownerScope := "") {
 }
 
 _pollStreamTimer() {
-    ; Bug #221: poll EVERY in-flight request - a second chat-mode command can
+    ; Poll every in-flight request; concurrent chat-mode commands
     ; fire while the first is still streaming, and each request owns its own
     ; output file / cURL PID / accumulated content. The shared requestParams
     ; keys are swapped per stream via _LoadStreamIntoParams.
@@ -338,7 +338,7 @@ _readStreamChunkFromParams() {
     _ParamsFromStreamState(state)
 }
 
-; Bug #195/#197: stream content/reasoning/model posts are only painted into
+; Stream content/reasoning/model posts are painted only into
 ; the WebView when the CURRENT active path is the one that sent the request.
 ; The DB completion still runs for the captured thread regardless.
 _shouldPostStreamToUI() {
@@ -352,7 +352,7 @@ _shouldPostStreamToUI() {
     if ThreadLockService.IsLocked(requestParams["_streamThreadId"]) &&
         !ThreadLockService.IsUnlockedInSession(requestParams["_streamThreadId"])
         return false
-    ; Root retries have no request parent (bug #147) - always current while
+    ; Root retries have no request parent and remain current while
     ; the thread is still the active one.
     if requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
         return true
@@ -367,7 +367,7 @@ _shouldPostStreamToUI() {
 ; When the user navigates BACK to the sending thread/branch while its stream is
 ; still in flight, re-paint the accumulated partial so the UI is not blank.
 _RepostActiveStreamForThread(threadId) {
-    ; Bug #221: find the NEWEST in-flight stream that sent a request for this
+    ; Find the newest in-flight stream that sent a request for this
     ; thread (multiple commands can be streaming at once).
     stream := _FindLatestStreamForThread(threadId)
     if !stream
@@ -385,7 +385,7 @@ _RepostActiveStreamForThread(threadId) {
         postWebMessage("streamContent", content)
 }
 
-; Build the per-request stream record (bug #221/#223). Captures every field
+; Build the per-request stream record and capture every field
 ; the completion/error/cancel handlers read from requestParams["_stream*"],
 ; plus the request's OWN temp-file paths, cURL PID, and retry metadata, so a
 ; second concurrent request can never clobber the first one's state.
@@ -416,7 +416,7 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         providerKey: providerInfo.providerKey,
         rawSseChunks: "",
         rawLastResponse: "",
-        ; Bug #178: a `data:` JSON line split across poll boundaries is buffered
+        ; Buffer a `data:` JSON line when it is split across poll boundaries.
         ; here (as the incomplete trailing fragment) until the next poll
         ; completes it.
         pendingLine: "",
@@ -429,24 +429,24 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         ; Web-search tool loop state (per round).
         toolCalls: Map(),
         toolLoopCount: requestParams.Has("_toolLoopCount") ? requestParams["_toolLoopCount"] : 0,
-        ; Bug #159: capture the thread that SENT this request.
+        ; Capture the thread that sent this request.
         threadId: activeThreadId,
         parentId: "",
-        ; Bug #206: capture the request's log metadata at send time too.
+        ; Capture request log metadata at send time.
         logWindowTitle: requestParams["windowTitle"],
         logProviderName: requestParams["providerName"],
         logModel: requestParams["singleAPIModelName"],
         logPasteMode: requestParams["pasteMode"],
         retryIsRoot: retryIsRoot,
         retrySiblingGroup: retrySiblingGroup,
-        ; The request's OWN temp files (bug #223: deleteTempFiles must delete
+        ; Keep each request's own temp-file paths so cleanup cannot target another request.
         ; THESE, not whatever request started later).
         requestFile: requestParams["chatHistoryJSONRequestFile"],
         cURLCommandFile: requestParams["cURLCommandFile"],
         errorFile: requestParams["cURLErrorFile"]
     }
-    ; Bug #197: capture the LAST message of the request path at send time. A
-    ; root retry has no parent (bug #147).
+    ; Capture the last message of the request path at send time.
+    ; A root retry has no parent.
     if !retryIsRoot {
         if requestPath.Length
             stream.parentId := requestPath[requestPath.Length].id
@@ -457,8 +457,8 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
 ; Load a per-request stream record into the shared requestParams window so the
 ; existing read/completion/error/cancel handlers keep working unchanged. Also
 ; swaps in THIS request's temp-file paths (deleteTempFiles and
-; appendToChatHistory must act on this request's files - bug #223) and its
-; retry metadata (bug #211/#205 semantics preserved per request).
+; appendToChatHistory must act on this request's files) and its
+; retry metadata, all scoped to the request.
 _LoadStreamIntoParams(stream) {
     global _currentStreamKey
     requestParams["_streamOutputFile"]       := stream.outputFile
@@ -556,7 +556,7 @@ _RestoreLastActiveStream() {
     }
 }
 
-; Bug #221: is another request still streaming besides the one currently
+; Check whether another request is still streaming besides the one currently
 ; loaded in requestParams? The composer must stay in Stop mode while ANY
 ; request is in flight, so setChatButtonsEnabled(true) is only posted when the
 ; finishing request is the LAST one.
@@ -696,8 +696,7 @@ _FinishToolLoop(loopState, stream := "", preserveStaged := false) {
 }
 
 ; Kill the cURL process of the CURRENTLY loaded stream without touching
-; another concurrent request's PID (the old single global cURLState would
-; close the wrong process once two commands can stream at once - bug #221).
+; another concurrent request's PID. Each stream record owns its process.
 _CloseCurrentStreamPID() {
     if !requestParams.Has("_streamPID")
         return
@@ -712,7 +711,7 @@ _CloseCurrentStreamPID() {
 }
 
 ; Clear the global cURLState only when it still tracks the CURRENT stream's
-; PID - never clobber another concurrent request's PID (bug #221).
+; PID; never clobber another concurrent request's PID.
 _ClearCurrentStreamPID() {
     if !requestParams.Has("_streamPID")
         return
@@ -762,12 +761,12 @@ _ParamsFromStreamState(state) {
 _readFileChunk(state) {
     if !FileExist(state.outputFile)
         return ""
-    ; Bug #160: read the cURL output as RAW BYTES and only advance the byte
+    ; Read cURL output as raw bytes and advance only past complete UTF-8 characters.
     ; cursor past COMPLETE UTF-8 characters. A poll boundary that splits a
     ; multibyte character leaves its leading bytes unconsumed (lastPos stays
     ; before them), so the next poll re-reads them together with the rest and
-    ; decodes the character correctly - never U+FFFD (the old UTF-8-RAW
-    ; byte-seek decoded each chunk alone and mangled the persisted content).
+    ; decodes the character correctly without producing U+FFFD from a split
+    ; multibyte sequence.
     file := FileOpen(state.outputFile, "r")
     if !file
         return ""
@@ -815,7 +814,7 @@ _readAndProcessStream(state, doPostMessage := false) {
     if !newContent
         return
 
-    ; Bug #178: an incomplete JSON fragment held from the previous poll is the
+    ; Prepend an incomplete JSON fragment retained from the previous poll.
     ; head of this chunk's first line - prepend it so a `data:` line split
     ; across poll boundaries re-forms and its payload survives in full.
     pending := state.HasOwnProp("pendingLine") ? state.pendingLine : ""
@@ -851,9 +850,8 @@ _readAndProcessStream(state, doPostMessage := false) {
 }
 
 ; A trailing chunk piece is only safe to process immediately when it is a
-; complete JSON event (the old code consumed newline-less complete lines). An
-; incomplete JSON fragment - whether `data:`-prefixed or a bare continuation -
-; is held in state.pendingLine until the next poll completes it (bug #178).
+; complete JSON event. Incomplete JSON fragments remain in state.pendingLine
+; until the next poll completes them.
 _IsCompleteJsonEvent(line) {
     dataPos := InStr(line, "data: ")
     payload := dataPos ? SubStr(line, dataPos + 6) : line
@@ -896,9 +894,9 @@ _processChunk(state, chunk, doPostMessage) {
                 state.usage := chunk.usage
 
         case "reasoning":
-            ; Bug #170: a reasoning-only stream never produces a "content"
-            ; chunk, so the first-token timer must also stamp on reasoning -
-            ; otherwise ttft_ms stays 0 (popover hides TTFT, dashboard
+            ; Reasoning-only streams may never produce a content chunk, so the
+            ; first-token timer must also stamp on reasoning.
+            ; Otherwise ttft_ms stays 0 (popover hides TTFT, dashboard
             ; averages 0ms, API-log latency falls back to the full duration).
             if (state.firstTokenTime = 0)
                 state.firstTokenTime := A_TickCount
@@ -923,7 +921,7 @@ _processChunk(state, chunk, doPostMessage) {
         case "done":
 
         case "error":
-            ; Bug #219: a mid-stream provider error event (`data: {"error":
+            ; Mid-stream provider error events carry a real provider failure.
             ; {"message":"..."}}`) - remember the message so finalization can
             ; surface it and keep the partial content instead of crashing on
             ; the missing "choices" key.
@@ -964,14 +962,14 @@ _finalizeStreaming() {
 
         wasCancelled := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
 
-        ; Bug #56: a user-initiated Stop before the first token must finalize
+        ; A user Stop before the first token finalizes as a clean cancellation.
         ; as a clean cancellation - check the flag BEFORE the empty-content
         ; branch, which would otherwise look like a connection failure and show
         ; the misleading API-key banner.
         if wasCancelled {
             _clearToolLoopState()
             _handleStreamCancelled()
-            ; Bug #98: every exit path must clean up the _stream* keys so a
+            ; Every exit path cleans up _stream* keys to prevent stale request state.
             ; cancelled request can never leak stale stream state into the
             ; next send. The call is idempotent (_handleStreamCancelled also
             ; cleans up internally), but _finalizeStreaming must not rely on
@@ -981,7 +979,7 @@ _finalizeStreaming() {
             return
         }
 
-        ; Bug #219: a mid-stream SSE error event (`data: {"error": ...}`) is a
+        ; A mid-stream SSE error event is a real provider failure after partial output.
         ; real provider failure AFTER partial tokens - surface the provider
         ; message, persist the partial response (like a cancellation), and
         ; post streamCancelled so the bubble finalizes and the composer is not
@@ -1199,7 +1197,7 @@ _postSearchProgress(loopState, cardContent) {
         postWebMessage("updateChatMessage", { id: loopState.placeholderId, role: "user", content: cardContent })
 }
 
-; Bug #221: drop the finalized request from the in-flight list and restore the
+; Drop the finalized request from the in-flight list and restore the
 ; next stream's state into requestParams.
 _FinishStreamFinalize() {
     _RemoveStreamFromActive(_currentStreamKey)
@@ -1208,7 +1206,7 @@ _FinishStreamFinalize() {
 
 _cleanupStreamState() {
     ; Map.Delete throws "Item has no value" for a missing key, so guard every
-    ; delete: cleanup must be idempotent (bug #98's contract) even when the
+    ; Cleanup must be idempotent even when the
     ; request failed before all stream keys were written.
     if requestParams.Has("_streamOutputFile")
         requestParams.Delete("_streamOutputFile")
@@ -1264,7 +1262,7 @@ _cleanupStreamState() {
         requestParams.Delete("_streamLogModel")
     if requestParams.Has("_streamLogPasteMode")
         requestParams.Delete("_streamLogPasteMode")
-    ; Bug #211: a retry that FAILS before/without streaming must not leave
+    ; A retry that fails before streaming must not leave
     ; pendingRetrySiblingGroup / pendingRetryIsRoot set - they are consumed by
     ; _persistStreamResponse / _handleStreamCancelled on the success/cancel
     ; paths, and a stale group would be picked up by the NEXT response's
@@ -1285,7 +1283,7 @@ _cleanupStreamState() {
         requestParams.Delete("pendingRetryRewoundLeaf")
 }
 
-; Bug #219: a mid-stream SSE error event is a real provider failure after
+; A mid-stream SSE error event is a real provider failure after
 ; partial tokens - keep the partial response (mirroring the cancel path) and
 ; post streamCancelled so the WebView finalizes the bubble, then surface the
 ; provider error via the standard error handler (which reads the cURL
@@ -1310,7 +1308,7 @@ _handleMidStreamError() {
     _handleStreamError()
 }
 
-; Bug #206: the API-log/error/cancel loggers must describe the REQUEST that
+; API-log/error/cancel entries describe the request that
 ; was sent, not the thread that happens to be active when it finished. The
 ; values are captured in sendStreamingRequest and fall back to current
 ; requestParams only for legacy/unit-test flows.

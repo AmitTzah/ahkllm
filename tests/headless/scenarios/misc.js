@@ -621,9 +621,10 @@ scenarios.push({
   noApp: true,
   async body() {
     const ci=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"webui","js","chat","chat-input.js"),"utf8");
-    // FIXED (bug #77): empty Send returns early.
-    const hasNoOp = ci.includes("Bug #77");
-    const stillRetries = ci.includes("retryLastAssistantMessage(lastMsg.id)") || ci.includes("Ipc.postToHost('retry')");
+    // Empty Send must return without posting a retry or chatSend request.
+    const sendBlock = ci.slice(ci.indexOf("function onChatSend()"), ci.indexOf("// Show the loading dots indicator"));
+    const hasNoOp = /if \(message \|\| attachments\.length > 0\)/.test(sendBlock) && /An empty Send/.test(sendBlock);
+    const stillRetries = sendBlock.includes("retryLastAssistantMessage(lastMsg.id)") || sendBlock.includes("Ipc.postToHost('retry')");
     if(!hasNoOp || stillRetries) throw new Error("bug #77 not fixed: hasNoOp=" + hasNoOp + " stillRetries=" + stillRetries);
     return "chat-input.js onChatSend returns early for empty input, so an empty Send no longer retries the last message";
   }
@@ -1035,15 +1036,13 @@ scenarios.push({
     const path=require("node:path");
     const launcher=require("../launch");
     const sa=fs.readFileSync(path.join(launcher.REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
-    // FIXED (bug #101): the copy helpers assign whenever the key exists, so
-    // false/0/empty values survive the round-trip.
-    const truthyAssignsFalse = /static _SetIfTruthy\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
-    const truthyGuard = /static _SetIfTruthy\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\) && c\[key\]/.test(sa);
-    const nonZeroKeepsZero = /static _SetIfNonZero\(cmd, c, key\)[\s\S]{0,400}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
+    // Key presence is authoritative, so false/0/empty values survive the round-trip.
+    const presenceAssigns = /static _SetIfExists\(cmd, c, key\)[\s\S]{0,200}if c\.Has\(key\)\s*\n\s*cmd\.%key% := c\[key\]/.test(sa);
+    const noTruthinessHelpers = !/static _SetIfTruthy|static _SetIfNonZero/.test(sa);
+    const commandUsesPresence = (sa.match(/_SetIfExists\(cmd, c,/g) || []).length >= 10;
     const tagsKeepsEmpty = /static _SetIfNonEmptyTags\(cmd, c\)[\s\S]{0,400}if c\.Has\("tags"\) && IsObject\(c\["tags"\]\)\s*\n\s*cmd\.tags := c\["tags"\]/.test(sa);
-    const callsTruthy = /_SetIfTruthy\(cmd, c, "stream"\)/.test(sa);
-    if(!truthyAssignsFalse || truthyGuard || !nonZeroKeepsZero || !tagsKeepsEmpty || !callsTruthy)
-      throw new Error("bug #101 not fixed: truthyAssignsFalse="+truthyAssignsFalse+" truthyGuard="+truthyGuard+" nonZeroKeepsZero="+nonZeroKeepsZero+" tagsKeepsEmpty="+tagsKeepsEmpty+" callsTruthy="+callsTruthy);
+    if(!presenceAssigns || !noTruthinessHelpers || !commandUsesPresence || !tagsKeepsEmpty)
+      throw new Error("bug #101 not fixed: presenceAssigns="+presenceAssigns+" noTruthinessHelpers="+noTruthinessHelpers+" commandUsesPresence="+commandUsesPresence+" tagsKeepsEmpty="+tagsKeepsEmpty);
     return "SettingsApply copy helpers assign whenever the key exists - stream/isFIM/showInputBox false, maxContextWords 0 and empty tags all survive the save round-trip";
   }
 });

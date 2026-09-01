@@ -105,10 +105,9 @@ class ThreadRepo {
         query .= " ORDER BY t.updated_at DESC"
         table := ChatDB.db.Exec(query)
         threads := []
-        ; Bug #180: the badge walk used to issue one active_leaf lookup plus
-        ; one SELECT per ancestor for EVERY listed thread (N+1 queries per
-        ; sidebar refresh). Load the message rows for all listed threads in a
-        ; single query and walk the ancestor chains in memory instead.
+        ; Build sidebar badge data without per-thread ancestor N+1 queries.
+        ; Load the message rows for all listed threads in one query and walk
+        ; ancestor chains in memory.
         msgMap := Map()
         if table.count {
             msgTable := ChatDB.db.Query("SELECT id, parent_id, role, model, provider FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=" (showTrash ? 1 : 0) ");")
@@ -122,7 +121,7 @@ class ThreadRepo {
             }
         }
         for row in table.rows {
-            ; Bug #155: the sidebar badge must reflect the ACTIVE path's model
+            ; The sidebar badge reflects the active path's model.
             ; (the last assistant on the path currently open), not the
             ; LAST-INSERTED assistant row in the thread (which can live on an
             ; off-path branch after a retry/branch switch). Walk from the active
@@ -195,7 +194,7 @@ class ThreadRepo {
             return
         ChatDB.BeginTransaction()
         try {
-        ; Bug #129: keep messages_fts in sync with messages - remove the FTS
+        ; Keep messages_fts in sync with messages during purge.
         ; rows for every purged message (same guarantee as MessageRepo.HardDelete
         ; -> FTS_Remove). The raw DELETEs below never touch the FTS index.
         changed := false
@@ -233,13 +232,12 @@ class ThreadRepo {
         debugLog("[THREAD] Deleted - id=" threadId)
         ChatDB.BeginTransaction()
         try {
-        ; Bug #116: pass the RAW id - DeleteByThread escapes it internally.
+        ; Pass the raw id; DeleteByThread performs its own escaping.
         ; Passing safeId (already escaped) double-escaped it, so crafted-id
         ; threads deleted their messages but orphaned their attachment rows.
         AttachmentRepo.DeleteByThread(threadId)
-        ; Bug #129: remove the FTS index rows before the raw DELETE - thread-
-        ; level delete previously skipped FTS cleanup (unlike HardDelete),
-        ; leaving stale index rows until the next startup rebuild.
+        ; Remove FTS rows before deleting the thread.
+        ; This keeps thread-level deletion consistent with HardDelete.
         msgIds := ChatDB.db.Query("SELECT id FROM messages WHERE thread_id=?;", threadId)
         for m in msgIds.rows
             ChatDB.FTS_Remove(m.id)

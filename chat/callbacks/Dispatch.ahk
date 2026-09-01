@@ -1,9 +1,4 @@
-; ======================================================
-; ChatDispatch.ahk — WebMessage dispatch + callback includes
-;
-; Handles OnWebMessageReceived and includes all callback modules.
-; Extracted from ChatWindow.ahk for cleaner separation.
-; ======================================================
+; Dispatch.ahk — routes WebView messages and includes chat callback modules.
 
 ; Surface an error to both the debug log AND the chat UI.
 ; Callable from any callback — re-enables buttons and shows red banner.
@@ -24,9 +19,8 @@ OnWebMessageReceived(sender, args) {
             return
         parsed := jsongo.Parse(msg)
         action := parsed.Get("action", "")
-        ; Correlation id (step 2 of the IPC refactor): every WebView request
-        ; carries a reqId; the dispatch answers with an ack carrying the same
-        ; id so the WebView can resolve promises and surface failures.
+        ; Echo each request's reqId in its acknowledgement so the WebView can
+        ; resolve the matching promise and surface failures.
         reqId := parsed.Get("reqId", "")
         ; Locked-chat gate: actions that read or mutate the ACTIVE thread are
         ; rejected while it is locked (and not unlocked in this session).
@@ -167,9 +161,8 @@ _OnWebViewReady() {
     ; user opens Settings. Re-push on the ready handshake — the one point we
     ; know the page is listening.
     postAssistantsToWebView()
-    ; Bug #45: re-push the full merged settings so the page applies UI CSS
-    ; vars (ui-theme.js sets --chat-font-family from ui.responseFont) at
-    ; startup, without the user opening Settings.
+    ; Re-push merged settings after the ready handshake so startup UI CSS
+    ; variables are applied even if earlier WebView posts were dropped.
     _HandleRequestAllSettings()
     if activeThreadId
         _LoadThreadAndRefreshUI(activeThreadId)
@@ -180,9 +173,8 @@ _HandleRequestAllSettings() {
     defaults := SettingsHandler.GetDefaults()
     loaded := SettingsHandler.Load()
     merged := SettingsHandler.Merge(loaded, defaults)
-    ; Step 3 of the IPC refactor: the full settings payload is a distinct
-    ; message (appSettings) so it can never be mistaken for the right-rail
-    ; per-thread payload (threadSettings).
+    ; Full app settings and per-thread settings use distinct message types so
+    ; consumers cannot confuse their payload shapes.
     postWebMessage("appSettings", merged)
     if requestParams.Has("mainScriptHiddenHwnd")
         CustomMessages.notifyBackupStatusRequest(requestParams["mainScriptHiddenHwnd"])
@@ -221,9 +213,7 @@ _HandleSaveSettings(parsed) {
         if merged {
             ; Push updated assistant list (and model list) to the chat sidebar
             postAssistantsToWebView()
-            ; Bug #45: re-push merged settings so UI CSS vars (e.g. the
-            ; response font) apply immediately after a save, without reopening
-            ; Settings.
+            ; Re-push merged settings so UI CSS variables apply immediately.
             _HandleRequestAllSettings()
             ; Refresh thinking levels for current model
             postCurrentSettingsToWebView()

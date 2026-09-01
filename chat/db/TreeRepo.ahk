@@ -24,8 +24,7 @@ class TreeRepo {
         if !leafId
             return []
 
-        ; Hardening item 1: threadId is a bound parameter - crafted ids can
-        ; never alter the SQL text.
+        ; threadId is a bound parameter, so its value cannot alter the SQL text.
         allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, provider, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
 
         msgMap := Map()
@@ -47,7 +46,7 @@ class TreeRepo {
                 active_path_tokens: row.Has("active_path_tokens") && row["active_path_tokens"] ? Integer(row["active_path_tokens"]) : 0,
                 is_local_copy: row.Has("is_local_copy") ? Integer(row["is_local_copy"]) : 0,
                 api_output_tokens: row.Has("api_output_tokens") ? Integer(row["api_output_tokens"]) : 0,
-                ; Bug #177: carry each message's cost SNAPSHOT (the prices in
+                ; Carry each message's call-time cost snapshot into the path.
                 ; effect when its API call was made) into the path so forks can
                 ; copy it - otherwise a Settings price change re-prices history.
                 input_cost: row.Has("input_cost") && row.input_cost != "" ? Number(row.input_cost) : 0,
@@ -185,7 +184,7 @@ class TreeRepo {
           TreeRepo._CopyThreadLock(threadId, newThreadId)
 
         idMap := Map()
-        sgMap := Map()  ; old sibling_group -> new sibling_group (fresh UUIDs per fork)
+        sgMap := Map()  ; source sibling_group -> new sibling_group (fresh UUIDs per fork)
 
         ; First pass: copy active path messages up to cutoff
         for i, msg in path {
@@ -202,8 +201,8 @@ class TreeRepo {
         }
 
         ; Second pass: copy any siblings NOT on the active path so branch nav works,
-        ; plus their full descendant subtrees (bug #113).
-        ; Bug #143: only the ACTIVE continuation beyond the fork point is
+        ; plus their full descendant subtrees.
+        ; Exclude only the active continuation beyond the fork point.
         ; excluded - off-path children of the fork point itself (alternative
         ; continuations that already exist) are part of the conversation tree
         ; and must be copied like off-path siblings at every other level.
@@ -213,17 +212,17 @@ class TreeRepo {
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, newThreadId)
 
-        ; Bug #126: do NOT copy the source thread's cumulative counters - the
+        ; Do not copy source-thread cumulative counters into a fork.
         ; fork contains only the prefix (+ off-path branches), so its counters
         ; are recomputed from the fork's own messages (the per-message token
         ; fields are copied by _InsertForkMessage/_CopyOffPathSiblings). This
-        ; replaced bug #48's verbatim copy, which over-reported a mid-conversation
+        ; Recompute them from copied per-message accounting data.
         ; fork's totals until the next structural change.
         MessageRepo._RecomputeCumulativeCounters(newThreadId)
 
         ; Bulk FTS sync for all copied messages in the forked thread. The
-        ; attachment copies above already FTS-resynced their messages (bug
-        ; #165), so DELETE first to stay idempotent, then re-index messages
+        ; Attachment copies above already FTS-resynced their messages, so DELETE
+        ; first to stay idempotent, then re-index messages
         ; WITH attachments (the bulk insert cannot decode base64 text).
         ChatDB.db.Query("DELETE FROM messages_fts WHERE msg_id IN (SELECT id FROM messages WHERE thread_id=?);", newThreadId)
         ChatDB.db.Query("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages WHERE thread_id=?;", newThreadId)
@@ -258,8 +257,8 @@ class TreeRepo {
             ChatDB.db.Query("UPDATE chat_threads SET system_override=?, system_override_set=? WHERE id=?;", settings.systemOverride != "" ? settings.systemOverride : SQLite.Null, settings.systemOverrideSet ? 1 : 0, targetThreadId)
         if settings.reasoningOverrideSet || settings.reasoningOverride != ""
             ChatDB.db.Query("UPDATE chat_threads SET reasoning_override=?, reasoning_override_set=? WHERE id=?;", settings.reasoningOverride != "" ? settings.reasoningOverride : SQLite.Null, settings.reasoningOverrideSet ? 1 : 0, targetThreadId)
-        ; Bug #62: temperature 0 is a valid override - AHK treats the numeric
-        ; 0 as falsy, so use an explicit empty check (same class as bug #35).
+        ; Temperature 0 is a valid override; AHK treats numeric 0 as falsy.
+        ; Use an explicit empty check.
         if settings.temperatureOverride != "" || settings.temperatureOverrideSet
             ChatDB.db.Query("UPDATE chat_threads SET temperature_override=?, temperature_override_set=? WHERE id=?;", settings.temperatureOverride != "" ? settings.temperatureOverride : SQLite.Null, settings.temperatureOverrideSet ? 1 : 0, targetThreadId)
         if settings.assistantId
@@ -272,7 +271,7 @@ class TreeRepo {
                     ChatDB.db.Query("UPDATE chat_threads SET font_size=? WHERE id=?;", Integer(srcRow[1, "font_size"]), targetThreadId)
                 if srcRow[1, "advanced_toggles"] != ""
                     ChatDB.db.Query("UPDATE chat_threads SET advanced_toggles=? WHERE id=?;", srcRow[1, "advanced_toggles"], targetThreadId)
-                ; Bug #58: the fork belongs in the source thread's folder.
+                ; Keep the fork in the source thread's folder.
                 if srcRow[1, "folder_id"] != ""
                     ChatDB.db.Query("UPDATE chat_threads SET folder_id=? WHERE id=?;", srcRow[1, "folder_id"], targetThreadId)
             }
@@ -290,7 +289,7 @@ class TreeRepo {
         ChatDB.db.Query("INSERT OR REPLACE INTO chat_locks (thread_id, kdf, salt, hash, iterations) VALUES(?, ?, ?, ?, ?);", targetThreadId, lockData.kdf, lockData.salt, lockData.hash, lockData.iterations)
     }
 
-    ; Map an old sibling_group to a fresh UUID, creating one if needed.
+    ; Map a source sibling_group to a fresh UUID, creating one if needed.
     ; Returns the fresh UUID, or "" when the message has no sibling group.
     static _MapSiblingGroup(msg, &sgMap) {
         if msg.sibling_group {
@@ -312,13 +311,13 @@ class TreeRepo {
         ckt := msg.HasProp("cached_tokens") ? msg.cached_tokens : 0
         lat := msg.HasProp("response_time_ms") ? msg.response_time_ms : 0
         ttft := msg.HasProp("ttft_ms") ? msg.ttft_ms : 0
-        ; Bug #48: keep the per-message context-token prefix sum so the fork's
+        ; Keep per-message active-path token totals so fork context remains accurate.
         ; token bar ("Context Used") matches the copied conversation.
         apt := msg.HasProp("active_path_tokens") && msg.active_path_tokens != "" ? Integer(msg.active_path_tokens) : 0
-        ; Bug #107: carry the assistant's API ground truth into the fork so a
+        ; Carry assistant API prompt-token data into the fork for later recompute.
         ; later recompute can restore prompt+completion.
         spt := msg.HasProp("prompt_tokens") && msg.prompt_tokens != "" ? Integer(msg.prompt_tokens) : 0
-        ; Bug #177: copy the cost snapshot taken at the original API call, so
+        ; Copy each original API call's cost snapshot into the fork.
         ; the fork's recomputed cumulative cost matches the source thread even
         ; after a Settings price change.
         costs := TreeRepo._MessageCostSnapshot(msg)
@@ -328,7 +327,7 @@ class TreeRepo {
         ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, provider, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, provider, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, isLocal, apiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
     }
 
-    ; Extract the per-message cost snapshot (bug #153 columns) from a source
+    ; Extract the per-message cost snapshot from a source
     ; row or path object, defaulting missing/empty values to 0 (legacy rows
     ; predating the snapshot columns re-price via _RecomputeCumulativeCounters'
     ; zero-cost fallback).
@@ -340,12 +339,10 @@ class TreeRepo {
         return { inputCost: inputCost, cachedInputCost: cachedInputCost, outputCost: outputCost, totalCost: totalCost }
     }
 
-    ; Copy sibling messages that are NOT on the active path (so branch navigation
-    ; works in forks), plus their full descendant subtrees (bug #113 - the fork
-    ; must be a faithful copy of the conversation tree so far). The ACTIVE
-    ; continuation beyond the fork point is excluded: it is the source thread's
-    ; continuation beyond the fork (scenario 126), not part of the fork's
-    ; prefix. Off-path children of the fork point itself (bug #143) ARE copied.
+    ; Copy siblings that are not on the active path, along with their full
+    ; descendant subtrees, so the fork preserves the conversation tree. The
+    ; active continuation beyond the fork point remains in the source thread;
+    ; off-path children of the fork point itself are copied.
     static _CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, cutoffMsgId := "", activePathNextId := "") {
         ; First pass: direct siblings of messages already copied from the active path.
         for oldSg, newSg in sgMap {
@@ -360,9 +357,8 @@ class TreeRepo {
             }
         }
 
-        ; Second pass (bug #113): walk descendants of every copied message until
-        ; no more can be added (the fork's tree copy was previously one level
-        ; deep - everything below off-path siblings was silently dropped).
+        ; Second pass: walk descendants of every copied message until
+        ; no more can be added, preserving complete off-path subtrees.
         loop {
             copiedAny := false
             all := ChatDB.db.Query("SELECT * FROM messages WHERE thread_id=? ORDER BY sibling_index, rowid;", threadId)
@@ -400,7 +396,7 @@ class TreeRepo {
         sApt := row.Has("active_path_tokens") && row.active_path_tokens ? Integer(row.active_path_tokens) : 0
         sLocal := row.Has("is_local_copy") ? Integer(row.is_local_copy) : 0
         sApiOutput := row.Has("api_output_tokens") ? Integer(row.api_output_tokens) : (!sLocal && row.role = "assistant" ? sTc : 0)
-        ; Bug #177: copy the cost snapshot so off-path fork rows are also
+        ; Copy cost snapshots for off-path fork rows too.
         ; priced at the original call-time prices.
         costs := TreeRepo._MessageCostSnapshot(row)
 
@@ -467,10 +463,10 @@ class TreeRepo {
 
         threadTable := ChatDB.db.Query("SELECT cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost FROM chat_threads WHERE id=?;", threadId)
         ; Determine context window and pricing unit from the SAME model
-        ; resolution order (bug #103): current request model, then thread
+        ; resolution order: current request model, then thread
         ; model override, then the last assistant message on the active path.
-        ; The old pricingUnit query took the thread's FIRST message (LIMIT 1),
-        ; so the token bar used the oldest model's prices after switching.
+        ; Resolve pricing from the current request/thread context rather than
+        ; an unrelated message elsewhere in the thread.
         pricing := TreeRepo._ResolvePricing(threadId)
         contextWin := pricing && pricing.HasOwnProp("context") ? pricing.context : 1048576
 
@@ -489,8 +485,8 @@ class TreeRepo {
         if pricing {
             result.pricingUnit := {
                 input: pricing.HasOwnProp("input") ? pricing.input : 0,
-                ; Bug #63: a stored "" means "not set" - fall back to 10% of
-                ; the input price (a present "" was previously taken as 0).
+                ; A stored "" means "not set"; fall back to 10% of
+                ; the input price.
                 cachedInput: pricing.HasOwnProp("cachedInput") && pricing.cachedInput != "" ? pricing.cachedInput : (pricing.HasOwnProp("input") ? pricing.input * 0.1 : 0),
                 output: pricing.HasOwnProp("output") ? pricing.output : 0
             }
@@ -505,7 +501,7 @@ class TreeRepo {
     }
 
     ; Resolve the model pricing used for the token bar, in priority order
-    ; (bug #103): 1) the current request model, 2) the thread's model_override,
+    ; 1) current request model, 2) thread model_override,
     ; 3) the last assistant message on the active path.
     static _ResolvePricing(threadId) {
         if IsSet(requestParams) && requestParams.Has("singleAPIModelName") && requestParams["singleAPIModelName"] {
@@ -535,11 +531,10 @@ class TreeRepo {
     static _WalkToLeaf(msgId, threadId := "") {
         currentId := msgId
         loop {
-            ; Bug #55 + #148: pick the NEWEST continuation - retries and branch
+            ; Pick the newest continuation; retries and branch
             ; copies get HIGHER sibling_index (original 0, retry 1, ...), so
             ; order by sibling_index DESC (rowid DESC for ties = last-inserted).
-            ; The old ASC order picked the ORIGINAL answer instead of the most
-            ; recent retry, and ORDER BY created_at picked the OLDEST child.
+            ; This keeps the newest retry or branch continuation at the leaf.
             if threadId
                 childTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=? AND thread_id=? ORDER BY sibling_index DESC, rowid DESC LIMIT 1;", currentId, threadId)
             else
@@ -563,9 +558,9 @@ class TreeRepo {
         for msg in path {
             prev += msg.token_count
             ; Thinking tokens occupy the context window too. Do not use a
-            ; downstream assistant's historical prompt_tokens here: after an
-            ; ancestor edit that value describes an old request, not today's
-            ; active conversation.
+            ; downstream assistant's stored prompt_tokens here: after an
+            ; ancestor edit that value may describe a different request, not
+            ; today's active conversation.
             prev += msg.thinking_tokens
             ChatDB.db.Query("UPDATE messages SET active_path_tokens=? WHERE id=?;", prev, msg.id)
         }

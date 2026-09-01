@@ -12,8 +12,7 @@ class AttachmentUtils {
     static HasVision(modelName) {
         if !IsSet(models)
             return false
-        ; Single lookup accepting full or short model ids (bug #51: short ids
-        ; used to be rejected because the map is keyed by "provider/model").
+        ; Resolve both full and short model ids through ModelResolver.
         m := ModelResolver.Lookup(models, modelName)
         if !IsObject(m) || !m.HasOwnProp("vision")
             return false

@@ -23,8 +23,8 @@ function initChatMode(data) {
   var messages = Array.isArray(data) ? data : (data && data.messages ? data.messages : []);
   chatMessages = messages;
 
-  // Bug #195: if an in-flight stream is being re-shown (thread/branch switch
-  // back to its sender), drop the old incremental UI buffers - the AHK layer
+  // When re-showing an in-flight stream after a thread/branch switch,
+  // back to its sender), drop the existing incremental UI buffers - the AHK layer
   // re-posts the full accumulated partial via _RepostActiveStreamForThread.
   if (typeof streamState !== 'undefined' && streamState.active) {
     streamState.contentBuffer = '';
@@ -39,7 +39,7 @@ function initChatMode(data) {
     _persistedThinkingStates = {};
   }
 
-  // Bug #76: always adopt the loaded thread's id - the old !activeThreadId
+  // Always adopt the loaded thread id during a thread switch.
   // guard left activeThreadId stale when switching threads (rapid switch,
   // fork, programmatic load), so sends/search targeted the wrong thread.
   if (data && data.threadId) {
@@ -51,9 +51,9 @@ function initChatMode(data) {
 
   renderChatMessages(chatMessages);
   showTokenUsageBar();
-  // Bug #218: a thread switch while a request is in flight used to
+  // A thread switch must not reset loading/input state while a request is in flight.
   // unconditionally re-enable the input and reset isLoading to false while
-  // the old stream was still active (editable input + Send path + Stop
+  // the existing stream was still active (editable input + Send path + Stop
   // button), letting Enter fire a second request that clobbers the first
   // stream. Sync the composer to the in-flight state instead: Stop mode
   // (disabled input, isLoading stays true) for the whole window (isLoading

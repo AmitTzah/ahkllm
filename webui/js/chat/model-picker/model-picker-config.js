@@ -19,8 +19,7 @@ function populateCurrentSettings(settings) {
     reasoning: settings.reasoning || '',
     reasoningOverrideSet: settings.reasoningOverrideSet === true,
     temperatureOverrideSet: settings.temperatureOverrideSet === true,
-    // Bug #78: 0 is a valid temperature override - only treat null/undefined
-    // as "not set".
+    // Temperature 0 is a valid override; only null/undefined means unset.
     temperature: settings.temperature == null ? '' : settings.temperature,
     fontSize: settings.fontSize || '17',
     assistantName: settings.assistantName || '',
@@ -52,7 +51,7 @@ function populateCurrentSettings(settings) {
   var tempVal = document.getElementById('tempVal');
   var tempReset = document.getElementById('tempReset');
   if (tempSlider) {
-    // Bug #78: 0 is a valid temperature override - use explicit empty checks
+    // Use explicit empty checks because temperature 0 is valid.
     // instead of a truthiness check (0 is falsy in JS).
     var hasTemp = settings.temperatureOverrideSet !== true && settings.temperature !== '' && settings.temperature !== undefined && settings.temperature !== null;
     if (hasTemp) {
@@ -189,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Direct typing in the mini field must behave like the modal Save path:
   // update _currentSettings and post the debounced updateModelSettings.
-  // Regression (bug #60): typing used to be display-only, so a system prompt
+  // Typing in the system prompt field must update current settings and persist through IPC.
   // typed straight into the field never reached requestParams / the API call.
   var sysMsgMini = document.getElementById('sysMsgMini');
   if (sysMsgMini) sysMsgMini.addEventListener('input', function() {

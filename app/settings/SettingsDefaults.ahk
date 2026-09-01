@@ -28,8 +28,7 @@ class SettingsDefaults {
         if SettingsDefaults._initialDefaultsCaptured {
             snapshot := Map()
             for k, v in SettingsDefaults._initialDefaults
-                ; Bug #93 (hardening): deep-clone so a caller mutating the
-                ; returned snapshot cannot corrupt the cached pristine defaults.
+                ; Deep-clone so a caller mutating the returned snapshot cannot
                 snapshot[k] := SettingsDefaults._DeepClone(v)
             return snapshot
         }
@@ -141,8 +140,7 @@ class SettingsDefaults {
         return result
     }
 
-    ; Bug #93 (hardening): recursively copy Maps/Arrays so GetDefaults()
-    ; snapshots are fully independent of the cached pristine defaults.
+    ; Recursively copy Maps/Arrays so GetDefaults() snapshots are independent.
     static _DeepClone(value) {
         if value is Map {
             result := Map()
@@ -173,7 +171,7 @@ class SettingsDefaults {
                 "description", a.HasOwnProp("description") ? a.description : "",
                 "reasoning", a.HasOwnProp("reasoning") ? a.reasoning : "",
                 "temperature", a.HasOwnProp("temperature") ? a.temperature : "",
-                ; Bug #196: carry isDefault through the DEFAULTS snapshot too -
+                ; Carry isDefault through the defaults snapshot so
                 ; DefaultSettings marks an assistant isDefault:true, and the
                 ; fresh-profile apply path must see it (otherwise "App Default"
                 ; starts with the model instead of the marked assistant).

@@ -13,7 +13,7 @@ class ApiLogger {
     ; Reads the log file and returns the entries array (newest first). A
     ; missing, unparseable, or non-array log file yields [] - logging is
     ; best-effort and must NEVER crash the app. A torn/corrupt file (from an
-    ; interrupted write or a concurrent app instance) used to raise a
+    ; interrupted write or a concurrent app instance) is treated as empty instead of raising a
     ; runtime error dialog because the parse result could be a String.
     static _readLogFile() {
         if FileExist(this.logFilePath) {
@@ -84,10 +84,10 @@ class ApiLogger {
             logs.RemoveAt(logs.Length)
     }
 
-    ; Write the log array atomically (bug #111): write a temp file in the same
+    ; Write the log array atomically: write a temp file in the same
     ; directory, then rename it over the target, so a crash mid-write never
-    ; leaves truncated JSON that ReadLogs fails to parse (same class as #97).
-    ; The temp name is unique per write: concurrent app instances used to
+    ; leaves truncated JSON that ReadLogs fails to parse.
+    ; The temp name is unique per write so concurrent app instances cannot
     ; share one ".tmp" path and interleave bytes into it, which was then moved
     ; over the real log (corrupting it and crashing the next read).
     static _WriteLogs(logs) {

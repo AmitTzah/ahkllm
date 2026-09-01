@@ -111,13 +111,8 @@ function setupMessageAttachmentDeleteDelegation() {
         e.stopPropagation();
         var attId = btn.getAttribute('data-attachment-id');
         if (!attId) return;
-        // Bug #217: deletion may only be deferred while editing THE message
-        // the attachment belongs to. The old code deferred ANY clicked
-        // attachment id into the global _removedAttachmentIds, so clicking
-        // the X on another message's attachment while editing made the edit
-        // commit hard-delete that OTHER message's attachment row (and its
-        // file). An X on a different bubble is a no-op while the editor is
-        // open; it is never deferred into this edit.
+        // Defer deletion only while editing the message that owns the attachment.
+        // The edit session tracks only attachment ids belonging to that message.
         var owningBubble = btn.closest('.msg');
         var owningMsgId = owningBubble ? owningBubble.getAttribute('data-msg-id') : null;
         if (typeof _editStatesByMessageId !== 'undefined' && owningMsgId &&

@@ -62,7 +62,7 @@ class SettingsMerge {
     ; from a section. Top-level keys the UI did not send keep their base
     ; (saved/default) values.
     static Override(incoming, base) {
-        ; Bug #90: a non-object incoming payload (e.g. "" from a crafted IPC)
+        ; Reject non-object incoming payloads (for example, "" from crafted IPC);
         ; would iterate over string characters and pollute the merged map.
         if !IsObject(incoming)
             incoming := Map()

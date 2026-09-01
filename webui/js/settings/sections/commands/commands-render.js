@@ -316,9 +316,8 @@
     var db=document.getElementById('cmdDeleteBtn'); if(db)db.addEventListener('click',C.deleteSelected);
     var aw=document.querySelector('.cmd-advanced-wrap');
     if(aw){
-      // Toggle only from the header, not from clicks inside the body - the
-      // old whole-wrap listener collapsed the card on the first click into a
-      // field, making the Advanced inputs unusable (bug #27).
+      // Toggle from the header only; clicks inside the body remain available
+      // for editing Advanced fields.
       var at=aw.querySelector('.cmd-advanced-toggle');
       if(at)at.addEventListener('click',function() { _toggleAdvanced(aw); });
     }

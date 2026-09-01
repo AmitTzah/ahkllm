@@ -50,8 +50,8 @@ class ChatDB {
         ChatDB.db.Exec("PRAGMA auto_vacuum=INCREMENTAL;")
         ChatDB.db.Exec("PRAGMA journal_mode=WAL;")
         ChatDB.db.Exec("PRAGMA busy_timeout=5000;")
-        ; Hardening item 2: enforce referential integrity (ON DELETE CASCADE /
-        ; SET NULL) instead of relying on app-side deletion order.
+        ; Enforce referential integrity (ON DELETE CASCADE / SET NULL) at the
+        ; database level.
         ChatDB.db.Exec("PRAGMA foreign_keys=ON;")
         ChatDB._CreateSchema()
         ChatDB.isOpen := true
@@ -210,7 +210,7 @@ class ChatDB {
         if Integer(ftsCount[1, "cnt"]) != Integer(msgCount[1, "cnt"]) {
             ChatDB.db.Exec("DELETE FROM messages_fts;")
             ChatDB.db.Exec("INSERT INTO messages_fts(msg_id, content) SELECT id, content FROM messages;")
-            ; Bug #165: the rebuild must also index attachment extracted_text
+            ; Rebuilds must include attachment extracted_text in the FTS index.
             ; (the bulk SQL above cannot decode the base64-stored text).
             attMsgs := ChatDB.db.Query("SELECT DISTINCT message_id FROM message_attachments WHERE extracted_text != '';")
             for am in attMsgs.rows
@@ -223,7 +223,7 @@ class ChatDB {
     ; FTS5 sync - called from MessageRepo on Insert/Edit.
     ; Values are bound parameters - msg_id/content can never alter the SQL.
     static FTS_Sync(msgId, content) {
-        ; Bug #165: index attachment extracted_text too, so a term inside an
+        ; Index attachment extracted_text so terms inside attachments are searchable.
         ; attached PDF/office file is searchable (it is part of the context
         ; the API sees). The column stores base64 - decode it for the index.
         attachedText := ""
@@ -242,7 +242,7 @@ class ChatDB {
         }
     }
 
-    ; Re-index a message's FTS entry after its attachments change (bug #165).
+    ; Re-index a message's FTS entry after its attachments change.
     static FTS_ResyncForAttachments(msgId) {
         row := ChatDB.db.Query("SELECT content FROM messages WHERE id=?;", msgId)
         if row.count

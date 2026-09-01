@@ -26,7 +26,7 @@ class SSEParser {
             return { type: "ignore" }
         }
 
-        ; Bug #219: a real OpenAI-style SSE error event (`data: {"error": ...}`)
+        ; OpenAI-style SSE error events (`data: {"error": ...}`)
         ; is valid JSON WITHOUT a "choices" key - bracket-indexing a Map for a
         ; missing key THROWS in AHK v2 and crashed the poll. Surface the
         ; provider message as an "error" chunk so the stream fails cleanly
@@ -45,7 +45,7 @@ class SSEParser {
             return SSEParser._handleUsageOnlyChunk(parsed)
         }
 
-        ; Bug #178: an SSE event can carry MORE than one choice (a re-joined
+        ; An SSE event can carry more than one choice (for example, a re-joined
         ; split `data:` line, or a provider batching deltas) - accumulate the
         ; content from EVERY choice instead of reading only the first, or the
         ; later choices' payload is silently dropped.

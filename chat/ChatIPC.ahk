@@ -46,7 +46,7 @@ OnTriggerLLM(wParam, lParam, msg, hWnd) {
     global activeThreadId
     if !activeThreadId
         return
-    ; Bug #203: honor the command's Stream Response toggle (wParam=1 stream,
+    ; Honor the command's Stream Response toggle (wParam=1 stream,
     ; wParam=0 single-shot JSON) instead of always streaming.
     requestParams["stream"] := wParam ? true : false
     path := ChatDB.Msg_GetActivePath(activeThreadId)
@@ -57,7 +57,7 @@ OnTriggerLLM(wParam, lParam, msg, hWnd) {
 ; Unified thread loader — used by both IPC path (OnLoadThread) and
 ; command-line-arg path (ChatWindow startup). Eliminates duplication.
 LoadThreadIntoUI(threadId, autoFire := false) {
-    ; Bug #41: threads created outside the sidebar newChat action (tray "New
+    ; Threads created outside the sidebar newChat action (tray "New
     ; Chat", command-line spawn) have no settings yet; give them the configured
     ; "New Chats Start With" default before the UI loads them.
     _applyNewChatDefaultToFreshThread(threadId)

@@ -46,10 +46,7 @@ class InlineRequestRunner {
         } else if result.success {
             InlineRequestRunner._PasteAndLogResponse(result, captured, isFIM, pasteMode, commandName, providerName, singleAPIModelName, files)
         } else {
-            ; Bug (inline silent failure): a failed inline request used to
-            ; silently do nothing - no paste, no message, nothing in the API
-            ; log. Surface the failure (tooltip + API-log error entry) so the
-            ; user knows the command did not succeed.
+            ; Surface failed inline requests through the UI and API log.
             InlineRequestRunner._HandleInlineError(result, files, commandName, providerName, singleAPIModelName, isFIM, pasteMode)
         }
 
@@ -69,7 +66,7 @@ class InlineRequestRunner {
             chatHistoryJSONRequest := llmClient.createFIMRequest(fullAPIModelName, captured.prefix, captured.suffix,
                 temperature, maxTokens, stop)
         } else {
-            ; Bug #46: the inline runner is single-shot (CurlBuilder.Build +
+            ; The inline runner is single-shot (CurlBuilder.Build +
             ; whole-file JSON parse), so it must NOT advertise stream:true - a
             ; streaming API would answer SSE that cannot be parsed as one JSON
             ; document and the command would silently paste nothing.

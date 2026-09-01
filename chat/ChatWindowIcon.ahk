@@ -3,9 +3,8 @@
 ;
 ; The chat window icon (title bar / taskbar, WM_SETICON) is re-applied from
 ; the current iconOn global whenever settings change, so "Active Icon" edits
-; take effect live instead of after a restart (bug #138). The tray icon
-; already does this via app/TrayIcon.ahk; the chat window previously applied
-; its icon only at startup.
+; take effect live instead of after a restart. The tray icon
+; app/TrayIcon.ahk handles the tray icon separately.
 ; ======================================================
 
 _applyChatWindowIcon() {

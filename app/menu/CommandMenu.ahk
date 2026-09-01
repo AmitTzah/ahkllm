@@ -83,7 +83,7 @@ buildCommandMenu() {
 
         ; If command has a directAccelerator, add a top-level shortcut
         if command.HasProp("directAccelerator") && command.directAccelerator {
-            ; Bug #228: settings can clear the Command Title - the runtime
+            ; Settings can clear the Command Title, so the runtime
             ; command then carries commandName="" (or, for legacy/crafted
             ; settings, may lack the property entirely). Never index it
             ; unguarded or the whole menu build throws.
@@ -162,7 +162,7 @@ buildCommandMenu() {
 ; Resolve systemMessage: if cmd has systemMessageFile, read the file;
 ; otherwise use cmd.systemMessage (inline text). Returns the message string.
 _resolveSystemMessage(cmd) {
-    ; Single resolver shared with the assistant path (bug #50 family).
+    ; Use the shared system-message resolver.
     res := SystemMessageResolver.Resolve(cmd)
     if res.error != ""
         MsgBox("Failed to read system message file:`n" res.error,
@@ -267,11 +267,11 @@ onCommandSelected(index, *) {
             "ahk_id " commandInputWindow.guiObj.hWnd, previewPath)
     } else {
         params := _extractCommandParams(cmd, "")  ; no user input
-        ; Bug #228: the command's API Model can be "Default" (empty
+        ; The command's API Model can be "Default" (empty
         ; APIModels) and the Title/Label can be cleared - guard every direct
         ; read so an empty (or legacy settings file with a missing key) can
         ; never throw inside the menu handler. processInitialRequest then
-        ; substitutes the app default model for "" (#162).
+        ; substitutes the app default model for an empty model id.
         processInitialRequest(
             cmd.HasProp("commandName") ? cmd.commandName : "",
             cmd.HasProp("menuText") ? cmd.menuText : "",

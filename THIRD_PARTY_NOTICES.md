@@ -1,8 +1,8 @@
 # Third-Party Notices
 
-AhkLLM includes or redistributes the components below. This inventory covers
-the tracked runtime libraries, JavaScript/CSS bundles, fonts, and attachment
-icons found in the repository on 2026-08-25. Versions are taken from embedded
+AhkLLM includes or redistributes the components below. Last audited: 2026-08-25.
+This inventory covers the tracked runtime libraries, JavaScript/CSS bundles, fonts,
+and attachment icons present at that audit. Versions are taken from embedded
 headers, binary metadata, or the upstream package metadata when identifiable;
 an exact upstream commit is called out when it is not recorded locally.
 

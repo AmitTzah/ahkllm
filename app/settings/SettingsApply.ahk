@@ -1,6 +1,4 @@
-; ======================================================
-; SettingsApply.ahk — apply a settings Map to the global variables
-; ======================================================
+; SettingsApply.ahk — applies a settings Map to runtime globals.
 
 class SettingsApply {
     ; Apply settings Map to global variables.
@@ -33,8 +31,6 @@ class SettingsApply {
             tavilyEndpoint := settings["tavilyEndpoint"]
     }
 
-    ; --- Apply helpers (write from settings Map to globals) ---
-
     static _ApplyProviders(settings) {
         global providers, providerMap
 
@@ -60,9 +56,8 @@ class SettingsApply {
             }
         }
         providers := newProviders
-        ; Bug #74: assign the rebuilt map whenever the saved providers define
-        ; prefixes explicitly - an explicitly empty set must clear the old map.
-        ; Providers without a "prefixes" key keep the UserConfig mapping.
+        ; An explicit prefixes key is authoritative, including an empty list.
+        ; Providers without it keep the existing UserConfig mapping.
         hasExplicitPrefixes := false
         for k, p in settings["providers"] {
             if p.Has("prefixes") {
@@ -120,8 +115,6 @@ class SettingsApply {
                 description: a.Has("description") ? a["description"] : "",
                 reasoning: a.Has("reasoning") ? a["reasoning"] : "",
                 temperature: a.Has("temperature") ? a["temperature"] : "",
-                ; Bug #122: carry isDefault through the runtime globals too, so
-                ; the re-pushed assistantList does not silently lose it.
                 isDefault: a.Has("isDefault") ? a["isDefault"] : false
             })
         }
@@ -136,22 +129,15 @@ class SettingsApply {
         newCommands := []
         for _, c in settings["commands"] {
             cmd := {}
-            ; Bug #228: a command whose API Model is "Default" (empty
-            ; APIModels), or whose Command Title / Menu Label is cleared, must
-            ; keep those keys on the runtime command object - the old
-            ; _SetIfNonEmpty SKIPPED empty strings, so cmd.APIModels /
-            ; cmd.commandName / cmd.menuText no longer existed and the menu
-            ; handler's direct property reads THREW in AHK v2 before
-            ; processInitialRequest's #162 default-model substitution could
-            ; run. Assign whenever the saved key exists (empty included), the
-            ; same pattern as #101's _SetIfTruthy / #61/#71.
+            ; Saved key presence is authoritative; empty strings, false, and zero
+            ; are valid command values and must survive the settings round-trip.
             SettingsApply._SetIfExists(cmd, c, "commandName")
             SettingsApply._SetIfExists(cmd, c, "menuText")
             SettingsApply._SetIfExists(cmd, c, "APIModels")
             SettingsApply._SetIfExists(cmd, c, "pasteMode")
-            SettingsApply._SetIfTruthy(cmd, c, "stream")
-            SettingsApply._SetIfTruthy(cmd, c, "isFIM")
-            SettingsApply._SetIfTruthy(cmd, c, "showInputBox")
+            SettingsApply._SetIfExists(cmd, c, "stream")
+            SettingsApply._SetIfExists(cmd, c, "isFIM")
+            SettingsApply._SetIfExists(cmd, c, "showInputBox")
             if c.Has("userMessage") && c["userMessage"] != ""
                 cmd.userMessage := StrReplace(c["userMessage"], "``n", "`n")
             SettingsApply._SetIfExists(cmd, c, "systemMessage")
@@ -162,9 +148,9 @@ class SettingsApply {
             SettingsApply._SetIfExists(cmd, c, "stop")
             SettingsApply._SetIfNonEmptyTags(cmd, c)
             SettingsApply._SetIfExists(cmd, c, "directAccelerator")
-            SettingsApply._SetIfTruthy(cmd, c, "expandNewlines")
-            SettingsApply._SetIfNonZero(cmd, c, "maxContextWords")
-            SettingsApply._SetIfTruthy(cmd, c, "includeImageContext")
+            SettingsApply._SetIfExists(cmd, c, "expandNewlines")
+            SettingsApply._SetIfExists(cmd, c, "maxContextWords")
+            SettingsApply._SetIfExists(cmd, c, "includeImageContext")
             if c.Has("thinking")
                 cmd.thinking := c["thinking"]
             newCommands.Push(cmd)
@@ -172,34 +158,14 @@ class SettingsApply {
         commands := newCommands
     }
 
-    ; Bug #228: assign whenever the saved key EXISTS - an empty string is a
-    ; legitimate saved value ("Default" API model, cleared Title/Menu Label,
-    ; model-default temperature, ...) and must not be dropped, or the runtime
-    ; command object loses the property and unguarded reads (cmd.APIModels,
-    ; cmd.commandName, cmd.menuText) THROW in AHK v2.
+    ; Key presence is authoritative; empty strings, false, and zero are valid.
     static _SetIfExists(cmd, c, key) {
         if c.Has(key)
             cmd.%key% := c[key]
     }
 
-    static _SetIfTruthy(cmd, c, key) {
-        ; Bug #101: assign whenever the key exists - false (0) is a valid
-        ; value and must persist, or clearing a command toggle silently
-        ; reverts on the next settings round-trip.
-        if c.Has(key)
-            cmd.%key% := c[key]
-    }
-
-    static _SetIfNonZero(cmd, c, key) {
-        ; Bug #101: 0 is a valid value (cleared maxContextWords) and must
-        ; persist, not be dropped.
-        if c.Has(key)
-            cmd.%key% := c[key]
-    }
-
     static _SetIfNonEmptyTags(cmd, c) {
-        ; Bug #101: an explicitly empty tags array must persist (clearing all
-        ; tags should survive the save round-trip).
+        ; An explicit empty array clears all tags.
         if c.Has("tags") && IsObject(c["tags"])
             cmd.tags := c["tags"]
     }
@@ -248,8 +214,7 @@ class SettingsApply {
             return
         tt := settings["threadTitles"]
         autoTitleGenerationEnabled := tt.Has("enabled") ? tt["enabled"] : true
-        ; Bug #71 (family #61): clearing a field (empty string) must reset the
-        ; global instead of leaving the stale value in place.
+        ; Empty strings explicitly clear the corresponding runtime value.
         if tt.Has("model")
             titleGenModel := tt["model"]
         if tt.Has("prompt")
@@ -264,8 +229,7 @@ class SettingsApply {
         if !settings.Has("ui")
             return
         u := settings["ui"]
-        ; Bug #61: clearing a UI field (empty string) must replace the global -
-        ; skipping empty values left the stale value in place.
+        ; Empty strings explicitly clear the corresponding runtime value.
         if u.Has("responseFont")
             responseWindowFontFace := u["responseFont"]
         if u.Has("responseFontSize")

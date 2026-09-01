@@ -1,22 +1,14 @@
-// ======================================================
-// main.js — Main message handler and initialization
-// Orchestrates communication between AHK and all feature modules.
-// ======================================================
+// main.js — WebView message routing and application initialization.
 
 window.chrome.webview.addEventListener('message', handleWebMessage);
 
 // Initialize markdown-it with options
 var md = window.markdownit({
-  // Bug #57 (XSS): raw HTML from model responses / pasted messages must not
-  // execute in the WebView (it has chrome.webview.postMessage access). With
-  // html:false markdown-it escapes inline HTML so it renders as inert text.
+  // Raw model/user HTML must remain inert because this WebView can message the host.
+  // markdown-it escapes inline HTML when html is false.
   html: false,
-  // Bug #222/#224: a SINGLE newline is a markdown soft break, which the app's
-  // .msg-content CSS collapses to a space - so LLM responses (and pasted
-  // user messages) whose paragraphs are separated by single newlines rendered
-  // as one solid block. breaks:true turns every soft break into an explicit
-  // <br>, keeping the paragraph breaks visible. Code blocks, lists and tables
-  // are unaffected (their internal newlines stay structural).
+  // Preserve single-newline soft breaks in model and pasted user content.
+  // Structural newlines inside code blocks, lists, and tables are unaffected.
   breaks: true,
   linkify: true,
   typographer: true,
@@ -187,9 +179,7 @@ function handleWebMessage(event) {
 
       case 'appSettings':
         // Full merged settings payload (requestAllSettings). Only the settings
-        // panel consumes it; routing it to the right rail would blank the
-        // per-thread fields (bug #26 fixed by the threadSettings/appSettings
-        // split in step 3 of the IPC refactor).
+        // panel consumes it; the right rail receives threadSettings separately.
         if (window.SettingsPanel && typeof window.SettingsPanel.onSettingsReceived === 'function') {
           window.SettingsPanel.onSettingsReceived(data);
         }
@@ -267,9 +257,8 @@ function handleWebMessage(event) {
         break;
 
       default:
-        // Bug #108: unknown targets are NEVER dispatched dynamically. Calling
-        // arbitrary window[target] would let a crafted message invoke any
-        // global (eval, postMessage, fetch, ...). Log and ignore instead.
+        // Never dispatch unknown targets dynamically: target names cross a trust
+        // boundary and must not become arbitrary global function calls.
         console.log('Unknown message target:', target);
     }
   } catch (error) {
@@ -588,8 +577,7 @@ function showError(data) {
   // but it remains queued there until dismissed if that chat is not visible.
   if (errorThreadId && (typeof activeThreadId === 'undefined' || errorThreadId !== activeThreadId)) return;
   hideLoadingIndicator();
-  // Bug #169: a FAILED retry must restore the original response the UI
-  // removed when the retry started (the DB row was never touched).
+  // A failed retry restores the response that was only removed from the UI.
   if (typeof restoreRetryMessagesOnError === 'function') restoreRetryMessagesOnError();
   var chatMessages = document.getElementById('chat-messages');
   if (!chatMessages) return;

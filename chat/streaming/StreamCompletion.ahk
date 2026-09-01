@@ -13,8 +13,7 @@ _handleStreamComplete() {
             return
         }
         _ClearCurrentStreamPID()
-        ; Bug #159: complete into the thread that SENT the request (captured
-        ; at send time), not the currently-active thread.
+        ; Complete into the thread that sent the request, captured at send time.
         streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
 
         chatHistoryCopy := requestParams["_streamChatHistoryJSONRequest"]
@@ -41,11 +40,8 @@ _handleStreamComplete() {
         postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", provider: requestParams.Has("_streamProviderKey") ? requestParams["_streamProviderKey"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount, threadId: streamThreadId })
 
         postThreadStats(streamThreadId)
-        ; Bug #232: the persisted assistant message changes the sidebar's
-        ; model badge and the thread's updated_at (order) - refresh the
-        ; sidebar on completion so the provider icon and position follow the
-        ; stream immediately instead of after the user exits/re-enters the
-        ; chat (title-gen only refreshed first-exchange chats).
+        ; Persisted assistant messages change sidebar order/model metadata.
+        ; Refresh immediately after persistence.
         _postThreadListRefresh()
         ; The finishing stream is still registered here, so exclude it while
         ; checking all other streams, search loops, and non-stream requests.
@@ -54,16 +50,12 @@ _handleStreamComplete() {
             postWebMessage("setChatButtonsEnabled", true)
             startLoadingCursor(false)
         }
-        ; Bug #110: never leave the request/cURL temp files (which contain the
-        ; Authorization Bearer token) on disk after a successful stream.
+        ; Always delete request/cURL temp files because they can contain credentials.
         deleteTempFiles()
     } catch Error as normErr {
         debugLog("Stream completion error: " normErr.Message "`nStack: " normErr.Stack)
         _PostChatError("Request failed: " normErr.Message, requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId)
-        ; Bug #173: a completion-handler failure (e.g. CostCalculator reading a
-        ; usage-less stream) must still return the UI to a usable state - the
-        ; input/Stop button stayed disabled and streamState stayed active until
-        ; reload.
+        ; Completion-handler failures must still restore the UI to a usable state.
         currentStream := _FindStreamByKey(_currentStreamKey)
         if !_HasOtherActiveOperations("", currentStream) {
             postWebMessage("setChatButtonsEnabled", true)
@@ -77,10 +69,8 @@ _maybeGenerateTitle(path, threadId := "") {
     if !threadId
         threadId := activeThreadId
     if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
-        ; Bug #140: once a title request has been dispatched for this thread,
-        ; never schedule another - a retry of the first exchange re-checks the
-        ; same pre-insert path (length 1) with the title still "New Chat" and
-        ; used to fire a duplicate API call.
+        ; Once a title request is dispatched for a thread, do not schedule another concurrently.
+        ; Retries of the first exchange therefore cannot schedule a duplicate.
         global _titleGenRequestedThreads
         if _titleGenRequestedThreads.Has(threadId) {
             debugLog("[TITLEGEN] skip duplicate trigger thread=" threadId)
@@ -125,19 +115,16 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
 _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0, streamThreadId := "", providerKey := "") {
     if !streamThreadId
         streamThreadId := activeThreadId
-    ; Bug #147: a retry of a ROOT assistant (no parent) must insert the new
-    ; response as a SIBLING with parent_id NULL - not as a CHILD of the
-    ; original root (path[last] would be the original assistant itself).
+    ; A root-assistant retry has no parent and inserts the new response as a sibling.
+    ; The sibling is inserted with parent_id NULL.
     isRootRetry := requestParams.Has("pendingRetryIsRoot") && requestParams["pendingRetryIsRoot"]
     if isRootRetry
         requestParams.Delete("pendingRetryIsRoot")
-    ; Bug #197: use the parent captured at send time (the request's own last
-    ; message), NOT the current active path - a same-thread branch switch
-    ; mid-stream must not re-parent the response onto the newly-active branch.
+    ; Use the request parent captured at send time, not the current active path.
+    ; This prevents a same-thread branch switch from re-parenting the response.
     parentId := requestParams.Has("_streamParentId") ? requestParams["_streamParentId"] : ""
     if !isRootRetry && !parentId {
-        ; Legacy/unit-test path: no captured parent, fall back to the SENDING
-        ; thread's path (not the currently-active one - bug #159 semantics).
+        ; Legacy/unit-test fallback: use the sending thread's path when no parent was captured.
         sendPath := ChatDB.Msg_GetActivePath(streamThreadId)
         if sendPath.Length
             parentId := sendPath[sendPath.Length].id

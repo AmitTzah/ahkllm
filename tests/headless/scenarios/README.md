@@ -51,7 +51,7 @@ source check and should not use `cdp`.
 ## Adding a scenario (bug-hunt flow)
 
 1. Write the bug entry in `../BUG_HUNT_REPORT.md` (status `reported`).
-2. Add a scenario object here with a NEW id (next free number, e.g. 59).
+2. Add a scenario object here with a new, unused scenario id.
 3. Run it: `node ../e2e-suite.js --scenarios=<id>`. PASS = bug reproduced.
 4. When the bug is fixed, mark the scenario `regression: true` and flip its
    assertion to expect the FIXED behavior, then re-run.

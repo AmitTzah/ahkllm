@@ -97,7 +97,7 @@
   }
   function save() {
     var tray = readTable('trayTableBody', ['menuText', 'action']);
-    // Bug #179: the tray menu is the app's only always-present close path, so
+    // The tray menu is the app's always-present close path, so
     // a saved tray config must always keep an Exit item - re-add the default
     // row if the user deleted every exit-action row (the backend also re-adds
     // an unconditional Exit item at rebuild time, so the app can always close).

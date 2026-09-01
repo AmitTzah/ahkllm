@@ -1,19 +1,5 @@
-; ======================================================
-; ThreadSettings.ahk - single source of truth for a
-; thread's effective per-thread settings.
-;
-; Step 4 of the architecture refactor: the precedence
-; rules (per-thread override > assistant default), the
-; thread-restore logic, the DB serialization, and the
-; right-rail message previously lived in ChatSettings.ahk
-; as separate implementations that could drift (bug #47:
-; the restore path overwrote the edit path's overrides).
-; They now live here:
-;   ComputeEffective          - precedence, one place
-;   RestoreIntoRequestParams  - thread load
-;   ToDbObject                - persistence shape
-;   ToThreadSettingsMessage   - right-rail payload
-; ======================================================
+; ThreadSettings.ahk — computes, restores, persists, and publishes per-thread settings.
+; Per-thread overrides take precedence over assistant defaults.
 
 #Include ..\shared\ModelResolver.ahk
 #Include db\AssistantRepo.ahk
@@ -45,8 +31,8 @@ class ThreadSettings {
             eff.systemMessage := row.systemOverride
         if hasReasoningOverride
             eff.reasoning := row.reasoningOverride
-        ; Temperature 0 is a valid override (bug #35): AHK treats the numeric
-        ; 0 as falsy, so only NULL/empty string means "no override".
+        ; AHK treats numeric 0 as falsy, but 0 is a valid temperature override.
+        ; Only NULL/empty string means "no override".
         if row.HasOwnProp("temperatureOverride") && (hasTemperatureOverride || row.temperatureOverride != "") {
             eff.temperature := row.temperatureOverride
             hasTemperatureOverride := true
@@ -70,8 +56,7 @@ class ThreadSettings {
         return eff
     }
 
-    ; Restore a thread's settings into requestParams (thread load path).
-    ; Previously _restoreThreadSettings in ChatSettings.ahk.
+    ; Restore a thread's settings into requestParams for the thread-load path.
     static RestoreIntoRequestParams(threadId) {
         global requestParams, appDefaultModel
         ThreadSettings._ClearOverrides()
@@ -94,7 +79,6 @@ class ThreadSettings {
     }
 
     ; Clear all request-level overrides to default state.
-    ; Previously _ClearRequestOverrides in ChatSettings.ahk.
     static _ClearOverrides() {
         global requestParams, appDefaultModel
         requestParams["systemOverride"] := ""
@@ -112,7 +96,6 @@ class ThreadSettings {
     }
 
     ; Serialize the current requestParams to the DB settings shape.
-    ; Previously _CurrentSettingsObject in ChatSettings.ahk.
     static ToDbObject() {
         global requestParams, responseWindowFontSize, appDefaultModel
         defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
@@ -130,8 +113,7 @@ class ThreadSettings {
         }
     }
 
-    ; Right-rail message payload from the current requestParams.
-    ; Previously the body of postCurrentSettingsToWebView in ChatSettings.ahk.
+    ; Build the right-rail message payload from the current requestParams.
     static ToThreadSettingsMessage() {
         global requestParams, responseWindowFontSize, models
         model := requestParams["singleAPIModelName"]
@@ -155,8 +137,7 @@ class ThreadSettings {
         }
 
         thinkingLevels := []
-        ; Single lookup accepting full or short model ids (the short-form id
-        ; used to get no thinking levels in the right rail).
+        ; Resolve both full and short model ids for right-rail thinking levels.
         modelMeta := ModelResolver.Lookup(models, model)
         if IsObject(modelMeta) && modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap) {
             for level in modelMeta.thinkingLevelMap

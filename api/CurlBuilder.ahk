@@ -17,7 +17,7 @@ class CurlBuilder {
     ; Build the cURL command for a non-streaming request.
     ; providerInfo from LLMRequestBuilder.ResolveProvider().
     static Build(providerInfo, requestFile, outputFile) {
-        ; Bug #112: a provider with no endpoint would produce a malformed
+        ; A provider with no endpoint would produce a malformed
         ; URL-less cURL command - return "" so callers surface a friendly
         ; "No endpoint configured" error instead of raw cURL stderr.
         if !providerInfo.endpoint
@@ -34,10 +34,10 @@ class CurlBuilder {
     ; Build the streaming cURL command.
     ; errorFile = path to capture stderr (e.g., cURLError_*.txt)
     static BuildStream(providerInfo, requestFile, outputFile, errorFile) {
-        ; Bug #112: same empty-endpoint guard as Build.
+        ; Apply the same empty-endpoint guard as Build.
         if !providerInfo.endpoint
             return ""
-        ; Bug #204: the streaming command MUST have an overall --max-time -
+        ; Streaming commands need an overall --max-time so
         ; a stalled upstream that accepts the connection and then sends
         ; nothing would otherwise hang the chat UI forever (the non-streaming
         ; Build already had one).
@@ -80,7 +80,7 @@ class CurlBuilder {
             . " requestFile=" requestFile " outputFile=" outputFile, "CurlBuilder")
     }
 
-    ; Bug #89 (security): the API key is embedded in a "..."-quoted header on
+    ; Security: the API key is embedded in a quoted header on
     ; the cURL command line - remove characters that can break the quote or
     ; inject commands when the command runs through cmd. Bearer tokens never
     ; legitimately contain these.

@@ -52,7 +52,7 @@ class CostCalculator {
             cachedTokens := usage.HasOwnProp("cachedTokens") ? usage.cachedTokens : 0
 
             ; Calculate input cost: split cached vs non-cached
-            ; Bug #173: promptTokens/completionTokens must be guarded like
+            ; Guard promptTokens/completionTokens like cachedTokens because
             ; cachedTokens - a mid-stream failure with no usage chunk leaves
             ; usage as an EMPTY object, and reading the missing keys threw
             ; inside the completion handler after the partial was persisted,

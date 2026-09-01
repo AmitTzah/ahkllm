@@ -7,7 +7,7 @@
 ; and cURL execution to CurlBuilder.
 ; ----------------------------------------------------
 
-; Bug #140: at most one title-generation request per thread per process. A
+; Allow at most one in-flight/successful title-generation request per thread.
 ; retry (or cancel) of the first exchange must not re-fire title generation
 ; while the title is still "New Chat" - the request may be in flight, may
 ; have failed, or may already have succeeded with a title the DB gate
@@ -93,10 +93,10 @@ generateThreadTitle(threadId) {
         postWebMessage("updateTopbarTitle", { text: title, folder: folderName })
         }
     } else {
-        ; Bug #151: a FAILED title request (no title parsed - transient network
+        ; A failed title request must clear the dispatch guard so a later trigger can retry.
         ; error, provider hiccup, timeout, empty response) must NOT permanently
         ; disable auto-titles. Clear the dispatch guard so the next trigger
-        ; (once the transient error passes) can retry - the bug #140 guard only
+        ; The guard only suppresses duplicate in-flight/successful requests.
         ; protects against duplicate IN-FLIGHT/success requests.
         _titleGenRequestedThreads.Delete(threadId)
         debugLog("[TITLEGEN] no title parsed - dispatch guard cleared thread=" threadId)
@@ -178,7 +178,7 @@ _TitleGen_CleanTitle(rawTitle) {
 
 ; Track title generation usage in the dashboard.
 _TitleGen_TrackUsage(titleModel, providerKey, promptTokens, completionTokens, thinkingTokens, titleGenStart) {
-    ; Bug #167: a FAILED (or usage-less) title call was still a billed API
+    ; Failed or usage-less title calls are still API requests and belong in usage tracking.
     ; request - record it (0 tokens/cost but call_count + response time) so the
     ; dashboard shows it instead of silently omitting the call.
     usage := { promptTokens: promptTokens, completionTokens: completionTokens, cachedTokens: 0 }

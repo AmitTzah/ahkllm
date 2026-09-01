@@ -19,7 +19,7 @@ handleChatSend(params, *) {
         debugLog("[THREAD] Created — id=" activeThreadId " title=New Chat")
         ; Start new chats with the configured default assistant/model ONLY when
         ; the user has not already configured the right rail before the first
-        ; send (bug #212): an unconditional apply overwrote a pre-send
+        ; send: an unconditional apply would overwrite a pre-send
         ; assistant pick / typed system prompt / temperature / model with the
         ; default, so the request carried the default's system message instead
         ; of what the user chose.
@@ -71,7 +71,7 @@ handleChatSend(params, *) {
     lastMsg := structuredMessages[structuredMessages.Length]
     postWebMessage("appendChatMessage", lastMsg)
 
-    ; Bug #203: normal chat sends always stream; the command-triggered path
+    ; Normal chat sends always stream; the command-triggered path
     ; sets this flag via OnTriggerLLM's wParam.
     requestParams["stream"] := true
     _BuildAndFireRequest()

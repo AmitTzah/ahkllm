@@ -23,12 +23,11 @@ handleSidebarAction(params, *) {
                 leafId := TreeRepo._WalkToLeaf(params["messageId"], activeThreadId)
                 ChatDB.Msg_SetActiveLeaf(activeThreadId, leafId)
                 _LoadThreadAndRefreshUI(activeThreadId, false)
-                ; Bug #209: SetActiveLeaf bumps the thread's updated_at, so the
-                ; sidebar order (and the #155 model badge) must be refreshed -
+                ; SetActiveLeaf bumps the thread's updated_at, so the
+                ; sidebar order and active-path model badge must be refreshed.
                 ; tree-modal and search navigation both route here, and without
                 ; this post the list kept the pre-navigation order until some
-                ; unrelated action reposted it (same class as bug #174, which
-                ; was only fixed on the handleBranchSwitch path).
+                ; unrelated action reposted it.
                 _postThreadListRefresh()
             }
         case "newChat", "deleteThread", "restoreThread", "deleteThreadForever", "emptyTrash", "renameThread":
@@ -73,9 +72,8 @@ _HandleThreadAction(action, params) {
                     postWebMessage("initChatMode", [])
                     postCurrentSettingsToWebView()
                     _sendDropdownLabel()
-                    ; Bug #210: the title bar must follow the emptied state -
-                    ; without this the window kept the deleted thread's name
-                    ; until another thread was loaded.
+                    ; The title bar must follow the emptied state.
+                    ; Clear the deleted thread's name immediately.
                     chatWindow.Title := AppInfo.Name
                 }
                 _postThreadListRefresh()
@@ -99,7 +97,7 @@ _HandleThreadAction(action, params) {
                     postWebMessage("initChatMode", [])
                     postCurrentSettingsToWebView()
                     _sendDropdownLabel()
-                    ; Bug #210: reset the title when the active thread is
+                    ; Reset the title when the active thread is
                     ; permanently deleted.
                     chatWindow.Title := AppInfo.Name
                 }
@@ -121,7 +119,7 @@ _HandleThreadAction(action, params) {
                     postWebMessage("initChatMode", [])
                     postCurrentSettingsToWebView()
                     _sendDropdownLabel()
-                    ; Bug #210: reset the title when emptyTrash removes the
+                    ; Reset the title when emptyTrash removes the
                     ; active thread.
                     chatWindow.Title := AppInfo.Name
                 }

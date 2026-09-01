@@ -38,10 +38,10 @@ onCommandInputSend(*) {
 
     params := _extractCommandParams(cmd, inputText)
     params.Push(screenshotPath)
-    ; Bug #228: same guards as onCommandSelected - the command's API Model can
+    ; Use the same guards as onCommandSelected: the command's API Model can
     ; be "Default" (empty APIModels) and Title/Label can be cleared, so never
     ; read these keys unguarded (an empty/missing value must fall through to
-    ; processInitialRequest's #162 default-model substitution, not throw).
+    ; processInitialRequest's default-model substitution rather than throwing.
     processInitialRequest(
         cmd.HasProp("commandName") ? cmd.commandName : "",
         cmd.HasProp("menuText") ? cmd.menuText : "",

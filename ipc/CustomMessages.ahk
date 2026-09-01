@@ -74,7 +74,7 @@ class CustomMessages {
     }
 
     ; Main → ChatWindow: trigger LLM for the current thread (command-triggered chats).
-    ; The wParam carries the command's stream flag (bug #203) - 1 = stream,
+    ; wParam carries the command stream flag: 1 = stream,
     ; 0 = single-shot JSON response.
     static notifyTriggerLLM(chatWindowhWnd, stream := true) {
         try PostMessage(this.WM_TRIGGER_LLM, stream ? 1 : 0, 0, , "ahk_id " chatWindowhWnd)

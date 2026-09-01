@@ -22,8 +22,7 @@ _ClearRequestOverrides() {
 
 ; Apply saved per-thread settings from DB to requestParams.
 _restoreThreadSettings(threadId) {
-    ; Single precedence implementation (bug #47 fixed here): per-thread
-    ; overrides win, assistant values are the fallback.
+    ; Per-thread overrides take precedence over assistant defaults.
     ThreadSettings.RestoreIntoRequestParams(threadId)
 }
 
@@ -89,12 +88,8 @@ _applyNewChatDefault() {
     return true
 }
 
-; Bug #41: apply the configured "New Chats Start With" default (assistant or
-; model, plus the default font size) to a brand-new thread that has no messages
-; and no stored settings yet. Mirrors _HandleThreadAction's newChat case; used
-; by LoadThreadIntoUI for threads created outside the sidebar newChat action
-; (tray "New Chat", command-line spawn), which used to start with the raw app
-; default model.
+; Apply the configured new-chat model/assistant and default font size to a
+; brand-new thread that has no messages or stored settings.
 _applyNewChatDefaultToFreshThread(threadId) {
     if ChatDB.Msg_GetActivePath(threadId).Length > 0
         return false
@@ -219,9 +214,7 @@ handleModelSettingsUpdate(parsed) {
 }
 
 postCurrentSettingsToWebView() {
-    ; Step 4 of the IPC refactor: the payload builder lives in
-    ; ThreadSettings.ToThreadSettingsMessage (single place with the restore
-    ; and persistence logic, so the four representations cannot drift).
+    ; ThreadSettings owns the right-rail payload shape and precedence rules.
     postWebMessage("threadSettings", ThreadSettings.ToThreadSettingsMessage())
 }
 
@@ -260,10 +253,8 @@ SendAssistantsDelayed() {
 }
 
 ; Handle per-chat font size update from the header +/- buttons.
-; Bug #213: the size is stored in requestParams even when NO thread exists
-; yet (fresh chat before the first message), so the auto-created thread keeps
-; the user's adjustment via _saveCurrentSettingsToThread. Only the DB write
-; needs an active thread.
+; Keep the size in requestParams before a thread exists; only the DB write
+; requires an active thread.
 handleUpdateFontSize(parsed) {
     global activeThreadId
     fontSize := parsed.Get("fontSize", 17)

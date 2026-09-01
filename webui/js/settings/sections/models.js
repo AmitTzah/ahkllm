@@ -34,7 +34,7 @@
       if (id.indexOf('openrouter/openrouter/') === 0) return id;
       return 'openrouter/' + id;
     }
-    // Bug #92: when a provider is selected it is authoritative - strip any
+    // When a provider is selected it is authoritative; strip any embedded prefix.
     // embedded prefix from the id and rebuild with the selected provider.
     if (provider) {
       var slash = id.indexOf('/');
@@ -66,17 +66,16 @@
     if (!el) return 0;
     var raw = el.getAttribute('data-price-raw');
     if (raw !== null && raw !== '') return parseFloat(raw) || 0;
-    // Bug #164: strip a leading "$" (users paste "$0.5" from pricing pages)
-    // and keep a BLANK field blank ("" = the app's blank-price semantics)
-    // instead of collapsing it to 0.
+    // Strip a leading "$" from pasted prices and preserve a blank field rather
+    // than collapsing the app's blank-price value to 0.
     var v = (el.value || '').trim();
     if (v === '') return '';
     return parseFloat(v.replace(/^\$/, '')) || 0;
   }
 
   // Parse a context string with the k/M display suffix ("128K" -> 128000,
-  // "1.5M" -> 1500000). Shared by _parseContext and the blur handler so a
-  // focus/blur round-trip never collapses the suffix (bug #158).
+  // "1.5M" -> 1500000). Shared by _parseContext and the blur handler so
+  // focus/blur round-trips preserve the suffix.
   function _parseContextString(str) {
     var v = str || '';
     if (/^\d+[kK]$/.test(v)) return parseInt(v) * 1000;
@@ -317,7 +316,7 @@
       if (raw !== null && raw !== '') input.value = raw;
     });
     input.addEventListener('blur', function() {
-      // Bug #164: parse the raw input like _parsePrice - strip a leading "$"
+      // Parse raw input like _parsePrice: strip a leading "$" and reject invalid text.
       // ("$0.5" must stay 0.5), never silently zero a non-numeric paste, and
       // keep a blank field blank.
       var rawValue = String(input.value || '').trim();
@@ -339,7 +338,7 @@
       if (raw !== null && raw !== '') input.value = raw;
     });
     input.addEventListener('blur', function() {
-      // Bug #158: parse the DISPLAY string with the k/M suffix - the old
+      // Parse the displayed k/M suffix before storing the raw context value.
       // parseInt collapsed "128K" to 128 and stored that as the raw value,
       // silently shrinking the saved context 1000x.
       var v = _parseContextString(input.value);
@@ -563,7 +562,7 @@
     tbody.querySelectorAll('tr').forEach(function(tr) {
       var idEl = tr.querySelector('[data-field="id"]');
       if (!idEl) return;
-      // Bug #40: prefer the live (possibly edited) input value over the stale
+      // Prefer the live edited model id over the row's stale data-full-id value.
       // data-full-id attribute, which is only stamped when the row is built.
       var id = idEl.value || idEl.getAttribute('data-full-id');
       if (!id) return;
@@ -732,7 +731,7 @@
       refreshTbody.querySelectorAll('tr').forEach(function(tr) {
         var idEl = tr.querySelector('[data-field="id"]');
         if (!idEl) return;
-        // Bug #40: the user may have edited the model id; the live value must
+        // The user may have edited the model id; the live value takes precedence.
         // win over the stale data-full-id attribute.
         var id = idEl.value || idEl.getAttribute('data-full-id') || '';
         if (!id) return;

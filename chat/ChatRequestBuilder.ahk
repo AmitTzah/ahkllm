@@ -49,7 +49,7 @@ buildRequest(requestPath := "") {
         return _ShowApiKeyError(providerInfo)
     }
 
-    ; Bug #112: a provider with no endpoint would produce a URL-less cURL
+    ; A provider with no endpoint would produce a URL-less cURL
     ; command - surface a friendly error instead of raw cURL stderr.
     if !providerInfo.endpoint {
         return _ShowEndpointError(providerInfo)
@@ -59,9 +59,8 @@ buildRequest(requestPath := "") {
     apiMessages := _BuildApiMessagesFromPath(path)
 
     ; Attach every user message's own attachments to its API content part
-    ; (bug #142: the old last-user-only pass silently dropped earlier attached
-    ; images/files from follow-up requests, so multi-turn vision lost the
-    ; image after the first exchange).
+    ; so multi-turn requests preserve earlier
+    ; image/file context.
     if !_ProcessAttachmentsForPath(&apiMessages, requestParams["singleAPIModelName"])
         return ""
 
@@ -76,7 +75,7 @@ buildRequest(requestPath := "") {
 
 ; Show API key error and return "" so caller aborts.
 _ShowApiKeyError(providerInfo) {
-    ; Bug #199: ProviderResolver can return providerKey="" when NO providers
+    ; ProviderResolver can return providerKey="" when no providers
     ; are configured - a bare providers[""] Map index THROWS in AHK v2 and
     ; crashes the error handler before the friendly message is posted.
     pInfo := ""
@@ -91,7 +90,7 @@ _ShowApiKeyError(providerInfo) {
     return ""
 }
 
-; Show "endpoint missing" error and return "" so caller aborts (bug #112).
+; Show "endpoint missing" and return "" so the caller aborts.
 _ShowEndpointError(providerInfo) {
     errorMsg := "No endpoint configured for provider '" providerInfo.providerKey "'. Set it in Settings → Providers."
     _PostChatError(errorMsg)
@@ -137,9 +136,9 @@ _CleanApiMessages(apiMessages) {
             msg.DeleteProp("_msgId")
 }
 
-; Attach attachments for EVERY user message in apiMessages (bug #142: the
-; follow-up API request must keep the earlier messages' image/file content
-; parts, exactly like it keeps their text). Returns false if the vision gate
+; Attach each user message's attachments to apiMessages so the
+; follow-up API request keeps earlier messages' image/file content
+; parts just like text. Returns false if the vision gate
 ; fails (any image in the conversation on a model without vision support).
 _ProcessAttachmentsForPath(&apiMessages, modelName) {
     ; Vision gate across the whole conversation: every image that would be
@@ -242,8 +241,7 @@ _BuildRequestObj(apiMessages, providerInfo) {
 
     ; Look up model metadata for thinking/compat
     global models
-    ; Single lookup accepting full or short model ids (bug #43: short ids
-    ; used to get an empty modelMeta, silently dropping thinking config).
+    ; Resolve both full and short model ids through the shared resolver.
     modelMeta := ModelResolver.Lookup(models, requestParams["singleAPIModelName"])
 
     ; Apply reasoning override via metadata-driven handler.
@@ -329,7 +327,7 @@ _WriteRequestFiles(requestObj, providerInfo) {
 }
 
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
-    ; Bug #203: a chat-mode command with "Stream Response" OFF must run the
+    ; A chat-mode command with "Stream Response" off uses the
     ; single-shot JSON path (CurlBuilder.Build + ResponseParser), not the SSE
     ; stream handler - otherwise a JSON-only API response is dropped as an SSE
     ; parse failure.
@@ -348,7 +346,7 @@ _ClearRetryRollbackState() {
 }
 
 ; A retry temporarily moves the durable active leaf to the target's parent so
-; the request history excludes the old answer. If request construction or the
+; the request history excludes the retried answer. If request construction or the
 ; provider fails before a replacement is committed, put that leaf back. Only
 ; restore when the DB still points at this retry's rewound branch (or its
 ; partial-error child), so a user branch switch made meanwhile wins.
@@ -382,7 +380,7 @@ _BuildAndFireRequest() {
     if !chatHistoryJSONRequest {
         if !_HasActiveOperationForUi()
             postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
-        ; Bug #211: a retry rejected before any stream (vision gate, API-key
+        ; A retry rejected before any stream (vision gate, API-key
         ; error, endpoint error) leaves pendingRetrySiblingGroup / 
         ; pendingRetryIsRoot set - clear them so the next normal response is
         ; not mis-grouped with the retried message. The deletes are INLINED

@@ -12,7 +12,7 @@
 
 | File | Touched when |
 |---|---|
-| `BUG_HUNT_REPORT.md` (this file) | every step â€” statuses, entries, history, "Where we left off" |
+| `BUG_HUNT_REPORT.md` (this file) | every step — statuses, entries, history, "Where we left off" |
 | `e2e-suite.js` + `scenarios/*.js` | intake: add a scenario; fix cycle: flip an assertion |
 | `tests/unit/*` + `tests/run_ahk_tests.ahk` | fix cycle: regression tests |
 | production source (`app/`, `chat/`, `webui/`, `api/`, `shared/`) | fix cycle step 2 only |
@@ -22,20 +22,20 @@
 | Status | Meaning | Set when |
 |---|---|---|
 | `reported` | Suspected bug written up; not yet reproduced | Phase 1, when the entry is written |
-| `verified` | Scenario PASSED â€” bug reproduced headlessly | Phase 1, after the scenario passes |
+| `verified` | Scenario PASSED — bug reproduced headlessly | Phase 1, after the scenario passes |
 | `fix in progress` | Agent is implementing the fix | Phase 2, before editing any code |
 | `fix applied` | Code + tests green; waiting for user to verify | Phase 2, before asking the user |
 | `awaiting user commit` | User verified; waiting for the commit | Phase 2, before suggesting the commit |
-| *(removed)* | User committed â†’ entry deleted, moved to History | Phase 2, after the commit |
+| *(removed)* | User committed → entry deleted, moved to History | Phase 2, after the commit |
 
 Only `verified` bugs are fixed, one at a time, in rank order.
 
-**Scenario line:** every entry references its verifying scenario by id â€” the scenario
+**Scenario line:** every entry references its verifying scenario by id — the scenario
 *code* lives in `scenarios/*.js` (runner: `e2e-suite.js`), not in this file. Run it with
 `node tests/headless/e2e-suite.js --scenarios=<id>`. `--check-sync` verifies every
 entry's id exists (and that every non-regression scenario has an entry).
 
-**Phase 1 â€” Intake** (a bug enters and gets verified here):
+**Phase 1 — Intake** (a bug enters and gets verified here):
 
 1. Write the entry in this file (Repro / Expected / Actual / Evidence + scenario id) with
    `Status: reported`. **[file: this file]**
@@ -43,27 +43,27 @@ entry's id exists (and that every non-regression scenario has an entry).
    **[file: `tests/headless/scenarios/`]**
 3. Run `node tests/headless/e2e-suite.js --check-sync` (must say OK), then
    `--scenarios=<id>` (must PASS = bug reproduced). **[no file edits]**
-4. PASS â†’ set `Status: verified`, rank the entry, and update "Current state" (open count).
-   FAIL â†’ the bug is not reproducible â€” delete the entry and add a one-line note to History.
+4. PASS → set `Status: verified`, rank the entry, and update "Current state" (open count).
+   FAIL → the bug is not reproducible — delete the entry and add a one-line note to History.
    **But:** if the FAIL message starts with `setup ->`, it is a harness/infrastructure
-   failure (app didn't launch, timeout connecting, element missing while preparing) â€” re-run
+   failure (app didn't launch, timeout connecting, element missing while preparing) — re-run
    or fix the scenario first; do NOT delete the entry. **[file: this file]**
-5. If the bug can't be automated (visual / environment-limited â€” see README), verify by
+5. If the bug can't be automated (visual / environment-limited — see README), verify by
    unit/static check or manually and say exactly how in the entry.
 
-**Phase 2 â€” Fix cycle** (one verified bug at a time; the scenario is re-run only to
+**Phase 2 — Fix cycle** (one verified bug at a time; the scenario is re-run only to
 confirm the fix, never to re-verify the bug):
 
 1. Pick the entry: normally the highest-ranked `verified` one, unless the user named a
-   specific bug ("fix bug #14") â€” that overrides rank order. Set `Status: fix in progress`
+   specific bug ("fix bug #14") — that overrides rank order. Set `Status: fix in progress`
    **before** editing any code. **[file: this file]**
 2. Fix the bug in production source. **[files: `app/`, `chat/`, `webui/`, `api/`, `shared/`]**
-3. Add/extend regression tests that assert the **fixed** behavior (unit/AHK as appropriateâ€” the flipped scenario is the end-to-end check, but the fix also needs a code-level regression test when feasible; never delete or loosen an existing assertion to make it pass). **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
+3. Add/extend regression tests that assert the **fixed** behavior (unit/AHK as appropriate — the flipped scenario is the end-to-end check, but the fix also needs a code-level regression test when feasible; never delete or loosen an existing assertion to make it pass). **[files: `tests/unit/*`; also `tests/run_ahk_tests.ahk`
    if you added an AHK test]**
 4. Flip the scenario assertion in `scenarios/*.js` to expect the **fixed** behavior
    (otherwise it fails forever). **[file: `tests/headless/scenarios/`]**
 5. Run `--scenarios=<id>` (must PASS = fix works) and the full AHK + JS suites. If it
-   FAILs, the fix is incomplete â€” go back to step 2. **[no file edits]**
+   FAILs, the fix is incomplete — go back to step 2. **[no file edits]**
 6. **Gate:** only after step 5 passes (scenario PASS + suites green) set
    `Status: fix applied`, then ask the user to verify manually using the repro steps.
    **[file: this file]**
@@ -79,26 +79,26 @@ confirm the fix, never to re-verify the bug):
 - Update "Where we left off" after **every step** (one line: what was done, what's next).
   That is the resume point if a task is closed midway.
 - Write each status change **before** the work it describes (interruption guard).
-- **Never trust a Status without re-running the scenario first** â€” re-verify before
+- **Never trust a Status without re-running the scenario first** — re-verify before
   assuming a bug is still open or already fixed.
 - **Never ask the user to verify or commit until the fix has PASSED its scenario
-  (flipped assertion) and the full AHK + JS suites** â€” the headless check always comes
+  (flipped assertion) and the full AHK + JS suites** — the headless check always comes
   first, the user's manual check is the final confirmation.
 - **A FAIL with `setup ->` in the message is a harness/infrastructure failure, not a
-  refutation** â€” investigate or re-run; never delete an entry because of it.
+  refutation** — investigate or re-run; never delete an entry because of it.
 - **Only one fix may be uncommitted at a time**: wait for the user's commit before
+  starting the next bug (the worktree must be clean of the previous fix).
 - **Every fix ships with a regression test**: the flipped scenario is the end-to-end
   check, but the fix also needs a unit/AHK test in `tests/unit/*` asserting the fixed
-  behavior (unless the bug is visual/environment-limitedâ€” then say so in the entry).
+  behavior (unless the bug is visual/environment-limited — then say so in the entry).
   Never delete or loosen an existing assertion to make it pass.
-  starting the next bug (the worktree must be clean of the previous fix).
 - Only one agent edits this document at a time.
 - Never delete an entry until the user has actually committed.
 - **Doc-set rule:** if you change the harness itself (new probe command, new helper, new
   mock mode), update `README.md`; if you change the workflow itself, update `ARCHITECTURE.md`.
-  Never hard-code drift-prone numbers (e.g. test totals) in docs â€” point at the runner
+  Never hard-code drift-prone numbers (e.g. test totals) in docs — point at the runner
   instead.
-- Only two files must stay in sync: this file and `e2e-suite.js` â€” `--check-sync`
+- Only two files must stay in sync: this file and `e2e-suite.js` — `--check-sync`
   enforces it after every edit.
 
 ## Harness safety: avoid the hanging-command trap
@@ -112,7 +112,7 @@ Why it hangs (verified 2026-08-01):
 
 - AHK v2 shows a **modal error dialog** (window class `#32770`, titled with the
   script name) for any unhandled runtime error. Headless, nothing can dismiss it
-  â€” the process hangs indefinitely. Example: plain `Object` has no `Has` method (only
+  — the process hangs indefinitely. Example: plain `Object` has no `Has` method (only
   `Map` does), so `o.Has("type")` on `o := {type:"enabled"}` throws; bracket-indexing
   a plain object (`o[k]`) throws too. Marker-file evidence: the script writes a
   marker before the throwing line and never after; the hung process shows the
@@ -133,8 +133,8 @@ How to run AHK safely:
    handler that writes diagnostics and `ExitApp(1)` (this converts a hang into a
    fast, logged failure), a watchdog `SetTimer(Exit, -15000)` for load-time hangs,
    and `try FileAppend` for results.
-3. **Always launch with a hard bound** â€” e.g. .NET `Process.Start` + `WaitForExit(ms)` +
-   `Kill()`, or `spawnSync` with `timeout` â€” never bare `&`.
+3. **Always launch with a hard bound** — e.g. .NET `Process.Start` + `WaitForExit(ms)` +
+   `Kill()`, or `spawnSync` with `timeout` — never bare `&`.
 4. **Never blanket-kill `AutoHotkey64.exe` processes.** No
    `Stop-Process -Name AutoHotkey64 -Force`, no `taskkill /IM AutoHotkey64.exe`.
    The user runs their own AHK scripts on this machine, and a blanket kill closes
@@ -151,27 +151,16 @@ How to run AHK safely:
 
 ## Current state
 
-- **0 verified, 0 reported, 0 fix in progress, 0 fix applied** (2026-08-27). Scenario count is enforced by
-  `node tests/headless/e2e-suite.js --check-sync` (do not hard-code it here).
-- **Where we left off:** 2026-08-27 - Scenario 325 ran against the real app and refuted the Digest input-box report: after enable/save then disable/save, the persisted value was `0`, the Settings UI was off, and the live command object was false. The scenario remains as regression coverage; no production fix is needed. Bug #1 was manually verified and committed in `b3786c1`; it has been moved to History. Bugs 316-318 were fixed and committed; Full fast suite and scenarios 316-318 pass. Scenario
-  315's live restart path was infrastructure-blocked, so its regression contract
-  and unit test cover the startup recovery until the restart harness is repaired.
-  Previous web-search milestone: composer
-  Tools dropdown + Code Execution/Calculator stubs removed; the per-thread
-  Web Search toggle (composer toolbar button, default off) adds a web_search
-  function tool. The right-rail Advanced collapsible was removed since it
-  only held that toggle. DeepSeek models search natively via their /responses
-  API; every other provider falls back to Tavily. Scenarios 250 + 251 verify
-  both backends end-to-end against the local mock (no real API calls in the
-  suite); scenario 20 flipped to a regression check for the stub removal.
-  Full headless suite PASS and `npm run test:fast` green. Next round: fresh
-  intake when the user asks. Reviewer candidates 319-322 are all verified and
-  ranked below; no verified open bugs remain in this queue.
+- **Current queue:** no verified open bugs. Scenario synchronization is enforced by
+  `node tests/headless/e2e-suite.js --check-sync` (do not hard-code the count here).
+- **Where we left off:** no verified open bugs; the next action is fresh intake when
+  requested. Scenario 315's live restart path remains infrastructure-blocked, while
+  its static contract and unit coverage exercise startup recovery.
 
 ## Bug entry template
 
 Every open bug is one entry in "Open bugs (ranked)" using exactly this shape. When
-a bug is fixed and committed, its entry moves to History (one line) â€” this template
+a bug is fixed and committed, its entry moves to History (one line) — this template
 stays so future entries always have the same fields. `--check-sync` enforces that
 every entry's scenario id exists in `scenarios/*.js`, assembled by `e2e-suite.js` (and that every
 non-regression scenario has an entry).
@@ -190,7 +179,7 @@ non-regression scenario has an entry).
 
     **Evidence:** <file/line references or a one-line explanation of the cause>
 
-    **Verification:** <how the headless scenario proves it â€” what was clicked/driven
+    **Verification:** <how the headless scenario proves it — what was clicked/driven
     and what was observed; for non-automatable bugs, the unit/static/manual check
     and exactly how it was done>
 
@@ -200,17 +189,17 @@ Example (shape only, not a real bug):
 
     **Scenario:** 99 (scenario code in e2e-suite.js)
 
-    **Status:** verified â€” open
+    **Status:** verified — open
 
-    **Repro:** Settings â†’ Hotkeys â†’ set X â†’ Save â†’ press X.
+    **Repro:** Settings → Hotkeys → set X → Save → press X.
 
     **Expected:** the action runs.
 
-    **Actual:** nothing happens â€” `_ApplyHotkeys` never reads the setting.
+    **Actual:** nothing happens — `_ApplyHotkeys` never reads the setting.
 
     **Evidence:** `Main.ahk:12` wires the hotkey from a hardcoded value.
 
-    **Verification:** headless â€” pressed X via probe, observed no postMessage.
+    **Verification:** headless — pressed X via probe, observed no postMessage.
 
 Entries are ranked by severity/impact (1 = highest); only `verified` bugs are fixed,
 one at a time, in rank order.
@@ -226,13 +215,13 @@ one at a time, in rank order.
 - 2026-08-27 - "Command reorder snaps back after saving" - FIXED + COMMITTED in `b3786c1`: per-group command order is persisted through settings saves/reloads and consumed by both the WebView list and native menu; scenario 324 remains as a regression check, with full AHK + JS suites passed.
 - 2026-08-27 - "Provider error warning leaks into a different chat after switching threads" - FIXED + COMMITTED in `8125c9c`: error payloads now carry their originating thread, inactive-thread errors are not rendered, and per-thread banners persist across chat switches until dismissed. Scenario 323 verifies both immediate and delayed error timing, return-to-origin behavior, and dismissal; full AHK + JS suites passed.
 - 2026-08-26 - Web-search scenarios 250-255 were reclassified as regression coverage, not bug-hunt entries; their end-to-end checks remain in the suite.
-- 2026-08-26 - "Explicit Model Default reasoning/temperature selections are lost on reload" - FIXED + COMMITTED in this fix commit: per-thread override-set flags distinguish intentional empty defaults from inherited assistant values; scenario 319 is now a regression check with ThreadSettings, persistence, and UI payload coverage.
-- 2026-08-26 - "Clearing an assistant system prompt is not a stable per-thread choice" - FIXED + COMMITTED in this fix commit: explicit blank system overrides now survive the immediate-send settings flush and reload; scenario 320 is now a regression check with request-payload and ThreadSettings coverage.
-- 2026-08-26 - "Deleting the active assistant response leaves the sidebar model badge stale" - FIXED + COMMITTED in this fix commit: message deletion now posts a thread-list refresh after the active path changes; scenario 321 is now a regression check with live badge and dispatch coverage.
-- 2026-08-26 - "Assistant picker followed by an immediate Send can revert to the old direct model" - FIXED + COMMITTED in this fix commit: assistant selection updates renderer mode synchronously before IPC, so the immediate settings flush uses the assistant base model; scenario 322 is now a regression check with live request and picker coverage.
-- 2026-08-26 - "Message edit updates thread recency but leaves the sidebar stale" - FIXED + COMMITTED in this fix commit: branch and overwrite edits now post `_postThreadListRefresh()` after persistence; scenario 318 is a regression check and verifies live sidebar order/date updates.
-- 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED in this fix commit: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
-- 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED in this fix commit: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.
+- 2026-08-26 - "Explicit Model Default reasoning/temperature selections are lost on reload" - FIXED + COMMITTED: per-thread override-set flags distinguish intentional empty defaults from inherited assistant values; scenario 319 is now a regression check with ThreadSettings, persistence, and UI payload coverage.
+- 2026-08-26 - "Clearing an assistant system prompt is not a stable per-thread choice" - FIXED + COMMITTED: explicit blank system overrides now survive the immediate-send settings flush and reload; scenario 320 is now a regression check with request-payload and ThreadSettings coverage.
+- 2026-08-26 - "Deleting the active assistant response leaves the sidebar model badge stale" - FIXED + COMMITTED: message deletion now posts a thread-list refresh after the active path changes; scenario 321 is now a regression check with live badge and dispatch coverage.
+- 2026-08-26 - "Assistant picker followed by an immediate Send can revert to the old direct model" - FIXED + COMMITTED: assistant selection updates renderer mode synchronously before IPC, so the immediate settings flush uses the assistant base model; scenario 322 is now a regression check with live request and picker coverage.
+- 2026-08-26 - "Message edit updates thread recency but leaves the sidebar stale" - FIXED + COMMITTED: branch and overwrite edits now post `_postThreadListRefresh()` after persistence; scenario 318 is a regression check and verifies live sidebar order/date updates.
+- 2026-08-26 - "Simultaneous message editors cross-contaminate attachment removals" - FIXED + COMMITTED: edit sessions now keep per-message removal lists, and attachment clicks/save/cancel closures use the owning editor's state; scenario 317 is a regression check with branching and attachment-handler unit coverage.
+- 2026-08-26 - "Right-rail settings debounce races with immediate Send" - FIXED + COMMITTED: pending `_sendAllSettings` updates are flushed before `chatSend`, and the first request now includes settings typed immediately before sending; scenario 316 is a regression check with chat-input unit coverage.
 
 Entries move here when a bug is closed (user committed) or refuted. Add one line per
 closure; never rewrite past entries.
@@ -603,29 +592,29 @@ closure; never rewrite past entries.
 - 2026-08-03 - "Sidebar inline rename saves on Escape instead of canceling" - REFUTED: WebView2 does not dispatch blur when the focused input is removed from the DOM, so Escape cancels the rename and no renameThread is posted. Scenario 28 kept as a regression check (regression: true).
 - 2026-08-03 - "Reasoning-only responses get no action buttons until reload" - FIXED in ff6a6c3: onStreamDone now persists the assistant message and adds action buttons when thinking was streamed with empty final content (mirrors the existing cancelStreaming guard); scenario 21 flipped to a regression check (regression: true) + stream-state unit test.
 - 2026-08-03 - "Right-panel Advanced toggles (Code Execution / Web Search) do nothing" - FIXED in aafa4ed (+247d6c5): Structured Outputs removed entirely; Code Execution / Web Search are persisted stubs (state round-trips through updateModelSettings/requestParams/thread DB, no response_format/tools sent); scenario 20 flipped to a regression check (regression: true) + ChatSettings/request-builder AHK + JS unit tests.
-- 2026-08-02 â€” "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" â€” FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.
-- 2026-08-02 â€” "Custom icon picked outside the repo never applies to the chat window" â€” FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
-- 2026-08-02 â€” "New models added in Settings lose reasoning/thinking metadata" â€” FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
-- 2026-08-02 â€” "Chat request failure with no output file shows no error and leaves the UI stuck" â€” FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
-- 2026-08-02 â€” "Trash retention never auto-purges" â€” FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.
-- 2026-08-02 â€” "Close Windows hotkey setting is ignored by the chat window" â€” FIXED in 0660294: new `chat/ChatHotkeys.ahk` registers the configured `closeWindowsHotkey` in the chat process at startup and after settings saves (empty = disabled), replacing the hardcoded `~^w::`; the stale "restart required" Hotkeys banner was removed (hotkey changes are live on both processes); scenario 8 flipped to a regression check (`regression: true`) + ChatHotkeys unit tests.
-- 2026-08-02 â€” "Suspend banner edits don't take effect until restart" â€” FIXED in 5957786: new `app/SuspendBanner.ahk` exposes `_rebuildSuspendBanner()`, which Main now calls at startup and on settings updates (destroying the old GUI, rebuilding from current settings, re-showing when already suspended); scenario 12 flipped to a regression check (`regression: true`) + SuspendBanner unit tests.
-- 2026-08-02 â€” "Command Input Window settings are dead (colors never apply; size/font need restart)" â€” FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
-- 2026-08-02 â€” "Title generation makes sidebar folder groups disappear until re-entry" â€” FIXED in a5bd97c: `ThreadTitleGen.ahk` now posts `threadList` as `{ threads, folders }` (reusing `_GetFolders()`) so folder sections stay rendered, and posts the thread's real folder name in `updateTopbarTitle` instead of hardcoded "Unfiled"; scenario 14 flipped to a regression check (`regression: true`) + extended unit test.
-- 2026-08-02 â€” "Chat topbar 'Export' button does nothing" â€” FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
-- 2026-08-02 â€” "API Logs viewer latency column always shows 'â€“'" â€” FIXED in b1f0386: the viewer now renders `responseTimeMs` (the field every logger writes) instead of the never-written `latencyMs`; scenario 16 flipped to a regression check (`regression: true`) + inline-viewer unit tests.
-- 2026-08-02 â€” "Input window text invisible: Edit field stays white against the dark background" â€” FIXED in c13d15c: the Edit control now gets its own `Background` option (it doesn't inherit `Gui.BackColor`), and the default design is light (white field + black text) to match the app theme; scenarios 24 + 25 flipped to regression checks (`regression: true`) + a rendered-pixel probe.
-- 2026-08-02 â€” "System-prompt modal '0 chars' counter never updates" â€” FIXED in 6d81eaa: the chat right-rail system prompt modal now updates `#charCount` on input and when opened; scenario 17 flipped to a regression check (`regression: true`) + unit test.
-- 2026-08-01 â€” "Quick Access â†’ Usage Dashboard does nothing on prewarmed window" â€” REFUTED:
+- 2026-08-02 — "Dashboard 'All Time' caps the chart at 365 days (summary shows all time)" — FIXED in 35770c0: `getDateRangeLabels()` now handles the `all` range explicitly, spanning oldest-recorded-date through today (365-day fallback when empty) so the chart matches the summary; scenario 19 flipped to a regression check (`regression: true`) + usage-dashboard unit tests.
+- 2026-08-02 — "Custom icon picked outside the repo never applies to the chat window" — FIXED in 6a8a0db: new `chat/ChatIconResolver.ahk` resolves icon paths (absolute/UNC paths used as-is, repo-relative ones prefixed with `A_ScriptDir "\..\"`) so ChatWindow loads icons picked outside the repo; scenario 18 flipped to a regression check (`regression: true`) + ChatIconResolver unit tests.
+- 2026-08-02 — "New models added in Settings lose reasoning/thinking metadata" — FIXED in aa9b263: `models.js` now parses `api`/`compat`/`thinkingLevelMap`/`thinkingOff` from fetched raw entries, stashes them on rows, and re-emits them on save (previously only default ids survived via the defaults merge); scenario 5 kept as a regression check (`regression: true`) + unit tests.
+- 2026-08-02 — "Chat request failure with no output file shows no error and leaves the UI stuck" — FIXED in 53aa3e4: `_handleStreamError` now always posts `showError` + `setChatButtonsEnabled(true)` (using cURL stderr when the output file never exists) instead of gating the error/re-enable on the output file; scenario 6 flipped to a regression check (`regression: true`) + StreamError unit test.
+- 2026-08-02 — "Trash retention never auto-purges" — FIXED in e9741f5: `Main.ahk` now calls `ChatDB.Thread_PurgeExpired()` at startup, on an hourly timer, and on settings updates (retention changes apply immediately); scenario 7 flipped to a regression check (`regression: true`) + ChatDB purge unit test.
+- 2026-08-02 — "Close Windows hotkey setting is ignored by the chat window" — FIXED in 0660294: new `chat/ChatHotkeys.ahk` registers the configured `closeWindowsHotkey` in the chat process at startup and after settings saves (empty = disabled), replacing the hardcoded `~^w::`; the stale "restart required" Hotkeys banner was removed (hotkey changes are live on both processes); scenario 8 flipped to a regression check (`regression: true`) + ChatHotkeys unit tests.
+- 2026-08-02 — "Suspend banner edits don't take effect until restart" — FIXED in 5957786: new `app/SuspendBanner.ahk` exposes `_rebuildSuspendBanner()`, which Main now calls at startup and on settings updates (destroying the old GUI, rebuilding from current settings, re-showing when already suspended); scenario 12 flipped to a regression check (`regression: true`) + SuspendBanner unit tests.
+- 2026-08-02 — "Command Input Window settings are dead (colors never apply; size/font need restart)" — FIXED in a35233a: `InputWindow` constructor now applies background + font color, and new `_rebuildInputWindow()` (called at startup and on settings updates) rebuilds the GUI from current settings; scenario 13 flipped to a regression check (`regression: true`) + InputWindow unit tests.
+- 2026-08-02 — "Title generation makes sidebar folder groups disappear until re-entry" — FIXED in a5bd97c: `ThreadTitleGen.ahk` now posts `threadList` as `{ threads, folders }` (reusing `_GetFolders()`) so folder sections stay rendered, and posts the thread's real folder name in `updateTopbarTitle` instead of hardcoded "Unfiled"; scenario 14 flipped to a regression check (`regression: true`) + extended unit test.
+- 2026-08-02 — "Chat topbar 'Export' button does nothing" — FIXED in 71a1294: the button got `id="export-chat-btn"` and `exportChat()` (reusing `getMessageText`) downloads the conversation as a title-named `.txt`; scenario 15 flipped to a regression check (`regression: true`) + unit tests.
+- 2026-08-02 — "API Logs viewer latency column always shows '–'" — FIXED in b1f0386: the viewer now renders `responseTimeMs` (the field every logger writes) instead of the never-written `latencyMs`; scenario 16 flipped to a regression check (`regression: true`) + inline-viewer unit tests.
+- 2026-08-02 — "Input window text invisible: Edit field stays white against the dark background" — FIXED in c13d15c: the Edit control now gets its own `Background` option (it doesn't inherit `Gui.BackColor`), and the default design is light (white field + black text) to match the app theme; scenarios 24 + 25 flipped to regression checks (`regression: true`) + a rendered-pixel probe.
+- 2026-08-02 — "System-prompt modal '0 chars' counter never updates" — FIXED in 6d81eaa: the chat right-rail system prompt modal now updates `#charCount` on input and when opened; scenario 17 flipped to a regression check (`regression: true`) + unit test.
+- 2026-08-01 — "Quick Access → Usage Dashboard does nothing on prewarmed window" — REFUTED:
   the real flow opened the dashboard (the ChatWindow script-window title contains "Chat",
   so the IPC still reaches the process). Scenario 9 kept as a regression check
   (`regression: true`).
-- 2026-08-01 â€” "Chat delete confirmations are broken â€” the confirm button is a no-op" â€” FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.
-- 2026-08-01 â€” "Command `thinking` settings are dropped after any settings round-trip" â€” FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.
-- 2026-08-01 â€” "Deleting the active chat leaks its per-thread settings into the next chat" â€” FIXED in 76be0ba: deleteThread/deleteThreadForever/emptyTrash now reset requestParams and refresh the UI when the active thread is removed; scenario 1 flipped + dispatch regression tests for active vs inactive deletion.
-- 2026-08-01 â€” "New chats ignore the configured `New Chats Start With` default" â€” FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` â€” `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
-- 2026-08-02 â€” "Removing models/providers in Settings doesn't persist" â€” FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
-- 2026-08-02 â€” "Clearing a hotkey field does nothing â€” hotkeys can't be disabled" â€” FIXED in 00bb503: empty hotkey now means disabled â€” `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
+- 2026-08-01 — "Chat delete confirmations are broken — the confirm button is a no-op" — FIXED in fdf1dd5: chat-side confirm helper renamed to `_showChatConfirm` so it no longer collides with the Settings `window._showConfirm`; scenario 23 flipped to assert the fixed behavior.
+- 2026-08-01 — "Command `thinking` settings are dropped after any settings round-trip" — FIXED in c7cae37: `_extractCommandParams` now reads Map-form thinking via Has()/[] (HasOwnProp is false for Map keys); scenario 22 flipped to assert Map and object forms both survive.
+- 2026-08-01 — "Deleting the active chat leaks its per-thread settings into the next chat" — FIXED in 76be0ba: deleteThread/deleteThreadForever/emptyTrash now reset requestParams and refresh the UI when the active thread is removed; scenario 1 flipped + dispatch regression tests for active vs inactive deletion.
+- 2026-08-01 — "New chats ignore the configured `New Chats Start With` default" — FIXED in 3e36eeb: added the General-tab dropdown (App Default / assistants / models) stored as top-level `newChatStartsWith`, removed the "Set as Default Assistant" toggle, renamed the runtime baseline `chatDefaultModel` — `appDefaultModel`, and applied the default in newChat/handleChatSend; scenario 2 flipped + JS/AHK regression tests.
+- 2026-08-02 — "Removing models/providers in Settings doesn't persist" — FIXED in 04d76dd: save applies each section payload per top-level key (`SettingsMerge.Override`) and load treats the saved models/providers lists as authoritative (`SettingsMerge.MergeAuthoritativeList`), so removals survive both Save and reload/reopen; scenario 3 extended to hide+reopen Settings + regression tests.
+- 2026-08-02 — "Clearing a hotkey field does nothing — hotkeys can't be disabled" — FIXED in 00bb503: empty hotkey now means disabled — `_ApplyHotkeys` applies the empty value (clears the global) and `_registerAllHotkeys` skips empty bindings (old binding turned Off first); scenario 4 flipped + regression tests + "leave empty to disable" UI hints.
 - 2026-08-04 - "Commands lose their system prompt after a settings save: bare system-message filenames cannot be resolved by the command path" - FIXED in 6f7ae77: CommandMenu._resolveSystemMessage now searches default-settings/system-messages/ + AppData like the assistant path; scenario 50 flipped to a regression check (`regression: true`) + UserConfig AHK unit test.
 - 2026-08-04 - "Opening Settings wipes the right-rail per-thread settings" - FIXED in f64a59d: main.js routes only the chat-sidebar partial `currentSettings` payload through `populateCurrentSettings`; the full merged settings object goes only to `SettingsPanel.onSettingsReceived` (discriminator: `Array.isArray(data.commands)`); scenario 26 flipped to a regression check (`regression: true`) + main.js routing unit test.
 - 2026-08-04 - "System-message files referenced by their legacy `system-messages/` path are never resolved" - CLOSED as won't-fix (single-user, no migration): the path only exists in profiles saved before commit 0229368 moved the files into default-settings/; the user corrected their one profile manually. Scenario 59 removed (no regression check kept).
@@ -642,10 +631,10 @@ closure; never rewrite past entries.
 - 2026-08-26 - "Multi-step persistence operations can leave durable partial state" - FIXED + COMMITTED in 784f79b: DB mutations are transactional, filesystem deletion is commit-safe, and injected failures restore coherent state after reopen; scenario 305 is a regression check.
 - 2026-08-26 - "ThreadRepo.List fails to redact locked titles when ThreadLockService is absent" - FIXED + COMMITTED in efda6ab: title redaction now fails closed without a lock service; scenario 306 and service-present title regressions passed.
 - 2026-08-26 - "Force-killed ChatWindow runs can leave credential-bearing temp files" - FIXED + COMMITTED in b4fa670: explicit app-owned temp prefixes are removed at startup and exit; scenario 310 and the AHK cleanup regression passed.
-- 2026-08-26 - "Delayed title generation reads and logs a chat after relock" - FIXED + COMMITTED in this fix commit: delayed title callbacks fail closed for relocked threads and redact any lock transition observed before publication/logging; scenario 311 and ThreadTitleGen regression coverage passed.
-- 2026-08-26 - "Chat send ignores a failed attachment save and still sends" - FIXED + COMMITTED in this fix commit: sends now transact the user message, attachments, and FTS state, reject failed attachment saves, clean up created files on rollback, and surface an error without firing a request; scenario 312 and ChatFlow regression coverage passed.
-- 2026-08-26 - "Overwrite edit deletes old attachments before a failed replacement" - FIXED + COMMITTED in this fix commit: overwrite edits now transact attachment deletion, replacement saves, message content, and FTS updates; failed replacements restore the original message and file without firing a request; scenario 313 and BranchFlow regression coverage passed.
-- 2026-08-26 - "Branch edit activates a partial branch after attachment persistence failure" - FIXED + COMMITTED in this fix commit: branch creation now keeps message insertion, source-attachment copying, replacement saves, active-leaf changes, and FTS updates in one transaction; failed replacements leave the source tree intact and send no request; scenario 314 and BranchFlow regression coverage passed.
-- 2026-08-26 - "Web-search placeholder remains ‘Searching…’ after process restart" - FIXED + COMMITTED in this fix commit: ChatWindow startup now converts abandoned persisted placeholders into searchable interruption failures; scenario 315's static contract and SearchToolExecutor behavioral regression passed (the live restart harness remains infrastructure-blocked).
+- 2026-08-26 - "Delayed title generation reads and logs a chat after relock" - FIXED + COMMITTED: delayed title callbacks fail closed for relocked threads and redact any lock transition observed before publication/logging; scenario 311 and ThreadTitleGen regression coverage passed.
+- 2026-08-26 - "Chat send ignores a failed attachment save and still sends" - FIXED + COMMITTED: sends now transact the user message, attachments, and FTS state, reject failed attachment saves, clean up created files on rollback, and surface an error without firing a request; scenario 312 and ChatFlow regression coverage passed.
+- 2026-08-26 - "Overwrite edit deletes old attachments before a failed replacement" - FIXED + COMMITTED: overwrite edits now transact attachment deletion, replacement saves, message content, and FTS updates; failed replacements restore the original message and file without firing a request; scenario 313 and BranchFlow regression coverage passed.
+- 2026-08-26 - "Branch edit activates a partial branch after attachment persistence failure" - FIXED + COMMITTED: branch creation now keeps message insertion, source-attachment copying, replacement saves, active-leaf changes, and FTS updates in one transaction; failed replacements leave the source tree intact and send no request; scenario 314 and BranchFlow regression coverage passed.
+- 2026-08-26 - "Web-search placeholder remains ‘Searching…’ after process restart" - FIXED + COMMITTED: ChatWindow startup now converts abandoned persisted placeholders into searchable interruption failures; scenario 315's static contract and SearchToolExecutor behavioral regression passed (the live restart harness remains infrastructure-blocked).
 
 

@@ -11,14 +11,14 @@ class UsageRepo {
     ; LOCAL calendar date (usage rows are stored with local dates, and the
     ; dashboard's day chart plots a single local "today" label), so the "day"
     ; filter must use it instead of SQLite's UTC date('now', '-1 day') which
-    ; pulled in yesterday and over-reported vs the chart (bug #53).
+    ; otherwise local-day ranges can include the wrong UTC date.
     static _WhereDate(range, dateColumn := "date", localToday := "", monthCutoff := "", lastMonthStart := "", monthStart := "") {
         if range = "day" {
             if localToday
                 return { sql: "WHERE " dateColumn " >= ?", params: [localToday] }
             return { sql: "WHERE " dateColumn " >= date('now')", params: [] }
         }
-        ; Bug #87/#88: month/lastMonth/thisMonth must use LOCAL calendar dates
+        ; Month ranges use local calendar dates because stored dates and chart labels are local.
         ; (rows are stored with local dates and the chart labels are local) -
         ; SQLite's date('now') is UTC and drifts by a day in non-UTC zones.
         if range = "month" {
@@ -61,12 +61,12 @@ class UsageRepo {
                 chatParams.Push(modelFilter)
             }
             if providerFilter {
-                ; Bug #168/#182: rows with an EMPTY provider (model removed
+                ; Rows with an empty provider use a reserved filter sentinel.
                 ; from settings) render under "" in the chart - the reserved
                 ; "__BLANK_PROVIDER__" sentinel (which can never be a real
                 ; provider name) scopes the filter to them so they can be
                 ; isolated. A provider literally named "__unknown__" is a real
-                ; provider and must filter by its own name (bug #182).
+                ; A real provider named "__unknown__" still filters by its own name.
                 if providerFilter = "__BLANK_PROVIDER__"
                     chatWhere.sql .= (chatWhere.sql ? " AND" : "WHERE") " (provider='' OR provider IS NULL)"
                 else {
@@ -105,7 +105,7 @@ class UsageRepo {
                 cmdParams.Push(modelFilter)
             }
             if providerFilter {
-                ; Bug #168/#182: same reserved empty-provider sentinel for
+                ; Use the same reserved empty-provider sentinel for
                 ; command rows.
                 if providerFilter = "__BLANK_PROVIDER__"
                     cmdWhere.sql .= (cmdWhere.sql ? " AND" : "WHERE") " (provider='' OR provider IS NULL)"
