@@ -290,3 +290,18 @@ describe('_sendAllSettings', () => {
         assert.strictEqual(JSON.parse(posted[0]).temperature, '');
     });
 });
+
+
+describe('model picker transport provider icon', () => {
+    it('passes explicit OpenRouter provider to the shared resolver', () => {
+        const ctx = loadSettingsModule();
+        let seen = null;
+        ctx.window.ProviderIcons = {
+            file(model, provider) { seen = { model, provider }; return '../icons/openrouter.ico'; },
+            style() { return ''; }
+        };
+        const icon = ctx._providerIconFile('openrouter/openai/gpt-5.6-sol', 'openrouter');
+        assert.ok(icon.includes('openrouter.ico'));
+        assert.deepStrictEqual(seen, { model: 'openrouter/openai/gpt-5.6-sol', provider: 'openrouter' });
+    });
+});

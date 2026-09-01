@@ -1,4 +1,4 @@
-﻿// scenarios/chat-tree.js - Threads, fork, branch, rename, delete, trash
+// scenarios/chat-tree.js - Threads, fork, branch, rename, delete, trash
 //
 // Part of the headless E2E suite (entry: ../e2e-suite.js). Scenarios launch
 // the REAL app against an isolated profile and drive it via WebView2 CDP +
@@ -315,7 +315,14 @@ scenarios.push({
     const postedAfterRename = await cdp.postedMessages();
     if (!postedAfterRename.some((m) => m.includes('renameThread')))
       throw new Error('renameThread was not posted after blur; inputVal=' + JSON.stringify(inputVal) + ' posted=' + JSON.stringify(postedAfterRename));
-    const renamedRows = seed.query(dbPath, "SELECT title FROM chat_threads WHERE id='t-title-38a'");
+    let renamedRows = [];
+    const renameDeadline = Date.now() + 10000;
+    for (;;) {
+      renamedRows = seed.query(dbPath, "SELECT title FROM chat_threads WHERE id='t-title-38a'");
+      if (renamedRows.length && renamedRows[0].title === 'Alpha Renamed') break;
+      if (Date.now() > renameDeadline) break;
+      await sleep(100);
+    }
     if (!renamedRows.length || renamedRows[0].title !== 'Alpha Renamed')
       throw new Error('rename did not commit before switching (setup): ' + JSON.stringify(renamedRows));
     // Switch to thread B.

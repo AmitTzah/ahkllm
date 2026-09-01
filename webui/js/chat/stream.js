@@ -8,6 +8,7 @@ var streamState = {
   thinkingBuffer: '',
   contentBuffer: '',
   modelName: '',
+  provider: '',
   userScrolledUp: false   // Tracks whether user has manually scrolled up during streaming
 };
 
@@ -107,6 +108,8 @@ function onStreamReasoning(data, threadId) {
 function _persistStreamedMessage(content, modelName, dbMsg) {
   var msg = { role: 'assistant', content: content };
   if (modelName) msg.model = modelName;
+  var messageProvider = (dbMsg && dbMsg.provider) ? dbMsg.provider : streamState.provider;
+  if (messageProvider) msg.provider = messageProvider;
 
   // Apply DB fields
   if (dbMsg) {
@@ -171,13 +174,15 @@ function onStreamDone(data) {
   var isCurrent = (!dbMsg || _streamBelongsToCurrentPath(dbMsg)) &&
     (!data.threadId || !activeThreadId || data.threadId === activeThreadId);
 
+  var provider = (data && data.provider) ? data.provider : (dbMsg && dbMsg.provider ? dbMsg.provider : streamState.provider);
   streamState.userScrolledUp = false;
   var container = document.getElementById('chat-messages');
   if (container) container.scrollTop = container.scrollHeight;
   streamState.modelName = displayName;
+  streamState.provider = provider || '';
 
   if (isCurrent) {
-    _finalizeStreamBubble(displayName, modelName, dbMsg);
+    _finalizeStreamBubble(displayName, modelName, dbMsg, provider);
     _finalizeThinkingBlock();
     _finalizeStreamContent();
   }
@@ -226,7 +231,7 @@ function onStreamDone(data) {
   if (typeof renderNavList === 'function') renderNavList();
 }
 
-function _finalizeStreamBubble(displayName, modelName, dbMsg) {
+function _finalizeStreamBubble(displayName, modelName, dbMsg, provider) {
   if (!streamState.bubble) return;
   var author = streamState.bubble.querySelector('.msg-author');
   if (author) author.textContent = displayName || 'Assistant';
@@ -282,6 +287,7 @@ function createStreamingBubble() {
   var html = '<div class="msg bot" id="streaming-bubble">';
   html += '<div class="msg-body">';
   html += '<div class="msg-head">';
+  if (window.ProviderIcons) html += window.ProviderIcons.html(streamState.modelName, streamState.provider, 18, 'msg-provider-icon');
   // Bug #208: displayName comes from the AHK streamModelName post (assistant
   // name or sanitized model name) and is user-controlled - escape it like
   // createMessageBubble does, or markup in the name is parsed as HTML and
@@ -353,7 +359,7 @@ function handleStreamMessage(target, data) {
       onStreamReasoning(data, data && data.threadId);
       break;
     case 'streamModelName':
-      onStreamModelName(typeof data === 'string' ? data : (data && data.name ? data.name : data), data && data.threadId);
+      onStreamModelName(typeof data === 'string' ? data : (data && data.name ? data.name : data), data && data.threadId, data && data.provider);
       break;
     case 'streamDone':
       onStreamDone(data);
@@ -365,9 +371,10 @@ function handleStreamMessage(target, data) {
 }
 
 // Update the streaming bubble's author to the actual model name as soon as it's known
-function onStreamModelName(modelName, threadId) {
+function onStreamModelName(modelName, threadId, provider) {
   if (threadId && activeThreadId && threadId !== activeThreadId) return;
   if (!modelName) return;
+  if (provider) streamState.provider = provider;
   streamState.modelName = modelName;
   // A new stream session is starting (the app posts streamModelName before
   // the first content chunk) - clear the previous finalize marker so the

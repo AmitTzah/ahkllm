@@ -527,3 +527,19 @@ describe('retry restore state cleared on success (bug #169)', () => {
         assert.strictEqual(ctx._retryRemovedMessages, null);
     });
 });
+
+
+describe('stream provider attribution', () => {
+  it('stores provider from streamModelName payload for the live bubble', () => {
+    const ctx = loadStreamModule();
+    ctx.onStreamModelName('glm-5.2-free', '', 'openrouter');
+    assert.strictEqual(ctx.streamState.modelName, 'glm-5.2-free');
+    assert.strictEqual(ctx.streamState.provider, 'openrouter');
+  });
+
+  it('persists provider from dbMsg on completion-side message state', () => {
+    const ctx = loadStreamModule();
+    ctx._persistStreamedMessage('ok', 'claude-sonnet-4', { id: 'a-provider', provider: 'openrouter' });
+    assert.strictEqual(ctx.chatMessages[0].provider, 'openrouter');
+  });
+});

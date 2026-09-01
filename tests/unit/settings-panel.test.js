@@ -331,3 +331,34 @@ function loadPanelWithConsole(consoleMock) {
     vm.runInContext(src, ctx);
     return sandbox.window.SettingsPanel;
 }
+
+
+describe('SettingsPanel late settings snapshot protection', () => {
+    it('does not overwrite dirty edits with an unsolicited late appSettings snapshot', () => {
+        const panel = loadPanel();
+        const loaded = [];
+        panel.registerSection('fake', { load: (data) => loaded.push(data) });
+        panel.onSettingsReceived({ ui: { responseFont: 'Inter' } });
+        panel.markDirty();
+        panel.onSettingsReceived({ ui: { responseFont: 'Inter-late' } });
+        assert.strictEqual(loaded.length, 1);
+        assert.strictEqual(loaded[0].ui.responseFont, 'Inter');
+        assert.strictEqual(panel.isDirty(), true);
+    });
+
+    it('accepts the settings refresh emitted while a save is in flight', () => {
+        const panel = loadPanel();
+        const loaded = [];
+        panel.registerSection('fake', {
+            load: (data) => loaded.push(data),
+            save: () => ({ ui: { responseFont: 'Georgia' } }),
+        });
+        panel.onSettingsReceived({ ui: { responseFont: 'Inter' } });
+        panel.markDirty();
+        panel.saveSettings();
+        panel.onSettingsReceived({ ui: { responseFont: 'Georgia' } });
+        assert.strictEqual(loaded.length, 2);
+        assert.strictEqual(loaded[1].ui.responseFont, 'Georgia');
+        assert.strictEqual(panel.isDirty(), false);
+    });
+});

@@ -246,3 +246,22 @@ describe('updateTopbarTitle', () => {
         assert.ok(true);
     });
 });
+
+
+describe('sidebar provider icon', () => {
+    it('passes the persisted transport provider to the shared icon resolver', () => {
+        const ctx = loadModules();
+        let seen = null;
+        ctx.window.ProviderIcons = {
+            html(model, provider, size) {
+                seen = { model, provider, size };
+                return '<img src="../icons/openrouter.ico">';
+            }
+        };
+        ctx.createChatItem({
+            id: 't-openrouter', title: 'OR chat', updated_at: '2026-01-01',
+            model: 'claude-sonnet-4', provider: 'openrouter'
+        });
+        assert.deepStrictEqual(seen, { model: 'claude-sonnet-4', provider: 'openrouter', size: 20 });
+    });
+});

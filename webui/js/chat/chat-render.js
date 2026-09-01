@@ -166,10 +166,11 @@ function _prepUserContent(content) {
   return (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
-function _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml) {
+function _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml, headPrefixHtml) {
   return '        <div class="msg ' + roleClass + '"' + (msgId ? ' data-msg-id="' + msgId + '"' : '') + '>\n' +
     '          <div class="msg-body">\n' +
     '            <div class="msg-head">\n' +
+    (headPrefixHtml || '') +
     '              <span class="msg-author">' + escHtml(authorName) + '</span>\n' +
     '              <span class="msg-meta">' + metaText + '</span>\n' +
     '            </div>\n' +
@@ -186,7 +187,7 @@ function createMessageBubble(msg, index) {
   var metaText = _buildMetaText(msg);
   var role = msg.role;
 
-  var roleClass, authorName, contentHtml, middleHtml, editUiHtml, isSearchContext = false;
+  var roleClass, authorName, contentHtml, middleHtml, editUiHtml, headPrefixHtml = '', isSearchContext = false;
   if (role === 'user') {
     // Web-search context messages (persisted as plain user-role text so API
     // history round-trips without schema changes) render as a muted,
@@ -203,6 +204,7 @@ function createMessageBubble(msg, index) {
   } else if (role === 'assistant') {
     roleClass = 'bot';
     authorName = msg.model || 'Assistant';
+    if (window.ProviderIcons) headPrefixHtml = window.ProviderIcons.html(msg.model, msg.provider, 18, 'msg-provider-icon');
     // Bug #222: assistant content must get the same line-ending normalization
     // as user content - markdown-it's breaks:true then keeps single-newline
     // paragraph breaks visible instead of collapsing them into one block.
@@ -218,7 +220,7 @@ function createMessageBubble(msg, index) {
   }
 
   var template = document.createElement('div');
-  template.innerHTML = _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml);
+  template.innerHTML = _buildMsgBubble(roleClass, msgId, authorName, metaText, contentHtml, middleHtml, editUiHtml, headPrefixHtml);
   var bubble = template.firstElementChild;
 
   if (isSearchContext) _wireSearchCardToggle(bubble, msgId);

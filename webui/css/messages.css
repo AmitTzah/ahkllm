@@ -173,3 +173,8 @@
   0% { background-color: var(--accent-light); box-shadow: 0 0 0 6px var(--accent-light); } 
   100% { background-color: transparent; box-shadow: 0 0 0 0 transparent; } 
 }
+
+
+/* Provider badge shown before assistant model/assistant name. */
+.msg-provider-icon { display: inline-block; vertical-align: middle; }
+.msg.bot .msg-head { align-items: center; }

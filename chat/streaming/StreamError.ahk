@@ -137,6 +137,7 @@ _persistPartialStreamContent() {
         thread_id: streamThreadId, role: "assistant",
         content: content,
         model: requestParams.Has("_streamModelName") && requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
+        provider: requestParams.Has("_streamProviderKey") ? requestParams["_streamProviderKey"] : "",
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
         reasoning: reasoning,
         ; Bug #133: a cancelled stream never reported usage - LOCAL row:

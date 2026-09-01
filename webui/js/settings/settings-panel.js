@@ -7,6 +7,7 @@ window.SettingsPanel = (function() {
   var _initialized = false;
   var _defaultSettings = null;
   var _currentSettings = null;
+  var _saveInFlight = false;
   var _sectionModules = {};
   var _navItems = [];
   var _allSections = [];
@@ -109,7 +110,9 @@ window.SettingsPanel = (function() {
     // Step 2 of the IPC refactor: await the AHK acknowledgement so a
     // dispatch failure or a dropped message surfaces instead of failing
     // silently (the settingsSaved handler reports save-level errors).
+    _saveInFlight = true;
     Ipc.request('saveSettings', { data: data }).catch(function(err) {
+      _saveInFlight = false;
       if (typeof window._showConfirm === 'function') {
         window._showConfirm('Save Failed', err.message || 'Settings could not be saved.', 'OK');
       } else {
@@ -136,6 +139,7 @@ window.SettingsPanel = (function() {
   }
 
   function handleSettingsSaved(response) {
+    _saveInFlight = false;
     if (response && response.success) {
       clearDirty();
       console.log('[Settings] Saved successfully');
@@ -157,6 +161,11 @@ window.SettingsPanel = (function() {
 
   // Called by main.js when settings data arrives from AHK
   function onSettingsReceived(data) {
+    // Startup/open-settings requests can overlap. Once the user has edited
+    // the form, ignore any late unsolicited snapshot so it cannot wipe those
+    // unsaved changes. The refresh emitted by a save is intentionally allowed
+    // through so saved values and live CSS are applied immediately.
+    if (_dirty && _currentSettings && !_saveInFlight) return;
     loadSettings(data);
     for (var key in _sectionModules) {
       if (_sectionModules[key] && typeof _sectionModules[key].load === 'function') {

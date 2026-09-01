@@ -111,12 +111,13 @@ class ThreadRepo {
         ; single query and walk the ancestor chains in memory instead.
         msgMap := Map()
         if table.count {
-            msgTable := ChatDB.db.Query("SELECT id, parent_id, role, model FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=" (showTrash ? 1 : 0) ");")
+            msgTable := ChatDB.db.Query("SELECT id, parent_id, role, model, provider FROM messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE is_deleted=" (showTrash ? 1 : 0) ");")
             for msgRow in msgTable.rows {
                 msgMap[msgRow.id] := {
                     parent_id: msgRow.parent_id ? msgRow.parent_id : "",
                     role: msgRow.role,
-                    model: msgRow.model ? msgRow.model : ""
+                    model: msgRow.model ? msgRow.model : "",
+                    provider: msgRow.Has("provider") && msgRow.provider ? msgRow.provider : ""
                 }
             }
         }
@@ -127,11 +128,13 @@ class ThreadRepo {
             ; off-path branch after a retry/branch switch). Walk from the active
             ; leaf up to the nearest assistant.
             model := ""
+            provider := ""
             currentId := row.active_leaf_id ? row.active_leaf_id : ""
             while currentId && msgMap.Has(currentId) {
                 msg := msgMap[currentId]
                 if msg.role = "assistant" && msg.model {
                     model := msg.model
+                    provider := msg.provider
                     break
                 }
                 currentId := msg.parent_id
@@ -156,6 +159,7 @@ class ThreadRepo {
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 model: model,
+                provider: provider,
                 folder_id: row.folder_id ? row.folder_id : "",
                 folder_name: row.folder_name ? row.folder_name : ""
             })

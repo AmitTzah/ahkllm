@@ -3,6 +3,7 @@
   var sectionName = 'models';
   var S = window.SettingsShared;
   var _providerKeys = ['deepseek', 'openai', 'google', 'anthropic'];
+  var _openRouterLookups = {}; // IPC reqId -> model table row
 
   // --- Model id helpers ---
 
@@ -11,7 +12,28 @@
     return i >= 0 ? id.substring(i + 1) : id;
   }
 
+  function displayModelId(id, provider) {
+    // OpenRouter entries have an outer AhkLLM transport prefix plus the real
+    // OpenRouter provider/model slug. Remove only the outer prefix for editing.
+    if (provider === 'openrouter') {
+      var openRouterId = String(id || '');
+      return openRouterId.indexOf('openrouter/') === 0
+        ? openRouterId.slice('openrouter/'.length)
+        : openRouterId;
+    }
+    return stripProvider(id);
+  }
+
   function ensureFullId(id, provider) {
+    id = String(id || '').trim();
+    // OpenRouter model ids are themselves provider/model slugs. Keep the full
+    // upstream slug after AhkLLM's transport prefix. openrouter/free remains
+    // the built-in backward-compatible free router used by new installs.
+    if (provider === 'openrouter') {
+      if (id === 'free' || id === 'openrouter/free') return 'openrouter/free';
+      if (id.indexOf('openrouter/openrouter/') === 0) return id;
+      return 'openrouter/' + id;
+    }
     // Bug #92: when a provider is selected it is authoritative - strip any
     // embedded prefix from the id and rebuild with the selected provider.
     if (provider) {
@@ -106,6 +128,58 @@
     return fields;
   }
 
+  function _openRouterPricePerMillion(value) {
+    if (value === undefined || value === null || value === '') return '';
+    var n = parseFloat(value);
+    return isNaN(n) ? '' : n * 1000000;
+  }
+
+  function parseOpenRouterModelResponse(raw) {
+    var parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    var d = parsed && parsed.data;
+    if (!d || !d.id) throw new Error('Invalid OpenRouter model response');
+
+    var pricing = d.pricing || {};
+    var arch = d.architecture || {};
+    var inputs = Array.isArray(arch.input_modalities) ? arch.input_modalities : [];
+    var supported = Array.isArray(d.supported_parameters) ? d.supported_parameters : [];
+    var reasoningInfo = d.reasoning || null;
+    var reasoning = !!reasoningInfo || supported.indexOf('reasoning') >= 0 || supported.indexOf('reasoning_effort') >= 0;
+    var efforts = [];
+    if (reasoningInfo && Array.isArray(reasoningInfo.supported_efforts)) {
+      efforts = reasoningInfo.supported_efforts.slice();
+    } else if (reasoningInfo && reasoningInfo.supported_efforts === null) {
+      efforts = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+    } else if (reasoning) {
+      efforts = ['low', 'medium', 'high'];
+    }
+    var levelMap = {};
+    efforts.forEach(function(level) {
+      if (level && level !== 'none' && level !== 'default') levelMap[level] = level;
+    });
+
+    return {
+      canonicalId: d.id,
+      displayName: d.name || '',
+      provider: 'openrouter',
+      input: _openRouterPricePerMillion(pricing.prompt),
+      cachedInput: _openRouterPricePerMillion(pricing.input_cache_read),
+      output: _openRouterPricePerMillion(pricing.completion),
+      context: parseInt(d.context_length, 10) || 0,
+      vision: inputs.indexOf('image') >= 0,
+      reasoning: reasoning,
+      api: 'openai-completions',
+      compat: {
+        thinkingFormat: 'openai',
+        supportsReasoningEffort: Object.keys(levelMap).length > 0,
+        supportsUsageInStreaming: true,
+        maxTokensField: 'max_tokens'
+      },
+      thinkingLevelMap: levelMap,
+      thinkingOff: reasoning && !(reasoningInfo && reasoningInfo.mandatory) ? 'none' : ''
+    };
+  }
+
   // Parse an AHK "Map(...)" literal from `text` starting at `fromIndex`
   // (the "Map(" keyword) into a JS object. Values are strings, booleans, or
   // numbers; keys are strings. Used for compat / thinkingLevelMap metadata in
@@ -196,7 +270,7 @@
   function _mainRowHtml(id, provider, values, placeholder) {
     var m = values || {};
     var ph = placeholder ? ' placeholder="' + placeholder + '"' : '';
-    return '<td><input class="settings-w-200" value="' + S.escHtml(stripProvider(id)) + '"' + ph + ' data-field="id"></td>' +
+    return '<td class="settings-model-id-cell"><div class="settings-model-id-control"><input class="settings-w-200 settings-model-id-input" value="' + S.escHtml(displayModelId(id, provider)) + '"' + ph + ' data-field="id"><button class="btn-sm lookup-openrouter-model" style="display:none" title="Look up an exact OpenRouter model slug or provider/model ID">Lookup</button></div></td>' +
       '<td>' + buildProviderSelect(_providerKeys, provider) + '</td>' +
       '<td><input class="settings-w-80" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + '></td>' +
       '<td><input class="settings-w-80" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + '></td>' +
@@ -211,7 +285,7 @@
     var prov = m.provider || '';
     var parts = id.split('/');
     if (!prov && parts.length > 1) prov = parts[0];
-    return '<td><input class="settings-w-180" value="' + S.escHtml(stripProvider(id)) + '" data-field="id" data-full-id="' + S.escHtml(id) + '"></td>' +
+    return '<td><input class="settings-w-180" value="' + S.escHtml(displayModelId(id, prov)) + '" data-field="id" data-full-id="' + S.escHtml(id) + '"></td>' +
       '<td>' + buildProviderSelect(_providerKeys, prov) + '</td>' +
       '<td><input class="settings-w-70" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + ' type="number" step="any"></td>' +
       '<td><input class="settings-w-70" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + ' type="number" step="any"></td>' +
@@ -277,7 +351,52 @@
   function _wireMainRow(tr) {
     _wireFields(tr);
     _wirePriceContext(tr);
-    tr.querySelector('.btn-sm.danger').addEventListener('click', function() { tr.remove(); mark(); });
+    var lookupBtn = tr.querySelector('.lookup-openrouter-model');
+    var providerEl = tr.querySelector('[data-field="provider"]');
+    var idEl = tr.querySelector('[data-field="id"]');
+    var deleteBtn = tr.querySelector('.btn-sm.danger');
+    var idCell = idEl && idEl.closest ? idEl.closest('td') : (idEl && idEl.parentElement ? idEl.parentElement : null);
+    var statusEl = tr.querySelector('.settings-model-lookup-status');
+    if (!statusEl && idCell && document.createElement && idCell.appendChild) {
+      statusEl = document.createElement('div');
+      statusEl.className = 'settings-model-lookup-status';
+      if (statusEl.setAttribute) statusEl.setAttribute('aria-live', 'polite');
+      idCell.appendChild(statusEl);
+    }
+    function setStatus(text, state) {
+      if (!statusEl) return;
+      statusEl.textContent = text || '';
+      statusEl.className = 'settings-model-lookup-status' + (text ? ' is-visible' : '') +
+        (state === 'error' ? ' is-error' : state === 'success' ? ' is-success' : '');
+    }
+    tr._setOpenRouterLookupStatus = setStatus;
+    function syncLookupButton() {
+      if (!lookupBtn) return;
+      if (!lookupBtn.style) lookupBtn.style = {};
+      var slug = String(idEl && idEl.value || '').trim();
+      var isOpenRouter = providerEl && providerEl.value === 'openrouter';
+      var isBuiltInFree = slug === 'free' || slug === 'openrouter/free';
+      lookupBtn.style.display = isOpenRouter && !isBuiltInFree ? '' : 'none';
+      if (!isOpenRouter || isBuiltInFree) setStatus('', '');
+    }
+    if (providerEl) providerEl.addEventListener('change', syncLookupButton);
+    if (idEl) idEl.addEventListener('input', function() { setStatus('', ''); syncLookupButton(); });
+    if (lookupBtn) lookupBtn.addEventListener('click', function() {
+      var slug = String(idEl && idEl.value || '').trim();
+      if (!slug) {
+        lookupBtn.title = '';
+        setStatus('Enter an OpenRouter model slug first.', 'error');
+        return;
+      }
+      lookupBtn.disabled = true;
+      lookupBtn.textContent = 'Looking up…';
+      lookupBtn.title = '';
+      setStatus('Fetching metadata from OpenRouter…', '');
+      var reqId = Ipc.postToHost('lookupOpenRouterModel', { modelId: slug });
+      _openRouterLookups[reqId] = tr;
+    });
+    syncLookupButton();
+    if (deleteBtn) deleteBtn.addEventListener('click', function() { tr.remove(); mark(); });
   }
 
   function _wireRightRow(tr, onRemove) {
@@ -297,6 +416,7 @@
     if (m.compat !== undefined) meta.compat = m.compat;
     if (m.thinkingLevelMap !== undefined) meta.thinkingLevelMap = m.thinkingLevelMap;
     if (m.thinkingOff !== undefined) meta.thinkingOff = m.thinkingOff;
+    if (m.displayName !== undefined) meta.displayName = m.displayName;
     if (Object.keys(meta).length) tr.dataset.modelMeta = JSON.stringify(meta);
   }
 
@@ -348,7 +468,7 @@
   function addRow() {
     var tbody = document.getElementById('modelsTableBody'); if (!tbody) return;
     var tr = document.createElement('tr');
-    tr.innerHTML = _mainRowHtml('', '', {}, 'provider/model');
+    tr.innerHTML = _mainRowHtml('', '', {}, 'model slug or provider/model');
     tbody.appendChild(tr);
     _wireMainRow(tr);
     mark();
@@ -378,7 +498,7 @@
   // Copy stashed metadata (api/compat/thinkingLevelMap/thinkingOff) onto a
   // saved entry so new model ids don't lose their thinking metadata.
   function _applyMeta(entry, values) {
-    ['api', 'compat', 'thinkingLevelMap', 'thinkingOff'].forEach(function(k) {
+    ['api', 'compat', 'thinkingLevelMap', 'thinkingOff', 'displayName'].forEach(function(k) {
       if (values[k] !== undefined) entry[k] = values[k];
     });
   }
@@ -391,7 +511,7 @@
       var values = _readRowValues(tr);
       models.push({
         id: ensureFullId(idEl.value, values.provider), // full ID for internal use
-        displayId: stripProvider(idEl.value), // display without provider prefix
+        displayId: displayModelId(ensureFullId(idEl.value, values.provider), values.provider), // display without transport-provider prefix
         provider: values.provider,
         input: values.input,
         cachedInput: values.cachedInput,
@@ -450,6 +570,12 @@
       // Rows copied from the settings table only hold the display id; fall
       // back to the provider column so they match fetched full ids like
       // "google/gemini-3-flash-preview".
+      var openRouterProvEl = tr.querySelector('[data-field="provider"]');
+      var openRouterProvider = openRouterProvEl ? openRouterProvEl.value || '' : '';
+      if (openRouterProvider === 'openrouter') {
+        ids.push(ensureFullId(id, openRouterProvider));
+        return;
+      }
       if (id.indexOf('/') < 0) {
         var provEl = tr.querySelector('[data-field="provider"]');
         var provider = provEl ? provEl.value || '' : '';
@@ -503,6 +629,7 @@
 
   window.SettingsModels = {
     parsePricingRaw: parsePricingRaw,
+    parseOpenRouterModelResponse: parseOpenRouterModelResponse,
     filterAvailableModels: filterAvailableModels,
     buildAddButton: buildAddButtonHtml,
     collectCurrentModels: function() { return _collectCurrentModels(); },
@@ -552,6 +679,45 @@
       _stashMeta(tr, m);
       _wireRightRow(tr, function() { tr.remove(); _renderAvailableModels(); });
       _renderAvailableModels();
+    },
+
+    handleOpenRouterLookupResult: function(data) {
+      var tr = data && _openRouterLookups[data.reqId];
+      if (!tr) return;
+      delete _openRouterLookups[data.reqId];
+      var btn = tr.querySelector('.lookup-openrouter-model');
+      if (!data.success) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Retry';
+          btn.title = data.error || 'OpenRouter model lookup failed';
+        }
+        if (tr._setOpenRouterLookupStatus)
+          tr._setOpenRouterLookupStatus(data.error || 'OpenRouter model lookup failed.', 'error');
+        return;
+      }
+      try {
+        var m = parseOpenRouterModelResponse(data.raw);
+        // Preserve the user-entered slug so aliases such as
+        // ~anthropic/claude-sonnet-latest remain dynamic rather than pinning
+        // the canonical id returned by OpenRouter's lookup endpoint.
+        var requestedSlug = String(data.resolvedModelId || data.modelId || '').trim();
+        tr.innerHTML = _mainRowHtml(requestedSlug, 'openrouter', m);
+        _stashMeta(tr, m);
+        _wireMainRow(tr);
+        mark();
+        var refreshedBtn = tr.querySelector('.lookup-openrouter-model');
+        if (refreshedBtn) refreshedBtn.textContent = 'Refresh';
+        if (tr._setOpenRouterLookupStatus) tr._setOpenRouterLookupStatus('Metadata loaded.', 'success');
+      } catch (e) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Retry';
+          btn.title = e.message || 'Invalid OpenRouter model metadata';
+        }
+        if (tr._setOpenRouterLookupStatus)
+          tr._setOpenRouterLookupStatus(e.message || 'Invalid OpenRouter model metadata.', 'error');
+      }
     },
 
     cancelRefresh: function() {

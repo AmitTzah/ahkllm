@@ -3,6 +3,21 @@
 // Renders the stat toggle / stat popover in the token bar
 // ======================================================
 
+function _resolveTokenTooltipMessage(msg, index) {
+  if (typeof chatMessages === 'undefined' || !chatMessages || !chatMessages.length) return msg;
+
+  // Branch edits/retries can rebuild chatMessages and shift array positions
+  // after the action button was rendered. Prefer the stable DB message id so
+  // the popover reads the latest token attribution for the same message.
+  if (msg && msg.id) {
+    for (var i = 0; i < chatMessages.length; i++) {
+      if (chatMessages[i] && chatMessages[i].id === msg.id) return chatMessages[i];
+    }
+  }
+
+  return (index >= 0 && index < chatMessages.length) ? chatMessages[index] : msg;
+}
+
 function createTokenInfoIcon(msg, index) {
   var wrapper = document.createElement('div');
   wrapper.className = 'stat-toggle';
@@ -23,7 +38,7 @@ function createTokenInfoIcon(msg, index) {
     document.querySelectorAll('.stat-toggle.pop-open').forEach(function(p) { p.classList.remove('pop-open'); });
     if (!wasOpen) {
       // Always read from chatMessages (not closure) to get latest token data
-      var currentMsg = (typeof chatMessages !== 'undefined' && index < chatMessages.length) ? chatMessages[index] : msg;
+      var currentMsg = _resolveTokenTooltipMessage(msg, index);
       showTokenTooltip(popover, currentMsg);
       wrapper.classList.add('pop-open');
     }

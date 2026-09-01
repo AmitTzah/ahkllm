@@ -63,7 +63,8 @@ function _updateModelCard() {
 }
 
 // Map model name → provider icon file
-function _providerIconFile(model) {
+function _providerIconFile(model, provider) {
+  if (window.ProviderIcons) return window.ProviderIcons.file(model, provider);
   if (!model) return '../icons/openrouter.ico';
   var m = model.toLowerCase();
   if (m.indexOf('deepseek') >= 0) return '../icons/deepseek.ico';
@@ -75,11 +76,12 @@ function _providerIconFile(model) {
   return '../icons/openrouter.ico';
 }
 
-function _providerIconImgStyle(model) {
+function _providerIconImgStyle(model, provider) {
+  if (window.ProviderIcons) return window.ProviderIcons.style(model, provider, 22);
   var m = model ? model.toLowerCase() : '';
   if (m.indexOf('openrouter') >= 0)
     return 'width:22px;height:22px;background:#7c3aed;border-radius:50%;padding:2px;mix-blend-mode:normal;';
-  return 'width:22px;height:22px;mix-blend-mode:multiply;';
+  return 'width:26px;height:26px;mix-blend-mode:multiply;';
 }
 
 function populateAssistantDropdown(assistants) {
@@ -226,9 +228,9 @@ function _populateModelsTab() {
       if (!hasAsst && (curModel === model.fullId || curShort === model.id || curModel === model.id)) {
         mItem.classList.add('active');
       }
-      var iconSrc = _providerIconFile(model.fullId);
+      var iconSrc = _providerIconFile(model.fullId, provider);
       mItem.innerHTML =
-        '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="' + _providerIconImgStyle(model.fullId) + '" alt=""></div>' +
+        '<div class="si-icon" style="background:transparent;"><img src="' + iconSrc + '" style="' + _providerIconImgStyle(model.fullId, provider) + '" alt=""></div>' +
         '<div class="si-text">' +
           '<div class="si-name">' + escHtml(model.id || '') + '</div>' +
           '<div class="si-desc">' + escHtml(provider) + '</div>' +

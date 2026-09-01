@@ -76,7 +76,7 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
     ; #195: a mid-stream thread/branch switch must not paint A's stream into
     ; B's UI).
     if _shouldPostStreamToUI()
-        postWebMessage("streamModelName", displayName)
+        postWebMessage("streamModelName", { name: displayName, provider: providerInfo.providerKey, threadId: activeThreadId })
 
     SetTimer(_pollStreamTimer, 100)
     } catch Error as e {
@@ -376,7 +376,7 @@ _RepostActiveStreamForThread(threadId) {
     if !_shouldPostStreamToUI()
         return
     if stream.displayName != ""
-        postWebMessage("streamModelName", stream.displayName)
+        postWebMessage("streamModelName", { name: stream.displayName, provider: stream.providerKey, threadId: stream.threadId })
     reasoning := stream.reasoning
     content := stream.content
     if reasoning != ""

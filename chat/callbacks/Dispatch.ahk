@@ -86,6 +86,8 @@ OnWebMessageReceived(sender, args) {
                 _HandleOpenSystemMessagesFolder()
             case "refreshModelPricing":
                 _HandleRefreshModelPricing()
+            case "lookupOpenRouterModel":
+                _HandleOpenRouterModelLookup(parsed)
             case "reloadScript":
                 CustomMessages.notifyReloadMain(requestParams["mainScriptHiddenHwnd"])
             case "browseIcon":
@@ -273,6 +275,91 @@ _HandleRefreshModelPricing() {
     } catch Error as e {
         postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
     }
+}
+
+_HandleOpenRouterModelLookup(parsed) {
+    global providers
+    modelId := Trim(parsed.Get("modelId", ""))
+    reqId := parsed.Get("reqId", "")
+    result := { success: false, reqId: reqId, modelId: modelId, resolvedModelId: "", raw: "", error: "" }
+    try {
+        if modelId = ""
+            throw Error("Enter an OpenRouter model ID, for example openai/gpt-5.6-sol")
+        if !providers.Has("openrouter")
+            throw Error("OpenRouter provider is not configured")
+        apiKey := ProviderResolver._getApiKey(providers["openrouter"])
+        if apiKey = ""
+            throw Error("Configure OPENROUTER_API_KEY before looking up models")
+
+        isFullId := InStr(modelId, "/") > 0
+        if isFullId {
+            ; Single-model endpoint: user-controlled path is restricted before
+            ; it is appended to the fixed HTTPS OpenRouter URL.
+            if !RegExMatch(modelId, "^[~A-Za-z0-9._-]+/[A-Za-z0-9._:-]+$")
+                throw Error("OpenRouter model IDs must use provider/model format")
+            url := "https://openrouter.ai/api/v1/model/" modelId
+        } else {
+            ; A bare exact slug (for example gpt-5.6-sol) is convenient in the
+            ; settings table. Resolve it with OpenRouter's server-side q filter
+            ; instead of downloading the full catalog. Only URL-safe model slug
+            ; characters are accepted, so concatenation cannot alter the query.
+            if !RegExMatch(modelId, "^[~A-Za-z0-9._:-]+$")
+                throw Error("Invalid OpenRouter model slug")
+            url := "https://openrouter.ai/api/v1/models?q=" modelId
+        }
+
+        http := ComObject("WinHttp.WinHttpRequest.5.1")
+        http.SetTimeouts(5000, 5000, 10000, 10000)
+        http.Open("GET", url, false)
+        http.SetRequestHeader("Authorization", "Bearer " apiKey)
+        http.SetRequestHeader("Accept", "application/json")
+        http.Send()
+        status := http.Status
+        if status != 200 {
+            if status = 404
+                throw Error("OpenRouter model not found: " modelId)
+            throw Error("OpenRouter model lookup failed with HTTP " status)
+        }
+
+        response := jsongo.Parse(http.ResponseText)
+        if isFullId {
+            if !response.Has("data") || !IsObject(response["data"]) || !response["data"].Has("id")
+                throw Error("OpenRouter returned invalid model metadata")
+            ; Preserve a full alias exactly as entered. The lookup response may
+            ; contain its canonical target, but aliases should remain dynamic.
+            result.resolvedModelId := modelId
+            result.raw := http.ResponseText
+        } else {
+            if !response.Has("data") || !IsObject(response["data"])
+                throw Error("OpenRouter returned invalid model search results")
+            exactMatches := []
+            suggestion := ""
+            for candidate in response["data"] {
+                if !IsObject(candidate) || !candidate.Has("id")
+                    continue
+                candidateId := candidate["id"]
+                if suggestion = ""
+                    suggestion := candidateId
+                slashPos := InStr(candidateId, "/", , -1)
+                leaf := slashPos ? SubStr(candidateId, slashPos + 1) : candidateId
+                if StrLower(leaf) = StrLower(modelId)
+                    exactMatches.Push(candidate)
+            }
+            if exactMatches.Length = 0 {
+                hint := suggestion != "" ? " Try '" suggestion "'." : " Use the full provider/model ID."
+                throw Error("No exact OpenRouter model matches '" modelId "'." hint)
+            }
+            if exactMatches.Length > 1
+                throw Error("Multiple OpenRouter models use the slug '" modelId "'. Enter the full provider/model ID.")
+            resolved := exactMatches[1]
+            result.resolvedModelId := resolved["id"]
+            result.raw := jsongo.Stringify({ data: resolved })
+        }
+        result.success := true
+    } catch Error as e {
+        result.error := e.Message
+    }
+    postWebMessage("openRouterModelLookup", result)
 }
 
 _SystemMessageFilesIn(dirPath) {

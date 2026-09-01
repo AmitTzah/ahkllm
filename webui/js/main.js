@@ -234,6 +234,12 @@ function handleWebMessage(event) {
         }
         break;
 
+      case 'openRouterModelLookup':
+        if (window.SettingsModels && typeof window.SettingsModels.handleOpenRouterLookupResult === 'function') {
+          window.SettingsModels.handleOpenRouterLookupResult(data);
+        }
+        break;
+
       case 'iconFileSelected':
         if (window.SettingsIcons && typeof window.SettingsIcons.onFileSelected === 'function') {
           window.SettingsIcons.onFileSelected(data.field, data.path);

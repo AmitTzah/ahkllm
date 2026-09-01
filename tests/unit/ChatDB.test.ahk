@@ -53,6 +53,7 @@ class ChatDBTest {
             { t: "chat_threads", c: "advanced_toggles" },
             { t: "chat_threads", c: "folder_id" },
             { t: "chat_threads", c: "is_locked" },
+            { t: "messages", c: "provider" },
             { t: "messages", c: "prompt_tokens" },
             { t: "messages", c: "is_local_copy" },
             { t: "messages", c: "input_cost" },

@@ -30,8 +30,8 @@
     'updateChatMessage': { dir: 'ahk->web', data: 'object' },
     'streamContent': { dir: 'ahk->web', data: 'string' },
     'streamReasoning': { dir: 'ahk->web', data: 'object' },
-    'streamModelName': { dir: 'ahk->web', data: 'string' },
-    'streamDone': { dir: 'ahk->web', fields: ['model', 'displayName', 'dbMsg', 'userTokenCount', 'threadId'], required: ['model'] },
+    'streamModelName': { dir: 'ahk->web', fields: ['name', 'provider', 'threadId'], required: ['name'] },
+    'streamDone': { dir: 'ahk->web', fields: ['model', 'displayName', 'provider', 'dbMsg', 'userTokenCount', 'threadId'], required: ['model'] },
     'streamCancelled': { dir: 'ahk->web', data: 'any' },
     'setChatButtonsEnabled': { dir: 'ahk->web', data: 'boolean' },
     'updateTokenUsage': { dir: 'ahk->web', data: 'object' },
@@ -61,6 +61,7 @@
     'backupFolderSelected': { dir: 'ahk->web', fields: ['folder'], required: ['folder'] },
     'backupStatus': { dir: 'ahk->web', data: 'object' },
     'modelPricingRefresh': { dir: 'ahk->web', fields: ['success', 'models', 'error'], required: ['success'] },
+    'openRouterModelLookup': { dir: 'ahk->web', fields: ['success', 'reqId', 'modelId', 'resolvedModelId', 'raw', 'error'], required: ['success', 'reqId', 'modelId'] },
     'ack': { dir: 'ahk->web', fields: ['reqId', 'action', 'ok', 'error'], required: ['reqId', 'action', 'ok'] },
 
     // ---------- WebView -> AHK ----------
@@ -85,6 +86,7 @@
     'openSystemMessagesFolder': { dir: 'web->ahk', data: 'any' },
     'saveSettings': { dir: 'web->ahk', fields: ['data'], required: ['data'] },
     'refreshModelPricing': { dir: 'web->ahk', data: 'any' },
+    'lookupOpenRouterModel': { dir: 'web->ahk', fields: ['modelId'], required: ['modelId'] },
     'showApiLogs': { dir: 'web->ahk', data: 'any' },
     'debugLog': { dir: 'web->ahk', fields: ['message'], required: ['message'] },
     'webViewReady': { dir: 'web->ahk', data: 'any' },

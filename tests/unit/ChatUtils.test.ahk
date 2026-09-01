@@ -206,6 +206,19 @@ class ChatUtilsTest {
             throw Error("Expected createdAt='2026-07-12 15:30:00', got '" result[1].createdAt "'")
     }
 
+    StructuredMessages_AssistantIncludesProvider() {
+        msg := {
+            role: "assistant", content: "ok", id: "msg-provider",
+            token_count: 1, thinking_tokens: 0, cached_tokens: 0,
+            response_time_ms: 0, ttft_ms: 0,
+            sibling_group: "", sibling_index: 0,
+            reasoning: "", model: "gpt-5.6-sol", provider: "openrouter"
+        }
+        result := buildStructuredMessagesFromPath([msg])
+        if !result[1].HasOwnProp("provider") || result[1].provider != "openrouter"
+            throw Error("Expected assistant provider=openrouter in structured message payload")
+    }
+
     StructuredMessages_CreatedAtEmptyWhenMissing() {
         msg := {
             role: "user", content: "test", id: "msg-2",

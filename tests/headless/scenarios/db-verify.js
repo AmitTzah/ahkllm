@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 // scenarios/db-verify.js — Thorough DB verification via headless experiments + direct state reads.
 const fs=require("node:fs");
 const path=require("node:path");
@@ -242,7 +242,10 @@ scenarios.push({
   mode: null,
   noApp: true,
   async body() {
-    const text = runProbeCheck("fault-injection");
+    // Fault injection performs several transaction-failure/reopen cycles. The
+    // full E2E suite runs workers in parallel, so give this heavier probe a
+    // larger process budget than the generic 25-second probe default.
+    const text = runProbeCheck("fault-injection", [], 60000);
     const allLines = text.split(/\r?\n/);
     const lines = allLines.filter((line) => line.startsWith("FAULT_AUDIT"));
     if (lines.length !== 5) throw new Error("fault audit missing stages: " + text);

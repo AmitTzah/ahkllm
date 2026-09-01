@@ -54,9 +54,10 @@ function formatRelativeDate(dateStr) {
 }
 
 // Provider-specific colored badge for chat items
-function _providerIconHtml(model) {
+function _providerIconHtml(model, provider) {
+  if (window.ProviderIcons) return window.ProviderIcons.html(model, provider, 20);
   var iconFile = '../icons/openrouter.ico';
-  var iconStyle = 'width:20px;height:20px;flex-shrink:0;mix-blend-mode:multiply;';
+  var iconStyle = 'width:24px;height:24px;flex-shrink:0;mix-blend-mode:multiply;';
   if (model) {
     var m = model.toLowerCase();
     if (m.indexOf('deepseek') >= 0) iconFile = '../icons/deepseek.ico';
@@ -131,7 +132,7 @@ function createChatItem(t) {
   var dateStr = formatRelativeDate(t.updated_at || t.created_at);
 
   item.innerHTML =
-    '<div class="chat-icon">' + _providerIconHtml(t.model) + '</div>' +
+    '<div class="chat-icon">' + _providerIconHtml(t.model, t.provider) + '</div>' +
     '<div class="chat-meta">' +
       '<div class="chat-name">' + escHtml(t.title || 'New Chat') +
         (t.is_locked ? ' <i data-lucide="lock" style="width:12px;height:12px;vertical-align:-1px;"></i>' : '') +

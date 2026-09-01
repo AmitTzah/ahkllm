@@ -38,7 +38,7 @@ _handleStreamComplete() {
             }
         }
 
-        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount, threadId: streamThreadId })
+        postWebMessage("streamDone", { model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"], displayName: requestParams.Has("_streamDisplayName") ? requestParams["_streamDisplayName"] : "", provider: requestParams.Has("_streamProviderKey") ? requestParams["_streamProviderKey"] : "", dbMsg: dbMsgData, userTokenCount: userTokenCount, threadId: streamThreadId })
 
         postThreadStats(streamThreadId)
         ; Bug #232: the persisted assistant message changes the sidebar's
@@ -116,13 +116,13 @@ saveStreamResponse(content, modelName, &chatHistoryJSONRequest, requestStartTime
     if streamThreadId {
         responseTimeMs := A_TickCount - requestStartTime
         ttftMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : 0
-        _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs, ttftMs, streamThreadId)
+        _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs, ttftMs, streamThreadId, providerKey)
     }
 
     _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime, streamThreadId)
 }
 
-_persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0, streamThreadId := "") {
+_persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0, ttftMs := 0, streamThreadId := "", providerKey := "") {
     if !streamThreadId
         streamThreadId := activeThreadId
     ; Bug #147: a retry of a ROOT assistant (no parent) must insert the new
@@ -171,7 +171,7 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         orphanCosts := CostCalculator.ComputeTokenCosts(modelName, { promptTokens: promptTokens, completionTokens: completionTokens, cachedTokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0 })
         ChatDB.ChatUsage_Upsert({
             date: FormatTime(, "yyyy-MM-dd"), model: modelName,
-            provider: ModelParser.Split(modelName).provider,
+            provider: providerKey != "" ? providerKey : ModelParser.Split(modelName).provider,
             prompt_tokens: promptTokens, completion_tokens: completionTokens,
             thinking_tokens: thinkingTokens, cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0,
             input_cost: orphanCosts.inputCost != "" ? orphanCosts.inputCost : 0,
@@ -184,7 +184,7 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
     }
 
     ChatDB.Msg_Insert({
-        thread_id: streamThreadId, role: "assistant", content: content, model: modelName,
+        thread_id: streamThreadId, role: "assistant", content: content, model: modelName, provider: providerKey,
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
         reasoning: reasoning,
         prompt_tokens: promptTokens,

@@ -138,6 +138,33 @@ describe('OpenRouter synthetic model metadata', () => {
   });
 });
 
+describe('SettingsModels.parseOpenRouterModelResponse', () => {
+  it('maps a single OpenRouter model response into AhkLLM metadata', () => {
+    const { SM } = loadModule();
+    const raw = JSON.stringify({ data: {
+      id: 'anthropic/claude-sonnet-test',
+      name: 'Claude Sonnet Test',
+      context_length: 200000,
+      pricing: { prompt: '0.000003', completion: '0.000015', input_cache_read: '0.0000003' },
+      architecture: { input_modalities: ['text', 'image'] },
+      supported_parameters: ['tools', 'reasoning'],
+      reasoning: { supported_efforts: ['low', 'medium', 'high'], mandatory: false }
+    }});
+    const m = SM.parseOpenRouterModelResponse(raw);
+    assert.strictEqual(m.provider, 'openrouter');
+    assert.strictEqual(m.displayName, 'Claude Sonnet Test');
+    assert.strictEqual(m.input, 3);
+    assert.strictEqual(m.cachedInput, 0.3);
+    assert.strictEqual(m.output, 15);
+    assert.strictEqual(m.context, 200000);
+    assert.strictEqual(m.vision, true);
+    assert.strictEqual(m.reasoning, true);
+    assert.strictEqual(JSON.stringify(m.thinkingLevelMap), JSON.stringify({ low: 'low', medium: 'medium', high: 'high' }));
+    assert.strictEqual(m.thinkingOff, 'none');
+    assert.strictEqual(m.compat.maxTokensField, 'max_tokens');
+  });
+});
+
 describe('SettingsModels.filterAvailableModels', () => {
   it('returns all models for an empty or whitespace query', () => {
     const { SM } = loadModule();
@@ -208,6 +235,14 @@ describe('added-state id normalization', () => {
     assert.deepStrictEqual([...SM.rightPanelIds()], ['google/gemini-3-flash-preview', 'openai/gpt-5']);
   });
 
+  it('rightPanelIds preserves a nested OpenRouter upstream slug', () => {
+    const tbody = makeRightTbody([
+      { displayId: 'anthropic/claude-sonnet-4', fullId: 'openrouter/anthropic/claude-sonnet-4', provider: 'openrouter' }
+    ]);
+    const { SM } = loadModule({ els: { refreshRightTbody: tbody } });
+    assert.deepStrictEqual([...SM.rightPanelIds()], ['openrouter/anthropic/claude-sonnet-4']);
+  });
+
   it('addFromRefresh refuses a model already present with a full id', () => {
     const tbody = makeRightTbody([
       { displayId: 'gemini-3-flash-preview', fullId: 'google/gemini-3-flash-preview', provider: 'google' }
@@ -268,6 +303,30 @@ describe('ensureFullId provider precedence (bug #92)', () => {
     const models = SM.collectCurrentModels();
     assert.strictEqual(models.length, 1);
     assert.strictEqual(models[0].id, 'google/gpt-4');
+  });
+
+  it('preserves the full upstream OpenRouter provider/model slug', () => {
+    const row = makeMainRow('anthropic/claude-sonnet-4', 'openrouter');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models[0].id, 'openrouter/anthropic/claude-sonnet-4');
+    assert.strictEqual(models[0].displayId, 'anthropic/claude-sonnet-4');
+  });
+
+  it('keeps the OpenRouter-owned auto router as a nested slug', () => {
+    const row = makeMainRow('openrouter/auto', 'openrouter');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models[0].id, 'openrouter/openrouter/auto');
+    assert.strictEqual(models[0].displayId, 'openrouter/auto');
+  });
+
+  it('retains the built-in openrouter/free id for new installs', () => {
+    const row = makeMainRow('free', 'openrouter');
+    const { SM } = loadModule({ modelsRows: [row] });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models[0].id, 'openrouter/free');
+    assert.strictEqual(models[0].displayId, 'free');
   });
 
   it('keeps the id as-is when no provider is selected', () => {
@@ -499,5 +558,42 @@ describe('Models price field "$" paste and blank blur (bug #164)', () => {
     const saved = mod.save();
     assert.strictEqual(saved.models['deepseek/deepseek-v4-flash'].input, '',
         'a blank blur must keep the field blank, not save 0 (bug #164)');
+  });
+});
+
+
+describe('OpenRouter lookup flow', () => {
+  it('resolves bare slugs with a bounded server-side query instead of fetching the catalog', () => {
+    const dispatch = fs.readFileSync(path.resolve(__dirname, '..', '..', 'chat', 'callbacks', 'Dispatch.ahk'), 'utf8');
+    assert.ok(dispatch.includes('https://openrouter.ai/api/v1/models?q='),
+      'bare model slugs should use OpenRouter server-side q filtering');
+    assert.ok(dispatch.includes('exactMatches'),
+      'a bare slug must resolve only an exact leaf match');
+  });
+
+  it('uses the resolved provider/model id returned for a bare slug', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf8');
+    assert.ok(src.includes('data.resolvedModelId || data.modelId'),
+      'lookup result should replace a bare slug with the resolved OpenRouter provider/model id');
+  });
+
+  it('keeps the built-in free router lookup-free and shows inline lookup status', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf8');
+    assert.ok(src.includes("slug === 'free' || slug === 'openrouter/free'"));
+    assert.ok(src.includes('settings-model-lookup-status'));
+    assert.ok(src.includes('settings-model-id-control'));
+    assert.ok(!src.includes('actionCell.insertBefore(lookupBtn, deleteBtn)'),
+      'lookup belongs with the Model ID, not in the narrow delete-actions cell');
+  });
+});
+
+
+describe('OpenRouter model lookup guidance', () => {
+  it('documents bare model slugs as supported input', () => {
+    const modelsSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf8');
+    const indexSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'index.html'), 'utf8');
+    assert.ok(modelsSrc.includes('model slug or provider/model'));
+    assert.ok(modelsSrc.includes('exact OpenRouter model slug or provider/model ID'));
+    assert.ok(indexSrc.includes('enter an exact model slug'));
   });
 });

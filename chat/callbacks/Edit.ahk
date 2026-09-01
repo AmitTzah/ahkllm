@@ -32,6 +32,7 @@ handleEdit(params, *) {
         siblingIndex := 0
         role := "assistant"
         model := ""
+        provider := ""
         tokenCount := 0, thinkingTokens := 0
         reasoning := ""
         found := false
@@ -41,6 +42,7 @@ handleEdit(params, *) {
                 parentId := msg.parent_id
                 role := msg.role
                 model := msg.model
+                provider := msg.HasProp("provider") && msg.provider ? msg.provider : ""
                 if msg.sibling_group {
                     siblingGroup := msg.sibling_group
                 } else {
@@ -74,7 +76,7 @@ handleEdit(params, *) {
         ; is deliberately not copied. The new text gets an estimate above and
         ; active_path_tokens is recomputed from the current branch.
         newMsgId := ChatDB.Msg_Insert({
-            thread_id: activeThreadId, role: role, content: content, model: model,
+            thread_id: activeThreadId, role: role, content: content, model: model, provider: provider,
             parent_id: parentId, sibling_group: siblingGroup, sibling_index: siblingIndex,
             token_count: tokenCount,
             thinking_tokens: thinkingTokens,

@@ -566,3 +566,26 @@
   100% { background-color: transparent; }
 }
 .refresh-row-added { animation: refreshRowFlash 1.2s ease-out; }
+
+
+/* Models table: metadata lookup belongs with the Model ID it resolves. */
+.settings-model-id-cell { min-width: 300px; }
+.settings-model-id-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.kv-table td .settings-model-id-input {
+  flex: 1 1 auto; width: auto; min-width: 0; box-sizing: border-box;
+}
+.settings-model-id-control .lookup-openrouter-model {
+  flex: 0 0 auto; min-width: 62px; white-space: nowrap;
+  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-main));
+  background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
+}
+.settings-model-id-control .lookup-openrouter-model:hover { background: var(--accent-light); }
+.settings-model-id-control .lookup-openrouter-model:disabled { opacity: 0.65; cursor: default; }
+.settings-model-lookup-status {
+  display: none; margin-top: 4px; max-width: 360px; font-size: 10px; line-height: 1.35;
+  color: var(--text-tertiary); white-space: normal;
+}
+.settings-model-lookup-status.is-visible { display: block; }
+.settings-model-lookup-status.is-error { color: var(--danger); }
+.settings-model-lookup-status.is-success { color: var(--text-secondary); }

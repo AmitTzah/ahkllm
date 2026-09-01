@@ -13,10 +13,10 @@ class ProviderResolver {
     }
 
     static _buildResult(providerKey, modelName, p) {
-        ; OpenRouter's built-in free router is itself addressed by the full
-        ; model id "openrouter/free". Other built-in providers receive the
-        ; provider-stripped model name (for example "deepseek-v4-flash").
-        apiModelName := providerKey = "openrouter" ? providerKey "/" modelName : modelName
+        ; OpenRouter uses an outer AhkLLM transport prefix plus an upstream slug.
+        ; Nested models send modelName directly; the legacy built-in free router
+        ; remains addressed as "openrouter/free" for backward compatibility.
+        apiModelName := providerKey = "openrouter" && modelName = "free" ? "openrouter/free" : modelName
         resolvedKey := ProviderResolver._getApiKey(p)
         debugLog(ProviderResolver._AuthDiagnostic(providerKey, apiModelName, p, resolvedKey), "ProviderResolver")
         return {

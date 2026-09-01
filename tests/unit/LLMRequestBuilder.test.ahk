@@ -507,6 +507,23 @@ class LLMRequestBuilderTest {
         }
     }
 
+    ResolveProvider_OpenRouterNestedModelId() {
+        EnvSet("OPENROUTER_API_KEY", "test-openrouter-key")
+        try {
+            info := ProviderResolver.Resolve("openrouter/anthropic/claude-sonnet-4")
+            if info.providerKey != "openrouter"
+                throw Error("Expected nested OpenRouter model to use the OpenRouter provider")
+            if info.modelName != "anthropic/claude-sonnet-4"
+                throw Error("Expected upstream OpenRouter slug without transport prefix, got '" info.modelName "'")
+
+            routerInfo := ProviderResolver.Resolve("openrouter/openrouter/auto")
+            if routerInfo.modelName != "openrouter/auto"
+                throw Error("Expected OpenRouter auto router slug 'openrouter/auto', got '" routerInfo.modelName "'")
+        } finally {
+            EnvSet("OPENROUTER_API_KEY", "")
+        }
+    }
+
     ProviderResolver_AuthDiagnostic_IsRedacted() {
         p := { displayName: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", authEnvVar: "OPENROUTER_API_KEY", authMode: "env", apiKey: "" }
         secretSentinel := "diagnostic-secret-value"

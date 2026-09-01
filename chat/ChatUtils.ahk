@@ -178,8 +178,10 @@ buildStructuredMessagesFromPath(path, threadId := "") {
             responseTimeMs: msg.HasProp("response_time_ms") ? msg.response_time_ms : 0,
             ttftMs: msg.HasProp("ttft_ms") ? msg.ttft_ms : 0,
             createdAt: msg.HasProp("created_at") ? msg.created_at : "" }
-        if msg.role = "assistant" && msg.model
+        if msg.role = "assistant" && msg.model {
             msgObj.model := msg.model
+            msgObj.provider := msg.HasProp("provider") && msg.provider ? msg.provider : ""
+        }
         if msg.sibling_group {
             siblings := ChatDB.Msg_GetSiblings(msg.id)
             ; Bug #125: the branch label is the 1-based POSITION of this message

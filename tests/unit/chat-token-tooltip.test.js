@@ -71,3 +71,25 @@ describe('closeAllTokenTooltips', () => {
         assert.doesNotThrow(() => ctx.closeAllTokenTooltips());
     });
 });
+
+
+describe('_resolveTokenTooltipMessage', () => {
+    it('prefers stable message id when a branch edit shifts array indices', () => {
+        const ctx = loadModule();
+        ctx.chatMessages = [
+            { id: 'assistant-before', role: 'assistant', tokenCount: 9 },
+            { id: 'branch-user', role: 'user', tokenCount: 0 }
+        ];
+        const renderedMsg = { id: 'branch-user', role: 'user', tokenCount: 7 };
+        const resolved = ctx._resolveTokenTooltipMessage(renderedMsg, 0);
+        assert.strictEqual(resolved.id, 'branch-user');
+        assert.strictEqual(resolved.tokenCount, 0);
+    });
+
+    it('falls back to the captured index for legacy messages without ids', () => {
+        const ctx = loadModule();
+        ctx.chatMessages = [{ role: 'user', tokenCount: 4 }];
+        const resolved = ctx._resolveTokenTooltipMessage({ role: 'user', tokenCount: 7 }, 0);
+        assert.strictEqual(resolved.tokenCount, 4);
+    });
+});

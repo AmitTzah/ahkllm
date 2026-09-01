@@ -329,7 +329,7 @@ describe('assistant content single-newline rendering (bug #222)', () => {
         const src = fs.readFileSync(path.join(chatDir, 'chat-render.js'), 'utf-8');
         const asstIdx = src.indexOf("role === 'assistant'");
         assert.ok(asstIdx >= 0, 'assistant branch not found');
-        const branch = src.slice(asstIdx, asstIdx + 500);
+        const branch = src.slice(asstIdx, asstIdx + 800);
         assert.ok(branch.indexOf('_prepUserContent(msg.content)') >= 0,
             'assistant content must be normalized before md.render so single-newline paragraphs stay visible (bug #222)');
     });
@@ -695,4 +695,25 @@ describe('updateChatMessages composer state (bug #214)', () => {
         ctx.updateChatMessages([{ role: 'user', content: 'q', id: 'u1' }]);
         assert.strictEqual(ctx._lastButtonsEnabled, true);
     });
+});
+
+
+describe('assistant provider icon', () => {
+  it('renders the persisted transport provider rather than inferring from model name', () => {
+    const ctx = loadRenderModule();
+    let seen = null;
+    ctx.window.ProviderIcons = {
+      html(model, provider, size, className) {
+        seen = { model, provider, size, className };
+        return '<img class="msg-provider-icon" src="../icons/openrouter.ico">';
+      }
+    };
+    ctx.createMessageBubble({
+      role: 'assistant', content: 'ok', id: 'a-provider',
+      model: 'claude-sonnet-4', provider: 'openrouter', createdAt: '2026-01-01T13:01:00'
+    }, 0);
+    assert.deepStrictEqual(seen, {
+      model: 'claude-sonnet-4', provider: 'openrouter', size: 18, className: 'msg-provider-icon'
+    });
+  });
 });

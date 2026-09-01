@@ -7,6 +7,7 @@ class MessageRepo {
     static Insert(msgObj) {
         id := ChatDB._UUID()
         model := msgObj.HasProp("model") && msgObj.model ? msgObj.model : ""
+        provider := msgObj.HasProp("provider") && msgObj.provider ? msgObj.provider : ""
         parentId := msgObj.HasProp("parent_id") && msgObj.parent_id ? msgObj.parent_id : ""
         siblingGroup := msgObj.HasProp("sibling_group") && msgObj.sibling_group ? msgObj.sibling_group : ""
         siblingIdx := msgObj.HasProp("sibling_index") ? msgObj.sibling_index : 0
@@ -70,7 +71,7 @@ class MessageRepo {
                 totalCost := costs.totalCost != "" ? costs.totalCost : 0
             }
         }
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0, apiOutputTokens, inputCost, cachedInputCost, outputCost, totalCost)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, provider, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", id, msgObj.thread_id, msgObj.role, msgObj.content, model, provider, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, siblingIdx, reasoning, tc, promptTotal, tht, ckt, lat, ttft, activePathTokens, isLocalCopy ? 1 : 0, apiOutputTokens, inputCost, cachedInputCost, outputCost, totalCost)
 
         ; Sync FTS5 index
         ChatDB.FTS_Sync(id, msgObj.content)
@@ -93,13 +94,13 @@ class MessageRepo {
 
         ; Track chat usage for dashboard (daily aggregation)
         if !isLocalCopy && msgObj.role = "assistant" && msgObj.HasProp("model") && msgObj.model {
-            provider := ModelParser.Split(msgObj.model).provider
-            if provider = "" {
+            usageProvider := provider != "" ? provider : ModelParser.Split(msgObj.model).provider
+            if usageProvider = "" {
                 ; Fallback: look up provider from UserConfig models map
                 for fullKey, m in models {
                     shortKey := ModelParser.StripProvider(fullKey)
                     if shortKey = msgObj.model || ModelParser.StripVersion(shortKey) = ModelParser.StripVersion(msgObj.model) {
-                        provider := ModelParser.Split(fullKey).provider
+                        usageProvider := ModelParser.Split(fullKey).provider
                         break
                     }
                 }
@@ -107,7 +108,7 @@ class MessageRepo {
             ChatDB.ChatUsage_Upsert({
                 date: FormatTime(, "yyyy-MM-dd"),
                 model: msgObj.model,
-                provider: provider,
+                provider: usageProvider,
                 prompt_tokens: promptTotal,
                 completion_tokens: tc + tht,
                 thinking_tokens: tht,

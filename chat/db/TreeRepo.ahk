@@ -26,13 +26,14 @@ class TreeRepo {
 
         ; Hardening item 1: threadId is a bound parameter - crafted ids can
         ; never alter the SQL text.
-        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
+        allTable := ChatDB.db.Query("SELECT id, thread_id, role, content, model, provider, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost, created_at FROM messages WHERE thread_id=?;", threadId)
 
         msgMap := Map()
         for row in allTable.rows {
             msgMap[row.id] := {
                 id: row.id, thread_id: row.thread_id, role: row.role,
                 content: row.content, model: row.model ? row.model : "",
+                provider: row.Has("provider") && row.provider ? row.provider : "",
                 parent_id: row.parent_id ? row.parent_id : "",
                 sibling_group: row.sibling_group ? row.sibling_group : "",
                 sibling_index: row.sibling_index,
@@ -303,6 +304,7 @@ class TreeRepo {
     ; Insert a single message row into the fork thread.
     static _InsertForkMessage(newId, threadId, msg, parentId, siblingGroup) {
         model := msg.model ? msg.model : ""
+        provider := msg.HasProp("provider") && msg.provider ? msg.provider : ""
         reasoning := msg.HasProp("reasoning") && msg.reasoning ? msg.reasoning : ""
 
         tc := msg.HasProp("token_count") ? msg.token_count : 0
@@ -323,7 +325,7 @@ class TreeRepo {
 
         isLocal := msg.HasProp("is_local_copy") ? Integer(msg.is_local_copy) : 0
         apiOutput := msg.HasOwnProp("api_output_tokens") ? msg.api_output_tokens : (!isLocal && msg.role = "assistant" ? tc : 0)
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, isLocal, apiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, provider, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, threadId, msg.role, msg.content, model, provider, parentId ? parentId : SQLite.Null, siblingGroup ? siblingGroup : SQLite.Null, msg.sibling_index, reasoning, tc, spt, tht, ckt, lat, ttft, apt, isLocal, apiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
     }
 
     ; Extract the per-message cost snapshot (bug #153 columns) from a source
@@ -402,7 +404,7 @@ class TreeRepo {
         ; priced at the original call-time prices.
         costs := TreeRepo._MessageCostSnapshot(row)
 
-        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt, sLocal, sApiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
+        ChatDB.db.Query("INSERT INTO messages (id, thread_id, role, content, model, provider, parent_id, sibling_group, sibling_index, reasoning, token_count, prompt_tokens, thinking_tokens, cached_tokens, response_time_ms, ttft_ms, active_path_tokens, is_local_copy, api_output_tokens, input_cost, cached_input_cost, output_cost, total_cost) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", newId, newThreadId, row.role, row.content, model, row.Has("provider") && row.provider ? row.provider : "", mappedParent ? mappedParent : SQLite.Null, newSg ? newSg : SQLite.Null, row.sibling_index, reasoning, sTc, sPt, sTht, sCkt, sLat, sTtft, sApt, sLocal, sApiOutput, costs.inputCost, costs.cachedInputCost, costs.outputCost, costs.totalCost)
         AttachmentRepo.CopyForMessage(row.id, newId)
     }
 

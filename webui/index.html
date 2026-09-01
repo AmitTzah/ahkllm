@@ -289,7 +289,7 @@
       </div></div>
       <div class="section-card" id="sec-models" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="cpu"></i> Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn"><i class="settings-icon-xs" data-lucide="refresh-cw"></i> Fetch Latest Models</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
         <table class="kv-table"><thead><tr><th>Model ID</th><th>Provider</th><th>Input</th><th>Cached</th><th>Output</th><th>Context</th><th>Vision</th><th>Reasoning</th><th></th></tr></thead><tbody id="modelsTableBody"></tbody></table>
-        <div class="settings-field-hint-top">Prices in $/1M tokens. Cached input defaults to 10% of input if blank. Checkboxes: enable vision / reasoning support.</div>
+        <div class="settings-field-hint-top">Prices in $/1M tokens. Cached input defaults to 10% of input if blank. For OpenRouter, enter an exact model slug (for example gpt-5.6-sol) or a full provider/model ID, then use Lookup to fetch only matching metadata. Use the full ID when the slug is ambiguous. Checkboxes: enable vision / reasoning support.</div>
       </div></div>
       <div class="section-card" id="sec-assistants" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="bot"></i> Assistants — Chat Profiles</div><div class="section-card-body">
         <div class="settings-field-row-mb"><button class="btn-sm" id="addAssistantBtn">+ New Assistant</button><span class="settings-hint-12" id="assistantCount">0 assistants defined — click + to add inline</span></div>
@@ -613,6 +613,7 @@
 <script src="js/vendor/texmath.min.js"></script>
 <script src="js/vendor/pdf.min.js"></script>
 <script src="js/vendor/officeparser.iife.js"></script>
+<script src="js/chat/provider-icons.js"></script>
 <script src="js/chat/chat-core.js"></script>
 <script src="js/vendor/chart.umd.min.js"></script>
 <script src="js/usage-dashboard.js"></script>
