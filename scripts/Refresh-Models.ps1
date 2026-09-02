@@ -9,7 +9,11 @@
 #
 # See README.md in this directory for the full pipeline explanation.
 
-param([switch]$NoPause)
+param(
+    [switch]$NoPause,
+    [string]$ProviderCatalogs = "",
+    [switch]$NoUpdateDefaults
+)
 
 try {
     $ErrorActionPreference = "Stop"
@@ -35,7 +39,24 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
         foreach ($line in (Get-Content $path)) {
             if ($line -match '^\s*providers\s*:=\s*Map\(') { $inBlock = $true; continue }
             if ($inBlock -and $line -match '^\s*\)') { break }
-            if ($inBlock -and $line -match '^\s*"(\w+)"') { $result += $matches[1] }
+            if ($inBlock -and $line -match '^\s*"([a-z0-9._-]+)"') {
+                $key = $matches[1]
+                $result += [pscustomobject]@{ Provider = $key; Catalog = $key }
+            }
+        }
+        return $result
+    }
+
+    function Parse-ProviderCatalogs($spec) {
+        $result = @()
+        foreach ($entry in ($spec -split ';')) {
+            if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+            $parts = $entry.Split('=', 2)
+            $provider = $parts[0].Trim()
+            $catalog = if ($parts.Count -gt 1 -and -not [string]::IsNullOrWhiteSpace($parts[1])) { $parts[1].Trim() } else { $provider }
+            if ($provider -notmatch '^[a-z0-9][a-z0-9._-]*$') { throw "Invalid provider ID in ProviderCatalogs: $provider" }
+            if ($catalog -notmatch '^[a-z0-9][a-z0-9._-]*$') { throw "Invalid models.dev provider key in ProviderCatalogs: $catalog" }
+            $result += [pscustomobject]@{ Provider = $provider; Catalog = $catalog }
         }
         return $result
     }
@@ -110,9 +131,21 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
     Write-Color "Refresh-Models.ps1 -- Model metadata pipeline" "Cyan"
     Write-Host ""
 
-    $targetProviders = Get-ProvidersFromSettings $defaultSettingsPath
-    if ($targetProviders.Count -eq 0) { $targetProviders = @("openai","google","deepseek"); Write-Color "  No providers found, using defaults" "Yellow" }
-    Write-Color "  Providers: $($targetProviders -join ', ')" "Cyan"
+    $targetProviders = if ([string]::IsNullOrWhiteSpace($ProviderCatalogs)) {
+        Get-ProvidersFromSettings $defaultSettingsPath
+    } else {
+        Parse-ProviderCatalogs $ProviderCatalogs
+    }
+    if ($targetProviders.Count -eq 0) {
+        $targetProviders = @(
+            [pscustomobject]@{ Provider = "openai"; Catalog = "openai" },
+            [pscustomobject]@{ Provider = "google"; Catalog = "google" },
+            [pscustomobject]@{ Provider = "deepseek"; Catalog = "deepseek" }
+        )
+        Write-Color "  No providers found, using defaults" "Yellow"
+    }
+    $providerSummary = ($targetProviders | ForEach-Object { if ($_.Provider -eq $_.Catalog) { $_.Provider } else { "$($_.Provider)->$($_.Catalog)" } }) -join ', '
+    Write-Color "  Providers: $providerSummary" "Cyan"
 
     # Load corrections
     $correctionsMap = Load-Corrections $correctionsFile
@@ -128,37 +161,39 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
 
     # Pre-scan: build fallback map per model-family prefix within each provider
     $familyFallback = @{}
-    foreach ($p in $targetProviders) {
-        $pd = $response.$p
+    foreach ($target in $targetProviders) {
+        $catalog = $target.Catalog
+        $pd = $response.$catalog
         if ($null -eq $pd -or $null -eq $pd.models) { continue }
         foreach ($mid in $pd.models.PSObject.Properties.Name) {
             $family = $mid -replace '^(.+?)(-\d+)?(-.*)?$', '$1'
             $ro = SafeGet $pd.models.$mid "reasoning_options"
             if ($ro) {
-                foreach ($o in $ro) { if ($o.type -eq "effort") { $familyFallback["$p|$family"] = $o.values; break } }
+                foreach ($o in $ro) { if ($o.type -eq "effort") { $familyFallback["$catalog|$family"] = $o.values; break } }
             }
         }
     }
 
-    foreach ($p in $targetProviders) {
-        $pd = $response.$p
+    foreach ($target in $targetProviders) {
+        $catalog = $target.Catalog
+        $pd = $response.$catalog
         # openrouter/free is a router pseudo-model, not a stable models.dev
-        # catalog entry. It is emitted below whenever OpenRouter is a built-in
-        # provider so a metadata refresh cannot remove the free router option.
+        $p = $target.Provider
+        # catalog entry. OpenRouter is deliberately lookup-only because its
+        # catalog is huge and fast-changing; the built-in transport keeps only
+        # the stable synthetic free router.
         $modelNames = @()
-        if ($p -eq "openrouter") {
-            # Do not import the provider's large, fast-changing model catalog:
-            # this built-in option is specifically the stable free router.
-            Write-Color "  $p : adding built-in router" "Yellow"
+        if ($catalog -eq "openrouter") {
+            Write-Color "  $p : OpenRouter catalog is lookup-only" "Yellow"
         } elseif ($null -eq $pd -or $null -eq $pd.models) {
-            Write-Color "  $p : NOT FOUND" "Yellow"
+            Write-Color "  $p : models.dev catalog '$catalog' NOT FOUND" "Yellow"
             continue
         } else {
             $modelNames = $pd.models.PSObject.Properties.Name
         }
         $count = 0
         $dn = if ($p -eq "google") { "Google Gemini" } elseif ($p -eq "openai") { "OpenAI" } elseif ($p -eq "deepseek") { "DeepSeek" } elseif ($p -eq "openrouter") { "OpenRouter" } else { $p }
-        $lines.Add("    ; -- $dn --")
+        $lines.Add("    ; -- $dn (models.dev: $catalog) --")
 
         foreach ($mid in ($modelNames | Sort-Object)) {
             $m = $pd.models.$mid
@@ -194,14 +229,14 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
             $hr = if ($m.reasoning -eq $true) { "true" } else { "false" }
             $hv = "false"; $mod = SafeGet $m "modalities.input"; if ($mod -and $mod -contains "image") { $hv = "true" }
 
-            $tf = ThinkingFormat $p
+            $tf = ThinkingFormat $catalog
             $ro = SafeGet $m "reasoning_options"
-            $fb = if ($m.reasoning -eq $true) { Get-FallbackEffort $p $mid $familyFallback } else { $null }
-            $evals = Get-EffortValues $ro $mid $p $correctionsMap $familyFallback
+            $fb = if ($m.reasoning -eq $true) { Get-FallbackEffort $catalog $mid $familyFallback } else { $null }
+            $evals = Get-EffortValues $ro $mid $catalog $correctionsMap $familyFallback
             if ($null -eq $evals -or $evals.Count -eq 0) { $evals = $fb }
-            $tlm = ThinkingLevelMap $evals $p
-            $to = ThinkingOff $evals $p
-            $mtf = MaxTokensField $p
+            $tlm = ThinkingLevelMap $evals $catalog
+            $to = ThinkingOff $evals $catalog
+            $mtf = MaxTokensField $catalog
             $sre = if ($evals -and $evals.Count -gt 0) { "true" } else { "false" }
 
             $fid = "$p/$mid"
@@ -214,7 +249,7 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
             $lines.Add('    },')
             $count++; $totalModels++
         }
-        if ($p -eq "openrouter") {
+        if ($p -eq "openrouter" -and $catalog -eq "openrouter") {
             $lines.Add('    ; Built-in router pseudo-model; retained by Refresh-Models.ps1 because it')
             $lines.Add('    ; is not a stable models.dev catalog model. OpenRouter Free is non-FIM.')
             $lines.Add('    "openrouter/free", {')
@@ -226,7 +261,7 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
             $lines.Add('    },')
             $count++; $totalModels++
         }
-        Write-Color "  $p : $count models" "Green"
+        Write-Color "  $p (models.dev:$catalog) : $count models" "Green"
     }
 
     # Write backup
@@ -240,6 +275,12 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
 
 "@
     ($header + "models := Map(" + ($lines -join "`r`n") + "`r`n)") | Out-File $backupFile -Encoding utf8
+
+    if ($NoUpdateDefaults) {
+        Write-Host ""
+        Write-Color "SUCCESS: catalog metadata written with $totalModels models (defaults unchanged)." "Green"
+        return
+    }
 
     # Write the generated model metadata file (single source of truth).
 $defaultModelsPath = Join-Path $scriptDir "..\default-settings\DefaultModels.ahk"

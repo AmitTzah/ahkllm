@@ -1,12 +1,13 @@
 // providers.js — Providers settings section
 (function() {
   var sectionName = 'providers';
-  var containerId = 'sec-providers';
   var S = window.SettingsShared;
+  var BUILTIN_PROVIDER_IDS = ['deepseek', 'openai', 'openrouter', 'google'];
 
   function load(data) {
     if (!data || !data.providers) return;
     renderCards(data.providers);
+    syncModelsProviderOptions();
   }
 
   var PALETTE = [
@@ -21,41 +22,127 @@
     return (parts[0].charAt(0) + (parts[1] ? parts[1].charAt(0) : '')).toUpperCase();
   }
 
-  // --- Shared card HTML template ---
+  function slugifyProviderId(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[-._]+|[-._]+$/g, '');
+  }
 
-  function providerCardHTML(p, key, palIdx) {
+  function isCustomProvider(key, p) {
+    if (p && p.custom === true) return true;
+    return BUILTIN_PROVIDER_IDS.indexOf(key) < 0;
+  }
+
+  function _field(card, name) {
+    return card && card.querySelector ? card.querySelector('[data-field="' + name + '"]') : null;
+  }
+
+  function providerIdForCard(card) {
+    var idInput = _field(card, 'providerId');
+    var value = idInput ? idInput.value : (card && card.dataset ? card.dataset.providerKey : '');
+    return String(value || '').trim();
+  }
+
+  function syncModelsProviderOptions() {
+    if (window.SettingsModels && typeof window.SettingsModels.syncProviderOptions === 'function')
+      window.SettingsModels.syncProviderOptions();
+  }
+
+  function updateProviderIdentity(card, nextKey) {
+    if (!card || !card.dataset) return;
+    var oldKey = String(card.dataset.providerKey || '').trim();
+    nextKey = String(nextKey || '').trim();
+    card.dataset.providerKey = nextKey;
+    if (oldKey && nextKey && oldKey !== nextKey && window.SettingsModels && typeof window.SettingsModels.renameProvider === 'function')
+      window.SettingsModels.renameProvider(oldKey, nextKey);
+    syncModelsProviderOptions();
+  }
+
+  function syncCardHeader(card) {
+    if (!card || !card.querySelector) return;
+    var nameInput = _field(card, 'displayName');
+    var idInput = _field(card, 'providerId');
+    var name = String(nameInput && nameInput.value || '').trim() || String(idInput && idInput.value || '').trim() || 'New Provider';
+    var title = card.querySelector('.provider-card-title');
+    var icon = card.querySelector('.provider-icon');
+    if (title) title.textContent = name;
+    if (icon) icon.textContent = getInitials(name) || '?';
+  }
+
+  function providerCardHTML(p, key, palIdx, isNew) {
     var colors = PALETTE[palIdx % PALETTE.length];
-    return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(p.displayName || key)) + '</div><span class="settings-fw-600">' + S.escHtml(p.displayName || key) + '</span><button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
-      '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || '') + '" data-field="displayName"></div>' +
-      '<div class="field"><label class="field-label">Chat Endpoint</label><input type="text" value="' + S.escHtml(p.endpoint || '') + '" data-field="endpoint"></div>' +
-      '<div class="field"><label class="field-label">FIM Endpoint</label><input type="text" value="' + S.escHtml(p.fimEndpoint || '') + '" data-field="fimEndpoint"></div>' +
-      '<div class="field"><label class="field-label">API Key <span class="hint">env variable (preferred)</span></label><input class="settings-mono-input" type="text" value="' + S.escHtml(p.authEnvVar || '') + '" data-field="authEnvVar"><div class="field-hint">Set via: setx ' + S.escHtml(p.authEnvVar || 'KEY') + ' your-key</div></div>' +
+    var title = p.displayName || key || 'New Provider';
+    var legacyGeneratedId = /^provider-\d+$/.test(key || '');
+    var idAttrs = isNew ? '' : ' readonly';
+    var idHint = legacyGeneratedId
+      ? 'Legacy generated ID. Rename it to a stable ID such as xiaomi; linked model rows will be updated before save.'
+      : (isNew
+        ? 'Stable lowercase ID used in model IDs (for example xiaomi/model-name). It cannot be renamed after saving.'
+        : 'Stable ID used in model IDs. Existing provider IDs are read-only to avoid breaking model references.');
+    return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(title) || '?') + '</div><span class="settings-fw-600 provider-card-title">' + S.escHtml(title) + '</span><button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
+      '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || '') + '" placeholder="xiaomi" data-field="providerId"' + idAttrs + '><div class="field-hint">' + idHint + '</div></div>' +
+      '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || '') + '" placeholder="Xiaomi" data-field="displayName"></div>' +
+      '<div class="field"><label class="field-label">Chat Completions Endpoint</label><input type="text" value="' + S.escHtml(p.endpoint || '') + '" placeholder="https://api.example.com/v1/chat/completions" data-field="endpoint"><div class="field-hint">Custom providers must accept OpenAI-compatible Chat Completions requests.</div></div>' +
+      '<div class="field"><label class="field-label">models.dev Provider <span class="hint">optional catalog override</span></label><input class="settings-mono-input" type="text" value="' + S.escHtml(p.modelsDevProvider || '') + '" placeholder="Auto: ' + S.escHtml(key || 'provider-id') + '" data-field="modelsDevProvider"><div class="field-hint">Fetch Latest Models uses this models.dev catalog key. Leave blank to use the Provider ID. Example: provider ID <code>work-mimo</code> can use catalog <code>xiaomi</code>. OpenRouter remains lookup-only.</div></div>' +
+      '<div class="field"><label class="field-label">FIM Endpoint <span class="hint">optional</span></label><input type="text" value="' + S.escHtml(p.fimEndpoint || '') + '" data-field="fimEndpoint"></div>' +
+      '<div class="field"><label class="field-label">API Key <span class="hint">env variable (preferred)</span></label><input class="settings-mono-input" type="text" value="' + S.escHtml(p.authEnvVar || '') + '" data-field="authEnvVar"><div class="field-hint">Bearer authentication. Set via: setx ' + S.escHtml(p.authEnvVar || 'KEY') + ' your-key</div></div>' +
       '<div class="field"><label class="field-label">API Key <span class="hint">or enter directly</span></label><div class="settings-flex-row-6"><input class="settings-mono-flex" type="password" value="' + S.escHtml(p.apiKey || '') + '" data-field="apiKey" placeholder="sk-..."><button class="btn-sm toggle-api-key" title="Show/hide">' + String.fromCharCode(0x1F441) + '</button></div><div class="field-hint settings-warning">\u26A0 Direct entry stores key in settings.json</div></div>' +
-      '<div class="field"><label class="field-label">Model Name Prefixes <span class="hint">routes matching model names to this provider</span></label><div class="prefix-tags" data-field="prefixes">' + renderPrefixes(p.prefixes || []) + '</div></div>' +
+      '<div class="field"><label class="field-label">Model Name Prefixes <span class="hint">routes unprefixed model names to this provider</span></label><div class="prefix-tags" data-field="prefixes">' + renderPrefixes(p.prefixes || []) + '</div></div>' +
       '<div class="toggle-row"><div><div class="lbl">Collapse thinking blocks by default</div><div class="settings-text-xs-muted">When streaming, reasoning/thinking content is hidden until expanded</div></div><div class="switch' + (p.collapseThinking ? ' on' : '') + '" data-field="collapseThinking"><div class="knob"></div></div></div>';
   }
 
-  // --- Shared card wiring ---
-
   function wireProviderCard(card, grid) {
-    // Prefix badge remove buttons
     card.querySelectorAll('.prefix-tags .badge .remove').forEach(function(rm) {
       rm.addEventListener('click', function() { rm.parentElement.remove(); mark(); });
     });
-    // Switches
     card.querySelectorAll('.switch').forEach(function(sw) {
       sw.addEventListener('click', function() { this.classList.toggle('on'); mark(); });
     });
-    // Inputs
     card.querySelectorAll('input').forEach(function(inp) {
       inp.addEventListener('input', function() { mark(); });
     });
-    // Remove button (keep at least one provider)
+
+    var idInput = _field(card, 'providerId');
+    var displayNameInput = _field(card, 'displayName');
+    var isNew = card.dataset && card.dataset.isNew === 'true';
+
+    if (idInput && isNew) {
+      idInput.addEventListener('input', function() {
+        card.dataset.providerIdTouched = 'true';
+        updateProviderIdentity(card, idInput.value);
+        syncCardHeader(card);
+      });
+      idInput.addEventListener('blur', function() {
+        var normalized = slugifyProviderId(idInput.value);
+        if (normalized !== idInput.value) idInput.value = normalized;
+        updateProviderIdentity(card, normalized);
+        syncCardHeader(card);
+        mark();
+      });
+    }
+
+    if (displayNameInput) {
+      displayNameInput.addEventListener('input', function() {
+        if (isNew && idInput && card.dataset.providerIdTouched !== 'true') {
+          idInput.value = slugifyProviderId(displayNameInput.value);
+          updateProviderIdentity(card, idInput.value);
+        } else {
+          syncModelsProviderOptions();
+        }
+        syncCardHeader(card);
+      });
+    }
+
     card.querySelector('.btn-sm.danger').addEventListener('click', function() {
       if (grid.querySelectorAll('.provider-card').length <= 1) return;
-      card.remove(); mark();
+      card.remove();
+      mark();
+      syncModelsProviderOptions();
     });
-    // Toggle API key visibility
+
     var toggleBtn = card.querySelector('.toggle-api-key');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', function() {
@@ -63,7 +150,7 @@
         if (keyInput) keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
       });
     }
-    // Prefix add link
+
     var prefixDiv = card.querySelector('.prefix-tags');
     if (prefixDiv) {
       var addLink = document.createElement('span');
@@ -79,8 +166,6 @@
     }
   }
 
-  // --- Main render ---
-
   function renderCards(providers) {
     var grid = document.getElementById('providerGrid');
     if (!grid) return;
@@ -91,7 +176,11 @@
       var card = document.createElement('div');
       card.className = 'provider-card';
       card.dataset.providerKey = key;
-      card.innerHTML = providerCardHTML(p, key, idx);
+      var legacyGeneratedId = /^provider-\d+$/.test(key);
+      card.dataset.isNew = legacyGeneratedId ? 'true' : 'false';
+      card.dataset.providerIdTouched = legacyGeneratedId ? 'true' : 'false';
+      card.dataset.customProvider = isCustomProvider(key, p) ? 'true' : 'false';
+      card.innerHTML = providerCardHTML(p, key, idx, legacyGeneratedId);
       grid.appendChild(card);
       wireProviderCard(card, grid);
     });
@@ -105,17 +194,20 @@
 
   function mark() { S.markDirty(); }
 
-  function save() {
+  function collectProviders() {
     var providers = {};
     document.querySelectorAll('#providerGrid .provider-card').forEach(function(card) {
-      var key = card.dataset.providerKey || 'new-provider';
+      var key = providerIdForCard(card);
+      if (!key) return;
       var obj = {};
       card.querySelectorAll('[data-field]').forEach(function(el) {
         var field = el.dataset.field;
+        if (field === 'providerId' || field === 'prefixes') return;
         if (el.classList.contains('switch')) obj[field] = el.classList.contains('on');
         else obj[field] = el.value || '';
       });
       obj.authMode = (obj.apiKey && !obj.authEnvVar) ? 'direct' : 'env';
+      obj.custom = card.dataset && card.dataset.customProvider === 'true';
       obj.prefixes = [];
       card.querySelectorAll('.prefix-tags .badge').forEach(function(tag) {
         var txt = tag.textContent.replace('\u00D7', '').trim();
@@ -123,19 +215,79 @@
       });
       providers[key] = obj;
     });
-    return { providers: providers };
+    return providers;
+  }
+
+  function getProviderOptions() {
+    var options = [];
+    document.querySelectorAll('#providerGrid .provider-card').forEach(function(card) {
+      var key = providerIdForCard(card);
+      if (!key) return;
+      var displayNameInput = _field(card, 'displayName');
+      var label = String(displayNameInput && displayNameInput.value || '').trim() || key;
+      options.push({ key: key, label: label });
+    });
+    options.sort(function(a, b) { return a.label.localeCompare(b.label) || a.key.localeCompare(b.key); });
+    return options;
+  }
+
+  function save() {
+    return { providers: collectProviders() };
+  }
+
+  function validate() {
+    var seen = {};
+    var cards = document.querySelectorAll('#providerGrid .provider-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var key = providerIdForCard(card);
+      var nameEl = _field(card, 'displayName');
+      var endpointEl = _field(card, 'endpoint');
+      var name = String(nameEl && nameEl.value || '').trim();
+      var endpoint = String(endpointEl && endpointEl.value || '').trim();
+      if (!key)
+        return { valid: false, message: 'Every provider needs a Provider ID (for example xiaomi).' };
+      if (!/^[a-z0-9][a-z0-9._-]*$/.test(key))
+        return { valid: false, message: 'Provider ID "' + key + '" is invalid. Use lowercase letters, numbers, dots, underscores, or hyphens.' };
+      var catalogEl = _field(card, 'modelsDevProvider');
+      var catalog = String(catalogEl && catalogEl.value || '').trim();
+      if (catalog && !/^[a-z0-9][a-z0-9._-]*$/.test(catalog))
+        return { valid: false, message: 'models.dev Provider "' + catalog + '" is invalid. Use the catalog key from models.dev.' };
+      if (seen[key])
+        return { valid: false, message: 'Provider ID "' + key + '" is duplicated.' };
+      seen[key] = true;
+      if (!name)
+        return { valid: false, message: 'Provider "' + key + '" needs a display name.' };
+      if (!endpoint)
+        return { valid: false, message: 'Provider "' + name + '" needs an OpenAI-compatible Chat Completions endpoint.' };
+    }
+    return { valid: true };
   }
 
   function addProvider() {
     var grid = document.getElementById('providerGrid'); if (!grid) return;
-    var newKey = 'provider-' + Date.now();
-    var card = document.createElement('div'); card.className = 'provider-card'; card.dataset.providerKey = newKey;
-    var p = { displayName: 'New Provider', endpoint: '', fimEndpoint: '', authEnvVar: '', apiKey: '', prefixes: [], collapseThinking: false };
-    card.innerHTML = providerCardHTML(p, newKey, 0);
+    var card = document.createElement('div');
+    card.className = 'provider-card';
+    card.dataset.providerKey = '';
+    card.dataset.isNew = 'true';
+    card.dataset.customProvider = 'true';
+    card.dataset.providerIdTouched = 'false';
+    var p = { displayName: '', endpoint: '', modelsDevProvider: '', fimEndpoint: '', authEnvVar: '', apiKey: '', prefixes: [], collapseThinking: false };
+    card.innerHTML = providerCardHTML(p, '', 0, true);
     grid.appendChild(card);
     wireProviderCard(card, grid);
+    var nameInput = _field(card, 'displayName');
+    if (nameInput && nameInput.focus) nameInput.focus();
     mark();
+    syncModelsProviderOptions();
   }
+
+  window.SettingsProviders = {
+    getCurrentProviders: collectProviders,
+    getProviderOptions: getProviderOptions,
+    providerIdForCard: providerIdForCard,
+    slugifyProviderId: slugifyProviderId
+  };
 
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
@@ -143,5 +295,5 @@
       if (addBtn) addBtn.addEventListener('click', addProvider);
     });
   }
-  S.registerSection(sectionName, {load: load, save: save});
+  S.registerSection(sectionName, {load: load, save: save, validate: validate});
 })();

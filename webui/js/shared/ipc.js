@@ -11,12 +11,12 @@
   var pending = {}; // reqId -> { action, resolve, reject, timer }
   var DEFAULT_TIMEOUT_MS = 10000;
 
-  function postToHost(action, payload) {
+  function postToHost(action, payload, requestId) {
     var msg = { action: action };
     if (payload && typeof payload === 'object') {
       for (var k in payload) msg[k] = payload[k];
     }
-    msg.reqId = 'r' + (nextReqId++);
+    msg.reqId = requestId || ('r' + (nextReqId++));
     if (IPCMessages) {
       var problems = IPCMessages.validate(action, payload, 'web->ahk');
       if (problems.length) {
@@ -34,8 +34,12 @@
   // necessarily "long-running operation finished" (e.g. chatSend acks when
   // the stream starts).
   function request(action, payload, timeoutMs) {
-    var reqId = postToHost(action, payload);
-    return new Promise(function(resolve, reject) {
+    // Register the pending request before posting. AHK handles some actions
+    // synchronously, so the acknowledgement can arrive before postToHost()
+    // returns; registering afterward loses that ack and leaves callers stuck
+    // until their timeout.
+    var reqId = 'r' + (nextReqId++);
+    var promise = new Promise(function(resolve, reject) {
       var timer = setTimeout(function() {
         delete pending[reqId];
         reject(new Error('IPC timeout: "' + action + '" was not acknowledged within ' + (timeoutMs || DEFAULT_TIMEOUT_MS) + 'ms'));
@@ -44,6 +48,8 @@
       if (timer && typeof timer.unref === 'function') timer.unref();
       pending[reqId] = { action: action, resolve: resolve, reject: reject, timer: timer };
     });
+    postToHost(action, payload, reqId);
+    return promise;
   }
 
   // Route an incoming "ack" message to its pending request.

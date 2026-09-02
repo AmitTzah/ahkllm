@@ -27,6 +27,36 @@ class SSEParserTest {
             throw Error("content parse regression")
     }
 
+    ParseLine_NullToolCalls_DoesNotCrashAndKeepsContent() {
+        chunk := SSEParser.ParseLine('data: {"choices":[{"delta":{"content":"hello","tool_calls":null}}]}')
+        if chunk.type != "content" || chunk.content != "hello"
+            throw Error("null tool_calls must preserve content")
+    }
+
+    ParseLine_NullChoices_IsIgnored() {
+        chunk := SSEParser.ParseLine('data: {"choices":null}')
+        if chunk.type != "ignore"
+            throw Error("null choices must be ignored safely")
+    }
+
+    ParseLine_NullDelta_IsIgnored() {
+        chunk := SSEParser.ParseLine('data: {"choices":[{"delta":null}]}')
+        if chunk.type != "ignore"
+            throw Error("null delta must be ignored safely")
+    }
+
+    ParseLine_NullDelta_WithValidContent_PreservesContent() {
+        chunk := SSEParser.ParseLine('data: {"choices":[{"delta":null},{"delta":{"content":"kept"}}]}')
+        if chunk.type != "content" || chunk.content != "kept"
+            throw Error("null delta must not hide valid simultaneous content")
+    }
+
+    ParseLine_NullChoice_WithValidContent_PreservesContent() {
+        chunk := SSEParser.ParseLine('data: {"choices":[null,{"delta":{"content":"kept"}}]}')
+        if chunk.type != "content" || chunk.content != "kept"
+            throw Error("null choice must not hide valid simultaneous content")
+    }
+
     ParseLine_ToolCallFinish_CarriesReason() {
         chunk := SSEParser.ParseLine('data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"deepseek-v4-flash","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}')
         if chunk.type != "finish" || chunk.reason != "tool_calls"

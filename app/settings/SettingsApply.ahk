@@ -42,6 +42,7 @@ class SettingsApply {
             provObj := {
                 displayName: p.Has("displayName") ? p["displayName"] : k,
                 endpoint: p.Has("endpoint") ? p["endpoint"] : "",
+                modelsDevProvider: p.Has("modelsDevProvider") ? p["modelsDevProvider"] : "",
                 fimEndpoint: p.Has("fimEndpoint") ? p["fimEndpoint"] : "",
                 authEnvVar: p.Has("authEnvVar") ? p["authEnvVar"] : "",
                 authMode: p.Has("authMode") ? p["authMode"] : "env",
@@ -78,9 +79,9 @@ class SettingsApply {
         for k, m in settings["models"] {
             entry := {
                 provider: m.Has("provider") ? m["provider"] : "",
-                input: m.Has("input") ? m["input"] : 0,
+                input: m.Has("input") && m["input"] != "" ? m["input"] : 0,
                 cachedInput: m.Has("cachedInput") ? m["cachedInput"] : "",
-                output: m.Has("output") ? m["output"] : 0,
+                output: m.Has("output") && m["output"] != "" ? m["output"] : 0,
                 context: m.Has("context") ? m["context"] : 0,
                 reasoning: m.Has("reasoning") ? m["reasoning"] : false,
                 vision: m.Has("vision") ? m["vision"] : false

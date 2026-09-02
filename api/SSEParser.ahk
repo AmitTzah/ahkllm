@@ -41,7 +41,8 @@ class SSEParser {
         }
 
         choices := parsed["choices"]
-        if !choices || choices.Length = 0 {
+        ; Compatible providers may emit choices:null on auxiliary events.
+        if !IsObject(choices) || Type(choices) != "Array" || choices.Length = 0 {
             return SSEParser._handleUsageOnlyChunk(parsed)
         }
 
@@ -56,10 +57,13 @@ class SSEParser {
             if !IsObject(choice)
                 continue
             delta := choice.Has("delta") ? choice["delta"] : choice
+            ; JSON null/scalar deltas are not parseable message objects.
+            if !IsObject(delta)
+                continue
             ; Tool calls (web_search): deltas arrive as partial fragments
             ; ({index, id, function:{name, arguments}}) that the stream handler
             ; merges by index into completed calls.
-            if IsObject(delta) && delta.Has("tool_calls") {
+            if delta.Has("tool_calls") && IsObject(delta["tool_calls"]) && Type(delta["tool_calls"]) = "Array" {
                 for tcf in delta["tool_calls"] {
                     if IsObject(tcf)
                         toolCallAcc.Push(tcf)
@@ -73,11 +77,20 @@ class SSEParser {
             else if part.type = "content"
                 contentAcc .= part.content
         }
+        ; Nullable/scalar choices are ignored above, but a compatible provider
+        ; may place the valid finish reason on a later choice. Read it only
+        ; from an actual choice object so null entries cannot crash the poll.
+        finish := ""
+        for choice in choices {
+            if IsObject(choice) && choice.Has("finish_reason") {
+                finish := choice["finish_reason"]
+                break
+            }
+        }
         ; A tool-call event (the model asked to search) - handled before the
         ; plain content branch so the stream handler can run the tool loop.
         if toolCallAcc.Length {
             result := { type: "tool_call", toolCalls: toolCallAcc }
-            finish := choices[1].Has("finish_reason") ? choices[1]["finish_reason"] : ""
             if finish != "" && finish != "null" {
                 result.reason := finish
                 if parsed.Has("model") && parsed["model"] != ""
@@ -97,7 +110,6 @@ class SSEParser {
         }
 
         ; Check for finish reason (stream end) — may coexist with content
-        finish := choices[1].Has("finish_reason") ? choices[1]["finish_reason"] : ""
         if finish != "" && finish != "null" {
             if !result.HasOwnProp("type")
                 result.type := "finish"

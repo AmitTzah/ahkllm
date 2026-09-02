@@ -79,7 +79,7 @@ async function showChat() {
 
 async function openSettings(cdp) {
   await cdp.click('#settings-icon');
-  await cdp.waitFor('document.getElementById("settingsNav").style.display !== "none" && document.querySelector("#providerGrid") !== null && document.querySelector("#providerGrid").children.length > 0 && document.querySelector("#newChatStartsWith") !== null && document.querySelector("#newChatStartsWith").options.length > 1', 20000, 100, 'settings data loaded');
+  await cdp.waitFor('document.getElementById("settingsNav").style.display !== "none" && document.querySelector("#providerGrid") !== null && document.querySelector("#providerGrid").children.length > 0 && document.querySelector("#newChatStartsWith") !== null && document.querySelector("#newChatStartsWith").options.length > 1 && window.SettingsPanel && window.SettingsPanel.isDirty && !window.SettingsPanel.isDirty()', 20000, 100, 'settings data loaded');
 }
 
 async function openSection(cdp, name) {

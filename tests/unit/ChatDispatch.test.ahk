@@ -400,6 +400,37 @@ class ChatDispatchTest {
         }
     }
 
+    Dispatch_ModelsDevCatalog_DefaultsToProviderId() {
+        cfg := _BuildModelsDevCatalogConfig(Map(
+            "xiaomi", Map("displayName", "Xiaomi", "modelsDevProvider", "")
+        ))
+        if cfg.spec != "xiaomi=xiaomi"
+            throw Error("Expected provider ID to auto-map to the same models.dev catalog, got " cfg.spec)
+        if cfg.providers["xiaomi"].catalog != "xiaomi"
+            throw Error("Expected xiaomi catalog mapping")
+    }
+
+    Dispatch_ModelsDevCatalog_OverrideKeepsTransportProvider() {
+        cfg := _BuildModelsDevCatalogConfig(Map(
+            "work-mimo", Map("displayName", "Work MiMo", "modelsDevProvider", "xiaomi")
+        ))
+        if cfg.spec != "work-mimo=xiaomi"
+            throw Error("Expected transport/catalog mapping work-mimo=xiaomi, got " cfg.spec)
+        if cfg.providers["work-mimo"].displayName != "Work MiMo"
+            throw Error("Expected display name to survive catalog mapping")
+    }
+
+    Dispatch_ModelsDevCatalog_RejectsInvalidKey() {
+        threw := false
+        try _BuildModelsDevCatalogConfig(Map(
+            "work-mimo", Map("modelsDevProvider", "bad catalog key")
+        ))
+        catch
+            threw := true
+        if !threw
+            throw Error("Invalid models.dev provider keys must be rejected")
+    }
+
     Dispatch_RefreshModelPricing_Success() {
         global _mockRunWaitExitCode
         _mockRunWaitExitCode := 0

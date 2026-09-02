@@ -7,12 +7,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadIpc() {
+function loadIpc(onPost) {
   const contractSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'ipc-contract.js'), 'utf-8');
   const ipcSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'shared', 'ipc.js'), 'utf-8');
   let posted = [];
   const sandbox = {
-    window: { chrome: { webview: { postMessage: (msg) => { posted.push(msg); } } } },
+    window: { chrome: { webview: { postMessage: (msg) => { posted.push(msg); if (onPost) onPost(msg, sandbox); } } } },
     console: console,
     setTimeout: setTimeout,
     clearTimeout: clearTimeout
@@ -38,6 +38,18 @@ describe('Ipc.postToHost', () => {
 });
 
 describe('Ipc.request', () => {
+  it('registers before posting so a synchronous ack is not lost', async () => {
+    let Ipc;
+    const loaded = loadIpc((msg) => {
+      const request = JSON.parse(msg);
+      Ipc.handleAck({ target: 'ack', data: { reqId: request.reqId, action: request.action, ok: true } });
+    });
+    Ipc = loaded.Ipc;
+    const ack = await Ipc.request('saveSettings', { data: {} });
+    assert.strictEqual(ack.action, 'saveSettings');
+    assert.strictEqual(Object.keys(Ipc.pending).length, 0);
+  });
+
   it('resolves when the matching ok ack arrives', async () => {
     const { Ipc } = loadIpc();
     const p = Ipc.request('saveSettings', { data: {} });

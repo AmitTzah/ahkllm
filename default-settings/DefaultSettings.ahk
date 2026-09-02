@@ -22,13 +22,14 @@
 ; ============================================================================
 ; S1 PROVIDERS -- API endpoint configuration
 ; ============================================================================
-; Each provider: displayName, endpoint, fimEndpoint, authEnvVar, icon, collapseThinking.
+; Each provider: displayName, endpoint, optional modelsDevProvider catalog override, fimEndpoint, authEnvVar, icon, collapseThinking.
 ; API keys are read from environment variables (set via `setx`).
 
 providers := Map(
     "deepseek", {
         displayName: "DeepSeek",
         endpoint: "https://api.deepseek.com/chat/completions",
+        modelsDevProvider: "deepseek",
         fimEndpoint: "https://api.deepseek.com/beta/completions",
         authEnvVar: "DEEPSEEK_API_KEY",
         icon: "icons/deepseek.ico",
@@ -37,6 +38,7 @@ providers := Map(
     "openai", {
         displayName: "OpenAI",
         endpoint: "https://api.openai.com/v1/chat/completions",
+        modelsDevProvider: "openai",
         fimEndpoint: "",
         authEnvVar: "OPENAI_API_KEY",
         icon: "icons/openai.ico",
@@ -45,6 +47,7 @@ providers := Map(
     "openrouter", {
         displayName: "OpenRouter",
         endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        modelsDevProvider: "openrouter",
         fimEndpoint: "",
         authEnvVar: "OPENROUTER_API_KEY",
         icon: "icons/openrouter.ico",
@@ -53,6 +56,7 @@ providers := Map(
     "google", {
         displayName: "Google Gemini",
         endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        modelsDevProvider: "google",
         fimEndpoint: "",
         authEnvVar: "GOOGLE_API_KEY",
         icon: "icons/google.ico",

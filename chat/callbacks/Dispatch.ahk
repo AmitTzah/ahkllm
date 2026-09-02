@@ -79,7 +79,7 @@ OnWebMessageReceived(sender, args) {
             case "openSystemMessagesFolder":
                 _HandleOpenSystemMessagesFolder()
             case "refreshModelPricing":
-                _HandleRefreshModelPricing()
+                _HandleRefreshModelPricing(parsed)
             case "lookupOpenRouterModel":
                 _HandleOpenRouterModelLookup(parsed)
             case "reloadScript":
@@ -234,7 +234,30 @@ _HandleSaveSettings(parsed) {
 }
 
 ; Run PowerShell pricing refresh and return results
-_HandleRefreshModelPricing() {
+_BuildModelsDevCatalogConfig(providerData) {
+    providersMap := SettingsHandler._ToMap(providerData)
+    spec := ""
+    config := Map()
+    for providerKey, p in providersMap {
+        providerKey := Trim(providerKey)
+        if !RegExMatch(providerKey, "^[a-z0-9][a-z0-9._-]*$")
+            throw Error("Invalid provider ID for models.dev refresh: " providerKey)
+        catalog := Trim(p.Get("modelsDevProvider", ""))
+        if catalog = ""
+            catalog := providerKey
+        if !RegExMatch(catalog, "^[a-z0-9][a-z0-9._-]*$")
+            throw Error("Invalid models.dev provider key: " catalog)
+        spec .= (spec = "" ? "" : ";") providerKey "=" catalog
+        config[providerKey] := {
+            catalog: catalog,
+            displayName: p.Get("displayName", providerKey)
+        }
+    }
+    return { spec: spec, providers: config }
+}
+
+
+_HandleRefreshModelPricing(parsed) {
     scriptPath := A_ScriptDir "\..\scripts\Refresh-Models.ps1"
     if !FileExist(scriptPath) {
         postWebMessage("modelPricingRefresh", { success: false, error: "scripts\Refresh-Models.ps1 not found" })
@@ -242,26 +265,56 @@ _HandleRefreshModelPricing() {
     }
     try {
         ; -NoPause: without it the script blocks on "Press any key" and hangs the hidden window
-        cmd := "powershell -NoProfile -ExecutionPolicy Bypass -File `"" scriptPath "`" -NoPause"
+        providerData := parsed.Get("providers", "")
+        useLiveCatalogs := IsObject(providerData)
+        catalogConfig := ""
+        if useLiveCatalogs {
+            catalogConfig := _BuildModelsDevCatalogConfig(providerData)
+            if catalogConfig.spec = ""
+                throw Error("No providers configured for model refresh")
+            cmd := "powershell -NoProfile -ExecutionPolicy Bypass -File `"" scriptPath "`" -NoPause -ProviderCatalogs `"" catalogConfig.spec "`" -NoUpdateDefaults"
+            pricingFile := A_ScriptDir "\..\scripts\models_metadata.txt"
+        } else {
+            cmd := "powershell -NoProfile -ExecutionPolicy Bypass -File `"" scriptPath "`" -NoPause"
+            pricingFile := A_ScriptDir "\..\default-settings\DefaultModels.ahk"
+        }
         exitCode := RunWait(cmd, A_ScriptDir, "Hide")
         if exitCode != 0 {
             postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-Models.ps1 exited with code " exitCode })
             return
         }
         ; Read the generated model metadata file the pipeline writes
-        pricingFile := A_ScriptDir "\..\default-settings\DefaultModels.ahk"
         if !FileExist(pricingFile) {
-            postWebMessage("modelPricingRefresh", { success: false, error: "DefaultModels.ahk not generated" })
+            postWebMessage("modelPricingRefresh", { success: false, error: "Model metadata output was not generated" })
             return
         }
         content := FileRead(pricingFile, "UTF-8")
         ; Parse models from the file — extract the models := Map(...) block
         models := ModelPricingParser.Parse(content)
-        if models.Length = 0 {
+        if !useLiveCatalogs && models.Length = 0 {
             postWebMessage("modelPricingRefresh", { success: false, error: "No models parsed from DefaultModels.ahk" })
             return
         }
-        postWebMessage("modelPricingRefresh", { success: true, models: models })
+        warnings := []
+        if useLiveCatalogs {
+            seenProviders := Map()
+            for model in models {
+                parts := ModelParser.Split(model.id)
+                if parts.provider != ""
+                    seenProviders[parts.provider] := true
+            }
+            for providerKey, cfg in catalogConfig.providers {
+                if cfg.catalog = "openrouter" {
+                    if providerKey != "openrouter"
+                        warnings.Push(cfg.displayName ": the OpenRouter catalog is lookup-only; add models manually for this transport.")
+                    continue
+                }
+                if !seenProviders.Has(providerKey)
+                    warnings.Push(cfg.displayName ": no compatible models were found in models.dev catalog '" cfg.catalog "'.")
+            }
+        }
+
+        postWebMessage("modelPricingRefresh", { success: true, models: models, warnings: warnings })
     } catch Error as e {
         postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
     }

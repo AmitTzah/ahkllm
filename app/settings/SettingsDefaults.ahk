@@ -68,6 +68,7 @@ class SettingsDefaults {
             provMap[providerKey] := Map(
                 "displayName", p.displayName,
                 "endpoint", p.endpoint,
+                "modelsDevProvider", p.HasOwnProp("modelsDevProvider") ? p.modelsDevProvider : "",
                 "fimEndpoint", p.HasOwnProp("fimEndpoint") ? p.fimEndpoint : "",
                 "authMode", "env",
                 "authEnvVar", p.authEnvVar,

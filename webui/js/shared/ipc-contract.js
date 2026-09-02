@@ -60,7 +60,7 @@
     'iconFileSelected': { dir: 'ahk->web', fields: ['field', 'path'], required: ['field', 'path'] },
     'backupFolderSelected': { dir: 'ahk->web', fields: ['folder'], required: ['folder'] },
     'backupStatus': { dir: 'ahk->web', data: 'object' },
-    'modelPricingRefresh': { dir: 'ahk->web', fields: ['success', 'models', 'error'], required: ['success'] },
+    'modelPricingRefresh': { dir: 'ahk->web', fields: ['success', 'models', 'warnings', 'error'], required: ['success'] },
     'openRouterModelLookup': { dir: 'ahk->web', fields: ['success', 'reqId', 'modelId', 'resolvedModelId', 'raw', 'error'], required: ['success', 'reqId', 'modelId'] },
     'ack': { dir: 'ahk->web', fields: ['reqId', 'action', 'ok', 'error'], required: ['reqId', 'action', 'ok'] },
 
@@ -85,7 +85,7 @@
     'requestSystemMessageFiles': { dir: 'web->ahk', data: 'any' },
     'openSystemMessagesFolder': { dir: 'web->ahk', data: 'any' },
     'saveSettings': { dir: 'web->ahk', fields: ['data'], required: ['data'] },
-    'refreshModelPricing': { dir: 'web->ahk', data: 'any' },
+    'refreshModelPricing': { dir: 'web->ahk', fields: ['providers'] },
     'lookupOpenRouterModel': { dir: 'web->ahk', fields: ['modelId'], required: ['modelId'] },
     'showApiLogs': { dir: 'web->ahk', data: 'any' },
     'debugLog': { dir: 'web->ahk', fields: ['message'], required: ['message'] },

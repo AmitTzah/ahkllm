@@ -18,11 +18,16 @@ function loadModule(overrides) {
     );
     const els = (overrides && overrides.els) || {};
     const modelsRows = (overrides && overrides.modelsRows) || [];
+    const providerCards = (overrides && overrides.providerCards) || [];
     const registeredSections = {};
     const sandbox = {
         document: {
             getElementById: (id) => els[id] || null,
-            querySelectorAll: (sel) => (sel === '#modelsTableBody tr' ? modelsRows : []),
+            querySelectorAll: (sel) => {
+                if (sel === '#modelsTableBody tr') return modelsRows;
+                if (sel === '#providerGrid .provider-card') return providerCards;
+                return [];
+            },
             createElement: () => ({
                 style: {}, innerHTML: '',
                 classList: { add: () => {}, remove: () => {}, toggle: () => {} },
@@ -36,6 +41,7 @@ function loadModule(overrides) {
         window: {
             chrome: { webview: { postMessage: () => {} } },
             SettingsPanel: { registerSection: (name, mod) => { registeredSections[name] = mod; } },
+            SettingsProviders: (overrides && overrides.settingsProviders) || undefined,
             addEventListener: () => {}
         },
         setTimeout: () => {},
@@ -85,6 +91,40 @@ function makeRightTbody(rows) {
     };
 }
 
+describe('SettingsModels live provider options', () => {
+  it('includes a custom provider added in the same unsaved settings session', () => {
+    const providerCards = [
+      { dataset: { providerKey: 'deepseek' } },
+      { dataset: { providerKey: 'xiaomi' } }
+    ];
+    const { SM, sections } = loadModule({ providerCards });
+    sections.models.load({ providers: { deepseek: {} }, models: {} });
+
+    const html = SM.buildProviderSelect('');
+    assert.ok(html.includes('value="xiaomi"') && html.includes('>xiaomi</option>'),
+      'newly added provider card should be immediately selectable by a new model');
+  });
+
+  it('shows the readable provider name without repeating its stable ID', () => {
+    const settingsProviders = {
+      getProviderOptions: () => [{ key: 'xiaomi', label: 'Xiaomi' }]
+    };
+    const { SM } = loadModule({ settingsProviders });
+    const html = SM.buildProviderSelect('');
+    assert.ok(html.includes('>Xiaomi</option>'));
+    assert.ok(!html.includes('Xiaomi (xiaomi)'), 'the internal provider ID should not consume dropdown width');
+    assert.ok(html.includes('title="Provider ID: xiaomi"'), 'the stable ID remains available as hover metadata');
+  });
+
+  it('falls back to provider keys from the loaded settings snapshot', () => {
+    const { SM, sections } = loadModule();
+    sections.models.load({ providers: { deepseek: {}, custom: {} }, models: {} });
+
+    const html = SM.buildProviderSelect('');
+    assert.ok(html.includes('value="custom"') && html.includes('>custom</option>'));
+  });
+});
+
 describe('SettingsModels.parsePricingRaw', () => {
     it('extracts pricing from a full multi-line metadata entry (Refresh-Models.ps1 output)', () => {
         const { SM } = loadModule();
@@ -101,6 +141,7 @@ describe('SettingsModels.parsePricingRaw', () => {
         assert.strictEqual(p.input, 0.14);
         assert.strictEqual(p.cachedInput, 0.0028);
         assert.strictEqual(p.output, 0.28);
+        assert.strictEqual(p.provider, 'deepseek');
         assert.strictEqual(p.context, 1000000);
         assert.strictEqual(p.reasoning, true);
         assert.strictEqual(p.vision, false);
@@ -128,6 +169,29 @@ describe('SettingsModels.parsePricingRaw', () => {
 });
 
 describe('OpenRouter synthetic model metadata', () => {
+  it('uses a resizable two-panel model workspace and renders complete metadata', () => {
+    const modelsSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf8');
+    const indexSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'index.html'), 'utf8');
+    const cssSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'css', 'settings.css'), 'utf8');
+    assert.ok(modelsSrc.includes('fmtPrice(p.cachedInput)'), 'Available Models must show cache pricing');
+    assert.ok(indexSrc.includes('<th>Cache $</th>'), 'both model tables must expose cache pricing');
+    assert.ok(indexSrc.includes('id="refreshPanelSplitter"'), 'the two panels must have a draggable splitter');
+    assert.ok(indexSrc.includes('id="refreshAvailableTable"') && indexSrc.includes('id="refreshOwnedTable"'),
+      'both tables need stable identities for column resizing');
+    assert.ok(modelsSrc.includes('_wireRefreshPanelSplitter') && modelsSrc.includes('_wireResizableColumns'),
+      'panel and column resizing must be wired in the models UI');
+    assert.ok(cssSrc.includes('.refresh-column-resizer'), 'column resize handles must be visible/interactable');
+    assert.ok(cssSrc.includes('position: sticky; right: 0;'), 'Add/Delete action columns must remain visible while horizontally scrolling');
+  });
+
+  it('renders owned model names and dollar-formatted prices in text controls', () => {
+    const modelsSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'js', 'settings', 'sections', 'models.js'), 'utf8');
+    assert.ok(modelsSrc.includes('refresh-owned-model-input'), 'the owned-model ID gets a dedicated full-width control');
+    assert.ok(modelsSrc.includes('refresh-price-input'), 'owned prices use explicit price controls');
+    assert.ok(!modelsSrc.includes('type="number" step="any"'),
+      'number inputs reject the $-formatted values used by the model-pricing UI');
+  });
+
   it('keeps openrouter/free vision-capable in the generator and generated defaults', () => {
     const generator = fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'Refresh-Models.ps1'), 'utf8');
     const generated = fs.readFileSync(path.resolve(__dirname, '..', '..', 'default-settings', 'DefaultModels.ahk'), 'utf8');
@@ -135,6 +199,26 @@ describe('OpenRouter synthetic model metadata', () => {
       'Refresh-Models.ps1 must emit the synthetic router with vision:true');
     assert.match(generated, /"openrouter\/free", \{[\s\S]*?reasoning: false, vision: true/,
       'DefaultModels.ahk must retain vision:true for openrouter/free');
+  });
+});
+
+describe('Custom provider models.dev catalog refresh', () => {
+  it('maps catalog metadata onto the configured transport provider without updating defaults', () => {
+    const generator = fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'Refresh-Models.ps1'), 'utf8');
+    assert.ok(generator.includes('[string]$ProviderCatalogs'));
+    assert.ok(generator.includes('[switch]$NoUpdateDefaults'));
+    assert.ok(generator.includes('$pd = $response.$catalog'));
+    assert.ok(generator.includes('$fid = "$p/$mid"'), 'generated model IDs must use the transport provider ID');
+    assert.ok(generator.includes('if ($NoUpdateDefaults)'), 'Settings refresh must support output-only generation');
+  });
+
+  it('keeps OpenRouter bulk import disabled', () => {
+    const generator = fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'Refresh-Models.ps1'), 'utf8');
+    const dispatch = fs.readFileSync(path.resolve(__dirname, '..', '..', 'chat', 'callbacks', 'Dispatch.ahk'), 'utf8');
+    assert.ok(generator.includes('if ($catalog -eq "openrouter")'));
+    assert.ok(generator.includes('OpenRouter catalog is lookup-only'));
+    assert.ok(!dispatch.includes('_FetchOpenAICompatibleModels'));
+    assert.ok(!dispatch.includes('Models Endpoint'));
   });
 });
 
@@ -334,6 +418,17 @@ describe('ensureFullId provider precedence (bug #92)', () => {
     const { SM } = loadModule({ modelsRows: [row] });
     const models = SM.collectCurrentModels();
     assert.strictEqual(models[0].id, 'openai/gpt-4');
+  });
+});
+
+describe('custom provider model id normalization', () => {
+  it('preserves slashes inside a custom provider upstream model id', () => {
+    const row = makeMainRow('vendor/model-v1', 'xiaomi');
+    const { SM, sections } = loadModule({ modelsRows: [row] });
+    sections.models.load({ providers: { xiaomi: {} }, models: {} });
+    const models = SM.collectCurrentModels();
+    assert.strictEqual(models[0].id, 'xiaomi/vendor/model-v1');
+    assert.strictEqual(models[0].displayId, 'vendor/model-v1');
   });
 });
 
@@ -594,6 +689,6 @@ describe('OpenRouter model lookup guidance', () => {
     const indexSrc = fs.readFileSync(path.resolve(__dirname, '..', '..', 'webui', 'index.html'), 'utf8');
     assert.ok(modelsSrc.includes('model slug or provider/model'));
     assert.ok(modelsSrc.includes('exact OpenRouter model slug or provider/model ID'));
-    assert.ok(indexSrc.includes('enter an exact model slug'));
+    assert.ok(indexSrc.includes('enter an exact OpenRouter model slug'));
   });
 });

@@ -38,7 +38,12 @@
     // embedded prefix from the id and rebuild with the selected provider.
     if (provider) {
       var slash = id.indexOf('/');
-      if (slash >= 0) id = id.slice(slash + 1);
+      if (slash >= 0) {
+        var firstSegment = id.slice(0, slash);
+        var knownProviders = currentProviderKeys();
+        if (firstSegment === provider || knownProviders.indexOf(firstSegment) >= 0)
+          id = id.slice(slash + 1);
+      }
       return provider + '/' + id;
     }
     return id;
@@ -94,6 +99,8 @@
 
   function parsePricingRaw(raw) {
     var fields = {};
+    var providerMatch = raw.match(/provider:\s*"([^"]+)"/);
+    if (providerMatch) fields.provider = providerMatch[1];
     var m = raw.match(/input:\s*([\d.]+)/);
     if (m) fields.input = parseFloat(m[1]);
     m = raw.match(/cachedInput:\s*([\d.]+)/);
@@ -248,11 +255,77 @@
     return s;
   }
 
-  function buildProviderSelect(keys, current) {
+  function currentProviderKeys() {
+    if (window.SettingsProviders && typeof window.SettingsProviders.getProviderOptions === 'function') {
+      var options = window.SettingsProviders.getProviderOptions() || [];
+      if (options.length) return options.map(function(p) { return p.key; }).filter(Boolean).sort();
+    }
+    var live = [];
+    if (typeof document !== 'undefined' && document.querySelectorAll) {
+      document.querySelectorAll('#providerGrid .provider-card').forEach(function(card) {
+        var key = card && card.dataset ? String(card.dataset.providerKey || '').trim() : '';
+        if (key && live.indexOf(key) < 0) live.push(key);
+      });
+    }
+    // Provider cards are the live source while Settings is open, so models can
+    // reference a provider added or removed in the same unsaved edit session.
+    return live.length ? live.sort() : _providerKeys.slice();
+  }
+
+  function providerLabelForKey(key) {
+    if (window.SettingsProviders && typeof window.SettingsProviders.getProviderOptions === 'function') {
+      var options = window.SettingsProviders.getProviderOptions() || [];
+      for (var i = 0; i < options.length; i++) {
+        if (options[i].key === key) return options[i].label || key;
+      }
+    }
+    if (typeof document !== 'undefined' && document.querySelectorAll) {
+      var cards = document.querySelectorAll('#providerGrid .provider-card');
+      for (var j = 0; j < cards.length; j++) {
+        var card = cards[j];
+        var cardKey = card && card.dataset ? String(card.dataset.providerKey || '').trim() : '';
+        if (cardKey !== key || !card.querySelector) continue;
+        var nameEl = card.querySelector('[data-field="displayName"]');
+        var name = String(nameEl && nameEl.value || '').trim();
+        if (name) return name;
+      }
+    }
+    return key;
+  }
+
+  function syncProviderOptions() {
+    if (typeof document === 'undefined' || !document.querySelectorAll) return;
+    document.querySelectorAll('#modelsTableBody [data-field="provider"], #refreshRightTbody [data-field="provider"]').forEach(function(sel) {
+      var current = sel.value || '';
+      var replacement = buildProviderSelect(current);
+      var match = replacement.match(/^<select[^>]*>([\s\S]*)<\/select>$/);
+      if (match) sel.innerHTML = match[1];
+      sel.value = current;
+    });
+  }
+
+  function renameProvider(oldKey, newKey) {
+    oldKey = String(oldKey || '').trim();
+    newKey = String(newKey || '').trim();
+    if (!oldKey || !newKey || oldKey === newKey) return;
+    if (typeof document !== 'undefined' && document.querySelectorAll) {
+      document.querySelectorAll('#modelsTableBody [data-field="provider"], #refreshRightTbody [data-field="provider"]').forEach(function(sel) {
+        if (sel.value === oldKey) sel.value = newKey;
+      });
+    }
+    var idx = _providerKeys.indexOf(oldKey);
+    if (idx >= 0) _providerKeys[idx] = newKey;
+    syncProviderOptions();
+  }
+
+  function buildProviderSelect(current) {
     var html = '<select class="settings-provider-select" data-field="provider">';
-    var all = keys.slice();
+    var all = currentProviderKeys();
     if (current != null && current !== '' && all.indexOf(current) < 0) all.unshift(current);
-    all.forEach(function(k) { html += '<option' + (k === current ? ' selected' : '') + '>' + S.escHtml(k) + '</option>'; });
+    all.forEach(function(k) {
+      var display = providerLabelForKey(k) || k;
+      html += '<option value="' + S.escHtml(k) + '" title="Provider ID: ' + S.escHtml(k) + '"' + (k === current ? ' selected' : '') + '>' + S.escHtml(display) + '</option>';
+    });
     html += '</select>';
     return html;
   }
@@ -270,7 +343,7 @@
     var m = values || {};
     var ph = placeholder ? ' placeholder="' + placeholder + '"' : '';
     return '<td class="settings-model-id-cell"><div class="settings-model-id-control"><input class="settings-w-200 settings-model-id-input" value="' + S.escHtml(displayModelId(id, provider)) + '"' + ph + ' data-field="id"><button class="btn-sm lookup-openrouter-model" style="display:none" title="Look up an exact OpenRouter model slug or provider/model ID">Lookup</button></div></td>' +
-      '<td>' + buildProviderSelect(_providerKeys, provider) + '</td>' +
+      '<td>' + buildProviderSelect(provider) + '</td>' +
       '<td><input class="settings-w-80" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + '></td>' +
       '<td><input class="settings-w-80" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + '></td>' +
       '<td><input class="settings-w-80" value="' + fmtPrice(m.output) + '" data-field="output"' + _rawAttr('price', m.output) + '></td>' +
@@ -284,12 +357,12 @@
     var prov = m.provider || '';
     var parts = id.split('/');
     if (!prov && parts.length > 1) prov = parts[0];
-    return '<td><input class="settings-w-180" value="' + S.escHtml(displayModelId(id, prov)) + '" data-field="id" data-full-id="' + S.escHtml(id) + '"></td>' +
-      '<td>' + buildProviderSelect(_providerKeys, prov) + '</td>' +
-      '<td><input class="settings-w-70" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + ' type="number" step="any"></td>' +
-      '<td><input class="settings-w-70" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + ' type="number" step="any"></td>' +
-      '<td><input class="settings-w-70" value="' + fmtPrice(m.output) + '" data-field="output"' + _rawAttr('price', m.output) + ' type="number" step="any"></td>' +
-      '<td><input class="settings-w-50" value="' + formatContext(m.context || 0) + '" data-field="context"' + _rawAttr('context', m.context) + '></td>' +
+    return '<td class="refresh-owned-model-cell"><input class="refresh-owned-model-input" value="' + S.escHtml(displayModelId(id, prov)) + '" data-field="id" data-full-id="' + S.escHtml(id) + '"></td>' +
+      '<td>' + buildProviderSelect(prov) + '</td>' +
+      '<td><input class="refresh-price-input" value="' + fmtPrice(m.input) + '" data-field="input"' + _rawAttr('price', m.input) + '></td>' +
+      '<td><input class="refresh-price-input" value="' + fmtPrice(m.cachedInput) + '" data-field="cachedInput"' + _rawAttr('price', m.cachedInput) + '></td>' +
+      '<td><input class="refresh-price-input" value="' + fmtPrice(m.output) + '" data-field="output"' + _rawAttr('price', m.output) + '></td>' +
+      '<td><input class="refresh-context-input" value="' + formatContext(m.context || 0) + '" data-field="context"' + _rawAttr('context', m.context) + '></td>' +
       '<td class="settings-text-center"><input type="checkbox" ' + (m.vision ? 'checked' : '') + ' data-field="vision"></td>' +
       '<td class="settings-text-center"><input type="checkbox" ' + (m.reasoning ? 'checked' : '') + ' data-field="reasoning"></td>' +
       '<td class="actions"><button class="btn-sm danger">\u2715</button></td>';
@@ -530,14 +603,118 @@
   var _refreshAvailable = []; // fetched models from the last refresh: [{ id, raw }]
   var _refreshQuery = '';     // current search filter text
 
+  function _setRefreshPanelHeight(height) {
+    var body = document.getElementById('refreshModelsBody');
+    var top = document.getElementById('refreshAvailablePanel');
+    var splitter = document.getElementById('refreshPanelSplitter');
+    if (!body || !top || !splitter || !body.getBoundingClientRect) return;
+    var bodyHeight = body.getBoundingClientRect().height || body.clientHeight || 0;
+    if (!bodyHeight) return;
+    var splitterHeight = splitter.getBoundingClientRect ? splitter.getBoundingClientRect().height : 10;
+    var minTop = 180;
+    var minBottom = 240;
+    var maxTop = Math.max(minTop, bodyHeight - minBottom - (splitterHeight || 10));
+    var next = Math.max(minTop, Math.min(maxTop, height));
+    top.style.flex = '0 0 ' + Math.round(next) + 'px';
+  }
+
+  function _wireRefreshPanelSplitter() {
+    var splitter = document.getElementById('refreshPanelSplitter');
+    var top = document.getElementById('refreshAvailablePanel');
+    if (!splitter || !top || !splitter.dataset || splitter.dataset.resizeWired === 'true') return;
+    splitter.dataset.resizeWired = 'true';
+
+    splitter.addEventListener('mousedown', function(e) {
+      if (!top.getBoundingClientRect) return;
+      e.preventDefault();
+      var startY = e.clientY;
+      var startHeight = top.getBoundingClientRect().height;
+      splitter.classList.add('is-dragging');
+      function onMove(ev) { _setRefreshPanelHeight(startHeight + ev.clientY - startY); }
+      function onUp() {
+        splitter.classList.remove('is-dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    splitter.addEventListener('keydown', function(e) {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (!top.getBoundingClientRect) return;
+      e.preventDefault();
+      var delta = e.key === 'ArrowUp' ? -24 : 24;
+      _setRefreshPanelHeight(top.getBoundingClientRect().height + delta);
+    });
+  }
+
+  function _wireResizableColumns(tableId) {
+    var table = document.getElementById(tableId);
+    if (!table || !table.dataset || table.dataset.columnsResizable === 'true') return;
+    var headers = table.querySelectorAll('thead th');
+    var cols = table.querySelectorAll('colgroup col');
+    if (!headers.length || headers.length !== cols.length) return;
+    table.dataset.columnsResizable = 'true';
+
+    for (var i = 0; i < headers.length - 1; i++) {
+      (function(index) {
+        var handle = document.createElement('span');
+        handle.className = 'refresh-column-resizer';
+        handle.setAttribute('aria-hidden', 'true');
+        handle.title = 'Drag to resize column';
+        handle.addEventListener('mousedown', function(e) {
+          if (!headers[index].getBoundingClientRect || !table.getBoundingClientRect) return;
+          e.preventDefault();
+          e.stopPropagation();
+          var startX = e.clientX;
+          var startWidth = headers[index].getBoundingClientRect().width;
+          var startTableWidth = table.getBoundingClientRect().width;
+          var minWidth = index < 2 ? 80 : 54;
+          handle.classList.add('is-dragging');
+          function onMove(ev) {
+            var nextWidth = Math.max(minWidth, startWidth + ev.clientX - startX);
+            cols[index].style.width = Math.round(nextWidth) + 'px';
+            var parentWidth = table.parentElement ? table.parentElement.clientWidth : 0;
+            table.style.width = Math.max(parentWidth, startTableWidth + nextWidth - startWidth) + 'px';
+          }
+          function onUp() {
+            handle.classList.remove('is-dragging');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+        headers[index].appendChild(handle);
+      })(i);
+    }
+  }
+
+  function _initRefreshLayout() {
+    _wireRefreshPanelSplitter();
+    _wireResizableColumns('refreshAvailableTable');
+    _wireResizableColumns('refreshOwnedTable');
+  }
+
+  function _requestModelRefresh() {
+    var payload = {};
+    if (window.SettingsProviders && typeof window.SettingsProviders.getCurrentProviders === 'function')
+      payload.providers = window.SettingsProviders.getCurrentProviders();
+    var status = document.getElementById('refreshModelStatus');
+    if (status) status.textContent = 'Refreshing model metadata from models.dev…';
+    Ipc.postToHost('refreshModelPricing', payload);
+  }
+
   function openRefreshModal() {
     var m = document.getElementById('refreshModal'); if (m) m.classList.add('open');
     var searchInput = document.getElementById('refreshModelSearch');
     if (searchInput) searchInput.value = '';
     _refreshQuery = '';
     _populateRightPanel();
+    _initRefreshLayout();
     if (_refreshAvailable.length) _renderAvailableModels();
-    Ipc.postToHost('refreshModelPricing');
+    _requestModelRefresh();
   }
 
   function filterAvailableModels(list, query) {
@@ -569,10 +746,10 @@
       // Rows copied from the settings table only hold the display id; fall
       // back to the provider column so they match fetched full ids like
       // "google/gemini-3-flash-preview".
-      var openRouterProvEl = tr.querySelector('[data-field="provider"]');
-      var openRouterProvider = openRouterProvEl ? openRouterProvEl.value || '' : '';
-      if (openRouterProvider === 'openrouter') {
-        ids.push(ensureFullId(id, openRouterProvider));
+      var provEl = tr.querySelector('[data-field="provider"]');
+      var provider = provEl ? provEl.value || '' : '';
+      if (provider) {
+        ids.push(ensureFullId(id, provider));
         return;
       }
       if (id.indexOf('/') < 0) {
@@ -594,14 +771,18 @@
     list.forEach(function(m) {
       var p = _refreshData[m.id] || {};
       var isAdded = added.indexOf(m.id) >= 0;
-      html += '<tr><td class="settings-text-10">' + S.escHtml(stripProvider(m.id)) + '</td>' +
+      var providerName = p.provider || String(m.id || '').split('/')[0] || '';
+      var providerLabel = providerLabelForKey(providerName) || providerName;
+      html += '<tr><td class="settings-text-10" title="Provider ID: ' + S.escHtml(providerName) + '">' + S.escHtml(providerLabel) + '</td>' +
+        '<td class="settings-text-10">' + S.escHtml(stripProvider(m.id)) + '</td>' +
         '<td>' + fmtPrice(p.input) + '</td>' +
+        '<td>' + fmtPrice(p.cachedInput) + '</td>' +
         '<td>' + fmtPrice(p.output) + '</td>' +
         '<td>' + formatContext(p.context) + '</td>' +
         '<td>' + buildAddButtonHtml(m.id, isAdded) + '</td></tr>';
     });
-    tbody.innerHTML = html || '<tr><td class="settings-empty-state" colspan="5">' +
-      (_refreshAvailable.length ? 'No matching models' : 'Click Refresh to pull latest pricing data') + '</td></tr>';
+    tbody.innerHTML = html || '<tr><td class="settings-empty-state" colspan="7">' +
+      (_refreshAvailable.length ? 'No matching models' : 'Click Refresh to pull latest models') + '</td></tr>';
     tbody.querySelectorAll('.add-refresh-model').forEach(function(btn) {
       btn.addEventListener('click', function() {
         window.SettingsModels.addFromRefresh(this.getAttribute('data-id'));
@@ -626,11 +807,37 @@
       tbody.innerHTML = '<tr><td class="settings-empty-state" colspan="9">No models defined</td></tr>';
   }
 
+  function validate() {
+    var providerKeys = currentProviderKeys();
+    var seen = {};
+    var rows = document.querySelectorAll('#modelsTableBody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      var idEl = tr.querySelector('[data-field="id"]');
+      var providerEl = tr.querySelector('[data-field="provider"]');
+      var id = String(idEl && idEl.value || '').trim();
+      if (!id) continue;
+      var provider = String(providerEl && providerEl.value || '').trim();
+      if (!provider)
+        return { valid: false, message: 'Model "' + id + '" needs a provider.' };
+      if (providerKeys.indexOf(provider) < 0)
+        return { valid: false, message: 'Model "' + id + '" references provider "' + provider + '", which is no longer configured. Reassign or remove the model before saving.' };
+      var fullId = ensureFullId(id, provider);
+      if (seen[fullId])
+        return { valid: false, message: 'Model ID "' + fullId + '" is duplicated.' };
+      seen[fullId] = true;
+    }
+    return { valid: true };
+  }
+
   window.SettingsModels = {
     parsePricingRaw: parsePricingRaw,
     parseOpenRouterModelResponse: parseOpenRouterModelResponse,
     filterAvailableModels: filterAvailableModels,
     buildAddButton: buildAddButtonHtml,
+    buildProviderSelect: buildProviderSelect,
+    syncProviderOptions: syncProviderOptions,
+    renameProvider: renameProvider,
     collectCurrentModels: function() { return _collectCurrentModels(); },
     rightPanelIds: function() { return _rightPanelIds(); },
 
@@ -640,16 +847,23 @@
       if (data.success && data.models) {
         _refreshData = {};
         _refreshAvailable = data.models;
+        var status = document.getElementById('refreshModelStatus');
+        var warnings = Array.isArray(data.warnings) ? data.warnings : [];
+        if (status) status.textContent = warnings.length
+          ? warnings.join(' ')
+          : 'Model metadata refreshed from models.dev. OpenRouter remains lookup-only.';
         data.models.forEach(function(m) {
-          _refreshData[m.id] = m.raw ? parsePricingRaw(m.raw) : {};
+          _refreshData[m.id] = m.meta || (m.raw ? parsePricingRaw(m.raw) : {});
         });
         _renderAvailableModels();
       } else {
         _refreshAvailable = [];
         _refreshQuery = '';
-        leftTbody.innerHTML = '<tr><td class="settings-danger" colspan="5">Error: ' + S.escHtml(data.error || 'Unknown error') + '</td></tr>';
+        leftTbody.innerHTML = '<tr><td class="settings-danger" colspan="7">Error: ' + S.escHtml(data.error || 'Unknown error') + '</td></tr>';
         var countEl = document.getElementById('refreshModelCount');
         if (countEl) countEl.textContent = '';
+        var status = document.getElementById('refreshModelStatus');
+        if (status) status.textContent = '';
       }
     },
 
@@ -758,7 +972,7 @@
       if (saveBtn) saveBtn.addEventListener('click', function() { window.SettingsModels.saveRefresh(); });
       var modalRefreshBtn = document.getElementById('refreshPricingRefreshBtn');
       if (modalRefreshBtn) modalRefreshBtn.addEventListener('click', function() {
-    Ipc.postToHost('refreshModelPricing');
+        _requestModelRefresh();
       });
       var refreshSearch = document.getElementById('refreshModelSearch');
       if (refreshSearch) refreshSearch.addEventListener('input', function() {
@@ -768,5 +982,5 @@
     });
   }
 
-  S.registerSection(sectionName, {load: load, save: save});
+  S.registerSection(sectionName, {load: load, save: save, validate: validate});
 })();

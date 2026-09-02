@@ -194,19 +194,31 @@ scenarios.push({
     await openSettings(cdp);
     await openSection(cdp, 'models');
     await cdp.waitFor('document.querySelectorAll("#modelsTableBody tr").length > 0', 10000, 250, 'models table');
-    await cdp.click('#modelsTableBody tr .btn-sm.danger');
+    // A provider cannot be removed while any model still references it. The
+    // validator intentionally blocks that invalid state, so remove every
+    // DeepSeek model before removing the provider and verify the clean list
+    // survives Save -> Load.
+    const removedDeepSeekModels = await cdp.eval(`(() => {
+      let count = 0;
+      for (const row of [...document.querySelectorAll('#modelsTableBody tr')]) {
+        const provider = row.querySelector('[data-field="provider"]');
+        if (provider && provider.value === 'deepseek') {
+          const button = row.querySelector('.btn-sm.danger');
+          if (button) { button.click(); count++; }
+        }
+      }
+      return count;
+    })()`);
+    if (!removedDeepSeekModels) throw new Error('setup: no DeepSeek models were available to remove');
     await openSection(cdp, 'providers');
     await cdp.waitFor('document.querySelectorAll("#providerGrid .provider-card").length > 1', 10000, 250, 'provider cards');
     await cdp.click('#providerGrid .provider-card .btn-sm.danger');
     await saveSettings(cdp, dataDir);
     const saved = readJsonFile(settingsFile);
-    // The first table row is the alphabetically-first model of the merged
-    // defaults (deepseek/deepseek-chat). The row input shows the STRIPPED id,
-    // so assert on the full key.
-    const modelBack = saved.models && saved.models['deepseek/deepseek-chat'];
     const providerBack = saved.providers && saved.providers.deepseek;
-    if (modelBack) throw new Error('removed model deepseek/deepseek-chat is still present in settings.json after save');
     if (providerBack) throw new Error('removed provider deepseek is still present in settings.json after save');
+    const dangling = Object.keys(saved.models || {}).filter((id) => id.indexOf('deepseek/') === 0);
+    if (dangling.length) throw new Error('removed provider left dangling models in settings.json: ' + JSON.stringify(dangling));
     // Reload half: hide and reopen Settings so AHK re-merges the saved file
     // with defaults (the same Merge used at startup and after WM_SETTINGS_UPDATED).
     // Removed entries must not come back from the defaults.
@@ -221,13 +233,13 @@ scenarios.push({
       id: (tr.querySelector('[data-field="id"]') || {}).value || '',
       provider: (tr.querySelector('[data-field="provider"]') || {}).value || ''
     }))`);
-    if (modelRows.some((r) => r.id === 'deepseek-chat' && r.provider === 'deepseek'))
-      throw new Error('removed model deepseek/deepseek-chat came back from defaults after reopening settings: ' + JSON.stringify(modelRows));
+    if (modelRows.some((r) => r.provider === 'deepseek'))
+      throw new Error('removed DeepSeek models came back from defaults after reopening settings: ' + JSON.stringify(modelRows));
     await openSection(cdp, 'providers');
     const providerKeys = await cdp.eval(`[...document.querySelectorAll('#providerGrid .provider-card')].map(c => c.dataset.providerKey || '')`);
     if (providerKeys.includes('deepseek'))
       throw new Error('removed provider deepseek came back from defaults after reopening settings: ' + JSON.stringify(providerKeys));
-    return 'after removing deepseek/deepseek-chat and provider deepseek, both stay removed in settings.json and after reopening settings';
+    return 'after removing all DeepSeek models and the deepseek provider, neither the provider nor dangling models returned after reopening settings';
   }
 });
 
@@ -1888,6 +1900,91 @@ scenarios.push({
     }
     if (!fs.existsSync(zip)) throw new Error('Back Up Now did not publish a ZIP in the displayed folder: ' + target);
     return 'displayed folder ' + target + ' reached settings.json and native manual backup published ' + zip;
+  }
+});
+
+scenarios.push({
+  id: 328,
+  name: 'Custom OpenAI-compatible provider is usable immediately and preserves stable nested model references',
+  regression: true,
+  mode: 'sse-success',
+  settings: {},
+  async body({ cdp, dataDir, mockLog, endpoint }) {
+    await showChat();
+    await openSettings(cdp);
+    await openSection(cdp, 'providers');
+    await cdp.click('#addProviderBtn');
+    await cdp.waitFor('document.querySelectorAll("#providerGrid .provider-card").length === 5', 10000, 100, 'custom provider card');
+
+    const customProvider = await cdp.eval(`(() => {
+      const cards = [...document.querySelectorAll('#providerGrid .provider-card')];
+      const card = cards[cards.length - 1];
+      const set = (field, value) => {
+        const el = card.querySelector('[data-field="' + field + '"]');
+        if (!el) return false;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        setter.call(el, value);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      };
+      set('displayName', 'Xiaomi');
+      set('endpoint', ${JSON.stringify(endpoint)});
+      set('apiKey', 'e2e-xiaomi-key');
+      return {
+        key: card.dataset.providerKey,
+        name: card.querySelector('[data-field="displayName"]').value,
+        idInput: card.querySelector('[data-field="providerId"]').value
+      };
+    })()`);
+    if (customProvider.key !== 'xiaomi' || customProvider.idInput !== 'xiaomi')
+      throw new Error('display name did not derive stable provider ID xiaomi: ' + JSON.stringify(customProvider));
+
+    await openSection(cdp, 'models');
+    await cdp.click('#addModelBtn');
+    await cdp.waitFor('document.querySelectorAll("#modelsTableBody tr").length > 0', 10000, 100, 'custom model row');
+    const sameSession = await cdp.eval(`(() => {
+      const row = document.querySelector('#modelsTableBody tr:last-child');
+      const id = row.querySelector('[data-field="id"]');
+      const provider = row.querySelector('[data-field="provider"]');
+      const idSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      idSetter.call(id, 'vendor/mimo-v2.5-pro');
+      id.dispatchEvent(new Event('input', { bubbles: true }));
+      provider.value = 'xiaomi';
+      provider.dispatchEvent(new Event('change', { bubbles: true }));
+      const selected = [...provider.options].find((o) => o.value === 'xiaomi');
+      return { selected: !!selected, label: selected && selected.textContent, id: id.value };
+    })()`);
+    if (!sameSession.selected || sameSession.label !== 'Xiaomi')
+      throw new Error('custom provider was not selectable/readable before Save: ' + JSON.stringify(sameSession));
+
+    await saveSettings(cdp, dataDir);
+    const saved = readJsonFile(path.join(dataDir, 'settings.json'));
+    if (!saved.providers || !saved.providers.xiaomi || saved.providers.xiaomi.displayName !== 'Xiaomi')
+      throw new Error('custom provider did not persist: ' + JSON.stringify(saved.providers && saved.providers.xiaomi));
+    const modelKey = 'xiaomi/vendor/mimo-v2.5-pro';
+    if (!saved.models || !saved.models[modelKey] || saved.models[modelKey].provider !== 'xiaomi')
+      throw new Error('nested custom model reference was mangled: ' + JSON.stringify(saved.models && saved.models[modelKey]));
+
+    await hideSettingsToChat(cdp);
+    await cdp.waitFor('window.modelList && window.modelList.xiaomi && window.modelList.xiaomi.some((m) => m.fullId === ' + JSON.stringify(modelKey) + ')', 15000, 200, 'custom model list');
+    await cdp.click('#modelCardTrigger');
+    await cdp.waitFor('document.getElementById("modelPopover").classList.contains("open")', 5000, 200, 'model picker');
+    await cdp.click('.popover-tab[data-target="tab-models"]');
+    await cdp.waitFor('[...document.querySelectorAll("#tab-models .selector-item .si-name")].some((e) => e.textContent === "vendor/mimo-v2.5-pro")', 10000, 200, 'custom model selector');
+    await cdp.eval(`(() => [...document.querySelectorAll('#tab-models .selector-item')].find((e) => e.querySelector('.si-name') && e.querySelector('.si-name').textContent === 'vendor/mimo-v2.5-pro').click())()`);
+    await cdp.waitFor('window._currentSettings && window._currentSettings.model === ' + JSON.stringify(modelKey), 10000, 200, 'custom model selected');
+    await sendChatMessage(cdp, 'custom provider smoke test');
+    await waitStreamingIdle(cdp, 40000);
+    const requests = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, 'utf8').trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)) : [];
+    const customRequest = requests.find((request) => request.body && request.body.model === 'vendor/mimo-v2.5-pro');
+    if (!customRequest) throw new Error('mock did not receive the nested custom model: ' + JSON.stringify(requests));
+    if (customRequest.authorization !== 'Bearer e2e-xiaomi-key')
+      throw new Error('custom provider did not use Bearer auth: ' + JSON.stringify(customRequest.authorization));
+    const messages = await cdp.eval('chatMessages.map((message) => message.role + ":" + message.content).join("|")');
+    if (messages.indexOf('assistant:Hello from the mock LLM.') < 0)
+      throw new Error('custom provider response was not streamed into the chat: ' + messages);
+    return 'Xiaomi provider became selectable before Save, saved as xiaomi/vendor/mimo-v2.5-pro, reloaded intact, and streamed through the mock Chat Completions endpoint with Bearer auth';
   }
 });
 

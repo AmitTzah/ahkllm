@@ -515,6 +515,7 @@
 .settings-p-0 { padding: 0; }
 .settings-p-16 { padding: 16px; }
 .settings-p-top { padding: 8px 10px 0; }
+.settings-refresh-status { padding: 0 10px 6px; }
 .settings-accent-block { border-left: 3px solid var(--accent-primary); padding: 4px 0 4px 12px; margin: 24px 0 16px; }
 .settings-warning-block { border-left: 3px solid var(--warning); padding: 4px 0 4px 12px; margin: 24px 0 16px; }
 .settings-card-group { margin-bottom: 24px; border: 1px solid var(--border-main); border-radius: var(--radius-md); overflow: hidden; }
@@ -560,6 +561,79 @@
 .settings-advanced-body { padding-top: 12px; }
 .refresh-model-search:focus { outline: none; border-color: var(--accent-primary); background: var(--bg-panel); }
 .refresh-model-count { font-size: 10px; color: var(--text-tertiary); padding: 4px 12px 6px; }
+
+/* Edit Models workspace: resizable panels, resizable columns, sticky actions. */
+.refresh-models-modal { width: min(1600px, 96vw); max-width: 96vw; height: min(900px, 90vh); max-height: 90vh; }
+.refresh-models-subtitle { margin-top: 3px; font-size: 11px; color: var(--text-tertiary); }
+.refresh-models-body { min-height: 0; overflow: hidden; padding: 12px; gap: 0; flex-direction: column; }
+.refresh-models-panel { min-width: 0; min-height: 0; overflow: hidden; }
+.refresh-available-panel { flex: 0 0 40%; min-height: 180px; }
+.refresh-owned-panel { flex: 1 1 auto; min-height: 240px; }
+.refresh-table-scroll { min-height: 0; overflow: auto; padding: 0; }
+
+.refresh-panel-splitter {
+  position: relative; flex: 0 0 10px; width: 100%; cursor: row-resize;
+  outline: none; user-select: none; touch-action: none;
+}
+.refresh-panel-splitter::before {
+  content: ''; position: absolute; left: 8px; right: 8px; top: 4px; height: 2px;
+  border-radius: 2px; background: var(--border-main); transition: background 0.12s, height 0.12s;
+}
+.refresh-panel-splitter:hover::before,
+.refresh-panel-splitter:focus::before,
+.refresh-panel-splitter.is-dragging::before { background: var(--accent-primary); height: 3px; }
+
+.refresh-model-table {
+  table-layout: fixed; width: 100%; border-collapse: separate; border-spacing: 0;
+}
+.refresh-available-table { min-width: 670px; }
+.refresh-owned-table { min-width: 880px; }
+.refresh-model-table th,
+.refresh-model-table td { padding-left: 7px; padding-right: 7px; }
+.refresh-model-table thead th {
+  position: sticky; top: 0; z-index: 3; background: var(--bg-main); white-space: nowrap;
+}
+.refresh-model-table th:last-child,
+.refresh-model-table td:last-child {
+  position: sticky; right: 0; z-index: 2; background: var(--bg-main);
+  box-shadow: -1px 0 0 var(--border-light); text-align: center;
+}
+.refresh-model-table thead th:last-child { z-index: 5; }
+.refresh-model-table th:nth-child(n+3),
+.refresh-model-table td:nth-child(n+3) { white-space: nowrap; }
+.refresh-model-table .add-refresh-model { min-width: 58px; width: 100%; }
+.refresh-model-table .actions .btn-sm { min-width: 38px; }
+
+.refresh-available-table .refresh-col-provider { width: 95px; }
+.refresh-available-table .refresh-col-model { width: 205px; }
+.refresh-available-table .refresh-col-price { width: 76px; }
+.refresh-available-table .refresh-col-context { width: 70px; }
+.refresh-available-table .refresh-col-action { width: 68px; }
+.refresh-owned-table .refresh-owned-col-model { width: 260px; }
+.refresh-owned-table .refresh-owned-col-provider { width: 130px; }
+.refresh-owned-table .refresh-owned-col-price { width: 82px; }
+.refresh-owned-table .refresh-owned-col-context { width: 72px; }
+.refresh-owned-table .refresh-owned-col-toggle { width: 48px; }
+.refresh-owned-table .refresh-owned-col-action { width: 54px; }
+
+.refresh-owned-table .settings-provider-select,
+.refresh-owned-table .refresh-owned-model-input,
+.refresh-owned-table .refresh-price-input,
+.refresh-owned-table .refresh-context-input { width: 100%; min-width: 0; box-sizing: border-box; }
+.refresh-owned-table .settings-provider-select { max-width: 100%; }
+.refresh-owned-model-cell { min-width: 0; }
+
+.refresh-column-resizer {
+  position: absolute; top: 0; right: -4px; width: 8px; height: 100%;
+  cursor: col-resize; z-index: 7; user-select: none;
+}
+.refresh-column-resizer::after {
+  content: ''; position: absolute; top: 20%; bottom: 20%; left: 3px; width: 1px;
+  background: transparent; transition: background 0.12s;
+}
+.refresh-column-resizer:hover::after,
+.refresh-column-resizer.is-dragging::after { background: var(--accent-primary); }
+
 
 @keyframes refreshRowFlash {
   0% { background-color: color-mix(in srgb, var(--accent-primary) 28%, transparent); }

@@ -202,6 +202,29 @@ class SettingsHandlerTest {
         }
     }
 
+    ; New custom-model rows may intentionally leave prices blank in the UI.
+    ; Runtime pricing must still receive numeric Input/Output values so a
+    ; thread-stat calculation cannot multiply an empty string.
+    ApplyModels_BlankRequiredPricesBecomeZero() {
+        global models
+        oldModels := models
+        try {
+            SettingsHandler.ApplyToGlobals(Map(
+                "models", Map(
+                    "xiaomi/vendor/mimo-v2.5-pro", Map(
+                        "provider", "xiaomi", "input", "", "cachedInput", "",
+                        "output", "", "context", "", "reasoning", false, "vision", false
+                    )
+                )
+            ))
+            entry := models["xiaomi/vendor/mimo-v2.5-pro"]
+            if entry.input != 0 || entry.output != 0
+                throw Error("blank required prices should become numeric zero, got input=" entry.input " output=" entry.output)
+        } finally {
+            models := oldModels
+        }
+    }
+
     ; Regression (bug #90): Override must ignore non-object incoming payloads.
     Override_NonObjectIncoming_Ignored() {
         result := SettingsMerge.Override("", Map("version", 1, "trash", Map("retentionDays", 30)))

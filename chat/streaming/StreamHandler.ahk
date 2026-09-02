@@ -320,7 +320,7 @@ _pollStreamTimer() {
                 _SaveStreamFromParams(stream)
             }
         } catch Error as e {
-            debugLog("_pollStreamTimer error: " e.Message)
+            debugLog("_pollStreamTimer error: " e.Message "`n" e.Stack)
             SetTimer(, 0)
             _finalizeStreaming()
         }
@@ -1015,7 +1015,7 @@ _finalizeStreaming() {
         _cleanupStreamState()
         _FinishStreamFinalize()
     } catch Error as e {
-        debugLog("_finalizeStreaming error: " e.Message)
+        debugLog("_finalizeStreaming error: " e.Message "`n" e.Stack)
         _clearToolLoopState()
         ; The finishing stream is still registered here, so exclude it while
         ; checking all other streams, search loops, and non-stream requests.

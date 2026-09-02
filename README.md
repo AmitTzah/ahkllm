@@ -145,6 +145,14 @@ Most configuration is available from the gear icon in the chat window, including
 
 If you prefer editing the shipped defaults directly, they live in [`default-settings/DefaultSettings.ahk`](default-settings/DefaultSettings.ahk). Reload or restart AhkLLM after changing that file.
 
+### User-added providers and model metadata
+
+User-added providers must expose an OpenAI-compatible Chat Completions endpoint and use Bearer authentication. Give each provider a stable lowercase ID; model references use that transport ID, such as `xiaomi/mimo-v2.5-pro`.
+
+**Fetch Latest Models** gets pricing, cached-input pricing, context limits, vision/reasoning support, and compatibility metadata from [models.dev](https://models.dev/). A provider uses the models.dev catalog with the same ID by default. Set the optional **models.dev Provider** override when a transport provider should use another catalog, for example `work-mimo` mapped to `xiaomi`; generated model IDs still use `work-mimo`.
+
+OpenRouter is intentionally handled per model: use the model settings **Lookup** action for an exact slug or provider/model ID. Its large catalog is not bulk-imported, and `openrouter/free` remains the built-in synthetic router model.
+
 ## Try AhkLLM for free
 
 If you just want to try AhkLLM without paying for API usage, you can use OpenRouter's free model router. Create a free OpenRouter API key and set it as `OPENROUTER_API_KEY`, either through a Windows environment variable or from AhkLLM's provider settings.

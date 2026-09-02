@@ -32,6 +32,11 @@ function defaultProviders(endpoint, fimEndpoint = '') {
       displayName: 'Google Gemini', endpoint, fimEndpoint: '',
       authMode: 'env', authEnvVar: 'GOOGLE_API_KEY', apiKey: '',
       icon: '', collapseThinking: false, prefixes: ['gemini', 'gemma', 'google']
+    },
+    openrouter: {
+      displayName: 'OpenRouter', endpoint, fimEndpoint: '',
+      authMode: 'env', authEnvVar: 'OPENROUTER_API_KEY', apiKey: '',
+      icon: '', collapseThinking: false, prefixes: ['openrouter']
     }
   };
 }

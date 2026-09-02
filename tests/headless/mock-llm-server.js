@@ -344,7 +344,7 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       if (logFile) {
         try {
           const modeUsed = parsed.stream ? 'sse' : (parsed.max_tokens === 50 ? 'title' : 'json');
-          fs.appendFileSync(logFile, JSON.stringify({ modeUsed, url: req.url, body: parsed }) + '\n');
+          fs.appendFileSync(logFile, JSON.stringify({ modeUsed, url: req.url, authorization: req.headers.authorization || '', body: parsed }) + '\n');
         } catch {}
       }
       if (req.url.includes('/chat/completions') && opts.toolRounds) {

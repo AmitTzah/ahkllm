@@ -277,6 +277,8 @@ describe('Providers settings section', () => {
 
     it('save collects provider data with direct/env auth mode and prefixes', () => {
         const grid = makeEl('div');
+        const providerId = makeEl('input', { value: 'prov-a' });
+        providerId.dataset.field = 'providerId';
         const displayName = makeEl('input', { value: 'My Prov' });
         displayName.dataset.field = 'displayName';
         const apiKey = makeEl('input', { value: 'sk-secret' });
@@ -300,7 +302,8 @@ describe('Providers settings section', () => {
             '.btn-sm.danger': [makeEl('button')],
             '.toggle-api-key': [],
             '.prefix-tags': [],
-            '[data-field]': [displayName, apiKey, authEnvVar, endpoint, switchOn],
+            '[data-field]': [providerId, displayName, apiKey, authEnvVar, endpoint, switchOn],
+            '[data-field="providerId"]': [providerId],
             '.prefix-tags .badge': [tagA, tagB],
             '.provider-card': [cardA, cardB],
         };
@@ -309,11 +312,11 @@ describe('Providers settings section', () => {
         for (const card of [cardA, cardB]) wireQueries(card, selectorMap);
         ctx.module.load({ providers: { provA: {}, provB: {} } });
         const data = JSON.parse(JSON.stringify(ctx.module.save()));
-        assert.ok(data.providers.provA.displayName === 'My Prov');
-        assert.ok(data.providers.provA.authMode === 'direct');
-        assert.ok(data.providers.provA.collapseThinking === true);
-        assert.ok(data.providers.provA.prefixes.length === 1 && data.providers.provA.prefixes[0] === 'openai-');
-        assert.ok(data.providers['new-provider'].displayName === 'My Prov', 'missing key falls back to new-provider');
+        assert.ok(data.providers['prov-a'].displayName === 'My Prov');
+        assert.ok(data.providers['prov-a'].authMode === 'direct');
+        assert.ok(data.providers['prov-a'].collapseThinking === true);
+        assert.ok(data.providers['prov-a'].prefixes.length === 1 && data.providers['prov-a'].prefixes[0] === 'openai-');
+        assert.ok(!data.providers['new-provider'], 'blank provider IDs must not create synthetic fallback keys');
     });
 
     it('save uses env auth mode when only an env var is configured', () => {
@@ -358,7 +361,8 @@ describe('Providers settings section', () => {
         ctx.fireDomReady();
         addBtn.fire('click');
         assert.ok(grid.children.length === 1);
-        assert.ok(grid.children[0].dataset.providerKey.indexOf('provider-') === 0);
+        assert.strictEqual(grid.children[0].dataset.providerKey, '', 'new providers must not receive timestamp IDs');
+        assert.strictEqual(grid.children[0].dataset.isNew, 'true');
         assert.ok(ctx.dirtyCalls.length >= 1);
     });
 
@@ -366,6 +370,62 @@ describe('Providers settings section', () => {
         const ctx = loadSection({ grid: null, addBtn: null });
         ctx.fireDomReady();
         assert.ok(true);
+    });
+
+    it('slugifies display names into stable provider IDs', () => {
+        const ctx = loadSection({});
+        assert.strictEqual(ctx.sandbox.window.SettingsProviders.slugifyProviderId(' Xiaomi MiMo / API '), 'xiaomi-mimo-api');
+    });
+
+    it('validates provider IDs, display names, and chat endpoints', () => {
+        const providerId = makeEl('input', { value: 'xiaomi' });
+        const displayName = makeEl('input', { value: 'Xiaomi' });
+        const endpoint = makeEl('input', { value: 'https://api.example.com/v1/chat/completions' });
+        const card = makeEl('div');
+        wireQueries(card, {
+            '[data-field="providerId"]': [providerId],
+            '[data-field="displayName"]': [displayName],
+            '[data-field="endpoint"]': [endpoint],
+        });
+        const ctx = loadSection({ docSelectorMap: { '#providerGrid .provider-card': [card] } });
+        assert.strictEqual(ctx.module.validate().valid, true);
+        providerId.value = 'Xiaomi Bad';
+        assert.strictEqual(ctx.module.validate().valid, false);
+    });
+
+    it('validates the optional models.dev provider override key', () => {
+        const providerId = makeEl('input', { value: 'work-mimo' });
+        const displayName = makeEl('input', { value: 'Work MiMo' });
+        const endpoint = makeEl('input', { value: 'https://api.example.com/v1/chat/completions' });
+        const catalog = makeEl('input', { value: 'xiaomi' });
+        const card = makeEl('div');
+        wireQueries(card, {
+            '[data-field="providerId"]': [providerId],
+            '[data-field="displayName"]': [displayName],
+            '[data-field="endpoint"]': [endpoint],
+            '[data-field="modelsDevProvider"]': [catalog],
+        });
+        const ctx = loadSection({ docSelectorMap: { '#providerGrid .provider-card': [card] } });
+        assert.strictEqual(ctx.module.validate().valid, true);
+        catalog.value = 'bad catalog';
+        assert.strictEqual(ctx.module.validate().valid, false);
+    });
+
+    it('allows legacy timestamp provider IDs to be renamed', () => {
+        const grid = makeEl('div');
+        grid.querySelectorAll = () => [];
+        const selectorMap = {
+            '.prefix-tags .badge .remove': [],
+            '.switch': [],
+            'input': [],
+            '.btn-sm.danger': [makeEl('button')],
+            '.toggle-api-key': [],
+            '.prefix-tags': [],
+        };
+        const ctx = loadSection({ grid, selectorMap });
+        ctx.module.load({ providers: { 'provider-12345': { displayName: 'Xiaomi' } } });
+        assert.strictEqual(grid.children[0].dataset.isNew, 'true');
+        assert.ok(grid.children[0].innerHTML.includes('Legacy generated ID'));
     });
 
     it('registers with the settings panel when available', () => {
