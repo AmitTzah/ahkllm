@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1] - 2026-09-03
+
+### Fixed
+
+- Backup settings now require a destination before activation, normalize the selected folder consistently, and use the persisted configuration reliably when starting a manual backup.
+- Backup status clears stale errors when its configuration changes and reports actionable pending/running/folder-required states.
+
 ## [1.3.0] - 2026-09-02
 
 ### Added

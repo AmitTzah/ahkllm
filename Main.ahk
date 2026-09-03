@@ -64,20 +64,14 @@ OnMessage(CustomMessages.WM_BACKUP_DIRTY, (*) => gBackupManager.MarkDirty())
 _handleBackupNow(*) {
     global gBackupManager
     config := CustomMessages.consumeBackupNowConfig()
-    ; E2E workers persist the displayed backup config in their private data
-    ; root. If the cross-process request handoff is observed before its file is
-    ; visible, reload that same worker file before invoking Main's manager.
-    hasBackupConfig := IsObject(config) && config.Has("folder") && config["folder"] != ""
-    if !hasBackupConfig && EnvGet("AHKLLM_E2E_WORKER") != "" && EnvGet("AHKLLM_E2E_DATA_DIR") != "" {
-        ; The ChatWindow has just atomically saved settings.json. A bounded
-        ; retry covers the short filesystem/message visibility gap observed in
-        ; parallel workers without changing the normal production path.
-        loop 10 {
-            SettingsService.ReloadFromDisk()
-            if gBackupManager.GetStatus().folder
-                break
-            Sleep 50
-        }
+    ; ChatWindow persists the displayed backup config before posting this
+    ; message. The request-file handoff is the fast path; if it is missing or
+    ; unreadable, recover the same committed config from settings.json in every
+    ; environment rather than falling back only in the E2E harness.
+    if !IsObject(config) {
+        fallbackSettings := SettingsService.LoadMerged()
+        if fallbackSettings.Has("backup")
+            config := fallbackSettings["backup"]
     }
     gBackupManager.BackupNow(false, config)
 }

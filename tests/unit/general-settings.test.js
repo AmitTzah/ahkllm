@@ -293,6 +293,49 @@ describe('General settings section', () => {
         assert.ok(true);
     });
 
+    it('trims the backup destination before saving', () => {
+        const ctx = loadSection({ els: {
+            backupEnabledToggle: makeEl({ classList: makeClassList(['on']) }),
+            backupFolder: makeEl({ value: '  C:\\\\Backups  ' }),
+        } });
+        assert.strictEqual(ctx.module.save().backup.folder, 'C:\\\\Backups');
+    });
+
+    it('rejects an enabled automatic backup with no destination folder', () => {
+        const toggle = makeEl({ classList: makeClassList(['on']) });
+        const folder = makeEl({ value: '   ' });
+        const ctx = loadSection({ els: { backupEnabledToggle: toggle, backupFolder: folder } });
+        const result = ctx.module.validate();
+        assert.strictEqual(result.valid, false);
+        assert.ok(result.message.includes('backup destination folder'));
+
+        toggle.classList.remove('on');
+        assert.strictEqual(ctx.module.validate().valid, true, 'disabled automatic backups may have no folder');
+    });
+
+    it('empty destination cannot look enabled or send Back Up Now', async () => {
+        const now = makeEl();
+        const folder = makeEl({ value: '' });
+        const toggle = makeEl({ classList: makeClassList() });
+        const status = makeEl({ textContent: '' });
+        const ctx = loadSection({ els: {
+            backupNowBtn: now,
+            backupFolder: folder,
+            backupEnabledToggle: toggle,
+            backupStatus: status,
+        } });
+        ctx.fireDomReady();
+
+        toggle.fire('click');
+        assert.ok(!toggle.classList.contains('on'), 'automatic backup must stay off until a folder is configured');
+        assert.strictEqual(status.textContent, 'Choose a backup destination folder first');
+
+        now.fire('click');
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.ok(!ctx.ipcCalls.some((call) => call.action === 'backupNow'), 'empty destination must not reach native backup IPC');
+        assert.strictEqual(status.textContent, 'Choose a backup destination folder first');
+    });
+
     it('Back Up Now sends the currently displayed folder to the native request', async () => {
         const now = makeEl();
         const folder = makeEl({ value: 'D:\\Displayed\\Backup' });
@@ -310,6 +353,22 @@ describe('General settings section', () => {
         assert.ok(request, 'manual backup must reach IPC');
         assert.strictEqual(request.payload.backup.enabled, true);
         assert.strictEqual(request.payload.backup.folder, 'D:\\Displayed\\Backup');
+    });
+
+    it('Back Up Now shows a start state instead of pretending the backup is only queued', async () => {
+        const now = makeEl();
+        const status = makeEl({ textContent: '' });
+        const ctx = loadSection({ els: {
+            backupNowBtn: now,
+            backupFolder: makeEl({ value: 'D:\\Displayed\\Backup' }),
+            backupEnabledToggle: makeEl({ classList: makeClassList(['on']) }),
+            backupStatus: status,
+        } });
+        ctx.fireDomReady();
+
+        now.fire('click');
+        assert.strictEqual(status.textContent, 'Starting backup...');
+        await new Promise((resolve) => setImmediate(resolve));
     });
 
     it('wireDirty marks dirty on change and input for every field', () => {
@@ -333,6 +392,7 @@ describe('General settings section', () => {
         assert.ok(ctx.registered[0].name === 'general');
         assert.ok(typeof ctx.registered[0].mod.load === 'function');
         assert.ok(typeof ctx.registered[0].mod.save === 'function');
+        assert.ok(typeof ctx.registered[0].mod.validate === 'function');
     });
 
     it('defers registration until SettingsPanel appears', () => {

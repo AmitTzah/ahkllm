@@ -37,6 +37,8 @@ class BackupManager {
 
     ApplySettings(settings := "") {
         global backupEnabled, backupFolder
+        oldEnabled := this._enabled
+        oldFolder := this._folder
         if IsObject(settings) && settings.Has("backup") {
             config := settings["backup"]
             if IsObject(config) {
@@ -50,6 +52,8 @@ class BackupManager {
             this._enabled := IsSet(backupEnabled) ? this._ToBool(backupEnabled) : false
             this._folder := IsSet(backupFolder) ? Trim(backupFolder) : ""
         }
+        if this._enabled != oldEnabled || this._folder != oldFolder
+            this._lastError := ""
         if this._initialized
             this._RecoverStaleTemp()
         this.PublishStatus()
@@ -85,8 +89,9 @@ class BackupManager {
         this.BackupNow(true)
     }
 
-    ; Manual and automatic backups converge here. Automatic calls pass true so
-    ; a disabled setting cannot suppress an explicit user request.
+    ; Manual and automatic backups converge here. Tick enforces the automatic
+    ; enabled/dirty gates; an explicit manual request can run while automatic
+    ; backups are disabled.
     BackupNow(isAutomatic := false, manualConfig := "") {
         if this._running {
             if !isAutomatic
@@ -137,9 +142,13 @@ class BackupManager {
 
     GetStatus() {
         text := "No backup has been created yet"
-        if this._lastError
+        if this._enabled && !this._folder
+            text := "Backup folder required"
+        else if this._lastError
             text := "Backup failed: " this._lastError
-        else if this._running || this._changeGeneration > this._backedUpGeneration
+        else if this._running
+            text := "Backing up..."
+        else if this._changeGeneration > this._backedUpGeneration
             text := "Backup pending"
         else if this._lastSuccessfulTime
             text := "Last backup: " this._FormatTime(this._lastSuccessfulTime)
@@ -418,8 +427,10 @@ class BackupManager {
 
     _ValidateDestination() {
         if !this._folder
-            throw Error("no folder configured")
-        ; The Browse button uses FileSelect(2), but the text field also allows
+            throw Error("choose a backup destination folder first")
+        if RegExMatch(this._folder, "(^|[\\/])\.\.([\\/]|$)")
+            throw Error("backup destination must not contain parent-directory segments")
+        ; The Browse button uses FileSelect("D"), but the text field also allows
         ; manual entry/paste. Never treat an existing file as a directory.
         if FileExist(this._folder) && !DirExist(this._folder)
             throw Error("backup destination is a file; choose a folder")

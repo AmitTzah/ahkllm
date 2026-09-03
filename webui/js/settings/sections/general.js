@@ -5,6 +5,12 @@
 (function() {
   var sectionName = 'general';
   var S = window.SettingsShared;
+  var BACKUP_FOLDER_REQUIRED = 'Choose a backup destination folder first';
+
+  function backupFolderValue() {
+    var input = document.getElementById('backupFolder');
+    return input && input.value ? String(input.value).trim() : '';
+  }
 
   // Populate the "New Chats Start With" dropdown: App Default first, then the
   // configured assistants ("asst:<id>"), then every available model. A saved
@@ -131,15 +137,23 @@
     var backupToggle = document.getElementById('backupEnabledToggle');
     data.backup = {
       enabled: backupToggle ? backupToggle.classList.contains('on') : false,
-      folder: (document.getElementById('backupFolder') || {}).value || ''
+      folder: backupFolderValue()
     };
     return data;
+  }
+
+  function validate() {
+    var toggle = document.getElementById('backupEnabledToggle');
+    if (toggle && toggle.classList.contains('on') && !backupFolderValue()) {
+      return { valid: false, message: 'Choose a backup destination folder before enabling automatic backups.' };
+    }
+    return { valid: true };
   }
 
   function onFolderSelected(folder) {
     var input = document.getElementById('backupFolder');
     if (!input) return;
-    input.value = folder || '';
+    input.value = folder ? String(folder).trim() : '';
     S.markDirty();
   }
 
@@ -167,18 +181,26 @@
   function wireBackupControls() {
     var toggle = document.getElementById('backupEnabledToggle');
     if (toggle) toggle.addEventListener('click', function() {
+      var turningOn = !this.classList.contains('on');
+      if (turningOn && !backupFolderValue()) {
+        onBackupStatus({ text: BACKUP_FOLDER_REQUIRED });
+        return;
+      }
       this.classList.toggle('on');
       S.markDirty();
     });
     var browse = document.getElementById('backupBrowseBtn');
     if (browse) browse.addEventListener('click', function() {
-      var folder = (document.getElementById('backupFolder') || {}).value || '';
-      Ipc.postToHost('browseBackupFolder', { folder: folder });
+      Ipc.postToHost('browseBackupFolder', { folder: backupFolderValue() });
     });
     var now = document.getElementById('backupNowBtn');
     if (now) now.addEventListener('click', function() {
-      onBackupStatus({ text: 'Backup pending' });
       var current = save().backup;
+      if (!current.folder) {
+        onBackupStatus({ text: BACKUP_FOLDER_REQUIRED });
+        return;
+      }
+      onBackupStatus({ text: 'Starting backup...' });
       Ipc.request('backupNow', { backup: current }).catch(function(err) {
         onBackupStatus({ text: 'Backup failed: ' + ((err && err.message) || 'request failed') });
       });
@@ -195,5 +217,5 @@
   }
 
   window.SettingsGeneral = { onFolderSelected: onFolderSelected, onBackupStatus: onBackupStatus };
-  S.registerSection(sectionName, { load: load, save: save });
+  S.registerSection(sectionName, { load: load, save: save, validate: validate });
 })();

@@ -1856,7 +1856,7 @@ scenarios.push({
 
 scenarios.push({
   id: 266,
-  name: 'Back Up Now uses the displayed backup folder without a separate Save click',
+  name: 'Backup requires a real destination and Back Up Now uses the displayed folder without a separate Save click',
   regression: true,
   mode: null,
   settings: {},
@@ -1867,6 +1867,28 @@ scenarios.push({
     await openSettings(cdp);
     await openSection(cdp, 'general');
     await cdp.waitFor('document.getElementById("backupFolder") !== null', 10000, 250, 'backup controls');
+    await sleep(300);
+    await cdp.clearPosted();
+    const emptyState = await cdp.eval(`(() => {
+      const folder = document.getElementById('backupFolder');
+      const toggle = document.getElementById('backupEnabledToggle');
+      toggle.click();
+      document.getElementById('backupNowBtn').click();
+      return {
+        value: folder.value,
+        placeholder: folder.placeholder,
+        enabled: toggle.classList.contains('on'),
+        status: document.getElementById('backupStatus').textContent
+      };
+    })()`);
+    if (emptyState.value !== '' || emptyState.enabled)
+      throw new Error('empty backup destination was presented as configured/enabled: ' + JSON.stringify(emptyState));
+    if (emptyState.placeholder !== 'Choose a backup folder...' || emptyState.status.indexOf('Choose a backup destination folder first') < 0)
+      throw new Error('empty backup destination is still misleading or non-actionable: ' + JSON.stringify(emptyState));
+    await sleep(250);
+    if ((await cdp.postedMessages()).some((message) => message.includes('"backupNow"')))
+      throw new Error('empty backup destination still posted backupNow');
+
     await cdp.clearPosted();
     await cdp.eval(`(() => {
       const folder = document.getElementById('backupFolder');
@@ -1899,7 +1921,14 @@ scenarios.push({
       throw new Error('Back Up Now did not persist the displayed backup config: ' + target + ' posted=' + backupPost);
     }
     if (!fs.existsSync(zip)) throw new Error('Back Up Now did not publish a ZIP in the displayed folder: ' + target);
-    return 'displayed folder ' + target + ' reached settings.json and native manual backup published ' + zip;
+    await cdp.waitFor(`(() => {
+      const el = document.getElementById('backupStatus');
+      return el && /^Last backup:/.test(el.textContent || '');
+    })()`, 10000, 100, 'completed backup status');
+    const finalStatus = await cdp.eval(`document.getElementById('backupStatus').textContent`);
+    if (finalStatus === 'Backup pending' || finalStatus === 'Starting backup...' || finalStatus === 'Backing up...')
+      throw new Error('completed manual backup left the UI in a non-terminal state: ' + finalStatus);
+    return 'displayed folder ' + target + ' reached settings.json, native manual backup published ' + zip + ', and UI reached terminal status ' + finalStatus;
   }
 });
 

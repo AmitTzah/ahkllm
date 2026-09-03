@@ -109,6 +109,30 @@ class BackupManagerTest {
             throw Error("manual backup did not apply its supplied configuration")
     }
 
+    EnabledWithoutFolderReportsRequiredStatus() {
+        manager := BackupManager()
+        manager._enabled := true
+        status := manager.GetStatus()
+        if status.text != "Backup folder required"
+            throw Error("enabled backup with no folder must report a configuration requirement")
+    }
+
+    ManualBackupWithoutFolderReturnsActionableError() {
+        manager := BackupManager()
+        if manager.BackupNow(false, Map("enabled", true, "folder", ""))
+            throw Error("manual backup with an empty folder must fail")
+        if !InStr(manager._lastError, "choose a backup destination folder first")
+            throw Error("empty-folder backup error is not actionable: " manager._lastError)
+    }
+
+    BackupConfigChangeClearsStaleError() {
+        manager := BackupManager()
+        manager._lastError := "old destination error"
+        manager.ApplySettings(Map("backup", Map("enabled", true, "folder", A_Temp)))
+        if manager._lastError != ""
+            throw Error("changing backup configuration must clear a stale error")
+    }
+
     ChangesDuringBackupRemainPending() {
         manager := BackupManagerTestDouble()
         manager._folder := A_Temp
@@ -118,6 +142,17 @@ class BackupManagerTest {
             throw Error("backup with an in-flight mutation should still succeed")
         if manager._changeGeneration = manager._backedUpGeneration
             throw Error("a change during backup must remain pending")
+    }
+
+    RunningStatusIsDistinctFromQueuedPending() {
+        manager := BackupManagerTestDouble()
+        manager._folder := A_Temp
+        manager.MarkDirty()
+        if manager.GetStatus().text != "Backup pending"
+            throw Error("dirty but idle backup should report queued pending state")
+        manager._running := true
+        if manager.GetStatus().text != "Backing up..."
+            throw Error("active backup should report that it is running, not merely pending")
     }
 
     ConcurrentBackupIsRejected() {
@@ -181,6 +216,19 @@ class BackupManagerTest {
             return
         }
         throw Error("the AHKLLM source data directory must not be a backup destination")
+    }
+
+    ParentDirectoryDestinationIsRejected() {
+        manager := BackupManager()
+        manager._folder := A_Temp "\\backup-parent-test\\..\\backup-target"
+        try {
+            manager._ValidateDestination()
+        } catch Error as e {
+            if InStr(e.Message, "parent-directory segments")
+                return
+            throw e
+        }
+        throw Error("backup destination with parent-directory segments must be rejected")
     }
 
     InitUsesStaticTimerInterval() {
