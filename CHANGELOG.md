@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.1] - 2026-09-30
+
+### Fixed
+
+- Inline requests no longer get cancelled by stale AutoHotkey Escape state when Windows reports that Escape is up.
+
 ## [1.4.0] - 2026-09-13
 
 ### Added
