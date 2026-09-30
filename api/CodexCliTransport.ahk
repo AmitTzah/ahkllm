@@ -1029,6 +1029,11 @@ class CodexCliTransport {
         return { cancelled: cancelled, exitCode: exitCode }
     }
 
+
+    static _EscapeWindowsDown() {
+        return (DllCall("User32\GetAsyncKeyState", "Int", 0x1B, "Short") & 0x8000) != 0
+    }
+
     static _CancellationRequested(cancelState) {
         if !IsObject(cancelState)
             return false
@@ -1036,7 +1041,7 @@ class CodexCliTransport {
             return true
         if cancelState.HasOwnProp("cancelRequested") && cancelState.cancelRequested
             return true
-        return cancelState.HasOwnProp("cancelOnEscape") && cancelState.cancelOnEscape && GetKeyState("Esc", "P")
+        return cancelState.HasOwnProp("cancelOnEscape") && cancelState.cancelOnEscape && CodexCliTransport._EscapeWindowsDown()
     }
 
     static _ReadExitCode(statusFile) {

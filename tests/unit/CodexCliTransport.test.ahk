@@ -267,6 +267,8 @@ class CodexCliTransportTest {
 
         srcPath := A_ScriptDir "\\..\\api\\CodexCliTransport.ahk"
         src := FileRead(srcPath)
+        if !InStr(src, "CodexCliTransport._EscapeWindowsDown()") || !InStr(src, "GetAsyncKeyState")
+            throw Error("Codex Escape cancellation must use Windows current key state, not AHK hook-cached physical state")
         waitPos := InStr(src, "if waitResult = 0 {")
         if !waitPos
             throw Error("Codex process-exit branch not found")

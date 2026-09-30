@@ -84,10 +84,9 @@ class InlineRequestRunnerTest {
             throw Error("Run must surface failed inline requests via _HandleInlineError")
     }
 
-    ; Regression: the loading tooltip promises "Press ESC to cancel" for
-    ; inline replace/append/FIM commands. Those commands run synchronously in
-    ; Main and previously had no Escape handling at all, so whether ESC worked
-    ; depended on the command using chat mode instead.
+    ; Regression: inline replace/append/FIM commands poll Escape while running.
+    ; Use Windows' current async key state rather than AutoHotkey's hook-cached
+    ; physical state, which can become stale in a long-lived Main process.
     InlineRun_PollsEscapeAndTreatsCancelSeparately() {
         srcPath := A_ScriptDir "\..\app\InlineRequestRunner.ahk"
         curlPath := A_ScriptDir "\..\api\CurlExecutor.ahk"
@@ -110,8 +109,8 @@ class InlineRequestRunnerTest {
         if !InStr(src, 'status: "cancelled"')
             throw Error("inline cancellation should be logged as cancelled, not error")
 
-        if !InStr(curlSrc, 'GetKeyState("Esc", "P")')
-            throw Error("CurlExecutor must observe the physical Escape key for global inline cancellation")
+        if !InStr(curlSrc, "CurlExecutor._EscapeWindowsDown()") || !InStr(curlSrc, "GetAsyncKeyState")
+            throw Error("CurlExecutor must use Windows current Escape state so stale AHK hook state cannot cancel inline commands")
         if !InStr(curlSrc, "taskkill /PID") || !InStr(curlSrc, "/T /F")
             throw Error("inline cancellation must terminate the cmd+cURL process tree")
         if !InStr(curlSrc, "cancelState.cancelled := true")

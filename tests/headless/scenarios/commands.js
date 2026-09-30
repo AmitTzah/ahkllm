@@ -613,4 +613,46 @@ scenarios.push({
   }
 });
 
+
+scenarios.push({
+  id: 348,
+  name: 'Inline command ignores stale AutoHotkey physical Escape state when Windows reports Escape up',
+  regression: true,
+  mode: null,
+  noApp: true,
+  settings: {},
+  async body() {
+    const probe = path.join(__dirname, '..', 'probe-inline-cancel.ahk');
+    const outFile = path.join(os.tmpdir(), 'ahkllm-stale-esc-' + process.pid + '-' + Date.now() + '.txt');
+    try {
+      const env = Object.assign({}, process.env, { AHKLLM_E2E_FORCE_STALE_ESC: '1' });
+      const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile], {
+        timeout: 15000,
+        windowsHide: true,
+        encoding: 'utf8',
+        env
+      });
+      if (res.error) throw new Error('stale-Escape probe failed/timed out: ' + res.error.message);
+      if (res.status !== 0)
+        throw new Error('stale-Escape probe exited ' + res.status + ': ' + String(res.stderr || res.stdout || '').trim());
+      if (!fs.existsSync(outFile)) throw new Error('stale-Escape probe produced no result file');
+
+      const values = {};
+      for (const line of fs.readFileSync(outFile, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
+        const i = line.indexOf('|');
+        if (i > 0) values[line.slice(0, i)] = Number(line.slice(i + 1));
+      }
+      if (values.physicalObserved !== 1 || values.windowsDown !== 0)
+        throw new Error('test did not establish stale AHK-vs-Windows Escape mismatch: ' + JSON.stringify(values));
+      if (values.cancelled !== 0)
+        throw new Error('BUG REPRODUCED: stale AHK physical Escape state cancelled the inline process even though Windows reports Escape up: ' + JSON.stringify(values));
+      if (!(values.elapsed >= 600))
+        throw new Error('inline child did not run to normal completion after stale-Escape mismatch: ' + JSON.stringify(values));
+      return 'forced stale AHK Escape=down while Windows Escape=up; inline child ran to completion without cancellation: ' + JSON.stringify(values);
+    } finally {
+      if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
+    }
+  }
+});
+
 module.exports = scenarios;
