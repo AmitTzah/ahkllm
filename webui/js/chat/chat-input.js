@@ -119,8 +119,14 @@ function onChatSend() {
     var payload = { message: message || 'Describe the attached content.' };
     if (attachments.length > 0) payload.attachments = attachments;
     payload.latencyTraceId = latencyTrace.id;
-    Ipc.postToHost('chatSend', payload);
-    _latencyMark('web.chatSend.posted');
+    if (window.PendingChatMessages) {
+      payload.clientMessageId = latencyTrace.id;
+      payload.threadId = typeof activeThreadId !== 'undefined' ? activeThreadId : '';
+      var pendingMessage = window.PendingChatMessages.begin(latencyTrace.id, payload.message, attachments, message);
+      showLoadingIndicator();
+      window.PendingChatMessages.post(pendingMessage, payload);
+    } else Ipc.postToHost('chatSend', payload);
+    _latencyMark(window.PendingChatMessages ? 'web.message-preview.rendered' : 'web.chatSend.posted');
     if (typeof clearAttachments === 'function') clearAttachments();
     return;
   }

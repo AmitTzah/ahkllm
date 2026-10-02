@@ -1,7 +1,7 @@
 #Requires AutoHotkey v2.0.18+
 #Include ..\default-settings\DefaultSettings.ahk        ; App defaults (fallback for settings.json)
 #Include ..\default-settings\DefaultModels.ahk          ; Auto-generated model metadata
-#Include ..\default-settings\DefaultCodexModels.ahk     ; Curated ChatGPT/Codex CLI models
+#Include ..\default-settings\DefaultCodexModels.ahk     ; Curated ChatGPT-plan model fallbacks (legacy filename)
 #Include ..\app\settings\SettingsPersistence.ahk
 #Include ..\app\settings\SettingsDefaults.ahk
 #Include ..\app\settings\SettingsMerge.ahk
@@ -24,6 +24,9 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 
 ; Shared utilities
 #Include ..\shared\SharedLib.ahk
+#Include ..\api\ChatGptPlanCrypto.ahk
+#Include ..\api\ChatGptPlanAuth.ahk
+#Include ..\api\ChatGptModelCatalog.ahk
 
 ; Application classes
 #Include ..\api\CurlBuilder.ahk
@@ -33,6 +36,9 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 #Include ..\api\ProviderResolver.ahk
 #Include ..\api\ResponseParser.ahk
 #Include ..\api\LLMRequestBuilder.ahk
+#Include ..\api\ChatGptResponsesStreamParser.ahk
+#Include ..\api\ChatGptResponsesTransport.ahk
+#Include ..\api\ChatGptImageWorker.ahk
 #Include ..\api\handlers\OpenAIChatCompletions.ahk
 #Include ..\api\handlers\GoogleChatCompletions.ahk
 #Include ..\api\SSEParser.ahk

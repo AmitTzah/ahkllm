@@ -112,6 +112,8 @@ function handleThreadLocked(data) {
   var threadId = data && data.threadId;
   if (!threadId) return;
 
+  if (typeof window !== 'undefined' && window.AttachmentImages) window.AttachmentImages.clearThread(threadId);
+
   _lockOverlayState = {
     threadId: threadId,
     salt: data.salt || '',

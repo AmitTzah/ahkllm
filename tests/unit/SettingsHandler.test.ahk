@@ -228,6 +228,27 @@ class SettingsHandlerTest {
         }
     }
 
+    ApplyProviders_ChatGptKeepsCanonicalAndLegacyPrefixes() {
+        global providers, providerMap
+        oldProviders := providers
+        oldMap := providerMap
+        try {
+            SettingsApply._ApplyProviders(Map(
+                "providers", Map(
+                    "chatgpt", Map("displayName", "ChatGPT plan", "transport", "chatgpt-responses"),
+                    "openai", Map("displayName", "OpenAI", "endpoint", "https://x", "prefixes", ["gpt"])
+                )
+            ))
+            if !providerMap.Has("chatgpt") || providerMap["chatgpt"] != "chatgpt"
+                throw Error("canonical chatgpt prefix was lost during providerMap rebuild")
+            if !providerMap.Has("codex") || providerMap["codex"] != "chatgpt"
+                throw Error("legacy codex prefix must continue to resolve to canonical chatgpt")
+        } finally {
+            providers := oldProviders
+            providerMap := oldMap
+        }
+    }
+
     ; New custom-model rows may intentionally leave prices blank in the UI.
     ; Runtime pricing must still receive numeric Input/Output values so a
     ; thread-stat calculation cannot multiply an empty string.
@@ -374,21 +395,36 @@ class SettingsHandlerTest {
     ; must return the pristine snapshot captured by CacheInitialDefaults().
     GetDefaults_ReturnsPristineAfterApplyToGlobals() {
         global chatShortcut
-        chatShortcut := "1"
-        SettingsHandler.CacheInitialDefaults()
+        oldShortcut := chatShortcut
+        oldCaptured := SettingsDefaults._initialDefaultsCaptured
+        if oldCaptured
+            oldDefaults := SettingsDefaults._initialDefaults
 
-        settings := Map()
-        settings["chatShortcut"] := "b"
-        SettingsHandler.ApplyToGlobals(settings)
-        if chatShortcut != "b"
-            throw Error("test setup: ApplyToGlobals should set global chatShortcut to 'b'")
+        try {
+            chatShortcut := "1"
+            SettingsDefaults._initialDefaultsCaptured := false
+            SettingsHandler.CacheInitialDefaults()
 
-        defaults := SettingsHandler.GetDefaults()
-        if !defaults.Has("chatShortcut") || defaults["chatShortcut"] != "1"
-            throw Error("GetDefaults() should return pristine chatShortcut='1' after ApplyToGlobals set it to 'b', got: "
-                (defaults.Has("chatShortcut") ? defaults["chatShortcut"] : "missing"))
+            settings := Map()
+            settings["chatShortcut"] := "b"
+            SettingsHandler.ApplyToGlobals(settings)
+            if chatShortcut != "b"
+                throw Error("test setup: ApplyToGlobals should set global chatShortcut to 'b'")
+
+            defaults := SettingsHandler.GetDefaults()
+            if !defaults.Has("chatShortcut") || defaults["chatShortcut"] != "1"
+                throw Error("GetDefaults() should return pristine chatShortcut='1' after ApplyToGlobals set it to 'b', got: "
+                    (defaults.Has("chatShortcut") ? defaults["chatShortcut"] : "missing"))
+        } finally {
+            chatShortcut := oldShortcut
+            if oldCaptured {
+                SettingsDefaults._initialDefaults := oldDefaults
+                SettingsDefaults._initialDefaultsCaptured := true
+            } else {
+                SettingsDefaults._initialDefaultsCaptured := false
+            }
+        }
     }
-
     Merge_FillsMissingKeys() {
         existing := Map()
         existing["newChatStartsWith"] := "my-model"
@@ -488,27 +524,59 @@ class SettingsHandlerTest {
             throw Error("Override should add new top-level keys from the incoming payload")
     }
 
-    ApplyToGlobals_RebuildsProviderMap() {
-        global providerMap
-
+    CanonicalizeChatGptAliases_MigratesSavedSettingsReferences() {
         settings := Map()
-        provMap := Map()
-        provMap["deepseek"] := Map(
-            "displayName", "DeepSeek",
-            "endpoint", "https://api.deepseek.com/chat/completions",
-            "fimEndpoint", "",
-            "authMode", "env",
-            "authEnvVar", "DEEPSEEK_API_KEY",
-            "apiKey", "",
-            "icon", "",
-            "collapseThinking", false,
-            "prefixes", ["ds"]
-        )
-        settings["providers"] := provMap
+        settings["providers"] := Map("codex", Map("displayName", "ChatGPT plan", "transport", "chatgpt-responses"))
+        settings["models"] := Map("codex/gpt-5.6-luna", Map("provider", "codex", "reasoning", true))
+        settings["assistants"] := [Map("id", "a1", "baseModel", "codex/gpt-5.6-luna")]
+        settings["commands"] := [Map("commandName", "Legacy", "APIModels", "codex/gpt-5.6-luna")]
+        settings["newChatStartsWith"] := "codex/gpt-5.6-luna"
+        settings["threadTitles"] := Map("enabled", true, "model", "codex/gpt-5.6-luna")
 
-        SettingsHandler.ApplyToGlobals(settings)
-        if !providerMap.Has("ds") || providerMap["ds"] != "deepseek"
-            throw Error("ApplyToGlobals should rebuild providerMap prefix 'ds' -> 'deepseek'")
+        normalized := SettingsMerge.CanonicalizeChatGptAliases(settings)
+        if normalized["providers"].Has("codex") || !normalized["providers"].Has("chatgpt")
+            throw Error("Provider map was not canonicalized to chatgpt")
+        if normalized["models"].Has("codex/gpt-5.6-luna") || !normalized["models"].Has("chatgpt/gpt-5.6-luna")
+            throw Error("Model map was not canonicalized to chatgpt/...")
+        if normalized["models"]["chatgpt/gpt-5.6-luna"]["provider"] != "chatgpt"
+            throw Error("Canonicalized model metadata still names codex provider")
+        if normalized["assistants"][1]["baseModel"] != "chatgpt/gpt-5.6-luna"
+            throw Error("Assistant baseModel was not canonicalized")
+        if normalized["commands"][1]["APIModels"] != "chatgpt/gpt-5.6-luna"
+            throw Error("Command APIModels was not canonicalized")
+        if normalized["newChatStartsWith"] != "chatgpt/gpt-5.6-luna"
+            throw Error("New-chat default was not canonicalized")
+        if normalized["threadTitles"]["model"] != "chatgpt/gpt-5.6-luna"
+            throw Error("Title-generation model was not canonicalized")
+    }
+
+    ApplyToGlobals_RebuildsProviderMap() {
+        global providers, providerMap
+        oldProviders := providers
+        oldProviderMap := providerMap
+        try {
+            settings := Map()
+            provMap := Map()
+            provMap["deepseek"] := Map(
+                "displayName", "DeepSeek",
+                "endpoint", "https://api.deepseek.com/chat/completions",
+                "fimEndpoint", "",
+                "authMode", "env",
+                "authEnvVar", "DEEPSEEK_API_KEY",
+                "apiKey", "",
+                "icon", "",
+                "collapseThinking", false,
+                "prefixes", ["ds"]
+            )
+            settings["providers"] := provMap
+
+            SettingsHandler.ApplyToGlobals(settings)
+            if !providerMap.Has("ds") || providerMap["ds"] != "deepseek"
+                throw Error("ApplyToGlobals should rebuild providerMap prefix 'ds' -> 'deepseek'")
+        } finally {
+            providers := oldProviders
+            providerMap := oldProviderMap
+        }
     }
 
     ApplyToGlobals_UpdatesHotkeyGlobals() {

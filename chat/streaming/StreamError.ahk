@@ -11,10 +11,50 @@ _extractErrorMsg(rawOutput) {
         parsed := jsongo.Parse(rawOutput)
         if Type(parsed) = "Array" && parsed.Length > 0 && parsed[1].Has("error") && parsed[1]["error"].Has("message")
             return parsed[1]["error"]["message"]
-        if parsed.Has("error") && parsed["error"].Has("message")
-            return parsed["error"]["message"]
+        if IsObject(parsed) {
+            if parsed.Has("detail") && parsed["detail"] != "" {
+                detail := parsed["detail"]
+                if !IsObject(detail)
+                    return String(detail)
+                if detail.Has("message") && detail["message"] != ""
+                    return String(detail["message"])
+            }
+            if parsed.Has("message") && parsed["message"] != ""
+                return String(parsed["message"])
+            if parsed.Has("error") {
+                err := parsed["error"]
+                if IsObject(err) && err.Has("message") && err["message"] != ""
+                    return String(err["message"])
+                if !IsObject(err) && err != ""
+                    return String(err)
+            }
+            if parsed.Has("response") && IsObject(parsed["response"]) {
+                response := parsed["response"]
+                if response.Has("error") && IsObject(response["error"]) && response["error"].Has("message") && response["error"]["message"] != ""
+                    return String(response["error"]["message"])
+            }
+        }
     } catch Error as e {
         debugLog("_extractErrorMsg parse error: " e.Message, "ErrorHandler")
+    }
+    return ""
+}
+
+_extractErrorCode(rawOutput) {
+    try {
+        parsed := jsongo.Parse(rawOutput)
+        if Type(parsed) = "Array" && parsed.Length > 0
+            parsed := parsed[1]
+        if !IsObject(parsed)
+            return ""
+        if parsed.Has("error") && IsObject(parsed["error"]) && parsed["error"].Has("code")
+            return String(parsed["error"]["code"])
+        if parsed.Has("response") && IsObject(parsed["response"]) {
+            response := parsed["response"]
+            if response.Has("error") && IsObject(response["error"]) && response["error"].Has("code")
+                return String(response["error"]["code"])
+        }
+    } catch {
     }
     return ""
 }
@@ -31,7 +71,8 @@ _handleStreamError() {
     }
 
     rawOutput := ""
-    errMsg := ""
+    errMsg := requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
+    errCode := requestParams.Has("_streamErrorCode") ? requestParams["_streamErrorCode"] : ""
 
     if FileExist(requestParams["_streamOutputFile"]) {
         rawOutput := FileOpen(requestParams["_streamOutputFile"], "r", "UTF-8-RAW").Read()
@@ -43,10 +84,14 @@ _handleStreamError() {
         ; would be lost. Try the last event first, then the whole file (the
         ; non-streaming JSON error bodies still parse as a whole).
         lastEvent := requestParams.Has("_streamRawLastResponse") ? requestParams["_streamRawLastResponse"] : ""
-        if lastEvent
+        if lastEvent && !errMsg
             errMsg := _extractErrorMsg(lastEvent)
+        if lastEvent && !errCode
+            errCode := _extractErrorCode(lastEvent)
         if !errMsg
             errMsg := _extractErrorMsg(rawOutput)
+        if !errCode
+            errCode := _extractErrorCode(rawOutput)
     }
 
     ; Surface the failure and re-enable the UI regardless of whether the
@@ -55,9 +100,17 @@ _handleStreamError() {
     ; the only diagnostic, so error handling cannot depend on the output file.
     if !errMsg && stderrText
         errMsg := stderrText
-    if !errMsg
-        errMsg := "Request failed. Check your API key and try again."
-    _PostChatError(errMsg, streamThreadId)
+    if !errMsg {
+        if requestParams.Has("_streamTransport") && requestParams["_streamTransport"] = "chatgpt-responses"
+            errMsg := "ChatGPT returned no text or image-generation request. Try again or choose another model."
+        else
+            errMsg := "Request failed. Check your API key and try again."
+    }
+    debugLog("[STREAM] Failure detail: " errMsg)
+    if errCode = "subscription_sharing_usage_limit_exceeded"
+        _PostChatError(errMsg, streamThreadId, "Manage usage", "https://chatgpt.com/#settings/Usage")
+    else
+        _PostChatError(errMsg, streamThreadId)
     ; Diagnostics have been read into memory; remove the request files before
     ; any later logging/UI work can return control to another request.
     deleteTempFiles()

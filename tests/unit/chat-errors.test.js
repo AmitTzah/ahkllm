@@ -52,6 +52,31 @@ describe('ChatErrors', () => {
     assert.strictEqual(ctx.chatMessages.children[0].dataset.threadId, 'thread-b');
   });
 
+  it('renders a safe provider recovery action when supplied', () => {
+    const ctx = loadModule();
+    ctx.sandbox.ChatErrors.showError({
+      message: 'Usage limit reached.',
+      threadId: 'thread-b',
+      actionLabel: 'Manage usage',
+      actionUrl: 'https://chatgpt.com/#settings/Usage'
+    });
+    const html = ctx.chatMessages.children[0].innerHTML;
+    assert.ok(html.includes('Manage usage'));
+    assert.ok(html.includes('https://chatgpt.com/#settings/Usage'));
+  });
+
+  it('does not render non-http error action URLs', () => {
+    const ctx = loadModule();
+    ctx.sandbox.ChatErrors.showError({
+      message: 'Bad action',
+      threadId: 'thread-b',
+      actionLabel: 'Open',
+      actionUrl: 'javascript:alert(1)'
+    });
+    const html = ctx.chatMessages.children[0].innerHTML;
+    assert.ok(!html.includes('javascript:'));
+  });
+
   it('keeps compatibility globals for existing render/click paths', () => {
     const ctx = loadModule();
     assert.strictEqual(ctx.sandbox.showError, ctx.sandbox.ChatErrors.showError);

@@ -137,6 +137,7 @@ SearchToolExecutor.RecoverAbandonedPlaceholders()
 ; ----------------------------------------------------
 
 global responseWindow := WebViewToo(, , ,)
+ImageAttachmentResources.Initialize(responseWindow)
 responseWindow.OnEvent("Close", (*) => responseWindow.Hide())
 responseWindow.Title := AppInfo.Name
 global chatWindow := responseWindow

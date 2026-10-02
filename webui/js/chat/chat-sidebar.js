@@ -113,6 +113,7 @@ function loadThreadList(threads, folders) {
   // Populate _threadMeta from incoming data (single source of truth)
   for (var i = 0; i < threads.length; i++) {
     var t = threads[i];
+    if (t.is_locked && t.title === 'Locked chat' && window.AttachmentImages) window.AttachmentImages.clearThread(t.id);
     if (!_threadMeta[t.id]) _threadMeta[t.id] = {};
     _threadMeta[t.id].title = t.title;
     _threadMeta[t.id].folder = t.folder_name || '';
@@ -320,6 +321,7 @@ function _setActiveHighlight(threadId) {
 }
 
 function loadThread(threadId) {
+  if (window.PendingChatMessages) window.PendingChatMessages.navigated();
   if (!threadId) {
     activeThreadId = "";
     updateTopbarTitle();
@@ -335,6 +337,7 @@ function loadThread(threadId) {
 }
 
 function newChat() {
+  if (window.PendingChatMessages) window.PendingChatMessages.navigated();
   activeThreadId = '';
   updateTopbarTitle();
   _setActiveHighlight('');

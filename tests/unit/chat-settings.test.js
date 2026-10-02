@@ -209,9 +209,9 @@ describe('_makeModelClickHandler — keeps reasoning, clears assistant overrides
         const mockEl = { classList: { add: function() {} } };
 
         assert.strictEqual(ctx._supportsTemperatureValue(0), false, 'AHK numeric false must mean unsupported');
-        ctx._makeModelClickHandler(mockEl, 'codex/gpt-5.6-luna', 0)();
+        ctx._makeModelClickHandler(mockEl, 'chatgpt/gpt-5.6-luna', 0)();
         assert.strictEqual(ctx.window._currentSettings.supportsTemperature, false);
-        assert.strictEqual(tempField.style.display, 'none', 'Codex selection should hide the Temperature row immediately');
+        assert.strictEqual(tempField.style.display, 'none', 'ChatGPT-plan selection should hide the Temperature row immediately');
         assert.strictEqual(tempSlider.disabled, true);
 
         ctx._makeModelClickHandler(mockEl, 'deepseek/deepseek-v4-flash', true)();
@@ -222,9 +222,9 @@ describe('_makeModelClickHandler — keeps reasoning, clears assistant overrides
 });
 
 describe('Image Generation model gating', () => {
-    it('clears imageGeneration synchronously when switching from Codex to a non-Codex model', () => {
+    it('clears imageGeneration synchronously when switching from ChatGPT plan to a non-ChatGPT-plan model', () => {
         const ctx = loadSettingsModule();
-        ctx.window._currentSettings = { model: 'codex/gpt-5.6-luna', imageGeneration: true, assistantName: '', reasoning: '', temperature: '' };
+        ctx.window._currentSettings = { model: 'chatgpt/gpt-5.6-luna', imageGeneration: true, assistantName: '', reasoning: '', temperature: '' };
         const mockEl = { classList: { add: function() {} } };
         ctx._makeModelClickHandler(mockEl, 'deepseek/deepseek-v4-flash', true)();
         assert.strictEqual(ctx.window._currentSettings.imageGeneration, false);
@@ -249,9 +249,9 @@ describe('_makeAssistantClickHandler — updates mode before posting', () => {
         assert.strictEqual(ctx.window._currentSettings.systemMessage, 'assistant prompt');
     });
 
-    it('clears imageGeneration when a non-Codex assistant becomes effective', () => {
+    it('clears imageGeneration when a non-ChatGPT-plan assistant becomes effective', () => {
         const ctx = loadSettingsModule();
-        ctx.window._currentSettings = { model: 'codex/gpt-5.6-luna', imageGeneration: true, assistantName: '' };
+        ctx.window._currentSettings = { model: 'chatgpt/gpt-5.6-luna', imageGeneration: true, assistantName: '' };
         ctx.window._assistantList = [{ id: 'a-img', name: 'No Image', baseModel: 'deepseek/deepseek-v4-flash', systemMessage: '', description: '' }];
         const mockEl = { parentElement: { querySelectorAll: () => [] }, classList: { add: () => {} } };
         ctx._makeAssistantClickHandler(mockEl, 'a-img')();
@@ -295,12 +295,12 @@ describe('_sendAllSettings', () => {
         assert.strictEqual(payload.imageGeneration, false);
     });
 
-    it('includes the Codex image-generation flag in the settings payload', () => {
+    it('includes the ChatGPT-plan image-generation flag in the settings payload', () => {
         const ctx = loadSettingsModule();
         const posted = [];
         ctx.window.chrome.webview.postMessage = (m) => posted.push(m);
         ctx.window._currentSettings = {
-            model: 'codex/gpt-5.6-luna', systemMessage: '', reasoning: '', temperature: '',
+            model: 'chatgpt/gpt-5.6-luna', systemMessage: '', reasoning: '', temperature: '',
             webSearch: false, imageGeneration: true
         };
         ctx._sendAllSettings();

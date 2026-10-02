@@ -231,6 +231,33 @@ describe('renderChatMessages', () => {
 });
 
 describe('appendChatMessage', () => {
+    it('ignores duplicate durable echoes and messages belonging to another thread', () => {
+        const ctx = loadRenderModule();
+        ctx.chatMessages = [{ id: 'saved', role: 'user', content: 'Existing' }];
+        ctx.appendChatMessage({ id: 'saved', role: 'user', content: 'Existing' });
+        ctx.appendChatMessage({ id: 'foreign', threadId: 'other-thread', role: 'user', content: 'Other chat' });
+        assert.strictEqual(ctx.chatMessages.length, 1);
+    });
+
+    it('uses the decoded preview without embedding image bytes or exposing pending message actions', () => {
+        const ctx = loadRenderModule();
+        let markup = '', replacement = null, actionCalls = 0;
+        const cloned = {};
+        const placeholder = { onclick() {}, replaceWith(preview) { replacement = preview; } };
+        ctx.document.createElement = () => ({
+            set innerHTML(value) { markup = value; },
+            get firstElementChild() { return { querySelector: () => placeholder }; }
+        });
+        ctx.addMessageActions = () => { actionCalls++; };
+        ctx.createMessageBubble({ id: 'pending-1', role: 'user', content: 'Preview', pending: true,
+            attachments: [{ attachment_type: 'image', original_filename: 'cover.png', base64: 'unused-image-bytes',
+                previewElement: { cloneNode: () => cloned } }] }, 0);
+        assert.strictEqual(replacement, cloned);
+        assert.strictEqual(actionCalls, 0);
+        assert.ok(!markup.includes('unused-image-bytes'));
+        assert.ok(!markup.includes('save-overwrite'));
+        assert.ok(markup.includes('Sending'));
+    });
     it('adds message to chatMessages array and DOM', () => {
         const ctx = loadRenderModule();
         ctx.chatMessages = [];

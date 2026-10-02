@@ -189,7 +189,7 @@ function createMessageBubble(msg, index) {
       ? _buildSearchContextHtml(_parseSearchContext(msg.content), msgId)
       : md.render(_prepUserContent(msg.content));
     middleHtml = _buildAttachmentHtml(msg);
-    editUiHtml = _buildEditUiHtml(msg);
+    editUiHtml = msg.pending ? '' : _buildEditUiHtml(msg);
   } else if (role === 'assistant') {
     roleClass = 'bot';
     authorName = msg.model || 'Assistant';
@@ -214,11 +214,22 @@ function createMessageBubble(msg, index) {
 
   if (isSearchContext) _wireSearchCardToggle(bubble, msgId);
 
-  if (role !== 'system') {
+  if (role !== 'system' && !msg.pending) {
     var actionsDiv = bubble.querySelector('.msg-actions');
     if (actionsDiv) addMessageActions(actionsDiv, msg, index);
   }
 
+  if (msg.attachments) msg.attachments.forEach(function(attachment, attachmentIndex) {
+    if (!attachment.previewElement) return;
+    var placeholder = bubble.querySelector('[data-preview-index="' + attachmentIndex + '"]');
+    if (!placeholder) return;
+    var preview = attachment.previewElement.cloneNode(false);
+    preview.className = '';
+    preview.alt = attachment.original_filename || 'image';
+    preview.onclick = placeholder.onclick;
+    placeholder.replaceWith(preview);
+  });
+  if (window.AttachmentImages) window.AttachmentImages.hydrate(bubble, msg);
   if (typeof lucide !== 'undefined') lucide.createIcons();
   return bubble;
 }
@@ -278,6 +289,7 @@ function _wireSearchCardToggle(bubble, msgId) {
 }
 
 function _buildMetaText(msg) {
+  if (msg.pending) return msg.sendState === 'failed' ? 'Not sent · ' + escHtml(msg.sendError || '') : (msg.saved ? 'Saved' : 'Sending…');
   if (!msg.createdAt) return '';
   var d = new Date(msg.createdAt + 'Z');
   if (isNaN(d.getTime())) return '';
@@ -325,10 +337,11 @@ function _buildAttachmentHtml(msg) {
     var att = msg.attachments[a];
     var attId = att.id || '';
 
-    if (att.attachment_type === 'image' && att.base64) {
-      var imgSrc = 'data:' + (att.mime_type || 'image/png') + ';base64,' + att.base64;
+    if (att.attachment_type === 'image' && (att.base64 || att.previewElement || att.original_url)) {
+      var imgSrc = att.previewElement ? '' : 'data:' + (att.mime_type || 'image/png') + ';base64,' + att.base64;
       html += '\n            <div class="msg-attachment-image">\n' +
-        '              <img src="' + imgSrc + '" alt="' + escHtml(att.original_filename || 'image') + '" onclick="(function(){var o=document.createElement(\'div\');o.className=\'image-overlay\';o.style.display=\'flex\';var i=document.createElement(\'img\');i.src=this.src;o.appendChild(i);o.addEventListener(\'click\',function(){this.remove()});document.body.appendChild(o);}).call(this)">\n' +
+        (window.AttachmentImages ? window.AttachmentImages.renderFrame(att, a) :
+        '              <img ' + (att.previewElement ? 'data-preview-index="' + a + '"' : 'src="' + imgSrc + '"') + ' alt="' + escHtml(att.original_filename || 'image') + '" onclick="(function(){var o=document.createElement(\'div\');o.className=\'image-overlay\';o.style.display=\'flex\';var i=document.createElement(\'img\');i.src=this.src;o.appendChild(i);o.addEventListener(\'click\',function(){this.remove()});document.body.appendChild(o);}).call(this)">\n') +
         '              <div class="msg-attachment-info">\n' +
         '                <i data-lucide="image" class="file-icon"></i>\n' +
         '                <span class="file-name">' + escHtml(att.original_filename || 'image') + '</span>\n' +
@@ -389,6 +402,9 @@ function _buildEditUiHtml(msg) {
 }
 
 function appendChatMessage(message) {
+  if (!message.pending && window.PendingChatMessages && window.PendingChatMessages.confirm(message)) return;
+  if (message.threadId && message.threadId !== activeThreadId) return;
+  if (message.id && chatMessages.some(function(existing) { return existing.id === message.id; })) return;
   chatMessages.push(message);
   var container = document.getElementById('chat-messages');
   if (!container) return;

@@ -21,7 +21,9 @@ document.addEventListener('click', function() {
 function initChatMode(data) {
   isChatMode = true;
   var messages = Array.isArray(data) ? data : (data && data.messages ? data.messages : []);
-  chatMessages = messages;
+  chatMessages = window.PendingChatMessages
+    ? window.PendingChatMessages.forThread(messages, (data && data.threadId) || activeThreadId)
+    : messages;
 
   // The single DOM streamState belongs only to the visible chat. On every
   // thread load, clear it; the AHK layer re-posts that thread's accumulated

@@ -1,4 +1,10 @@
+#Include ChatGptAccountCallbacks.ahk
+#Include ModelCatalogRefresh.ahk
+
 ; Dispatch.ahk — routes WebView messages and includes chat callback modules.
+
+global _chatGptSignInState := ""
+global _chatGptStartupModelsRequested := false
 
 ; Surface an error to both the debug log AND the chat UI.
 ; Callable from any callback — re-enables buttons and shows red banner.
@@ -34,6 +40,13 @@ OnWebMessageReceived(sender, args) {
         switch action {
             case "chatSend":
                 handleChatSend(parsed)
+            case "cacheImageThumbnail":
+                try ImageAttachmentResources.SaveThumbnail(parsed)
+                catch Error as imageError {
+                    debugLog("[IMAGE CACHE] " imageError.Message)
+                    _AckWebMessage(reqId, action, false, "Thumbnail could not be cached.")
+                    return
+                }
             case "searchMessages":
                 handleSearch(parsed)
             case "deleteAttachment":
@@ -86,6 +99,16 @@ OnWebMessageReceived(sender, args) {
                 _HandleOpenRouterModelLookup(parsed)
             case "checkCodex":
                 _HandleCheckCodex()
+            case "requestChatGptPlanStatus":
+                _HandleRequestChatGptPlanStatus()
+            case "beginChatGptSignIn":
+                _HandleBeginChatGptSignIn(parsed)
+            case "setChatGptAccount":
+                _HandleSetChatGptAccount(parsed)
+            case "signOutChatGpt":
+                _HandleSignOutChatGpt(parsed)
+            case "refreshChatGptModels":
+                _HandleRefreshChatGptModels()
             case "reloadScript":
                 CustomMessages.notifyReloadMain(requestParams["mainScriptHiddenHwnd"])
             case "browseIcon":
@@ -168,12 +191,20 @@ _OnWebViewReady() {
     ; Re-push merged settings after the ready handshake so startup UI CSS
     ; variables are applied even if earlier WebView posts were dropped.
     _HandleRequestAllSettings()
+    ; Plan authorization status is intentionally separate from settings.json
+    ; because credentials live only in the DPAPI-protected credential store.
+    _HandleRequestChatGptPlanStatus()
     if activeThreadId
         _LoadThreadAndRefreshUI(activeThreadId)
     else {
         ; A threadless window still has an effective fresh-chat model.
         postCurrentSettingsToWebView()
         _sendDropdownLabel()
+    }
+    global _chatGptStartupModelsRequested
+    if !_chatGptStartupModelsRequested {
+        _chatGptStartupModelsRequested := true
+        SetTimer(_RefreshChatGptModelsIfConnected, -50)
     }
     threadBusy := activeThreadId ? _HasOtherActiveOperationsForThread(activeThreadId) : false
     postWebMessage("setChatButtonsEnabled", { enabled: !threadBusy, threadId: activeThreadId })
@@ -196,6 +227,18 @@ _HandleRequestAllSettings() {
 _HandleCheckCodex() {
     status := CodexCliTransport.CheckStatus()
     postWebMessage("codexStatus", status)
+}
+
+_RefreshChatGptModelsIfConnected() {
+    global testMode
+    if IsSet(testMode) && testMode
+        return
+    status := ChatGptPlanAuth.Status()
+    if !status.authenticated
+        return
+    try _HandleRefreshChatGptModels(false)
+    catch Error as e
+        debugLog("[CHATGPT] Startup model refresh failed: " e.Message)
 }
 
 _HandleRequestDefaultSettings() {
@@ -246,95 +289,6 @@ _HandleSaveSettings(parsed) {
     } catch Error as e {
         debugLog("[SETTINGS] Save error: " e.Message " at line " e.Line)
         postWebMessage("settingsSaved", { success: false, error: e.Message })
-    }
-}
-
-; Run PowerShell pricing refresh and return results
-_BuildModelsDevCatalogConfig(providerData) {
-    providersMap := SettingsHandler._ToMap(providerData)
-    spec := ""
-    config := Map()
-    for providerKey, p in providersMap {
-        if p.Get("transport", "http") != "http"
-            continue
-        providerKey := Trim(providerKey)
-        if !RegExMatch(providerKey, "^[a-z0-9][a-z0-9._-]*$")
-            throw Error("Invalid provider ID for models.dev refresh: " providerKey)
-        catalog := Trim(p.Get("modelsDevProvider", ""))
-        if catalog = ""
-            catalog := providerKey
-        if !RegExMatch(catalog, "^[a-z0-9][a-z0-9._-]*$")
-            throw Error("Invalid models.dev provider key: " catalog)
-        spec .= (spec = "" ? "" : ";") providerKey "=" catalog
-        config[providerKey] := {
-            catalog: catalog,
-            displayName: p.Get("displayName", providerKey)
-        }
-    }
-    return { spec: spec, providers: config }
-}
-
-
-_HandleRefreshModelPricing(parsed) {
-    scriptPath := A_ScriptDir "\..\scripts\Refresh-Models.ps1"
-    if !FileExist(scriptPath) {
-        postWebMessage("modelPricingRefresh", { success: false, error: "scripts\Refresh-Models.ps1 not found" })
-        return
-    }
-    try {
-        ; -NoPause: without it the script blocks on "Press any key" and hangs the hidden window
-        providerData := parsed.Get("providers", "")
-        useLiveCatalogs := IsObject(providerData)
-        catalogConfig := ""
-        if useLiveCatalogs {
-            catalogConfig := _BuildModelsDevCatalogConfig(providerData)
-            if catalogConfig.spec = ""
-                throw Error("No providers configured for model refresh")
-            cmd := "powershell -NoProfile -ExecutionPolicy Bypass -File `"" scriptPath "`" -NoPause -ProviderCatalogs `"" catalogConfig.spec "`" -NoUpdateDefaults"
-            pricingFile := A_ScriptDir "\..\scripts\models_metadata.txt"
-        } else {
-            cmd := "powershell -NoProfile -ExecutionPolicy Bypass -File `"" scriptPath "`" -NoPause"
-            pricingFile := A_ScriptDir "\..\default-settings\DefaultModels.ahk"
-        }
-        exitCode := RunWait(cmd, A_ScriptDir, "Hide")
-        if exitCode != 0 {
-            postWebMessage("modelPricingRefresh", { success: false, error: "Refresh-Models.ps1 exited with code " exitCode })
-            return
-        }
-        ; Read the generated model metadata file the pipeline writes
-        if !FileExist(pricingFile) {
-            postWebMessage("modelPricingRefresh", { success: false, error: "Model metadata output was not generated" })
-            return
-        }
-        content := FileRead(pricingFile, "UTF-8")
-        ; Parse models from the file — extract the models := Map(...) block
-        models := ModelPricingParser.Parse(content)
-        if !useLiveCatalogs && models.Length = 0 {
-            postWebMessage("modelPricingRefresh", { success: false, error: "No models parsed from DefaultModels.ahk" })
-            return
-        }
-        warnings := []
-        if useLiveCatalogs {
-            seenProviders := Map()
-            for model in models {
-                parts := ModelParser.Split(model.id)
-                if parts.provider != ""
-                    seenProviders[parts.provider] := true
-            }
-            for providerKey, cfg in catalogConfig.providers {
-                if cfg.catalog = "openrouter" {
-                    if providerKey != "openrouter"
-                        warnings.Push(cfg.displayName ": the OpenRouter catalog is lookup-only; add models manually for this transport.")
-                    continue
-                }
-                if !seenProviders.Has(providerKey)
-                    warnings.Push(cfg.displayName ": no compatible models were found in models.dev catalog '" cfg.catalog "'.")
-            }
-        }
-
-        postWebMessage("modelPricingRefresh", { success: true, models: models, warnings: warnings })
-    } catch Error as e {
-        postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
     }
 }
 

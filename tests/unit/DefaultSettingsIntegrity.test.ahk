@@ -116,8 +116,9 @@ class DefaultSettingsIntegrityTest {
                 throw Error("Model '" modelId "' compat must be a Map, got: " Type(m.compat))
             if !IsObject(m.thinkingLevelMap) || !(m.thinkingLevelMap is Map)
                 throw Error("Model '" modelId "' thinkingLevelMap must be a Map, got: " Type(m.thinkingLevelMap))
-            if m.api != "openai-completions"
-                throw Error("Model '" modelId "' api must be 'openai-completions', got: " m.api)
+            expectedApi := m.provider = "chatgpt" ? "chatgpt-responses" : "openai-completions"
+            if m.api != expectedApi
+                throw Error("Model '" modelId "' api must be '" expectedApi "', got: " m.api)
         }
     }
 

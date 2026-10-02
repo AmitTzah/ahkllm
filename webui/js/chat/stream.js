@@ -250,6 +250,13 @@ function onStreamDone(data) {
     if (streamState.bubble && !streamState.contentBuffer && dbMsg && dbMsg.role === 'assistant' && dbMsg.content) {
       streamState.contentBuffer = dbMsg.content;
     }
+    // The terminal Responses item may enrich the streamed text with
+    // structured metadata converted by the host (for example clickable web
+    // citations). Reconcile the live buffer to the persisted source of truth.
+    if (streamState.bubble && dbMsg && dbMsg.role === 'assistant' &&
+        typeof dbMsg.content === 'string' && dbMsg.content !== streamState.contentBuffer) {
+      streamState.contentBuffer = dbMsg.content;
+    }
     _finalizeThinkingBlock();
     _finalizeStreamContent();
   }

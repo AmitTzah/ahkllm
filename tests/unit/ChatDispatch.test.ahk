@@ -315,6 +315,10 @@ class ChatDispatchTest {
                 throw Error("requestAllSettings resurrected removed default model deepseek/deepseek-chat")
             if providers.Has("deepseek")
                 throw Error("requestAllSettings resurrected removed default provider deepseek")
+            if !providers.Has("chatgpt")
+                throw Error("requestAllSettings must inject the built-in ChatGPT-plan provider into older authoritative settings")
+            if !models.Has("chatgpt/gpt-5.6-luna")
+                throw Error("requestAllSettings must inject curated canonical ChatGPT-plan model fallbacks")
             if !models.Has("openai/gpt-5-mini")
                 throw Error("requestAllSettings should keep models present in the saved file")
             retained := models["openai/gpt-5-mini"]

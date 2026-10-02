@@ -33,8 +33,10 @@ function loadRouter() {
       handleSettingsSaved: (data) => { calls.handleSettingsSaved = data; }
     },
     SettingsProviders: {
-      handleCodexStatus: (data) => { calls.codexStatus = data; }
+      handleCodexStatus: (data) => { calls.codexStatus = data; },
+      handleChatGptPlanStatus: (data) => { calls.settingsPlanStatus = data; }
     },
+    handleChatGptPlanStatus: (data) => { calls.chatPlanStatus = data; },
     SettingsModels: {},
     SettingsIcons: {},
     SettingsGeneral: {},
@@ -70,6 +72,28 @@ function send(ctx, target, data) {
 }
 
 describe('WebMessageRouter', () => {
+  it('routes save confirmation and failure to the correlated pending-message consumer', () => {
+    const ctx = loadRouter();
+    const received = [];
+    ctx.sandbox.PendingChatMessages = {
+      saved: (data) => received.push(['saved', data]),
+      saveFailed: (data) => received.push(['failed', data])
+    };
+    send(ctx, 'chatMessageSaved', { clientMessageId: 'request-1', threadId: 'A', messageId: 'saved-1' });
+    send(ctx, 'chatMessageSaveFailed', { clientMessageId: 'request-2', threadId: 'B', message: 'Save failed' });
+    assert.deepStrictEqual(received.map(item => item[0]), ['saved', 'failed']);
+    assert.strictEqual(received[0][1].messageId, 'saved-1');
+    assert.strictEqual(received[1][1].clientMessageId, 'request-2');
+  });
+  it('routes durable ChatGPT catalog updates to models and provider metadata', () => {
+    const ctx = loadRouter();
+    const received = [];
+    ctx.sandbox.SettingsModels.handleChatGptModelsUpdated = (data) => received.push(['models', data]);
+    ctx.sandbox.SettingsProviders.handleChatGptModelsUpdated = (data) => received.push(['providers', data]);
+    send(ctx, 'chatGptModelsUpdated', { models: { 'chatgpt/new': { provider: 'chatgpt' } } });
+    assert.deepStrictEqual(received.map((item) => item[0]), ['models', 'providers']);
+    assert.strictEqual(received[0][1].models['chatgpt/new'].provider, 'chatgpt');
+  });
   it('routes initChatMode and returns the shell to Chat', () => {
     const ctx = loadRouter();
     const data = [{ id: '1', role: 'user', content: 'hi' }];
@@ -114,6 +138,10 @@ describe('WebMessageRouter', () => {
     const ctx = loadRouter();
     send(ctx, 'codexStatus', { installed: true });
     assert.strictEqual(ctx.calls.codexStatus.installed, true);
+
+    send(ctx, 'chatGptPlanStatus', { authenticated: true, email: 'user@example.test' });
+    assert.strictEqual(ctx.calls.settingsPlanStatus.authenticated, true);
+    assert.strictEqual(ctx.calls.chatPlanStatus.email, 'user@example.test');
 
     send(ctx, 'showDashboard', {});
     assert.strictEqual(ctx.calls.showDashboard, true);

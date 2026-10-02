@@ -9,24 +9,45 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, execFile } = require('node:child_process');
 const launcher = require('../launch');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- AHK probe helpers ----------
 
-function runProbe(command, args = []) {
+function probeInvocation(command, args) {
   const outFile = path.join(os.tmpdir(), 'llm-probe-' + command + '-' + process.pid + '.json');
   try { fs.unlinkSync(outFile); } catch {}
-  const res = spawnSync(launcher.AHK, ['/ErrorStdOut', launcher.PROBE_AHK, command, outFile, ...args], {
+  return { outFile, arguments: ['/ErrorStdOut', launcher.PROBE_AHK, command, outFile, ...args] };
+}
+
+function readProbeResult(command, stderr, outFile) {
+  if (stderr) process.stderr.write('[probe:' + command + ' stderr] ' + stderr);
+  return parseProbeOutput(fs.readFileSync(outFile, 'utf-8'));
+}
+
+function runProbe(command, args = []) {
+  const invocation = probeInvocation(command, args);
+  const res = spawnSync(launcher.AHK, invocation.arguments, {
     timeout: 25000,
     windowsHide: true,
     encoding: 'utf8'
   });
   if (res.error) throw new Error('probe ' + command + ' spawn failed/timed out: ' + res.error.message);
-  if (res.stderr) process.stderr.write('[probe:' + command + ' stderr] ' + res.stderr);
-  return parseProbeOutput(fs.readFileSync(outFile, 'utf-8'));
+  return readProbeResult(command, res.stderr, invocation.outFile);
+}
+
+function runProbeAsync(command, args = []) {
+  const invocation = probeInvocation(command, args);
+  return new Promise((resolve, reject) => {
+    execFile(launcher.AHK, invocation.arguments, { timeout: 25000, windowsHide: true, encoding: 'utf8' },
+      (error, stdout, stderr) => {
+        if (error) return reject(new Error('probe ' + command + ' failed/timed out: ' + error.message));
+        try { resolve(readProbeResult(command, stderr, invocation.outFile)); }
+        catch (readError) { reject(readError); }
+      });
+  });
 }
 
 // icon-check compares pixels rendered from the window icon. Rendering can fail
@@ -74,7 +95,9 @@ function runThinkingProbe() {
 // ---------- CDP helpers ----------
 
 async function showChat() {
-  runProbe('show-chat');
+  // Startup catalog discovery uses the worker's local HTTP mock. Keep its
+  // event loop running while the probe waits for the app's window messages.
+  await runProbeAsync('show-chat');
 }
 
 async function openSettings(cdp) {

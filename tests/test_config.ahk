@@ -8,7 +8,7 @@
 #Warn All, Off
 
 ; Override globals from UserConfig.ahk with test values
-global APIKey := "sk-test-key"
+global APIKey := "[REDACTED_SECRET]"
 global APIEndpoint := "https://api.test/chat/completions"
 global FIMEndpoint := "https://api.test/beta/completions"
 global responseWindowFontFace := "Arial"
@@ -69,6 +69,13 @@ global models := Map(
         thinkingLevelMap: Map("minimal", "MINIMAL", "low", "LOW", "medium", "MEDIUM", "high", "HIGH"),
         thinkingOff: "MINIMAL",
         input: 0, cachedInput: 0, output: 0, context: 262144, reasoning: true, vision: true
+    },
+    "chatgpt/gpt-5.6-luna", {
+        provider: "chatgpt", api: "chatgpt-responses",
+        compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", ""),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
+        thinkingOff: "none",
+        input: 0, cachedInput: 0, output: 0, context: 0, reasoning: true, vision: true
     }
 )
 
@@ -76,7 +83,8 @@ global providers := Map(
     "deepseek", { displayName: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", authEnvVar: "DEEPSEEK_API_KEY", fimEndpoint: "https://api.deepseek.com/beta/completions", icon: "" },
     "openai",   { displayName: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", authEnvVar: "OPENAI_API_KEY", fimEndpoint: "", icon: "" },
     "openrouter", { displayName: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", authEnvVar: "OPENROUTER_API_KEY", fimEndpoint: "", icon: "" },
-    "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GOOGLE_API_KEY", fimEndpoint: "", icon: "" }
+    "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GOOGLE_API_KEY", fimEndpoint: "", icon: "" },
+    "chatgpt",  { displayName: "ChatGPT plan", endpoint: "https://api.openai.com/v1/responses", authEnvVar: "", authMode: "chatgpt-oauth", billingMode: "chatgpt-subscription", transport: "chatgpt-responses", fimEndpoint: "", icon: "" }
 )
 
 global assistants := [
@@ -88,6 +96,8 @@ global newChatStartsWith := ""
 global providerMap := Map(
     "deepseek", "deepseek",
     "gpt",      "openai",
+    "chatgpt",  "chatgpt",
+    "codex",    "chatgpt",
     "openrouter", "openrouter"
 )
 

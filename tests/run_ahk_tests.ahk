@@ -108,6 +108,7 @@ RegisterTestClass(className) {
 #Include unit\ThreadLockRepo.test.ahk
 #Include unit\AttachmentRepo.test.ahk
 #Include unit\ImageUtils.test.ahk
+#Include unit\ImageThumbnailCache.test.ahk
 #Include unit\ScreenRegionSelector.test.ahk
 #Include unit\SQLiteEscape.test.ahk
 #Include unit\TextCapture.test.ahk
@@ -126,9 +127,16 @@ RegisterTestClass(className) {
 #Include unit\CustomMessages.test.ahk
 #Include unit\InlineRequestRunner.test.ahk
 #Include unit\CodexCliTransport.test.ahk
+#Include unit\ChatGptPlanCrypto.test.ahk
+#Include unit\ChatGptPlanAuth.test.ahk
+#Include unit\ChatGptCredentialStore.test.ahk
+#Include unit\ChatGptModelCatalog.test.ahk
+#Include unit\ChatGptResponsesTransport.test.ahk
 #Include unit\ModelParser.test.ahk
 #Include unit\ModelPricingParser.test.ahk
 #Include unit\ChatSettings.test.ahk
+#Include unit\PendingChatSend.test.ahk
+#Include unit\ThreadSettingsAliases.test.ahk
 #Include unit\RequestProcessor.test.ahk
 #Include unit\UserConfig.test.ahk
 #Include unit\CostCalculator.test.ahk

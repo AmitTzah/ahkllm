@@ -97,7 +97,7 @@ describe('populateCurrentSettings', () => {
 
     it('records AHK numeric false as unsupported temperature for Codex', () => {
         const ctx = loadModule();
-        ctx.populateCurrentSettings({ model: 'codex/gpt-5.6-luna', systemMessage: '', reasoning: 'high', temperature: '', supportsTemperature: 0 });
+        ctx.populateCurrentSettings({ model: 'chatgpt/gpt-5.6-luna', systemMessage: '', reasoning: 'high', temperature: '', supportsTemperature: 0 });
         assert.strictEqual(ctx.window._currentSettings.supportsTemperature, false);
     });
 
@@ -119,7 +119,7 @@ describe('populateCurrentSettings', () => {
             return originalGet(id);
         };
 
-        ctx.populateCurrentSettings({ model: 'codex/gpt-5.6-luna', systemMessage: '', reasoning: 'high', temperature: '', supportsTemperature: 0 });
+        ctx.populateCurrentSettings({ model: 'chatgpt/gpt-5.6-luna', systemMessage: '', reasoning: 'high', temperature: '', supportsTemperature: 0 });
         assert.strictEqual(temperatureField.style.display, 'none', 'Codex must not show an unsupported Temperature control');
         assert.strictEqual(tempSlider.disabled, true, 'hidden unsupported Temperature control should remain disabled');
 
@@ -172,7 +172,7 @@ describe('populateCurrentSettings', () => {
 });
 
 describe('Image Generation right-rail visibility', () => {
-    it('shows only for an effective Codex model and clears stale state for non-Codex', () => {
+    it('shows only for an effective Codex model and clears stale state for non-ChatGPT-plan', () => {
         const ctx = loadModule();
         const row = { style: { display: 'none' } };
         const added = [], removed = [];
@@ -184,14 +184,14 @@ describe('Image Generation right-rail visibility', () => {
             return originalGet(id);
         };
 
-        ctx.populateCurrentSettings({ model: 'codex/gpt-5.6-luna', systemMessage: '', reasoning: '', temperature: '', imageGeneration: 1 });
-        assert.strictEqual(row.style.display, '', 'Codex should expose the Image Generation row');
+        ctx.populateCurrentSettings({ model: 'chatgpt/gpt-5.6-luna', systemMessage: '', reasoning: '', temperature: '', imageGeneration: 1 });
+        assert.strictEqual(row.style.display, '', 'ChatGPT-plan should expose the Image Generation row');
         assert.strictEqual(ctx.window._currentSettings.imageGeneration, true);
         assert.ok(added.includes('on'), 'persisted ON state should paint the rail switch on');
 
         ctx.populateCurrentSettings({ model: 'deepseek/deepseek-v4-flash', systemMessage: '', reasoning: '', temperature: '', imageGeneration: 1 });
-        assert.strictEqual(row.style.display, 'none', 'non-Codex should hide the Image Generation row');
-        assert.strictEqual(ctx.window._currentSettings.imageGeneration, false, 'non-Codex effective model must fail closed locally');
+        assert.strictEqual(row.style.display, 'none', 'non-ChatGPT-plan should hide the Image Generation row');
+        assert.strictEqual(ctx.window._currentSettings.imageGeneration, false, 'non-ChatGPT-plan effective model must fail closed locally');
     });
 
     it('uses assistantBaseModel as the effective model for visibility', () => {
@@ -201,10 +201,35 @@ describe('Image Generation right-rail visibility', () => {
         ctx.document.getElementById = (id) => id === 'imageGenerationRow' ? row : originalGet(id);
         ctx.populateCurrentSettings({
             model: '', systemMessage: '', reasoning: '', temperature: '', imageGeneration: true,
-            assistantName: 'Codex Assistant', assistantBaseModel: 'codex/gpt-5.6-luna'
+            assistantName: 'Codex Assistant', assistantBaseModel: 'chatgpt/gpt-5.6-luna'
         });
         assert.strictEqual(row.style.display, '');
         assert.strictEqual(ctx.window._currentSettings.imageGeneration, true);
+    });
+});
+
+describe('ChatGPT plan indicator', () => {
+    it('shows only for an authorized ChatGPT-plan effective model', () => {
+        const ctx = loadModule();
+        const indicator = { style: { display: 'none' } };
+        const originalGet = ctx.document.getElementById;
+        ctx.document.getElementById = (id) => id === 'chatGptPlanInline' ? indicator : originalGet(id);
+        ctx.window._chatGptPlanWelcomeShown = true;
+
+        ctx.window._currentSettings = { model: 'chatgpt/gpt-5.6-luna' };
+        ctx.handleChatGptPlanStatus({ authenticated: true });
+        assert.strictEqual(indicator.style.display, 'flex');
+
+        ctx.window._currentSettings = { model: 'deepseek/deepseek-v4-flash' };
+        ctx.handleChatGptPlanStatus({ authenticated: true });
+        assert.strictEqual(indicator.style.display, 'none');
+
+        ctx.window._currentSettings = { assistantName: 'Plan assistant', assistantBaseModel: 'chatgpt/gpt-5.6-sol' };
+        ctx.handleChatGptPlanStatus({ authenticated: true });
+        assert.strictEqual(indicator.style.display, 'flex');
+
+        ctx.handleChatGptPlanStatus({ authenticated: false });
+        assert.strictEqual(indicator.style.display, 'none');
     });
 });
 

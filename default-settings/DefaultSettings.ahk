@@ -44,14 +44,14 @@ providers := Map(
         icon: "icons/openai.ico",
         collapseThinking: true
     },
-    "codex", {
-        displayName: "Codex CLI (ChatGPT subscription)",
-        transport: "codex-cli",
+    "chatgpt", {
+        displayName: "ChatGPT plan",
+        transport: "chatgpt-responses",
         billingMode: "chatgpt-subscription",
-        endpoint: "",
+        endpoint: "https://api.openai.com/v1/responses",
         modelsDevProvider: "",
         fimEndpoint: "",
-        authMode: "chatgpt",
+        authMode: "chatgpt-oauth",
         authEnvVar: "",
         icon: "icons/openai.ico",
         collapseThinking: true
@@ -104,7 +104,8 @@ providerMap := Map(
     "gpt",      "openai",
     "o1",       "openai",
     "o3",       "openai",
-    "codex",    "codex",
+    "chatgpt",  "chatgpt",
+    "codex",    "chatgpt", ; legacy unprefixed/provider alias
     "openrouter", "openrouter",
     "claude",   "anthropic",
     "gemini",   "google",

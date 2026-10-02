@@ -35,6 +35,29 @@ class ModelParserTest {
             throw Error("Expected empty string, got '" result "'")
     }
 
+    CanonicalProvider_MapsLegacyCodexToChatGpt() {
+        if ModelParser.CanonicalProvider("codex") != "chatgpt"
+            throw Error("Legacy codex provider must canonicalize to chatgpt")
+        if ModelParser.CanonicalProvider("openai") != "openai"
+            throw Error("Unrelated providers must not be rewritten")
+    }
+
+    Canonicalize_MapsLegacyCodexModelId() {
+        if ModelParser.Canonicalize("codex/gpt-5.6-luna") != "chatgpt/gpt-5.6-luna"
+            throw Error("Legacy codex model id must canonicalize to chatgpt")
+        if ModelParser.Canonicalize("chatgpt/gpt-5.6-luna") != "chatgpt/gpt-5.6-luna"
+            throw Error("Canonical ChatGPT-plan id must remain unchanged")
+    }
+
+    IsChatGptPlan_AcceptsCanonicalAndLegacyPrefixes() {
+        if !ModelParser.IsChatGptPlan("chatgpt/gpt-5.6-luna")
+            throw Error("Canonical chatgpt id should be recognized as ChatGPT plan")
+        if !ModelParser.IsChatGptPlan("codex/gpt-5.6-luna")
+            throw Error("Legacy codex id should remain recognized as ChatGPT plan")
+        if ModelParser.IsChatGptPlan("openai/gpt-5-mini")
+            throw Error("OpenAI API-key model must not be treated as ChatGPT plan")
+    }
+
     ; ----------------------------------------------------
     ; StripVersion
     ; ----------------------------------------------------

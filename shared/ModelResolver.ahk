@@ -11,7 +11,11 @@ class ModelResolver {
         if models.Has(modelName)
             return models[modelName]
 
-        modelShort := ModelParser.StripProvider(modelName)
+        canonicalName := ModelParser.Canonicalize(modelName)
+        if canonicalName != modelName && models.Has(canonicalName)
+            return models[canonicalName]
+
+        modelShort := ModelParser.StripProvider(canonicalName)
         for fullKey, m in models {
             if ModelParser.StripProvider(fullKey) = modelShort
                 return m

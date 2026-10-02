@@ -45,12 +45,31 @@ sendStreamingRequest(&chatHistoryJSONRequest, initialRequest := false) {
         _ShowEndpointError(providerInfo)
         return
     }
-    cURLCommand := CurlBuilder.BuildStream(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
-    FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
-
-    Run(cURLCommand, , "Hide", &cURLPID)
+    if providerInfo.transport = "chatgpt-responses" {
+        prepared := ChatGptResponsesTransport.PrepareRequestFile(
+            requestParams["chatHistoryJSONRequestFile"],
+            requestParams.Has("webSearch") && requestParams["webSearch"],
+            requestParams.Has("imageGeneration") && requestParams["imageGeneration"]
+        )
+        requestParams["_chatgptResponsesPayload"] := prepared.payload
+        FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write("chatgpt-responses")
+        process := ChatGptResponsesTransport.StartStreaming(
+            requestParams["chatHistoryJSONRequestFile"],
+            requestParams["cURLOutputFile"],
+            requestParams["cURLErrorFile"]
+        )
+        cURLPID := process.pid
+        ; Streaming/cancellation is PID-based after launch; close the native
+        ; process handle immediately so each long chat turn cannot leak it.
+        if process.processHandle
+            DllCall("CloseHandle", "Ptr", process.processHandle)
+    } else {
+        cURLCommand := CurlBuilder.BuildStream(providerInfo, requestParams["chatHistoryJSONRequestFile"], requestParams["cURLOutputFile"], requestParams["cURLErrorFile"])
+        FileOpen(requestParams["cURLCommandFile"], "w", "UTF-8-RAW").Write(cURLCommand)
+        Run(cURLCommand, , "Hide", &cURLPID)
+    }
     cURLState("set", cURLPID)
-    debugLog("cURL started provider=" providerInfo.providerKey " model=" providerInfo.modelName " endpoint=" providerInfo.endpoint " pid=" cURLPID, "StreamHandler")
+    debugLog("stream started provider=" providerInfo.providerKey " transport=" providerInfo.transport " model=" providerInfo.modelName " endpoint=" providerInfo.endpoint " pid=" cURLPID, "StreamHandler")
 
     sanitizedModel := ModelParser.Sanitize(requestParams["singleAPIModelName"])
 
@@ -552,6 +571,8 @@ _readStreamChunkFromParams() {
 ; the WebView when the CURRENT active path is the one that sent the request.
 ; The DB completion still runs for the captured thread regardless.
 _shouldPostStreamToUI() {
+    if requestParams.Has("_streamUiStreaming") && !requestParams["_streamUiStreaming"]
+        return false
     if !requestParams.Has("_streamThreadId")
         return false
     if activeThreadId != requestParams["_streamThreadId"]
@@ -652,6 +673,15 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         firstTokenTime: 0,
         usage: {},
         providerKey: providerInfo.providerKey,
+        transport: providerInfo.transport,
+        uiStreaming: !requestParams.Has("stream") || requestParams["stream"],
+        responsesPayload: requestParams.Has("_chatgptResponsesPayload") ? requestParams["_chatgptResponsesPayload"] : "",
+        responsesCompleted: false,
+        responseOutput: [],
+        responsesToolCalls: [],
+        responsesToolRounds: 0,
+        responsesContentPrefix: "",
+        generatedAttachments: [],
         rawSseChunks: "",
         rawLastResponse: "",
         ; Buffer a `data:` JSON line when it is split across poll boundaries.
@@ -659,6 +689,7 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         ; completes it.
         pendingLine: "",
         errorMessage: "",
+        errorCode: "",
         pollCount: 0,
         requestStartTime: requestStartTime,
         chatHistoryJSONRequest: chatHistoryJSONRequest,
@@ -711,10 +742,20 @@ _LoadStreamIntoParams(stream) {
     requestParams["_streamFirstTokenTime"]   := stream.firstTokenTime
     requestParams["_streamUsage"]            := stream.usage
     requestParams["_streamProviderKey"]      := stream.providerKey
+    requestParams["_streamTransport"]        := stream.HasOwnProp("transport") ? stream.transport : "http"
+    requestParams["_streamUiStreaming"]      := !stream.HasOwnProp("uiStreaming") || stream.uiStreaming
+    requestParams["_streamResponsesPayload"] := stream.HasOwnProp("responsesPayload") ? stream.responsesPayload : ""
+    requestParams["_streamResponsesCompleted"] := stream.HasOwnProp("responsesCompleted") && stream.responsesCompleted
+    requestParams["_streamResponseOutput"]   := stream.HasOwnProp("responseOutput") ? stream.responseOutput : []
+    requestParams["_streamResponsesToolCalls"] := stream.HasOwnProp("responsesToolCalls") ? stream.responsesToolCalls : []
+    requestParams["_streamResponsesToolRounds"] := stream.HasOwnProp("responsesToolRounds") ? stream.responsesToolRounds : 0
+    requestParams["_streamResponsesContentPrefix"] := stream.HasOwnProp("responsesContentPrefix") ? stream.responsesContentPrefix : ""
+    requestParams["_streamGeneratedAttachments"] := stream.HasOwnProp("generatedAttachments") ? stream.generatedAttachments : []
     requestParams["_streamRawSseChunks"]     := stream.rawSseChunks
     requestParams["_streamRawLastResponse"]  := stream.rawLastResponse
     requestParams["_streamPendingLine"]      := stream.pendingLine
     requestParams["_streamErrorMessage"]     := stream.errorMessage
+    requestParams["_streamErrorCode"]        := stream.HasOwnProp("errorCode") ? stream.errorCode : ""
     requestParams["_streamPollCount"]        := stream.pollCount
     requestParams["_streamRequestStartTime"] := stream.requestStartTime
     requestParams["_streamChatHistoryJSONRequest"] := stream.chatHistoryJSONRequest
@@ -768,10 +809,17 @@ _SaveStreamFromParams(stream) {
     stream.modelName        := requestParams["_streamModelName"]
     stream.firstTokenTime   := requestParams["_streamFirstTokenTime"]
     stream.usage            := requestParams["_streamUsage"]
+    stream.responsesCompleted := requestParams.Has("_streamResponsesCompleted") && requestParams["_streamResponsesCompleted"]
+    stream.responseOutput      := requestParams.Has("_streamResponseOutput") ? requestParams["_streamResponseOutput"] : []
+    stream.responsesToolCalls  := requestParams.Has("_streamResponsesToolCalls") ? requestParams["_streamResponsesToolCalls"] : []
+    stream.responsesToolRounds := requestParams.Has("_streamResponsesToolRounds") ? requestParams["_streamResponsesToolRounds"] : 0
+    stream.responsesContentPrefix := requestParams.Has("_streamResponsesContentPrefix") ? requestParams["_streamResponsesContentPrefix"] : ""
+    stream.generatedAttachments := requestParams.Has("_streamGeneratedAttachments") ? requestParams["_streamGeneratedAttachments"] : []
     stream.rawSseChunks     := requestParams["_streamRawSseChunks"]
     stream.rawLastResponse  := requestParams["_streamRawLastResponse"]
     stream.pendingLine      := requestParams["_streamPendingLine"]
     stream.errorMessage     := requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : ""
+    stream.errorCode        := requestParams.Has("_streamErrorCode") ? requestParams["_streamErrorCode"] : ""
     stream.pollCount        := requestParams["_streamPollCount"]
     stream.cancelled        := requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]
     stream.toolCalls        := requestParams.Has("_streamToolCalls") ? requestParams["_streamToolCalls"] : Map()
@@ -1031,10 +1079,16 @@ _StreamStateFromParams() {
         firstTokenTime: requestParams["_streamFirstTokenTime"],
         usage: requestParams["_streamUsage"],
         providerKey: requestParams["_streamProviderKey"],
+        transport: requestParams.Has("_streamTransport") ? requestParams["_streamTransport"] : "http",
+        responsesCompleted: requestParams.Has("_streamResponsesCompleted") && requestParams["_streamResponsesCompleted"],
+        responseOutput: requestParams.Has("_streamResponseOutput") ? requestParams["_streamResponseOutput"] : [],
+        responsesToolCalls: requestParams.Has("_streamResponsesToolCalls") ? requestParams["_streamResponsesToolCalls"] : [],
+        responsesContentPrefix: requestParams.Has("_streamResponsesContentPrefix") ? requestParams["_streamResponsesContentPrefix"] : "",
         rawSseChunks: requestParams["_streamRawSseChunks"],
         rawLastResponse: requestParams["_streamRawLastResponse"],
         pendingLine: requestParams["_streamPendingLine"],
         errorMessage: requestParams.Has("_streamErrorMessage") ? requestParams["_streamErrorMessage"] : "",
+        errorCode: requestParams.Has("_streamErrorCode") ? requestParams["_streamErrorCode"] : "",
         toolCalls: requestParams.Has("_streamToolCalls") ? requestParams["_streamToolCalls"] : Map()
     }
 }
@@ -1047,6 +1101,10 @@ _ParamsFromStreamState(state) {
     requestParams["_streamModelName"] := state.modelName
     requestParams["_streamFirstTokenTime"] := state.firstTokenTime
     requestParams["_streamUsage"] := state.usage
+    requestParams["_streamResponsesCompleted"] := state.HasOwnProp("responsesCompleted") && state.responsesCompleted
+    requestParams["_streamResponseOutput"] := state.HasOwnProp("responseOutput") ? state.responseOutput : []
+    requestParams["_streamResponsesToolCalls"] := state.HasOwnProp("responsesToolCalls") ? state.responsesToolCalls : []
+    requestParams["_streamResponsesContentPrefix"] := state.HasOwnProp("responsesContentPrefix") ? state.responsesContentPrefix : ""
     requestParams["_streamRawSseChunks"] := state.rawSseChunks
     requestParams["_streamRawLastResponse"] := state.rawLastResponse
     requestParams["_streamPendingLine"] := state.pendingLine
@@ -1055,6 +1113,7 @@ _ParamsFromStreamState(state) {
     } else if requestParams.Has("_streamErrorMessage") {
         requestParams.Delete("_streamErrorMessage")
     }
+    requestParams["_streamErrorCode"] := state.HasOwnProp("errorCode") ? state.errorCode : ""
     requestParams["_streamToolCalls"] := state.toolCalls
 }
 
@@ -1144,7 +1203,9 @@ _readAndProcessStream(state, doPostMessage := false) {
             state.rawLastResponse := SubStr(line, jsonStart)
         }
 
-        chunk := SSEParser.ParseLine(line)
+        chunk := state.HasOwnProp("transport") && state.transport = "chatgpt-responses"
+            ? ChatGptResponsesStreamParser.ParseLine(line)
+            : SSEParser.ParseLine(line)
         _processChunk(state, chunk, doPostMessage)
     }
 }
@@ -1183,6 +1244,19 @@ _processChunk(state, chunk, doPostMessage) {
             if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
                 state.usage := chunk.usage
 
+        case "activity":
+            if doPostMessage && chunk.HasOwnProp("content") && chunk.content != ""
+                postWebMessage("streamReasoning", { content: chunk.content "`n", collapsed: false, kind: "activity" })
+
+        case "responses_output_item":
+            state.responseOutput := ChatGptResponsesStreamParser.MergeOutput(state.responseOutput, [chunk.item])
+
+        case "responses_tool_call":
+            if !state.HasOwnProp("responsesToolCalls") || !IsObject(state.responsesToolCalls)
+                state.responsesToolCalls := []
+            if chunk.HasOwnProp("call") && IsObject(chunk.call)
+                state.responsesToolCalls.Push(chunk.call)
+
         case "tool_call":
             ; The model asked to search the web. Merge the partial fragments
             ; into completed calls ({id, name, arguments}) keyed by index.
@@ -1215,8 +1289,20 @@ _processChunk(state, chunk, doPostMessage) {
         case "finish":
             if chunk.HasOwnProp("model") && chunk.model
                 state.modelName := ModelParser.Sanitize(chunk.model)
-            if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0
+            if state.HasOwnProp("transport") && state.transport = "chatgpt-responses" {
+                ChatGptResponsesStreamParser.CompleteOutput(chunk, state.responseOutput)
+                state.responsesCompleted := chunk.HasOwnProp("completed") && chunk.completed
+                if chunk.HasOwnProp("responseOutput")
+                    state.responseOutput := chunk.responseOutput
+                if chunk.HasOwnProp("functionCalls") && IsObject(chunk.functionCalls)
+                    state.responsesToolCalls := chunk.functionCalls
+                if chunk.HasOwnProp("finalText") && chunk.finalText != ""
+                    state.content := (state.HasOwnProp("responsesContentPrefix") ? state.responsesContentPrefix : "") chunk.finalText
+                if chunk.HasOwnProp("usage") && IsObject(chunk.usage)
+                    state.usage := _AccumulateResponsesUsage(state.usage, chunk.usage)
+            } else if chunk.HasOwnProp("usage") && IsObject(chunk.usage) && chunk.usage.HasOwnProp("totalTokens") && chunk.usage.totalTokens > 0 {
                 state.usage := chunk.usage
+            }
 
         case "done":
 
@@ -1227,7 +1313,20 @@ _processChunk(state, chunk, doPostMessage) {
             ; the missing "choices" key.
             if chunk.HasOwnProp("message") && chunk.message != ""
                 state.errorMessage := chunk.message
+            if chunk.HasOwnProp("code") && chunk.code != ""
+                state.errorCode := chunk.code
     }
+}
+
+_AccumulateResponsesUsage(current, round) {
+    fields := ["promptTokens", "completionTokens", "thinkingTokens", "cachedTokens", "totalTokens"]
+    result := { promptTokens: 0, completionTokens: 0, thinkingTokens: 0, cachedTokens: 0, totalTokens: 0 }
+    for field in fields {
+        existing := IsObject(current) && current.HasOwnProp(field) ? current.%field% : 0
+        added := IsObject(round) && round.HasOwnProp(field) ? round.%field% : 0
+        result.%field% := existing + added
+    }
+    return result
 }
 
 ; Merge streaming tool_calls delta fragments (OpenAI-compatible shape) into
@@ -1281,6 +1380,14 @@ _finalizeStreaming() {
         }
 
         ; A mid-stream SSE error event is a real provider failure after partial output.
+
+        ; ChatGPT-plan HTTP inference is successful only after response.completed.
+        if requestParams.Has("_streamTransport") && requestParams["_streamTransport"] = "chatgpt-responses"
+            && !(requestParams.Has("_streamResponsesCompleted") && requestParams["_streamResponsesCompleted"])
+            && !(requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"])
+            requestParams["_streamErrorMessage"] := "The ChatGPT Responses stream ended without response.completed."
+
+        ; A mid-stream SSE error event is a real provider failure after partial output.
         ; real provider failure AFTER partial tokens - surface the provider
         ; message, persist the partial response (like a cancellation), and
         ; post streamCancelled so the bubble finalizes and the composer is not
@@ -1299,6 +1406,15 @@ _finalizeStreaming() {
             _handleStreamError()
             _cleanupStreamState()
             _FinishStreamFinalize()
+            return
+        }
+
+        ; A tool-call round owns its stream teardown and continuation.
+
+        if requestParams.Has("_streamTransport") && requestParams["_streamTransport"] = "chatgpt-responses"
+            && requestParams.Has("_streamResponsesToolCalls") && IsObject(requestParams["_streamResponsesToolCalls"])
+            && requestParams["_streamResponsesToolCalls"].Length {
+            _HandleChatGptResponsesToolCalls()
             return
         }
 
@@ -1329,6 +1445,103 @@ _finalizeStreaming() {
     }
 }
 
+_HandleChatGptResponsesToolCalls() {
+    stream := _FindStreamByKey(_currentStreamKey)
+    if !IsObject(stream)
+        throw Error("ChatGPT Responses tool continuation lost its originating stream.")
+    ; The final process-exit drain updates requestParams before this handler
+    ; runs. Synchronize those terminal response.output/tool/content fields back
+    ; into the durable per-request stream record before constructing the next
+    ; stateless Responses input.
+    _SaveStreamFromParams(stream)
+    if !(stream.HasOwnProp("responsesPayload") && IsObject(stream.responsesPayload))
+        throw Error("ChatGPT Responses tool continuation is missing its request payload.")
+
+    rounds := stream.HasOwnProp("responsesToolRounds") ? stream.responsesToolRounds : 0
+    rounds++
+    if rounds > ChatGptImageWorker.MAX_TOOL_ROUNDS
+        throw Error("Image generation stopped after too many tool rounds.")
+    stream.responsesToolRounds := rounds
+
+    imageEnabled := stream.requestParamsSnapshot.Has("imageGeneration") && stream.requestParamsSnapshot["imageGeneration"]
+    if !imageEnabled
+        throw Error("The model requested image generation while the Image Generation toggle is off.")
+
+    calls := requestParams["_streamResponsesToolCalls"]
+    outputs := []
+    for call in calls {
+        if !IsObject(call)
+            throw Error("ChatGPT returned an invalid function call.")
+        namespace := call.Has("namespace") ? String(call["namespace"]) : ""
+        name := call.Has("name") ? String(call["name"]) : ""
+        callId := call.Has("call_id") ? String(call["call_id"]) : ""
+        if namespace != "ahkllm" || name != "generate_image"
+            throw Error("ChatGPT requested an unsupported client function: " (namespace != "" ? namespace "." : "") name)
+        if callId = ""
+            throw Error("ChatGPT image function call did not include a call_id.")
+
+        argsText := call.Has("arguments") ? String(call["arguments"]) : ""
+        try args := jsongo.Parse(argsText)
+        catch
+            throw Error("ChatGPT image function arguments were not valid JSON.")
+        if !IsObject(args) || !args.Has("prompt") || Trim(String(args["prompt"])) = ""
+            throw Error("ChatGPT image function call did not include a prompt.")
+
+        if _shouldPostStreamToUI()
+            postWebMessage("streamReasoning", { content: "Generating image...`n", collapsed: false, kind: "activity" })
+
+        result := ChatGptImageWorker.Execute(stream.modelName, args["prompt"], stream.requestPath, stream)
+        if result.cancelled || stream.cancelled {
+            requestParams["_streamCancelled"] := true
+            stream.cancelled := true
+            _handleStreamCancelled()
+            _cleanupStreamState()
+            _FinishStreamFinalize()
+            return
+        }
+        if !result.success
+            throw Error(result.error != "" ? result.error : "Image generation failed.")
+
+        for attachment in result.attachments
+            stream.generatedAttachments.Push(attachment)
+
+        toolResult := Map(
+            "status", "success",
+            "image_count", result.attachments.Length,
+            "message", "Image generation completed and AhkLLM attached the generated image to this assistant turn."
+        )
+        outputs.Push(Map(
+            "type", "function_call_output",
+            "call_id", callId,
+            "output", LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(toolResult))
+        ))
+    }
+
+    nextPayload := ChatGptResponsesTransport.BuildToolContinuation(stream.responsesPayload, stream.responseOutput, outputs)
+    ChatGptResponsesTransport.WritePayload(stream.requestFile, nextPayload)
+    for path in [stream.outputFile, stream.errorFile] {
+        if path && FileExist(path)
+            try FileDelete(path)
+    }
+
+    stream.responsesContentPrefix := stream.content
+    stream.responsesPayload := nextPayload
+    stream.responsesCompleted := false
+    stream.responseOutput := []
+    stream.responsesToolCalls := []
+    stream.lastPos := 0
+    stream.pendingLine := ""
+    stream.rawLastResponse := ""
+    stream.phase := "stream"
+
+    process := ChatGptResponsesTransport.StartStreaming(stream.requestFile, stream.outputFile, stream.errorFile, stream)
+    stream.pid := process.pid
+    if process.processHandle
+        DllCall("CloseHandle", "Ptr", process.processHandle)
+    cURLState("set", stream.pid)
+    _LoadStreamIntoParams(stream)
+}
+
 ; True when the stream produced neither content nor reasoning AND has no
 ; pending web-search tool calls (tool-call rounds must route to the tool loop,
 ; not the empty-response error branch).
@@ -1336,6 +1549,9 @@ _NoContentAndNoToolCalls() {
     if requestParams["_streamContent"] != "" || requestParams["_streamReasoning"] != "" || (requestParams.Has("_streamGeneratedAttachments") && requestParams["_streamGeneratedAttachments"].Length)
         return false
     if requestParams.Has("_streamToolCalls") && requestParams["_streamToolCalls"].Count
+        return false
+    if requestParams.Has("_streamResponsesToolCalls") && IsObject(requestParams["_streamResponsesToolCalls"])
+        && requestParams["_streamResponsesToolCalls"].Length
         return false
     return true
 }
@@ -1527,6 +1743,10 @@ _cleanupStreamState() {
         requestParams.Delete("_streamUsage")
     if requestParams.Has("_streamProviderKey")
         requestParams.Delete("_streamProviderKey")
+    for key in ["_streamTransport", "_streamUiStreaming", "_streamResponsesPayload", "_streamResponsesCompleted", "_streamResponseOutput", "_streamResponsesToolCalls", "_streamResponsesToolRounds", "_streamResponsesContentPrefix", "_chatgptResponsesPayload"] {
+        if requestParams.Has(key)
+            requestParams.Delete(key)
+    }
     if requestParams.Has("_streamRawSseChunks")
         requestParams.Delete("_streamRawSseChunks")
     if requestParams.Has("_streamRawLastResponse")
@@ -1535,6 +1755,8 @@ _cleanupStreamState() {
         requestParams.Delete("_streamPendingLine")
     if requestParams.Has("_streamErrorMessage")
         requestParams.Delete("_streamErrorMessage")
+    if requestParams.Has("_streamErrorCode")
+        requestParams.Delete("_streamErrorCode")
     if requestParams.Has("_streamPollCount")
         requestParams.Delete("_streamPollCount")
     if requestParams.Has("_streamRequestStartTime")

@@ -184,6 +184,7 @@
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="speedValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Speed</div></div>
       <div class="stat-card" style="flex:1;background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px 16px;text-align:center;"><div class="value" id="ttftValue" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div><div class="label" style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">Latency (ttft)</div></div>
     </div>
+    <div id="chatGptUsageManageRow" style="display:none;margin:0 20px 14px;padding:10px 12px;border:1px solid var(--border-main);border-radius:var(--radius-sm);background:var(--bg-panel);font-size:12px;color:var(--text-secondary);">ChatGPT-plan requests use your ChatGPT plan allowance. <a href="https://chatgpt.com/#settings/Usage">Manage usage</a></div>
     <div class="chart-card" style="background:var(--bg-panel);border:1px solid var(--border-main);border-radius:var(--radius-md);padding:14px;margin:0 20px 14px;">
       <div class="chart-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <h6 style="font-size:13px;font-weight:600;color:var(--text-secondary);margin:0;">Cost Over Time</h6>
@@ -226,7 +227,7 @@
         </div>
         <div class="settings-group-title">Web Search</div>
         <div class="field settings-mb-20">
-          <label class="field-label">Tavily API Key <span class="hint">used when the model provider is not DeepSeek; DeepSeek models search natively. Leave empty to use the TAVILY_API_KEY environment variable</span></label>
+          <label class="field-label">Tavily API Key <span class="hint">used by API providers without a native hosted search path. DeepSeek and ChatGPT-plan models search natively. Leave empty to use the TAVILY_API_KEY environment variable</span></label>
           <input class="settings-w-60" type="password" id="tavilyApiKey" placeholder="tvly-...">
         </div>
         <div class="settings-group-title">Data Management</div>
@@ -372,6 +373,7 @@
             <button class="change-btn">Change <i data-lucide="chevron-right"></i></button>
           </div>
           <div class="desc"></div>
+          <div class="chatgpt-plan-inline" id="chatGptPlanInline" style="display:none;"><span>Using ChatGPT plan</span><button type="button" id="chatGptPlanManageUsage">Manage usage</button></div>
         </div>
 
         <div class="field">
@@ -467,6 +469,20 @@
     <div class="modal-foot">
       <button class="btn-ghost">Cancel</button>
       <button class="btn-primary settings-text-sm" id="confirmBtn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ChatGPT plan first-use confirmation -->
+<div class="modal-overlay" id="chatGptPlanWelcomeModal">
+  <div class="modal-box settings-w-400">
+    <div class="modal-head"><div class="modal-title">You're using your ChatGPT plan</div></div>
+    <div class="modal-body settings-modal-body">
+      <div class="settings-text-14-muted">Eligible AI requests in AhkLLM use your ChatGPT plan or available credits. You can review usage and limits in ChatGPT settings.</div>
+      <a href="https://chatgpt.com/#settings/Usage">Manage usage</a>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" type="button" id="chatGptPlanWelcomeGotIt">Got it</button>
     </div>
   </div>
 </div>
@@ -639,12 +655,14 @@
 <script src="js/usage-dashboard.js"></script>
 <script src="js/chat/model-picker/model-picker.js"></script>
 <script src="js/chat/chat-format.js"></script>
+<script src="js/chat/attachment-images.js"></script>
 <script src="js/chat/chat-render.js"></script>
 <script src="js/chat/chat-token-tooltip.js"></script>
 <script src="js/chat/chat-actions.js"></script>
 <script src="js/chat/attachments/chat-attachments.js"></script>
 <script src="js/chat/attachments/chat-attachments-extract.js"></script>
 <script src="js/chat/attachments/chat-attachments-setup.js"></script>
+<script src="js/chat/pending-messages.js"></script>
 <script src="js/chat/chat-input.js"></script>
 <script src="js/chat/chat-branching.js"></script>
 <script src="js/chat/chat-tree-modal.js"></script>
@@ -665,6 +683,7 @@
 <script src="js/settings/sections/hotkeys.js"></script>
 <script src="js/settings/sections/menu-items.js"></script>
 <script src="js/settings/sections/providers.js"></script>
+<script src="js/settings/chatgpt-model-catalog.js"></script>
 <script src="js/settings/sections/models.js"></script>
 <script src="js/settings/sections/sysmsg-modal.js"></script>
 <script src="js/settings/sections/assistants.js"></script>

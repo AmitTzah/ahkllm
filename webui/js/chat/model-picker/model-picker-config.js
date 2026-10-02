@@ -10,8 +10,43 @@ function _settingsBoolValue(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
-function _isCodexImageModel(model) {
-  return typeof model === 'string' && model.toLowerCase().indexOf('codex/') === 0;
+function _isChatGptPlanModel(model) {
+  if (typeof model !== 'string') return false;
+  var id = model.toLowerCase();
+  return id.indexOf('chatgpt/') === 0 || id.indexOf('codex/') === 0;
+}
+
+var CHATGPT_USAGE_URL = 'https://chatgpt.com/#settings/Usage';
+var CHATGPT_PLAN_WELCOME_KEY = 'ahkllm.chatgptPlanWelcomeSeen.v1';
+
+function _syncChatGptPlanIndicator() {
+  if (typeof document === 'undefined') return;
+  var el = document.getElementById('chatGptPlanInline');
+  if (!el) return;
+  var status = (typeof window !== 'undefined' && window._chatGptPlanStatus) ? window._chatGptPlanStatus : {};
+  var settings = (typeof window !== 'undefined' && window._currentSettings) ? window._currentSettings : {};
+  var active = !!status.authenticated && _isChatGptPlanModel(_effectiveImageGenerationModel(settings));
+  el.style.display = active ? 'flex' : 'none';
+}
+
+function _maybeShowChatGptPlanWelcome(status) {
+  if (!status || !status.authenticated || typeof document === 'undefined' || typeof window === 'undefined') return;
+  var seen = false;
+  try {
+    seen = !!(window.localStorage && window.localStorage.getItem(CHATGPT_PLAN_WELCOME_KEY));
+  } catch (e) {}
+  if (seen || window._chatGptPlanWelcomeShown) return;
+  var modal = document.getElementById('chatGptPlanWelcomeModal');
+  if (!modal || !modal.classList) return;
+  window._chatGptPlanWelcomeShown = true;
+  modal.classList.add('open');
+}
+
+function handleChatGptPlanStatus(data) {
+  if (typeof window === 'undefined') return;
+  window._chatGptPlanStatus = data || {};
+  _syncChatGptPlanIndicator();
+  _maybeShowChatGptPlanWelcome(window._chatGptPlanStatus);
 }
 
 function _effectiveImageGenerationModel(settings) {
@@ -79,7 +114,7 @@ function populateCurrentSettings(settings) {
     if (tempField)
       tempField.style.display = supportsTemperature ? '' : 'none';
     tempSlider.disabled = !supportsTemperature;
-    tempSlider.title = supportsTemperature ? '' : 'Temperature is not supported by the Codex CLI backend.';
+    tempSlider.title = supportsTemperature ? '' : 'Temperature is not supported by the ChatGPT-plan backend.';
     var hasTemp = supportsTemperature && settings.temperatureOverrideSet !== true && settings.temperature !== '' && settings.temperature !== undefined && settings.temperature !== null;
     if (hasTemp) {
       tempSlider.value = settings.temperature;
@@ -169,7 +204,7 @@ function _syncWebSearchToggle() {
 
 function _syncImageGenerationToggle() {
   if (!window._currentSettings) window._currentSettings = {};
-  var eligible = _isCodexImageModel(_effectiveImageGenerationModel(window._currentSettings));
+  var eligible = _isChatGptPlanModel(_effectiveImageGenerationModel(window._currentSettings));
   if (!eligible) window._currentSettings.imageGeneration = false;
   var row = document.getElementById('imageGenerationRow');
   if (row) row.style.display = eligible ? '' : 'none';
@@ -318,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
   var railImageGenerationToggle = document.getElementById('railImageGenerationToggle');
   if (railImageGenerationToggle) railImageGenerationToggle.addEventListener('click', function() {
     if (!window._currentSettings) window._currentSettings = {};
-    if (!_isCodexImageModel(_effectiveImageGenerationModel(window._currentSettings))) {
+    if (!_isChatGptPlanModel(_effectiveImageGenerationModel(window._currentSettings))) {
       window._currentSettings.imageGeneration = false;
       _syncImageGenerationToggle();
       return;
@@ -337,3 +372,39 @@ document.addEventListener('DOMContentLoaded', function() {
 if (typeof window !== 'undefined') window.ModelPickerConfig = {
   init: openModelSettings
 };
+
+
+// ChatGPT-plan status is sent independently from thread settings. Wrap the
+// existing model-card renderer so every model/assistant change also refreshes
+// the plan-usage indicator.
+if (typeof _updateModelCard === 'function') {
+  var _updateModelCardBase = _updateModelCard;
+  _updateModelCard = function() {
+    _updateModelCardBase();
+    _syncChatGptPlanIndicator();
+  };
+}
+
+if (typeof window !== 'undefined')
+  window.handleChatGptPlanStatus = handleChatGptPlanStatus;
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('DOMContentLoaded', function() {
+    var managePlanUsage = document.getElementById('chatGptPlanManageUsage');
+    if (managePlanUsage) managePlanUsage.addEventListener('click', function(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+        Ipc.postToHost('openExternalUrl', { url: CHATGPT_USAGE_URL });
+    });
+
+    var welcomeGotIt = document.getElementById('chatGptPlanWelcomeGotIt');
+    if (welcomeGotIt) welcomeGotIt.addEventListener('click', function() {
+      try {
+        if (window.localStorage) window.localStorage.setItem(CHATGPT_PLAN_WELCOME_KEY, '1');
+      } catch (e) {}
+      var modal = document.getElementById('chatGptPlanWelcomeModal');
+      if (modal && modal.classList) modal.classList.remove('open');
+    });
+  });
+}

@@ -48,6 +48,14 @@
           root.renderNavList();
           break;
 
+        case 'chatMessageSaved':
+          if (root.PendingChatMessages) root.PendingChatMessages.saved(data);
+          break;
+
+        case 'chatMessageSaveFailed':
+          if (root.PendingChatMessages) root.PendingChatMessages.saveFailed(data);
+          break;
+
         case 'updateChatMessage':
           root.updateChatMessage(data);
           break;
@@ -185,6 +193,24 @@
         case 'codexStatus':
           if (root.SettingsProviders && typeof root.SettingsProviders.handleCodexStatus === 'function') {
             root.SettingsProviders.handleCodexStatus(data);
+          }
+          break;
+
+        case 'chatGptPlanStatus':
+          if (root.SettingsProviders && typeof root.SettingsProviders.handleChatGptPlanStatus === 'function') {
+            root.SettingsProviders.handleChatGptPlanStatus(data);
+          }
+          if (typeof root.handleChatGptPlanStatus === 'function') {
+            root.handleChatGptPlanStatus(data);
+          }
+          break;
+
+        case 'chatGptModelsUpdated':
+          if (root.SettingsModels && typeof root.SettingsModels.handleChatGptModelsUpdated === 'function') {
+            root.SettingsModels.handleChatGptModelsUpdated(data);
+          }
+          if (root.SettingsProviders && typeof root.SettingsProviders.handleChatGptModelsUpdated === 'function') {
+            root.SettingsProviders.handleChatGptModelsUpdated(data);
           }
           break;
 

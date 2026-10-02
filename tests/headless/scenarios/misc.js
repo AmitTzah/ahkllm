@@ -542,7 +542,7 @@ scenarios.push({
   async body() {
     const sa=require("node:fs").readFileSync(require("node:path").join(require("../launch").REPO_ROOT,"app","settings","SettingsApply.ahk"),"utf8");
     // FIXED (bug #71): _ApplyThreadTitles assigns even when empty.
-    const assignsModel = /if tt\.Has\("model"\)\s*\n\s*titleGenModel := tt\["model"\]/.test(sa);
+    const assignsModel = /if tt\.Has\("model"\)\s*\n\s*titleGenModel := ModelParser\.Canonicalize\(tt\["model"\]\)/.test(sa);
     const assignsPrompt = /if tt\.Has\("prompt"\)\s*\n\s*titleGenSystemPrompt := tt\["prompt"\]/.test(sa);
     const skipsModel = /tt\.Has\("model"\) && tt\["model"\] != ""/.test(sa);
     const skipsPrompt = /tt\.Has\("prompt"\) && tt\["prompt"\] != ""/.test(sa);
@@ -1038,18 +1038,26 @@ scenarios.push({
   mode: null,
   noApp: true,
   async body() {
-    const fs=require("node:fs");
-    const path=require("node:path");
-    const launcher=require("../launch");
-    const lb=fs.readFileSync(path.join(launcher.REPO_ROOT,"api","LLMRequestBuilder.ahk"),"utf8");
-    const block=lb.slice(lb.indexOf("static _FixStreamBoolean"), lb.indexOf("static _FixStreamBoolean")+1400);
-    // FIXED (bug #100): no global StrReplace over the whole payload - the
-    // rewrite is quote-aware (scans outside string literals).
-    const naiveReplace = block.includes('StrReplace(jsonStr,');
-    const quoteAware = /inString/.test(block);
-    if(naiveReplace || !quoteAware)
-      throw new Error("bug #100 not fixed: naiveReplace="+naiveReplace+" quoteAware="+quoteAware);
-    return "LLMRequestBuilder._FixStreamBoolean scans outside JSON string literals (inString tracking), so user content containing stream/include_usage snippets can never be rewritten";
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ahkllm-json-booleans-'));
+    const script = path.join(directory, 'probe.ahk');
+    try {
+      fs.writeFileSync(script, [
+        '#Requires AutoHotkey v2.0.18+', '#ErrorStdOut', '#SingleInstance Off', '#NoTrayIcon',
+        'global testMode := true', '#Include ' + path.join(launcher.REPO_ROOT, 'lib', 'Config.ahk'),
+        `original := '{"stream":1,"include_usage":1,"store":0}'`,
+        'raw := jsongo.Stringify(Map("stream", true, "store", false, "strict", 10, "messages", [Map("role", "user", "content", original)]))',
+        'fixed := LLMRequestBuilder._FixStreamBoolean(raw)', 'parsed := jsongo.Parse(fixed)',
+        `if !InStr(fixed, '"stream":true') || !InStr(fixed, '"store":false') || parsed["messages"][1]["content"] != original || parsed["strict"] != 10`,
+        '    ExitApp(1)', 'FileAppend("PASS", "*")', 'ExitApp(0)'
+      ].join('\n'), 'utf8');
+      const result = spawnSync(launcher.AHK, ['/ErrorStdOut', script], {
+        timeout: 15000, windowsHide: true, encoding: 'utf8',
+        env: Object.assign({}, process.env, { AHKLLM_E2E_WORKER: 'json-booleans', AHKLLM_E2E_DATA_DIR: directory })
+      });
+      if (result.error || result.status !== 0 || !String(result.stdout).includes('PASS'))
+        throw new Error('Boolean serialization altered user content or numeric fields: ' + (result.error?.message || result.stdout || result.stderr));
+      return 'real serializer fixes JSON boolean fields while preserving field-looking user text and non-boolean numbers';
+    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
   }
 });
 
@@ -1753,7 +1761,5 @@ scenarios.push({
 });
 
 module.exports = scenarios;
-
-
 
 

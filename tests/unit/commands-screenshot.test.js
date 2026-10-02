@@ -78,13 +78,13 @@ describe('Attach Screenshot command option', () => {
     };
     C.load({
       commands: [command],
-      models: { 'codex/gpt-5.6-luna': { vision:false } },
+      models: { 'chatgpt/gpt-5.6-luna': { vision:false } },
       commandGroupOrders: {}, submenuOrder: []
     });
     C.syncDetail = function() {};
     const result = C.validate();
     assert.strictEqual(result.valid, true,
-      'openai/gpt-5.6-luna must not be rebound to codex/gpt-5.6-luna by bare-name fallback');
+      'openai/gpt-5.6-luna must not be rebound to chatgpt/gpt-5.6-luna by bare-name fallback');
   });
 
   it('accepts numeric vision=1 from AHK settings payloads', () => {

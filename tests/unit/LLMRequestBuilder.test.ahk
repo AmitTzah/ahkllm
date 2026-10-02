@@ -13,7 +13,7 @@ class LLMRequestBuilderTest {
     }
 
     _setup() {
-        return LLMRequestBuilder("sk-test-key")
+        return LLMRequestBuilder("[REDACTED_SECRET]")
     }
 
     ; --------------------
@@ -230,11 +230,11 @@ class LLMRequestBuilderTest {
 
     CurlBuilderBuild_Format() {
         ; Build a minimal providerInfo for the test
-        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", apiKey: "sk-test-key" }
+        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", apiKey: "[REDACTED_SECRET]" }
         cmd := CurlBuilder.Build(pi, "req.json", "out.json")
         if !InStr(cmd, "cURL.exe")
             throw Error("Expected cURL.exe in command")
-        if !InStr(cmd, "sk-test-key")
+        if !InStr(cmd, "[REDACTED_SECRET]")
             throw Error("Expected API key in command")
         if !InStr(cmd, "req.json")
             throw Error("Expected request file in command")
@@ -243,7 +243,7 @@ class LLMRequestBuilderTest {
     }
 
     CurlBuilderBuildFIM_Format() {
-        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "https://api.deepseek.com/beta/completions", apiKey: "sk-test-key" }
+        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "https://api.deepseek.com/beta/completions", apiKey: "[REDACTED_SECRET]" }
         cmd := CurlBuilder.BuildFIM(pi, "fim-req.json", "fim-out.json")
         if !InStr(cmd, "cURL.exe")
             throw Error("Expected cURL.exe in FIM command")
@@ -256,17 +256,17 @@ class LLMRequestBuilderTest {
     ; Regression (bug #112): CurlBuilder must not build a URL-less cURL
     ; command when the provider endpoint is empty.
     CurlBuilder_EmptyEndpoint_ReturnsEmpty() {
-        pi := { providerKey: "test", endpoint: "", fimEndpoint: "", apiKey: "sk-test" }
+        pi := { providerKey: "test", endpoint: "", fimEndpoint: "", apiKey: "[REDACTED_SECRET]" }
         if CurlBuilder.Build(pi, "req.json", "out.json") != ""
             throw Error("Build should return empty for an empty endpoint")
         if CurlBuilder.BuildStream(pi, "req.json", "out.json", "err.txt") != ""
             throw Error("BuildStream should return empty for an empty endpoint")
         if CurlBuilder.BuildFIM(pi, "req.json", "out.json") != ""
             throw Error("BuildFIM should return empty when both endpoints are empty")
-        piNoFim := { providerKey: "openrouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", fimEndpoint: "", apiKey: "sk-test" }
+        piNoFim := { providerKey: "openrouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", fimEndpoint: "", apiKey: "[REDACTED_SECRET]" }
         if CurlBuilder.BuildFIM(piNoFim, "req.json", "out.json") != ""
             throw Error("BuildFIM must reject providers without an explicit FIM endpoint")
-        pi2 := { providerKey: "test", endpoint: "https://api.test/v1", fimEndpoint: "https://api.test/fim", apiKey: "sk-test" }
+        pi2 := { providerKey: "test", endpoint: "https://api.test/v1", fimEndpoint: "https://api.test/fim", apiKey: "[REDACTED_SECRET]" }
         cmd := CurlBuilder.BuildFIM(pi2, "req.json", "out.json")
         if !InStr(cmd, "https://api.test/fim")
             throw Error("BuildFIM should use the FIM endpoint when configured")
@@ -275,7 +275,7 @@ class LLMRequestBuilderTest {
     ; Regression (bug #204): the streaming cURL command must carry an overall
     ; --max-time so a stalled upstream cannot hang the chat UI forever.
     CurlBuilderBuildStream_HasMaxTime() {
-        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "", apiKey: "sk-test-key" }
+        pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "", apiKey: "[REDACTED_SECRET]" }
         cmd := CurlBuilder.BuildStream(pi, "req.json", "out.json", "err.txt")
         if !InStr(cmd, "--max-time 120")
             throw Error("BuildStream must include --max-time 120 (bug #204), got: " cmd)
@@ -430,6 +430,16 @@ class LLMRequestBuilderTest {
             throw Error("Expected OpenAI endpoint, got '" info.endpoint "'")
     }
 
+    ResolveProvider_LegacyCodexAliasUsesCanonicalChatGptProvider() {
+        info := ProviderResolver.Resolve("codex/gpt-5.6-luna")
+        if info.providerKey != "chatgpt"
+            throw Error("Legacy codex model must resolve to canonical chatgpt provider, got '" info.providerKey "'")
+        if info.modelName != "gpt-5.6-luna"
+            throw Error("Legacy alias must send the bare API model slug, got '" info.modelName "'")
+        if info.transport != "chatgpt-responses"
+            throw Error("Legacy alias must use direct ChatGPT Responses transport")
+    }
+
     ResolveProvider_LegacyFormat() {
         info := ProviderResolver.Resolve("deepseek-v4-flash")
         if info.providerKey != "deepseek"
@@ -489,7 +499,7 @@ class LLMRequestBuilderTest {
     }
 
     ResolveProvider_OpenRouterFree() {
-        EnvSet("OPENROUTER_API_KEY", "sk-openrouter-test")
+        EnvSet("OPENROUTER_API_KEY", "[REDACTED_SECRET]")
         try {
             info := ProviderResolver.Resolve("openrouter/free")
             if info.providerKey != "openrouter"
@@ -498,7 +508,7 @@ class LLMRequestBuilderTest {
                 throw Error("Expected API modelName 'openrouter/free', got '" info.modelName "'")
             if info.endpoint != "https://openrouter.ai/api/v1/chat/completions"
                 throw Error("Unexpected OpenRouter endpoint: " info.endpoint)
-            if info.apiKey != "sk-openrouter-test"
+            if info.apiKey != "[REDACTED_SECRET]"
                 throw Error("OpenRouter API key was not read from OPENROUTER_API_KEY")
             if info.fimEndpoint != ""
                 throw Error("OpenRouter Free must not advertise an FIM endpoint")
@@ -537,7 +547,7 @@ class LLMRequestBuilderTest {
     }
 
     OpenRouterFree_NormalRequest_UsesChatPath() {
-        EnvSet("OPENROUTER_API_KEY", "sk-openrouter-test")
+        EnvSet("OPENROUTER_API_KEY", "[REDACTED_SECRET]")
         try {
             request := LLMRequestBuilder.createJSONRequest("openrouter/free", "You are helpful", "Hello", "", "", "", false, "")
             parsed := jsongo.Parse(request)
@@ -595,6 +605,68 @@ class LLMRequestBuilderTest {
         result := LLMRequestBuilder._FixStreamBoolean('{"stream":1,"model":"test"}')
         if !InStr(result, '"stream":true')
             throw Error("Expected stream:true, got: " result)
+    }
+
+    FixStreamBoolean_LargeImagePayloadUsesBoundedSerializationTime() {
+        characters := 44 * 1024 * 1024
+        imageData := StrReplace(Format("{:" characters "}", ""), " ", "A")
+        raw := '{"messages":[{"content":"data:image/png;base64,' imageData '"}],"stream":1,"store":0}'
+        started := A_TickCount
+        fixed := LLMRequestBuilder._FixStreamBoolean(raw)
+        elapsed := A_TickCount - started
+        Log("[PERF] JSON boolean serialization of 44 MiB image data: " elapsed "ms`n")
+        if elapsed > 5000
+            throw Error("Boolean serialization blocked for " elapsed "ms on a large image payload")
+        if !InStr(fixed, '"stream":true,"store":false')
+            throw Error("Large payload boolean fields were not fixed")
+        if SubStr(fixed, 1, StrLen(raw) - StrLen('"stream":1,"store":0}')) != SubStr(raw, 1, StrLen(raw) - StrLen('"stream":1,"store":0}'))
+            throw Error("Image payload must remain byte-for-byte unchanged")
+        spaced := LLMRequestBuilder._FixStreamBoolean('{"stream" : 1,"strict":10,"store":0,"text":"\\\"stream\\\":1"}')
+        if !InStr(spaced, '"stream" : true') || !InStr(spaced, '"strict":10')
+            throw Error("Rewriting must accept whitespace and preserve non-boolean numbers")
+    }
+
+    FixStreamBoolean_LargeEscapedImagePreservesSerializedBytes() {
+        ; jsongo escapes every slash, including those inside real base64 images.
+        ; An all-A fixture misses the regex recursion caused by these escapes.
+        imageData := StrReplace(Format("{:" (32 * 1024 * 1024) "}", ""), " ", "/")
+        raw := jsongo.Stringify(Map("image", "data:image/png;base64," imageData,
+            "stream", true, "store", false, "text", 'Quoted "stream":1 and backslash \\'))
+        started := A_TickCount
+        fixed := LLMRequestBuilder._FixStreamBoolean(raw)
+        if A_TickCount - started > 5000
+            throw Error("Escaped image serialization must not block the UI")
+        expected := StrReplace(StrReplace(raw, '"stream":1', '"stream":true'), '"store":0', '"store":false')
+        if fixed != expected
+            throw Error("Escaped image bytes and field-looking user text must remain unchanged")
+    }
+
+    LogRequest_LargeImageKeepsResponseDiagnosticsWithinByteCap() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath, oldCap := ApiLogger.maxLogBytes, oldLimit := apiLogMaxEntries
+        logPath := A_Temp "\test_image_api_log_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := logPath
+        ApiLogger.maxLogBytes := 2048
+        apiLogMaxEntries := 10
+        try {
+          for original in [
+            '{"image":"data:image/png;base64,' StrReplace(Format("{:8192}", ""), " ", "A") '"}',
+            jsongo.Stringify(Map("image", "data:image/png;base64," StrReplace(Format("{:8192}", ""), " ", "/")))
+          ] {
+            ApiLogger.ClearLogs()
+            ApiLogger.LogRequest({ request: original, response: "Terminal image error", status: "error" })
+            logs := ApiLogger.ReadLogs()
+            if logs.Length != 1 || logs[1]["response"] != "Terminal image error"
+                throw Error("Large image requests must not discard the provider response from logs")
+            if !InStr(logs[1]["request"], "image data omitted from log") || FileGetSize(logPath) > ApiLogger.maxLogBytes
+                throw Error("Image data must be omitted from bounded diagnostic logs")
+            if StrLen(original) < 8192
+                throw Error("Logging must not change the original request payload")
+          }
+        } finally {
+            ApiLogger.logFilePath := oldPath, ApiLogger.maxLogBytes := oldCap, apiLogMaxEntries := oldLimit
+            try FileDelete(logPath)
+        }
     }
 
     FixStreamBoolean_FixesStreamFalse() {

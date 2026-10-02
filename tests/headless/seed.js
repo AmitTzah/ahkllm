@@ -89,8 +89,8 @@ function createDb(dir, fixtures = {}) {
   }
   for (const t of fixtures.threads || []) {
     db.prepare(
-      `INSERT INTO chat_threads (id, title, is_deleted, deleted_at, active_leaf_id, assistant_id, model_override, system_override, reasoning_override, temperature_override, system_override_set, reasoning_override_set, temperature_override_set, font_size, folder_id, is_locked, cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`
+      `INSERT INTO chat_threads (id, title, is_deleted, deleted_at, active_leaf_id, assistant_id, model_override, system_override, reasoning_override, temperature_override, system_override_set, reasoning_override_set, temperature_override_set, font_size, folder_id, is_locked, cumulative_input_tokens, cumulative_output_tokens, cumulative_cached_tokens, cumulative_cost, cumulative_input_cost, cumulative_cached_input_cost, cumulative_output_cost, advanced_toggles, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`
     ).run(
       t.id, t.title || 'New Chat', t.is_deleted ? 1 : 0, t.deleted_at || null,
       t.active_leaf_id || null, t.assistant_id || null, t.model_override || null,
@@ -104,6 +104,7 @@ function createDb(dir, fixtures = {}) {
       t.cumulative_cached_tokens || 0, t.cumulative_cost || 0,
       t.cumulative_input_cost || 0, t.cumulative_cached_input_cost || 0,
       t.cumulative_output_cost || 0,
+      t.advanced_toggles || '',
       t.created_at || null, t.created_at || null
     );
   }
@@ -125,6 +126,11 @@ function createDb(dir, fixtures = {}) {
       m.input_cost || 0, m.cached_input_cost || 0, m.output_cost || 0, m.total_cost || 0,
       m.created_at || null
     );
+  }
+  for (const attachment of fixtures.attachments || []) {
+    db.prepare('INSERT INTO message_attachments (id,message_id,attachment_type,file_path,mime_type,original_filename,file_size) VALUES (?,?,?,?,?,?,?)')
+      .run(attachment.id,attachment.message_id,attachment.attachment_type,attachment.file_path,
+        attachment.mime_type || null,attachment.original_filename || null,attachment.file_size || 0);
   }
   for (const u of fixtures.chatUsage || []) {
     db.prepare(

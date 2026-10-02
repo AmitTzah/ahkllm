@@ -112,7 +112,7 @@ function renderAll() {
 }
 
 function renderSummary() {
-  var cost = 0, calls = 0, tokens = 0, responseTimeMs = 0, ttftMs = 0, ttftCalls = 0, outputTokens = 0, codexCalls = 0;
+  var cost = 0, calls = 0, tokens = 0, responseTimeMs = 0, ttftMs = 0, ttftCalls = 0, outputTokens = 0, chatGptPlanCalls = 0;
   var costBreakdown = { cacheHit: 0, cacheMiss: 0, output: 0 };
   for (var i=0; i<allData.chat.length; i++) {
     var c = allData.chat[i];
@@ -120,7 +120,8 @@ function renderSummary() {
     outputTokens += (c.output_tokens||0);
     cost += (c.total_cost||0);
     calls += (c.message_count||0);
-    if ((c.provider || extractProvider(c.model)) === 'codex') codexCalls += (c.message_count||0);
+    var chatProvider = (c.provider || extractProvider(c.model));
+    if (chatProvider === 'chatgpt' || chatProvider === 'codex') chatGptPlanCalls += (c.message_count||0);
     responseTimeMs += (c.total_response_time_ms||0);
     ttftMs += (c.total_ttft_ms||0);
     ttftCalls += (c.ttft_count||0);
@@ -138,7 +139,8 @@ function renderSummary() {
     outputTokens += cmdOutput;
     cost += (c.total_cost||0);
     calls += (c.call_count||0);
-    if ((c.provider || extractProvider(c.model)) === 'codex') codexCalls += (c.call_count||0);
+    var commandProvider = (c.provider || extractProvider(c.model));
+    if (commandProvider === 'chatgpt' || commandProvider === 'codex') chatGptPlanCalls += (c.call_count||0);
     responseTimeMs += (c.total_response_time_ms||0);
     ttftMs += (c.total_ttft_ms||0);
     ttftCalls += (c.ttft_count||0);
@@ -154,10 +156,12 @@ function renderSummary() {
     tooltip.textContent = 'Cache hit:  ' + fmtCost(costBreakdown.cacheHit) + pct(costBreakdown.cacheHit) + '\n' +
       'Cache miss: ' + fmtCost(Math.max(0, costBreakdown.cacheMiss)) + pct(Math.max(0, costBreakdown.cacheMiss)) + '\n' +
       'Output:     ' + fmtCost(costBreakdown.output) + pct(costBreakdown.output) +
-      (codexCalls > 0 ? '\n\nCodex CLI: ' + codexCalls + ' request' + (codexCalls === 1 ? '' : 's') + ' used your ChatGPT Codex plan allowance. AhkLLM records $0 API cost for those requests; normal Codex plan usage limits still apply.' : '');
+      (chatGptPlanCalls > 0 ? '\n\nChatGPT plan: ' + chatGptPlanCalls + ' request' + (chatGptPlanCalls === 1 ? '' : 's') + ' used your ChatGPT plan allowance. AhkLLM records $0 API cost for those requests; normal ChatGPT plan usage limits still apply.' : '');
   }
   document.getElementById('totalCalls').textContent = fmtNum(calls);
   document.getElementById('totalTokens').textContent = fmtNum(tokens);
+  var manageUsageRow = document.getElementById('chatGptUsageManageRow');
+  if (manageUsageRow) manageUsageRow.style.display = chatGptPlanCalls > 0 ? '' : 'none';
 
   // Speed box
   var speedEl = document.getElementById('speedValue');

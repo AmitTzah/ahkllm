@@ -12,7 +12,7 @@
 _updateProviderFromModel(model) {
     parts := ModelParser.Split(model)
     if parts.provider
-        requestParams["providerName"] := parts.provider
+        requestParams["providerName"] := ModelParser.CanonicalProvider(parts.provider)
 }
 
 ; Clear all request-level overrides to default state.
@@ -24,6 +24,7 @@ _ClearRequestOverrides() {
 _restoreThreadSettings(threadId) {
     ; Per-thread overrides take precedence over assistant defaults.
     ThreadSettings.RestoreIntoRequestParams(threadId)
+    _updateProviderFromModel(requestParams["singleAPIModelName"])
 }
 
 ; Normalize a JSON boolean / 1 / 0 / "true" / "false" value to a real boolean.
@@ -34,13 +35,17 @@ _BoolFrom(value) {
 }
 
 ; Build the settings object from current requestParams state.
-_CurrentSettingsObject() {
-    return ThreadSettings.ToDbObject()
+_CurrentSettingsObject(threadId := unset) {
+    global activeThreadId
+    if !IsSet(threadId)
+        threadId := activeThreadId
+    saved := threadId && ChatDB.isOpen ? ChatDB.Thread_GetSettings(threadId) : ""
+    return ThreadSettings.ToDbObject(saved ? saved.modelOverride : "")
 }
 
 ; Persist current requestParams settings to a thread (called on thread creation).
 _saveCurrentSettingsToThread(threadId) {
-    ChatDB.Thread_UpdateSettings(threadId, _CurrentSettingsObject())
+    ChatDB.Thread_UpdateSettings(threadId, _CurrentSettingsObject(threadId))
 }
 
 ; Reset settings to defaults (no assistant, default model, no overrides).
@@ -59,7 +64,7 @@ _prepareFreshChatSettings() {
 ; Apply an assistant's settings to requestParams and mark it active.
 ; Shared by handleSwitchAssistant and the new-chat default resolution.
 _applyAssistantToRequestParams(asst) {
-    requestParams["singleAPIModelName"] := asst.baseModel
+    requestParams["singleAPIModelName"] := ModelParser.Canonicalize(asst.baseModel)
     requestParams["systemOverride"] := AssistantRepo._resolveSystemMessage(asst)
     requestParams["reasoningOverride"] := asst.reasoning
     requestParams["temperatureOverride"] := asst.temperature
@@ -67,7 +72,7 @@ _applyAssistantToRequestParams(asst) {
     requestParams["reasoningOverrideSet"] := false
     requestParams["temperatureOverrideSet"] := false
     requestParams["activeAssistantId"] := asst.id
-    if ModelParser.Split(asst.baseModel).provider != "codex"
+    if !ModelParser.IsChatGptPlan(asst.baseModel)
         requestParams["imageGeneration"] := false
     _updateProviderFromModel(asst.baseModel)
 }
@@ -108,7 +113,7 @@ _applyNewChatDefaultToFreshThread(threadId) {
         return false
     _resetToDefaultSettings()
     if _prepareFreshChatSettings()
-        ChatDB.Thread_UpdateSettings(threadId, _CurrentSettingsObject())
+        ChatDB.Thread_UpdateSettings(threadId, _CurrentSettingsObject(threadId))
     global responseWindowFontSize
     if IsSet(responseWindowFontSize) && responseWindowFontSize
         ChatDB.Thread_UpdateSettings(threadId, { fontSize: responseWindowFontSize })
@@ -200,6 +205,7 @@ handleModelSettingsUpdate(parsed) {
     if model {
         if requestParams.Has("activeAssistantId")
             requestParams.Delete("activeAssistantId")
+        model := ModelParser.Canonicalize(model)
         requestParams["singleAPIModelName"] := model
         _updateProviderFromModel(model)
     } else if !requestParams.Has("activeAssistantId") {
@@ -213,9 +219,9 @@ handleModelSettingsUpdate(parsed) {
     requestParams["reasoningOverrideSet"] := reasoningOverrideSet
     requestParams["temperatureOverrideSet"] := temperatureOverrideSet
     requestParams["webSearch"] := webSearch
-    ; UI state is not a security boundary: only the effective Codex provider
-    ; may retain this per-thread permission.
-    requestParams["imageGeneration"] := ModelParser.Split(requestParams["singleAPIModelName"]).provider = "codex" && imageGeneration
+    ; UI state is not a security boundary: only the effective ChatGPT-plan
+    ; model may retain this per-thread permission.
+    requestParams["imageGeneration"] := ModelParser.IsChatGptPlan(requestParams["singleAPIModelName"]) && imageGeneration
 
     ; Persist to DB
     if activeThreadId {
@@ -245,7 +251,7 @@ postAssistantsToWebView() {
     for modelId, modelData in models {
         parts := ModelParser.Split(modelId)
         if parts.provider {
-            providerKey := parts.provider
+            providerKey := ModelParser.CanonicalProvider(parts.provider)
             shortName := parts.name
             if !modelByProvider.Has(providerKey)
                 modelByProvider[providerKey] := []
@@ -255,7 +261,7 @@ postAssistantsToWebView() {
                 name: modelData.HasOwnProp("displayName") ? modelData.displayName : shortName,
                 reasoning: modelData.HasOwnProp("reasoning") ? modelData.reasoning : false,
                 vision: modelData.HasOwnProp("vision") ? modelData.vision : false,
-                supportsTemperature: !(modelData.HasOwnProp("api") && modelData.api = "codex-cli")
+                supportsTemperature: !(modelData.HasOwnProp("api") && (modelData.api = "codex-cli" || modelData.api = "chatgpt-responses"))
             })
         }
     }

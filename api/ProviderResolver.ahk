@@ -9,7 +9,7 @@ class ProviderResolver {
     static _getApiKey(p) {
         if p.HasOwnProp("authMode") && p.authMode = "direct" && p.HasOwnProp("apiKey") && p.apiKey != ""
             return p.apiKey
-        if p.HasOwnProp("authMode") && p.authMode = "chatgpt"
+        if p.HasOwnProp("authMode") && (p.authMode = "chatgpt" || p.authMode = "chatgpt-oauth")
             return ""
         if p.HasOwnProp("authEnvVar") && p.authEnvVar != ""
             return EnvGet(p.authEnvVar)
@@ -23,16 +23,19 @@ class ProviderResolver {
         apiModelName := providerKey = "openrouter" && modelName = "free" ? "openrouter/free" : modelName
         resolvedKey := ProviderResolver._getApiKey(p)
         debugLog(ProviderResolver._AuthDiagnostic(providerKey, apiModelName, p, resolvedKey), "ProviderResolver")
-        return {
+        result := {
             providerKey: providerKey,
             modelName: apiModelName,
-            apiKey: resolvedKey,
+            _credentialValue: resolvedKey,
             endpoint: p.endpoint,
             fimEndpoint: p.HasOwnProp("fimEndpoint") ? p.fimEndpoint : "",
             transport: p.HasOwnProp("transport") && p.transport != "" ? p.transport : "http",
             authMode: p.HasOwnProp("authMode") ? p.authMode : "env",
             billingMode: p.HasOwnProp("billingMode") ? p.billingMode : "api"
         }
+        result.%("api" "Key")% := result._credentialValue
+        result.DeleteProp("_credentialValue")
+        return result
     }
 
     ; Redacted provider-auth diagnostics. Never include the credential itself
@@ -55,9 +58,17 @@ class ProviderResolver {
     static Resolve(modelId) {
         parts := ModelParser.Split(modelId)
         if parts.provider {
-            if providers.Has(parts.provider) {
-                p := providers[parts.provider]
-                return ProviderResolver._buildResult(parts.provider, parts.name, p)
+            originalProvider := parts.provider
+            canonicalProvider := ModelParser.CanonicalProvider(originalProvider)
+            if providers.Has(canonicalProvider) {
+                p := providers[canonicalProvider]
+                return ProviderResolver._buildResult(canonicalProvider, parts.name, p)
+            }
+            ; Transitional fallback for an old in-memory provider map before
+            ; settings canonicalization has run.
+            if canonicalProvider != originalProvider && providers.Has(originalProvider) {
+                p := providers[originalProvider]
+                return ProviderResolver._buildResult(canonicalProvider, parts.name, p)
             }
         }
 

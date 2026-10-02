@@ -55,6 +55,12 @@ buildRequest(requestPath := "") {
     ; Resolve provider once — used for validation, cURL building, and provider-specific request fields
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
 
+    if providerInfo.transport = "chatgpt-responses" {
+        authStatus := ChatGptPlanAuth.Status()
+        if !authStatus.authenticated
+            return _ShowChatGptPlanAuthError(authStatus)
+    }
+
     ; Validate: check API key is available for the selected provider
     if providerInfo.transport = "http" && !providerInfo.apiKey {
         return _ShowApiKeyError(providerInfo)
@@ -82,6 +88,19 @@ buildRequest(requestPath := "") {
     requestObj := _BuildRequestObj(apiMessages, providerInfo)
 
     return _WriteRequestFiles(requestObj, providerInfo)
+}
+
+; Show ChatGPT-plan OAuth/permission error and return empty so callers abort.
+_ShowChatGptPlanAuthError(status) {
+    if IsObject(status) && status.HasOwnProp("permissionMissing") && status.permissionMissing
+        errorMsg := "ChatGPT is signed in, but ChatGPT plan usage is not enabled. Open Settings → Providers and reconnect ChatGPT to grant plan usage."
+    else
+        errorMsg := "Sign in with ChatGPT in Settings → Providers before using this ChatGPT-plan model."
+    _PostChatError(errorMsg)
+    if !_HasActiveOperationForUi()
+        postWebMessage("setChatButtonsEnabled", true), startLoadingCursor(false)
+    debugLog("ERROR: " errorMsg)
+    return ""
 }
 
 ; Show API key error and return "" so caller aborts.
@@ -359,7 +378,7 @@ _BuildRequestObj(apiMessages, providerInfo) {
         OpenAIChatCompletions.ApplyThinking(&requestObj, modelMeta, reasoning, requestParams["singleAPIModelName"])
 
     ; Apply temperature override (use != "" not truthiness — "0" is falsy in AHK)
-    if providerInfo.transport != "codex-cli" && requestParams.Has("temperatureOverride") && requestParams["temperatureOverride"] != "" {
+    if providerInfo.transport != "codex-cli" && providerInfo.transport != "chatgpt-responses" && requestParams.Has("temperatureOverride") && requestParams["temperatureOverride"] != "" {
         try {
             requestObj.temperature := Float(requestParams["temperatureOverride"])
         } catch {
@@ -377,7 +396,7 @@ _BuildRequestObj(apiMessages, providerInfo) {
     ; The search backend is resolved at execution time (DeepSeek native vs
     ; Tavily) — the request format is the same OpenAI-compatible function tool
     ; for every provider.
-    if SearchTools.Enabled() && providerInfo.transport != "codex-cli" {
+    if SearchTools.Enabled() && providerInfo.transport != "codex-cli" && providerInfo.transport != "chatgpt-responses" {
         requestObj.tools := [SearchTools.Definition()]
     }
 
@@ -404,7 +423,8 @@ _ApplySystemOverride(apiMessages) {
 
 ; Serialize request to JSON, write to temp files, store paths in requestParams.
 _WriteRequestFiles(requestObj, providerInfo) {
-    payload := LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
+    payload := providerInfo.transport = "chatgpt-responses" ? ChatGptResponsesTransport.Serialize(requestObj)
+        : LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(requestObj))
 
     ; A_TickCount alone collides when requests start in the same millisecond.
     ; Use the existing UUID generator so every request owns its files.
@@ -419,6 +439,10 @@ _WriteRequestFiles(requestObj, providerInfo) {
         ; Codex is a local process transport. Preserve the normal request file
         ; as the transport-neutral handoff, but do not manufacture a URL/cURL.
         cURLCommand := "codex-cli"
+    } else if providerInfo.transport = "chatgpt-responses" {
+        ; OAuth bearer transport is constructed in memory at execution time.
+        ; Never persist an Authorization header or access token to this file.
+        cURLCommand := "chatgpt-responses"
     } else {
     if requestParams["stream"] {
         cURLCommand := CurlBuilder.BuildStream(providerInfo, requestFile, outputFile, errorFile)
@@ -439,9 +463,16 @@ _WriteRequestFiles(requestObj, providerInfo) {
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
     if providerInfo.transport = "codex-cli" {
-        ; One AhkLLM Send -> one codex exec. Native web search, if enabled,
-        ; stays inside that same local Codex turn.
+        ; Legacy local chat transport retained only for compatibility/tests;
+        ; normal ChatGPT-plan chat uses the direct Responses route below.
         sendNonStreamingRequest(&chatHistoryJSONRequest)
+        return
+    }
+    if providerInfo.transport = "chatgpt-responses" {
+        ; ChatGPT-plan HTTP inference is required to stream on the wire. Normal
+        ; chat therefore always uses the stream pipeline even if a chat-mode
+        ; command had its legacy Stream Response option disabled.
+        sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
         return
     }
     ; A chat-mode command with "Stream Response" off uses the
@@ -590,4 +621,3 @@ _BuildAndFireRequest(requestPath := "") {
         return false
     }
 }
-

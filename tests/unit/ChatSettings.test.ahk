@@ -717,12 +717,12 @@ class ChatSettingsTest {
             threadId := ChatDB.Thread_Create("Image Generation Thread")
             ChatDB.db.Query("UPDATE chat_threads SET advanced_toggles=? WHERE id=?;", '{"futureToggle":true,"webSearch":true}', threadId)
             activeThreadId := threadId
-            handleModelSettingsUpdate(jsongo.Parse('{"model":"codex/gpt-5.6-luna","systemMessage":"","reasoning":"","temperature":"","webSearch":false,"imageGeneration":true}'))
+            handleModelSettingsUpdate(jsongo.Parse('{"model":"chatgpt/gpt-5.6-luna","systemMessage":"","reasoning":"","temperature":"","webSearch":false,"imageGeneration":true}'))
             if !requestParams.Has("imageGeneration") || requestParams["imageGeneration"] != true
-                throw Error("Codex imageGeneration flag was not stored in requestParams")
+                throw Error("ChatGPT-plan imageGeneration flag was not stored in requestParams")
             saved := ChatDB.Thread_GetSettings(threadId)
             if !saved.HasOwnProp("imageGeneration") || saved.imageGeneration != true
-                throw Error("Codex imageGeneration flag did not persist per thread")
+                throw Error("ChatGPT-plan imageGeneration flag did not persist per thread")
             raw := ChatDB.db.Query("SELECT advanced_toggles FROM chat_threads WHERE id=?;", threadId)
             parsedToggles := jsongo.Parse(raw[1, "advanced_toggles"])
             if !parsedToggles.Has("futureToggle") || !parsedToggles["futureToggle"]
@@ -733,7 +733,7 @@ class ChatSettingsTest {
                 throw Error("Non-Codex model must fail closed for image generation")
             saved := ChatDB.Thread_GetSettings(threadId)
             if saved.imageGeneration != false
-                throw Error("Non-Codex imageGeneration state must persist as false")
+                throw Error("Non-ChatGPT-plan imageGeneration state must persist as false")
         } finally {
             requestParams := oldParams
             activeThreadId := oldActive
@@ -747,14 +747,14 @@ class ChatSettingsTest {
         oldParams := requestParams
         oldDefault := appDefaultModel
         try {
-            appDefaultModel := "codex/gpt-5.6-luna"
+            appDefaultModel := "chatgpt/gpt-5.6-luna"
             threadId := ChatDB.Thread_Create("Codex Default Image Generation")
             ChatDB.Thread_UpdateSettings(threadId, { webSearch: false, imageGeneration: true })
             ThreadSettings.RestoreIntoRequestParams(threadId)
-            if requestParams["singleAPIModelName"] != "codex/gpt-5.6-luna"
-                throw Error("Codex app default was not restored as the effective model")
+            if requestParams["singleAPIModelName"] != "chatgpt/gpt-5.6-luna"
+                throw Error("ChatGPT-plan app default was not restored as the effective model")
             if !requestParams.Has("imageGeneration") || requestParams["imageGeneration"] != true
-                throw Error("Image Generation should restore for a Codex app-default model")
+                throw Error("Image Generation should restore for a ChatGPT-plan app-default model")
         } finally {
             requestParams := oldParams
             appDefaultModel := oldDefault

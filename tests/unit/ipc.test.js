@@ -21,10 +21,21 @@ function loadIpc(onPost) {
   const ctx = vm.createContext(sandbox);
   vm.runInContext(contractSrc, ctx);
   vm.runInContext(ipcSrc, ctx);
-  return { Ipc: sandbox.Ipc, posted };
+  return { Ipc: sandbox.Ipc, posted, window: sandbox.window };
 }
 
 describe('Ipc.postToHost', () => {
+  it('flushes queued sends before later settings actions without recursively flushing chatSend', () => {
+    const loaded = loadIpc();
+    let flushed = 0;
+    loaded.window.PendingChatMessages = { flush() {
+      flushed++;
+      loaded.Ipc.postToHost('chatSend', { message: 'queued send' });
+    } };
+    loaded.Ipc.postToHost('updateModelSettings', { model: 'openai/next' });
+    assert.strictEqual(flushed, 1);
+    assert.deepStrictEqual(loaded.posted.map(message => JSON.parse(message).action), ['chatSend', 'updateModelSettings']);
+  });
   it('adds a unique reqId to every posted message', () => {
     const { Ipc, posted } = loadIpc();
     Ipc.postToHost('chatSend', { message: 'a' });

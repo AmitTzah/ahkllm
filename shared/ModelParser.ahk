@@ -14,6 +14,25 @@ class ModelParser {
         return { provider: "", name: fullId }
     }
 
+    ; Historical AhkLLM builds used `codex` as the provider prefix for
+    ; ChatGPT-plan requests. Normal inference now belongs to the canonical
+    ; `chatgpt` provider; keep the old spelling as a non-destructive alias.
+    static CanonicalProvider(provider) {
+        return StrLower(String(provider)) = "codex" ? "chatgpt" : String(provider)
+    }
+
+    static Canonicalize(fullId) {
+        parts := ModelParser.Split(fullId)
+        if parts.provider = ""
+            return fullId
+        return ModelParser.CanonicalProvider(parts.provider) "/" parts.name
+    }
+
+    static IsChatGptPlan(fullId) {
+        parts := ModelParser.Split(fullId)
+        return parts.provider != "" && ModelParser.CanonicalProvider(parts.provider) = "chatgpt"
+    }
+
     static StripProvider(fullId) {
         slashPos := InStr(fullId, "/")
         return slashPos > 0 ? SubStr(fullId, slashPos + 1) : fullId

@@ -71,13 +71,17 @@ postWebMessage(target, data := unset, reqId := "") {
 ; Post a chat error with the request's owning thread when available. Errors can
 ; arrive after the user switches chats, so callers handling asynchronous work
 ; must pass their captured thread id instead of relying on activeThreadId.
-_PostChatError(message, threadId := "") {
+_PostChatError(message, threadId := "", actionLabel := "", actionUrl := "") {
     global activeThreadId
     if !threadId && IsSet(activeThreadId)
         threadId := activeThreadId
     data := { message: message }
     if threadId
         data.threadId := threadId
+    if actionLabel != "" && actionUrl != "" {
+        data.actionLabel := actionLabel
+        data.actionUrl := actionUrl
+    }
     postWebMessage("showError", data)
 }
 
@@ -148,12 +152,19 @@ postThreadStats(threadId := "") {
 ; as a shared utility rather than in a callbacks file.
 ; ----------------------------------------------------
 
+#Include ImageAttachmentResources.ahk
+
 buildStructuredMessagesFromPath(path, threadId := "") {
     ; Batch-load all attachments for this thread (if threadId provided)
     allAttachments := Map()
+    visibleMessageIds := Map()
+    for msg in path
+        visibleMessageIds[msg.id] := true
     if threadId {
         attList := ChatDB.Attachment_GetByThread(threadId)
         for att in attList {
+            if !visibleMessageIds.Has(att.message_id)
+                continue
             msgId := att.message_id
             if !allAttachments.Has(msgId)
                 allAttachments[msgId] := []
@@ -166,9 +177,14 @@ buildStructuredMessagesFromPath(path, threadId := "") {
                 file_size: att.file_size,
                 extracted_text: att.extracted_text
             }
-            ; Include base64 for image thumbnails in message bubbles
+            ; Browsing history transfers metadata, never full-resolution bytes.
             if att.attachment_type = "image" {
-                attObj.base64 := ImageUtils.ReadAndEncode(att.file_path)
+                image := ImageAttachmentResources.Metadata(att, threadId)
+                attObj.original_url := image.originalUrl
+                attObj.thumbnail_url := image.thumbnailUrl
+                attObj.thumbnail_key := image.key
+                attObj.thumbnail_width := image.width
+                attObj.thumbnail_height := image.height
             }
             allAttachments[msgId].Push(attObj)
         }

@@ -12,6 +12,9 @@
   var DEFAULT_TIMEOUT_MS = 10000;
 
   function postToHost(action, payload, requestId) {
+    // Later model/branch/navigation actions must not overtake a deferred Send.
+    if (action !== 'chatSend' && window.PendingChatMessages)
+      window.PendingChatMessages.flush();
     var msg = { action: action };
     if (payload && typeof payload === 'object') {
       for (var k in payload) msg[k] = payload[k];

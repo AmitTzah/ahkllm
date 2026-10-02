@@ -1,113 +1,117 @@
-# Codex CLI backend
+# ChatGPT plan backend and Codex image worker
 
-AhkLLM can use the official, separately installed OpenAI Codex CLI as an optional local LLM transport. This backend is intended for users who already have Codex access through their ChatGPT plan and want AhkLLM to send deliberate model requests through their own local Codex installation instead of through an OpenAI API key.
+AhkLLM's built-in `chatgpt` provider uses **Sign in with ChatGPT** and OpenAI's public Responses API for normal chat and inline commands. New model IDs use `chatgpt/...` (for example `chatgpt/gpt-5.6-sol`). Historical `codex/...` IDs remain accepted as a non-destructive compatibility alias, so existing chats continue to resolve without a conversation-DB migration.
 
-This is **not** an OpenAI API key substitute or a claim that a ChatGPT subscription includes OpenAI API credits. Codex requests consume the user's normal ChatGPT/Codex plan allowance and remain subject to the plan's usage limits.
+Codex CLI is no longer the general chat transport. It is an optional, narrowly scoped worker used only when the per-chat **Image Generation** toggle causes the ChatGPT-plan model to call AhkLLM's `ahkllm.generate_image` client tool.
 
 ## Setup
 
-1. Install the official Codex CLI separately, following OpenAI's current Codex CLI instructions.
-2. In a terminal, run `codex login` and authenticate with ChatGPT.
-3. Start or reload AhkLLM.
-4. Open **Settings -> Providers -> Codex CLI (ChatGPT subscription)**.
-5. Click **Check Codex**. AhkLLM runs only `codex --version` and `codex login status`; this check does not invoke a model or consume a Codex turn.
-6. Choose a `codex/...` model in the normal model picker or in a supported command.
+1. Open **Settings -> Providers -> ChatGPT plan**.
+2. Click **Continue with ChatGPT**.
+3. Complete authorization in the system browser.
+4. Return to AhkLLM. The provider card shows the selected account and can refresh that account's current model list.
+5. Choose a `chatgpt/...` model.
 
-AhkLLM requires Codex CLI **0.153.0 or newer** and the core transport was tested against the **0.153.x** release family. The image-generation path was additionally verified against **Codex CLI 0.154.0**. Compatible newer releases are allowed so routine Codex updates do not disable the backend. AhkLLM still passes its restricted execution controls on every request with strict configuration enabled; if a future Codex release removes or changes a required control, that request fails with an incompatibility error instead of silently relaxing the profile. If `codex` is not on `PATH`, set `CODEX_CLI_PATH` to the installed Codex executable or Windows command shim before launching AhkLLM.
+No OpenAI API key is required for this provider. AhkLLM stores the OAuth registration and renewable session in a Windows DPAPI-protected credential file under its data directory; credentials are not written to `settings.json`, API logs, command lines, or AhkLLM portable backups.
 
-The Codex model list in AhkLLM is curated rather than fetched from the OpenAI API. Actual model availability is controlled by the user's ChatGPT/Codex plan and the installed Codex client, so a listed model can still be unavailable to a particular account.
+The signed-in account must grant the `chatgpt.tokens.use.direct` permission. If identity sign-in succeeds without that permission, AhkLLM retains the account registration but does not perform inference until plan usage is enabled.
 
-### Adding a new Codex model
+After plan usage is enabled, AhkLLM shows a one-time confirmation that eligible requests use the user's ChatGPT plan or available credits. While a `chatgpt/...` model (or a legacy `codex/...` alias, or an assistant based on one) is active, the model card shows **Using ChatGPT plan** with a **Manage usage** link. The provider settings and usage dashboard expose the same usage-management destination.
 
-Codex models live in `default-settings/DefaultCodexModels.ahk`, separately from the models.dev-generated API catalog. Normal AhkLLM releases update this small curated list when OpenAI adds or changes Codex models, including the model-specific reasoning efforts AhkLLM should expose.
+## Direct Responses transport
 
-Advanced users can also add a model immediately from **Settings -> Models** by choosing the `codex` provider and entering the upstream Codex model ID. AhkLLM does not send a disposable probe request to validate a new model, because that would consume Codex usage. The first real request is the availability check. Unknown manually added Codex models use the conservative `low`, `medium`, and `high` reasoning choices until AhkLLM has curated model-specific metadata; leave reasoning on **Model Default** if the model rejects an explicit effort.
+Normal ChatGPT-plan requests go directly to:
 
-## Authentication and credentials
+`POST https://api.openai.com/v1/responses`
 
-AhkLLM does not ask for, read, copy, proxy, or persist OpenAI credentials for the Codex provider. Authentication is owned by the official Codex installation. Each user installs Codex separately and signs in directly with their own ChatGPT account.
+AhkLLM sends the selected local conversation path as explicit Responses `input`, lifts system/developer text into `instructions`, sets `store: false` and `stream: true`, and omits `previous_response_id`. AhkLLM therefore remains the sole source of truth for history and branching; there is no second ChatGPT/Codex conversation tree to synchronize.
 
-For Codex child processes, AhkLLM clears common API-key environment variables, including `OPENAI_API_KEY`, before invoking the CLI. The generated Codex configuration also forces the ChatGPT login method. This avoids silently falling back to API-key billing when the user selected the ChatGPT-subscription backend.
+A streamed request is accepted as successful only after a typed `response.completed` event. A connection that ends with partial text but no terminal completion is treated as a failed/cancelled partial, not as a successful assistant message.
 
-The **Check Codex** action recognizes ChatGPT authentication specifically. A CLI that is installed but authenticated only by another method is reported as not ready for this backend.
+Inline replace/append commands use the same required streamed wire protocol but buffer it inside AhkLLM. Text is pasted into the target application only after `response.completed`; partial streams are never pasted.
 
-## Request model
+## Context behavior
 
-AhkLLM treats Codex as a process transport, not as an HTTP endpoint:
+AhkLLM sends the active branch explicitly on every Responses request. It does not silently summarize, trim, compact, or switch to a provider-owned conversation reference.
 
-- One deliberate AhkLLM model action launches one non-interactive `codex exec` process.
-- AhkLLM remains the source of truth for chat history, branches, retries, and thread storage.
-- Each turn is ephemeral. AhkLLM sends the active chronological conversation to Codex over standard input and reads the final assistant message from Codex's output file.
-- Prompt text is not placed on the Codex command line.
-- JSONL progress output is used for token accounting and provider-supplied public reasoning/activity.
-- When Codex emits an `item.completed` reasoning item, AhkLLM shows its public summary in the same **Thought Process** block used by other providers and persists that summary with the assistant message. Hidden/raw chain-of-thought is never requested or displayed.
-- Cancellation terminates the owned Windows process tree.
+This removes the old Codex CLI `turn/start` 1,048,576-character stdin limit on accumulated replay. The actual model context window is still enforced by the selected model/service. When the complete AhkLLM branch no longer fits, the request should fail rather than silently altering history.
 
-Automatic thread titles are a special case. If the configured title model is Codex, AhkLLM derives a short deterministic title locally from the first user message. It does not spend a second hidden Codex turn on title generation.
+Attachments remain associated with their original AhkLLM messages. Supported image attachments are converted to Responses `input_image` parts; extracted text from other supported attachments stays in the message context.
 
-## Restricted LLM-only profile
+## Accounts and model discovery
 
-Normal AhkLLM chat deliberately constrains Codex to act like an LLM rather than a local coding agent. The invocation is ephemeral and non-interactive. AhkLLM disables the local execution and inspection surfaces it knows about, including shell/unified execution, shell snapshots, code modes, local image viewing, apps, plugins, MCP discovery, skills, subagents, memories, and browser/computer control. Image generation is also disabled by default and is enabled only for an individual turn when the current thread has **Image Generation** turned on and the effective model is a `codex/...` model. It also launches Codex in a dedicated empty working directory, ignores user Codex config/rules, uses `approval_policy="never"`, and keeps the Codex sandbox read-only as a final write-protection backstop.
+AhkLLM supports multiple saved ChatGPT registrations. Each registration keeps its issued OAuth `client_id`, verified account identity, and renewable session separately. Switching accounts changes the access token used for model discovery and inference.
 
-AhkLLM does not rely on the system prompt as a security control. The prompt tells the model that local tools are unavailable, while CLI feature switches, strict configuration validation, and the read-only sandbox enforce the restricted profile. The 0.153.x family is the tested baseline, not an upper version pin: compatible newer Codex releases are allowed. If Codex changes or removes one of the controls AhkLLM passes to enforce this profile, the CLI invocation fails and AhkLLM reports the incompatibility rather than silently continuing with a weaker configuration.
+**Refresh models** queries `GET https://api.openai.com/v1/models` with the selected account, keeps entries whose `visibility` is `list`, displays `display_name`, and sends the corresponding `slug` as the model ID. The curated fallback catalog uses canonical `chatgpt/...` entries. Legacy `codex/...` references are normalized to the same models at runtime.
 
-## Image generation
+Discovery saves the selected account's catalog in `settings.json`, replaces stale ChatGPT model entries, and updates the chat picker and Models settings table. Once discovery succeeds, reloads use that catalog rather than adding bundled fallback models back. A failed refresh keeps the previous catalog; a successful empty catalog removes all ChatGPT model entries. Existing conversation model IDs remain unchanged.
 
-The per-thread **Image Generation** switch appears in the right rail only when the effective model is a `codex/...` model. It defaults to off. Switching to a non-Codex model hides the control and clears the permission for that thread state.
+**Models → Fetch Latest Models** also refreshes the ChatGPT catalog when signed in, alongside models.dev metadata for API providers. ChatGPT discovery applies immediately, including to the refresh modal; API-provider selections still use the modal's normal Save flow. Refreshing ChatGPT preserves unrelated unsaved settings edits. If one source fails, results from the other source remain available with a warning.
 
-When enabled, image generation remains part of the same deliberate request: one AhkLLM **Send** launches exactly one `codex exec`. AhkLLM does not make a second model request or an OpenAI API call for the image. Web Search is independent and can be enabled or disabled separately.
+Refresh tokens are rotating. AhkLLM serializes credential updates with a local mutex and persists the replacement token atomically in the DPAPI-protected store.
 
-Codex CLI 0.154.0 does not expose the generated image as a dedicated `exec --json` item. AhkLLM therefore correlates the public `thread.started` id with Codex's per-thread generated-image output, accepts only PNG files from that correlated directory, rejects link/reparse-point paths, validates the PNG signature and a 32 MiB size limit, then imports the bytes through the existing AhkLLM image-attachment lifecycle. The assistant message and imported attachment are committed transactionally, so a failed attachment save does not leave a partial assistant response. Generated images render through the normal attachment UI and survive thread reloads.
+## Web Search
 
-Image input is supported through Codex CLI's explicit `--image` argument. AhkLLM only passes image files that already exist in its managed `attachments` store; it does not enable Codex's local `view_image`, shell, filesystem-inspection, browser, or computer tools. Generated assistant images are carried into the next user turn as visual context, so follow-up questions can refer to an image after it has been rendered and persisted. Non-image attachments continue to use AhkLLM's extracted-text context. Cancellation keeps the existing process-tree termination behavior and does not persist a generated attachment from a cancelled request.
+When the right-rail **Web Search** toggle is enabled for a ChatGPT-plan chat, AhkLLM exposes the hosted Responses `web_search` tool in that request. It does not route ChatGPT-plan web search through the old Tavily function loop or through Codex CLI.
 
-## Web search
+When Web Search is off, the tool is absent.
 
-The per-chat **Web Search** toggle uses Codex's hosted web-search mode inside the same `codex exec` turn:
+Hosted search citations returned as Responses `url_citation` annotations are converted into clickable inline source links before the assistant message is persisted, so citations remain visible after reload and export through the normal chat content path.
 
-- Web Search off: Codex search is explicitly disabled.
-- Web Search on: Codex hosted search is enabled for that same request.
+## Image Generation
 
-This path does not use Tavily and does not create a second Codex model invocation.
+Hosted Responses image generation is not available on the ChatGPT-plan HTTP route used here. AhkLLM therefore exposes one client-side namespaced function when the right-rail **Image Generation** toggle is enabled:
 
-## Current capability differences
+`ahkllm.generate_image({ prompt })`
 
-The first Codex backend version intentionally exposes a narrower capability set than HTTP providers:
+If the model calls it, AhkLLM:
 
-- Text chat and text commands: supported.
-- Multi-turn conversation: supported by sending AhkLLM's active conversation history each turn.
-- Reasoning effort: supported where the selected Codex model offers it.
-- Temperature: not exposed; Codex CLI does not provide an API-equivalent temperature control for this transport.
-- FIM Fill / FIM Continue: not supported by the Codex backend.
-- Image generation: supported for `codex/...` chat threads through the default-off per-thread **Image Generation** toggle; generated PNGs are stored as normal assistant attachments.
-- Image input: supported through explicit app-owned `--image` paths; generated assistant images persist into follow-up visual context without enabling Codex local image/file tools. Non-image attachments use extracted text.
-- AhkLLM local/agent tools: disabled for normal Codex-backed chat.
-- Codex local shell/file/agent tools: disabled by the LLM-only execution profile.
+1. validates that the Image Generation toggle was enabled for the originating request;
+2. accepts only the exact `ahkllm.generate_image` function;
+3. runs a fresh isolated Codex CLI image worker with the model-supplied self-contained prompt;
+4. passes only AhkLLM-managed image attachments that belong to the selected request path;
+5. keeps shell, filesystem-inspection, browser, computer-use, MCP, plugins, apps, and unrelated agent surfaces disabled;
+6. imports only validated generated PNG output through AhkLLM's existing attachment lifecycle;
+7. sends a small `function_call_output` back to the Responses API together with the exact prior `response.output` item sequence; and
+8. continues the same stateless AhkLLM turn until `response.completed`.
 
-## Usage dashboard
+The Codex worker does **not** receive the AhkLLM conversation tree and does not become a second source of chat state.
 
-AhkLLM records token usage reported by Codex, including cached input tokens and the reported reasoning-output token count when provided. Codex rows record **$0 API cost** because AhkLLM is not making a metered OpenAI API request for those turns.
+### Optional Codex CLI setup for image generation
 
-`$0 API cost` does not mean free or unlimited inference. The request still consumes the user's ChatGPT/Codex plan allowance and is subject to that plan's limits. The dashboard cost tooltip calls this out when Codex usage is present.
+Image generation requires the official Codex CLI to be installed separately and signed in with ChatGPT. In **Settings -> Providers -> ChatGPT plan**, click **Check Codex CLI** to verify the local worker.
 
-## Data flow and logs
+AhkLLM currently requires Codex CLI 0.153.0 or newer for the restricted execution profile. The generated-image discovery path was verified against the 0.154.x behavior already covered by the repository tests. If `codex` is not on `PATH`, set `CODEX_CLI_PATH` before launching AhkLLM.
 
-For a Codex-backed request, AhkLLM writes short-lived request artifacts under the Windows temporary directory, launches the user's local Codex CLI, sends the conversation through standard input, and receives the result from the CLI. Codex then communicates with OpenAI under the user's own Codex/ChatGPT authentication.
+The worker runs with `--ignore-user-config`, `--ignore-rules`, a read-only sandbox, strict config, no approval prompts, no MCP servers/hooks, and explicit feature disables. Image generation is the only normally disabled feature temporarily enabled for this worker.
 
-Temporary transport files are removed after the request. AhkLLM's normal diagnostic/API logging settings still apply and can contain prompt or response text unless logging is disabled. Locked-chat redaction rules continue to apply.
+Codex CLI 0.154.x does not expose the generated image as a dedicated final JSON item. AhkLLM correlates the public Codex thread ID with the worker's generated-image directory, accepts only PNG files from that correlated location, rejects link/reparse-point paths, validates the PNG signature and size limit, and imports the bytes as normal assistant attachments.
 
-## Terms and plan limits
+## Cancellation and failures
 
-The integration uses OpenAI's official Codex CLI interface and the user's own local authentication; AhkLLM does not pool accounts, distribute credentials, proxy a subscription to other users, run an inference server, or attempt to bypass Codex limits.
+The chat Stop action terminates the active direct Responses process. If a model is currently inside the Codex image worker, the same cancellation state is shared with the worker so it terminates too.
 
-OpenAI's product terms and Codex plan rules can change. Users and distributors should review the current OpenAI terms and Codex documentation rather than treating this document as a legal guarantee. AhkLLM should be described as using the user's **Codex entitlement through the official local Codex client**, not as turning a ChatGPT subscription into an OpenAI API.
+A cancelled or failed image tool call is not silently converted into a successful text response. Generated attachments are adopted only when the worker succeeds and the final Responses continuation completes.
 
-## Troubleshooting
+Authentication, permission, model-availability, rate-limit, and usage-limit failures are surfaced as provider errors. The structured `subscription_sharing_usage_limit_exceeded` error includes a **Manage usage** action that opens ChatGPT Settings -> Usage; inline commands include the same destination in their failure text. AhkLLM does not automatically fall back from ChatGPT-plan usage to an API-key provider.
 
-If **Check Codex** reports that the CLI is missing, verify that `codex --version` works in a new terminal launched with the same Windows account as AhkLLM. If needed, set `CODEX_CLI_PATH` before starting AhkLLM.
+## Logs and credentials
 
-If the CLI is installed but not authenticated, run `codex login` and choose ChatGPT authentication, then click **Check Codex** again.
+Prompt/response logging follows AhkLLM's normal API-log settings and locked-chat redaction rules. OAuth access/refresh credentials are excluded from those logs.
 
-If AhkLLM reports that Codex is too old, update the official Codex CLI. If a newer Codex release is installed and a request reports that the restricted profile is incompatible, update AhkLLM when a compatible release is available (or temporarily use the previously working Codex release). AhkLLM intentionally fails when the CLI no longer understands one of the controls used to disable local agent capabilities.
+The direct HTTP process receives its Authorization header through an inherited stdin curl configuration. The bearer value is not placed in the process command line or in the temporary request/command files.
 
-If a request reports a Codex usage/quota limit, wait for the user's Codex allowance to reset or select another configured backend. AhkLLM does not fall back from the ChatGPT Codex backend to an OpenAI API key automatically.
+The DPAPI credential file and stable host-ID file are separate from `settings.json` and are not copied by AhkLLM's portable backup routine. Re-authorize ChatGPT on another machine instead of treating a settings backup as a credential transfer.
+
+## Official references
+
+The implementation follows OpenAI's current **Sign in with ChatGPT -> ChatGPT plan usage for open-source apps** documentation:
+
+- https://developers.openai.com/siwc/token-sharing-open-source/
+- https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+- https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions
+- https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+- https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+- https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery
+
+These interfaces are preview features and can change. AhkLLM intentionally keeps the plan-specific transport isolated behind the stable provider abstraction so chat history remains local and provider-neutral.

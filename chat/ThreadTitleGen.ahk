@@ -270,6 +270,31 @@ _TitleGen_ExecuteRequest(payload, providerInfo) {
     outFile := A_Temp "\ChatWindow_TitleGen_Out_" uniqueID ".json"
     FileOpen(tmpFile, "w", "UTF-8-RAW").Write(payload)
 
+    if providerInfo.transport = "chatgpt-responses" {
+        errFile := A_Temp "\ChatWindow_TitleGen_Err_" uniqueID ".txt"
+        try {
+            result := ChatGptResponsesTransport.ExecuteBuffered(tmpFile, outFile, errFile, "", false, false)
+            if !result.success
+                return result.raw ? result.raw : (result.HasOwnProp("error") ? result.error : "")
+            usage := result.response.usage
+            synthetic := Map(
+                "choices", [Map("message", Map("content", result.response.response))],
+                "usage", Map(
+                    "prompt_tokens", usage.promptTokens,
+                    "completion_tokens", usage.completionTokens,
+                    "total_tokens", usage.totalTokens,
+                    "completion_tokens_details", Map("reasoning_tokens", usage.thinkingTokens),
+                    "prompt_tokens_details", Map("cached_tokens", usage.cachedTokens)
+                )
+            )
+            return LLMRequestBuilder._FixStreamBoolean(jsongo.Stringify(synthetic))
+        } finally {
+            safeDelete(tmpFile)
+            safeDelete(outFile)
+            safeDelete(errFile)
+        }
+    }
+
     cURLCommand := CurlBuilder.Build(providerInfo, tmpFile, outFile)
     raw := CurlExecutor.Run(cURLCommand, outFile, 200)
 

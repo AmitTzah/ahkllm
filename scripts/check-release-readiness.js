@@ -42,7 +42,7 @@ const secretPatterns = [
 const localAhkLlmPathPattern = /[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]AppData[\\/](?:Roaming|Local)[\\/]AhkLLM(?:[\\/]|$)/i;
 
 function publicFiles() {
-  const ignoredDirectories = new Set(['.git', '.chatgpt', '.tools', 'node_modules', 'agent-workspace']);
+  const ignoredDirectories = new Set(['.git', '.chatgpt', '.tools', '.pytest_cache', 'node_modules', 'agent-workspace']);
   const files = [];
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {

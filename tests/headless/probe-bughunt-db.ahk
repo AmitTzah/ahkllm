@@ -1100,7 +1100,12 @@ class ThreadListQueryCounter {
 
 ThreadListNplus1() {
     dbPath := OpenDb()
-    loop 300 {
+    ; Forty fully-populated threads still make the old ~2-per-thread N+1
+    ; implementation exceed the hard query ceiling, while avoiding hundreds
+    ; of unrelated high-level DB mutations that can exhaust the probe watchdog
+    ; when eight E2E workers run concurrently.
+    sampleThreads := 40
+    loop sampleThreads {
         tid := ChatDB.Thread_Create("N1T" A_Index)
         u1 := ChatDB.Msg_Insert({thread_id: tid, role: "user", content: "u1"})
         a1 := ChatDB.Msg_Insert({thread_id: tid, role: "assistant", content: "a1", parent_id: u1, model: "deepseek/deepseek-v4-flash", prompt_tokens: 10, token_count: 5})
@@ -1132,7 +1137,7 @@ ThreadListNplus1() {
         if t.id = ttid
             listedTrashed++
     }
-    Log("THREADLIST threads=" list.Length " queries=" queryCount " perThread=" Round(queryCount / 300, 1) " listedDangling=" listedDangling " listedTrashed=" listedTrashed)
+    Log("THREADLIST threads=" list.Length " queries=" queryCount " perThread=" Round(queryCount / sampleThreads, 1) " listedDangling=" listedDangling " listedTrashed=" listedTrashed)
     ; The dangling-leaf thread IS a real thread (it must still be listed - the
     ; walk just must not throw/hang); the trashed thread must be excluded.
     Log("THREADLIST verdict=" (queryCount <= 10 && listedDangling = 1 && listedTrashed = 0 ? "OK-bounded" : "BUG-present(nplus1-walk)"))

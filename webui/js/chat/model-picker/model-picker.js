@@ -43,8 +43,10 @@ function _supportsTemperatureValue(value) {
   return !(value === false || value === 0 || value === '0' || value === 'false');
 }
 
-function _isCodexImageModel(model) {
-  return typeof model === 'string' && model.toLowerCase().indexOf('codex/') === 0;
+function _isChatGptPlanModel(model) {
+  if (typeof model !== 'string') return false;
+  var id = model.toLowerCase();
+  return id.indexOf('chatgpt/') === 0 || id.indexOf('codex/') === 0;
 }
 
 function _effectiveImageGenerationModel(settings) {
@@ -200,7 +202,7 @@ function _makeAssistantClickHandler(el, asstId) {
     window._currentSettings.assistantName = selectedAssistant ? (selectedAssistant.name || '') : '';
     window._currentSettings.assistantBaseModel = selectedAssistant ? (selectedAssistant.baseModel || '') : '';
     window._currentSettings.assistantDescription = selectedAssistant ? (selectedAssistant.description || '') : '';
-    if (!_isCodexImageModel(_effectiveImageGenerationModel(window._currentSettings)))
+    if (!_isChatGptPlanModel(_effectiveImageGenerationModel(window._currentSettings)))
       window._currentSettings.imageGeneration = false;
     if (typeof _syncImageGenerationToggle === 'function') _syncImageGenerationToggle();
     window._currentSettings.reasoning = selectedAssistant && selectedAssistant.reasoning != null
@@ -230,7 +232,7 @@ function _populateModelsTab() {
     var models = window.modelList[provider];
     var groupLabel = document.createElement('div');
     groupLabel.className = 'si-group-label';
-    groupLabel.textContent = provider.charAt(0).toUpperCase() + provider.slice(1);
+    groupLabel.textContent = (provider === 'chatgpt' || provider === 'codex') ? 'ChatGPT plan' : (provider.charAt(0).toUpperCase() + provider.slice(1));
     if (p > 0) groupLabel.style.paddingTop = '8px';
     pane.appendChild(groupLabel);
     for (var m = 0; m < models.length; m++) {
@@ -265,7 +267,7 @@ function _makeModelClickHandler(el, fullId, supportsTemperature) {
         if (!window._currentSettings) window._currentSettings = {};
         var wasAssistant = !!window._currentSettings.assistantName;
         window._currentSettings.model = fullId;
-        if (!_isCodexImageModel(fullId)) window._currentSettings.imageGeneration = false;
+        if (!_isChatGptPlanModel(fullId)) window._currentSettings.imageGeneration = false;
         // Clear assistant when user explicitly picks a model
         window._currentSettings.assistantName = '';
         window._currentSettings.assistantBaseModel = '';
@@ -288,7 +290,7 @@ function _makeModelClickHandler(el, fullId, supportsTemperature) {
             var tempField = tempSlider.parentElement;
             if (tempField) tempField.style.display = temperatureSupported ? '' : 'none';
             tempSlider.disabled = !temperatureSupported;
-            tempSlider.title = temperatureSupported ? '' : 'Temperature is not supported by the Codex CLI backend.';
+            tempSlider.title = temperatureSupported ? '' : 'Temperature is not supported by the ChatGPT-plan backend.';
         }
         _sendAllSettings();
         _updateModelCard();

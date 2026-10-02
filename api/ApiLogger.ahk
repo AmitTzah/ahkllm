@@ -33,6 +33,14 @@ class ApiLogger {
         if (apiLogMaxEntries <= 0)
             return
 
+        ; Large base64 images otherwise exceed the log cap and discard the
+        ; entire entry, including the terminal provider error needed to debug it.
+        ; Only the logged copy changes; the transmitted request stays intact.
+        ; Requests contain JSON-escaped slashes in both MIME and base64 data.
+        ; A flat character class also avoids recursive matching on those escapes.
+        if entry.HasOwnProp("request") && Type(entry.request) = "String" && StrLen(entry.request) > this.maxLogBytes
+            entry.request := RegExReplace(entry.request, '(data:image\\?/[A-Za-z0-9.+-]+;base64,)[A-Za-z0-9+/=\\]+', '$1[image data omitted from log]')
+
         logs := this._readLogFile()
 
         ; Add timestamp if not already present

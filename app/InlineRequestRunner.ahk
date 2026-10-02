@@ -90,7 +90,7 @@ class InlineRequestRunner {
         if isFIM {
             cURLCommand := CurlBuilder.BuildFIM(providerInfo, requestFile, outputFile)
         } else {
-            cURLCommand := providerInfo.transport = "codex-cli" ? "codex-cli" : CurlBuilder.Build(providerInfo, requestFile, outputFile)
+            cURLCommand := providerInfo.transport = "codex-cli" ? "codex-cli" : (providerInfo.transport = "chatgpt-responses" ? "chatgpt-responses" : CurlBuilder.Build(providerInfo, requestFile, outputFile))
         }
         FileOpen(curlFile, "w", "UTF-8-RAW").Write(cURLCommand)
 
@@ -114,6 +114,8 @@ class InlineRequestRunner {
     ; Returns { success: true/false, response: parsedResponse, rawJSON: rawResponseText }
     static _ExecuteCurlAndParse(files, isFIM, cancelState := "") {
         requestStartTime := A_TickCount
+        if files.transport = "chatgpt-responses"
+            return InlineRequestRunner._ExecuteChatGptResponsesBuffered(files, cancelState, requestStartTime)
         if files.transport = "codex-cli" {
             codexResult := CodexCliTransport.ExecuteRequest(
                 files.providerInfo,
@@ -165,6 +167,21 @@ class InlineRequestRunner {
             cancelled: wasCancelled,
             response: responseFromLLM,
             rawJSON: JSONResponseFromLLM,
+            responseTimeMs: A_TickCount - requestStartTime
+        }
+    }
+
+    static _ExecuteChatGptResponsesBuffered(files, cancelState, requestStartTime) {
+        buffered := ChatGptResponsesTransport.ExecuteBuffered(
+            files.requestFile, files.outputFile, files.errorFile,
+            cancelState, false, false
+        )
+        return {
+            success: buffered.success,
+            cancelled: buffered.cancelled,
+            response: buffered.HasOwnProp("response") ? buffered.response : "",
+            rawJSON: buffered.raw,
+            error: buffered.HasOwnProp("error") ? buffered.error : "",
             responseTimeMs: A_TickCount - requestStartTime
         }
     }
@@ -267,6 +284,10 @@ class InlineRequestRunner {
             if stderrText
                 errMsg := stderrText
         }
+        if !errMsg && result.HasOwnProp("error") && result.error
+            errMsg := result.error
+        if result.HasOwnProp("errorCode") && result.errorCode = "subscription_sharing_usage_limit_exceeded"
+            errMsg .= " Manage usage in ChatGPT Settings → Usage: https://chatgpt.com/#settings/Usage"
         if !errMsg && result.rawJSON
             errMsg := SubStr(result.rawJSON, 1, 300)
         if !errMsg

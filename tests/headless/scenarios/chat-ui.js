@@ -1926,7 +1926,7 @@ scenarios.push({
   id: 341,
   name: 'Retry branch ownership survives cross-thread concurrency: B normal sends stay branch-free, arrows switch real context, and later normal A sends do not inherit retry state',
   mode: 'sse-slow',
-  mockOpts: { chunkDelay: 1500 },
+  mockOpts: { chunkDelay: 1500, holdUntilTwoRequests: true },
   regression: true,
   settings: {},
   fixtures: {

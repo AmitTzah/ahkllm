@@ -28,6 +28,8 @@ describe('ProviderIcons', () => {
   it('keeps normal direct-provider icons unchanged', () => {
     const icons = loadProviderIcons();
     assert.strictEqual(icons.key('openai/gpt-5.6-sol'), 'openai');
+    assert.strictEqual(icons.key('chatgpt/gpt-5.6-sol'), 'chatgpt');
+    assert.ok(icons.file('chatgpt/gpt-5.6-sol', 'chatgpt').endsWith('openai.ico'));
     assert.strictEqual(icons.key('google/gemini-2.5-flash'), 'google');
     assert.strictEqual(icons.key('anthropic/claude-sonnet-4'), 'anthropic');
   });

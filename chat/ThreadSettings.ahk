@@ -54,7 +54,11 @@ class ThreadSettings {
             eff.assistantBaseModel := asst.baseModel
             eff.assistantDescription := asst.HasOwnProp("description") ? asst.description : ""
         }
-        eff.imageGeneration := ModelParser.Split(eff.model).provider = "codex" && eff.imageGeneration
+        if eff.model
+            eff.model := ModelParser.Canonicalize(eff.model)
+        if eff.assistantBaseModel
+            eff.assistantBaseModel := ModelParser.Canonicalize(eff.assistantBaseModel)
+        eff.imageGeneration := ModelParser.IsChatGptPlan(eff.model) && eff.imageGeneration
         return eff
     }
 
@@ -76,7 +80,7 @@ class ThreadSettings {
         requestParams["temperatureOverrideSet"] := eff.temperatureOverrideSet
         requestParams["fontSize"] := eff.fontSize
         requestParams["webSearch"] := eff.webSearch
-        requestParams["imageGeneration"] := ModelParser.Split(requestParams["singleAPIModelName"]).provider = "codex" && (settings.HasOwnProp("imageGeneration") ? settings.imageGeneration : false)
+        requestParams["imageGeneration"] := ModelParser.IsChatGptPlan(requestParams["singleAPIModelName"]) && (settings.HasOwnProp("imageGeneration") ? settings.imageGeneration : false)
         if eff.assistantId
             requestParams["activeAssistantId"] := eff.assistantId
     }
@@ -100,12 +104,18 @@ class ThreadSettings {
     }
 
     ; Serialize the current requestParams to the DB settings shape.
-    static ToDbObject() {
+    static ToDbObject(previousModelOverride := "") {
         global requestParams, responseWindowFontSize, appDefaultModel
         defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
+        model := requestParams["singleAPIModelName"]
+        modelOverride := model != appDefaultModel ? model : ""
+        ; Runtime routing normalizes legacy aliases. A settings flush before
+        ; Send must not migrate the stored model unless the selection changes.
+        if previousModelOverride != model && ModelParser.Canonicalize(previousModelOverride) = model
+            modelOverride := previousModelOverride
         return {
             assistantId: requestParams.Has("activeAssistantId") ? requestParams["activeAssistantId"] : "",
-            modelOverride: requestParams["singleAPIModelName"] != appDefaultModel ? requestParams["singleAPIModelName"] : "",
+            modelOverride: modelOverride,
             systemOverride: requestParams.Has("systemOverride") ? requestParams["systemOverride"] : "",
             reasoningOverride: requestParams.Has("reasoningOverride") ? requestParams["reasoningOverride"] : "",
             temperatureOverride: requestParams.Has("temperatureOverride") ? requestParams["temperatureOverride"] : "",
@@ -113,7 +123,7 @@ class ThreadSettings {
             reasoningOverrideSet: requestParams.Has("reasoningOverrideSet") ? requestParams["reasoningOverrideSet"] : false,
             temperatureOverrideSet: requestParams.Has("temperatureOverrideSet") ? requestParams["temperatureOverrideSet"] : false,
             webSearch: requestParams.Has("webSearch") ? requestParams["webSearch"] : false,
-            imageGeneration: ModelParser.Split(requestParams["singleAPIModelName"]).provider = "codex" && requestParams.Has("imageGeneration") && requestParams["imageGeneration"],
+            imageGeneration: ModelParser.IsChatGptPlan(requestParams["singleAPIModelName"]) && requestParams.Has("imageGeneration") && requestParams["imageGeneration"],
             fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
         }
     }
@@ -128,7 +138,7 @@ class ThreadSettings {
         defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
         fontSize := requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
         webSearch := requestParams.Has("webSearch") ? requestParams["webSearch"] : false
-        imageGeneration := ModelParser.Split(model).provider = "codex" && requestParams.Has("imageGeneration") && requestParams["imageGeneration"]
+        imageGeneration := ModelParser.IsChatGptPlan(model) && requestParams.Has("imageGeneration") && requestParams["imageGeneration"]
 
         assistantName := ""
         assistantBaseModel := ""
@@ -137,7 +147,7 @@ class ThreadSettings {
             asst := AssistantRepo.GetFromSettings(requestParams["activeAssistantId"])
             if asst {
                 assistantName := asst.name
-                assistantBaseModel := asst.baseModel ? asst.baseModel : ""
+                assistantBaseModel := asst.baseModel ? ModelParser.Canonicalize(asst.baseModel) : ""
                 assistantDescription := asst.HasOwnProp("description") ? asst.description : ""
             }
         }
@@ -145,7 +155,7 @@ class ThreadSettings {
         thinkingLevels := []
         ; Resolve both full and short model ids for right-rail thinking levels.
         modelMeta := ModelResolver.Lookup(models, model)
-        supportsTemperature := !(IsObject(modelMeta) && modelMeta.HasOwnProp("api") && modelMeta.api = "codex-cli")
+        supportsTemperature := !(IsObject(modelMeta) && modelMeta.HasOwnProp("api") && (modelMeta.api = "codex-cli" || modelMeta.api = "chatgpt-responses"))
         if IsObject(modelMeta) && modelMeta.HasOwnProp("thinkingLevelMap") && IsObject(modelMeta.thinkingLevelMap) {
             for level in modelMeta.thinkingLevelMap
                 thinkingLevels.Push(level)

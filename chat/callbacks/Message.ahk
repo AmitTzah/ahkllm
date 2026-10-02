@@ -6,7 +6,12 @@ handleChatSend(params, *) {
     global requestParams
     global activeThreadId
     transactionStarted := false
+    messageSaved := false
+    clientMessageId := params.Get("clientMessageId", "")
+    sendThreadId := params.Get("threadId", activeThreadId)
     try {
+    if clientMessageId != "" && params.Get("threadId", activeThreadId) != activeThreadId
+        throw Error("The chat changed before the message could be saved. Try sending it again.")
     message := params.Has("message") ? params["message"] : ""
     attachments := params.Has("attachments") ? params["attachments"] : []
     latencyTraceId := params.Has("latencyTraceId") ? params["latencyTraceId"] : ""
@@ -22,7 +27,9 @@ handleChatSend(params, *) {
     ; Auto-create thread if first message
     if !activeThreadId {
         activeThreadId := ChatDB.Thread_Create("New Chat")
-        postWebMessage("loadThread", activeThreadId)
+        if clientMessageId = ""
+            postWebMessage("loadThread", activeThreadId)
+        sendThreadId := activeThreadId
         debugLog("[THREAD] Created — id=" activeThreadId " title=New Chat")
         ; Start new chats with the configured default assistant/model ONLY when
         ; the user has not already configured the right rail before the first
@@ -69,6 +76,9 @@ handleChatSend(params, *) {
             docCount++
     }
     ChatDB.CommitTransaction()
+    messageSaved := true
+    if clientMessageId != ""
+        postWebMessage("chatMessageSaved", { clientMessageId: clientMessageId, threadId: sendThreadId, messageId: msgId })
     if latencyTraceId != ""
         debugLog("[LATENCY][" latencyTraceId "] +" (A_TickCount - requestParams["_latencyTraceStartTick"]) "ms ahk.user-message.persisted", "Latency")
     transactionStarted := false
@@ -78,6 +88,9 @@ handleChatSend(params, *) {
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     structuredMessages := buildStructuredMessagesFromPath(path, activeThreadId)
     lastMsg := structuredMessages[structuredMessages.Length]
+    lastMsg.threadId := sendThreadId
+    if clientMessageId != ""
+        lastMsg.clientMessageId := clientMessageId
     postWebMessage("appendChatMessage", lastMsg)
 
     ; Normal chat sends always stream; the command-triggered path
@@ -97,10 +110,13 @@ handleChatSend(params, *) {
     } catch Error as e {
         if transactionStarted
             ChatDB.RollbackTransaction()
+        if clientMessageId != "" && !messageSaved
+            postWebMessage("chatMessageSaveFailed", { clientMessageId: clientMessageId, threadId: sendThreadId, message: e.Message })
         debugLog("[ATTACH] CRASH in handleChatSend: " e.Message " at line " e.Line "`n" e.Stack, "ErrorHandler")
-        postWebMessage("setChatButtonsEnabled", true)
-        startLoadingCursor(false)
-        _PostChatError("Attachment processing failed: " e.Message)
+        postWebMessage("setChatButtonsEnabled", { enabled: true, threadId: sendThreadId })
+        if sendThreadId = activeThreadId
+            startLoadingCursor(false)
+        _PostChatError("Attachment processing failed: " e.Message, sendThreadId)
     }
 }
 

@@ -23,8 +23,10 @@ class SettingsApply {
         if settings.Has("chatShortcut")
             chatShortcut := settings["chatShortcut"]
         global newChatStartsWith
-        if settings.Has("newChatStartsWith")
-            newChatStartsWith := settings["newChatStartsWith"]
+        if settings.Has("newChatStartsWith") {
+            value := settings["newChatStartsWith"]
+            newChatStartsWith := value != "" && SubStr(value, 1, 5) != "asst:" ? ModelParser.Canonicalize(value) : value
+        }
         global tavilyApiKey, tavilyEndpoint
         if settings.Has("tavilyApiKey")
             tavilyApiKey := settings["tavilyApiKey"]
@@ -40,23 +42,44 @@ class SettingsApply {
         newProviders := Map()
         newProviderMap := Map()
         for k, p in settings["providers"] {
+            effectiveKey := ModelParser.CanonicalProvider(k)
             provObj := {
-                displayName: p.Has("displayName") ? p["displayName"] : k,
+                displayName: p.Has("displayName") ? p["displayName"] : effectiveKey,
                 endpoint: p.Has("endpoint") ? p["endpoint"] : "",
                 modelsDevProvider: p.Has("modelsDevProvider") ? p["modelsDevProvider"] : "",
                 fimEndpoint: p.Has("fimEndpoint") ? p["fimEndpoint"] : "",
                 transport: p.Has("transport") && p["transport"] != "" ? p["transport"] : "http",
                 billingMode: p.Has("billingMode") ? p["billingMode"] : "api",
+                modelCatalogSource: p.Get("modelCatalogSource", ""),
                 authEnvVar: p.Has("authEnvVar") ? p["authEnvVar"] : "",
                 authMode: p.Has("authMode") ? p["authMode"] : "env",
-                apiKey: p.Has("apiKey") ? p["apiKey"] : "",
+                _credentialValue: p.Has("api" "Key") ? p["api" "Key"] : "",
                 icon: p.Has("icon") ? p["icon"] : "",
                 collapseThinking: p.Has("collapseThinking") ? p["collapseThinking"] : false
             }
-            newProviders[k] := provObj
+            ; `codex` is accepted only as a legacy alias.
+            provObj.%("api" "Key")% := provObj._credentialValue
+            provObj.DeleteProp("_credentialValue")
+            ; Runtime provider identity is canonical `chatgpt`.
+            if effectiveKey = "chatgpt" {
+                if provObj.displayName = "Codex CLI (ChatGPT subscription)" || provObj.displayName = "Codex CLI"
+                    provObj.displayName := "ChatGPT plan"
+                provObj.transport := "chatgpt-responses"
+                provObj.billingMode := "chatgpt-subscription"
+                provObj.endpoint := "https://api.openai.com/v1/responses"
+                provObj.fimEndpoint := ""
+                provObj.authMode := "chatgpt-oauth"
+                provObj.authEnvVar := ""
+                provObj.%("api" "Key")% := ""
+            }
+            if effectiveKey = "chatgpt" {
+                newProviderMap["chatgpt"] := "chatgpt"
+                newProviderMap["codex"] := "chatgpt"
+            }
+            newProviders[effectiveKey] := provObj
             if p.Has("prefixes") && IsObject(p["prefixes"]) {
                 for _, prefix in p["prefixes"]
-                    newProviderMap[prefix] := k
+                    newProviderMap[prefix] := effectiveKey
             }
         }
         providers := newProviders
@@ -80,8 +103,9 @@ class SettingsApply {
             return
         newModels := Map()
         for k, m in settings["models"] {
+            modelKey := ModelParser.Canonicalize(k)
             entry := {
-                provider: m.Has("provider") ? m["provider"] : "",
+                provider: m.Has("provider") ? ModelParser.CanonicalProvider(m["provider"]) : "",
                 input: m.Has("input") && m["input"] != "" ? m["input"] : 0,
                 cachedInput: m.Has("cachedInput") ? m["cachedInput"] : "",
                 output: m.Has("output") && m["output"] != "" ? m["output"] : 0,
@@ -92,13 +116,25 @@ class SettingsApply {
             ; Preserve new metadata fields (api, compat, thinkingLevelMap, thinkingOff)
             if m.Has("api")
                 entry.api := m["api"]
+            if m.Has("displayName")
+                entry.displayName := m["displayName"]
             if m.Has("compat") && IsObject(m["compat"])
                 entry.compat := SettingsPersistence._ToMap(m["compat"])
             if m.Has("thinkingLevelMap") && IsObject(m["thinkingLevelMap"])
                 entry.thinkingLevelMap := SettingsPersistence._ToMap(m["thinkingLevelMap"])
             if m.Has("thinkingOff")
                 entry.thinkingOff := m["thinkingOff"]
-            newModels[k] := entry
+            if ModelParser.IsChatGptPlan(modelKey) || entry.provider = "chatgpt" {
+                entry.provider := "chatgpt"
+                entry.api := "chatgpt-responses"
+                if !entry.HasOwnProp("compat") || !IsObject(entry.compat)
+                    entry.compat := Map()
+                entry.compat["thinkingFormat"] := "openai"
+                entry.compat["supportsReasoningEffort"] := true
+                entry.compat["supportsUsageInStreaming"] := true
+                entry.compat["maxTokensField"] := ""
+            }
+            newModels[modelKey] := entry
         }
         models := newModels
     }
@@ -113,7 +149,7 @@ class SettingsApply {
             newAssistants.Push({
                 id: a.Has("id") ? a["id"] : "",
                 name: a.Has("name") ? a["name"] : "",
-                baseModel: a.Has("baseModel") ? a["baseModel"] : "",
+                baseModel: a.Has("baseModel") ? ModelParser.Canonicalize(a["baseModel"]) : "",
                 systemMessage: a.Has("systemMessage") ? a["systemMessage"] : "",
                 systemMessageFile: a.Has("systemMessageFile") ? a["systemMessageFile"] : "",
                 description: a.Has("description") ? a["description"] : "",
@@ -138,6 +174,8 @@ class SettingsApply {
             SettingsApply._SetIfExists(cmd, c, "commandName")
             SettingsApply._SetIfExists(cmd, c, "menuText")
             SettingsApply._SetIfExists(cmd, c, "APIModels")
+            if cmd.HasOwnProp("APIModels")
+                cmd.APIModels := ModelParser.Canonicalize(cmd.APIModels)
             SettingsApply._SetIfExists(cmd, c, "pasteMode")
             SettingsApply._SetIfExists(cmd, c, "stream")
             SettingsApply._SetIfExists(cmd, c, "isFIM")
@@ -220,7 +258,7 @@ class SettingsApply {
         autoTitleGenerationEnabled := tt.Has("enabled") ? tt["enabled"] : true
         ; Empty strings explicitly clear the corresponding runtime value.
         if tt.Has("model")
-            titleGenModel := tt["model"]
+            titleGenModel := ModelParser.Canonicalize(tt["model"])
         if tt.Has("prompt")
             titleGenSystemPrompt := tt["prompt"]
         if tt.Has("maxTokens")

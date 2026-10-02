@@ -73,6 +73,7 @@ class SettingsDefaults {
                 "fimEndpoint", p.HasOwnProp("fimEndpoint") ? p.fimEndpoint : "",
                 "transport", p.HasOwnProp("transport") ? p.transport : "http",
                 "billingMode", p.HasOwnProp("billingMode") ? p.billingMode : "api",
+                "modelCatalogSource", p.HasOwnProp("modelCatalogSource") ? p.modelCatalogSource : "",
                 "authMode", p.HasOwnProp("authMode") ? p.authMode : "env",
                 "authEnvVar", p.HasOwnProp("authEnvVar") ? p.authEnvVar : "",
                 "apiKey", "",
@@ -125,6 +126,8 @@ class SettingsDefaults {
             ; Preserve new metadata fields (api, compat, thinkingLevelMap, thinkingOff)
             if m.HasOwnProp("api")
                 entry["api"] := m.api
+            if m.HasOwnProp("displayName")
+                entry["displayName"] := m.displayName
             if m.HasOwnProp("compat") && IsObject(m.compat)
                 entry["compat"] := SettingsDefaults._CloneMap(m.compat)
             if m.HasOwnProp("thinkingLevelMap") && IsObject(m.thinkingLevelMap)

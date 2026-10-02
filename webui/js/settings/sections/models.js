@@ -563,30 +563,28 @@
         reasoning: values.reasoning
       };
       _applyMeta(models[fullId], values);
-      _applyCodexDefaults(models[fullId], values);
+      _applyChatGptPlanDefaults(models[fullId], values);
     });
     return { models: models };
   }
 
   // Copy stashed metadata (api/compat/thinkingLevelMap/thinkingOff) onto a
   // saved entry so new model ids don't lose their thinking metadata.
-  function _applyCodexDefaults(entry, values) {
-    if (!entry || !values || values.provider !== 'codex') return;
+  function _applyChatGptPlanDefaults(entry, values) {
+    if (!entry || !values || (values.provider !== 'chatgpt' && values.provider !== 'codex')) return;
+    entry.provider = 'chatgpt';
     entry.reasoning = true;
-    if (values.api === undefined) entry.api = 'codex-cli';
+    if (values.api === undefined) entry.api = 'chatgpt-responses';
     if (values.compat === undefined) {
       entry.compat = {
-        thinkingFormat: 'codex-cli',
+        thinkingFormat: 'openai',
         supportsReasoningEffort: true,
-        supportsUsageInStreaming: false,
+        supportsUsageInStreaming: true,
         maxTokensField: ''
       };
     }
-    if (values.thinkingLevelMap === undefined) {
-      // Unknown future Codex models get only the conservative common efforts.
-      // Curated built-ins can expose none/xhigh/max when OpenAI documents them.
+    if (values.thinkingLevelMap === undefined)
       entry.thinkingLevelMap = { low: 'low', medium: 'medium', high: 'high' };
-    }
     if (values.thinkingOff === undefined) entry.thinkingOff = 'low';
   }
 
@@ -614,7 +612,7 @@
         reasoning: values.reasoning
       });
       _applyMeta(models[models.length - 1], values);
-      _applyCodexDefaults(models[models.length - 1], values);
+      _applyChatGptPlanDefaults(models[models.length - 1], values);
     });
     return models;
   }
@@ -724,7 +722,7 @@
     if (window.SettingsProviders && typeof window.SettingsProviders.getCurrentProviders === 'function')
       payload.providers = window.SettingsProviders.getCurrentProviders();
     var status = document.getElementById('refreshModelStatus');
-    if (status) status.textContent = 'Refreshing model metadata from models.dev…';
+    if (status) status.textContent = 'Refreshing models from configured providers…';
     Ipc.postToHost('refreshModelPricing', payload);
   }
 
@@ -852,7 +850,36 @@
     return { valid: true };
   }
 
+  function createChatGptRow(id, metadata, rightPanel) {
+    var row = document.createElement('tr');
+    row.innerHTML = rightPanel ? _rightRowHtml(id, metadata) : _mainRowHtml(id, 'chatgpt', metadata);
+    _stashMeta(row, metadata);
+    if (rightPanel) _wireRightRow(row, function() { row.remove(); _renderAvailableModels(); });
+    else _wireMainRow(row);
+    return row;
+  }
+
+  function handleChatGptModelsUpdated(data) {
+    if (!data || !data.models) return;
+    var catalog = data.models;
+    var catalogUi = window.ChatGptModelCatalogUi;
+    catalogUi.replaceRows('modelsTableBody', catalog, function(id, metadata) { return createChatGptRow(id, metadata, false); });
+    catalogUi.replaceRows('refreshRightTbody', catalog, function(id, metadata) { return createChatGptRow(id, metadata, true); });
+    _refreshAvailable = _refreshAvailable.filter(function(model) {
+      return !catalogUi.isPlanModel(model.id, _refreshData[model.id]);
+    });
+    Object.keys(_refreshData).forEach(function(id) {
+      if (catalogUi.isPlanModel(id, _refreshData[id])) delete _refreshData[id];
+    });
+    Object.keys(catalog).forEach(function(id) {
+      _refreshData[id] = catalog[id];
+      _refreshAvailable.push({ id: id, meta: catalog[id] });
+    });
+    _renderAvailableModels();
+  }
+
   window.SettingsModels = {
+    handleChatGptModelsUpdated: handleChatGptModelsUpdated,
     parsePricingRaw: parsePricingRaw,
     parseOpenRouterModelResponse: parseOpenRouterModelResponse,
     filterAvailableModels: filterAvailableModels,
@@ -873,7 +900,7 @@
         var warnings = Array.isArray(data.warnings) ? data.warnings : [];
         if (status) status.textContent = warnings.length
           ? warnings.join(' ')
-          : 'Model metadata refreshed from models.dev. OpenRouter remains lookup-only.';
+          : 'Models refreshed from ' + (data.sources || ['models.dev']).join(' and ') + '. OpenRouter remains lookup-only.';
         data.models.forEach(function(m) {
           _refreshData[m.id] = m.meta || (m.raw ? parsePricingRaw(m.raw) : {});
         });

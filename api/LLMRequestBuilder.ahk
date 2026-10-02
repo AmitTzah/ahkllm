@@ -122,62 +122,43 @@ class LLMRequestBuilder {
     ; contains `"stream":1` (escaped inside a string) is never corrupted
     ; without altering escaped string content.
     static _FixStreamBoolean(jsonStr) {
-        replacements := Map(
-            '"stream":1', '"stream":true',
-            '"stream":0', '"stream":false',
-            '"include_usage":1', '"include_usage":true',
-            '"include_thoughts":1', '"include_thoughts":true'
-        )
-        result := ""
-        i := 1
-        len := StrLen(jsonStr)
-        inString := false
-        while i <= len {
-            ch := SubStr(jsonStr, i, 1)
-            if inString {
-                result .= ch
-                if ch = "\" {
-                    ; Escaped character - copy it and the escaped char as-is.
-                    if i < len {
-                        result .= SubStr(jsonStr, i + 1, 1)
-                        i += 2
-                        continue
-                    }
-                } else if ch = '"' {
-                    inString := false
+        fields := Map("stream", true, "include_usage", false, "include_thoughts", false,
+            "store", true, "strict", true, "additionalProperties", true, "parallel_tool_calls", true)
+        output := "", copiedThrough := 0, position := 1
+        ; Jump between quotes in native code. Never run a recursive regex over
+        ; image data: jsongo escapes base64 slashes, exhausting PCRE's limits.
+        while opening := InStr(jsonStr, '"', true, position) {
+            closing := LLMRequestBuilder._JsonStringEnd(jsonStr, opening)
+            if !closing
+                break
+            if closing - opening <= 21 {
+                key := SubStr(jsonStr, opening + 1, closing - opening - 1)
+                ; Anchored to this string's end, so regex only reads a field's
+                ; colon, numeric boolean and delimiter, never its string value.
+                if fields.Has(key) && RegExMatch(jsonStr, '\G\s*:\s*\K[01](?=\s*(?:[,}\]]|$))', &value, closing + 1)
+                    && (value[0] = "1" || fields[key]) {
+                    output .= SubStr(jsonStr, copiedThrough + 1, value.Pos - copiedThrough - 1)
+                        . (value[0] = "1" ? "true" : "false")
+                    copiedThrough := value.Pos
                 }
-                i += 1
-                continue
             }
-            if ch = '"' {
-                ; Possible JSON key. Only rewrite when it is one of the target
-                ; keys followed by a whole 1/0 value (the next char must be a
-                ; JSON delimiter, so `"stream":10` is never mangled).
-                matched := false
-                for k, v in replacements {
-                    if SubStr(jsonStr, i, StrLen(k)) = k {
-                        after := SubStr(jsonStr, i + StrLen(k), 1)
-                        if after = "" || after = "," || after = "}" || after = "]" || after = " " || after = "`n" || after = "`r" || after = "`t" {
-                            result .= v
-                            i += StrLen(k)
-                            matched := true
-                            break
-                        }
-                    }
-                }
-                if matched
-                    continue
-                ; Not a target key - consume the whole string value (escaped
-                ; quotes included) so its contents are never rewritten.
-                inString := true
-                result .= ch
-                i += 1
-                continue
-            }
-            result .= ch
-            i += 1
+            position := closing + 1
         }
-        return result
+        return output SubStr(jsonStr, copiedThrough + 1)
+    }
+
+    static _JsonStringEnd(jsonStr, opening) {
+        closing := opening
+        while closing := InStr(jsonStr, '"', true, closing + 1) {
+            backslashes := 0, beforeQuote := closing - 1
+            while beforeQuote > opening && SubStr(jsonStr, beforeQuote, 1) = "\" {
+                backslashes++
+                beforeQuote--
+            }
+            if Mod(backslashes, 2) = 0
+                return closing
+        }
+        return 0
     }
 
     ; ----------------------------------------------------

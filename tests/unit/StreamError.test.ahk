@@ -11,6 +11,40 @@ class StreamErrorTest {
         RegisterTestClass("StreamErrorTest")
     }
 
+    ResponsesError_PreservesStoredFailureAndAvoidsApiKeyAdvice() {
+        global requestParams, responseWindow, apiLogMaxEntries, activeThreadId
+        oldParams := requestParams, oldWindow := responseWindow, oldLimit := apiLogMaxEntries
+        oldActive := activeThreadId
+        activeThreadId := this._setup()
+        captured := []
+        responseWindow := { PostWebMessageAsJSON: (obj, json) => captured.Push(json) }
+        apiLogMaxEntries := 0
+        try {
+            for message in ["The ChatGPT Responses stream ended without response.completed.", ""] {
+                captured.Length := 0
+                requestParams := Map("cURLErrorFile", "", "_streamOutputFile", "", "_streamRequestStartTime", 0,
+                    "_streamTransport", "chatgpt-responses", "_streamErrorMessage", message,
+                    "_streamProviderKey", "chatgpt", "_streamThreadId", activeThreadId,
+                    "uniqueID", "fixture", "mainScriptHiddenHwnd", "0x0",
+                    "windowTitle", "test", "providerName", "chatgpt", "singleAPIModelName", "chatgpt/test", "pasteMode", "chat")
+                _handleStreamError()
+                shown := ""
+                for json in captured {
+                    if InStr(json, '"target":"showError"')
+                        shown := json
+                }
+                if !shown || InStr(shown, "Check your API key")
+                    throw Error("ChatGPT failures must show a useful message without API-key advice")
+                if message != "" && !InStr(shown, message)
+                    throw Error("Stored stream failure was replaced by a generic fallback")
+            }
+        } finally {
+            requestParams := oldParams, responseWindow := oldWindow, apiLogMaxEntries := oldLimit
+            activeThreadId := oldActive
+            this._teardown()
+        }
+    }
+
     _setup() {
         if ChatDB.isOpen {
             oldPath := ChatDB.dbPath
@@ -27,6 +61,14 @@ class StreamErrorTest {
             ChatDB.Close()
             try FileDelete(dbPath)
         }
+    }
+
+    ResponsesFailed_NestedErrorMessageAndCodeAreExtracted() {
+        raw := '{"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded","message":"Usage limit reached."}}}'
+        if _extractErrorMsg(raw) != "Usage limit reached."
+            throw Error("nested response.error.message was not extracted")
+        if _extractErrorCode(raw) != "subscription_sharing_usage_limit_exceeded"
+            throw Error("nested response.error.code was not extracted")
     }
 
     ; Regression: a retry that fails after rewinding the durable leaf must

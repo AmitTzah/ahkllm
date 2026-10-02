@@ -8,13 +8,26 @@
   var threadErrorBanners = {};
   var nextErrorBannerId = 0;
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function createErrorBanner(entry) {
     var el = root.document.createElement('div');
     el.className = 'error-banner';
     if (entry.threadId) el.dataset.threadId = entry.threadId;
     if (entry.id) el.dataset.errorId = entry.id;
     el.style.cssText = 'background:var(--danger);color:var(--bg-panel);padding:8px 16px;margin:8px;border-radius:6px;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;';
-    el.innerHTML = '<span>' + String(entry.message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span><button onclick="dismissThreadError(this)" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
+    var actionHtml = '';
+    if (entry.actionLabel && /^https?:\/\/[^\s]+$/i.test(String(entry.actionUrl || ''))) {
+      actionHtml = '<a href="' + escapeHtml(entry.actionUrl) + '" style="background:var(--bg-panel);color:var(--danger);padding:5px 10px;border-radius:5px;font-weight:600;text-decoration:none;white-space:nowrap;">' + escapeHtml(entry.actionLabel) + '</a>';
+    }
+    el.innerHTML = '<span style="display:flex;align-items:center;gap:12px;min-width:0;"><span>' + escapeHtml(entry.message) + '</span>' + actionHtml + '</span><button onclick="dismissThreadError(this)" style="background:none;border:none;color:inherit;font-size:1.2rem;cursor:pointer;">&times;</button>';
     return el;
   }
 
@@ -40,7 +53,12 @@
   function showError(data) {
     var errorThreadId = (data && typeof data === 'object' && data.threadId) ? String(data.threadId) : '';
     var msg = (typeof data === 'string') ? data : (data && data.message ? data.message : 'An error occurred');
-    var entry = { message: msg, threadId: errorThreadId };
+    var entry = {
+      message: msg,
+      threadId: errorThreadId,
+      actionLabel: (data && typeof data === 'object' && data.actionLabel) ? String(data.actionLabel) : '',
+      actionUrl: (data && typeof data === 'object' && data.actionUrl) ? String(data.actionUrl) : ''
+    };
 
     if (errorThreadId) {
       entry.id = 'error-' + (++nextErrorBannerId);

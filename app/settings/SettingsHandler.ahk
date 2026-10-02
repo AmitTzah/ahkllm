@@ -22,14 +22,14 @@ class SettingsHandler {
     static KNOWN_TOP_LEVEL_KEYS := ["version", "providers", "models", "assistants", "commands", "submenuOrder", "commandGroupOrders", "threadTitles", "generationNotifications", "ui", "icons", "hotkeys", "apiLogs", "trash", "backup", "menuItems", "chatShortcut", "newChatStartsWith", "tavilyApiKey", "tavilyEndpoint"]
 
     static Load() => SettingsPersistence.Load()
-    static Save(settingsMap) => SettingsPersistence.Save(settingsMap)
+    static Save(settingsMap) => SettingsPersistence.Save(SettingsMerge.CanonicalizeChatGptAliases(settingsMap))
     static _ToMap(obj) => SettingsPersistence._ToMap(obj)
 
     static CacheInitialDefaults() => SettingsDefaults.CacheInitialDefaults()
     static GetDefaults() => SettingsDefaults.GetDefaults()
 
-    static Merge(existing, defaults) => SettingsMerge.Merge(existing, defaults)
-    static Override(incoming, base) => SettingsMerge.Override(incoming, base)
+    static Merge(existing, defaults) => SettingsMerge.Merge(SettingsMerge.CanonicalizeChatGptAliases(existing), defaults)
+    static Override(incoming, base) => SettingsMerge.CanonicalizeChatGptAliases(SettingsMerge.Override(incoming, base))
 
-    static ApplyToGlobals(settings) => SettingsApply.ApplyToGlobals(settings)
+    static ApplyToGlobals(settings) => SettingsApply.ApplyToGlobals(SettingsMerge.CanonicalizeChatGptAliases(settings))
 }

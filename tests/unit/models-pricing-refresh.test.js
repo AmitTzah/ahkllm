@@ -463,17 +463,19 @@ describe('new model metadata survives a settings save round-trip', () => {
   });
 });
 
-describe('manual Codex model defaults', () => {
-  it('uses the codex transport with conservative reasoning levels for unknown models', () => {
-    const { sections } = loadModule({ modelsRows: [makeMainRow('gpt-future', 'codex')] });
+describe('manual ChatGPT-plan model defaults', () => {
+  it('uses direct Responses metadata with conservative reasoning levels for unknown models', () => {
+    const { sections } = loadModule({ modelsRows: [makeMainRow('gpt-future', 'chatgpt')] });
     const out = sections.models.save();
-    const entry = out.models['codex/gpt-future'];
-    assert.ok(entry, 'manually added Codex model must be saved with the codex provider prefix');
-    assert.strictEqual(entry.api, 'codex-cli');
+    const entry = out.models['chatgpt/gpt-future'];
+    assert.ok(entry, 'manually added ChatGPT-plan model must use the chatgpt provider prefix');
+    assert.strictEqual(entry.provider, 'chatgpt');
+    assert.strictEqual(entry.api, 'chatgpt-responses');
     assert.strictEqual(entry.reasoning, true);
     assert.strictEqual(JSON.stringify(entry.thinkingLevelMap), JSON.stringify({ low: 'low', medium: 'medium', high: 'high' }));
     assert.strictEqual(entry.thinkingOff, 'low');
-    assert.strictEqual(entry.compat.thinkingFormat, 'codex-cli');
+    assert.strictEqual(entry.compat.thinkingFormat, 'openai');
+    assert.strictEqual(entry.compat.supportsUsageInStreaming, true);
   });
 });
 

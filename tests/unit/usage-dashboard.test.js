@@ -182,11 +182,11 @@ describe('renderSummary', () => {
         assert.ok(ctx.document.getElementById('totalTokens').textContent !== undefined);
     });
 
-    it('labels Codex subscription usage as zero API cost without implying unlimited usage', () => {
+    it('labels ChatGPT-plan usage as zero API cost without implying unlimited usage', () => {
         const ctx = loadDashboardModule();
         ctx.allData = {
             chat: [{
-                model: 'codex/gpt-5.6-luna', provider: 'codex', input_tokens: 50, output_tokens: 20,
+                model: 'chatgpt/gpt-5.6-luna', provider: 'chatgpt', input_tokens: 50, output_tokens: 20,
                 total_cost: 0, message_count: 2, cached_input_cost: 0, input_cost: 0, output_cost: 0,
                 total_response_time_ms: 1000, total_ttft_ms: 0, ttft_count: 0
             }],
@@ -194,9 +194,25 @@ describe('renderSummary', () => {
         };
         ctx.renderSummary();
         const tooltip = ctx.document.getElementById('costTooltip').textContent;
-        assert.ok(tooltip.includes('ChatGPT Codex plan allowance'));
-        assert.ok(tooltip.includes('normal Codex plan usage limits still apply'));
+        assert.ok(tooltip.includes('ChatGPT plan allowance'));
+        assert.ok(tooltip.includes('normal ChatGPT plan usage limits still apply'));
         assert.strictEqual(ctx.document.getElementById('totalCost').textContent, '$0.000000');
+        assert.strictEqual(ctx.document.getElementById('chatGptUsageManageRow').style.display, '', 'usage dashboard should expose Manage usage when ChatGPT-plan rows are present');
+    });
+
+    it('still recognizes historical codex usage rows as ChatGPT-plan usage', () => {
+        const ctx = loadDashboardModule();
+        ctx.allData = {
+            chat: [{
+                model: 'codex/gpt-5.6-luna', provider: 'codex', input_tokens: 5, output_tokens: 3,
+                total_cost: 0, message_count: 1, cached_input_cost: 0, input_cost: 0, output_cost: 0,
+                total_response_time_ms: 100, total_ttft_ms: 0, ttft_count: 0
+            }],
+            commands: []
+        };
+        ctx.renderSummary();
+        assert.ok(ctx.document.getElementById('costTooltip').textContent.includes('ChatGPT plan allowance'));
+        assert.strictEqual(ctx.document.getElementById('chatGptUsageManageRow').style.display, '', 'legacy codex rows should keep Manage usage visible');
     });
 
     it('counts command completion_tokens once (thinking already included, bug #52)', () => {

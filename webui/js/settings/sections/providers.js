@@ -2,12 +2,14 @@
 (function() {
   var sectionName = 'providers';
   var S = window.SettingsShared;
-  var BUILTIN_PROVIDER_IDS = ['deepseek', 'openai', 'openrouter', 'google', 'codex'];
+  var BUILTIN_PROVIDER_IDS = ['deepseek', 'openai', 'openrouter', 'google', 'chatgpt', 'codex'];
 
   function load(data) {
     if (!data || !data.providers) return;
     renderCards(data.providers);
     syncModelsProviderOptions();
+    if ((data.providers.chatgpt || data.providers.codex) && typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+      Ipc.postToHost('requestChatGptPlanStatus');
   }
 
   var PALETTE = [
@@ -72,8 +74,8 @@
     if (icon) icon.textContent = getInitials(name) || '?';
   }
 
-  function isCodexProvider(p, key) {
-    return key === 'codex' || (p && p.transport === 'codex-cli');
+  function isChatGptPlanProvider(p, key) {
+    return key === 'chatgpt' || key === 'codex' || (p && p.transport === 'chatgpt-responses');
   }
 
   function providerCardHTML(p, key, palIdx, isNew) {
@@ -86,17 +88,22 @@
       : (isNew
         ? 'Stable lowercase ID used in model IDs (for example xiaomi/model-name). It cannot be renamed after saving.'
         : 'Stable ID used in model IDs. Existing provider IDs are read-only to avoid breaking model references.');
-    if (isCodexProvider(p, key)) {
-      return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(title) || 'C') + '</div><span class="settings-fw-600 provider-card-title">' + S.escHtml(title) + '</span><span class="badge settings-ml-auto">Built-in local backend</span></div>' +
-        '<input type="hidden" value="codex-cli" data-field="transport">' +
+    if (isChatGptPlanProvider(p, key)) {
+      return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(title) || 'C') + '</div><span class="settings-fw-600 provider-card-title">' + S.escHtml(title) + '</span><span class="badge settings-ml-auto">Built-in ChatGPT plan</span></div>' +
+        '<input type="hidden" value="chatgpt-responses" data-field="transport">' +
         '<input type="hidden" value="chatgpt-subscription" data-field="billingMode">' +
-        '<input type="hidden" value="chatgpt" data-field="authMode">' +
-        '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || 'codex') + '" data-field="providerId" readonly><div class="field-hint">Codex models use IDs such as <code>codex/gpt-5.6-luna</code>.</div></div>' +
-        '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || 'Codex CLI (ChatGPT subscription)') + '" data-field="displayName"></div>' +
-        '<div class="field"><label class="field-label">Authentication</label><div class="field-hint">Uses the official Codex CLI installed on this PC and its existing ChatGPT login. AhkLLM does not store an OpenAI API key for this provider. Install Codex separately and run <code>codex login</code> if needed.</div></div>' +
-        '<div class="field"><label class="field-label">Codex status</label><div class="settings-flex-row-6"><button type="button" class="btn-sm check-codex">Check Codex</button><span class="codex-status settings-text-xs-muted" aria-live="polite">Not checked</span></div><div class="field-hint">Requires Codex CLI 0.153.0 or newer; AhkLLM is tested against 0.153.x and allows compatible newer releases. The check runs <code>codex --version</code> and <code>codex login status</code> only; it does not invoke a model or consume a Codex turn.</div></div>' +
-        '<div class="field"><label class="field-label">Execution profile</label><div class="field-hint">Normal AhkLLM chat disables known local execution/inspection and agent tool surfaces, with a read-only sandbox as a write backstop. The Web Search toggle uses Codex hosted web search inside the same Codex turn.</div></div>' +
-        '<div class="toggle-row"><div><div class="lbl">Collapse thinking blocks by default</div><div class="settings-text-xs-muted">Used when reasoning content is available</div></div><div class="switch' + (p.collapseThinking ? ' on' : '') + '" data-field="collapseThinking"><div class="knob"></div></div></div>';
+        '<input type="hidden" value="chatgpt-oauth" data-field="authMode">' +
+        '<input type="hidden" value="' + S.escHtml(p.modelCatalogSource || '') + '" data-field="modelCatalogSource">' +
+        '<input type="hidden" value="https://api.openai.com/v1/responses" data-field="endpoint">' +
+        '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || 'chatgpt') + '" data-field="providerId" readonly><div class="field-hint">New model IDs use <code>chatgpt/...</code>. Historical <code>codex/...</code> IDs remain accepted as a compatibility alias.</div></div>' +
+        '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || 'ChatGPT plan') + '" data-field="displayName"></div>' +
+        '<div class="field"><label class="field-label">ChatGPT account</label>' +
+          '<div class="settings-flex-row-6"><button type="button" class="btn-sm chatgpt-sign-in">Continue with ChatGPT</button><button type="button" class="btn-sm chatgpt-add-account">Add account</button><button type="button" class="btn-sm chatgpt-sign-out">Sign out</button><a class="btn-sm" href="https://chatgpt.com/#settings/Usage">Manage usage</a></div>' +
+          '<div class="settings-flex-row-6 settings-mt-6"><select class="chatgpt-account-select settings-mono-flex" aria-label="ChatGPT account"></select><button type="button" class="btn-sm chatgpt-refresh-models">Refresh models</button></div>' +
+          '<div class="chatgpt-plan-status settings-text-xs-muted settings-mt-6" aria-live="polite">Checking ChatGPT sign-in...</div>' +
+          '<div class="field-hint">Normal chat calls OpenAI\'s public Responses API directly with your ChatGPT-plan OAuth session. Tokens are protected with Windows DPAPI and are not stored in settings.json.</div></div>' +
+        '<div class="field"><label class="field-label">Image-generation worker</label><div class="settings-flex-row-6"><button type="button" class="btn-sm check-codex">Check Codex CLI</button><span class="codex-status settings-text-xs-muted" aria-live="polite">Not checked</span></div><div class="field-hint">Codex CLI is optional for normal chat. AhkLLM invokes its locked-down image-generation capability only when the right-rail Image Generation toggle produces an <code>ahkllm.generate_image</code> tool call.</div></div>' +
+        '<div class="toggle-row"><div><div class="lbl">Collapse thinking blocks by default</div><div class="settings-text-xs-muted">Used when public reasoning summaries are available</div></div><div class="switch' + (p.collapseThinking ? ' on' : '') + '" data-field="collapseThinking"><div class="knob"></div></div></div>';
     }
     return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(title) || '?') + '</div><span class="settings-fw-600 provider-card-title">' + S.escHtml(title) + '</span><button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
       '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || '') + '" placeholder="xiaomi" data-field="providerId"' + idAttrs + '><div class="field-hint">' + idHint + '</div></div>' +
@@ -179,6 +186,34 @@
       });
     }
 
+    var signInBtn = card.querySelector('.chatgpt-sign-in');
+    if (signInBtn) signInBtn.addEventListener('click', function() {
+      if (typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+        Ipc.postToHost('beginChatGptSignIn', { newAccount: false });
+    });
+    var addAccountBtn = card.querySelector('.chatgpt-add-account');
+    if (addAccountBtn) addAccountBtn.addEventListener('click', function() {
+      if (typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+        Ipc.postToHost('beginChatGptSignIn', { newAccount: true });
+    });
+    var signOutBtn = card.querySelector('.chatgpt-sign-out');
+    if (signOutBtn) signOutBtn.addEventListener('click', function() {
+      var account = card.querySelector('.chatgpt-account-select');
+      if (typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+        Ipc.postToHost('signOutChatGpt', { clientId: account ? account.value : '' });
+    });
+    var refreshModelsBtn = card.querySelector('.chatgpt-refresh-models');
+    if (refreshModelsBtn) refreshModelsBtn.addEventListener('click', function() {
+      refreshModelsBtn.disabled = true;
+      if (typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+        Ipc.postToHost('refreshChatGptModels');
+    });
+    var accountSelect = card.querySelector('.chatgpt-account-select');
+    if (accountSelect) accountSelect.addEventListener('change', function() {
+      if (this.value && typeof Ipc !== 'undefined' && Ipc && typeof Ipc.postToHost === 'function')
+        Ipc.postToHost('setChatGptAccount', { clientId: this.value });
+    });
+
     var prefixDiv = card.querySelector('.prefix-tags');
     if (prefixDiv) {
       var addLink = document.createElement('span');
@@ -234,10 +269,11 @@
         if (el.classList.contains('switch')) obj[field] = el.classList.contains('on');
         else obj[field] = el.value || '';
       });
-      if (obj.transport === 'codex-cli') {
-        obj.authMode = 'chatgpt';
-        obj.billingMode = obj.billingMode || 'chatgpt-subscription';
-        obj.endpoint = '';
+      if (key === 'chatgpt' || key === 'codex' || obj.transport === 'chatgpt-responses') {
+        obj.transport = 'chatgpt-responses';
+        obj.authMode = 'chatgpt-oauth';
+        obj.billingMode = 'chatgpt-subscription';
+        obj.endpoint = 'https://api.openai.com/v1/responses';
         obj.fimEndpoint = '';
         obj.authEnvVar = '';
         obj.apiKey = '';
@@ -276,7 +312,9 @@
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
       var transportEl = _field(card, 'transport');
-      if (providerIdForCard(card) !== 'codex' && String(transportEl && transportEl.value || '') !== 'codex-cli') continue;
+      var providerId = providerIdForCard(card);
+      var transport = String(transportEl && transportEl.value || '');
+      if (providerId !== 'chatgpt' && providerId !== 'codex' && transport !== 'chatgpt-responses' && transport !== 'codex-cli') continue;
       var statusEl = card.querySelector('.codex-status');
       var button = card.querySelector('.check-codex');
       if (button) button.disabled = false;
@@ -287,8 +325,59 @@
     }
   }
 
+  function handleChatGptPlanStatus(data) {
+    data = data || {};
+    var cards = document.querySelectorAll('#providerGrid .provider-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var providerId = providerIdForCard(card);
+      if (providerId !== 'chatgpt' && providerId !== 'codex') continue;
+      var statusEl = card.querySelector('.chatgpt-plan-status');
+      var signInBtn = card.querySelector('.chatgpt-sign-in');
+      var signOutBtn = card.querySelector('.chatgpt-sign-out');
+      var refreshBtn = card.querySelector('.chatgpt-refresh-models');
+      var select = card.querySelector('.chatgpt-account-select');
+      var authenticated = !!data.authenticated;
+      if (statusEl) {
+        var msg = data.message || (authenticated ? 'Signed in with ChatGPT.' : 'Not signed in with ChatGPT.');
+        if (data.permissionMissing) msg += ' ChatGPT plan usage is not enabled.';
+        if (data.modelCount !== undefined && data.modelCount !== null) msg += ' ' + data.modelCount + ' available model' + (Number(data.modelCount) === 1 ? '' : 's') + '.';
+        if (data.error) msg += ' ' + data.error;
+        statusEl.textContent = msg;
+        statusEl.title = data.error || '';
+      }
+      if (signInBtn) {
+        signInBtn.disabled = !!data.authenticating;
+        signInBtn.textContent = authenticated ? 'Reconnect ChatGPT' : 'Continue with ChatGPT';
+      }
+      if (signOutBtn) signOutBtn.disabled = !data.clientId;
+      if (refreshBtn) refreshBtn.disabled = !authenticated;
+      if (select) {
+        var previous = select.value;
+        select.innerHTML = '';
+        (data.accounts || []).forEach(function(account) {
+          var opt = document.createElement('option');
+          opt.value = account.clientId || '';
+          opt.textContent = account.email || account.clientId || 'ChatGPT account';
+          if (account.active) opt.selected = true;
+          select.appendChild(opt);
+        });
+        if (!select.value && previous) select.value = previous;
+        select.disabled = !(data.accounts && data.accounts.length > 1);
+      }
+    }
+  }
+
   function save() {
     return { providers: collectProviders() };
+  }
+
+  function handleChatGptModelsUpdated() {
+    document.querySelectorAll('#providerGrid .provider-card').forEach(function(card) {
+      if (providerIdForCard(card) !== 'chatgpt' && providerIdForCard(card) !== 'codex') return;
+      var source = _field(card, 'modelCatalogSource');
+      if (source) source.value = 'account';
+    });
   }
 
   function validate() {
@@ -316,7 +405,7 @@
         return { valid: false, message: 'Provider "' + key + '" needs a display name.' };
       var transportEl = _field(card, 'transport');
       var transport = String(transportEl && transportEl.value || 'http').trim() || 'http';
-      if (transport === 'codex-cli') continue;
+      if (transport === 'codex-cli' || transport === 'chatgpt-responses') continue;
       if (!endpoint)
         return { valid: false, message: 'Provider "' + name + '" needs an OpenAI-compatible Chat Completions endpoint.' };
     }
@@ -346,7 +435,9 @@
     getProviderOptions: getProviderOptions,
     providerIdForCard: providerIdForCard,
     slugifyProviderId: slugifyProviderId,
-    handleCodexStatus: handleCodexStatus
+    handleCodexStatus: handleCodexStatus,
+    handleChatGptPlanStatus: handleChatGptPlanStatus,
+    handleChatGptModelsUpdated: handleChatGptModelsUpdated
   };
 
   if (typeof document !== 'undefined') {

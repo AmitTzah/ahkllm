@@ -1699,7 +1699,7 @@ scenarios.push({
   id: 180,
   name: 'Sidebar thread list runs a per-thread active-path walk (N+1): one leaf lookup + one SELECT per ancestor for EVERY listed thread, so refresh latency scales with thread count x path depth',
   mode: null,
-  regression: true, // FIXED: Thread_List batches the badge-walk data (301 threads -> 2 queries)
+  regression: true, // FIXED: Thread_List batches badge-walk data; 40+ threads still expose the old N+1 shape
   settings: {},
   noApp: true,
   async body() {
@@ -1707,7 +1707,7 @@ scenarios.push({
     const outFile = path.join(os.tmpdir(), 'llm-bughunt-db-' + process.pid + '.txt');
     try { fs.unlinkSync(outFile); } catch {}
     const probe = path.join(__dirname, '..', 'probe-bughunt-db.ahk');
-    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'thread-list-nplus1'], { timeout: 30000, windowsHide: true, encoding: 'utf8' });
+    const res = spawnSync(launcher.AHK, ['/ErrorStdOut', probe, outFile, 'thread-list-nplus1'], { timeout: 90000, windowsHide: true, encoding: 'utf8' });
     if (res.error) throw new Error('thread-list probe spawn failed/timed out: ' + res.error.message);
     if (res.stderr) process.stderr.write('[probe stderr] ' + res.stderr);
     const text = fs.readFileSync(outFile, 'utf-8');
@@ -1724,7 +1724,7 @@ scenarios.push({
       throw new Error('thread list still issues unbounded queries (fix incomplete): threads=' + threads + ' queries=' + queries);
     if (listedDangling !== 1 || listedTrashed !== 0)
       throw new Error('dangling/trashed handling regressed: listedDangling=' + listedDangling + ' listedTrashed=' + listedTrashed);
-    return '301 listed threads -> ' + queries + ' SQL queries per Thread_List() refresh (bounded; the badge walk now runs against one batched message query in memory). The dangling active_leaf_id thread is still listed (' + listedDangling + ', badge walk breaks cleanly - no throw/hang) and the trashed thread stays excluded (' + listedTrashed + ' listed)';
+    return threads + ' listed threads -> ' + queries + ' SQL queries per Thread_List() refresh (bounded; the badge walk now runs against one batched message query in memory). The sample is still large enough that the old ~2-per-thread N+1 implementation would exceed the hard 20-query ceiling. The dangling active_leaf_id thread is still listed (' + listedDangling + ', badge walk breaks cleanly - no throw/hang) and the trashed thread stays excluded (' + listedTrashed + ' listed)';
   }
 });
 

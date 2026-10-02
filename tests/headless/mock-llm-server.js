@@ -318,6 +318,71 @@ function tavilySearchBody(parsed, opts) {
   };
 }
 
+
+function makeChatGptPlanResponsesHandler(parsed, opts) {
+  return (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    const delay = (ms) => responseDelay(res, ms);
+    const step = opts.planDelay || 80;
+    const ev = (type, data) => res.write('event: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n');
+    const input = Array.isArray(parsed.input) ? parsed.input : [];
+    const inputText = JSON.stringify(input);
+    const hasToolOutput = input.some((x) => x && x.type === 'function_call_output');
+    const hasImageTool = Array.isArray(parsed.tools) && parsed.tools.some((t) => t && t.type === 'namespace' && t.name === 'ahkllm');
+    const hasWeb = Array.isArray(parsed.tools) && parsed.tools.some((t) => t && t.type === 'web_search');
+    const reasoning = opts.planReasoning || 'Comparing the requested information';
+    let text = opts.planText || 'CHATGPT PLAN ANSWER';
+    for (const entry of opts.planTextMap || []) {
+      if (inputText.includes(entry.match)) { text = entry.text; break; }
+    }
+    (async () => {
+      ev('response.created', { type: 'response.created', response: { id: 'resp-plan', status: 'in_progress', model: parsed.model || 'gpt-5.6-luna' } });
+      await delay(step);
+      if (opts.planTruncateAfterCreated) { res.end(); return; }
+      if (opts.planFailUsage) {
+        ev('response.failed', { type: 'response.failed', response: { id: 'resp-plan', status: 'failed', error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'Usage limit reached.' } } });
+        res.end(); return;
+      }
+      if (reasoning) {
+        ev('response.reasoning_summary_text.delta', { type: 'response.reasoning_summary_text.delta', delta: reasoning });
+        await delay(opts.planAfterReasoningDelay || step);
+      }
+      if (hasImageTool && opts.planImageTool && !hasToolOutput) {
+        const call = { type: 'function_call', id: 'fc-image-1', call_id: 'call-image-1', namespace: 'ahkllm', name: 'generate_image', arguments: JSON.stringify({ prompt: opts.planImagePrompt || 'Generate a tiny test image.' }) };
+        const output = [{ type: 'reasoning', id: 'r-plan', summary: [{ type: 'summary_text', text: reasoning }] }, call];
+        ev('response.function_call_arguments.done', {type:'response.function_call_arguments.done',item_id:call.id,output_index:1,arguments:call.arguments});
+        output.forEach((item,index)=>ev('response.output_item.done',{type:'response.output_item.done',item,output_index:index}));
+        ev('response.completed', { type: 'response.completed', response: { id: 'resp-plan', status: 'completed', model: parsed.model || 'gpt-5.6-luna', output: opts.planEmptyTerminalOutput ? [] : output, usage: { input_tokens: 20, output_tokens: 8, total_tokens: 28, input_tokens_details: { cached_tokens: 4 }, output_tokens_details: { reasoning_tokens: 3 } } } });
+        res.end(); return;
+      }
+      if (hasWeb) {
+        ev('response.web_search_call.in_progress', { type: 'response.web_search_call.in_progress', item_id: 'ws1', output_index: 1 });
+        await delay(step);
+        ev('response.web_search_call.searching', { type: 'response.web_search_call.searching', item_id: 'ws1', output_index: 1 });
+        await delay(step);
+        ev('response.web_search_call.completed', { type: 'response.web_search_call.completed', item_id: 'ws1', output_index: 1 });
+        await delay(step);
+      }
+      if (hasToolOutput) text = opts.planAfterToolText || 'IMAGE TOOL COMPLETE';
+      ev('response.output_text.delta', { type: 'response.output_text.delta', delta: text });
+      await delay(step);
+      const annotations = hasWeb ? [{ type: 'url_citation', start_index: 0, end_index: Math.min(text.length, 12), url: 'https://example.test/source', title: 'Mock source' }] : [];
+      const output = [{ type: 'reasoning', id: 'r-plan', summary: [{ type: 'summary_text', text: reasoning }] }, { type: 'message', id: 'm-plan', status: 'completed', role: 'assistant', content: [{ type: 'output_text', text, annotations }] }];
+      ev('response.completed', { type: 'response.completed', response: { id: 'resp-plan', status: 'completed', model: parsed.model || 'gpt-5.6-luna', output, usage: { input_tokens: 20, output_tokens: 10, total_tokens: 30, input_tokens_details: { cached_tokens: 4 }, output_tokens_details: { reasoning_tokens: 3 } } } });
+      res.end();
+    })().catch((err) => {
+      const message = String(err && err.stack || err);
+      process.stderr.write('[mock chatgpt-plan] ' + message + '\n');
+      if (!res.writableEnded && !res.destroyed)
+        res.end(JSON.stringify({ error: { message: String(err && err.message || err) } }));
+    });
+  };
+}
+
 // startMockServer(mode, logFile, opts)
 //   opts.chatText  - content used by the JSON chat response.
 //   opts.fimText   - choices[0].text used when the JSON body carries a
@@ -334,19 +399,31 @@ function tavilySearchBody(parsed, opts) {
 function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
   const toolRoundCounters = new Map();
   let requestCount = 0;
+  const pendingConcurrentResponses = [];
+  let concurrentResponsesReleased = false;
+  let catalogRequestCount = 0;
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       let parsed = {};
       try { parsed = JSON.parse(body); } catch {}
-      requestCount++;
       if (logFile) {
         try {
           const modeUsed = parsed.stream ? 'sse' : (parsed.max_tokens === 50 ? 'title' : 'json');
           fs.appendFileSync(logFile, JSON.stringify({ modeUsed, url: req.url, authorization: req.headers.authorization || '', body: parsed }) + '\n');
         } catch {}
       }
+      if (req.method === 'GET' && req.url === '/v1/models' && opts.chatGptPlan) {
+        const catalogs = opts.planModelCatalogs || [{ models: [
+          { slug: 'gpt-5.6-luna', display_name: 'Luna', visibility: 'list' }
+        ] }];
+        const catalog = catalogs[Math.min(catalogRequestCount++, catalogs.length - 1)];
+        res.writeHead(catalog.status || 200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(catalog.body || catalog));
+        return;
+      }
+      requestCount++;
       if (req.url.includes('/chat/completions') && opts.toolRounds) {
         const key = JSON.stringify((parsed.messages || [])
           .filter((m) => m && m.role === 'user')
@@ -381,6 +458,13 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
       // Both are answered from the real captured shapes — no real API calls
       // happen in the headless suite.
       if (req.url.includes('/responses')) {
+        if (opts.chatGptPlan) {
+          const planOpts = Object.assign({}, opts);
+          if (opts.planFailFirstRequests && requestCount <= opts.planFailFirstRequests)
+            planOpts.planFailUsage = true;
+          makeChatGptPlanResponsesHandler(parsed, planOpts)(req, res);
+          return;
+        }
         // Real DeepSeek strictness (captured 2026-08-16 18:48): the API
         // REJECTS "stream":1 (jsongo serializes AHK true as 1) with a 400 -
         // "invalid type: integer `1`, expected a boolean". Enforcing the
@@ -532,6 +616,16 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       if (mode === 'sse-slow') {
+        // Concurrency scenarios must overlap requests by construction, rather
+        // than race a fixed response delay against WebView startup/navigation.
+        if (opts.holdUntilTwoRequests && !concurrentResponsesReleased) {
+          pendingConcurrentResponses.push({req,res,parsed});
+          if (pendingConcurrentResponses.length < 2) return;
+          concurrentResponsesReleased = true;
+          for (const pending of pendingConcurrentResponses.splice(0))
+            makeSseHandler({reasoning:true,content:'yes',chunkDelay:opts.chunkDelay || 700,responseModel:opts.echoModel ? pending.parsed.model : ''})(pending.req,pending.res);
+          return;
+        }
         makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: opts.chunkDelay || 700, responseModel: opts.echoModel ? parsed.model : '' })(req, res);
         return;
       }
