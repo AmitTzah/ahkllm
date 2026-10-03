@@ -23,6 +23,7 @@ const scenario = {
     AHKLLM_E2E_CHATGPT_MODELS_ENDPOINT: endpoint.replace('/v1/chat/completions', '/v1/models')
   }),
   async body({cdp, dataDir, dbPath, mockLog, port, endpoint}) {
+    fs.mkdirSync(path.join(launcher.REPO_ROOT, '.tools'), {recursive: true});
     await showChat();
     const profile = {id: 'example', name: 'Example application', command: [launcher.AHK, path.join(launcher.REPO_ROOT, 'tests/fixtures/external-application.ahk')], timeout_seconds: 5};
     fs.writeFileSync(path.join(dataDir, 'applications.json'), JSON.stringify({example: profile}));
