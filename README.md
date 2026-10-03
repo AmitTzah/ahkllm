@@ -99,38 +99,6 @@ Other chat features currently include:
 
 There is currently no dark mode. I know. I'll add one if people actually want it.
 
-## API Logs
-
-API Logs use readable previews: long strings show their beginning and end with a
-marked middle omission. **Show full payload** restores the retained request/response;
-**Copy** retrieves both full bodies and the destination. Large bodies are retained
-in files beside the temporary log index and removed when their entries expire or
-logs are cleared. Locked-chat redaction still applies. Provider request logs include
-the actual serialized payload and endpoint, with separate entries for tool rounds.
-ChatGPT-plan Response tabs show the completed response object, including the full
-`output_text`, output items, and final provider metadata such as ID, status, model,
-and usage. Token-delta events are omitted. Interrupted streams are marked partial.
-
-## Connect applications to AhkLLM
-
-Applications can open persistent chats with prepared context and provide their own tools,
-user action buttons, and branch checkpoints. AhkLLM remains a generic chat interface:
-application-specific permissions and workflows belong to the connected program.
-Open **Settings -> Applications -> How it works** for a plain-language guide to task
-instructions, context, tool calls, model selection, saved chats, and manual setup.
-The empty list offers a **+** button; **Add application** appears once apps are connected.
-Manage connections here: add or edit in a compact dialog,
-browse for a program, and disconnect while keeping chats. Hover over a field's **?**
-button or focus it with Tab for an explanation. Optional launch settings are under
-**Advanced connection options**. Connections are registered once, run as on-demand
-subprocesses, and are remembered when
-chats reopen or fork. No extra always-running service is required.
-
-See [Connect applications to AhkLLM](docs/external-applications.md) for the public launcher,
-JSON-RPC protocol, lifecycle, database additions, and a standalone Connected Notes example.
-Application tools work with ChatGPT-plan Responses and OpenAI-compatible HTTP models
-that support function calling. Existing chats continue working without a connection.
-
 ## Installation
 
 The normal download is the latest [`AhkLLM.zip`](https://github.com/AmitTzah/ahkllm/releases/latest/download/AhkLLM.zip). It is a portable ZIP rather than an installer.
@@ -194,6 +162,20 @@ Open **Settings -> Providers -> ChatGPT plan** and click **Continue with ChatGPT
 When a ChatGPT-plan model is active, the model card shows **Using ChatGPT plan** and links to ChatGPT usage settings. AhkLLM also provides the same usage link from provider settings and the usage dashboard, and surfaces it directly when the account's plan usage limit is reached.
 
 The right-rail **Image Generation** toggle uses a separate `ahkllm.generate_image` client tool. Only that tool invokes the optional local Codex CLI worker, with unrelated agent/local-execution capabilities disabled. See [docs/codex-cli.md](docs/codex-cli.md) for the transport, account, security, context, image-worker, and troubleshooting details.
+
+### API Logs
+
+API Logs lets you see exactly what was sent to a model and what came back. If a request fails, this is a good place to look. Open **Quick Access -> API Logs** and click a request to inspect it.
+
+Long messages are shortened in the preview so they're easier to read. **Show full payload** reveals the complete text, and **Copy** copies the full request, response, and destination. ChatGPT-plan logs show the completed response instead of hundreds of little streaming updates.
+
+### Connect applications to AhkLLM
+
+Other apps can bring their tasks into AhkLLM, along with the context and tools the model needs to work on them. You get the same saved chats, model picker, message editing, and forks you're already used to.
+
+Start a task in an app that supports this connection and choose to open it in AhkLLM. Confirm the connection the first time, pick a model that supports tools, and click **Run prepared request**. The connection is remembered, so you can close the chat and pick it up later. There's no separate background service to set up.
+
+Open **Settings -> Applications** to manage connections or add one using the details an app provides. **How it works** explains the feature, and the **?** buttons explain each setting. If you're adding support to your own app, see the [developer guide and example](docs/external-applications.md).
 
 ## Try AhkLLM for free
 
