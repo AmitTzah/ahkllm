@@ -30,6 +30,16 @@ function applicationUi() {
   return {context, elements, requests};
 }
 
+test('empty prepared chats invite a first message without a Run button', () => {
+  const {context, elements} = applicationUi();
+  context.showApplicationState({connected:true,threadId:'thread-1',leafId:'',label:'Prepared',awaitingFirstMessage:true,actions:[]});
+  const panel=elements.get('applicationPanel');
+  assert.equal(panel.open,true);
+  assert.equal(findControl(panel,'Run prepared request'),undefined);
+  assert.ok(findControl(panel,'Disconnect application'));
+  assert.ok(panel.children[1].children.some(node=>node.textContent.includes('Write your first message')));
+});
+
 test('application actions carry the displayed thread and branch ownership', () => {
   const {context, elements, requests} = applicationUi();
   context.showApplicationState({connected: true, threadId: 'thread-1', leafId: 'leaf-1', label: 'Example', phase: 'discussion', actions: [{id: 'approve', label: 'Approve', confirm: true}]});

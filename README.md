@@ -173,7 +173,7 @@ Long messages are shortened in the preview so they're easier to read. **Show ful
 
 Other apps can bring their tasks into AhkLLM, along with the context and tools the model needs to work on them. You get the same saved chats, model picker, message editing, and forks you're already used to.
 
-Start a task in an app that supports this connection and choose to open it in AhkLLM. Confirm the connection the first time, pick a model that supports tools, and click **Run prepared request**. The connection is remembered, so you can close the chat and pick it up later. There's no separate background service to set up.
+Start a task in an app that supports this connection and choose to open it in AhkLLM. Confirm the connection the first time and pick a model that supports tools. If the app opens an empty prepared chat, write your first message and press **Send**; otherwise click **Run prepared request**. The connection is remembered, so you can close the chat and pick it up later. There's no separate background service to set up.
 
 Open **Settings -> Applications** to manage connections or add one using the details an app provides. **How it works** explains the feature, and the **?** buttons explain each setting. If you're adding support to your own app, see the [developer guide and example](docs/external-applications.md).
 

@@ -99,6 +99,8 @@ handleChatSend(params, *) {
     if latencyTraceId != ""
         debugLog("[LATENCY][" latencyTraceId "] +" (A_TickCount - requestParams["_latencyTraceStartTick"]) "ms ahk.request-dispatch.begin", "Latency")
     _BuildAndFireRequest()
+    if ApplicationRepo.Session(sendThreadId)
+        postApplicationState()
     if latencyTraceId != "" {
         debugLog("[LATENCY][" latencyTraceId "] +" (A_TickCount - requestParams["_latencyTraceStartTick"]) "ms ahk.request-dispatch.returned", "Latency")
         ; The stream/non-stream scope captured these fields synchronously.

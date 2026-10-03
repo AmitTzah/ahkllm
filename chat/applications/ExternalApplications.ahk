@@ -90,10 +90,13 @@ class ExternalApplications {
             threadId := ChatDB.Thread_Create(package.Get("title", "Application session"))
             this.InitializeNewThreadSettings(threadId)
             ChatDB.db.Query("UPDATE chat_threads SET system_override=?, system_override_set=1 WHERE id=?;", package.Get("instructions", ""), threadId)
-            ChatDB.db.Query("INSERT INTO application_sessions(thread_id,application_id,initial_state,request_id) VALUES(?,?,?,?);", threadId, applicationId, jsongo.Stringify(package["state"]), package["request_id"])
-            messageId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: package.Get("message", "Begin task")})
-            replay := [Map("role", "user", "content", ApplicationWire.InputParts(package.Get("initial_input", package.Get("message", "Begin task"))))]
-            ApplicationRepo.SaveNode(messageId, package["state"], replay)
+            awaiting := package.Get("await_first_message", false)
+            ChatDB.db.Query("INSERT INTO application_sessions(thread_id,application_id,initial_state,request_id,initial_input) VALUES(?,?,?,?,?);", threadId, applicationId, jsongo.Stringify(package["state"]), package["request_id"], awaiting ? package.Get("initial_input", "") : "")
+            if !awaiting {
+                messageId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: package.Get("message", "Begin task")})
+                replay := [Map("role", "user", "content", ApplicationWire.InputParts(package.Get("initial_input", package.Get("message", "Begin task"))))]
+                ApplicationRepo.SaveNode(messageId, package["state"], replay)
+            }
             ChatDB.CommitTransaction()
             ChatDB._MarkPersistentDataChanged()
             return threadId

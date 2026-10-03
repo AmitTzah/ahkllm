@@ -29,6 +29,7 @@
       return;
     }
     if (state.complete) body.appendChild(element('p', '', 'This task is finished. Your chat remains readable.'));
+    if (state.awaitingFirstMessage) body.appendChild(element('p', '', 'Your context and tools are ready. Write your first message below, choose a model, and press Send. You can close this chat and return later.'));
     if (state.error) body.appendChild(element('p', '', state.error));
     if (state.notice) body.appendChild(element('p', '', state.notice));
     var actions = (state.actions || []).slice();
@@ -62,11 +63,11 @@
     if (!state || !state.connected) return;
     var summary = element('summary', 'chat-application-summary');
     summary.appendChild(element('span', 'chat-application-title', state.label));
-    var status = state.running ? 'Working…' : state.complete ? 'Finished' : state.error || state.blocked ? 'Needs attention' : state.pending ? 'Ready to start' : 'Active';
+    var status = state.running ? 'Working…' : state.complete ? 'Finished' : state.error || state.blocked ? 'Needs attention' : state.awaitingFirstMessage ? 'Ready for your message' : state.pending ? 'Ready to start' : 'Active';
     summary.appendChild(element('span', 'chat-application-status', status));
     summary.onclick = function () { expandedByThread[state.threadId] = !panel.open; };
     panel.appendChild(summary);
-    panel.open = state.blocked ? true : Object.prototype.hasOwnProperty.call(expandedByThread, state.threadId) ? expandedByThread[state.threadId] : !!(state.pending || state.error);
+    panel.open = state.blocked ? true : Object.prototype.hasOwnProperty.call(expandedByThread, state.threadId) ? expandedByThread[state.threadId] : !!(state.pending || state.awaitingFirstMessage || state.error);
     var body = element('div', 'chat-application-body');
     renderActions(body, state);
     panel.appendChild(body);

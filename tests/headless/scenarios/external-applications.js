@@ -28,7 +28,7 @@ const scenario = {
     const profile = {id: 'example', name: 'Example application', command: [launcher.AHK, path.join(launcher.REPO_ROOT, 'tests/fixtures/external-application.ahk')], timeout_seconds: 5};
     fs.writeFileSync(path.join(dataDir, 'applications.json'), JSON.stringify({example: profile}));
     const packagePath = path.join(dataDir, 'application-package.json');
-    fs.writeFileSync(packagePath, JSON.stringify({protocol: 'ahkllm.external-applications', version: 1, request_id: 'example-366', application_id: 'example', title: 'Connected example (author title)', instructions: 'Use the supplied application tools.', message: 'Visible prepared task', initial_input: 'EXACT PRELOADED APPLICATION CONTEXT\n'+ 'canonical text '.repeat(12000), state: {checkpoint: 0}}));
+    fs.writeFileSync(packagePath, JSON.stringify({protocol: 'ahkllm.external-applications', version: 1, request_id: 'example-366', application_id: 'example', title: 'Connected example (author title)', instructions: 'Use the supplied application tools.', message: 'Visible prepared task', initial_input: 'EXACT PRELOADED APPLICATION CONTEXT\n'+ 'canonical text '.repeat(12000), state: {checkpoint: 0}, await_first_message: !!this.composeFirst}));
     const info = runProbe('chat-info');
     const result = spawnSync(launcher.AHK, ['/ErrorStdOut', path.join(launcher.REPO_ROOT, 'app/ExternalSessionLauncher.ahk'), '--open', packagePath, '--target-window', String(info.hwnd)], {
       encoding: 'utf8', timeout: 35000, windowsHide: true,
@@ -45,11 +45,27 @@ const scenario = {
     await cdp.eval('Object.assign(window._currentSettings, {model:' + JSON.stringify(model) + ', assistantName:"", systemMessage:"Use the supplied application tools.", systemOverrideSet:true, reasoning:"medium", reasoningOverrideSet:true, temperature:"", webSearch:false, imageGeneration:false}); window._sendAllSettings(true); true');
     await cdp.waitFor('window._currentSettings?.model === '+JSON.stringify(model), 5000, 100, 'selected model synchronized');
     try {
-      await cdp.waitFor('document.getElementById("applicationPanel") && document.getElementById("applicationPanel").textContent.includes("Run prepared request")', 15000, 100, 'application actions');
+      await cdp.waitFor('document.getElementById("applicationPanel") && (window._applicationState?.awaitingFirstMessage || document.getElementById("applicationPanel").textContent.includes("Run prepared request"))', 15000, 100, 'application actions');
     } catch (error) {
       throw new Error(error.message + ': ' + await cdp.eval('JSON.stringify({state:window._applicationState,panel:document.getElementById("applicationPanel")?.textContent})'));
     }
-    await cdp.eval('Array.from(document.querySelectorAll("#applicationPanel button")).find(b => b.textContent === "Run prepared request").click(); true');
+    if (this.composeFirst) {
+      assert.equal(seed.query(dbPath,"SELECT id FROM messages WHERE thread_id='"+row.thread_id+"'").length,0,'Prepared chat fabricated a message');
+      const before=fs.existsSync(mockLog)?fs.readFileSync(mockLog,'utf8'):'';
+      assert.ok(!before.includes(this.http?'/chat/completions':'/responses'),'Prepared chat started a model request before Send');
+      runProbe('kill-chat');
+      await showChat();
+      await cdp.eval('window.loadThread('+JSON.stringify(row.thread_id)+'); true');
+      await cdp.waitFor('window._applicationState?.awaitingFirstMessage && !Array.from(document.querySelectorAll("#applicationPanel button")).some(b=>b.textContent==="Run prepared request")',10000,100,'empty prepared chat resumes');
+      const message='Discuss the character motivation.\n\nThen consider the next chapter. \u03a9';
+      await sendChatMessage(cdp,message);
+      const savedDeadline=Date.now()+10000;
+      while (!seed.query(dbPath,"SELECT id FROM messages WHERE thread_id='"+row.thread_id+"' AND role='user'").length && Date.now()<savedDeadline) await sleep(100);
+      const saved=seed.query(dbPath,"SELECT content FROM messages WHERE thread_id='"+row.thread_id+"' AND role='user'")[0];
+      assert.equal(saved?.content,message,'First visible message differs from the author paragraphs');
+    } else {
+      await cdp.eval('Array.from(document.querySelectorAll("#applicationPanel button")).find(b => b.textContent === "Run prepared request").click(); true');
+    }
     try { await cdp.waitFor('!!window._applicationState?.running', 5000, 100, 'connected turn running'); }
     catch(error) { throw new Error(error.message+': '+await cdp.eval('JSON.stringify({state:window._applicationState,panel:document.getElementById("applicationPanel")?.textContent,chat:document.getElementById("chat-messages")?.innerText})')); }
     await cdp.eval('window.loadThread('+JSON.stringify(row.thread_id)+'); true');
@@ -160,10 +176,13 @@ const scenario = {
     return 'Public launcher, generic UTF-8 tools, complete initial context, exact tool replay, and committed checkpoint verified';
   }
 };
-module.exports = [scenario, Object.assign({}, scenario, {
+const httpScenario = Object.assign({}, scenario, {
   id: 367, http: true,
   name: 'Generic application tools and durable replay work with an OpenAI-compatible HTTP provider',
   mode: 'sse-tool-call', mockOpts: {applicationTool:true, chatText:'APPLICATION ANSWER',chunkDelay:400},
   settings:{threadTitles:{enabled:true},newChatStartsWith:'asst:app-default',assistants:[{id:'app-default',name:'Default application assistant',baseModel:'openai/gpt-5-mini',systemMessage:'Assistant prompt must not replace app instructions.',reasoning:'medium',temperature:'',isDefault:true}]},
   launchEnv: null
-})];
+});
+module.exports = [scenario, httpScenario,
+  Object.assign({},scenario,{id:369,composeFirst:true,name:'Prepared application chat waits for a multiline first message and resumes with full Responses context'}),
+  Object.assign({},httpScenario,{id:370,composeFirst:true,name:'Prepared application chat waits for its first message and preserves context with HTTP tools'})];

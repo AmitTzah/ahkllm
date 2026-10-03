@@ -10,6 +10,12 @@ class ApplicationRepo {
                 hasReplayBaseColumn := true
         if !hasReplayBaseColumn
             ChatDB.db.Exec("ALTER TABLE application_nodes ADD COLUMN base_replay_json TEXT NOT NULL DEFAULT '[]';")
+        hasInitialInputColumn := false
+        for column in ChatDB.db.Query("PRAGMA table_info(application_sessions);").rows
+            if column.name = "initial_input"
+                hasInitialInputColumn := true
+        if !hasInitialInputColumn
+            ChatDB.db.Exec("ALTER TABLE application_sessions ADD COLUMN initial_input TEXT NOT NULL DEFAULT '';")
         ChatDB.db.Exec("CREATE TABLE IF NOT EXISTS application_release_queue (application_id TEXT NOT NULL, state_json TEXT NOT NULL, PRIMARY KEY(application_id,state_json));")
     }
 
@@ -51,6 +57,14 @@ class ApplicationRepo {
                 continue
             rows := ChatDB.db.Query("SELECT * FROM application_nodes WHERE message_id=?;", msg.id)
             saved := rows.count ? jsongo.Parse(rows[1, "replay_json"]) : []
+            if !rows.count && msg.role = "user" && !msg.parent_id {
+                session := this.Session(msg.thread_id)
+                if session && session.initial_input != "" {
+                    saved := [Map("role", "user", "content", ApplicationWire.InputParts(session.initial_input "`n`nUSER MESSAGE:`n" msg.content))]
+                    this.SaveNode(msg.id, jsongo.Parse(session.initial_state), saved)
+                    rows := ChatDB.db.Query("SELECT * FROM application_nodes WHERE message_id=?;", msg.id)
+                }
+            }
             if msg.role = "user" && processed.Has(msg.id) {
                 base := rows.count ? jsongo.Parse(rows[1, "base_replay_json"]) : []
                 if !base.Length
@@ -86,7 +100,7 @@ class ApplicationRepo {
         session := this.Session(sourceThread)
         if !session
             return
-        ChatDB.db.Query("INSERT INTO application_sessions(thread_id,application_id,initial_state,request_id) VALUES(?,?,?,?);", targetThread, session.application_id, session.initial_state, ChatDB._UUID())
+        ChatDB.db.Query("INSERT INTO application_sessions(thread_id,application_id,initial_state,request_id,initial_input) VALUES(?,?,?,?,?);", targetThread, session.application_id, session.initial_state, ChatDB._UUID(), session.initial_input)
         for oldId, newId in idMap {
             rows := ChatDB.db.Query("SELECT * FROM application_nodes WHERE message_id=?;", oldId)
             if rows.count

@@ -61,6 +61,34 @@ class ExternalApplicationsTest {
         }
     }
 
+    AwaitFirstMessage_PersistsEmptyChatAndAttachesContextOnce() {
+        this._setup()
+        try {
+            package := this._package()
+            package["await_first_message"] := true
+            threadId := ExternalApplications.Import(package)
+            if ChatDB.Msg_GetActivePath(threadId).Length
+                throw Error("Prepared chat fabricated a user message")
+            ChatDB.Close()
+            ChatDB.Open(this.directory "\chat.db")
+            if ExternalApplications.Import(package) != threadId || ApplicationRepo.Session(threadId).initial_input != package["initial_input"]
+                throw Error("Empty prepared chat did not survive reopening")
+            text := "First paragraph.`n`nSecond paragraph."
+            first := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: text})
+            path := ChatDB.Msg_GetActivePath(threadId)
+            replay := ApplicationRepo.Replay(path)
+            if path.Length != 1 || path[1].content != text || !InStr(replay[1]["content"][1]["text"], package["initial_input"])
+                throw Error("First request lost author paragraphs or prepared context")
+            ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Follow-up", parent_id: first})
+            replay := ApplicationRepo.Replay(ChatDB.Msg_GetActivePath(threadId))
+            if replay.Length != 2 || InStr(replay[2]["content"][1]["text"], package["initial_input"])
+                throw Error("Prepared context was repeated on a follow-up")
+            fork := ChatDB.Msg_ForkThread(threadId, first)
+            if ApplicationRepo.Session(fork).initial_input != package["initial_input"]
+                throw Error("Fork lost prepared session context")
+        } finally this._teardown()
+    }
+
     Import_UsesConfiguredAssistantAndKeepsTaskInstructions() {
         global newChatStartsWith, assistants
         previous := IsSet(newChatStartsWith) ? newChatStartsWith : ""

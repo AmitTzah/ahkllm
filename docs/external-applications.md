@@ -68,6 +68,13 @@ A session package is:
 ```
 
 `message` is displayed in the chat; `initial_input` is the full initial model input.
+To let the user compose the first message in AhkLLM, set `await_first_message: true`.
+The chat opens with no messages and does not run a request. Supply the prepared
+context in `initial_input`; AhkLLM saves it with the connection, then combines it
+with the user's first message in one logical user input when they press Send.
+The visible message contains only what the user typed. Empty prepared chats survive
+reopening, and the complete combined input is retained through retries and forks.
+Omitting the flag keeps the existing prepared-message and Run prepared request flow.
 The same `request_id` reopens the same retained chat instead of creating duplicates.
 New sessions use new IDs. Context is losslessly segmented at UTF-8 text boundaries.
 Connected chats preserve the supplied title even when automatic title generation is
@@ -160,6 +167,9 @@ application-owned external files need that application's own backup policy.
 
 The fixed tables are `application_sessions`, `application_nodes`, and
 `application_release_queue`. Applications never create their own tables in AhkLLM.
+`application_sessions.initial_input` stores context for chats awaiting their first
+message. Existing profiles receive this generic column automatically with an empty
+default; their saved messages and replay are unchanged.
 
 ## Example and tests
 

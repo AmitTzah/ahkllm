@@ -18,7 +18,7 @@ postApplicationState(*) {
     try {
         description := ExternalApplications.Call(activeThreadId, "session.describe", state)
         path := ChatDB.Msg_GetActivePath(activeThreadId)
-        postWebMessage("applicationState", {connected: true, threadId: activeThreadId, leafId: path.Length ? path[path.Length].id : "", label: description.Get("label", "Application"), phase: description.Get("phase", ""), actions: description.Get("actions", []), pending: path.Length && path[path.Length].role = "user" && description.Get("can_run", true), complete: description.Get("complete", false), blocked: !description.Get("can_run", true) && !description.Get("complete", false), notice: description.Get("notice", "")})
+        postWebMessage("applicationState", {connected: true, threadId: activeThreadId, leafId: path.Length ? path[path.Length].id : "", label: description.Get("label", "Application"), phase: description.Get("phase", ""), actions: description.Get("actions", []), awaitingFirstMessage: !path.Length, pending: path.Length && path[path.Length].role = "user" && description.Get("can_run", true), complete: description.Get("complete", false), blocked: !description.Get("can_run", true) && !description.Get("complete", false), notice: description.Get("notice", "")})
     } catch Error as e {
         postWebMessage("applicationState", {connected: true, threadId: activeThreadId, label: "Application unavailable", error: e.Message, actions: []})
     }
@@ -85,6 +85,6 @@ handleApplicationDisconnect(parsed) {
 _RequireApplicationActionOrigin(parsed) {
     global activeThreadId
     path := ChatDB.Msg_GetActivePath(activeThreadId)
-    if parsed.Get("threadId", "") != activeThreadId || !path.Length || parsed.Get("leafId", "") != path[path.Length].id
+    if parsed.Get("threadId", "") != activeThreadId || parsed.Get("leafId", "") != (path.Length ? path[path.Length].id : "")
         throw Error("The selected chat or branch changed. Use its current application actions.")
 }
