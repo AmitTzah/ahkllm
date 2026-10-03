@@ -32,6 +32,8 @@ const MAX_AUTO_WORKERS = 8;
 
 const scenarios = [].concat(
   require('./scenarios/chat-tree'),
+  require('./scenarios/external-applications'),
+  require('./scenarios/applications-settings'),
   require('./scenarios/commands'),
   require('./scenarios/settings'),
   require('./scenarios/usage-tokens'),

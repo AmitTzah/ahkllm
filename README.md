@@ -99,6 +99,38 @@ Other chat features currently include:
 
 There is currently no dark mode. I know. I'll add one if people actually want it.
 
+## API Logs
+
+API Logs use readable previews: long strings show their beginning and end with a
+marked middle omission. **Show full payload** restores the retained request/response;
+**Copy** retrieves both full bodies and the destination. Large bodies are retained
+in files beside the temporary log index and removed when their entries expire or
+logs are cleared. Locked-chat redaction still applies. Provider request logs include
+the actual serialized payload and endpoint, with separate entries for tool rounds.
+ChatGPT-plan Response tabs show the completed response object, including the full
+`output_text`, output items, and final provider metadata such as ID, status, model,
+and usage. Token-delta events are omitted. Interrupted streams are marked partial.
+
+## Connect applications to AhkLLM
+
+Applications can open persistent chats with prepared context and provide their own tools,
+user action buttons, and branch checkpoints. AhkLLM remains a generic chat interface:
+application-specific permissions and workflows belong to the connected program.
+Open **Settings -> Applications -> How it works** for a plain-language guide to task
+instructions, context, tool calls, model selection, saved chats, and manual setup.
+The empty list offers a **+** button; **Add application** appears once apps are connected.
+Manage connections here: add or edit in a compact dialog,
+browse for a program, and disconnect while keeping chats. Hover over a field's **?**
+button or focus it with Tab for an explanation. Optional launch settings are under
+**Advanced connection options**. Connections are registered once, run as on-demand
+subprocesses, and are remembered when
+chats reopen or fork. No extra always-running service is required.
+
+See [Connect applications to AhkLLM](docs/external-applications.md) for the public launcher,
+JSON-RPC protocol, lifecycle, database additions, and a standalone Connected Notes example.
+Application tools work with ChatGPT-plan Responses and OpenAI-compatible HTTP models
+that support function calling. Existing chats continue working without a connection.
+
 ## Installation
 
 The normal download is the latest [`AhkLLM.zip`](https://github.com/AmitTzah/ahkllm/releases/latest/download/AhkLLM.zip). It is a portable ZIP rather than an installer.

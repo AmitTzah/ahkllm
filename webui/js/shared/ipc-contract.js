@@ -24,6 +24,15 @@
   // data: type hint for scalar payloads ('string'|'boolean'|'array'|'object'|'any')
   // fields: allowed object keys; required: keys that must be present.
   var messages = {
+    'applicationConnections': { dir: 'ahk->web', fields: ['connections'], required: ['connections'] },
+    'applicationProgramSelected': { dir: 'ahk->web', fields: ['path'], required: ['path'] },
+    'requestApplicationConnections': { dir: 'web->ahk', data: 'object' },
+    'saveApplicationConnection': { dir: 'web->ahk', fields: ['profile'], required: ['profile'] },
+    'disconnectApplicationConnection': { dir: 'web->ahk', fields: ['id'], required: ['id'] },
+    'browseApplicationProgram': { dir: 'web->ahk', data: 'object' },
+    'applicationState': { dir: 'ahk->web', data: 'object' },
+    'applicationAction': { dir: 'web->ahk', fields: ['id','threadId','leafId'], required: ['id','threadId','leafId'] },
+    'applicationDisconnect': { dir: 'web->ahk', fields: ['id','threadId','leafId'], required: ['threadId','leafId'] },
     // ---------- AHK -> WebView ----------
     'initChatMode': { dir: 'ahk->web', fields: ['messages', 'threadId'], required: ['messages', 'threadId'] },
     'appendChatMessage': { dir: 'ahk->web', data: 'object' },

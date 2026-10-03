@@ -189,9 +189,15 @@ class MessageRepo {
             return
         parentId := parentTable[1, "parent_id"] ? parentTable[1, "parent_id"] : ""
         threadId := parentTable[1, "thread_id"]
+        if ApplicationRepo.Session(threadId) {
+            children := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=?;", msgId)
+            if children.count
+                throw Error("This message has application checkpoints after it. Fork/edit a branch or delete the whole chat instead.")
+        }
         ChatDB.BeginTransaction()
         try {
 
+        ApplicationRepo.QueueRelease(threadId, msgId)
         childrenTable := ChatDB.db.Query("SELECT id FROM messages WHERE parent_id=?;", msgId)
         for row in childrenTable.rows {
             if parentId

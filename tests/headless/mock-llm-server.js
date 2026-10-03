@@ -154,7 +154,8 @@ function makeToolCallSseHandler(parsed, opts) {
     const answerDelay = opts.chatDelay || 60;
     const toolCallDelay = opts.toolCallDelay || 60;
     const hasToolResult = (parsed.messages || []).some((m) => m && m.role === 'tool');
-    const wantsWebSearch = Array.isArray(parsed.tools) && parsed.tools.some((t) => t && t.function && t.function.name === 'web_search');
+    const toolName = opts.applicationTool ? 'echo_text' : 'web_search';
+    const wantsWebSearch = Array.isArray(parsed.tools) && parsed.tools.some((t) => t && t.function && t.function.name === toolName);
     const round = Number.isInteger(parsed.__mockToolRound) ? parsed.__mockToolRound : 0;
     const needsToolCall = wantsWebSearch && (opts.toolRounds ? round < opts.toolRounds : !hasToolResult);
     const usage = { prompt_tokens: 16, completion_tokens: 10, total_tokens: 26, prompt_tokens_details: { cached_tokens: 4 } };
@@ -164,9 +165,9 @@ function makeToolCallSseHandler(parsed, opts) {
         const callIndex = round + 1;
         const queries = opts.searchQueries || [];
         const searchQuery = queries[round] || opts.searchQuery || 'AutoHotkey webview2';
-        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_search_' + callIndex, type: 'function', function: { name: 'web_search', arguments: '' } }] } }] });
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_search_' + callIndex, type: 'function', function: { name: toolName, arguments: '' } }] } }] });
         await delay(toolCallDelay);
-        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ query: searchQuery }) } }] } }] });
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify(opts.applicationTool ? {text: 'APPLICATION TOOL RESULT'} : { query: searchQuery }) } }] } }] });
          await delay(toolCallDelay);
         sseChunk(res, { choices: [{ delta: {}, finish_reason: 'tool_calls' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
       } else {
@@ -347,9 +348,16 @@ function makeChatGptPlanResponsesHandler(parsed, opts) {
         ev('response.failed', { type: 'response.failed', response: { id: 'resp-plan', status: 'failed', error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'Usage limit reached.' } } });
         res.end(); return;
       }
-      if (reasoning) {
+        if (reasoning && !opts.planSkipReasoningDeltas) {
         ev('response.reasoning_summary_text.delta', { type: 'response.reasoning_summary_text.delta', delta: reasoning });
         await delay(opts.planAfterReasoningDelay || step);
+      }
+      if (opts.planApplicationTool && !hasToolOutput) {
+        const call = {type: 'function_call', id: 'fc-app-1', call_id: 'call-app-1', name: 'echo_text', arguments: JSON.stringify({text: 'APPLICATION TOOL RESULT'})};
+        const output = [call];
+        ev('response.output_item.done', {type: 'response.output_item.done', item: call, output_index: 0});
+        ev('response.completed', {type: 'response.completed', response: {id: 'resp-app-tool', status: 'completed', output, usage: {input_tokens: 20, output_tokens: 8, total_tokens: 28}}});
+        res.end(); return;
       }
       if (hasImageTool && opts.planImageTool && !hasToolOutput) {
         const call = { type: 'function_call', id: 'fc-image-1', call_id: 'call-image-1', namespace: 'ahkllm', name: 'generate_image', arguments: JSON.stringify({ prompt: opts.planImagePrompt || 'Generate a tiny test image.' }) };

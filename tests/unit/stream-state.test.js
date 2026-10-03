@@ -735,3 +735,21 @@ describe('stream provider attribution', () => {
     assert.strictEqual(ctx.chatMessages[0].provider, 'openrouter');
   });
 });
+
+
+describe('persistent public activity', () => {
+    it('retains tool activity instead of removing it as a transient indicator', () => {
+        const ctx = loadStreamModule();
+        let removed = false;
+        const summary = {innerHTML:''};
+        ctx.streamState.thinkingKind = 'activity';
+        ctx.streamState.thinkingPersistent = true;
+        ctx.streamState.thinkingBuffer = 'Using project_search. Finished project_search.';
+        ctx.streamState.activitySearchCount = 0;
+        ctx.streamState.thinkingDetails = {open:true,remove:()=>{removed=true;},querySelector:selector=>selector==='summary'?summary:null};
+        ctx._finalizeThinkingBlock();
+        assert.strictEqual(removed,false);
+        assert.ok(summary.innerHTML.includes('Thinking and tools'));
+        assert.ok(ctx.streamState.thinkingBuffer.includes('Finished project_search'));
+    });
+});

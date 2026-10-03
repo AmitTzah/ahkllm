@@ -114,9 +114,12 @@
         <tbody id="logBody"></tbody>
     </table>
 </div>
+<script src="js/api-log-preview.js"></script>
 <script>
 var logData = [];
 var expandedRow = null;
+var fullPayloads = {};
+var payloadPreviews = {};
 
 function reloadLogs() {
     window.chrome.webview.hostObjects.Logs.GetLogs().then(function(jsonStr) {
@@ -159,11 +162,13 @@ function renderTable() {
         html += '<td class="endpoint-cell" title="' + esc(entry.endpoint||'') + '">' + esc(entry.endpoint||'') + '</td>';
         html += '</tr>';
 
-        var reqBody = fj(entry.request);
+        var full = fullPayloads[entry.log_id || i];
+        var preview = payloadPreviews[entry.log_id || i];
+        var reqBody = full ? fj(full.request) : preview ? preview.request : entry.request_archive ? entry.request : ApiLogPreview.format(entry.request);
         var method = 'POST';
         var ep = entry.endpoint || '';
         var reqHtml = '<div class="request-header">' + esc(method + ' ' + ep) + '</div><pre>' + esc(reqBody) + '</pre>';
-        var resHtml = '<pre>' + esc(fj(entry.response)) + '</pre>';
+        var resHtml = '<pre>' + esc(full ? fj(full.response) : preview ? preview.response : entry.response_archive ? entry.response : ApiLogPreview.format(entry.response)) + '</pre>';
 
         html += '<tr class="detail-row" id="' + eid + '">';
         html += '<td colspan="6" class="detail-cell"><div class="detail-inner">';
@@ -171,7 +176,9 @@ function renderTable() {
         html += '<button class="detail-tab active" onclick="event.stopPropagation(); st(this,\'rq-' + i + '\')">Request</button>';
         html += '<button class="detail-tab" onclick="event.stopPropagation(); st(this,\'rs-' + i + '\')">Response</button>';
         html += '<button class="copy-btn" onclick="event.stopPropagation(); cp(' + i + ', this)">Copy</button>';
+        html += '<button class="copy-btn" onclick="event.stopPropagation(); toggleFull(' + i + ', this)">' + (full ? 'Show previews' : 'Show full payload') + '</button>';
         html += '</div>';
+        html += '<div style="padding:8px 12px;color:var(--fg2);font-size:12px">' + (full ? 'Full retained payload. Copy includes the full request and response.' : 'Preview: long strings may omit their middle. Copy retrieves the full retained payload.') + '</div>';
         html += '<div class="detail-content active" id="rq-' + i + '">' + reqHtml + '</div>';
         html += '<div class="detail-content" id="rs-' + i + '">' + resHtml + '</div>';
         html += '</div></td></tr>';
@@ -184,7 +191,7 @@ function renderTable() {
     }
 }
 
-function td(idx) {
+async function td(idx) {
     var row = document.getElementById('det-' + idx);
     if (!row) return;
     if (row.classList.contains('expanded')) {
@@ -197,6 +204,14 @@ function td(idx) {
         }
         row.classList.add('expanded');
         expandedRow = idx;
+        var entry = logData[idx], key = entry.log_id || idx;
+        if ((entry.request_archive || entry.response_archive) && !payloadPreviews[key]) {
+            try {
+                var bodies = await Promise.all([ApiLogPreview.fullBody(entry, 'request'), ApiLogPreview.fullBody(entry, 'response')]);
+                payloadPreviews[key] = {request:ApiLogPreview.format(bodies[0]), response:ApiLogPreview.format(bodies[1])};
+                renderTable();
+            } catch (error) { alert(error.message || String(error)); }
+        }
     }
 }
 
@@ -208,16 +223,29 @@ function st(tab, cid) {
     document.getElementById(cid).classList.add('active');
 }
 
-function cp(idx, btn) {
+async function toggleFull(idx, btn) {
+    var entry = logData[idx], key = entry.log_id || idx;
+    if (fullPayloads[key]) { delete fullPayloads[key]; renderTable(); return; }
+    btn.disabled = true;
+    try {
+        var bodies = await Promise.all([ApiLogPreview.fullBody(entry, 'request'), ApiLogPreview.fullBody(entry, 'response')]);
+        fullPayloads[key] = {request:bodies[0], response:bodies[1]};
+        renderTable();
+    } catch (error) { btn.disabled = false; alert(error.message || String(error)); }
+}
+
+async function cp(idx, btn) {
     var e = logData[idx];
     if (!e) return;
-        var txt = '=== API Request ===\n' + 'POST ' + (e.endpoint||'') + '\n' + fj(e.request)
-                + '\n\n=== API Response ===\n' + fj(e.response)
+    try {
+        var bodies = await Promise.all([ApiLogPreview.fullBody(e, 'request'), ApiLogPreview.fullBody(e, 'response')]);
+        var txt = '=== API Request ===\n' + 'POST ' + (e.endpoint||'') + '\n' + fj(bodies[0])
+                + '\n\n=== API Response ===\n' + fj(bodies[1])
                 + '\n\n---\nTimestamp: ' + (e.timestamp||'')
                 + ' | Model: ' + (e.model||'')
                 + ' | Status: ' + (e.status||'')
                 + ' | Latency: ' + fmtLatency(e.responseTimeMs);
-    navigator.clipboard.writeText(txt).then(function() {
+    await navigator.clipboard.writeText(txt).then(function() {
         var orig = btn.textContent;
         btn.textContent = 'Copied!';
         btn.style.background = 'var(--success-bg)';
@@ -228,12 +256,15 @@ function cp(idx, btn) {
             btn.style.color = '';
         }, 1500);
     });
+    } catch (error) { alert(error.message || String(error)); }
 }
 
 function clearLogs() {
     if (logData.length === 0) return;
     window.chrome.webview.hostObjects.Logs.ClearLogs().then(function() {
         logData = [];
+        fullPayloads = {};
+        payloadPreviews = {};
         expandedRow = null;
         renderTable();
     });

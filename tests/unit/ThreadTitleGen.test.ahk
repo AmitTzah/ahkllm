@@ -85,6 +85,25 @@ class ThreadTitleGenTest {
         this._teardownDb()
     }
 
+    Generate_ConnectedChat_PreservesApplicationTitle() {
+        global _mockRunCalls
+        this._setupDb()
+        this._setGlobals()
+        try {
+            threadId := ChatDB.Thread_Create("Author title (supplied)")
+            ChatDB.db.Query("INSERT INTO application_sessions(thread_id,application_id,initial_state,request_id) VALUES(?,?,?,?);", threadId, "example", "{}", ChatDB._UUID())
+            parent := ChatDB.Msg_Insert({thread_id:threadId,role:"user",content:"Task"})
+            ChatDB.Msg_Insert({thread_id:threadId,role:"assistant",content:"Answer",parent_id:parent})
+            _mockRunCalls := []
+            generateThreadTitle(threadId)
+            if _mockRunCalls.Length
+                throw Error("Connected chat dispatched auto-title generation")
+            row := ChatDB.db.Query("SELECT title FROM chat_threads WHERE id=?;", threadId)
+            if row[1,"title"] != "Author title (supplied)"
+                throw Error("Application-supplied title changed")
+        } finally this._teardownDb()
+    }
+
     Generate_NoModel_Returns() {
         global titleGenModel, _mockRunCalls
         this._setupDb()

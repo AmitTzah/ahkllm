@@ -54,7 +54,7 @@ class ChatGptResponsesTransport {
 
         payload := Map(
             "model", requestObj.Has("model") ? requestObj["model"] : "",
-            "input", input,
+            "input", requestObj.Has("external_input") ? requestObj["external_input"] : input,
             "store", false,
             "stream", true,
             "parallel_tool_calls", false
@@ -78,6 +78,9 @@ class ChatGptResponsesTransport {
             tools.Push(Map("type", "web_search"))
         if imageGeneration
             tools.Push(ChatGptResponsesTransport.ImageNamespaceTool())
+        if requestObj.Has("external_tools")
+            for tool in requestObj["external_tools"]
+                tools.Push(tool)
         if tools.Length
             payload["tools"] := tools
 

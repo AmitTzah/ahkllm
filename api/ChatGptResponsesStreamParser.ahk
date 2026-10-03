@@ -166,6 +166,21 @@ class ChatGptResponsesStreamParser {
         chunk.finalText := ChatGptResponsesStreamParser.FinalTextWithCitations(chunk.responseOutput)
     }
 
+    static PublicReasoningSummary(output) {
+        parts := []
+        for item in output {
+            if !(item is Map) || item.Get("type", "") != "reasoning"
+                continue
+            for summary in item.Get("summary", [])
+                if summary is Map && summary.Get("type", "") = "summary_text" && summary.Get("text", "") != ""
+                    parts.Push(summary["text"])
+        }
+        text := ""
+        for part in parts
+            text .= (text != "" ? "`n" : "") part
+        return text
+    }
+
     static FinalTextWithCitations(output) {
         if !IsObject(output) || !(output is Array)
             return ""

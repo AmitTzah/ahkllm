@@ -48,5 +48,7 @@ DetectHiddenWindows true            ; Enables detection of hidden windows for in
 #Include ..\api\CostCalculator.ahk
 #Include ..\app\InputWindow.ahk
 #Include ..\ipc\CustomMessages.ahk
+#Include ..\chat\applications\ApplicationChat.ahk
+#Include ..\chat\applications\ApplicationSessionReceiver.ahk
 #Include ..\chat\db\ChatDB.ahk       ; Chat persistence (SQLite-backed)
 #Include ..\app\backup\BackupManager.ahk ; Local user-data backup service

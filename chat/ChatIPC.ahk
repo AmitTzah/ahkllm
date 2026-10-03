@@ -63,7 +63,7 @@ LoadThreadIntoUI(threadId, autoFire := false) {
     _applyNewChatDefaultToFreshThread(threadId)
     _LoadThreadAndRefreshUI(threadId)
     ; Auto-trigger LLM when spawning fresh with a threadId (command-line-arg path).
-    if autoFire {
+    if autoFire && !ApplicationRepo.Session(threadId) {
         requestParams["stream"] := true
         path := ChatDB.Msg_GetActivePath(activeThreadId)
         if path.Length > 0 && path[path.Length].role = "user"

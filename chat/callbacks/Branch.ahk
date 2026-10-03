@@ -15,6 +15,7 @@ handleBranchSwitch(params, *) {
     postWebMessage("updateChatView", buildStructuredMessagesFromPath(result.path, activeThreadId))
     postWebMessage("updateBranchInfo", { msgId: id, siblingInfo: result.siblingInfo })
     postThreadStats(activeThreadId)
+    postApplicationState()
     ; A branch switch bumps the thread's updated_at; refresh the sidebar
     ; list so its order and model badge follow the newly active
     ; branch instead of staying stale until some other action reposts it.
@@ -35,6 +36,8 @@ handleFork(msgId, *) {
     newThreadId := ChatDB.Msg_ForkThread(activeThreadId, msgId)
     debugLog("[THREAD] Forked - id=" newThreadId " from=" activeThreadId)
     if newThreadId {
+        if ApplicationRepo.Session(newThreadId)
+            ExternalApplications.ForkState(newThreadId)
         ; The fork inherits the source's lock. Keep it unlocked in THIS session
         ; so the user who just created it can read it without re-entering the
         ; password - it stays locked in the DB for every other session.
@@ -109,8 +112,20 @@ retryAction(messageId := "") {
             requestParams.Delete("pendingRetrySiblingGroup")
     }
 
-    if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user")
+    if requestParams.Has("pendingRetrySiblingGroup") || (path.Length && path[path.Length].role = "user") {
+        if ApplicationRepo.Session(activeThreadId) {
+            state := ApplicationRepo.State(activeThreadId)
+            description := ExternalApplications.Call(activeThreadId, "session.describe", state)
+            if !description.Get("can_run", true) {
+                for key in ["pendingRetrySiblingGroup", "pendingRetryIsRoot", "pendingRetryThreadId", "pendingRetryOriginalLeaf", "pendingRetryRewoundLeaf"]
+                    if requestParams.Has(key)
+                        requestParams.Delete(key)
+                _LoadThreadAndRefreshUI(activeThreadId)
+                return
+            }
+        }
         ; Chat UI retries always stream.
         requestParams["stream"] := true
         _BuildAndFireRequest()
+    }
 }

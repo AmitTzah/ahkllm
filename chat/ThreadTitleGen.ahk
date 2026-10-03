@@ -18,6 +18,9 @@ generateThreadTitle(threadId) {
     global _titleGenRequestedThreads
     if !autoTitleGenerationEnabled || !IsSet(titleGenModel) || !titleGenModel
         return
+    ; Application-connected chats already carry the application's chosen title.
+    if IsSet(ApplicationRepo) && ApplicationRepo.Session(threadId)
+        return
     ; A delayed title callback can run after the user relocks its thread.
     ; Do not even read the active path in that case: title generation is an
     ; outbound plaintext sink just like the normal chat request/log path.
@@ -71,7 +74,8 @@ generateThreadTitle(threadId) {
         "disabled"             ; reasoningEffort - title generation never thinks
     )
 
-    raw := _TitleGen_ExecuteRequest(payload, providerInfo)
+    wirePayload := payload, wireEndpoint := providerInfo.endpoint
+    raw := _TitleGen_ExecuteRequest(payload, providerInfo, &wirePayload, &wireEndpoint)
     result := _TitleGen_ParseResponse(raw)
     title := result.title
     promptTokens := result.promptTokens
@@ -118,7 +122,7 @@ generateThreadTitle(threadId) {
         debugLog("[TITLEGEN] no title parsed - dispatch guard cleared thread=" threadId)
     }
 
-    _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, providerInfo.endpoint, payload, raw, title, titleGenStart, redacted)
+    _TitleGen_LogRequest(titleGenModel, providerInfo.providerKey, wireEndpoint, wirePayload, raw, title, titleGenStart, redacted)
 }
 
 ; Start an isolated Codex title request and return immediately. The active
@@ -264,7 +268,9 @@ _TitleGen_BuildPrompt(threadId) {
 }
 
 ; Execute the title generation cURL request using CurlBuilder.
-_TitleGen_ExecuteRequest(payload, providerInfo) {
+_TitleGen_ExecuteRequest(payload, providerInfo, &wirePayload := unset, &wireEndpoint := unset) {
+    wirePayload := payload
+    wireEndpoint := providerInfo.transport = "chatgpt-responses" ? ChatGptResponsesTransport.ResolveEndpoint() : providerInfo.endpoint
     uniqueID := ChatDB._UUID()
     tmpFile := A_Temp "\ChatWindow_TitleGen_" uniqueID ".json"
     outFile := A_Temp "\ChatWindow_TitleGen_Out_" uniqueID ".json"
@@ -274,6 +280,7 @@ _TitleGen_ExecuteRequest(payload, providerInfo) {
         errFile := A_Temp "\ChatWindow_TitleGen_Err_" uniqueID ".txt"
         try {
             result := ChatGptResponsesTransport.ExecuteBuffered(tmpFile, outFile, errFile, "", false, false)
+            wirePayload := result.prepared.json
             if !result.success
                 return result.raw ? result.raw : (result.HasOwnProp("error") ? result.error : "")
             usage := result.response.usage

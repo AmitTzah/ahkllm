@@ -244,6 +244,7 @@ _LoadThreadAndRefreshUI(threadId, includeDropdownLabel := true) {
     _restoreThreadSettings(activeThreadId)
     path := ChatDB.Msg_GetActivePath(activeThreadId)
     postWebMessage("initChatMode", { messages: buildStructuredMessagesFromPath(path, activeThreadId), threadId: activeThreadId })
+    postApplicationState()
     postWebMessage("renderChatTree", ChatDB.Msg_GetTree(activeThreadId))
     postThreadStats(activeThreadId)
     ; Lock metadata for an unlocked-but-locked chat: the lock modal needs the

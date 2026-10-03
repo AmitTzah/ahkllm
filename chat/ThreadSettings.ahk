@@ -5,6 +5,15 @@
 #Include db\AssistantRepo.ahk
 
 class ThreadSettings {
+    ; Resolve the configured choice without changing the currently displayed chat.
+    static NewChatSelection() {
+        global newChatStartsWith
+        value := IsSet(newChatStartsWith) ? newChatStartsWith : ""
+        if SubStr(value, 1, 5) = "asst:"
+            return {model: "", assistant: AssistantRepo.GetFromSettings(SubStr(value, 6))}
+        return {model: value, assistant: ""}
+    }
+
 
     ; Effective settings for a thread from a DB row (Thread_GetSettings
     ; shape) + optional assistant. Per-thread overrides win; the assistant's

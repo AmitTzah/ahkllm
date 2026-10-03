@@ -1,3 +1,5 @@
+#Include Application.ahk
+#Include ApplicationSettings.ahk
 #Include ChatGptAccountCallbacks.ahk
 #Include ModelCatalogRefresh.ahk
 
@@ -38,6 +40,10 @@ OnWebMessageReceived(sender, args) {
         if _IsLockedThreadContentAction(action, parsed) && IsSet(activeThreadId) && ChatDB.isOpen
             ThreadLockService.RequireUnlocked(activeThreadId)
         switch action {
+            case "applicationAction":
+                handleApplicationAction(parsed)
+            case "applicationDisconnect":
+                handleApplicationDisconnect(parsed)
             case "chatSend":
                 handleChatSend(parsed)
             case "cacheImageThumbnail":
@@ -83,6 +89,14 @@ OnWebMessageReceived(sender, args) {
                 CustomMessages.notifyShowApiLogs(requestParams["mainScriptHiddenHwnd"])
             case "webViewReady":
                 _OnWebViewReady()
+            case "requestApplicationConnections":
+                postApplicationConnections()
+            case "saveApplicationConnection":
+                handleSaveApplicationConnection(parsed)
+            case "disconnectApplicationConnection":
+                handleDisconnectApplicationConnection(parsed)
+            case "browseApplicationProgram":
+                handleBrowseApplicationProgram()
             case "requestAllSettings":
                 _HandleRequestAllSettings()
             case "requestDefaultSettings":
@@ -147,7 +161,7 @@ OnWebMessageReceived(sender, args) {
 ; content/settings and must therefore be blocked while it is locked.
 _IsLockedThreadContentAction(action, parsed) {
     switch action {
-        case "chatSend", "retry", "editMessage", "deleteMessage", "deleteAttachment",
+        case "applicationAction", "applicationDisconnect", "chatSend", "retry", "editMessage", "deleteMessage", "deleteAttachment",
              "forkChat", "switchBranch", "updateModelSettings", "switchAssistant",
              "updateFontSize", "requestCurrentSettings":
             return true

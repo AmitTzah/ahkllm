@@ -20,6 +20,7 @@ InitApiLogsViewer() {
     apiLogsViewer.OnEvent("Close", (*) => apiLogsViewer.Hide())
     apiLogsViewer.AddHostObjectToScript("Logs", {
         GetLogs: (*) => jsongo.Stringify(ApiLogger.ReadLogs()),
+        GetBody: (name) => ApiLogBodies.Read(ApiLogger.logFilePath, name),
         ClearLogs: (*) => (ApiLogger.ClearLogs(), "ok"),
         GetLogCount: (*) => ApiLogger.ReadLogs().Length
     })
@@ -42,7 +43,10 @@ ShowApiLogs() {
     }
     debugLog("[APILOGS] About to show viewer at x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2)
     try {
-        apiLogsViewer.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2 " w900 h600", "API Logs Viewer")
+        if EnvGet("AHKLLM_E2E_WORKER") != ""
+            apiLogsViewer.Show("x-20000 y-20000 w900 h600 NA", "API Logs Viewer")
+        else
+            apiLogsViewer.Show("x" (A_ScreenWidth - 900) // 2 " y" (A_ScreenHeight - 600) // 2 " w900 h600", "API Logs Viewer")
         debugLog("[APILOGS] Show() succeeded, hWnd=" apiLogsViewer.hWnd)
     } catch Error as e {
         debugLog("[APILOGS] Show() FAILED: " e.Message)

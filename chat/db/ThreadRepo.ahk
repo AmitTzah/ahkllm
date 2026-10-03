@@ -274,6 +274,7 @@ class ThreadRepo {
         ; Pass the raw id; DeleteByThread performs its own escaping.
         ; Passing safeId (already escaped) double-escaped it, so crafted-id
         ; threads deleted their messages but orphaned their attachment rows.
+        ApplicationRepo.QueueRelease(threadId)
         AttachmentRepo.DeleteByThread(threadId)
         ; Remove FTS rows before deleting the thread.
         ; This keeps thread-level deletion consistent with HardDelete.

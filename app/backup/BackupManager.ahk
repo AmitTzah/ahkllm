@@ -199,6 +199,8 @@ class BackupManager {
             if FileExist(settingsPath)
                 FileCopy(settingsPath, stage "\settings.json", 1)
             dataRoot := this._SourceDataDir()
+            if FileExist(dataRoot "\applications.json")
+                FileCopy(dataRoot "\applications.json", stage "\applications.json", true)
             systemMessagesPath := dataRoot "\system-messages"
             if DirExist(systemMessagesPath)
                 DirCopy(systemMessagesPath, stage "\system-messages", true)

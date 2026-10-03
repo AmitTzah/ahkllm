@@ -33,6 +33,15 @@
       }
 
       switch (target) {
+        case 'applicationConnections':
+          if (root.SettingsApplications) root.SettingsApplications.receive(data);
+          break;
+        case 'applicationProgramSelected':
+          if (root.SettingsApplications) root.SettingsApplications.programSelected(data);
+          break;
+        case 'applicationState':
+          if (typeof root.showApplicationState === 'function') root.showApplicationState(data);
+          break;
         case 'initChatMode':
           if (typeof root.clearThreadLockOverlay === 'function') root.clearThreadLockOverlay();
           root.initChatMode(data);

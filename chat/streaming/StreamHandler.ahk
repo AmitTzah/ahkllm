@@ -7,6 +7,9 @@
 ; ----------------------------------------------------
 
 #Include StreamCompletion.ahk
+#Include ProviderRoundLogging.ahk
+#Include PublicStreamActivity.ahk
+#Include ..\applications\ApplicationHttpTools.ahk
 #Include StreamError.ahk
 
 ; Every in-flight request owns its own stream record (output
@@ -410,6 +413,8 @@ _ProcessNonStreamResponse(scope, chatHistoryJSONRequest, providerInfo, requestSt
         requestParams["_streamPollCount"] := 0
         requestParams["_streamRequestStartTime"] := requestStartTime
         requestParams["_streamChatHistoryJSONRequest"] := chatHistoryJSONRequest
+        requestParams["_streamWireRequestJSON"] := FileExist(scope.params["chatHistoryJSONRequestFile"]) ? FileRead(scope.params["chatHistoryJSONRequestFile"], "UTF-8") : chatHistoryJSONRequest
+        requestParams["_streamLogEndpoint"] := providerInfo.transport = "chatgpt-responses" ? ChatGptResponsesTransport.ResolveEndpoint() : providerInfo.endpoint
         requestParams["_streamPID"] := 0
         requestParams["_streamCancelled"] := false
         ; A non-stream scope is cloned from the shared request window. Never let
@@ -674,6 +679,7 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         usage: {},
         providerKey: providerInfo.providerKey,
         transport: providerInfo.transport,
+        logEndpoint: providerInfo.transport = "chatgpt-responses" ? ChatGptResponsesTransport.ResolveEndpoint() : providerInfo.endpoint,
         uiStreaming: !requestParams.Has("stream") || requestParams["stream"],
         responsesPayload: requestParams.Has("_chatgptResponsesPayload") ? requestParams["_chatgptResponsesPayload"] : "",
         responsesCompleted: false,
@@ -693,6 +699,7 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         pollCount: 0,
         requestStartTime: requestStartTime,
         chatHistoryJSONRequest: chatHistoryJSONRequest,
+        wireRequestJSON: FileExist(requestParams["chatHistoryJSONRequestFile"]) ? FileRead(requestParams["chatHistoryJSONRequestFile"], "UTF-8") : chatHistoryJSONRequest,
         pid: cURLPID,
         cancelled: false,
         ; Web-search tool loop state (per round).
@@ -759,6 +766,7 @@ _LoadStreamIntoParams(stream) {
     requestParams["_streamPollCount"]        := stream.pollCount
     requestParams["_streamRequestStartTime"] := stream.requestStartTime
     requestParams["_streamChatHistoryJSONRequest"] := stream.chatHistoryJSONRequest
+    requestParams["_streamWireRequestJSON"] := stream.HasOwnProp("wireRequestJSON") ? stream.wireRequestJSON : stream.chatHistoryJSONRequest
     requestParams["_streamPID"]              := stream.pid
     requestParams["_streamCancelled"]        := stream.cancelled
     requestParams["_streamToolCalls"]        := stream.HasOwnProp("toolCalls") ? stream.toolCalls : Map()
@@ -770,6 +778,7 @@ _LoadStreamIntoParams(stream) {
     requestParams["_streamLogProviderName"]  := stream.logProviderName
     requestParams["_streamLogModel"]         := stream.logModel
     requestParams["_streamLogPasteMode"]     := stream.logPasteMode
+    requestParams["_streamLogEndpoint"]      := stream.HasOwnProp("logEndpoint") ? stream.logEndpoint : ""
     requestParams["chatHistoryJSONRequestFile"] := stream.requestFile
     requestParams["cURLCommandFile"]         := stream.cURLCommandFile
     requestParams["cURLOutputFile"]          := stream.outputFile
@@ -1245,8 +1254,8 @@ _processChunk(state, chunk, doPostMessage) {
                 state.usage := chunk.usage
 
         case "activity":
-            if doPostMessage && chunk.HasOwnProp("content") && chunk.content != ""
-                postWebMessage("streamReasoning", { content: chunk.content "`n", collapsed: false, kind: "activity" })
+            if chunk.HasOwnProp("content")
+                _AppendPublicStreamActivity(state, chunk.content, doPostMessage)
 
         case "responses_output_item":
             state.responseOutput := ChatGptResponsesStreamParser.MergeOutput(state.responseOutput, [chunk.item])
@@ -1291,6 +1300,11 @@ _processChunk(state, chunk, doPostMessage) {
                 state.modelName := ModelParser.Sanitize(chunk.model)
             if state.HasOwnProp("transport") && state.transport = "chatgpt-responses" {
                 ChatGptResponsesStreamParser.CompleteOutput(chunk, state.responseOutput)
+                summary := ChatGptResponsesStreamParser.PublicReasoningSummary(chunk.responseOutput)
+                if summary != "" && !InStr(state.reasoning, summary)
+                    _AppendPublicStreamActivity(state, summary, doPostMessage)
+                if state.reasoning = "" && chunk.HasOwnProp("usage") && chunk.usage.thinkingTokens > 0
+                    _AppendPublicStreamActivity(state, "The model used " chunk.usage.thinkingTokens " reasoning tokens but did not provide a public reasoning summary.", doPostMessage)
                 state.responsesCompleted := chunk.HasOwnProp("completed") && chunk.completed
                 if chunk.HasOwnProp("responseOutput")
                     state.responseOutput := chunk.responseOutput
@@ -1459,12 +1473,12 @@ _HandleChatGptResponsesToolCalls() {
 
     rounds := stream.HasOwnProp("responsesToolRounds") ? stream.responsesToolRounds : 0
     rounds++
-    if rounds > ChatGptImageWorker.MAX_TOOL_ROUNDS
+    if rounds > (ApplicationRepo.Session(stream.threadId) ? 64 : ChatGptImageWorker.MAX_TOOL_ROUNDS)
         throw Error("Image generation stopped after too many tool rounds.")
     stream.responsesToolRounds := rounds
 
     imageEnabled := stream.requestParamsSnapshot.Has("imageGeneration") && stream.requestParamsSnapshot["imageGeneration"]
-    if !imageEnabled
+    if !imageEnabled && !ApplicationRepo.Session(stream.threadId)
         throw Error("The model requested image generation while the Image Generation toggle is off.")
 
     calls := requestParams["_streamResponsesToolCalls"]
@@ -1475,8 +1489,18 @@ _HandleChatGptResponsesToolCalls() {
         namespace := call.Has("namespace") ? String(call["namespace"]) : ""
         name := call.Has("name") ? String(call["name"]) : ""
         callId := call.Has("call_id") ? String(call["call_id"]) : ""
+        if namespace = "" && ApplicationRepo.Session(stream.threadId) {
+            if callId = ""
+                throw Error("Application tool call has no call_id.")
+            _RecordApplicationToolActivity(stream, "Using " name "…")
+            outputs.Push(ApplicationChat.Tool(stream.threadId, call))
+            _RecordApplicationToolActivity(stream, "Finished " name ".")
+            continue
+        }
         if namespace != "ahkllm" || name != "generate_image"
             throw Error("ChatGPT requested an unsupported client function: " (namespace != "" ? namespace "." : "") name)
+        if !imageEnabled
+            throw Error("Image Generation is disabled for this chat.")
         if callId = ""
             throw Error("ChatGPT image function call did not include a call_id.")
 
@@ -1517,8 +1541,11 @@ _HandleChatGptResponsesToolCalls() {
         ))
     }
 
+    ApplicationChat.RecordOutput(stream.threadId, stream.responseOutput, outputs)
+    _LogCompletedProviderToolRound(stream)
     nextPayload := ChatGptResponsesTransport.BuildToolContinuation(stream.responsesPayload, stream.responseOutput, outputs)
-    ChatGptResponsesTransport.WritePayload(stream.requestFile, nextPayload)
+    stream.wireRequestJSON := ChatGptResponsesTransport.WritePayload(stream.requestFile, nextPayload)
+    stream.logEndpoint := ChatGptResponsesTransport.ResolveEndpoint()
     for path in [stream.outputFile, stream.errorFile] {
         if path && FileExist(path)
             try FileDelete(path)
@@ -1567,7 +1594,12 @@ _handleStreamToolCalls() {
         stream := _FindStreamByKey(_currentStreamKey)
         if !stream
             throw Error("originating stream record is missing")
+        if ApplicationChat.active.Has(stream.threadId) {
+            _ContinueApplicationHttpTools(stream)
+            return
+        }
         toolCalls := requestParams["_streamToolCalls"]
+        _LogCompletedProviderToolRound(stream)
         loopState := SearchToolExecutor.NewLoopState(stream.threadId, stream.parentId, stream.requestParamsSnapshot.Clone(), stream.toolLoopCount)
         loopState.placeholderQuery := SearchToolExecutor.FirstQuery(toolCalls)
         stream.phase := "search"
@@ -1718,6 +1750,8 @@ _FinishStreamFinalize() {
 }
 
 _cleanupStreamState() {
+    if requestParams.Has("_streamThreadId")
+        try ApplicationChat.Abort(requestParams["_streamThreadId"])
     ; Map.Delete throws "Item has no value" for a missing key, so guard every
     ; Cleanup must be idempotent even when the
     ; request failed before all stream keys were written.
@@ -1743,7 +1777,7 @@ _cleanupStreamState() {
         requestParams.Delete("_streamUsage")
     if requestParams.Has("_streamProviderKey")
         requestParams.Delete("_streamProviderKey")
-    for key in ["_streamTransport", "_streamUiStreaming", "_streamResponsesPayload", "_streamResponsesCompleted", "_streamResponseOutput", "_streamResponsesToolCalls", "_streamResponsesToolRounds", "_streamResponsesContentPrefix", "_chatgptResponsesPayload"] {
+    for key in ["_streamTransport", "_streamUiStreaming", "_streamResponsesPayload", "_streamResponsesCompleted", "_streamResponseOutput", "_streamResponsesToolCalls", "_streamResponsesToolRounds", "_streamResponsesContentPrefix", "_chatgptResponsesPayload", "_streamWireRequestJSON", "_streamLogEndpoint"] {
         if requestParams.Has(key)
             requestParams.Delete(key)
     }

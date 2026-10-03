@@ -1032,4 +1032,77 @@ class LLMRequestBuilderTest {
         if InStr(cmd, '" echo ')
             throw Error("quote break survived in the curl command: " cmd)
     }
+    ApiLogger_RetainsExactLargePayloadAndCleansUpArchive() {
+        global apiLogMaxEntries
+        oldPath := ApiLogger.logFilePath, oldLimit := apiLogMaxEntries
+        target := A_Temp "\test_exact_log_" ChatDB._UUID() ".json"
+        ApiLogger.logFilePath := target
+        apiLogMaxEntries := 2
+        try {
+            text := ""
+            loop 12000
+                text .= "canonical source text "
+            body := jsongo.Stringify(Map("model", "example", "messages", [Map("role", "user", "content", text)]))
+            ApiLogger.LogRequest({request:body,response:"{}",endpoint:"https://example.test/inference"})
+            entries := ApiLogger.ReadLogs()
+            if entries.Length != 1 || !entries[1].Has("request_archive")
+                throw Error("Large request was not retained separately")
+            archive := entries[1]["request_archive"]
+            if ApiLogBodies.Read(target, archive) != body
+                throw Error("Archived request differed from the sent payload")
+            if !InStr(entries[1]["request"], "omitted from preview")
+                throw Error("Large log did not show a readable preview")
+            blocked := false
+            try ApiLogBodies.Read(target, "../other.txt")
+            catch
+                blocked := true
+            if !blocked
+                throw Error("Archived body lookup accepted an unsafe path")
+            ApiLogger.ClearLogs()
+            if FileExist(ApiLogBodies.directory(target) "\" archive)
+                throw Error("Clearing logs left an archived payload")
+        } finally {
+            ApiLogger.ClearLogs()
+            ApiLogger.logFilePath := oldPath
+            apiLogMaxEntries := oldLimit
+        }
+    }
+
+    ChatGptResponseLog_UsesFinalOutputAndMetadataInsteadOfDeltas() {
+        item := Map("type", "message", "role", "assistant", "content", [Map("type", "output_text", "text", "Complete final answer")])
+        response := Map("id", "response-id", "status", "completed", "model", "gpt-test", "created_at", 123, "output", [item], "usage", Map("input_tokens", 10, "output_tokens", 20), "metadata", Map("mentions", "response.output_text.delta"))
+        raw := "data: " jsongo.Stringify(Map("type", "response.output_text.delta", "delta", "Partial")) "`n"
+        raw .= "data: " jsongo.Stringify(Map("type", "response.completed", "response", response)) "`n"
+        normalized := jsongo.Parse(ChatGptResponseLog.Normalize(raw))
+        if normalized["output_text"] != "Complete final answer" || normalized["id"] != "response-id" || normalized["usage"]["output_tokens"] != 20
+            throw Error("Response log lost final text or provider metadata")
+        if normalized.Has("delta") || normalized.Get("type", "") = "response.output_text.delta"
+            throw Error("Response log retained token deltas")
+        if normalized["metadata"]["mentions"] != "response.output_text.delta"
+            throw Error("Response log altered provider metadata")
+        single := ChatGptResponseLog.Normalize(jsongo.Stringify(Map("type", "response.completed", "response", response)))
+        if jsongo.Parse(single)["status"] != "completed" || ChatGptResponseLog.Normalize(single) != single
+            throw Error("Single terminal event or already-final response was misclassified")
+    }
+
+    ChatGptResponseLog_MergesItemDoneAndMarksInterruptedTextPartial() {
+        item := Map("type", "message", "role", "assistant", "content", [Map("type", "output_text", "text", "Item-done answer")])
+        raw := "data: " jsongo.Stringify(Map("type", "response.output_item.done", "item", item)) "`n"
+        raw .= "data: " jsongo.Stringify(Map("type", "response.completed", "response", Map("id", "empty-terminal", "status", "completed", "output", [])))
+        normalized := jsongo.Parse(ChatGptResponseLog.Normalize(raw))
+        if normalized["output_text"] != "Item-done answer"
+            throw Error("Empty terminal output lost the assembled response")
+        partial := jsongo.Parse(ChatGptResponseLog.Normalize("data: " jsongo.Stringify(Map("type", "response.output_text.delta", "delta", "Partial answer")), "error"))
+        if partial["status"] != "error" || !partial["partial"] || partial["output_text"] != "Partial answer"
+            throw Error("Interrupted response was presented as completed")
+    }
+
+    PublicReasoningSummary_UsesOnlyProviderPublicSummaryFields() {
+        output := [Map("type", "reasoning", "encrypted_content", "PRIVATE-OPAQUE-STATE", "summary", [Map("type", "summary_text", "text", "Public final summary")])]
+        if ChatGptResponsesStreamParser.PublicReasoningSummary(output) != "Public final summary"
+            throw Error("Provider public summary was not recovered")
+        if ChatGptResponsesStreamParser.PublicReasoningSummary([Map("type", "reasoning", "encrypted_content", "PRIVATE-OPAQUE-STATE")]) != ""
+            throw Error("Opaque reasoning was exposed as a public summary")
+    }
+
 }

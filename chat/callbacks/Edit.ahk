@@ -18,6 +18,8 @@ handleEdit(params, *) {
     if !ownership.count
         return
     mode := params.Has("mode") ? params["mode"] : "overwrite"
+    if ApplicationRepo.Session(activeThreadId)
+        mode := "branch"
     attachments := params.Has("attachments") ? params["attachments"] : []
     removedIds := params.Has("removedAttachmentIds") ? params["removedAttachmentIds"] : []
 
@@ -83,6 +85,7 @@ handleEdit(params, *) {
             reasoning: reasoning,
             local_copy: true
         })
+        ApplicationRepo.CopyEditedNode(id, newMsgId, content, role)
         ; Copy source attachments except those removed during the edit.
         ; user removed during the edit - the ORIGINAL message keeps its
         ; attachment (it stays in the tree with its original content), while

@@ -81,25 +81,21 @@ _applyAssistantToRequestParams(asst) {
 ; "" = app default model (appDefaultModel); "asst:<id>" = an assistant;
 ; anything else is treated as a model id. Returns true when a default applied.
 _applyNewChatDefault() {
-    global newChatStartsWith
-    value := IsSet(newChatStartsWith) ? newChatStartsWith : ""
+    selection := ThreadSettings.NewChatSelection()
     ; App Default leaves the app default model in place. Assistants are chosen
     ; explicitly through General > New Chats Start With, so there is one source
     ; of truth for how a new chat starts.
-    if value = ""
-        return false
-    if SubStr(value, 1, 5) = "asst:" {
-        asst := AssistantRepo.GetFromSettings(SubStr(value, 6))
-        if !asst
-            return false
-        _applyAssistantToRequestParams(asst)
+    if selection.assistant {
+        _applyAssistantToRequestParams(selection.assistant)
         return true
     }
+    if !selection.model
+        return false
     ; Model default: drop any active assistant and use the model directly.
     if requestParams.Has("activeAssistantId")
         requestParams.Delete("activeAssistantId")
-    requestParams["singleAPIModelName"] := value
-    _updateProviderFromModel(value)
+    requestParams["singleAPIModelName"] := selection.model
+    _updateProviderFromModel(selection.model)
     return true
 }
 

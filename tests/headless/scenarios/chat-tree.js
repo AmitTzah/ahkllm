@@ -250,7 +250,7 @@ scenarios.push({
     const confirmText = await cdp.eval('document.getElementById("customConfirmOverlay").textContent');
     const saysPreserved = confirmText.indexOf('data is preserved') >= 0;
     await cdp.click('#customConfirmOverlay .yes-confirm-btn');
-    await sleep(900); // IPC round trip + DB delete + re-render
+    await cdp.waitFor('!window.chatMessages.some(message => message.id === "m-del-30a")', 10000, 100, 'deleted message removed after IPC round trip');
     const rows = seed.query(dbPath, "SELECT COUNT(*) AS c FROM messages WHERE id='m-del-30a'");
     const deletedForever = rows[0].c === 0;
     // FIXED: dialog now honestly warns permanent deletion, not data preserved.

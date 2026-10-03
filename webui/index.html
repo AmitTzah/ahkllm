@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/attachments.css">
 <link rel="stylesheet" href="css/settings.css">
+<link rel="stylesheet" href="css/applications.css">
 <link rel="stylesheet" href="css/vendor/katex.min.css">
 <link rel="stylesheet" href="css/vendor/texmath.min.css">
 <link rel="stylesheet" href="css/vendor/highlight/atom-one-dark.min.css">
@@ -80,6 +81,7 @@
       <div class="nav-item" data-section="menu"><i data-lucide="menu" style="width:16px;height:16px;"></i> Menu Items</div>
       <div class="nav-section">AI Configuration</div>
       <div class="nav-item" data-section="providers"><i data-lucide="cloud" style="width:16px;height:16px;"></i> Providers</div>
+      <div class="nav-item" data-section="applications"><i data-lucide="plug" style="width:16px;height:16px;"></i> Applications</div>
       <div class="nav-item" data-section="models"><i data-lucide="cpu" style="width:16px;height:16px;"></i> Models</div>
       <div class="nav-item" data-section="assistants"><i data-lucide="bot" style="width:16px;height:16px;"></i> Assistants</div>
       <div class="nav-item" data-section="commands"><i data-lucide="terminal" style="width:16px;height:16px;"></i> Commands</div>
@@ -296,6 +298,16 @@
         <table class="kv-table"><thead><tr><th>Menu Text</th><th>Action</th><th></th></tr></thead><tbody id="trayTableBody"></tbody></table>
         <div class="settings-mt-8"><button class="btn-sm" id="addTrayRow">+ Add Item</button></div>
       </div></div>
+      <div class="section-card" id="sec-applications">
+        <div class="section-card-header"><i class="settings-icon-sm" data-lucide="plug"></i> Applications</div>
+        <div class="section-card-body application-settings">
+          <div class="applications-toolbar"><div><h3>Connected applications</h3><p>Bring another app's tasks and tools into your chats.</p></div><div class="applications-toolbar-actions"><button class="btn-ghost" id="showApplicationGuide" type="button">How it works</button><button class="btn-primary" id="addApplicationConnection" type="button" style="display:none">Add application</button></div></div>
+          <div id="applicationConnectionsCount" class="applications-count">Loading applications...</div>
+          <div id="applicationConnectionsEmpty" class="applications-empty" style="display:none"><button id="addApplicationEmpty" type="button" class="applications-empty-icon" aria-label="Add application" title="Add application">+</button><strong>No applications connected yet</strong><p>Open a task from another app to connect it automatically, or add a connection using the details that app provides.</p></div>
+          <div id="applicationConnections" class="application-connection-list"></div>
+          <p id="applicationSettingsStatus" class="application-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
       <div class="section-card" id="sec-providers" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="cloud"></i> Providers — OpenAI-Compatible API Endpoints & Authentication</div><div class="section-card-body">
         <div class="settings-field-hint-top settings-mb-16"><strong>Custom provider protocol:</strong> AhkLLM currently supports OpenAI-compatible Chat Completions APIs with Bearer authentication. Model metadata is sourced from <code>models.dev</code>; the provider ID is used as the catalog key unless you set a models.dev Provider override.</div>
         <div class="provider-grid" id="providerGrid"></div>
@@ -540,6 +552,55 @@
   </div>
 </div>
 
+<!-- Connected applications guide -->
+<div class="modal-overlay" id="applicationGuide" role="dialog" aria-modal="true" aria-labelledby="applicationGuideTitle" aria-describedby="applicationGuideDescription">
+  <div class="modal-box application-guide">
+    <div class="modal-head"><div><div class="modal-title" id="applicationGuideTitle">Your apps, inside your chats</div><p id="applicationGuideDescription" class="application-modal-description">Keep the tools of another app and the chat features of AhkLLM together.</p></div><button class="icon-btn" id="closeApplicationGuide" type="button" aria-label="Close applications guide">&#215;</button></div>
+    <div class="modal-body application-guide-body" tabindex="0" role="region" aria-label="How connected applications work">
+      <p>A connected application can open a chat with a task already prepared and give the AI tools to work on it. For example, a writing app could supply story context and tools to read or edit the files it allows.</p>
+      <h3>How you use it</h3>
+      <ol class="application-guide-steps">
+        <li><strong>Start in the other app.</strong> Choose its option to open a task in AhkLLM. Approve the connection the first time; AhkLLM remembers it.</li>
+        <li><strong>Choose your model in the chat.</strong> The chat starts with your <strong>New Chats Start With</strong> choice. You can change it to another model that supports tools, adjust its settings, then select <strong>Run prepared request</strong>.</li>
+        <li><strong>Continue the conversation.</strong> Ask follow-up questions, use the app's task buttons, or reopen the saved chat later.</li>
+      </ol>
+      <h3>What does the model receive?</h3>
+      <dl class="application-guide-inputs">
+        <div><dt>Instructions</dt><dd>The app supplies task instructions as this chat's system message. This does not change the model's global default prompt.</dd></div>
+        <div><dt>Context</dt><dd>The prepared request includes the task and any background material the app supplies.</dd></div>
+        <div><dt>Tools</dt><dd>The app supplies named actions with descriptions, such as searching files or making an edit. These are sent separately from the system message.</dd></div>
+      </dl>
+      <p>When the model requests a tool, AhkLLM asks the connected app to run it and sends the result back to the model. The app decides which operations are allowed. Tools are available in that app's connected chats.</p>
+      <h3>What stays with your chat?</h3>
+      <p>AhkLLM saves the conversation and its connection so you can return later or fork a branch. Branching a chat does not automatically undo changes already made to files. Disconnecting an app keeps your chats readable; reconnect it to use its tools again.</p>
+      <div class="application-guide-note"><strong>Setting up a connection manually?</strong><p>Use the <strong>+</strong> or <strong>Add application</strong> button and copy the details supplied by an app that supports this feature. Choosing an arbitrary program does not give it AI tools. AhkLLM starts the configured program when needed, so no separate always-running service is required. Only connect applications you trust.</p></div>
+    </div>
+    <div class="modal-foot"><button class="btn-primary" id="applicationGuideDone" type="button">Got it</button></div>
+  </div>
+</div>
+
+<!-- Application connection editor -->
+<div class="modal-overlay" id="applicationEditor" role="dialog" aria-modal="true" aria-labelledby="applicationEditorTitle" aria-describedby="applicationEditorDescription">
+  <div class="modal-box application-modal">
+    <div class="modal-head"><div><div class="modal-title" id="applicationEditorTitle">Add application</div><p id="applicationEditorDescription" class="application-modal-description">Use the connection details provided by your application.</p></div><button class="icon-btn" id="closeApplicationConnection" type="button" aria-label="Close application editor">&#215;</button></div>
+    <form id="applicationConnectionForm" class="application-modal-form">
+      <div class="modal-body application-modal-body">
+        <div class="application-field-grid"><div class="field"><div class="application-field-label"><label for="applicationName">Application name</label><button type="button" class="tt application-help" data-tip="The friendly name shown in your connections list. Choose a name you will recognize." aria-label="The friendly name shown in your connections list. Choose a name you will recognize.">?</button></div><input id="applicationName" type="text" placeholder="e.g. My writing app" autocomplete="off"></div><div class="field"><div class="application-field-label"><label for="applicationId">Connection ID</label><button type="button" class="tt application-help" data-tip="The permanent nickname the other app uses to find this connection. Use the ID provided by that app. Saved chats rely on it, so it cannot change after setup." aria-label="The permanent nickname the other app uses to find this connection. Use the ID provided by that app. Saved chats rely on it, so it cannot change after setup.">?</button></div><input id="applicationId" type="text" class="settings-mono-input" placeholder="app-connection-id" autocomplete="off"><div class="field-hint">Provided by your app. Kept the same for saved chats.</div></div></div>
+        <div class="field"><div class="application-field-label"><label for="applicationProgram">Program</label><button type="button" class="tt application-help" data-tip="The local program AhkLLM starts when this app needs to do work. Choose the program or launcher supplied by the app. This does not choose your AI model." aria-label="The local program AhkLLM starts when this app needs to do work. Choose the program or launcher supplied by the app. This does not choose your AI model.">?</button></div><div class="application-program-row"><input id="applicationProgram" type="text" placeholder="Choose the app's program or paste its location" autocomplete="off"><button class="btn-ghost" id="browseApplicationProgram" type="button">Browse</button></div></div>
+        <details id="applicationAdvanced" class="application-advanced"><summary>Advanced connection options <span>Optional</span></summary><div class="application-advanced-body">
+          <div class="field"><div class="application-field-label"><label for="applicationArguments">Launch options</label><button type="button" class="tt application-help" data-tip="Extra instructions the app needs when starting, such as a script location. Copy the options supplied by the app, one per line. Leave blank if none are needed." aria-label="Extra instructions the app needs when starting, such as a script location. Copy the options supplied by the app, one per line. Leave blank if none are needed.">?</button></div><textarea id="applicationArguments" rows="3" placeholder="One launch option per line" spellcheck="false"></textarea><div class="field-hint">Copy the app's options exactly, without extra quotation marks.</div></div>
+          <div class="application-field-grid"><div class="field"><div class="application-field-label"><label for="applicationWorkingDirectory">Starting folder</label><button type="button" class="tt application-help" data-tip="The folder the app starts in. Some apps use it to find their files. Use the folder supplied by the app, or leave blank to use the default." aria-label="The folder the app starts in. Some apps use it to find their files. Use the folder supplied by the app, or leave blank to use the default.">?</button></div><input id="applicationWorkingDirectory" type="text" placeholder="Use the default folder" autocomplete="off"></div><div class="field application-timeout-field"><div class="application-field-label"><label for="applicationTimeout">Time limit</label><button type="button" class="tt application-help" data-tip="How long AhkLLM waits for one local app operation before reporting that it has not responded. This does not limit the AI response. The default is 60 seconds." aria-label="How long AhkLLM waits for one local app operation before reporting that it has not responded. This does not limit the AI response. The default is 60 seconds.">?</button></div><div class="application-timeout-input"><input id="applicationTimeout" type="number" min="1" max="300" value="60"><span>seconds</span></div></div></div>
+        </div></details>
+        <div class="application-trust-note">Only connect apps you trust. They can run the program you choose on your computer.</div>
+        <p id="applicationEditorStatus" class="application-status" role="status" aria-live="polite"></p>
+      </div>
+      <div class="modal-foot"><button class="btn-ghost" id="cancelApplicationConnection" type="button">Cancel</button><button class="btn-primary" id="saveApplicationConnection" type="submit">Save connection</button></div>
+    </form>
+  </div>
+</div>
+
+<div id="applicationHelpTooltip" class="application-help-tooltip" role="tooltip" style="display:none"></div>
+
 <!-- SysMsg Modal -->
 <div class="modal-overlay" id="sysMsgOverlay">
   <div class="modal-box sysmsg-modal">
@@ -665,6 +726,7 @@
 <script src="js/chat/pending-messages.js"></script>
 <script src="js/chat/chat-input.js"></script>
 <script src="js/chat/chat-branching.js"></script>
+<script src="js/chat/chat-application.js"></script>
 <script src="js/chat/chat-tree-modal.js"></script>
 <script src="js/chat/chat-sidebar.js"></script>
 <script src="js/chat/chat-lock.js"></script>
@@ -683,6 +745,7 @@
 <script src="js/settings/sections/hotkeys.js"></script>
 <script src="js/settings/sections/menu-items.js"></script>
 <script src="js/settings/sections/providers.js"></script>
+<script src="js/settings/sections/applications.js"></script>
 <script src="js/settings/chatgpt-model-catalog.js"></script>
 <script src="js/settings/sections/models.js"></script>
 <script src="js/settings/sections/sysmsg-modal.js"></script>

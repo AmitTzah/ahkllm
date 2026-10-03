@@ -151,6 +151,8 @@ _PlayCompletionSound(soundType := "system", customPath := "", fallbackToSystem :
 _maybeGenerateTitle(path, threadId := "") {
     if !threadId
         threadId := activeThreadId
+    if IsSet(ApplicationRepo) && ApplicationRepo.Session(threadId)
+        return
     if autoTitleGenerationEnabled && IsSet(titleGenModel) && titleGenModel && path.Length <= 2 {
         ; Once a title request is dispatched for a thread, do not schedule another concurrently.
         ; Retries of the first exchange therefore cannot schedule a duplicate.
@@ -170,6 +172,8 @@ _maybeGenerateTitle(path, threadId := "") {
 }
 
 _getProviderEndpoint() {
+    if requestParams.Has("_streamLogEndpoint") && requestParams["_streamLogEndpoint"] != ""
+        return requestParams["_streamLogEndpoint"]
     providerKey := requestParams.Has("_streamProviderKey") ? requestParams["_streamProviderKey"] : "deepseek"
     if providers.Has(providerKey) && providers[providerKey].HasOwnProp("transport") && providers[providerKey].transport = "codex-cli"
         return "local:codex-cli"
@@ -259,6 +263,18 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
     }
 
     generatedAttachments := requestParams.Has("_streamGeneratedAttachments") ? requestParams["_streamGeneratedAttachments"] : []
+    applicationCompletion := ""
+    if ApplicationChat.active.Has(streamThreadId) {
+        failed := (requestParams.Has("_streamCancelled") && requestParams["_streamCancelled"]) || (requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"] != "")
+        if failed {
+            try ApplicationChat.Abort(streamThreadId)
+        } else {
+            terminalOutput := requestParams.Has("_streamResponseOutput") ? requestParams["_streamResponseOutput"] : []
+            if !terminalOutput.Length
+                terminalOutput := [Map("type", "message", "role", "assistant", "content", [Map("type", "output_text", "text", content)])]
+            applicationCompletion := ApplicationChat.StageCompletion(streamThreadId, parentId, terminalOutput)
+        }
+    }
     ChatDB.BeginTransaction()
     try {
         assistantMsgId := ChatDB.Msg_Insert({
@@ -275,6 +291,8 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         token_attribution_path: attributionPath,
         update_active_leaf: !preserveActiveLeaf
     })
+        if IsObject(applicationCompletion)
+            ApplicationRepo.SaveNode(assistantMsgId, applicationCompletion["state"], applicationCompletion["replay"])
         for att in generatedAttachments {
             if !ChatDB.Attachment_Save(assistantMsgId, att)
                 throw Error("Failed to persist generated Codex image attachment")
@@ -282,12 +300,19 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         ChatDB.CommitTransaction()
     } catch Error as e {
         ChatDB.RollbackTransaction()
+        try ApplicationChat.Abort(streamThreadId)
         throw e
     }
+    if IsObject(applicationCompletion)
+        ApplicationChat.Accepted(streamThreadId)
+    if activeThreadId = streamThreadId
+        postApplicationState()
     _maybeGenerateTitle(path, streamThreadId)
 }
 
 _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, requestBeforeAppend, requestStartTime, firstTokenTime, streamThreadId := "") {
+    if requestParams.Has("_streamWireRequestJSON")
+        requestBeforeAppend := requestParams["_streamWireRequestJSON"]
     global activeThreadId
     if !streamThreadId
         streamThreadId := activeThreadId
@@ -305,6 +330,10 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
 
     ; Build response: real API data from last chunk, but with accumulated content
     responseStr := rawLastResponse
+    if requestParams.Has("_streamTransport") && requestParams["_streamTransport"] = "chatgpt-responses" {
+        output := requestParams.Has("_streamResponseOutput") ? requestParams["_streamResponseOutput"] : []
+        responseStr := ChatGptResponseLog.Normalize(rawLastResponse, "success", content, output)
+    }
     if content && rawLastResponse {
         try {
             parsed := jsongo.Parse(rawLastResponse)
@@ -335,4 +364,3 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
     }
     ApiLogger.LogRequest(logEntry)
 }
-

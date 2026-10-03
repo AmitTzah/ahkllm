@@ -213,6 +213,11 @@ _OnBackupStatus(*) {
 ; ----------------------------------------------------
 
 responseWindow.Load("..\webui\index.html")
+_OpenImportedApplicationChat(threadId) {
+    LoadThreadIntoUI(threadId, false)
+    showChatWindow(false, EnvGet("AHKLLM_E2E_WORKER") = "")
+}
+ApplicationSessionReceiver.Register(_OpenImportedApplicationChat)
 
 ; ----------------------------------------------------
 ; Show window

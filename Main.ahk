@@ -348,3 +348,5 @@ ResetScreenReaderOnInit() {
 }
 SetTimer(ResetScreenReaderOnInit, 500)
 OnExit(CloseApiLogsViewer)
+
+#Include app\ExternalSessionReceiver.ahk

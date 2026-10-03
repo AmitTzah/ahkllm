@@ -6,6 +6,9 @@
 ; Set apiLogMaxEntries to 0 to disable logging entirely.
 ; ----------------------------------------------------
 
+#Include ApiLogBodies.ahk
+#Include ChatGptResponseLog.ahk
+
 class ApiLogger {
     static logFilePath := A_Temp "\LLM_API_Log.json"
     static maxLogBytes := 10 * 1024 * 1024
@@ -32,6 +35,9 @@ class ApiLogger {
     static LogRequest(entry) {
         if (apiLogMaxEntries <= 0)
             return
+        if entry.HasOwnProp("response")
+            entry.response := ChatGptResponseLog.Normalize(entry.response, entry.HasOwnProp("status") ? entry.status : "success")
+        ApiLogBodies.Archive(entry, this.logFilePath, this.maxLogBytes)
 
         ; Large base64 images otherwise exceed the log cap and discard the
         ; entire entry, including the terminal provider error needed to debug it.
@@ -41,6 +47,7 @@ class ApiLogger {
         if entry.HasOwnProp("request") && Type(entry.request) = "String" && StrLen(entry.request) > this.maxLogBytes
             entry.request := RegExReplace(entry.request, '(data:image\\?/[A-Za-z0-9.+-]+;base64,)[A-Za-z0-9+/=\\]+', '$1[image data omitted from log]')
 
+        ApiLogBodies.PreviewArchived(entry)
         logs := this._readLogFile()
 
         ; Add timestamp if not already present
@@ -52,7 +59,7 @@ class ApiLogger {
 
         ; Trim oldest entries to stay within the configured limit
         while logs.Length > apiLogMaxEntries {
-            logs.RemoveAt(logs.Length)
+            ApiLogBodies.Delete(logs.RemoveAt(logs.Length), this.logFilePath)
         }
         this._TrimToByteLimit(logs)
 
@@ -74,7 +81,7 @@ class ApiLogger {
         logs := this._readLogFile()
         changed := false
         while logs.Length > apiLogMaxEntries {
-            logs.RemoveAt(logs.Length)
+            ApiLogBodies.Delete(logs.RemoveAt(logs.Length), this.logFilePath)
             changed := true
         }
         before := jsongo.Stringify(logs)
@@ -89,7 +96,7 @@ class ApiLogger {
     ; dropped as well.
     static _TrimToByteLimit(logs) {
         while logs.Length > 0 && StrPut(jsongo.Stringify(logs), "UTF-8") - 1 > this.maxLogBytes
-            logs.RemoveAt(logs.Length)
+            ApiLogBodies.Delete(logs.RemoveAt(logs.Length), this.logFilePath)
     }
 
     ; Write the log array atomically: write a temp file in the same
@@ -115,6 +122,8 @@ class ApiLogger {
     }
 
     static ClearLogs() {
+        for entry in this._readLogFile()
+            ApiLogBodies.Delete(entry, this.logFilePath)
         if FileExist(this.logFilePath) {
             FileDelete(this.logFilePath)
         }

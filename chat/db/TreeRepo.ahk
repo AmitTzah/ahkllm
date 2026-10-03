@@ -214,6 +214,7 @@ class TreeRepo {
         activePathNextId := cutoff < path.Length ? path[cutoff + 1].id : ""
         TreeRepo._CopyOffPathSiblings(threadId, newThreadId, &idMap, &sgMap, path[cutoff].id, activePathNextId)
 
+        ApplicationRepo.CopyThread(threadId, newThreadId, idMap)
         newLeafId := idMap[path[cutoff].id]
         ChatDB.db.Query("UPDATE chat_threads SET active_leaf_id=?, updated_at=datetime('now') WHERE id=?;", newLeafId, newThreadId)
 

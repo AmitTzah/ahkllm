@@ -9,6 +9,7 @@
 ; Also: sendRequestToLLM (thin wrapper).
 ; ======================================================
 
+#Include applications\ApplicationChat.ahk
 #Include ..\shared\ModelParser.ahk
 #Include ..\shared\ModelResolver.ahk
 #Include ..\shared\AttachmentUtils.ahk
@@ -81,13 +82,19 @@ buildRequest(requestPath := "") {
     if !_ProcessAttachmentsForPath(&apiMessages, requestParams["singleAPIModelName"])
         return ""
 
+    applicationInput := ApplicationRepo.Session(activeThreadId) ? ApplicationRepo.Replay(path, apiMessages) : ""
     ; Clean up internal _msgId fields
     _CleanApiMessages(apiMessages)
 
     ; Build request object and apply overrides
     requestObj := _BuildRequestObj(apiMessages, providerInfo)
 
-    return _WriteRequestFiles(requestObj, providerInfo)
+    ApplicationChat.Prepare(activeThreadId, path, providerInfo, requestObj, applicationInput)
+    try return _WriteRequestFiles(requestObj, providerInfo)
+    catch Error as e {
+        try ApplicationChat.Abort(activeThreadId)
+        throw e
+    }
 }
 
 ; Show ChatGPT-plan OAuth/permission error and return empty so callers abort.

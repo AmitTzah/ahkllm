@@ -40,7 +40,9 @@ function loadViewer(logData) {
     console
   };
   sandbox.global = sandbox;
-  vm.runInContext(loadViewerScript(), vm.createContext(sandbox));
+  const context=vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../../webui/js/api-log-preview.js'),'utf8'),context);
+  vm.runInContext(loadViewerScript(), context);
   sandbox.logData = logData;
   return { sandbox, els };
 }
@@ -83,5 +85,33 @@ describe('esc', () => {
   it('escapes angle brackets, ampersands and double quotes', () => {
     const { sandbox } = loadViewer([]);
     assert.strictEqual(sandbox.esc('<b title="x">a&b</b>'), '&#60;b title=&#34;x&#34;&#62;a&#38;b&#60;/b&#62;');
+  });
+});
+
+describe('large payload previews', () => {
+  it('omits string middles while preserving payload fields and the original request', () => {
+    const text='START-'+ 'm'.repeat(15000) + '-END';
+    const request=JSON.stringify({model:'example',stream:true,messages:[{role:'user',content:text}],tools:[{name:'search'}]});
+    const {sandbox,els}=loadViewer([{request,response:'{}',endpoint:'https://example.test/inference'}]);
+    sandbox.renderTable();
+    assert.ok(els.logBody.innerHTML.includes('characters omitted from preview'));
+    assert.ok(els.logBody.innerHTML.includes('START-') && els.logBody.innerHTML.includes('-END'));
+    assert.ok(els.logBody.innerHTML.includes('search'));
+    assert.equal(sandbox.logData[0].request,request);
+    assert.equal(JSON.parse(sandbox.ApiLogPreview.format(request)).stream,true);
+  });
+
+  it('Copy retrieves full archived bodies without omission markers', async () => {
+    const original=JSON.stringify({messages:[{content:'FULL-MIDDLE-'+ 'x'.repeat(12000)}]});
+    const {sandbox}=loadViewer([{log_id:'one',request:'preview',request_archive:'retained-request',response:'{}',endpoint:'https://example.test/responses'}]);
+    sandbox.window.chrome={webview:{hostObjects:{Logs:{}}}};
+    sandbox.window.chrome.webview.hostObjects.Logs.GetBody=async name=>{assert.equal(name,'retained-request');return original;};
+    let copied='';
+    sandbox.navigator.clipboard.writeText=async value=>{copied=value;};
+    await sandbox.cp(0,{textContent:'Copy',style:{}});
+    assert.ok(copied.includes('FULL-MIDDLE-'));
+    assert.ok(copied.includes('x'.repeat(12000)));
+    assert.ok(copied.includes('POST https://example.test/responses'));
+    assert.ok(!copied.includes('omitted from preview'));
   });
 });

@@ -130,7 +130,7 @@ _handleStreamError() {
         isFIM: false,
         endpoint: _getProviderEndpoint(),
         pasteMode: _streamLogPasteMode(),
-        request: requestParams.Has("_streamChatHistoryJSONRequest") ? requestParams["_streamChatHistoryJSONRequest"] : "{}",
+        request: requestParams.Has("_streamWireRequestJSON") ? requestParams["_streamWireRequestJSON"] : requestParams.Has("_streamChatHistoryJSONRequest") ? requestParams["_streamChatHistoryJSONRequest"] : "{}",
         response: rawOutput ? rawOutput : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
         status: "error",
         responseTimeMs: responseTimeMs
@@ -340,7 +340,7 @@ _logCancelledRequest() {
         isFIM: false,
         endpoint: _getProviderEndpoint(),
         pasteMode: _streamLogPasteMode(),
-        request: requestParams["_streamChatHistoryJSONRequest"],
+        request: requestParams.Has("_streamWireRequestJSON") ? requestParams["_streamWireRequestJSON"] : requestParams["_streamChatHistoryJSONRequest"],
         response: jsongo.Stringify(logEntry),
         status: "cancelled",
         responseTimeMs: responseTimeMs

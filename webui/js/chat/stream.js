@@ -8,6 +8,7 @@ var streamState = {
   thinkingDetails: null,
   thinkingBuffer: '',
   thinkingKind: 'reasoning',
+  thinkingPersistent: false,
   thinkingSummary: '',
   activitySearchCount: 0,
   contentBuffer: '',
@@ -36,6 +37,7 @@ function startStreaming(threadId) {
     setChatButtonsEnabled({ enabled: false, threadId: streamState.threadId });
   }
   streamState.thinkingKind = 'reasoning';
+  streamState.thinkingPersistent = false;
   streamState.thinkingSummary = '';
   streamState.activitySearchCount = 0;
   streamState.active = true;
@@ -126,6 +128,7 @@ function onStreamReasoning(data, threadId) {
   var kind = (typeof data === 'object' && data.kind) ? data.kind : 'reasoning';
   var replace = !!(typeof data === 'object' && data.replace);
   streamState.thinkingKind = kind;
+  if (typeof data === 'object' && data.persistent) streamState.thinkingPersistent = true;
   if (typeof data === 'object' && data.summary) streamState.thinkingSummary = data.summary;
   if (typeof data === 'object' && data.searchCount !== undefined) streamState.activitySearchCount = data.searchCount;
 
@@ -343,14 +346,14 @@ function _finalizeThinkingBlock() {
   // Activity is a lifecycle/tool summary, not chain-of-thought. A plain
   // Thinking indicator is transient; retain only useful completed tool work.
   if (streamState.thinkingKind === 'activity') {
-    if (!streamState.activitySearchCount) {
+    if (!streamState.activitySearchCount && !streamState.thinkingPersistent) {
       if (streamState.thinkingDetails.remove) streamState.thinkingDetails.remove();
       streamState.thinkingDetails = null;
       streamState.thinkingBuffer = '';
       return;
     }
     var activitySummary = streamState.thinkingDetails.querySelector('summary');
-    var countLabel = streamState.activitySearchCount === 1
+    var countLabel = streamState.thinkingPersistent ? 'Thinking and tools' : streamState.activitySearchCount === 1
       ? '1 web search'
       : streamState.activitySearchCount + ' web searches';
     activitySummary.innerHTML = '<i data-lucide="search" style="width:16px;height:16px;"></i> ' + countLabel;
