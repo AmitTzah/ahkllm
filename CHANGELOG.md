@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.5.0] - 2026-10-03
+
+### Added
+
+- Sign in with ChatGPT to use an eligible subscription directly through the Responses API, with account model refresh and hosted web search.
+- Connect other applications to saved AhkLLM chats with prepared context, scoped tools, and task controls. Connections support message editing, retries, and forks without a separate background service.
+- An Applications settings page with a setup guide, connection management, and field explanations.
+
+### Improved
+
+- Connected requests keep running when the chat window is hidden or you switch chats.
+- Public reasoning summaries and tool activity remain visible after responses finish and chats reopen.
+- API Logs show the actual request and destination, readable previews, full-copy controls, and completed ChatGPT-plan responses instead of streaming deltas.
+- Large API log bodies are retained separately so previews stay manageable without truncating the original payload.
+- Image attachments and thumbnails, pending-message handling, and ChatGPT-plan settings and error reporting.
+- Shorter README guides for API Logs and connected applications.
+
+### Fixed
+
+- Connected chats preserve the supplied title and honor the configured New Chats Start With model or assistant.
+- Connected applications can automatically update context and permissions before retries and follow-ups while preserving existing file edits.
+
+### Upgrade notes
+
+- The ChatGPT-plan backend now uses Sign in with ChatGPT rather than Codex CLI for chat. Codex CLI is optional and remains available for the image-generation worker.
+- Existing codex/ model IDs remain compatible. Account credentials use Windows DPAPI and are excluded from portable backups.
+- Connected chats add generic integration tables to the local chat database. Backups include connection registrations and chat integration records; files owned by connected applications need their own backups.
+
 ## [1.4.1] - 2026-09-30
 
 ### Fixed
