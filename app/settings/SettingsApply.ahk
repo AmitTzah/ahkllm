@@ -44,7 +44,7 @@ class SettingsApply {
         for k, p in settings["providers"] {
             effectiveKey := ModelParser.CanonicalProvider(k)
             provObj := {
-                displayName: p.Has("displayName") ? p["displayName"] : effectiveKey,
+                displayName: SettingsMerge.ProviderDisplayName(effectiveKey, p.Has("displayName") ? p["displayName"] : effectiveKey),
                 endpoint: p.Has("endpoint") ? p["endpoint"] : "",
                 modelsDevProvider: p.Has("modelsDevProvider") ? p["modelsDevProvider"] : "",
                 fimEndpoint: p.Has("fimEndpoint") ? p["fimEndpoint"] : "",
@@ -57,13 +57,19 @@ class SettingsApply {
                 icon: p.Has("icon") ? p["icon"] : "",
                 collapseThinking: p.Has("collapseThinking") ? p["collapseThinking"] : false
             }
-            ; `codex` is accepted only as a legacy alias.
             provObj.%("api" "Key")% := provObj._credentialValue
             provObj.DeleteProp("_credentialValue")
-            ; Runtime provider identity is canonical `chatgpt`.
+            if effectiveKey = "codex" {
+                provObj.transport := "codex-cli"
+                provObj.billingMode := "chatgpt-subscription"
+                provObj.endpoint := ""
+                provObj.fimEndpoint := ""
+                provObj.authMode := "chatgpt"
+                provObj.authEnvVar := ""
+                provObj.%("api" "Key")% := ""
+                newProviderMap["codex"] := "codex"
+            }
             if effectiveKey = "chatgpt" {
-                if provObj.displayName = "Codex CLI (ChatGPT subscription)" || provObj.displayName = "Codex CLI"
-                    provObj.displayName := "ChatGPT plan"
                 provObj.transport := "chatgpt-responses"
                 provObj.billingMode := "chatgpt-subscription"
                 provObj.endpoint := "https://api.openai.com/v1/responses"
@@ -74,7 +80,6 @@ class SettingsApply {
             }
             if effectiveKey = "chatgpt" {
                 newProviderMap["chatgpt"] := "chatgpt"
-                newProviderMap["codex"] := "chatgpt"
             }
             newProviders[effectiveKey] := provObj
             if p.Has("prefixes") && IsObject(p["prefixes"]) {
@@ -124,14 +129,16 @@ class SettingsApply {
                 entry.thinkingLevelMap := SettingsPersistence._ToMap(m["thinkingLevelMap"])
             if m.Has("thinkingOff")
                 entry.thinkingOff := m["thinkingOff"]
-            if ModelParser.IsChatGptPlan(modelKey) || entry.provider = "chatgpt" {
-                entry.provider := "chatgpt"
-                entry.api := "chatgpt-responses"
+            modelProvider := ModelParser.Split(modelKey).provider
+            if modelProvider = "codex" || modelProvider = "chatgpt" || entry.provider = "codex" || entry.provider = "chatgpt" {
+                entry.provider := modelProvider != "" ? modelProvider : entry.provider
+                isCodex := entry.provider = "codex"
+                entry.api := isCodex ? "codex-cli" : "chatgpt-responses"
                 if !entry.HasOwnProp("compat") || !IsObject(entry.compat)
                     entry.compat := Map()
-                entry.compat["thinkingFormat"] := "openai"
+                entry.compat["thinkingFormat"] := isCodex ? "codex-cli" : "openai"
                 entry.compat["supportsReasoningEffort"] := true
-                entry.compat["supportsUsageInStreaming"] := true
+                entry.compat["supportsUsageInStreaming"] := !isCodex
                 entry.compat["maxTokensField"] := ""
             }
             newModels[modelKey] := entry

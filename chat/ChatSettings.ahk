@@ -72,7 +72,7 @@ _applyAssistantToRequestParams(asst) {
     requestParams["reasoningOverrideSet"] := false
     requestParams["temperatureOverrideSet"] := false
     requestParams["activeAssistantId"] := asst.id
-    if !ModelParser.IsChatGptPlan(asst.baseModel)
+    if !ModelParser.SupportsImageGeneration(asst.baseModel)
         requestParams["imageGeneration"] := false
     _updateProviderFromModel(asst.baseModel)
 }
@@ -215,9 +215,9 @@ handleModelSettingsUpdate(parsed) {
     requestParams["reasoningOverrideSet"] := reasoningOverrideSet
     requestParams["temperatureOverrideSet"] := temperatureOverrideSet
     requestParams["webSearch"] := webSearch
-    ; UI state is not a security boundary: only the effective ChatGPT-plan
-    ; model may retain this per-thread permission.
-    requestParams["imageGeneration"] := ModelParser.IsChatGptPlan(requestParams["singleAPIModelName"]) && imageGeneration
+    ; UI state is not a security boundary: only an effective Codex CLI or
+    ; ChatGPT model may retain this per-thread permission.
+    requestParams["imageGeneration"] := ModelParser.SupportsImageGeneration(requestParams["singleAPIModelName"]) && imageGeneration
 
     ; Persist to DB
     if activeThreadId {

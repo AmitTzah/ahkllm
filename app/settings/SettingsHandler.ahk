@@ -21,15 +21,15 @@ class SettingsHandler {
     ; guarantee no settings section silently drops values on save.
     static KNOWN_TOP_LEVEL_KEYS := ["version", "providers", "models", "assistants", "commands", "submenuOrder", "commandGroupOrders", "threadTitles", "generationNotifications", "ui", "icons", "hotkeys", "apiLogs", "trash", "backup", "menuItems", "chatShortcut", "newChatStartsWith", "tavilyApiKey", "tavilyEndpoint"]
 
-    static Load() => SettingsPersistence.Load()
-    static Save(settingsMap) => SettingsPersistence.Save(SettingsMerge.CanonicalizeChatGptAliases(settingsMap))
+    static Load() => SettingsMerge.NormalizeProviderDisplayNames(SettingsPersistence.Load())
+    static Save(settingsMap) => SettingsPersistence.Save(SettingsMerge.NormalizeProviderDisplayNames(settingsMap))
     static _ToMap(obj) => SettingsPersistence._ToMap(obj)
 
     static CacheInitialDefaults() => SettingsDefaults.CacheInitialDefaults()
     static GetDefaults() => SettingsDefaults.GetDefaults()
 
-    static Merge(existing, defaults) => SettingsMerge.Merge(SettingsMerge.CanonicalizeChatGptAliases(existing), defaults)
-    static Override(incoming, base) => SettingsMerge.CanonicalizeChatGptAliases(SettingsMerge.Override(incoming, base))
+    static Merge(existing, defaults) => SettingsMerge.Merge(existing, defaults)
+    static Override(incoming, base) => SettingsMerge.NormalizeProviderDisplayNames(SettingsMerge.Override(incoming, base))
 
-    static ApplyToGlobals(settings) => SettingsApply.ApplyToGlobals(SettingsMerge.CanonicalizeChatGptAliases(settings))
+    static ApplyToGlobals(settings) => SettingsApply.ApplyToGlobals(settings)
 }

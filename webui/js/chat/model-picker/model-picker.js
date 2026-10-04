@@ -232,7 +232,7 @@ function _populateModelsTab() {
     var models = window.modelList[provider];
     var groupLabel = document.createElement('div');
     groupLabel.className = 'si-group-label';
-    groupLabel.textContent = (provider === 'chatgpt' || provider === 'codex') ? 'ChatGPT plan' : (provider.charAt(0).toUpperCase() + provider.slice(1));
+    groupLabel.textContent = provider === 'chatgpt' ? 'ChatGPT plan' : (provider === 'codex' ? 'Codex CLI' : (provider.charAt(0).toUpperCase() + provider.slice(1)));
     if (p > 0) groupLabel.style.paddingTop = '8px';
     pane.appendChild(groupLabel);
     for (var m = 0; m < models.length; m++) {
@@ -298,4 +298,3 @@ function _makeModelClickHandler(el, fullId, supportsTemperature) {
         var ov = document.getElementById('popoverOverlay'); if (ov) ov.style.display = 'none';
     };
 }
-

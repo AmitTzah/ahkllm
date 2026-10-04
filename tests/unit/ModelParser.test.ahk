@@ -35,27 +35,47 @@ class ModelParserTest {
             throw Error("Expected empty string, got '" result "'")
     }
 
-    CanonicalProvider_MapsLegacyCodexToChatGpt() {
-        if ModelParser.CanonicalProvider("codex") != "chatgpt"
-            throw Error("Legacy codex provider must canonicalize to chatgpt")
+    CanonicalProvider_PreservesIndependentCodex() {
+        if ModelParser.CanonicalProvider("codex") != "codex"
+            throw Error("Codex provider must remain independent")
         if ModelParser.CanonicalProvider("openai") != "openai"
             throw Error("Unrelated providers must not be rewritten")
     }
 
-    Canonicalize_MapsLegacyCodexModelId() {
-        if ModelParser.Canonicalize("codex/gpt-5.6-luna") != "chatgpt/gpt-5.6-luna"
-            throw Error("Legacy codex model id must canonicalize to chatgpt")
+    Canonicalize_PreservesCodexModelId() {
+        if ModelParser.Canonicalize("codex/gpt-5.6-luna") != "codex/gpt-5.6-luna"
+            throw Error("Codex model id must retain its provider")
         if ModelParser.Canonicalize("chatgpt/gpt-5.6-luna") != "chatgpt/gpt-5.6-luna"
             throw Error("Canonical ChatGPT-plan id must remain unchanged")
     }
 
-    IsChatGptPlan_AcceptsCanonicalAndLegacyPrefixes() {
+    IsChatGptPlan_ExcludesCodexCli() {
         if !ModelParser.IsChatGptPlan("chatgpt/gpt-5.6-luna")
             throw Error("Canonical chatgpt id should be recognized as ChatGPT plan")
-        if !ModelParser.IsChatGptPlan("codex/gpt-5.6-luna")
-            throw Error("Legacy codex id should remain recognized as ChatGPT plan")
+        if ModelParser.IsChatGptPlan("codex/gpt-5.6-luna")
+            throw Error("Codex CLI must not be treated as ChatGPT OAuth")
         if ModelParser.IsChatGptPlan("openai/gpt-5-mini")
             throw Error("OpenAI API-key model must not be treated as ChatGPT plan")
+    }
+
+    Lookup_KeepsTransportSpecificMetadataWithinProvider() {
+        catalog := Map(
+            "chatgpt/gpt-example", { api: "chatgpt-responses" },
+            "codex/gpt-example", { api: "codex-cli" }
+        )
+        if ModelResolver.Lookup(catalog, "codex/gpt-example-2026-10-04").api != "codex-cli"
+            throw Error("Version fallback must retain Codex transport metadata")
+        if ModelResolver.Lookup(catalog, "chatgpt/gpt-example-2026-10-04").api != "chatgpt-responses"
+            throw Error("Version fallback must retain ChatGPT transport metadata")
+        if ModelResolver.Lookup(Map("chatgpt/gpt-example", { api: "chatgpt-responses" }), "codex/gpt-example") != ""
+            throw Error("Missing Codex metadata must not be borrowed from ChatGPT")
+    }
+
+    SupportsImageGeneration_AcceptsBothSubscriptionTransports() {
+        if !ModelParser.SupportsImageGeneration("codex/gpt-5.6-luna")
+            || !ModelParser.SupportsImageGeneration("chatgpt/gpt-5.6-luna")
+            || ModelParser.SupportsImageGeneration("openai/gpt-5-mini")
+            throw Error("Only the two subscription transports support the image-generation toggle")
     }
 
     ; ----------------------------------------------------

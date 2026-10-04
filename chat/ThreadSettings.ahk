@@ -67,7 +67,7 @@ class ThreadSettings {
             eff.model := ModelParser.Canonicalize(eff.model)
         if eff.assistantBaseModel
             eff.assistantBaseModel := ModelParser.Canonicalize(eff.assistantBaseModel)
-        eff.imageGeneration := ModelParser.IsChatGptPlan(eff.model) && eff.imageGeneration
+        eff.imageGeneration := ModelParser.SupportsImageGeneration(eff.model) && eff.imageGeneration
         return eff
     }
 
@@ -89,7 +89,7 @@ class ThreadSettings {
         requestParams["temperatureOverrideSet"] := eff.temperatureOverrideSet
         requestParams["fontSize"] := eff.fontSize
         requestParams["webSearch"] := eff.webSearch
-        requestParams["imageGeneration"] := ModelParser.IsChatGptPlan(requestParams["singleAPIModelName"]) && (settings.HasOwnProp("imageGeneration") ? settings.imageGeneration : false)
+        requestParams["imageGeneration"] := ModelParser.SupportsImageGeneration(requestParams["singleAPIModelName"]) && (settings.HasOwnProp("imageGeneration") ? settings.imageGeneration : false)
         if eff.assistantId
             requestParams["activeAssistantId"] := eff.assistantId
     }
@@ -132,7 +132,7 @@ class ThreadSettings {
             reasoningOverrideSet: requestParams.Has("reasoningOverrideSet") ? requestParams["reasoningOverrideSet"] : false,
             temperatureOverrideSet: requestParams.Has("temperatureOverrideSet") ? requestParams["temperatureOverrideSet"] : false,
             webSearch: requestParams.Has("webSearch") ? requestParams["webSearch"] : false,
-            imageGeneration: ModelParser.IsChatGptPlan(requestParams["singleAPIModelName"]) && requestParams.Has("imageGeneration") && requestParams["imageGeneration"],
+            imageGeneration: ModelParser.SupportsImageGeneration(requestParams["singleAPIModelName"]) && requestParams.Has("imageGeneration") && requestParams["imageGeneration"],
             fontSize: requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
         }
     }
@@ -147,7 +147,7 @@ class ThreadSettings {
         defaultFontSize := IsSet(responseWindowFontSize) ? responseWindowFontSize : "17"
         fontSize := requestParams.Has("fontSize") ? requestParams["fontSize"] : defaultFontSize
         webSearch := requestParams.Has("webSearch") ? requestParams["webSearch"] : false
-        imageGeneration := ModelParser.IsChatGptPlan(model) && requestParams.Has("imageGeneration") && requestParams["imageGeneration"]
+        imageGeneration := ModelParser.SupportsImageGeneration(model) && requestParams.Has("imageGeneration") && requestParams["imageGeneration"]
 
         assistantName := ""
         assistantBaseModel := ""

@@ -470,8 +470,7 @@ _WriteRequestFiles(requestObj, providerInfo) {
 sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
     providerInfo := ProviderResolver.Resolve(requestParams["singleAPIModelName"])
     if providerInfo.transport = "codex-cli" {
-        ; Legacy local chat transport retained only for compatibility/tests;
-        ; normal ChatGPT-plan chat uses the direct Responses route below.
+        ; One deliberate model action launches one local Codex CLI request.
         sendNonStreamingRequest(&chatHistoryJSONRequest)
         return
     }

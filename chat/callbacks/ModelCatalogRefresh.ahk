@@ -44,7 +44,7 @@ _RefreshConfiguredModelCatalogs(parsed, fetchMetadata := "", refreshPlanCatalog 
         } catch Error as e
             result.warnings.Push(e.Message)
     }
-    if liveCatalogs && (providerData.Has("chatgpt") || providerData.Has("codex")) {
+    if liveCatalogs && providerData.Has("chatgpt") {
         try {
             catalog := refreshPlanCatalog.Call()
             for modelId, metadata in catalog

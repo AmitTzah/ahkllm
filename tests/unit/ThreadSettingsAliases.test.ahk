@@ -1,10 +1,10 @@
-; Legacy model aliases remain stored until the user selects another model.
+; Historical Codex model IDs retain their CLI routing and stored identity.
 class ThreadSettingsAliasesTest {
     static __New() {
         RegisterTestClass("ThreadSettingsAliasesTest")
     }
 
-    LegacyAlias_SettingsFlushPreservesStoredModel() {
+    Codex_SettingsFlushPreservesStoredModel() {
         global requestParams, activeThreadId
         oldParams := requestParams
         oldActive := activeThreadId
@@ -19,9 +19,9 @@ class ThreadSettingsAliasesTest {
             ChatDB.Thread_UpdateSettings(activeThreadId, { modelOverride: "codex/gpt-5.6-luna" })
             requestParams := Map()
             ThreadSettings.RestoreIntoRequestParams(activeThreadId)
-            if requestParams["singleAPIModelName"] != "chatgpt/gpt-5.6-luna"
-                throw Error("Legacy model must route through the canonical runtime provider")
-            handleModelSettingsUpdate(Map("model", "chatgpt/gpt-5.6-luna", "reasoning", "high"))
+            if requestParams["singleAPIModelName"] != "codex/gpt-5.6-luna"
+                throw Error("Historical Codex model must retain CLI identity")
+            handleModelSettingsUpdate(Map("model", "codex/gpt-5.6-luna", "reasoning", "high"))
             saved := ChatDB.Thread_GetSettings(activeThreadId)
             if saved.modelOverride != "codex/gpt-5.6-luna" || saved.reasoningOverride != "high"
                 throw Error("Settings flush must save side settings without rewriting the legacy model")

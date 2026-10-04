@@ -1,10 +1,27 @@
-# ChatGPT plan backend and Codex image worker
+# Codex CLI and ChatGPT plan backends
 
-AhkLLM's built-in `chatgpt` provider uses **Sign in with ChatGPT** and OpenAI's public Responses API for normal chat and inline commands. New model IDs use `chatgpt/...` (for example `chatgpt/gpt-5.6-sol`). Historical `codex/...` IDs remain accepted as a non-destructive compatibility alias, so existing chats continue to resolve without a conversation-DB migration.
+AhkLLM's built-in `chatgpt` provider uses **Sign in with ChatGPT** and OpenAI's public Responses API for normal chat and inline commands. New model IDs use `chatgpt/...` (for example `chatgpt/gpt-5.6-sol`). The independent `codex/...` namespace uses the local Codex CLI. Historical Codex conversation IDs retain their CLI routing without a conversation-DB migration. Settings already saved as `chatgpt/...` remain on ChatGPT until you select Codex.
 
-Codex CLI is no longer the general chat transport. It is an optional, narrowly scoped worker used only when the per-chat **Image Generation** toggle causes the ChatGPT-plan model to call AhkLLM's `ahkllm.generate_image` client tool.
+## Codex CLI setup and behavior
 
-## Setup
+1. Install the official Codex CLI, version 0.153.0 or newer.
+2. Run `codex login` and use ChatGPT authentication.
+3. Open **Settings -> Providers -> Codex CLI** and click **Check Codex CLI**.
+4. Select a `codex/...` model. If Codex is not on PATH, set `CODEX_CLI_PATH` before launching AhkLLM.
+
+Codex has its own provider card and curated model catalog. ChatGPT account refresh changes only `chatgpt/...` models and preserves Codex models.
+
+Each requested action launches one `codex exec`. AhkLLM supplies its selected branch as a chronological JSONL transcript through stdin, retains ownership of history, and imports the final answer and public reasoning summaries. Chat, inline commands, and title generation use the CLI transport. Stop cancels its process tree; web search and image generation are enabled only when requested. Image attachments are supplied as managed local image paths.
+
+The CLI runs with user config/rules ignored, a read-only sandbox, strict config, no approval prompts, and unrelated local execution, MCP, apps, plugins, and agent capabilities disabled. CLI authentication remains separate from the ChatGPT provider's OAuth credential store; AhkLLM does not copy tokens between them.
+
+The restored CLI path retains Codex's known 1,048,576-character stdin replay ceiling. Large branches may fail even when they fit the model's token context. AhkLLM does not silently trim history.
+
+ChatGPT may calculate or enforce usage limits differently from Codex CLI. Connected-app limits may block ChatGPT requests while Codex CLI still works. This is a warning about possible behavior, not a promise of independent allowances or proof of an OpenAI bug. Check **ChatGPT Settings -> Usage** for the plan windows and app-specific cap.
+
+For the ChatGPT provider, Codex CLI also remains an optional image worker when the per-chat **Image Generation** toggle causes a model to call `ahkllm.generate_image`.
+
+## "sign in with chatgpt" Setup
 
 1. Open **Settings -> Providers -> ChatGPT plan**.
 2. Click **Continue with ChatGPT**.
@@ -16,7 +33,7 @@ No OpenAI API key is required for this provider. AhkLLM stores the OAuth registr
 
 The signed-in account must grant the `chatgpt.tokens.use.direct` permission. If identity sign-in succeeds without that permission, AhkLLM retains the account registration but does not perform inference until plan usage is enabled.
 
-After plan usage is enabled, AhkLLM shows a one-time confirmation that eligible requests use the user's ChatGPT plan or available credits. While a `chatgpt/...` model (or a legacy `codex/...` alias, or an assistant based on one) is active, the model card shows **Using ChatGPT plan** with a **Manage usage** link. The provider settings and usage dashboard expose the same usage-management destination.
+After plan usage is enabled, AhkLLM shows a one-time confirmation that eligible requests use the user's ChatGPT plan or available credits. While a `chatgpt/...` model (or an assistant based on one) is active, the model card shows **Using ChatGPT plan** with a **Manage usage** link. The provider settings and usage dashboard expose the same usage-management destination.
 
 ## Direct Responses transport
 
@@ -42,7 +59,7 @@ Attachments remain associated with their original AhkLLM messages. Supported ima
 
 AhkLLM supports multiple saved ChatGPT registrations. Each registration keeps its issued OAuth `client_id`, verified account identity, and renewable session separately. Switching accounts changes the access token used for model discovery and inference.
 
-**Refresh models** queries `GET https://api.openai.com/v1/models` with the selected account, keeps entries whose `visibility` is `list`, displays `display_name`, and sends the corresponding `slug` as the model ID. The curated fallback catalog uses canonical `chatgpt/...` entries. Legacy `codex/...` references are normalized to the same models at runtime.
+**Refresh models** queries `GET https://api.openai.com/v1/models` with the selected account, keeps entries whose `visibility` is `list`, displays `display_name`, and sends the corresponding `slug` as the model ID. The curated fallback catalog uses `chatgpt/...` entries. Codex models remain in their own CLI catalog.
 
 Discovery saves the selected account's catalog in `settings.json`, replaces stale ChatGPT model entries, and updates the chat picker and Models settings table. Once discovery succeeds, reloads use that catalog rather than adding bundled fallback models back. A failed refresh keeps the previous catalog; a successful empty catalog removes all ChatGPT model entries. Existing conversation model IDs remain unchanged.
 

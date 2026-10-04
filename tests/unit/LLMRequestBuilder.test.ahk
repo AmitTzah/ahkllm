@@ -430,14 +430,14 @@ class LLMRequestBuilderTest {
             throw Error("Expected OpenAI endpoint, got '" info.endpoint "'")
     }
 
-    ResolveProvider_LegacyCodexAliasUsesCanonicalChatGptProvider() {
+    ResolveProvider_CodexUsesIndependentCliTransport() {
         info := ProviderResolver.Resolve("codex/gpt-5.6-luna")
-        if info.providerKey != "chatgpt"
-            throw Error("Legacy codex model must resolve to canonical chatgpt provider, got '" info.providerKey "'")
+        if info.providerKey != "codex"
+            throw Error("Codex model must resolve to codex provider, got '" info.providerKey "'")
         if info.modelName != "gpt-5.6-luna"
-            throw Error("Legacy alias must send the bare API model slug, got '" info.modelName "'")
-        if info.transport != "chatgpt-responses"
-            throw Error("Legacy alias must use direct ChatGPT Responses transport")
+            throw Error("Codex must send the bare model slug, got '" info.modelName "'")
+        if info.transport != "codex-cli"
+            throw Error("Codex must use CLI transport")
     }
 
     ResolveProvider_LegacyFormat() {

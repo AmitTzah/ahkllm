@@ -1,7 +1,7 @@
 // Update account-owned rows without rebuilding unrelated, possibly edited rows.
 (function() {
   function isPlanModel(id, metadata) {
-    return /^(chatgpt|codex)\//.test(id || '') || /^(chatgpt|codex)$/.test((metadata || {}).provider || '');
+    return /^chatgpt\//.test(id || '') || (metadata || {}).provider === 'chatgpt';
   }
 
   function replaceRows(tableId, catalog, createRow) {

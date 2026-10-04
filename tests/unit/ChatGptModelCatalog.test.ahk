@@ -4,7 +4,7 @@ class ChatGptModelCatalogTest {
         RegisterTestClass("ChatGptModelCatalogTest")
     }
 
-    Reconcile_PrunesAliasesPreservesMetadataAndOtherProviders() {
+    Reconcile_PreservesCodexAndOtherProviders() {
         existing := Map(
             "openai/keep", Map("provider", "openai", "input", 5),
             "codex/old", Map("provider", "codex"),
@@ -16,7 +16,7 @@ class ChatGptModelCatalogTest {
             { slug: "kept", displayName: "Updated name" },
             { slug: "new", displayName: "New model" }
         ])
-        if result.Count != 3 || result.Has("codex/old") || result.Has("chatgpt/stale")
+        if result.Count != 4 || !result.Has("codex/old") || result.Has("chatgpt/stale")
             throw Error("Only models in the latest account catalog should remain")
         if result["openai/keep"]["input"] != 5 || result["chatgpt/kept"]["context"] != 12345
             throw Error("Unrelated models and retained model metadata must survive")
@@ -27,7 +27,7 @@ class ChatGptModelCatalogTest {
         if existing["chatgpt/kept"]["input"] != 9
             throw Error("Reconciliation must not mutate the previous catalog")
         emptied := ChatGptModelCatalog.Reconcile(existing, [])
-        if emptied.Count != 1 || !emptied.Has("openai/keep")
+        if emptied.Count != 2 || !emptied.Has("openai/keep") || !emptied.Has("codex/old")
             throw Error("A successful empty account catalog must prune all plan models")
     }
 

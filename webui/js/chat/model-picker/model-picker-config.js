@@ -25,7 +25,7 @@ function _syncChatGptPlanIndicator() {
   if (!el) return;
   var status = (typeof window !== 'undefined' && window._chatGptPlanStatus) ? window._chatGptPlanStatus : {};
   var settings = (typeof window !== 'undefined' && window._currentSettings) ? window._currentSettings : {};
-  var active = !!status.authenticated && _isChatGptPlanModel(_effectiveImageGenerationModel(settings));
+  var active = !!status.authenticated && /^chatgpt\//i.test(_effectiveImageGenerationModel(settings));
   el.style.display = active ? 'flex' : 'none';
 }
 

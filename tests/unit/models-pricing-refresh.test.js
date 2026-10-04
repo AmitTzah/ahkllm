@@ -464,6 +464,15 @@ describe('new model metadata survives a settings save round-trip', () => {
 });
 
 describe('manual ChatGPT-plan model defaults', () => {
+  it('keeps manual Codex models on CLI metadata beside the same ChatGPT model', () => {
+    const { sections } = loadModule({ modelsRows: [makeMainRow('gpt-future', 'codex'), makeMainRow('gpt-future', 'chatgpt')] });
+    const entries = sections.models.save().models;
+    assert.strictEqual(entries['codex/gpt-future'].provider, 'codex');
+    assert.strictEqual(entries['codex/gpt-future'].api, 'codex-cli');
+    assert.strictEqual(entries['codex/gpt-future'].compat.thinkingFormat, 'codex-cli');
+    assert.strictEqual(entries['codex/gpt-future'].compat.supportsUsageInStreaming, false);
+    assert.strictEqual(entries['chatgpt/gpt-future'].api, 'chatgpt-responses');
+  });
   it('uses direct Responses metadata with conservative reasoning levels for unknown models', () => {
     const { sections } = loadModule({ modelsRows: [makeMainRow('gpt-future', 'chatgpt')] });
     const out = sections.models.save();

@@ -27,16 +27,16 @@ function loadCatalogUi(tables) {
 }
 
 describe('ChatGPT catalog table reconciliation', () => {
-  it('replaces plan and legacy rows while preserving unrelated row identity and unsaved edits', () => {
+  it('replaces ChatGPT rows and preserves Codex rows while preserving unrelated row identity and unsaved edits', () => {
     const table = makeTable([['kept', 'openai'], ['old', 'chatgpt'], ['codex/legacy', '']]);
     const unrelated = table.children[0];
     const ui = loadCatalogUi({ modelsTableBody: table });
     ui.replaceRows('modelsTableBody', { 'chatgpt/new': { displayName: 'New model' } },
       (id, metadata) => ({ id, metadata }));
-    assert.deepEqual(table.children.map((row) => row.id), ['kept', 'chatgpt/new']);
+    assert.deepEqual(table.children.map((row) => row.id), ['kept', 'codex/legacy', 'chatgpt/new']);
     assert.equal(table.children[0], unrelated);
     assert.equal(unrelated.unsavedInput, 'unsaved edit');
-    assert.equal(table.children[1].metadata.displayName, 'New model');
+    assert.equal(table.children[2].metadata.displayName, 'New model');
   });
 
   it('prunes all account rows for a successful empty catalog in both tables', () => {
@@ -45,7 +45,7 @@ describe('ChatGPT catalog table reconciliation', () => {
     const ui = loadCatalogUi({ main, modal });
     for (const tableId of ['main', 'modal']) ui.replaceRows(tableId, {}, () => assert.fail('empty catalog adds no rows'));
     assert.deepEqual(main.children.map((row) => row.id), ['b']);
-    assert.deepEqual(modal.children.map((row) => row.id), ['edited']);
+    assert.deepEqual(modal.children.map((row) => row.id), ['old', 'edited']);
     ui.replaceRows('not-rendered', {}, () => assert.fail('missing table adds no rows'));
   });
 });

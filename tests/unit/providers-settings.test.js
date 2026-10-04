@@ -138,6 +138,7 @@ describe('Providers settings section', () => {
         assert.ok(html.includes('Continue with ChatGPT'));
         assert.ok(html.includes('Refresh models'));
         assert.ok(html.includes('Manage usage'));
+        assert.ok(html.includes('ChatGPT may calculate or enforce usage limits differently from Codex CLI'));
         assert.ok(html.includes('chatgpt-sign-out">Sign out</button><a class="btn-sm" href="https://chatgpt.com/#settings/Usage">Manage usage</a>'));
         assert.ok(html.includes('value="chatgpt-responses"'));
         assert.ok(html.includes('value="chatgpt-oauth"'));
@@ -168,6 +169,40 @@ describe('Providers settings section', () => {
         });
         assert.strictEqual(checkBtn.disabled, false);
         assert.ok(statusEl.textContent.includes('ready'));
+    });
+
+    it('renders Codex CLI separately from ChatGPT OAuth', () => {
+        const grid = makeEl('div');
+        grid.querySelectorAll = () => [];
+        const ctx = loadSection({ grid, selectorMap: {} });
+        ctx.module.load({ providers: {
+            codex: { displayName: 'Codex CLI', transport: 'codex-cli' },
+            chatgpt: { displayName: 'ChatGPT plan', transport: 'chatgpt-responses' }
+        } });
+        const html = grid.children.find(card => card.dataset.providerKey === 'codex').innerHTML;
+        assert.ok(html.includes('value="codex-cli"'));
+        assert.ok(html.includes('Check Codex CLI'));
+        assert.ok(html.includes('codex login'));
+        assert.ok(!html.includes('Continue with ChatGPT'));
+        assert.ok(!html.includes('chatgpt-refresh-models'));
+    });
+
+    it('saves Codex CLI authentication without converting it to OAuth', () => {
+        const providerId = makeEl('input', { value: 'codex' });
+        providerId.dataset.field = 'providerId';
+        const transport = makeEl('input', { value: 'codex-cli' });
+        transport.dataset.field = 'transport';
+        const card = wireQueries(makeEl('div'), {
+            '[data-field="providerId"]': [providerId],
+            '[data-field]': [providerId, transport],
+            '.prefix-tags .badge': []
+        });
+        const ctx = loadSection({ docSelectorMap: { '#providerGrid .provider-card': [card] } });
+        const saved = ctx.module.save().providers.codex;
+        assert.strictEqual(saved.transport, 'codex-cli');
+        assert.strictEqual(saved.authMode, 'chatgpt');
+        assert.strictEqual(saved.endpoint, '');
+        assert.strictEqual(saved.apiKey, '');
     });
 
     it('applies ChatGPT account status without exposing credentials', () => {

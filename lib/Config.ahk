@@ -1,7 +1,8 @@
 #Requires AutoHotkey v2.0.18+
 #Include ..\default-settings\DefaultSettings.ahk        ; App defaults (fallback for settings.json)
 #Include ..\default-settings\DefaultModels.ahk          ; Auto-generated model metadata
-#Include ..\default-settings\DefaultCodexModels.ahk     ; Curated ChatGPT-plan model fallbacks (legacy filename)
+#Include ..\default-settings\DefaultCodexModels.ahk     ; Curated Codex CLI models
+#Include ..\default-settings\DefaultChatGptModels.ahk   ; ChatGPT OAuth fallback models
 #Include ..\app\settings\SettingsPersistence.ahk
 #Include ..\app\settings\SettingsDefaults.ahk
 #Include ..\app\settings\SettingsMerge.ahk

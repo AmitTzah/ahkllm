@@ -572,14 +572,14 @@
   // saved entry so new model ids don't lose their thinking metadata.
   function _applyChatGptPlanDefaults(entry, values) {
     if (!entry || !values || (values.provider !== 'chatgpt' && values.provider !== 'codex')) return;
-    entry.provider = 'chatgpt';
+    entry.provider = values.provider;
     entry.reasoning = true;
-    if (values.api === undefined) entry.api = 'chatgpt-responses';
+    if (values.api === undefined) entry.api = values.provider === 'codex' ? 'codex-cli' : 'chatgpt-responses';
     if (values.compat === undefined) {
       entry.compat = {
-        thinkingFormat: 'openai',
+        thinkingFormat: values.provider === 'codex' ? 'codex-cli' : 'openai',
         supportsReasoningEffort: true,
-        supportsUsageInStreaming: true,
+        supportsUsageInStreaming: values.provider !== 'codex',
         maxTokensField: ''
       };
     }

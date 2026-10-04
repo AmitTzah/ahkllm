@@ -414,40 +414,36 @@ scenarios.push(Object.assign({}, base, {
 
 scenarios.push(Object.assign({}, base, {
   id:353,
-  name:'Legacy codex/... chat model id resolves through canonical ChatGPT-plan provider without rewriting history on load',
-  mockOpts:{chatGptPlan:true,planDelay:20,planText:'LEGACY ALIAS PLAN ANSWER'},
+  name:'Historical Codex chat uses CLI independently of ChatGPT OAuth and preserves history',
+  preLaunch: installFakeCodex,
+  launchEnv: (context) => {
+    const env = imageEnv(context);
+    delete env.AHKLLM_E2E_PLAN_AUTH;
+    return env;
+  },
   fixtures:{
-    threads:[{id:'t-plan-legacy-353',title:'Legacy Plan Alias',active_leaf_id:'m-plan-legacy-353-a1',model_override:'codex/gpt-5.6-luna',reasoning_override:'medium',reasoning_override_set:1}],
+    threads:[{id:'t-codex-restored-353',title:'Restored Codex',active_leaf_id:'m-codex-353-a1',model_override:'codex/gpt-5.6-luna',reasoning_override:'medium',reasoning_override_set:1}],
     messages:[
-      {id:'m-plan-legacy-353-u1',thread_id:'t-plan-legacy-353',role:'user',content:'legacy user'},
-      {id:'m-plan-legacy-353-a1',thread_id:'t-plan-legacy-353',role:'assistant',content:'legacy assistant',parent_id:'m-plan-legacy-353-u1',model:'codex/gpt-5.6-luna'}
+      {id:'m-codex-353-u1',thread_id:'t-codex-restored-353',role:'user',content:'historical user'},
+      {id:'m-codex-353-a1',thread_id:'t-codex-restored-353',role:'assistant',content:'historical assistant',parent_id:'m-codex-353-u1',model:'codex/gpt-5.6-luna'}
     ]
   },
   async body({cdp,dbPath,mockLog,dataDir}) {
-    await load(cdp,'t-plan-legacy-353');
-    await cdp.waitFor('window._currentSettings && window._currentSettings.model==="chatgpt/gpt-5.6-luna"',10000,100,'legacy model canonicalized in UI');
-    const before=seed.query(dbPath,"SELECT model_override FROM chat_threads WHERE id='t-plan-legacy-353'")[0];
-    if(!before || before.model_override!=='codex/gpt-5.6-luna')
-      throw new Error('loading legacy chat unexpectedly rewrote historical model_override: '+JSON.stringify(before));
-
-    await sendChatMessage(cdp,'continue legacy alias chat');
+    await load(cdp,'t-codex-restored-353');
+    await cdp.waitFor('window._currentSettings && window._currentSettings.model==="codex/gpt-5.6-luna"',10000,100,'Codex model restored');
+    await sendChatMessage(cdp,'continue historical Codex chat');
     await waitStreamingIdle(cdp,15000);
-
-    const rs=responses(mockLog);
-    if(rs.length!==1) throw new Error('legacy alias did not route through one direct Responses request: '+JSON.stringify(rs.map(r=>r.url)));
-    if(String(rs[0].body&&rs[0].body.model)!=='gpt-5.6-luna')
-      throw new Error('legacy alias sent wrong API model slug: '+JSON.stringify(rs[0].body));
-    if(codexExecs(dataDir).length!==0)
-      throw new Error('legacy normal chat unexpectedly invoked Codex CLI');
-    const rows=seed.query(dbPath,"SELECT content,provider,model FROM messages WHERE thread_id='t-plan-legacy-353' AND role='assistant' ORDER BY rowid DESC LIMIT 1");
-    if(!rows.length || !String(rows[0].content).includes('LEGACY ALIAS PLAN ANSWER'))
-      throw new Error('legacy alias continuation did not persist: '+JSON.stringify(rows));
-    if(rows[0].provider!=='chatgpt')
-      throw new Error('new response from legacy chat was not attributed to canonical chatgpt provider: '+JSON.stringify(rows[0]));
-    const after=seed.query(dbPath,"SELECT model_override FROM chat_threads WHERE id='t-plan-legacy-353'")[0];
-    if(!after || after.model_override!=='codex/gpt-5.6-luna')
-      throw new Error('continuing legacy chat unexpectedly rewrote historical thread model id: '+JSON.stringify(after));
-    return 'old codex/... DB id displayed canonically as chatgpt/..., new usage was attributed to chatgpt, and direct Responses continued without rewriting historical state or invoking Codex CLI';
+    const execs=codexExecs(dataDir);
+    if(execs.length!==1) throw new Error('Expected exactly one CLI invocation: '+execs.length);
+    if(!execs[0].stdin.includes('historical user') || !execs[0].stdin.includes('historical assistant'))
+      throw new Error('CLI request omitted historical context');
+    if(responses(mockLog).length!==0) throw new Error('Codex chat incorrectly used ChatGPT Responses');
+    const row=seed.query(dbPath,"SELECT content,provider,model FROM messages WHERE thread_id='t-codex-restored-353' AND role='assistant' ORDER BY rowid DESC LIMIT 1")[0];
+    if(!row || !String(row.content).includes('CODEX ANSWER') || row.provider!=='codex' || row.model!=='gpt-5.6-luna')
+      throw new Error('Codex response attribution failed: '+JSON.stringify(row));
+    const saved=seed.query(dbPath,"SELECT model_override FROM chat_threads WHERE id='t-codex-restored-353'")[0];
+    if(saved.model_override!=='codex/gpt-5.6-luna') throw new Error('Historical model ID was rewritten');
+    return 'one CLI invocation replayed history and persisted a Codex response without ChatGPT Responses';
   }
 }));
 
@@ -499,7 +495,7 @@ scenarios.push(Object.assign({}, base, {
     await cdp.click('.chatgpt-refresh-models');
     await cdp.waitFor('window.SettingsModels.collectCurrentModels().filter(m=>m.provider==="chatgpt").map(m=>m.id).sort().join(",")==="chatgpt/discovered,chatgpt/gpt-5.6-luna" && !document.querySelector(".chatgpt-refresh-models").disabled', 10000, 100, 'provider refresh updates Models table');
     const first = savedCatalog(dataDir);
-    if (first.providers.chatgpt.modelCatalogSource !== 'account' || Object.keys(first.models).length !== 2)
+    if (first.providers.chatgpt.modelCatalogSource !== 'account' || Object.keys(first.models).filter(id => id.startsWith('chatgpt/')).length !== 2)
       throw new Error('discovery did not persist an authoritative account catalog');
     if (await cdp.eval('document.querySelector("[data-field=displayName]").value') !== 'Unsaved plan label')
       throw new Error('catalog refresh erased an unsaved provider edit');
@@ -510,17 +506,17 @@ scenarios.push(Object.assign({}, base, {
 
     await openSection(cdp, 'models');
     await cdp.click('#refreshPricingBtn');
-    await cdp.waitFor('window.SettingsModels.rightPanelIds().join(",")==="chatgpt/discovered" && document.getElementById("refreshModelStatus").textContent.includes("ChatGPT")', 10000, 100, 'unified refresh reconciles modal');
+    await cdp.waitFor('window.SettingsModels.rightPanelIds().filter(id=>id.startsWith("chatgpt/")).join(",")==="chatgpt/discovered" && document.getElementById("refreshModelStatus").textContent.includes("ChatGPT")', 10000, 100, 'unified refresh reconciles modal');
     if (!String(await cdp.eval('document.getElementById("refreshLeftTbody").textContent')).includes('discovered'))
       throw new Error('Fetch Latest Models did not display the account catalog');
     if (savedCatalog(dataDir).models['chatgpt/gpt-5.6-luna']) throw new Error('stale model was not pruned from disk');
     await cdp.click('#refreshSaveBtn');
     await saveSettings(cdp, dataDir);
     const saved = savedCatalog(dataDir);
-    if (saved.providers.chatgpt.modelCatalogSource !== 'account' || Object.keys(saved.models).join(',') !== 'chatgpt/discovered')
+    if (saved.providers.chatgpt.modelCatalogSource !== 'account' || Object.keys(saved.models).filter(id => id.startsWith('chatgpt/')).join(',') !== 'chatgpt/discovered')
       throw new Error('Settings save reintroduced fallback models or dropped catalog authority');
     await cdp.eval('Ipc.request("requestAllSettings").then(() => Ipc.request("requestChatGptPlanStatus"))');
-    await cdp.waitFor('window.SettingsModels.collectCurrentModels().map(m=>m.id).join(",")==="chatgpt/discovered"', 10000, 100, 'reloaded settings preserve discovered membership');
+    await cdp.waitFor('window.SettingsModels.collectCurrentModels().filter(m=>m.provider==="chatgpt").map(m=>m.id).join(",")==="chatgpt/discovered"', 10000, 100, 'reloaded settings preserve discovered membership');
 
     await openSection(cdp, 'providers');
     const beforeFailure = fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8');
@@ -534,7 +530,10 @@ scenarios.push(Object.assign({}, base, {
       throw new Error('failed discovery changed the saved catalog');
     await cdp.click('.chatgpt-refresh-models');
     await cdp.waitFor('window.SettingsModels.collectCurrentModels().filter(m=>m.provider==="chatgpt").length===0 && !document.querySelector(".chatgpt-refresh-models").disabled', 10000, 100, 'empty catalog prunes all plan rows');
-    if (Object.keys(savedCatalog(dataDir).models).length !== 0) throw new Error('empty catalog did not persist');
+    if (Object.keys(savedCatalog(dataDir).models).some(id => id.startsWith('chatgpt/'))) throw new Error('empty catalog did not persist');
+    const final = savedCatalog(dataDir);
+    if (final.providers.codex.transport !== 'codex-cli' || !final.models['codex/gpt-5.6-luna'])
+      throw new Error('ChatGPT catalog refresh or settings save removed Codex');
     const requests = reqs(mockLog).filter(r => r.url === '/v1/models');
     if (requests.length !== 5 || requests.some(r => !String(r.authorization).startsWith('Bearer ')))
       throw new Error('expected startup plus four authenticated account catalog requests');
@@ -646,6 +645,53 @@ scenarios.push(Object.assign({}, base, {
     if(!seed.query(dbPath,"SELECT id FROM messages WHERE thread_id='t-plan-item-364' AND content='ITEM DONE IMAGE COMPLETE'").length)
       throw new Error('Image continuation answer was not persisted');
     return 'Real item-done/arguments-done/empty-output sequence invoked one image worker, preserved call IDs, and displayed/persisted the result';
+  }
+}));
+
+scenarios.push(Object.assign({}, base, {
+  id: 371,
+  name: 'Restored Codex CLI supports images, search, cancellation, and separate provider settings',
+  settings: { threadTitles: { enabled: false }, providers: {
+    codex: { displayName: 'Codex CLI (ChatGPT subscription)', transport: 'codex-cli' },
+    chatgpt: { displayName: 'Codex CLI (ChatGPT subscription)', transport: 'chatgpt-responses' }
+  } },
+  preLaunch: installFakeCodex,
+  launchEnv: imageEnv,
+  fixtures: { threads: [{ id: 't-codex-371', title: 'Codex tools', model_override: 'codex/gpt-5.6-luna', advanced_toggles: '{"imageGeneration":true}' }] },
+  async body({ cdp, dbPath, dataDir, mockLog }) {
+    await load(cdp, 't-codex-371');
+    await cdp.waitFor('window._currentSettings.model === "codex/gpt-5.6-luna" && window._currentSettings.imageGeneration === true', 10000, 100, 'Codex image toggle restored');
+    await sendChatMessage(cdp, 'generate image codex');
+    await waitStreamingIdle(cdp, 15000);
+    if (!seed.query(dbPath, "SELECT a.id FROM message_attachments a JOIN messages m ON m.id=a.message_id WHERE m.thread_id='t-codex-371' AND m.role='assistant'").length)
+      throw new Error('Codex generated image was not persisted');
+    await cdp.click('#railImageGenerationToggle');
+    await cdp.waitFor('window._currentSettings.imageGeneration === false', 5000, 50, 'Codex image toggle disabled');
+    await cdp.click('#railWebSearchToggle');
+    await cdp.waitFor('window._currentSettings.webSearch === true', 5000, 50, 'Codex search enabled');
+    await sleep(400);
+    await sendChatMessage(cdp, 'search on codex');
+    await waitStreamingIdle(cdp, 15000);
+    const execs = codexExecs(dataDir);
+    if (execs.length !== 2 || execs[1].webSearchMode !== 'live' || !execs[1].args.includes('--image'))
+      throw new Error('Codex search flags or generated-image replay were lost');
+    await sendChatMessage(cdp, 'cancel this codex request');
+    await cdp.waitFor('isThreadRequestInFlight("t-codex-371")', 5000, 50, 'Codex request started');
+    await cdp.waitFor('Array.from(document.querySelectorAll(".thinking-content")).some(el=>el.textContent.includes("cancellable Codex"))', 10000, 50, 'Codex cancellation activity');
+    await cdp.click('#chat-send-btn');
+    await waitStreamingIdle(cdp, 10000);
+    if (responses(mockLog).length !== 0 || codexExecs(dataDir).length !== 3)
+      throw new Error('Codex actions must stay on CLI with exactly one exec each');
+    await openSettings(cdp);
+    await openSection(cdp, 'providers');
+    const controls = await cdp.eval('(() => { const cards=Array.from(document.querySelectorAll("#providerGrid .provider-card")); const codex=cards.find(c=>c.dataset.providerKey==="codex"); const chatgpt=cards.find(c=>c.dataset.providerKey==="chatgpt"); return {cli:!!codex.querySelector(".check-codex"),oauth:!!codex.querySelector(".chatgpt-sign-in"),warning:chatgpt.textContent.includes("ChatGPT may calculate or enforce usage limits differently from Codex CLI")}; })()');
+    const labels = await cdp.eval('Array.from(document.querySelectorAll("#providerGrid .provider-card")).map(c=>({id:c.dataset.providerKey,title:c.querySelector(".provider-card-title").textContent,name:c.querySelector("[data-field=displayName]").value}))');
+    if (!labels.some(p=>p.id==="codex" && p.title==="Codex CLI" && p.name==="Codex CLI")
+        || !labels.some(p=>p.id==="chatgpt" && p.title==="ChatGPT plan" && p.name==="ChatGPT plan"))
+      throw new Error('Migrated provider labels remain confusing: '+JSON.stringify(labels));
+    if (!controls.cli || controls.oauth || !controls.warning)
+      throw new Error('Provider settings did not expose independent CLI controls and ChatGPT warning');
+    return 'CLI image generation/replay, native search, Stop, distinct provider controls, and usage warning verified';
   }
 }));
 

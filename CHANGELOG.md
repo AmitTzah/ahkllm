@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Restored Codex CLI as a separate provider alongside ChatGPT plan, with independent model IDs, CLI login, and provider settings.
+- A warning in ChatGPT provider settings that usage limits may be calculated or enforced differently from Codex CLI.
+
+### Fixed
+
+- ChatGPT model discovery and settings saves preserve Codex models and references instead of converting or removing them.
+- Provider settings repair inherited Codex labels so the built-in cards display distinct Codex CLI and ChatGPT plan names.
+
+### Upgrade notes
+
+- Historical `codex/...` chats use CLI again. Selections already saved as `chatgpt/...` stay on ChatGPT until you select a Codex model. OAuth credentials and conversation records are not migrated.
+
 ## [1.5.0] - 2026-10-03
 
 ### Added

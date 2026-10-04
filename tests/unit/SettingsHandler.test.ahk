@@ -228,7 +228,7 @@ class SettingsHandlerTest {
         }
     }
 
-    ApplyProviders_ChatGptKeepsCanonicalAndLegacyPrefixes() {
+    ApplyProviders_KeepsCodexAndChatGptIndependentPrefixes() {
         global providers, providerMap
         oldProviders := providers
         oldMap := providerMap
@@ -236,13 +236,14 @@ class SettingsHandlerTest {
             SettingsApply._ApplyProviders(Map(
                 "providers", Map(
                     "chatgpt", Map("displayName", "ChatGPT plan", "transport", "chatgpt-responses"),
+                    "codex", Map("displayName", "Codex CLI", "transport", "codex-cli"),
                     "openai", Map("displayName", "OpenAI", "endpoint", "https://x", "prefixes", ["gpt"])
                 )
             ))
             if !providerMap.Has("chatgpt") || providerMap["chatgpt"] != "chatgpt"
                 throw Error("canonical chatgpt prefix was lost during providerMap rebuild")
-            if !providerMap.Has("codex") || providerMap["codex"] != "chatgpt"
-                throw Error("legacy codex prefix must continue to resolve to canonical chatgpt")
+            if !providerMap.Has("codex") || providerMap["codex"] != "codex"
+                throw Error("Codex prefix must route independently to CLI")
         } finally {
             providers := oldProviders
             providerMap := oldMap
@@ -524,30 +525,88 @@ class SettingsHandlerTest {
             throw Error("Override should add new top-level keys from the incoming payload")
     }
 
-    CanonicalizeChatGptAliases_MigratesSavedSettingsReferences() {
-        settings := Map()
-        settings["providers"] := Map("codex", Map("displayName", "ChatGPT plan", "transport", "chatgpt-responses"))
-        settings["models"] := Map("codex/gpt-5.6-luna", Map("provider", "codex", "reasoning", true))
-        settings["assistants"] := [Map("id", "a1", "baseModel", "codex/gpt-5.6-luna")]
-        settings["commands"] := [Map("commandName", "Legacy", "APIModels", "codex/gpt-5.6-luna")]
-        settings["newChatStartsWith"] := "codex/gpt-5.6-luna"
-        settings["threadTitles"] := Map("enabled", true, "model", "codex/gpt-5.6-luna")
+    SaveLoad_PreservesBothProvidersAndCodexReferences() {
+        oldPath := SettingsHandler.settingsPath
+        settingsPath := A_Temp "\\test_provider_identity_" A_TickCount "_" Random(1000, 999999) ".json"
+        SettingsHandler.settingsPath := settingsPath
+        try {
+            settings := Map(
+                "providers", Map("codex", Map("transport", "codex-cli"), "chatgpt", Map("transport", "chatgpt-responses")),
+                "models", Map("codex/custom", Map("provider", "codex"), "chatgpt/custom", Map("provider", "chatgpt")),
+                "assistants", [Map("baseModel", "codex/custom")],
+                "commands", [Map("APIModels", "codex/custom")],
+                "newChatStartsWith", "codex/custom",
+                "threadTitles", Map("model", "codex/custom")
+            )
+            if !SettingsHandler.Save(settings)
+                throw Error("Settings save failed")
+            loaded := SettingsHandler.Load()
+            if !loaded["providers"].Has("codex") || !loaded["providers"].Has("chatgpt")
+                throw Error("Both providers must survive save/load")
+            if !loaded["models"].Has("codex/custom") || !loaded["models"].Has("chatgpt/custom")
+                throw Error("Both model namespaces must survive save/load")
+            if loaded["assistants"][1]["baseModel"] != "codex/custom"
+                || loaded["commands"][1]["APIModels"] != "codex/custom"
+                || loaded["newChatStartsWith"] != "codex/custom"
+                || loaded["threadTitles"]["model"] != "codex/custom"
+                throw Error("Codex references must not be rewritten to ChatGPT")
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(settingsPath)
+        }
+    }
 
-        normalized := SettingsMerge.CanonicalizeChatGptAliases(settings)
-        if normalized["providers"].Has("codex") || !normalized["providers"].Has("chatgpt")
-            throw Error("Provider map was not canonicalized to chatgpt")
-        if normalized["models"].Has("codex/gpt-5.6-luna") || !normalized["models"].Has("chatgpt/gpt-5.6-luna")
-            throw Error("Model map was not canonicalized to chatgpt/...")
-        if normalized["models"]["chatgpt/gpt-5.6-luna"]["provider"] != "chatgpt"
-            throw Error("Canonicalized model metadata still names codex provider")
-        if normalized["assistants"][1]["baseModel"] != "chatgpt/gpt-5.6-luna"
-            throw Error("Assistant baseModel was not canonicalized")
-        if normalized["commands"][1]["APIModels"] != "chatgpt/gpt-5.6-luna"
-            throw Error("Command APIModels was not canonicalized")
-        if normalized["newChatStartsWith"] != "chatgpt/gpt-5.6-luna"
-            throw Error("New-chat default was not canonicalized")
-        if normalized["threadTitles"]["model"] != "chatgpt/gpt-5.6-luna"
-            throw Error("Title-generation model was not canonicalized")
+    ProviderNames_RepairMigratedLabelsWithoutChangingCustomNames() {
+        legacyName := "Codex CLI (ChatGPT subscription)"
+        settings := Map("providers", Map(
+            "codex", Map("displayName", legacyName),
+            "chatgpt", Map("displayName", legacyName),
+            "custom", Map("displayName", legacyName)
+        ))
+        normalized := SettingsMerge.NormalizeProviderDisplayNames(settings)
+        if normalized["providers"]["codex"]["displayName"] != "Codex CLI"
+            || normalized["providers"]["chatgpt"]["displayName"] != "ChatGPT plan"
+            throw Error("Migrated built-in providers must have distinct display names")
+        if settings["providers"]["chatgpt"]["displayName"] != legacyName
+            || normalized["providers"]["custom"]["displayName"] != legacyName
+            throw Error("Normalization must preserve source settings and unrelated providers")
+        for providerKey in ["codex", "chatgpt"] {
+            if SettingsMerge.ProviderDisplayName(providerKey, "My custom label") != "My custom label"
+                throw Error("Custom display names must remain editable")
+        }
+        applied := SettingsHandler.Override(Map(), settings)
+        if applied["providers"]["chatgpt"]["displayName"] != "ChatGPT plan"
+            throw Error("Settings payload must expose the corrected name before rendering")
+        oldPath := SettingsHandler.settingsPath
+        settingsPath := A_Temp "\test_provider_names_" A_TickCount "_" Random(1000, 999999) ".json"
+        SettingsHandler.settingsPath := settingsPath
+        try {
+            if !SettingsHandler.Save(settings)
+                throw Error("Failed to save provider labels")
+            saved := SettingsPersistence.Load()
+            if saved["providers"]["codex"]["displayName"] != "Codex CLI"
+                || saved["providers"]["chatgpt"]["displayName"] != "ChatGPT plan"
+                throw Error("Corrected provider names must persist to disk")
+        } finally {
+            SettingsHandler.settingsPath := oldPath
+            try FileDelete(settingsPath)
+        }
+    }
+
+    Merge_AddsCodexToSavedChatGptAccountCatalog() {
+        defaults := Map(
+            "providers", Map("codex", Map("transport", "codex-cli"), "chatgpt", Map("transport", "chatgpt-responses")),
+            "models", Map("codex/bundled", Map("provider", "codex"), "chatgpt/bundled", Map("provider", "chatgpt"))
+        )
+        existing := Map(
+            "providers", Map("chatgpt", Map("modelCatalogSource", "account")),
+            "models", Map("chatgpt/discovered", Map("provider", "chatgpt"))
+        )
+        merged := SettingsHandler.Merge(existing, defaults)
+        if !merged["providers"].Has("codex") || !merged["models"].Has("codex/bundled")
+            throw Error("Existing installations must receive the restored CLI provider and models")
+        if !merged["models"].Has("chatgpt/discovered") || merged["models"].Has("chatgpt/bundled")
+            throw Error("Codex restoration must preserve the account catalog without adding ChatGPT fallbacks")
     }
 
     ApplyToGlobals_RebuildsProviderMap() {

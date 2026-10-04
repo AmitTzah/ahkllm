@@ -81,7 +81,7 @@ The biggest one is branching. Editing or retrying an earlier message creates ano
 Other chat features currently include:
 
 - Streaming responses with Markdown, syntax highlighting, math rendering, quote, copy, edit, retry, and export.
-- DeepSeek, OpenAI, Gemini, OpenRouter, a built-in ChatGPT-plan OAuth backend, and user-added OpenAI-compatible providers. Codex CLI is optional and used only as the image-generation worker.
+- DeepSeek, OpenAI, Gemini, OpenRouter, built-in Codex CLI and ChatGPT-plan OAuth backends, and user-added OpenAI-compatible providers.
 - Per-chat model and reasoning settings, plus temperature where the selected backend supports it.
 - Configurable assistants with their own system prompts.
 - Images, PDFs, scanned PDFs, DOCX, PPTX, XLSX, EPUB, text files, and a fairly long list of code formats as attachments.
@@ -106,7 +106,7 @@ The normal download is the latest [`AhkLLM.zip`](https://github.com/AmitTzah/ahk
 1. Download and extract `AhkLLM.zip` somewhere.
 2. Install [AutoHotkey v2.0.18 or later](https://www.autohotkey.com/download/ahk-v2.exe).
 3. Make sure the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) is installed. Windows 11 normally already has it.
-4. Set the API key for whichever API-key provider you want to use, or open **Settings -> Providers -> ChatGPT plan** and choose **Continue with ChatGPT** to use an eligible ChatGPT plan without an OpenAI API key. Codex CLI is only needed if you want the optional Image Generation worker; see [ChatGPT plan backend and Codex image worker](docs/codex-cli.md). If you just want to try AhkLLM without paying for API usage, see [Try AhkLLM for free](#try-ahkllm-for-free).
+4. Set the API key for whichever API-key provider you want to use, or open **Settings -> Providers -> ChatGPT plan** and choose **Continue with ChatGPT** to use an eligible ChatGPT plan without an OpenAI API key. Alternatively, install Codex CLI and run `codex login` with ChatGPT authentication, then select a `codex/...` model. See [Codex CLI and ChatGPT plan backends](docs/codex-cli.md). If you just want to try AhkLLM without paying for API usage, see [Try AhkLLM for free](#try-ahkllm-for-free).
 5. Run `Main.ahk`.
 
 If you want to run directly from source instead, clone the repository and follow the same steps.
@@ -153,15 +153,19 @@ User-added providers must expose an OpenAI-compatible Chat Completions endpoint 
 
 OpenRouter is intentionally handled per model: use the model settings **Lookup** action for an exact slug or provider/model ID. Its large catalog is not bulk-imported, and `openrouter/free` remains the built-in synthetic router model.
 
-### ChatGPT plan
+### Codex CLI and ChatGPT plan
 
-AhkLLM's built-in ChatGPT-plan provider uses the canonical `chatgpt` provider ID, so new model IDs look like `chatgpt/gpt-5.6-sol`. Historical `codex/...` IDs remain accepted as a compatibility alias. Normal ChatGPT-plan chat requests use **Sign in with ChatGPT** and OpenAI's public Responses API directly. AhkLLM keeps conversation history and branches locally, sends the selected branch explicitly with `store: false` and `stream: true`, and does not use provider-owned conversation IDs.
+AhkLLM's built-in ChatGPT-plan provider uses the canonical `chatgpt` provider ID, so new model IDs look like `chatgpt/gpt-5.6-sol`. The separate `codex/...` namespace uses Codex CLI. Normal ChatGPT-plan chat requests use **Sign in with ChatGPT** and OpenAI's public Responses API directly. AhkLLM keeps conversation history and branches locally, sends the selected branch explicitly with `store: false` and `stream: true`, and does not use provider-owned conversation IDs.
 
-Open **Settings -> Providers -> ChatGPT plan** and click **Continue with ChatGPT**. OAuth credentials are protected with Windows DPAPI rather than stored in `settings.json`. The same provider card can refresh the signed-in account's current model catalog.
+For Codex, run `codex login`, open **Settings -> Providers -> Codex CLI**, and click **Check Codex CLI**. Select a `codex/...` model for chat, inline commands, or title generation. Its login is independent of ChatGPT OAuth. Existing `chatgpt/...` selections stay on ChatGPT until you choose Codex.
+
+ChatGPT may calculate or enforce usage limits differently from Codex CLI. Connected-app limits can reject requests while the CLI still works; its settings card includes a warning and **Manage usage** link.
+
+For ChatGPT, open **Settings -> Providers -> ChatGPT plan** and click **Continue with ChatGPT**. OAuth credentials are protected with Windows DPAPI rather than stored in `settings.json`. The same provider card can refresh the signed-in account's current model catalog.
 
 When a ChatGPT-plan model is active, the model card shows **Using ChatGPT plan** and links to ChatGPT usage settings. AhkLLM also provides the same usage link from provider settings and the usage dashboard, and surfaces it directly when the account's plan usage limit is reached.
 
-The right-rail **Image Generation** toggle uses a separate `ahkllm.generate_image` client tool. Only that tool invokes the optional local Codex CLI worker, with unrelated agent/local-execution capabilities disabled. See [docs/codex-cli.md](docs/codex-cli.md) for the transport, account, security, context, image-worker, and troubleshooting details.
+The right-rail **Image Generation** toggle uses a separate `ahkllm.generate_image` client tool. For this provider, that tool invokes the optional local Codex CLI worker, with unrelated agent/local-execution capabilities disabled. See [docs/codex-cli.md](docs/codex-cli.md) for the transport, account, security, context, image-worker, and troubleshooting details.
 
 ### API Logs
 
@@ -202,7 +206,7 @@ AhkLLM has no telemetry.
 
 That does not mean your prompts stay on your machine. Selected text, prompts, screenshots, and attachments are sent to whichever model provider you configure when you make a request. Web search queries are also sent to the relevant search provider.
 
-For the ChatGPT-plan backend, AhkLLM sends the selected conversation branch directly to OpenAI's public Responses API using the selected account's OAuth access token. The bearer value is supplied to the HTTP process through an in-memory stdin configuration rather than the command line or request files. Codex CLI receives only an explicit image-tool prompt and applicable managed image attachments when the Image Generation toggle invokes the optional local worker.
+For the ChatGPT-plan backend, AhkLLM sends the selected conversation branch directly to OpenAI's public Responses API using the selected account's OAuth access token. The bearer value is supplied to the HTTP process through an in-memory stdin configuration rather than the command line or request files. When used as the separate `codex` provider, Codex CLI receives the selected conversation branch as an explicit transcript, plus managed image attachments. Each action launches one isolated CLI request with local execution, MCP, apps, and unrelated agent capabilities disabled. The ChatGPT provider uses Codex only for its optional image worker.
 
 API request/response logs and the diagnostic log are written under `%TEMP%` and can contain prompt or response data. Logging can be disabled in Settings.
 

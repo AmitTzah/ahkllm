@@ -16,7 +16,10 @@ class ModelResolver {
             return models[canonicalName]
 
         modelShort := ModelParser.StripProvider(canonicalName)
+        requestedProvider := ModelParser.Split(canonicalName).provider
         for fullKey, m in models {
+            if requestedProvider != "" && ModelParser.Split(fullKey).provider != requestedProvider
+                continue
             if ModelParser.StripProvider(fullKey) = modelShort
                 return m
         }
@@ -24,6 +27,8 @@ class ModelResolver {
         modelBase := ModelParser.StripVersion(modelShort)
         if modelBase != modelShort {
             for fullKey, m in models {
+                if requestedProvider != "" && ModelParser.Split(fullKey).provider != requestedProvider
+                    continue
                 if ModelParser.StripVersion(ModelParser.StripProvider(fullKey)) = modelBase
                     return m
             }

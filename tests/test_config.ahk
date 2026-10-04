@@ -70,6 +70,13 @@ global models := Map(
         thinkingOff: "MINIMAL",
         input: 0, cachedInput: 0, output: 0, context: 262144, reasoning: true, vision: true
     },
+    "codex/gpt-5.6-luna", {
+        provider: "codex", api: "codex-cli",
+        compat: Map("thinkingFormat", "codex-cli", "supportsReasoningEffort", true, "supportsUsageInStreaming", false, "maxTokensField", ""),
+        thinkingLevelMap: Map("none", "none", "low", "low", "medium", "medium", "high", "high"),
+        thinkingOff: "none",
+        input: 0, cachedInput: 0, output: 0, context: 0, reasoning: true, vision: true
+    },
     "chatgpt/gpt-5.6-luna", {
         provider: "chatgpt", api: "chatgpt-responses",
         compat: Map("thinkingFormat", "openai", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", ""),
@@ -84,6 +91,7 @@ global providers := Map(
     "openai",   { displayName: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", authEnvVar: "OPENAI_API_KEY", fimEndpoint: "", icon: "" },
     "openrouter", { displayName: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", authEnvVar: "OPENROUTER_API_KEY", fimEndpoint: "", icon: "" },
     "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GOOGLE_API_KEY", fimEndpoint: "", icon: "" },
+    "codex", { displayName: "Codex CLI", endpoint: "", authEnvVar: "", authMode: "chatgpt", billingMode: "chatgpt-subscription", transport: "codex-cli", fimEndpoint: "", icon: "" },
     "chatgpt",  { displayName: "ChatGPT plan", endpoint: "https://api.openai.com/v1/responses", authEnvVar: "", authMode: "chatgpt-oauth", billingMode: "chatgpt-subscription", transport: "chatgpt-responses", fimEndpoint: "", icon: "" }
 )
 
@@ -97,7 +105,7 @@ global providerMap := Map(
     "deepseek", "deepseek",
     "gpt",      "openai",
     "chatgpt",  "chatgpt",
-    "codex",    "chatgpt",
+    "codex",    "codex",
     "openrouter", "openrouter"
 )
 
