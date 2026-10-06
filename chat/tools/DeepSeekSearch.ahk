@@ -39,9 +39,8 @@ class DeepSeekSearch {
         ; 2> redirection routes cURL through cmd so local mock servers in the
         ; headless suite can answer (same pattern as the chat stream path).
         ; -N disables output buffering so the output file grows as events
-        ; arrive. Real search-heavy calls routinely take 30-60s, so the
-        ; max-time is 120 (the old 60s killed legitimate calls mid-search).
-        cURLCommand := 'cURL.exe -sN --max-time 120 --connect-timeout 15 -X POST '
+        ; arrive. Idle protection must not cut off a search that is progressing.
+        cURLCommand := 'cURL.exe --silent --show-error --no-buffer --connect-timeout 15 ' HttpStreamTimeouts.Options() ' -X POST '
             . endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '

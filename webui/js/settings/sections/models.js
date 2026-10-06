@@ -592,6 +592,11 @@
     ['api', 'compat', 'thinkingLevelMap', 'thinkingOff', 'displayName'].forEach(function(k) {
       if (values[k] !== undefined) entry[k] = values[k];
     });
+    if (values.provider === 'xiaomi') {
+      entry.compat = Object.assign({nativeToolNulls:'omit'}, entry.compat, {thinkingFormat:'xiaomi', supportsReasoningEffort:false, maxTokensField:'max_completion_tokens'});
+      entry.thinkingLevelMap = {none:'disabled', high:'enabled'};
+      entry.thinkingOff = 'disabled';
+    }
   }
 
   function _collectCurrentModels() {

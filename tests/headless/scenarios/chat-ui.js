@@ -730,13 +730,13 @@ scenarios.push({
     const src = fs.readFileSync(path.join(launcher.REPO_ROOT, 'api', 'CurlBuilder.ahk'), 'utf8');
     const streamIdx = src.indexOf('static BuildStream(');
     const block = streamIdx >= 0 ? src.slice(streamIdx, streamIdx + 900) : '';
-    const hasMaxTime = /--max-time 120/.test(block);
-    // FIXED (bug #204): the streaming command now carries --max-time 120, so
-    // a stalled upstream eventually exits and the stream error path re-enables
-    // the UI (the sse-hang mock stays in mock-llm-server.js as a harness mode).
-    if (!hasMaxTime)
-      throw new Error('BuildStream still lacks --max-time (fix incomplete): ' + block);
-    return 'CurlBuilder.BuildStream now includes --max-time 120 alongside --connect-timeout 30 - a stalled upstream cannot hang the chat UI forever';
+    const hasIdleProtection = block.includes('HttpStreamTimeouts.Options()');
+    // A stalled transfer remains bounded, but progressing streams have no total deadline.
+    if (!hasIdleProtection || block.includes('--max-time'))
+      throw new Error('BuildStream must protect stalled transfers without an active-stream total deadline: ' + block);
+    const policy=fs.readFileSync(path.join(launcher.REPO_ROOT,'api','HttpStreamTimeouts.ahk'),'utf8');
+    if(!policy.includes('--speed-limit 1 --speed-time') || !policy.includes('seconds := 120'))throw new Error('Idle-transfer protection missing');
+    return 'Streaming uses a 120-second low-speed safeguard instead of a total-duration cutoff; active output can continue';
   }
 });
 

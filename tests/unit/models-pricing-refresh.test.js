@@ -464,6 +464,26 @@ describe('new model metadata survives a settings save round-trip', () => {
 });
 
 describe('manual ChatGPT-plan model defaults', () => {
+  it('manual Xiaomi models save its toggle metadata instead of OpenAI reasoning_effort', () => {
+    const {sections}=loadModule({modelsRows:[makeMainRow('mimo-future','xiaomi')]});
+    const entry=sections.models.save().models['xiaomi/mimo-future'];
+    assert.equal(entry.compat.thinkingFormat,'xiaomi');
+    assert.equal(entry.compat.maxTokensField,'max_completion_tokens');
+    assert.equal(entry.compat.supportsReasoningEffort,false);
+    assert.deepEqual(JSON.parse(JSON.stringify(entry.thinkingLevelMap)),{none:'disabled',high:'enabled'});
+    assert.equal(entry.thinkingOff,'disabled');
+    assert.equal(entry.compat.nativeToolNulls,'omit');
+  });
+  it('Xiaomi preserves an explicit native-null compatibility opt-out', () => {
+    const {sections}=loadModule({modelsRows:[makeMainRow('mimo-future','xiaomi',{compat:{nativeToolNulls:'native'}})]});
+    const entry=sections.models.save().models['xiaomi/mimo-future'];
+    assert.equal(entry.compat.thinkingFormat,'xiaomi');
+    assert.equal(entry.compat.maxTokensField,'max_completion_tokens');
+    assert.equal(entry.compat.supportsReasoningEffort,false);
+    assert.deepEqual(JSON.parse(JSON.stringify(entry.thinkingLevelMap)),{none:'disabled',high:'enabled'});
+    assert.equal(entry.thinkingOff,'disabled');
+    assert.equal(entry.compat.nativeToolNulls,'native');
+  });
   it('keeps manual Codex models on CLI metadata beside the same ChatGPT model', () => {
     const { sections } = loadModule({ modelsRows: [makeMainRow('gpt-future', 'codex'), makeMainRow('gpt-future', 'chatgpt')] });
     const entries = sections.models.save().models;

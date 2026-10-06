@@ -283,24 +283,13 @@ scenarios.push({
   },
   async body({ cdp, dbPath }) {
     await showChat();
-    const clickItem = (idx) => cdp.eval(`(() => {
-      const items = document.querySelectorAll('#thread-list .chat-item');
-      if (!items[${idx}]) return false;
-      items[${idx}].click();
-      return true;
-    })()`);
-    const clickRename = (idx) => cdp.eval(`(() => {
-      const items = document.querySelectorAll('#thread-list .chat-item');
-      const btn = items[${idx}] && items[${idx}].querySelector('.chat-action-btn[title="Rename"]');
-      if (!btn) return false;
-      btn.click();
-      return true;
-    })()`);
+    const clickItem = id => cdp.click('#thread-list .chat-item[data-chat="'+id+'"]');
+    const clickRename = id => cdp.click('#thread-list .chat-item[data-chat="'+id+'"] .chat-action-btn[title="Rename"]');
     await cdp.waitFor('document.querySelectorAll("#thread-list .chat-item").length >= 2', 15000, 300, 'thread list');
     // Load thread A, then rename it via the sidebar (this sets the window title).
-    await clickItem(0);
-    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread A loaded');
-    await clickRename(0);
+    await clickItem('t-title-38a');
+    await cdp.waitFor('window.activeThreadId === "t-title-38a" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread A loaded');
+    await clickRename('t-title-38a');
     await cdp.waitFor('document.querySelector("#thread-list .chat-item .chat-name input") !== null', 5000, 200, 'rename input');
     await cdp.type('#thread-list .chat-item .chat-name input', 'Alpha Renamed');
     const inputVal = await cdp.eval('document.querySelector("#thread-list .chat-item .chat-name input") ? document.querySelector("#thread-list .chat-item .chat-name input").value : "(missing)"');
@@ -326,8 +315,8 @@ scenarios.push({
     if (!renamedRows.length || renamedRows[0].title !== 'Alpha Renamed')
       throw new Error('rename did not commit before switching (setup): ' + JSON.stringify(renamedRows));
     // Switch to thread B.
-    await clickItem(1);
-    await cdp.waitFor('document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread B loaded');
+    await clickItem('t-title-38b');
+    await cdp.waitFor('window.activeThreadId === "t-title-38b" && document.querySelectorAll("#chat-messages .msg").length >= 1', 15000, 300, 'thread B loaded');
     await sleep(800);
     const topbarTitle = await cdp.eval('document.querySelector(".title-text") ? document.querySelector(".title-text").textContent : ""');
     const info = runProbe('chat-info');
@@ -1234,8 +1223,20 @@ scenarios.push({
     await waitStreamingIdle(cdp, 40000);
     await sleep(1200);
 
-    const branch = seed.query(dbPath, "SELECT id, token_count, active_path_tokens FROM messages WHERE content='edited follow-up (branch)'");
+    // The branch-save acknowledgement can precede its queued model request.
+    // Wait for the committed assistant child, not just a momentarily idle UI.
+    let branch = [], completed = false;
+    const completionDeadline = Date.now() + 15000;
+    while (Date.now() < completionDeadline) {
+      branch = seed.query(dbPath, "SELECT id, token_count, active_path_tokens FROM messages WHERE content='edited follow-up (branch)'");
+      if (branch.length && seed.query(dbPath, "SELECT id FROM messages WHERE parent_id=? AND role='assistant'", [branch[0].id]).length) {
+        completed = true;
+        break;
+      }
+      await sleep(100);
+    }
     if (!branch.length) throw new Error('branch user message not found');
+    if (!completed) throw new Error('branch assistant did not commit before token attribution verification');
     const bc = Number(branch[0].token_count);
     // Fixed: the branch copy is a local_copy, so the branch's own API call
     // (mock prompt 12) RE-backfills it: Max(0, 12 - (12+9+7)) = 0 - the stale
@@ -2128,6 +2129,10 @@ scenarios.push({
     await sleep(40);
     await cdp.eval('window.loadThread("t-log-b-206"); true');
     await cdp.waitFor('window.activeThreadId === "t-log-b-206"', 10000, 250, 'thread B loaded');
+    // Reproduce delivery of A's queued chunks after B's initialization.
+    await cdp.eval('handleStreamMessage("streamContent",{text:"LATE A CHUNK",threadId:"t-log-a-206"}); handleStreamMessage("streamReasoning",{content:"LATE A THOUGHT",threadId:"t-log-a-206"}); true');
+    if (await cdp.eval('document.getElementById("chat-messages").textContent.includes("LATE A CHUNK")'))
+      throw new Error('Queued A content leaked into B after the thread switch');
     await waitStreamingIdle(cdp, 30000);
     await sleep(1000);
 

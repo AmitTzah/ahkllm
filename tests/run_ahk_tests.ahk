@@ -106,6 +106,7 @@ RegisterTestClass(className) {
 #Include unit\AttachmentUtils.test.ahk
 #Include unit\ChatDB.test.ahk
 #Include unit\ExternalApplications.test.ahk
+#Include unit\ApplicationTextProtocol.test.ahk
 #Include unit\ThreadLockRepo.test.ahk
 #Include unit\AttachmentRepo.test.ahk
 #Include unit\ImageUtils.test.ahk
@@ -231,4 +232,3 @@ if MsgBox("test") != "OK" {
 }
 
 RunAllTests()
-

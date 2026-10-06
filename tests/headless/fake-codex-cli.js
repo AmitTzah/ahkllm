@@ -6,6 +6,7 @@
 // search flags, cancellation, and multiple sequential exec turns.
 const fs = require('node:fs');
 const path = require('node:path');
+const {applicationTextReply} = require('./application-text-reply');
 
 const args = process.argv.slice(2);
 const logFile = process.env.FAKE_CODEX_LOG || '';
@@ -79,7 +80,19 @@ process.stdin.on('end', () => {
     } catch {}
   }
   const lower = lastUserContent.toLowerCase();
-  const cancelMode = lower.includes('cancel this codex request');
+  if (lower.includes('codex structured failure')) {
+    process.stderr.write('Reading prompt from stdin...\n');
+    emit({type:'error',message:'Retrying upstream request'});
+    emit({type:'turn.failed',error:{message:'Mock context exceeded: "quoted detail"\nsecond line Ω'}});
+    process.exit(6);
+  }
+  if (lower.includes('codex banner only failure')) {
+    process.stderr.write('Reading prompt from stdin...\n');
+    process.exit(8);
+  }
+  const transcript = input.split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));
+  const applicationReply = applicationTextReply(instructions, transcript);
+  const cancelMode = lower.includes('cancel this codex request') || !!applicationReply?.cancel;
   const slowThreadMode = lower.includes('slow thread a');
   const slowThreadBMode = lower.includes('slow thread b');
   const slowBranchMode = lower.includes('slow branch codex');
@@ -142,7 +155,7 @@ process.stdin.on('end', () => {
     }
 
     const complete = () => {
-      const answer = secondTurnMode
+      const answer = applicationReply?.text || (secondTurnMode
         ? 'SECOND CODEX ANSWER'
         : slowThreadMode
           ? 'THREAD A CODEX ANSWER'
@@ -156,7 +169,7 @@ process.stdin.on('end', () => {
             ? 'SEARCH ON CODEX ANSWER'
             : noSearchMode
               ? 'SEARCH OFF CODEX ANSWER'
-              : 'BASIC CODEX ANSWER';
+              : 'BASIC CODEX ANSWER');
       emit({ type: 'item.completed', item: { id: 'final-1', type: 'agent_message', text: answer } });
       if (!outputFile) {
         process.stderr.write('missing --output-last-message\n');

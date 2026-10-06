@@ -817,7 +817,14 @@ scenarios.push({
     await sleep(250);
     await cdp.eval('window.loadThread("t-nonstream-b-261"); true');
     await cdp.waitFor('window.activeThreadId === "t-nonstream-b-261"', 10000, 200, 'B loaded during initial request');
-    await sleep(6000);
+    const completionDeadline = Date.now() + 25000;
+    while (Date.now() < completionDeadline) {
+      // Synchronize with persistence; fail the ownership assertions below
+      // immediately if the reply lands in B instead of A.
+      const replies = seed.query(dbPath, "SELECT id FROM messages WHERE thread_id IN ('t-nonstream-a-261','t-nonstream-b-261') AND role='assistant'");
+      if (replies.length) break;
+      await sleep(100);
+    }
 
     const aRows = seed.query(dbPath, "SELECT role, content FROM messages WHERE thread_id='t-nonstream-a-261' ORDER BY rowid");
     const bRows = seed.query(dbPath, "SELECT role, content FROM messages WHERE thread_id='t-nonstream-b-261' ORDER BY rowid");

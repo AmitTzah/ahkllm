@@ -311,7 +311,7 @@
       <div class="section-card" id="sec-providers" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="cloud"></i> Providers — OpenAI-Compatible API Endpoints & Authentication</div><div class="section-card-body">
         <div class="settings-field-hint-top settings-mb-16"><strong>Custom provider protocol:</strong> AhkLLM currently supports OpenAI-compatible Chat Completions APIs with Bearer authentication. Model metadata is sourced from <code>models.dev</code>; the provider ID is used as the catalog key unless you set a models.dev Provider override.</div>
         <div class="provider-grid" id="providerGrid"></div>
-        <div class="settings-field-row-mt"><button class="btn-sm" id="addProviderBtn">+ Add OpenAI-Compatible Provider</button></div>
+        <div class="settings-field-row-mt"><button class="btn-sm" id="addProviderBtn">+ Add OpenAI-Compatible Provider</button> <button class="btn-sm" id="addXiaomiProviderBtn">+ Add Xiaomi MiMo</button></div>
       </div></div>
       <div class="section-card" id="sec-models" ><div class="section-card-header"><i class="settings-icon-sm" data-lucide="cpu"></i> Models — Pricing & Metadata <span class="spacer"></span><button class="btn-sm" id="refreshPricingBtn"><i class="settings-icon-xs" data-lucide="refresh-cw"></i> Fetch Latest Models</button><button class="btn-sm" id="addModelBtn">+ Add Model</button></div><div class="section-card-body">
         <table class="kv-table"><thead><tr><th>Model ID</th><th>Provider</th><th>Input</th><th>Cached</th><th>Output</th><th>Context</th><th>Vision</th><th>Reasoning</th><th></th></tr></thead><tbody id="modelsTableBody"></tbody></table>

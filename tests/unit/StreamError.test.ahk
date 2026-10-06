@@ -5,7 +5,19 @@
 ; Bug: _handleStreamCancelled saved with sibling_group="" ignoring pendingRetrySiblingGroup
 ; ======================================================
 
+#Include ..\TopLevelFunctionSource.ahk
+
 class StreamErrorTest {
+    ApplicationFailure_RestoresOwnershipBeforeCleanup() {
+        source := FileRead(A_ScriptDir "\..\chat\applications\ApplicationToolFailure.ahk")
+        initialLoad := InStr(source, "_LoadStreamIntoParams(stream)")
+        retryRestore := InStr(source, "_RestoreFailedRetryLeaf()")
+        abort := InStr(source, "ApplicationChat.Abort(stream.threadId)")
+        restoredLoad := InStr(source, "_LoadStreamIntoParams(stream)", false, abort)
+        cleanup := InStr(source, "_failToolLoop(message")
+        if !initialLoad || !retryRestore || !abort || !restoredLoad || !cleanup || !(initialLoad < retryRestore && abort < restoredLoad && restoredLoad < cleanup)
+            throw Error("Application failure cleanup must retain its owner across adapter IPC and restore failed retry branches")
+    }
 
     static __New() {
         RegisterTestClass("StreamErrorTest")
@@ -318,6 +330,62 @@ class StreamErrorTest {
             throw Error("Expected setChatButtonsEnabled true; captured: " jsongo.Stringify(captured))
     }
 
+    CancelledLog_RetainsRawHttpDiagnostics() {
+        source := FileRead(A_ScriptDir "\..\chat\streaming\StreamError.ahk")
+        block := TopLevelFunctionSource.Read(source, "_logCancelledRequest")
+        findStream := InStr(block, "cancelledStream := _FindStreamByKey(_currentStreamKey)")
+        httpGate := InStr(block, 'cancelledStream.transport = "http"')
+        attach := InStr(block, "ApplicationStreamDiagnostics.Attach(cancelLogEntry, cancelledStream)")
+        logCall := InStr(block, "ApiLogger.LogRequest(cancelLogEntry)")
+        if !findStream || !httpGate || !attach || !logCall || !(findStream < httpGate && httpGate < attach && attach < logCall)
+            throw Error("cancelled HTTP logs must retain the current provider stdout before API logging and temp cleanup")
+    }
+
+    CancelledLog_UsesTotalElapsedTimeAfterFirstToken() {
+        global activeThreadId, requestParams, apiLogMaxEntries
+        oldActive := activeThreadId
+        oldParams := requestParams
+        oldLogPath := ApiLogger.logFilePath
+        oldLogLimit := apiLogMaxEntries
+        threadId := this._setup()
+        logPath := A_Temp "\test_cancel_elapsed_" A_TickCount "_" Random(1000, 999999) ".json"
+        ApiLogger.logFilePath := logPath
+        apiLogMaxEntries := 10
+        activeThreadId := threadId
+        startTime := A_TickCount - 5000
+        requestParams := Map(
+            "_streamThreadId", threadId,
+            "_streamRequestStartTime", startTime,
+            "_streamFirstTokenTime", startTime + 1000,
+            "_streamContent", "partial response",
+            "_streamReasoning", "",
+            "_streamModelName", "deepseek/deepseek-v4-flash",
+            "singleAPIModelName", "deepseek/deepseek-v4-flash",
+            "_streamChatHistoryJSONRequest", "{}",
+            "_streamWireRequestJSON", "{}",
+            "_streamProviderKey", "deepseek",
+            "providerName", "deepseek",
+            "windowTitle", "test",
+            "pasteMode", "chat"
+        )
+        try {
+            _logCancelledRequest()
+            logs := ApiLogger.ReadLogs()
+            if logs.Length != 1
+                throw Error("cancelled request should write exactly one API log entry")
+            elapsed := logs[1]["responseTimeMs"]
+            if elapsed < 4500
+                throw Error("cancelled responseTimeMs must be total elapsed time, not TTFT; got " elapsed "ms")
+        } finally {
+            ApiLogger.logFilePath := oldLogPath
+            apiLogMaxEntries := oldLogLimit
+            requestParams := oldParams
+            activeThreadId := oldActive
+            try FileDelete(logPath)
+            this._teardown()
+        }
+    }
+
     ; Regression (bug #304): completion, error, and cancellation logging must
     ; decide redaction from the request-owning thread, not activeThreadId.
     StreamLogRedaction_UsesCapturedThreadForAllTerminalPaths() {
@@ -405,7 +473,7 @@ class StreamErrorTest {
         helperIdx := InStr(se, "_persistPartialStreamContent() {")
         if !helperIdx
             throw Error("_persistPartialStreamContent not found (bug #221 refactor)")
-        helperBlock := SubStr(se, helperIdx, 2200)
+        helperBlock := TopLevelFunctionSource.Read(se, "_persistPartialStreamContent")
         if !InStr(helperBlock, "local_copy: true")
             throw Error("_persistPartialStreamContent must insert the cancelled partial as local_copy (bug #133)")
         if !InStr(se, "_handleStreamCancelled() {") || !InStr(se, "_persistPartialStreamContent()")

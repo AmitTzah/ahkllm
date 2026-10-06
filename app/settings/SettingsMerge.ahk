@@ -81,6 +81,18 @@ class SettingsMerge {
             if !result.Has(k)
                 result[k] := existingVal
         }
+        ; A profile predating a new built-in provider may have no saved models
+        ; list. Populate defaults only for its configured providers, otherwise
+        ; orphan defaults block every Settings save. Never prune saved models.
+        if !existing.Has("models") && result.Has("models") && result.Has("providers") {
+            result["models"] := result["models"].Clone()
+            orphanedDefaults := []
+            for modelId, metadata in result["models"]
+                if metadata.Has("provider") && !result["providers"].Has(metadata["provider"])
+                    orphanedDefaults.Push(modelId)
+            for modelId in orphanedDefaults
+                result["models"].Delete(modelId)
+        }
         return result
     }
 

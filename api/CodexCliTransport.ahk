@@ -7,6 +7,8 @@
 ; Codex web search, when requested, remains inside that same invocation.
 ; ======================================================
 
+#Include CodexCliErrors.ahk
+
 class CodexCliTransport {
     static _cachedStatus := ""
 
@@ -85,7 +87,7 @@ class CodexCliTransport {
 
             exitCode := processResult.exitCode
             if exitCode != 0 {
-                CodexCliTransport._NormalizeErrorFile(errorFile, exitCode)
+                CodexCliTransport._NormalizeErrorFile(errorFile, exitCode, eventsFile)
                 return { success: false, cancelled: false, exitCode: exitCode }
             }
             eventsText := FileExist(eventsFile) ? FileRead(eventsFile, "UTF-8") : ""
@@ -256,7 +258,7 @@ class CodexCliTransport {
 
     static _FinalizeAsyncRequest(state, exitCode) {
         if exitCode != 0 {
-            CodexCliTransport._NormalizeErrorFile(state.errorFile, exitCode)
+            CodexCliTransport._NormalizeErrorFile(state.errorFile, exitCode, state.eventsFile)
             return { success: false, cancelled: false, exitCode: exitCode }
         }
         eventsText := FileExist(state.eventsFile) ? FileRead(state.eventsFile, "UTF-8") : ""
@@ -1053,16 +1055,5 @@ class CodexCliTransport {
             return -1
     }
 
-    static _NormalizeErrorFile(errorFile, exitCode) {
-        text := FileExist(errorFile) ? Trim(FileRead(errorFile, "UTF-8")) : ""
-        if RegExMatch(text, "i)(auth|login|logged in|unauthori[sz]ed|credential|401)")
-            text := "Codex CLI is not authenticated with ChatGPT. Run 'codex login' and choose ChatGPT authentication."
-        else if RegExMatch(text, "i)(quota|rate limit|too many requests|429|usage limit|subscription limit)")
-            text := "Codex ChatGPT usage limit reached. Try again after your Codex allowance resets or choose another backend."
-        else if RegExMatch(text, "i)(unknown option|unrecognized option|unknown config|strict.?config|invalid .*config)")
-            text := "This Codex CLI version is incompatible with AhkLLM's safe LLM-only profile. Update AhkLLM/Codex and try again."
-        else if text = ""
-            text := "Codex CLI exited with code " exitCode "."
-        FileOpen(errorFile, "w", "UTF-8-RAW").Write(SubStr(text, 1, 1200))
-    }
+    static _NormalizeErrorFile(errorFile, exitCode, eventsFile := "") => CodexCliErrors.Normalize(errorFile, exitCode, eventsFile)
 }

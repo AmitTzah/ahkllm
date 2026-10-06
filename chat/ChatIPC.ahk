@@ -27,12 +27,12 @@ OnLoadThread(wParam, lParam, msg, hWnd) {
     ; not reveal it until LoadThreadIntoUI has posted the new thread state, or
     ; the previous chat is briefly visible during command navigation.
     ; Background loads show without activating. User-facing opens pass
-    ; activate=1 so the new chat receives focus only after it is loaded. The
-    ; headless probe uses 2: keep the render window off-screen as well as
-    ; non-activating, because Gui.Show("NA") alone preserves the default
-    ; on-screen position.
-    headless := wParam = 2
-    activate := wParam = 1
+    ; activate=1 so the new chat receives focus only after it is loaded.
+    ; Any E2E worker is always treated as headless regardless of the caller's
+    ; wParam, so a normal application/thread IPC path cannot reveal or focus
+    ; the render window on the interactive desktop.
+    headless := wParam = 2 || EnvGet("AHKLLM_E2E_WORKER") != ""
+    activate := wParam = 1 && !headless
     chatWindow.Show(headless ? "x-20000 y-20000 NA" : (activate ? "" : "NA"))
     if activate
         WinActivate("ahk_id " chatWindow.hWnd)

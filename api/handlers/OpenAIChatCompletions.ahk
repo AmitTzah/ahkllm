@@ -38,6 +38,11 @@ class OpenAIChatCompletions {
 
         hasLevelMap := model.HasOwnProp("thinkingLevelMap") && IsObject(model.thinkingLevelMap)
 
+        if thinkingFormat = "xiaomi" {
+            requestObj.thinking := {type: reasoning != "" && reasoning != "none" ? "enabled" : "disabled"}
+            return
+        }
+
         ; Google: delegate to GoogleChatCompletions
         if (thinkingFormat = "google") {
             GoogleChatCompletions.ApplyThinking(&requestObj, model, reasoning, modelId)

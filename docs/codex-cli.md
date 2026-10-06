@@ -11,11 +11,20 @@ AhkLLM's built-in `chatgpt` provider uses **Sign in with ChatGPT** and OpenAI's 
 
 Codex has its own provider card and curated model catalog. ChatGPT account refresh changes only `chatgpt/...` models and preserves Codex models.
 
+Codex CLI defaults to **Text protocol** under **Connected application tools** in its
+provider card. Connected applications can therefore use their advertised, scoped
+functions through validated model replies without exposing native Codex shell, MCP,
+or agent tools. AhkLLM executes the application functions and automatically launches
+CLI continuations until the final answer. Ordinary chats retain their existing
+one-invocation behavior. See [provider tool-calling modes](external-applications.md#provider-tool-calling-modes).
+
 Each requested action launches one `codex exec`. AhkLLM supplies its selected branch as a chronological JSONL transcript through stdin, retains ownership of history, and imports the final answer and public reasoning summaries. Chat, inline commands, and title generation use the CLI transport. Stop cancels its process tree; web search and image generation are enabled only when requested. Image attachments are supplied as managed local image paths.
 
 The CLI runs with user config/rules ignored, a read-only sandbox, strict config, no approval prompts, and unrelated local execution, MCP, apps, plugins, and agent capabilities disabled. CLI authentication remains separate from the ChatGPT provider's OAuth credential store; AhkLLM does not copy tokens between them.
 
 The restored CLI path retains Codex's known 1,048,576-character stdin replay ceiling. Large branches may fail even when they fit the model's token context. AhkLLM does not silently trim history.
+
+Failed exec invocations retain the terminal `turn.failed` or `error` message from the JSONL capture before temporary files are deleted. Errors include the CLI exit code and retain the original detail alongside applicable login/quota/config guidance. The normal `Reading prompt from stdin...` notice is not treated as a failure detail. If neither stream supplies a useful error, AhkLLM explicitly reports that no failure detail was returned.
 
 ChatGPT may calculate or enforce usage limits differently from Codex CLI. Connected-app limits may block ChatGPT requests while Codex CLI still works. This is a warning about possible behavior, not a promise of independent allowances or proof of an OpenAI bug. Check **ChatGPT Settings -> Usage** for the plan windows and app-specific cap.
 

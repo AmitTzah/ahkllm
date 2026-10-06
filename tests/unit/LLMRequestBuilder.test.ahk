@@ -272,13 +272,12 @@ class LLMRequestBuilderTest {
             throw Error("BuildFIM should use the FIM endpoint when configured")
     }
 
-    ; Regression (bug #204): the streaming cURL command must carry an overall
-    ; --max-time so a stalled upstream cannot hang the chat UI forever.
-    CurlBuilderBuildStream_HasMaxTime() {
+    ; Protect stalled streams without imposing a deadline on active output.
+    CurlBuilderBuildStream_HasIdleProtectionNotTotalDeadline() {
         pi := { providerKey: "deepseek", endpoint: "https://api.deepseek.com/chat/completions", fimEndpoint: "", apiKey: "[REDACTED_SECRET]" }
         cmd := CurlBuilder.BuildStream(pi, "req.json", "out.json", "err.txt")
-        if !InStr(cmd, "--max-time 120")
-            throw Error("BuildStream must include --max-time 120 (bug #204), got: " cmd)
+        if InStr(cmd, "--max-time") || !InStr(cmd, "--speed-limit 1") || !InStr(cmd, "--speed-time 120") || !InStr(cmd, "--show-error")
+            throw Error("BuildStream must protect idle transfers and report errors without cutting off active output: " cmd)
     }
 
     ; --------------------
@@ -438,6 +437,10 @@ class LLMRequestBuilderTest {
             throw Error("Codex must send the bare model slug, got '" info.modelName "'")
         if info.transport != "codex-cli"
             throw Error("Codex must use CLI transport")
+        if info.toolCallingMode != "text-protocol"
+            throw Error("Codex default application tool mode must be text-protocol")
+        if ProviderResolver.Resolve("deepseek/deepseek-v4-flash").toolCallingMode != "native"
+            throw Error("Existing HTTP providers must keep native tool calling")
     }
 
     ResolveProvider_LegacyFormat() {
@@ -849,6 +852,27 @@ class LLMRequestBuilderTest {
             throw Error("DeepSeek 'high' should set thinking:{type:'enabled'}")
         if requestObj.reasoning_effort != "high"
             throw Error("DeepSeek 'high' should set reasoning_effort:'high', got: " requestObj.reasoning_effort)
+    }
+
+    Thinking_Xiaomi_UsesToggleNotReasoningEffort() {
+        model := {compat: Map("thinkingFormat", "xiaomi"), thinkingLevelMap: Map("none", "disabled", "high", "enabled")}
+        request := {}
+        OpenAIChatCompletions.ApplyThinking(&request, model, "high")
+        if request.thinking.type != "enabled" || request.HasOwnProp("reasoning_effort")
+            throw Error("MiMo reasoning must use its thinking toggle")
+        OpenAIChatCompletions.ApplyThinking(&request, model, "none")
+        if request.thinking.type != "disabled"
+            throw Error("MiMo reasoning cannot be disabled")
+        request := {}
+        OpenAIChatCompletions.ApplyDefaults(&request, model)
+        if request.HasOwnProp("thinking")
+            throw Error("MiMo Model Default must leave the provider default intact")
+    }
+
+    SSE_MixedToolDeltaPreservesReasoningAndAssistantText() {
+        chunk := SSEParser.ParseLine('data: {"choices":[{"delta":{"reasoning_content":"exact reasoning","content":"public text","tool_calls":[{"index":0,"id":"call-1","function":{"name":"echo_text","arguments":"{}"}}]}}]}')
+        if chunk.type != "tool_call" || chunk.reasoningContent != "exact reasoning" || chunk.messageContent != "public text"
+            throw Error("Native tool delta lost provider reasoning or public text")
     }
 
     Thinking_DeepSeek_Disabled() {

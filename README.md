@@ -81,7 +81,7 @@ The biggest one is branching. Editing or retrying an earlier message creates ano
 Other chat features currently include:
 
 - Streaming responses with Markdown, syntax highlighting, math rendering, quote, copy, edit, retry, and export.
-- DeepSeek, OpenAI, Gemini, OpenRouter, built-in Codex CLI and ChatGPT-plan OAuth backends, and user-added OpenAI-compatible providers.
+- DeepSeek, OpenAI, Gemini, OpenRouter, Xiaomi MiMo, built-in Codex CLI and ChatGPT-plan OAuth backends, and user-added OpenAI-compatible providers.
 - Per-chat model and reasoning settings, plus temperature where the selected backend supports it.
 - Configurable assistants with their own system prompts.
 - Images, PDFs, scanned PDFs, DOCX, PPTX, XLSX, EPUB, text files, and a fairly long list of code formats as attachments.
@@ -147,7 +147,9 @@ If you prefer editing the shipped defaults directly, they live in [`default-sett
 
 ### User-added providers and model metadata
 
-User-added providers must expose an OpenAI-compatible Chat Completions endpoint and use Bearer authentication. Give each provider a stable lowercase ID; model references use that transport ID, such as `xiaomi/mimo-v2.5-pro`.
+User-added providers must expose an OpenAI-compatible Chat Completions endpoint and use Bearer authentication. Give each provider a stable lowercase ID; model references use that transport ID, such as `xiaomi/mimo-v2.6-pro`.
+
+Xiaomi has an **Add Xiaomi MiMo** preset with native application tools and thinking support; see [Xiaomi setup](docs/xiaomi-mimo.md).
 
 **Fetch Latest Models** gets pricing, cached-input pricing, context limits, vision/reasoning support, and compatibility metadata from [models.dev](https://models.dev/). A provider uses the models.dev catalog with the same ID by default. Set the optional **models.dev Provider** override when a transport provider should use another catalog, for example `work-mimo` mapped to `xiaomi`; generated model IDs still use `work-mimo`.
 

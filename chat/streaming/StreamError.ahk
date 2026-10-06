@@ -111,6 +111,13 @@ _handleStreamError() {
         _PostChatError(errMsg, streamThreadId, "Manage usage", "https://chatgpt.com/#settings/Usage")
     else
         _PostChatError(errMsg, streamThreadId)
+    diagnosticResponse := rawOutput ? rawOutput : jsongo.Stringify(Map("error", Map("message", errMsg ? errMsg : "Unknown error")))
+    diagnosticStream := _FindStreamByKey(_currentStreamKey)
+    if IsObject(diagnosticStream) {
+        diagnosticEntry := {request: "", response: jsongo.Stringify(Map("error", Map("message", errMsg, "code", errCode)))}
+        ApplicationStreamDiagnostics.Attach(diagnosticEntry, diagnosticStream)
+        diagnosticResponse := diagnosticEntry.response
+    }
     ; Diagnostics have been read into memory; remove the request files before
     ; any later logging/UI work can return control to another request.
     deleteTempFiles()
@@ -131,7 +138,7 @@ _handleStreamError() {
         endpoint: _getProviderEndpoint(),
         pasteMode: _streamLogPasteMode(),
         request: requestParams.Has("_streamWireRequestJSON") ? requestParams["_streamWireRequestJSON"] : requestParams.Has("_streamChatHistoryJSONRequest") ? requestParams["_streamChatHistoryJSONRequest"] : "{}",
-        response: rawOutput ? rawOutput : '{"error": {"message": "' (errMsg ? errMsg : "Unknown error") '"}}',
+        response: diagnosticResponse,
         status: "error",
         responseTimeMs: responseTimeMs
     }
@@ -158,6 +165,10 @@ _handleStreamError() {
 ; nothing to persist or no thread). Shared by _handleStreamCancelled and the
 ; mid-stream error path.
 _persistPartialStreamContent() {
+    ; A partial control envelope is not assistant prose and must never be
+    ; adopted into a connected chat when a request is stopped or fails.
+    if ApplicationChat.UsesTextProtocol(requestParams.Get("_streamThreadId", ""))
+        requestParams["_streamContent"] := ""
     content := requestParams.Has("_streamContent") ? requestParams["_streamContent"] : ""
     reasoning := requestParams.Has("_streamReasoning") ? requestParams["_streamReasoning"] : ""
     if !content && !reasoning
@@ -209,6 +220,8 @@ _persistPartialStreamContent() {
 
 _handleStreamCancelled() {
     try {
+    if ApplicationChat.UsesTextProtocol(requestParams.Get("_streamThreadId", ""))
+        requestParams["_streamContent"] := ""
     contentLen := StrLen(requestParams.Has("_streamContent") ? requestParams["_streamContent"] : "")
     debugLog("[STREAM] Cancelled — partial=" contentLen "chars")
     _CloseCurrentStreamPID()
@@ -316,9 +329,9 @@ handleCancelStream(threadId := "") {
 
 _logCancelledRequest() {
     streamThreadId := requestParams.Has("_streamThreadId") ? requestParams["_streamThreadId"] : activeThreadId
-    responseTimeMs := requestParams["_streamFirstTokenTime"] > 0
-        ? requestParams["_streamFirstTokenTime"] - requestParams["_streamRequestStartTime"]
-        : A_TickCount - requestParams["_streamRequestStartTime"]
+    responseTimeMs := requestParams["_streamRequestStartTime"] > 0
+        ? A_TickCount - requestParams["_streamRequestStartTime"]
+        : 0
     logEntry := {
         choices: [{ message: { content: requestParams["_streamContent"] }, finish_reason: "cancelled" }],
         model: requestParams["_streamModelName"] ? requestParams["_streamModelName"] : requestParams["singleAPIModelName"],
@@ -345,6 +358,9 @@ _logCancelledRequest() {
         status: "cancelled",
         responseTimeMs: responseTimeMs
     }
+    cancelledStream := _FindStreamByKey(_currentStreamKey)
+    if IsObject(cancelledStream) && cancelledStream.transport = "http"
+        ApplicationStreamDiagnostics.Attach(cancelLogEntry, cancelledStream)
     if ThreadLockService.ShouldRedactContent(streamThreadId) {
         cancelLogEntry.request := "<hidden: locked chat>"
         cancelLogEntry.response := "<hidden: locked chat>"

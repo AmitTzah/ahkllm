@@ -33,6 +33,11 @@ const MAX_AUTO_WORKERS = 8;
 const scenarios = [].concat(
   require('./scenarios/chat-tree'),
   require('./scenarios/external-applications'),
+  require('./scenarios/application-text-protocol'),
+  require('./scenarios/xiaomi-and-codex-errors'),
+  require('./scenarios/native-tool-validation'),
+  require('./scenarios/native-null-compatibility'),
+  require('./scenarios/stream-lifecycle'),
   require('./scenarios/applications-settings'),
   require('./scenarios/commands'),
   require('./scenarios/settings'),

@@ -1,5 +1,16 @@
 ; Project durable Responses/tool items into OpenAI-compatible chat messages.
 class ApplicationWire {
+    static ResponsesInput(items) {
+        result := []
+        for item in items {
+            copy := item.Clone()
+            ; Chat Completions reasoning is not a valid Responses message field.
+            if copy.Has("reasoning_content")
+                copy.Delete("reasoning_content")
+            result.Push(copy)
+        }
+        return result
+    }
     static InputParts(text, maximumBytes := 750000) {
         if maximumBytes < 4
             throw Error("Input text segment size must allow a complete Unicode character.")
@@ -63,7 +74,10 @@ class ApplicationWire {
                         } else if part.Has("text")
                             parts.Push(Map("type", "text", "text", part["text"]))
                     }
-                messages.Push({role: item["role"], content: hasImage ? parts : this.Text(content)})
+                message := {role: item["role"], content: hasImage ? parts : this.Text(content)}
+                if item.Has("reasoning_content")
+                    message.reasoning_content := item["reasoning_content"]
+                messages.Push(message)
             }
         }
         return messages

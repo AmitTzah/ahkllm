@@ -91,7 +91,7 @@ global providers := Map(
     "openai",   { displayName: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", authEnvVar: "OPENAI_API_KEY", fimEndpoint: "", icon: "" },
     "openrouter", { displayName: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", authEnvVar: "OPENROUTER_API_KEY", fimEndpoint: "", icon: "" },
     "google",   { displayName: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", authEnvVar: "GOOGLE_API_KEY", fimEndpoint: "", icon: "" },
-    "codex", { displayName: "Codex CLI", endpoint: "", authEnvVar: "", authMode: "chatgpt", billingMode: "chatgpt-subscription", transport: "codex-cli", fimEndpoint: "", icon: "" },
+    "codex", { displayName: "Codex CLI", endpoint: "", authEnvVar: "", authMode: "chatgpt", billingMode: "chatgpt-subscription", transport: "codex-cli", toolCallingMode: "text-protocol", fimEndpoint: "", icon: "" },
     "chatgpt",  { displayName: "ChatGPT plan", endpoint: "https://api.openai.com/v1/responses", authEnvVar: "", authMode: "chatgpt-oauth", billingMode: "chatgpt-subscription", transport: "chatgpt-responses", fimEndpoint: "", icon: "" }
 )
 

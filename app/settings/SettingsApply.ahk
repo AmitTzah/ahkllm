@@ -49,6 +49,7 @@ class SettingsApply {
                 modelsDevProvider: p.Has("modelsDevProvider") ? p["modelsDevProvider"] : "",
                 fimEndpoint: p.Has("fimEndpoint") ? p["fimEndpoint"] : "",
                 transport: p.Has("transport") && p["transport"] != "" ? p["transport"] : "http",
+                toolCallingMode: p.Get("toolCallingMode", "native"),
                 billingMode: p.Has("billingMode") ? p["billingMode"] : "api",
                 modelCatalogSource: p.Get("modelCatalogSource", ""),
                 authEnvVar: p.Has("authEnvVar") ? p["authEnvVar"] : "",
@@ -130,6 +131,19 @@ class SettingsApply {
             if m.Has("thinkingOff")
                 entry.thinkingOff := m["thinkingOff"]
             modelProvider := ModelParser.Split(modelKey).provider
+            if modelProvider = "xiaomi" || entry.provider = "xiaomi" {
+                entry.provider := "xiaomi"
+                entry.api := "openai-completions"
+                if !entry.HasOwnProp("compat") || !IsObject(entry.compat)
+                    entry.compat := Map()
+                entry.compat["thinkingFormat"] := "xiaomi"
+                if !entry.compat.Has("nativeToolNulls")
+                    entry.compat["nativeToolNulls"] := "omit"
+                entry.compat["supportsReasoningEffort"] := false
+                entry.compat["maxTokensField"] := "max_completion_tokens"
+                entry.thinkingLevelMap := Map("none", "disabled", "high", "enabled")
+                entry.thinkingOff := "disabled"
+            }
             if modelProvider = "codex" || modelProvider = "chatgpt" || entry.provider = "codex" || entry.provider = "chatgpt" {
                 entry.provider := modelProvider != "" ? modelProvider : entry.provider
                 isCodex := entry.provider = "codex"

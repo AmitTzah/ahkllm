@@ -316,7 +316,7 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
     global activeThreadId
     if !streamThreadId
         streamThreadId := activeThreadId
-    responseTimeMs := firstTokenTime > 0 ? firstTokenTime - requestStartTime : A_TickCount - requestStartTime
+    responseTimeMs := A_TickCount - requestStartTime
 
     pt := usage.HasProp("promptTokens") ? usage.promptTokens : 0
     ct := usage.HasProp("completionTokens") ? usage.completionTokens : 0
@@ -358,6 +358,9 @@ _logStreamResponse(content, modelName, reasoning, usage, rawLastResponse, reques
         response: responseStr,
         status: "success", responseTimeMs: responseTimeMs
     }
+    completedStream := _FindStreamByKey(_currentStreamKey)
+    if IsObject(completedStream) && completedStream.transport = "http"
+        ApplicationStreamDiagnostics.Attach(logEntry, completedStream)
     if ThreadLockService.ShouldRedactContent(streamThreadId) {
         logEntry.request := "<hidden: locked chat>"
         logEntry.response := "<hidden: locked chat>"

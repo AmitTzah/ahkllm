@@ -2,7 +2,7 @@
 (function() {
   var sectionName = 'providers';
   var S = window.SettingsShared;
-  var BUILTIN_PROVIDER_IDS = ['deepseek', 'openai', 'openrouter', 'google', 'chatgpt', 'codex'];
+  var BUILTIN_PROVIDER_IDS = ['deepseek', 'openai', 'openrouter', 'google', 'chatgpt', 'codex', 'xiaomi'];
 
   function load(data) {
     if (!data || !data.providers) return;
@@ -78,6 +78,14 @@
     return key === 'chatgpt' || (key !== 'codex' && p && p.transport === 'chatgpt-responses');
   }
 
+  function toolCallingModeHTML(p) {
+    var mode = p.toolCallingMode || 'native';
+    return '<div class="field"><label class="field-label">Connected application tools</label><select data-field="toolCallingMode">' +
+      '<option value="native"' + (mode === 'native' ? ' selected' : '') + '>Native tool calling</option>' +
+      '<option value="text-protocol"' + (mode === 'text-protocol' ? ' selected' : '') + '>Text protocol</option></select>' +
+      '<div class="field-hint">Text protocol uses structured model replies to call the connected application. Applies only to application-connected chats.</div></div>';
+  }
+
   function providerCardHTML(p, key, palIdx, isNew) {
     var colors = PALETTE[palIdx % PALETTE.length];
     var title = p.displayName || key || 'New Provider';
@@ -96,6 +104,7 @@
         '<input type="hidden" value="" data-field="endpoint">' +
         '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || 'codex') + '" data-field="providerId" readonly><div class="field-hint">Model IDs use <code>codex/...</code>.</div></div>' +
         '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || 'Codex CLI') + '" data-field="displayName"></div>' +
+        toolCallingModeHTML(p) +
         '<div class="field"><label class="field-label">Codex CLI</label><div class="settings-flex-row-6"><button type="button" class="btn-sm check-codex">Check Codex CLI</button><span class="codex-status settings-text-xs-muted" aria-live="polite">Not checked</span></div><div class="field-hint">Install Codex CLI 0.153.0 or newer and run <code>codex login</code> with ChatGPT authentication. Uses the CLI login independently of the ChatGPT provider. Set <code>CODEX_CLI_PATH</code> if Codex is not on PATH.</div></div>' +
         '<div class="toggle-row"><div><div class="lbl">Collapse thinking blocks by default</div><div class="settings-text-xs-muted">Used when public reasoning summaries are available</div></div><div class="switch' + (p.collapseThinking ? ' on' : '') + '" data-field="collapseThinking"><div class="knob"></div></div></div>';
     }
@@ -109,6 +118,7 @@
         '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || 'chatgpt') + '" data-field="providerId" readonly><div class="field-hint">Model IDs use <code>chatgpt/...</code>.</div></div>' +
         '<div class="field-hint settings-warning" role="note">Warning: ChatGPT may calculate or enforce usage limits differently from Codex CLI. Connected-app limits can block requests even while Codex CLI still works. Review Manage usage or select a Codex CLI model.</div>' +
         '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || 'ChatGPT plan') + '" data-field="displayName"></div>' +
+        toolCallingModeHTML(p) +
         '<div class="field"><label class="field-label">ChatGPT account</label>' +
           '<div class="settings-flex-row-6"><button type="button" class="btn-sm chatgpt-sign-in">Continue with ChatGPT</button><button type="button" class="btn-sm chatgpt-add-account">Add account</button><button type="button" class="btn-sm chatgpt-sign-out">Sign out</button><a class="btn-sm" href="https://chatgpt.com/#settings/Usage">Manage usage</a></div>' +
           '<div class="settings-flex-row-6 settings-mt-6"><select class="chatgpt-account-select settings-mono-flex" aria-label="ChatGPT account"></select><button type="button" class="btn-sm chatgpt-refresh-models">Refresh models</button></div>' +
@@ -120,6 +130,7 @@
     return '<div class="provider-card-header"><div class="provider-icon" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + S.escHtml(getInitials(title) || '?') + '</div><span class="settings-fw-600 provider-card-title">' + S.escHtml(title) + '</span><button class="btn-sm danger settings-ml-auto">Remove</button></div>' +
       '<div class="field"><label class="field-label">Provider ID</label><input class="settings-mono-input" type="text" value="' + S.escHtml(key || '') + '" placeholder="xiaomi" data-field="providerId"' + idAttrs + '><div class="field-hint">' + idHint + '</div></div>' +
       '<div class="field"><label class="field-label">Display Name</label><input type="text" value="' + S.escHtml(p.displayName || '') + '" placeholder="Xiaomi" data-field="displayName"></div>' +
+      toolCallingModeHTML(p) +
       '<div class="field"><label class="field-label">Chat Completions Endpoint</label><input type="text" value="' + S.escHtml(p.endpoint || '') + '" placeholder="https://api.example.com/v1/chat/completions" data-field="endpoint"><div class="field-hint">Custom providers must accept OpenAI-compatible Chat Completions requests.</div></div>' +
       '<div class="field"><label class="field-label">models.dev Provider <span class="hint">optional catalog override</span></label><input class="settings-mono-input" type="text" value="' + S.escHtml(p.modelsDevProvider || '') + '" placeholder="Auto: ' + S.escHtml(key || 'provider-id') + '" data-field="modelsDevProvider"><div class="field-hint">Fetch Latest Models uses this models.dev catalog key. Leave blank to use the Provider ID. Example: provider ID <code>work-mimo</code> can use catalog <code>xiaomi</code>. OpenRouter remains lookup-only.</div></div>' +
       '<div class="field"><label class="field-label">FIM Endpoint <span class="hint">optional</span></label><input type="text" value="' + S.escHtml(p.fimEndpoint || '') + '" data-field="fimEndpoint"></div>' +
@@ -226,6 +237,8 @@
         Ipc.postToHost('setChatGptAccount', { clientId: this.value });
     });
 
+    var modeSelect = _field(card, 'toolCallingMode');
+    if (modeSelect) modeSelect.addEventListener('change', mark);
     var prefixDiv = card.querySelector('.prefix-tags');
     if (prefixDiv) {
       var addLink = document.createElement('span');
@@ -302,6 +315,7 @@
         obj.billingMode = obj.billingMode || 'api';
         obj.authMode = (obj.apiKey && !obj.authEnvVar) ? 'direct' : 'env';
       }
+      obj.toolCallingMode = obj.toolCallingMode || 'native';
       obj.custom = card.dataset && card.dataset.customProvider === 'true';
       obj.prefixes = [];
       card.querySelectorAll('.prefix-tags .badge').forEach(function(tag) {
@@ -450,6 +464,15 @@
     syncModelsProviderOptions();
   }
 
+  function addXiaomiProvider() {
+    var current = collectProviders();
+    if (current.xiaomi) return;
+    current.xiaomi = {displayName:'Xiaomi MiMo', endpoint:'https://api.xiaomimimo.com/v1/chat/completions', modelsDevProvider:'xiaomi', authEnvVar:'MIMO_API_KEY', toolCallingMode:'native', prefixes:['mimo'], collapseThinking:true};
+    renderCards(current);
+    mark();
+    syncModelsProviderOptions();
+  }
+
   window.SettingsProviders = {
     getCurrentProviders: collectProviders,
     getProviderOptions: getProviderOptions,
@@ -464,6 +487,8 @@
     document.addEventListener('DOMContentLoaded', function() {
       var addBtn = document.getElementById('addProviderBtn');
       if (addBtn) addBtn.addEventListener('click', addProvider);
+      var xiaomiBtn = document.getElementById('addXiaomiProviderBtn');
+      if (xiaomiBtn) xiaomiBtn.addEventListener('click', addXiaomiProvider);
     });
   }
   S.registerSection(sectionName, {load: load, save: save, validate: validate});

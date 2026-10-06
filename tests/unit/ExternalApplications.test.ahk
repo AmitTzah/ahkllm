@@ -1,4 +1,132 @@
 class ExternalApplicationsTest {
+    NullableProjection_IsWireOnlyAndRestoresRequiredNulls() {
+        properties := Map("path", Map("type", ["string", "null"]), "depth", Map("type", "integer", "minimum", 1),
+            "optional", Map("type", ["string", "null"]), "items", Map("type", "array", "items", Map("type", "object", "properties", Map("end", Map("type", ["integer", "null"])), "required", ["end"])))
+        schema := Map("type", "object", "properties", properties, "required", ["path", "depth", "items"], "additionalProperties", false)
+        definition := Map("name", "example", "strict", true, "parameters", schema)
+        before := jsongo.Stringify(definition)
+        wire := ApplicationNullableArguments.Definitions([definition])[1]
+        if jsongo.Stringify(definition) != before || wire["strict"] || wire["parameters"]["properties"]["path"]["type"] != "string"
+            throw Error("Null compatibility mutated the original schema or failed to remove null from the wire")
+        if wire["parameters"]["required"].Length != 2 || wire["parameters"]["properties"]["items"]["items"]["required"].Length
+            throw Error("Required nullable object properties must be optional on the provider wire")
+        args := ApplicationNativeTools.Arguments(Map("arguments", '{"depth":4,"items":[{}]}'), definition, true)
+        json := ApplicationArgumentJson.Serialize(args)
+        if !InStr(json, '"path":null') || !InStr(json, '"end":null') || args.Has("optional")
+            throw Error("Original null semantics or optional omission changed: " json)
+        rejected := false
+        try ApplicationNativeTools.Arguments(Map("arguments", '{"items":[{}]}'), definition, true)
+        catch Error as e
+            rejected := InStr(e.Message, "depth")
+        if !rejected
+            throw Error("Non-nullable required parameters must remain required")
+    }
+    StreamDiagnostics_PreserveExactCurrentRoundAndArchiveLargeBodies() {
+        this._setup()
+        previousLog := ApiLogger.logFilePath
+        file := this.directory "\provider.txt"
+        logPath := this.directory "\diagnostics.json"
+        try {
+            threadId := ExternalApplications.Import(this._package())
+            text := ""
+            loop 4000
+                text .= "payload Ω quoted `"text`"`r`n"
+            raw := "data: " jsongo.Stringify(Map("type", "response.output_text.delta", "delta", text)) "`r`n`r`ndata: [DONE]`r`n"
+            FileOpen(file, "w", "UTF-8-RAW").Write(raw)
+            stream := {threadId: threadId, transport: "http", outputFile: file}
+            entry := {request: "{}", response: '{"choices":[]}', status: "success"}
+            ApplicationStreamDiagnostics.Attach(entry, stream)
+            if jsongo.Parse(entry.response)["_ahkllm_stream_diagnostics"]["raw_response"] != raw
+                throw Error("Raw SSE capture changed Unicode, quoting, line endings, or DONE marker")
+            if ChatGptResponseLog.Normalize(entry.response) != entry.response
+                throw Error("Response normalization must not consume embedded SSE diagnostics")
+            ApiLogger.logFilePath := logPath
+            ApiLogger.LogRequest(entry)
+            saved := ApiLogger.ReadLogs()[1]
+            if !saved.Has("response_archive")
+                throw Error("Large diagnostic body must use the existing retained-payload archive")
+            if jsongo.Parse(ApiLogBodies.Read(logPath, saved["response_archive"]))["_ahkllm_stream_diagnostics"]["raw_response"] != raw
+                throw Error("API logging or archiving changed the raw stream")
+            FileOpen(file, "w", "UTF-8-RAW").Write("data: SECOND ROUND`n")
+            ApplicationStreamDiagnostics.Attach(entry, stream)
+            if jsongo.Parse(entry.response)["_ahkllm_stream_diagnostics"]["raw_response"] != "data: SECOND ROUND`n"
+                throw Error("Diagnostics must not accumulate previous rounds")
+            ThreadLockRepo.Set(threadId, "fixture-salt", "fixture-hash", 600000)
+            entry := {request: "PRIVATE REQUEST", response: "PRIVATE RESPONSE"}
+            ApplicationStreamDiagnostics.Attach(entry, stream)
+            if entry.request != "<hidden: locked chat>" || entry.response != "<hidden: locked chat>"
+                throw Error("Locked diagnostic capture leaked provider data")
+        } finally {
+            ApiLogger.logFilePath := previousLog
+            this._teardown()
+        }
+    }
+    NativeArguments_RejectScalarsMalformedJsonAndSchemaMismatches() {
+        threadId := "native-validation-unit"
+        definition := Map("name", "echo_text", "parameters", Map("type", "object", "properties", Map("text", Map("type", "string")), "required", ["text"], "additionalProperties", false))
+        try {
+            for text in ['null', '[]', '"double encoded"', '{"text":', '{"text":17}', '{"text":"ok","extra":true}'] {
+                ApplicationChat.active[threadId] := Map("tools", [definition])
+                calls := [Map("name", "echo_text", "call_id", "valid", "arguments", '{"text":"must not execute"}'), Map("name", "echo_text", "call_id", "invalid", "arguments", text)]
+                outputs := ApplicationNativeTools.RunRound(threadId, calls, (*) => "")
+                if outputs.Length != 2 || !InStr(outputs[2]["output"], "Invalid arguments for echo_text") || !InStr(outputs[1]["output"], "batch was not executed")
+                    throw Error("Invalid native batch was not rejected atomically: " text)
+                if outputs[2]["call_id"] != "invalid" || !InStr(outputs[2]["output"], '"ok":false')
+                    throw Error("Correction feedback lost its call ID or JSON boolean")
+            }
+            ApplicationChat.active[threadId] := Map("tools", [definition])
+            call := Map("name", "echo_text", "call_id", "retry", "arguments", '"still invalid"')
+            ApplicationNativeTools.RunRound(threadId, [call], (*) => "")
+            ApplicationNativeTools.RunRound(threadId, [call], (*) => "")
+            rejected := false
+            try ApplicationNativeTools.RunRound(threadId, [call], (*) => "")
+            catch Error as e
+                rejected := InStr(e.Message, "3 invalid argument rounds")
+            if !rejected
+                throw Error("Invalid native arguments must have a bounded correction budget")
+        } finally {
+            if ApplicationChat.active.Has(threadId)
+                ApplicationChat.active.Delete(threadId)
+        }
+    }
+
+    NativeArguments_PreserveBooleanNullAndNestedTypes() {
+        definition := Map("parameters", Map("type", "object", "properties", Map("flag", Map("type", "boolean"), "optional", Map("type", ["string", "null"])), "required", ["flag", "optional"], "additionalProperties", false))
+        args := ApplicationNativeTools.Arguments(Map("arguments", '{"flag":false,"optional":null}'), definition)
+        serialized := ApplicationArgumentJson.Serialize(args)
+        if serialized != '{"flag":false,"optional":null}'
+            throw Error("Native RPC boolean/null types were changed: " serialized)
+        definition := Map("parameters", Map("type", "object", "properties", Map("items", Map("type", "array", "items", Map("type", "object", "properties", Map("path", Map("type", "string")), "required", ["path"])))))
+        rejected := false
+        try ApplicationNativeTools.Arguments(Map("arguments", '{"items":["bad"]}'), definition)
+        catch Error as e
+            rejected := InStr(e.Message, "arguments.items[1]")
+        if !rejected
+            throw Error("Native nested arrays must reject strings where FWB expects objects")
+    }
+    HttpReplay_PreservesReasoningWithParallelToolCalls() {
+        items := [Map("type", "message", "role", "assistant", "content", [Map("type", "output_text", "text", "public text")], "reasoning_content", "exact provider reasoning"),
+            Map("type", "function_call", "call_id", "a", "name", "first", "arguments", "{}"),
+            Map("type", "function_call", "call_id", "b", "name", "second", "arguments", "{}"),
+            Map("type", "function_call_output", "call_id", "a", "output", "first result"),
+            Map("type", "function_call_output", "call_id", "b", "output", "second result")]
+        messages := ApplicationWire.ChatMessages(items)
+        if messages.Length != 3 || messages[1].tool_calls.Length != 2 || messages[1].reasoning_content != "exact provider reasoning" || messages[1].content != "public text"
+            throw Error("Reasoning, public content, or parallel native calls were lost")
+        responses := ApplicationWire.ResponsesInput(items)
+        if responses[1].Has("reasoning_content") || !items[1].Has("reasoning_content") || responses[2]["call_id"] != "a"
+            throw Error("Switching to Responses must strip HTTP-only fields without altering durable history")
+    }
+    HttpContinuation_LogsCurlRelaunchBoundary() {
+        source := FileRead(A_ScriptDir "\..\chat\applications\ApplicationHttpTools.ahk")
+        launching := InStr(source, "[STREAM] Application HTTP continuation launching")
+        runCall := InStr(source, 'Run(command, , "Hide", &pid)')
+        failed := InStr(source, "[STREAM] Application HTTP continuation launch failed")
+        started := InStr(source, "[STREAM] Application HTTP continuation started")
+        if !launching || !runCall || !failed || !started || !(launching < runCall && runCall < failed && failed < started)
+            throw Error("Application HTTP continuation must trace launch, launch failure, and successful PID assignment around cURL Run()")
+    }
+
     static __New() => RegisterTestClass("ExternalApplicationsTest")
 
     _setup() {

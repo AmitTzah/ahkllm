@@ -5,7 +5,52 @@
 ;        _readAndProcessStream edge cases
 ; ======================================================
 
+#Include ..\TopLevelFunctionSource.ahk
+
 class StreamHandlerTest {
+    HttpCompletion_RequiresTerminalSignalNotReasoningOrContent() {
+        state := {transport: "http", httpCompleted: false}
+        HttpStreamCompletion.Observe(state, {type: "reasoning", content: "still thinking"})
+        HttpStreamCompletion.Observe(state, {type: "content", content: "partial"})
+        if state.httpCompleted
+            throw Error("Partial text or reasoning cannot establish stream completion")
+        HttpStreamCompletion.Observe(state, {type: "tool_call", reason: "tool_calls"})
+        if !state.httpCompleted
+            throw Error("Tool-call finish reason must establish a complete provider round")
+        state.httpCompleted := false
+        HttpStreamCompletion.Observe(state, {type: "done"})
+        if !state.httpCompleted
+            throw Error("DONE marker must establish stream completion")
+        if HttpStreamCompletion.ErrorFromParams(Map("_streamTransport", "http", "_streamHttpCompleted", true)) != ""
+            throw Error("A completed stream was rejected")
+        if !InStr(HttpStreamCompletion.ErrorFromParams(Map("_streamTransport", "http")), "before completion")
+            throw Error("Unterminated stream must surface a meaningful error")
+        if HttpStreamCompletion.ErrorFromParams(Map("_streamTransport", "http", "_streamOutputAlreadyParsed", true)) != ""
+            throw Error("A validated non-streaming JSON response must not require an SSE terminator")
+    }
+    ToolAssembler_SeparatesReusedIndexesAndRoutesContinuationsById() {
+        state := {toolCalls: Map()}
+        _mergeToolCallDeltas(state, [Map("index", 0, "id", "tree", "function", Map("name", "project_tree", "arguments", '{"path": '))])
+        _mergeToolCallDeltas(state, [Map("index", 0, "id", "map", "function", Map("name", "markdown_map", "arguments", '{"path":"reference/magic-system.md"'))])
+        _mergeToolCallDeltas(state, [Map("index", 0, "id", "", "function", Map("arguments", ',"view":"toc","target_bytes":8000}'))])
+        if state.toolCalls.Count != 2 || state.toolCalls[0].id != "tree" || state.toolCalls[0].arguments != '{"path": '
+            throw Error("Distinct calls sharing an index were conflated")
+        second := state.toolCalls[1]
+        if second.name != "markdown_map" || jsongo.Parse(second.arguments)["target_bytes"] != 8000
+            throw Error("The valid second call was contaminated by the incomplete first call")
+        _mergeToolCallDeltas(state, [Map("index", 0, "id", "tree", "function", Map("arguments", 'null,"max_depth":4}'))])
+        if jsongo.Parse(state.toolCalls[0].arguments)["max_depth"] != 4 || second.arguments != '{"path":"reference/magic-system.md","view":"toc","target_bytes":8000}'
+            throw Error("Explicit IDs did not route a late continuation to its original call")
+    }
+
+    ToolAssembler_PreservesStandardInterleavedIndexes() {
+        state := {toolCalls: Map()}
+        _mergeToolCallDeltas(state, [Map("index", 0, "id", "a", "function", Map("name", "first", "arguments", '{"a":')),
+            Map("index", 1, "id", "b", "function", Map("name", "second", "arguments", '{"b":'))])
+        _mergeToolCallDeltas(state, [Map("index", 1, "function", Map("arguments", '2}')), Map("index", 0, "function", Map("arguments", '1}'))])
+        if state.toolCalls[0].arguments != '{"a":1}' || state.toolCalls[1].arguments != '{"b":2}'
+            throw Error("Standard indexed tool streams changed behavior")
+    }
 
     static __New() {
         RegisterTestClass("StreamHandlerTest")
@@ -601,7 +646,7 @@ class StreamHandlerTest {
             throw Error("_finalizeStreaming not found in StreamHandler.ahk")
         ; The window is generous because the bug #219 mid-stream-error branch
         ; sits between the cancel branch and the empty-content branch.
-        block := SubStr(src, finalizePos, 3000)
+        block := TopLevelFunctionSource.Read(src, "_finalizeStreaming")
         cancelPos := InStr(block, "_handleStreamCancelled()")
         errorPos := InStr(block, "_handleStreamError()")
         if !cancelPos || !errorPos || cancelPos > errorPos
@@ -736,7 +781,7 @@ class StreamHandlerTest {
         finalizePos := InStr(src, "_finalizeStreaming() {")
         if !finalizePos
             throw Error("_finalizeStreaming not found in StreamHandler.ahk")
-        block := SubStr(src, finalizePos, 3000)
+        block := TopLevelFunctionSource.Read(src, "_finalizeStreaming")
         errorPos := InStr(block, "_handleMidStreamError()")
         emptyPos := InStr(block, "_handleStreamError()")
         cancelPos := InStr(block, "_handleStreamCancelled()")

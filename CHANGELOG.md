@@ -4,13 +4,29 @@
 
 ### Added
 
+- Xiaomi MiMo provider preset, current MiMo 2.6 models, native connected-application tools, and explicit thinking on/off support.
+
 - Restored Codex CLI as a separate provider alongside ChatGPT plan, with independent model IDs, CLI login, and provider settings.
 - A warning in ChatGPT provider settings that usage limits may be calculated or enforced differently from Codex CLI.
+- Generic provider tool-calling modes for connected applications. Codex CLI defaults to a validated text protocol; existing HTTP and ChatGPT providers keep native function calling.
 
 ### Fixed
 
+- Active HTTP, ChatGPT Responses, and hosted-search streams no longer stop at a total-duration deadline; idle-transfer protection remains. Unterminated streams fail instead of recording success, application turns abort on thought-only failures, raw terminal diagnostics are retained, and API-log latency reports total response duration rather than time to first token.
+
+- Streaming native tool calls remain separate when a provider reuses an index with a new call ID. Xiaomi application tools expose nullable object parameters as optional non-null fields and restore omitted required nulls before original-schema validation and RPC execution.
+
+- Connected-application tool diagnostics retain the exact current-round provider stream alongside assembled calls, preserving original function names, IDs, indexes, argument fragments, and finish reasons for investigation. Existing log retention and locked-chat redaction still apply.
+
+- Native application tools validate JSON object arguments and schemas before execution, return bounded correction feedback, preserve boolean/null values, and retain failed-call diagnostics. Application failures abort their turn and no longer appear as web-search errors.
+
+- Codex CLI failures preserve structured JSONL error details and exit codes instead of displaying the stdin startup notice; retained error responses are valid JSON.
+- Native HTTP application-tool history preserves exact provider reasoning and assistant content across tool rounds, follow-ups, and forks.
+
 - ChatGPT model discovery and settings saves preserve Codex models and references instead of converting or removing them.
 - Provider settings repair inherited Codex labels so the built-in cards display distinct Codex CLI and ChatGPT plan names.
+- The usage bar retains the current thread's last known values during generation and updates when completed response statistics arrive.
+- Queued stream chunks retain their owning thread, preventing late responses from opening a spinner in a different chat after switching.
 
 ### Upgrade notes
 

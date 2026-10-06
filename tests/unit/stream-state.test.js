@@ -722,6 +722,16 @@ describe('retry restore state cleared on success (bug #169)', () => {
 
 
 describe('stream provider attribution', () => {
+  it('ignores queued content and reasoning for another thread without starting its spinner', () => {
+    const ctx = loadStreamModule();
+    ctx.activeThreadId = 'thread-B';
+    ctx.handleStreamMessage('streamContent', {text:'late A text',threadId:'thread-A'});
+    ctx.handleStreamMessage('streamReasoning', {content:'late A reasoning',threadId:'thread-A'});
+    assert.equal(ctx.streamState.active,false);
+    assert.equal(ctx.streamState.threadId,'');
+    assert.equal(ctx.streamState.contentBuffer,'');
+    assert.equal(ctx.streamState.thinkingBuffer,'');
+  });
   it('stores provider from streamModelName payload for the live bubble', () => {
     const ctx = loadStreamModule();
     ctx.onStreamModelName('glm-5.2-free', '', 'openrouter');

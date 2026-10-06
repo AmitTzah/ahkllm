@@ -5,7 +5,7 @@ const path = require('node:path');
 const seed = require('../seed');
 const { sleep, showChat, sendChatMessage, waitStreamingIdle, openSettings, openSection, saveSettings } = require('./helpers');
 
-const FAKE_CODEX_SCRIPT = path.join(__dirname, '..', 'fake-codex-cli.js');
+const {installFakeCodex, fakeCodexEnvironment, codexRequests} = require('../codex-fixture');
 
 function planEnv({ endpoint }) {
   return {
@@ -14,22 +14,8 @@ function planEnv({ endpoint }) {
     AHKLLM_E2E_CHATGPT_MODELS_ENDPOINT: String(endpoint).replace('/v1/chat/completions', '/v1/models')
   };
 }
-function installFakeCodex(dataDir) {
-  fs.writeFileSync(path.join(dataDir, 'fake-codex.cmd'), [
-    '@echo off',
-    '"%FAKE_NODE_EXE%" "%FAKE_CODEX_SCRIPT%" %*',
-    'exit /b %ERRORLEVEL%',
-    ''
-  ].join('\r\n'), 'utf8');
-  fs.writeFileSync(path.join(dataDir, 'fake-codex-log.jsonl'), '', 'utf8');
-}
 function imageEnv({ dataDir, endpoint }) {
-  return Object.assign(planEnv({ endpoint }), {
-    CODEX_CLI_PATH: path.join(dataDir, 'fake-codex.cmd'),
-    FAKE_NODE_EXE: process.execPath,
-    FAKE_CODEX_SCRIPT: FAKE_CODEX_SCRIPT,
-    FAKE_CODEX_LOG: path.join(dataDir, 'fake-codex-log.jsonl')
-  });
+  return Object.assign(planEnv({ endpoint }), fakeCodexEnvironment({dataDir}));
 }
 function reqs(log) {
   if (!log || !fs.existsSync(log)) return [];
@@ -37,9 +23,7 @@ function reqs(log) {
 }
 function responses(log) { return reqs(log).filter((r) => String(r.url || '').includes('/responses')); }
 function codexExecs(dataDir) {
-  const p = path.join(dataDir, 'fake-codex-log.jsonl');
-  if (!fs.existsSync(p)) return [];
-  return fs.readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean).map(JSON.parse).filter((x) => x.kind === 'exec');
+  return codexRequests(dataDir);
 }
 function th(id, leaf, title) {
   return { id: id, title: title, active_leaf_id: leaf, model_override: 'chatgpt/gpt-5.6-luna', reasoning_override: 'medium', reasoning_override_set: 1 };

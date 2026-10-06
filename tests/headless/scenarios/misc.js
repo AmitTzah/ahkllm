@@ -1685,12 +1685,38 @@ scenarios.push({
     const noActivateFlags = /0x0051/.test(helperBlock) && /0x0450/.test(helperBlock);
     const noActivateShow = /ShowWindow[\s\S]*SW_SHOWNOACTIVATE/.test(helperBlock);
     const loadPrepositions = /MoveOffscreenNoActivate\(hwnd\)[\s\S]*PostMessage\(0x502, 2/.test(loadBlock);
+
     const ipc = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatIPC.ahk'), 'utf8');
-    const ipcHeadlessMode = /headless := wParam = 2/.test(ipc) && /chatWindow\.Show\(headless \? "x-20000 y-20000 NA"/.test(ipc);
-    const legacyActivation = /WinShow\(/.test(showBlock) || /WinMove\(/.test(showBlock) || /WinShow\(/.test(resizeBlock) || /WinMove\(/.test(resizeBlock);
-    if (!noActivateFlags || !noActivateShow || !loadPrepositions || !ipcHeadlessMode || legacyActivation)
-      throw new Error('headless window helper can activate: ' + JSON.stringify({ noActivateFlags, noActivateShow, loadPrepositions, ipcHeadlessMode, legacyActivation }));
-    return 'show-chat, resize-chat, and load-thread use off-screen no-activate positioning; WM_LOAD_THREAD headless mode is explicit and no legacy WinShow/WinMove path remains';
+    const ipcHeadlessMode =
+      /headless := wParam = 2 \|\| EnvGet\("AHKLLM_E2E_WORKER"\) != ""/.test(ipc) &&
+      /activate := wParam = 1 && !headless/.test(ipc) &&
+      /chatWindow\.Show\(headless \? "x-20000 y-20000 NA"/.test(ipc);
+
+    const chatWindow = fs.readFileSync(path.join(launcher.REPO_ROOT, 'chat', 'ChatWindow.ahk'), 'utf8');
+    const chatWindowHeadlessMode =
+      /headless := EnvGet\("AHKLLM_E2E_WORKER"\) != ""/.test(chatWindow) &&
+      /Format\("x-20000 y-20000 w\{\} h\{\} NA"/.test(chatWindow) &&
+      /_OpenImportedApplicationChat\(threadId\)[\s\S]*showChatWindow\(false\)/.test(chatWindow);
+    const ipcPanelsUsePolicy =
+      /WM_SHOW_DASHBOARD[\s\S]*showChatWindow\(false\)/.test(chatWindow) &&
+      /WM_SHOW_SETTINGS[\s\S]*showChatWindow\(false\)/.test(chatWindow);
+
+    const main = fs.readFileSync(path.join(launcher.REPO_ROOT, 'Main.ahk'), 'utf8');
+    const mainHeadlessMode =
+      /_showE2EChatWindow\(hwnd\)/.test(main) &&
+      /ShowWindow[\s\S]*SW_SHOWNOACTIVATE/.test(main) &&
+      /headless := EnvGet\("AHKLLM_E2E_WORKER"\) != ""[\s\S]*if headless[\s\S]*activate := false/.test(main) &&
+      /else if headless \{[\s\S]*_showE2EChatWindow\(chatWindowhWnd\)/.test(main);
+
+    const legacyActivation = /WinShow\(/.test(showBlock) || /WinMove\(/.test(showBlock) ||
+      /WinShow\(/.test(resizeBlock) || /WinMove\(/.test(resizeBlock);
+    if (!noActivateFlags || !noActivateShow || !loadPrepositions || !ipcHeadlessMode ||
+        !chatWindowHeadlessMode || !ipcPanelsUsePolicy || !mainHeadlessMode || legacyActivation)
+      throw new Error('headless window path can activate: ' + JSON.stringify({
+        noActivateFlags, noActivateShow, loadPrepositions, ipcHeadlessMode,
+        chatWindowHeadlessMode, ipcPanelsUsePolicy, mainHeadlessMode, legacyActivation
+      }));
+    return 'all marked E2E ChatWindow show paths stay off-screen and non-activating, including probe, thread-load, imported-application, settings/dashboard, and Main reuse paths';
   }
 });
 

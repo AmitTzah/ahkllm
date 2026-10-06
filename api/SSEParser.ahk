@@ -59,6 +59,7 @@ class SSEParser {
         reasoningAcc := ""
         contentAcc := ""
         toolCallAcc := []
+        wireReasoning := "", wireContent := ""
         for choice in choices {
             if !IsObject(choice)
                 continue
@@ -66,6 +67,10 @@ class SSEParser {
             ; JSON null/scalar deltas are not parseable message objects.
             if !IsObject(delta)
                 continue
+            if delta.Has("reasoning_content") && Type(delta["reasoning_content"]) = "String"
+                wireReasoning .= delta["reasoning_content"]
+            if delta.Has("content") && Type(delta["content"]) = "String"
+                wireContent .= delta["content"]
             ; Tool calls (web_search): deltas arrive as partial fragments
             ; ({index, id, function:{name, arguments}}) that the stream handler
             ; merges by index into completed calls.
@@ -96,7 +101,7 @@ class SSEParser {
         ; A tool-call event (the model asked to search) - handled before the
         ; plain content branch so the stream handler can run the tool loop.
         if toolCallAcc.Length {
-            result := { type: "tool_call", toolCalls: toolCallAcc }
+            result := { type: "tool_call", toolCalls: toolCallAcc, reasoningContent: wireReasoning, messageContent: wireContent }
             if finish != "" && finish != "null" {
                 result.reason := finish
                 if parsed.Has("model") && parsed["model"] != ""
@@ -106,7 +111,7 @@ class SSEParser {
             }
             return result
         }
-        result := {}
+        result := { reasoningContent: wireReasoning, messageContent: wireContent }
         if reasoningAcc != "" {
             result.type := "reasoning"
             result.content := reasoningAcc

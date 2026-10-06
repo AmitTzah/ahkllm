@@ -1,14 +1,25 @@
 #Include ExternalApplications.ahk
 #Include ApplicationWire.ahk
+#Include ApplicationTextProtocol.ahk
+#Include ApplicationNativeTools.ahk
+#Include ApplicationNullableArguments.ahk
 
 ; Inference ownership and wire history are kept separate from the application's opaque state.
 class ApplicationChat {
     static active := Map()
 
+    static UsesTextProtocol(threadId) {
+        return this.active.Has(threadId)
+            && this.active[threadId].Get("toolCallingMode", "native") = "text-protocol"
+    }
+
     static Prepare(threadId, path, providerInfo, requestObj, preparedInput := "") {
         if !ApplicationRepo.Session(threadId)
             return
-        if providerInfo.transport != "chatgpt-responses" && providerInfo.transport != "http"
+        mode := providerInfo.HasOwnProp("toolCallingMode") ? providerInfo.toolCallingMode : "native"
+        if mode != "native" && mode != "text-protocol"
+            throw Error("Unknown application tool-calling mode: " mode)
+        if mode = "native" && providerInfo.transport != "chatgpt-responses" && providerInfo.transport != "http"
             throw Error("This provider does not support application function tools. Select a Responses or OpenAI-compatible HTTP model.")
         if this.active.Has(threadId)
             throw Error("This application's previous turn is still running.")
@@ -21,7 +32,10 @@ class ApplicationChat {
         externalTools := started.Get("tools", description["tools"])
         preamble := started.Get("message", "")
         output := []
-        this.active[threadId] := Map("state", state, "turn", started["turn"], "parent", path[path.Length].id, "output", output, "rounds", 0, "label", description.Get("label", "Application"), "phase", started.Get("phase", description.Get("phase", "")))
+        this.active[threadId] := Map("state", state, "turn", started["turn"], "parent", path[path.Length].id, "output", output, "rounds", 0, "tools", externalTools, "toolCallingMode", mode, "usage", {}, "activity", "", "label", description.Get("label", "Application"), "phase", started.Get("phase", description.Get("phase", "")))
+        omitNulls := mode = "native" && providerInfo.transport = "http" && ApplicationNullableArguments.Enabled(providerInfo)
+        this.active[threadId]["omitNullableArguments"] := omitNulls
+        wireTools := omitNulls ? ApplicationNullableArguments.Definitions(externalTools) : externalTools
         requestObj.external_tools := externalTools
         requestObj.external_input := IsObject(preparedInput) ? preparedInput : ApplicationRepo.Replay(path)
         if preamble != "" {
@@ -29,10 +43,12 @@ class ApplicationChat {
             requestObj.external_input.Push(input)
             output.Push(input)
         }
-        if providerInfo.transport = "http" {
+        if mode = "text-protocol" {
+            ApplicationTextProtocol.ApplyRequest(requestObj, requestObj.external_input, externalTools)
+        } else if providerInfo.transport = "http" {
             requestObj.messages := ApplicationWire.ChatMessages(requestObj.external_input, requestObj.messages)
             tools := requestObj.HasOwnProp("tools") ? requestObj.tools : []
-            for definition in externalTools {
+            for definition in wireTools {
                 fn := definition.Clone()
                 fn.Delete("type")
                 tools.Push(Map("type", "function", "function", fn))
@@ -44,11 +60,12 @@ class ApplicationChat {
         }
     }
 
-    static Tool(threadId, call) {
+    static Tool(threadId, call, preparedArgs := "") {
         if !this.active.Has(threadId)
             throw Error("No active external application turn owns this tool call.")
         context := this.active[threadId]
-        args := jsongo.Parse(call.Get("arguments", "{}"))
+        definition := ApplicationTextProtocol.FindTool(context["tools"], call["name"])
+        args := preparedArgs is Map ? preparedArgs : ApplicationNativeTools.Arguments(call, definition, context.Get("omitNullableArguments", false))
         result := ExternalApplications.Call(threadId, "tools.call", context["state"], Map("turn", context["turn"], "name", call["name"], "arguments", args))
         return Map("type", "function_call_output", "call_id", call["call_id"], "output", jsongo.Stringify(result["result"]))
     }

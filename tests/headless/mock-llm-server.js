@@ -44,6 +44,11 @@
 //   drop               accept then destroy socket without any response
 //   refuse             (no server) — caller points the endpoint at a closed port
 'use strict';
+const {validateXiaomiRequest} = require('./xiaomi-tool-fixture');
+const {nativeToolArguments} = require('./native-tool-arguments');
+const {reusedIndexResponse} = require('./native-reused-index-fixture');
+const {lifecycleResponse} = require('./stream-lifecycle-fixture');
+const {applicationTextReply} = require('./application-text-reply');
 const http = require('node:http');
 const fs = require('node:fs');
 
@@ -144,6 +149,7 @@ function makeScriptedSseHandler(script = []) {
 //     finish_reason "tool_calls".
 //   round 2+ (the request carries role:"tool" results): normal final answer.
 function makeToolCallSseHandler(parsed, opts) {
+  if(opts.nativeReusedIndex)return (req,res)=>reusedIndexResponse(parsed,opts,res);
   return (req, res) => {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -166,11 +172,16 @@ function makeToolCallSseHandler(parsed, opts) {
         const queries = opts.searchQueries || [];
         const searchQuery = queries[round] || opts.searchQuery || 'AutoHotkey webview2';
         sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_search_' + callIndex, type: 'function', function: { name: toolName, arguments: '' } }] } }] });
+        if (opts.xiaomiNative) {
+          sseChunk(res, {choices:[{delta:{reasoning_content:`MiMo exact round ${round} Ω`,content:`MiMo public round ${round}`,tool_calls:[{index:0,function:{arguments:''}}]}}]});
+        }
         await delay(toolCallDelay);
-        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify(opts.applicationTool ? {text: 'APPLICATION TOOL RESULT'} : { query: searchQuery }) } }] } }] });
+        const argumentsText=opts.nativeArgumentCase ? nativeToolArguments(opts,round,parsed.messages) : JSON.stringify(opts.applicationTool ? {text:'APPLICATION TOOL RESULT'} : {query:searchQuery});
+        sseChunk(res, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: argumentsText } }] } }] });
          await delay(toolCallDelay);
         sseChunk(res, { choices: [{ delta: {}, finish_reason: 'tool_calls' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
       } else {
+        if (opts.xiaomiNative) sseChunk(res,{choices:[{delta:{reasoning_content:'MiMo final reasoning Ω'}}]});
         sseChunk(res, { choices: [{ delta: { content: 'Based on the search, ' + (opts.chatText || 'here is the answer.') } }] });
         await delay(answerDelay);
         sseChunk(res, { choices: [{ delta: {}, finish_reason: 'stop' }], model: opts.responseModel || 'deepseek-v4-flash', usage });
@@ -337,6 +348,10 @@ function makeChatGptPlanResponsesHandler(parsed, opts) {
     const hasWeb = Array.isArray(parsed.tools) && parsed.tools.some((t) => t && t.type === 'web_search');
     const reasoning = opts.planReasoning || 'Comparing the requested information';
     let text = opts.planText || 'CHATGPT PLAN ANSWER';
+    if (opts.applicationTextProtocol) {
+      const messages = (parsed.input || []).filter(item => item.role).map(item => ({role:item.role,content:(item.content||[]).map(part=>part.text||'').join('')}));
+      text = applicationTextReply(parsed.instructions || '', messages)?.text || text;
+    }
     for (const entry of opts.planTextMap || []) {
       if (inputText.includes(entry.match)) { text = entry.text; break; }
     }
@@ -352,8 +367,9 @@ function makeChatGptPlanResponsesHandler(parsed, opts) {
         ev('response.reasoning_summary_text.delta', { type: 'response.reasoning_summary_text.delta', delta: reasoning });
         await delay(opts.planAfterReasoningDelay || step);
       }
-      if (opts.planApplicationTool && !hasToolOutput) {
-        const call = {type: 'function_call', id: 'fc-app-1', call_id: 'call-app-1', name: 'echo_text', arguments: JSON.stringify({text: 'APPLICATION TOOL RESULT'})};
+      const applicationRound=(parsed.input||[]).filter(item=>item.type==='function_call_output').length;
+      if (opts.planApplicationTool && (opts.nativeArgumentCase ? applicationRound<2 : !hasToolOutput) && (parsed.tools || []).some(tool => tool.name === 'echo_text')) {
+        const call = {type: 'function_call', id: 'fc-app-'+(applicationRound+1), call_id: 'call-app-'+(applicationRound+1), name: 'echo_text', arguments: opts.nativeArgumentCase ? nativeToolArguments(opts,applicationRound,parsed.input) : JSON.stringify({text:'APPLICATION TOOL RESULT'})};
         const output = [call];
         ev('response.output_item.done', {type: 'response.output_item.done', item: call, output_index: 0});
         ev('response.completed', {type: 'response.completed', response: {id: 'resp-app-tool', status: 'completed', output, usage: {input_tokens: 20, output_tokens: 8, total_tokens: 28}}});
@@ -432,6 +448,13 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       requestCount++;
+      if(opts.streamLifecycle && req.method==='POST' && (req.url.includes('/chat/completions')||req.url.includes('/responses'))){
+        lifecycleResponse(parsed,opts,req,res).catch(()=>{if(!res.writableEnded)res.end();});return;
+      }
+      if (opts.xiaomiNative && req.url.includes('/chat/completions')) {
+        const error = validateXiaomiRequest(parsed, req.headers.authorization);
+        if (error) { json({error:{message:error}},res,400); return; }
+      }
       if (req.url.includes('/chat/completions') && opts.toolRounds) {
         const key = JSON.stringify((parsed.messages || [])
           .filter((m) => m && m.role === 'user')
@@ -731,6 +754,13 @@ function startMockServer(mode = 'sse-success', logFile = '', opts = {}) {
         return;
       }
       if (mode === 'sse-success') {
+        if (opts.applicationTextProtocol) {
+          const instructions = (parsed.messages || []).filter(message => message.role === 'system').map(message => message.content).join('\n');
+          const reply = applicationTextReply(instructions, parsed.messages || []);
+          if (!reply) throw new Error('Expected text-protocol instructions in the HTTP request');
+          makeScriptedSseHandler([{type:'content',text:reply.text,delay:opts.chunkDelay||500}])(req,res);
+          return;
+        }
         makeSseHandler({ reasoning: true, content: 'yes', chunkDelay: opts.chunkDelay || 60, responseModel: opts.echoModel ? parsed.model : '' })(req, res);
         return;
       }

@@ -1,16 +1,17 @@
+#Include ApplicationHttpReplay.ahk
+
 ; Continue the same captured HTTP stream after generic client-side function calls.
 _ContinueApplicationHttpTools(stream) {
     _SaveStreamFromParams(stream)
-    calls := [], output := []
+    calls := stream.responseOutput.Clone(), nativeCalls := []
     for index, call in stream.toolCalls {
         normalized := Map("type", "function_call", "call_id", call.id, "name", call.name, "arguments", call.arguments)
         calls.Push(normalized)
-        _RecordApplicationToolActivity(stream, "Using " call.name "…")
-        output.Push(ApplicationChat.Tool(stream.threadId, normalized))
-        _RecordApplicationToolActivity(stream, "Finished " call.name ".")
+        nativeCalls.Push(normalized)
     }
+    _LogCompletedProviderToolRound(stream, calls)
+    output := ApplicationNativeTools.RunRound(stream.threadId, nativeCalls, (text) => _RecordApplicationToolActivity(stream, text))
     ApplicationChat.RecordOutput(stream.threadId, calls, output)
-    _LogCompletedProviderToolRound(stream)
     ; Only append this round's exchange; older rounds are already in the current request.
     appended := []
     for call in calls
@@ -29,8 +30,16 @@ _ContinueApplicationHttpTools(stream) {
     stream.pendingLine := ""
     stream.rawLastResponse := ""
     stream.toolCalls := Map()
+    stream.responseOutput := []
+    stream.httpCompleted := false
     command := FileRead(stream.cURLCommandFile, "UTF-8")
-    Run(command, , "Hide", &pid)
+    debugLog("[STREAM] Application HTTP continuation launching — thread=" stream.threadId)
+    try Run(command, , "Hide", &pid)
+    catch Error as e {
+        debugLog("[STREAM] Application HTTP continuation launch failed — thread=" stream.threadId " error=" e.Message, "ErrorHandler")
+        throw e
+    }
+    debugLog("[STREAM] Application HTTP continuation started — thread=" stream.threadId " pid=" pid)
     stream.pid := pid
     cURLState("set", pid)
     _LoadStreamIntoParams(stream)

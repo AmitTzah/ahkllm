@@ -77,8 +77,8 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
     }
 
     # --- Thinking metadata ---
-    function ThinkingFormat($p) { if ($p -eq "deepseek") { "deepseek" } elseif ($p -eq "google") { "google" } else { "openai" } }
-    function MaxTokensField($p) { if ($p -eq "openai") { "max_completion_tokens" } else { "max_tokens" } }
+    function ThinkingFormat($p) { if ($p -eq "xiaomi") { "xiaomi" } elseif ($p -eq "deepseek") { "deepseek" } elseif ($p -eq "google") { "google" } else { "openai" } }
+    function MaxTokensField($p) { if ($p -eq "openai" -or $p -eq "xiaomi") { "max_completion_tokens" } else { "max_tokens" } }
 
     function Get-EffortValues($ro, $modelId, $p, $correctionsMap, $familyFallback) {
         # Priority: corrections file > reasoning_options > family fallback
@@ -107,6 +107,7 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
     }
 
     function ThinkingLevelMap($vals, $prov) {
+        if ($prov -eq "xiaomi") { return 'Map("none", "disabled", "high", "enabled")' }
         if ($null -eq $vals -or $vals.Count -eq 0) { return "Map()" }
         $seen = @{}; $entries = @()
         foreach ($l in $vals) {
@@ -119,6 +120,7 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
     }
 
     function ThinkingOff($vals, $prov) {
+        if ($prov -eq "xiaomi") { return "disabled" }
         if ($null -eq $vals -or $vals.Count -eq 0) { return "" }
         if ($prov -eq "deepseek") { return "disabled" }
         if ($vals -contains "none") { return "none" }
@@ -238,11 +240,12 @@ $defaultSettingsPath = Join-Path $scriptDir "..\default-settings\DefaultSettings
             $to = ThinkingOff $evals $catalog
             $mtf = MaxTokensField $catalog
             $sre = if ($evals -and $evals.Count -gt 0) { "true" } else { "false" }
+            $toolNullCompat = if ($catalog -eq "xiaomi") { ', "nativeToolNulls", "omit"' } else { "" }
 
             $fid = "$p/$mid"
             $lines.Add('    "' + $fid + '", {')
             $lines.Add('        provider: "' + $p + '", api: "openai-completions",')
-            $lines.Add('        compat: Map("thinkingFormat", "' + $tf + '", "supportsReasoningEffort", ' + $sre + ', "supportsUsageInStreaming", true, "maxTokensField", "' + $mtf + '"),')
+            $lines.Add('        compat: Map("thinkingFormat", "' + $tf + '", "supportsReasoningEffort", ' + $sre + ', "supportsUsageInStreaming", true, "maxTokensField", "' + $mtf + '"' + $toolNullCompat + '),')
             $lines.Add('        thinkingLevelMap: ' + $tlm + ',')
             $lines.Add('        thinkingOff: "' + $to + '",')
             $lines.Add('        input: ' + $ic + ', cachedInput: ' + $cr + ', output: ' + $oc + ', context: ' + $cw + ', reasoning: ' + $hr + ', vision: ' + $hv)

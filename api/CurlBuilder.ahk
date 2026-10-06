@@ -12,6 +12,8 @@
 ; from business logic (request building, response parsing).
 ; ----------------------------------------------------
 
+#Include HttpStreamTimeouts.ahk
+
 class CurlBuilder {
 
     ; Build the cURL command for a non-streaming request.
@@ -37,12 +39,9 @@ class CurlBuilder {
         ; Apply the same empty-endpoint guard as Build.
         if !providerInfo.endpoint
             return ""
-        ; Streaming commands need an overall --max-time so
-        ; a stalled upstream that accepts the connection and then sends
-        ; nothing would otherwise hang the chat UI forever (the non-streaming
-        ; Build already had one).
+        ; Protect stalled transfers without cutting off active long responses.
         CurlBuilder._LogBuild("stream", providerInfo, providerInfo.endpoint, requestFile, outputFile)
-        return 'cURL.exe -s --no-buffer --connect-timeout 30 --max-time 120 -X POST '
+        return 'cURL.exe --silent --show-error --no-buffer --connect-timeout 30 ' HttpStreamTimeouts.Options() ' -X POST '
             . providerInfo.endpoint ' '
             . '-H "Authorization: Bearer ' CurlBuilder._SafeApiKey(providerInfo.apiKey) '" '
             . '-H "Content-Type: application/json" '

@@ -89,8 +89,10 @@ buildRequest(requestPath := "") {
     ; Build request object and apply overrides
     requestObj := _BuildRequestObj(apiMessages, providerInfo)
 
-    ApplicationChat.Prepare(activeThreadId, path, providerInfo, requestObj, applicationInput)
-    try return _WriteRequestFiles(requestObj, providerInfo)
+    try {
+        ApplicationChat.Prepare(activeThreadId, path, providerInfo, requestObj, applicationInput)
+        return _WriteRequestFiles(requestObj, providerInfo)
+    }
     catch Error as e {
         try ApplicationChat.Abort(activeThreadId)
         throw e
@@ -472,6 +474,11 @@ sendRequestToLLM(&chatHistoryJSONRequest, initialRequest := false) {
     if providerInfo.transport = "codex-cli" {
         ; One deliberate model action launches one local Codex CLI request.
         sendNonStreamingRequest(&chatHistoryJSONRequest)
+        return
+    }
+    if ApplicationChat.UsesTextProtocol(activeThreadId) {
+        ; HTTP text-protocol rounds are buffered until their envelope validates.
+        sendStreamingRequest(&chatHistoryJSONRequest, initialRequest)
         return
     }
     if providerInfo.transport = "chatgpt-responses" {

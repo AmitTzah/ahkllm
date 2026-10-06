@@ -72,6 +72,7 @@ class SettingsDefaults {
                 "modelsDevProvider", p.HasOwnProp("modelsDevProvider") ? p.modelsDevProvider : "",
                 "fimEndpoint", p.HasOwnProp("fimEndpoint") ? p.fimEndpoint : "",
                 "transport", p.HasOwnProp("transport") ? p.transport : "http",
+                "toolCallingMode", p.HasOwnProp("toolCallingMode") ? p.toolCallingMode : "native",
                 "billingMode", p.HasOwnProp("billingMode") ? p.billingMode : "api",
                 "modelCatalogSource", p.HasOwnProp("modelCatalogSource") ? p.modelCatalogSource : "",
                 "authMode", p.HasOwnProp("authMode") ? p.authMode : "env",

@@ -47,6 +47,7 @@ providers := Map(
     "codex", {
         displayName: "Codex CLI",
         transport: "codex-cli",
+        toolCallingMode: "text-protocol",
         billingMode: "chatgpt-subscription",
         endpoint: "",
         modelsDevProvider: "",
@@ -76,6 +77,16 @@ providers := Map(
         authEnvVar: "OPENROUTER_API_KEY",
         icon: "icons/openrouter.ico",
         collapseThinking: false
+    },
+    "xiaomi", {
+        displayName: "Xiaomi MiMo",
+        endpoint: "https://api.xiaomimimo.com/v1/chat/completions",
+        modelsDevProvider: "xiaomi",
+        fimEndpoint: "",
+        authEnvVar: "MIMO_API_KEY",
+        toolCallingMode: "native",
+        icon: "",
+        collapseThinking: true
     },
     "google", {
         displayName: "Google Gemini",
@@ -112,6 +123,7 @@ providers := Map(
 ;     (e.g. if OpenAI releases "nova-*" models -- add "nova"->"openai").
 
 providerMap := Map(
+    "mimo",     "xiaomi",
     "deepseek", "deepseek",
     "gpt",      "openai",
     "o1",       "openai",

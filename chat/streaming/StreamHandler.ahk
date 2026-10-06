@@ -9,7 +9,11 @@
 #Include StreamCompletion.ahk
 #Include ProviderRoundLogging.ahk
 #Include PublicStreamActivity.ahk
+#Include StreamingToolCallAssembler.ahk
+#Include HttpStreamCompletion.ahk
 #Include ..\applications\ApplicationHttpTools.ahk
+#Include ..\applications\ApplicationToolFailure.ahk
+#Include ..\applications\ApplicationTextTools.ahk
 #Include StreamError.ahk
 
 ; Every in-flight request owns its own stream record (output
@@ -241,6 +245,7 @@ _CompleteCodexNonStreamingRequest(asyncState, codexResult) {
     providerInfo := asyncState.providerInfo
     scope.params["_codexGeneratedAttachments"] := codexResult.HasOwnProp("generatedAttachments") ? codexResult.generatedAttachments : []
     scope.cancelled := codexResult.cancelled
+    scope.params["_codexReasoningSummary"] := codexResult.HasOwnProp("thoughtSummary") ? codexResult.thoughtSummary : ""
     CodexCliTransport._Trace(scope, "ahk.codex.execute.returned", "cancelled=" (scope.cancelled ? "true" : "false"))
     if codexResult.HasOwnProp("thoughtSummary") && codexResult.thoughtSummary != "" {
         _PostCodexActivity(scope, providerInfo, {
@@ -251,13 +256,20 @@ _CompleteCodexNonStreamingRequest(asyncState, codexResult) {
         })
         scope.params["_codexReasoningSummary"] := codexResult.thoughtSummary
     }
-    _RemoveNonStreamRequest(scope)
     if scope.cancelled {
+        _RemoveNonStreamRequest(scope)
+        try ApplicationChat.Abort(scope.threadId)
+        if activeThreadId = scope.threadId
+            try postApplicationState()
         _DeleteToolLoopFiles(scope)
         postWebMessage("streamCancelled", { threadId: scope.threadId })
         _MaybeEnableThreadComposer(scope.threadId, "", "", scope)
         return
     }
+    if codexResult.success && ApplicationTextTools.ContinueNonStream(scope, providerInfo, asyncState.requestStartTime,
+        _RunCodexNonStreamingRequest.Bind(scope, asyncState.chatHistoryJSONRequest, providerInfo, asyncState.requestStartTime))
+        return
+    _RemoveNonStreamRequest(scope)
     CodexCliTransport._Trace(scope, "ahk.codex.response-processing.begin")
     _ProcessNonStreamResponse(scope, asyncState.chatHistoryJSONRequest, providerInfo, asyncState.requestStartTime)
 }
@@ -265,6 +277,9 @@ _CompleteCodexNonStreamingRequest(asyncState, codexResult) {
 _FailCodexNonStreamingRequest(scope, e) {
     debugLog("Codex deferred request error: " e.Message "`n" e.Stack, "StreamHandler")
     _RemoveNonStreamRequest(scope)
+    try ApplicationChat.Abort(scope.threadId)
+    if activeThreadId = scope.threadId
+        try postApplicationState()
     _DeleteToolLoopFiles(scope)
     _PostChatError("Request failed: " e.Message, scope.threadId)
     _MaybeEnableThreadComposer(scope.threadId, "", "", scope)
@@ -421,6 +436,7 @@ _ProcessNonStreamResponse(scope, chatHistoryJSONRequest, providerInfo, requestSt
         ; stale tool-call runtime state from a completed/failed stream become
         ; this synthetic response's tool state.
         requestParams["_streamToolCalls"] := Map()
+        requestParams["_streamResponseOutput"] := []
         requestParams["_streamToolLoopCount"] := 0
         requestParams["_streamThreadId"] := scope.threadId
         requestParams["_streamParentId"] := scope.parentId
@@ -435,6 +451,10 @@ _ProcessNonStreamResponse(scope, chatHistoryJSONRequest, providerInfo, requestSt
             return
         }
         response := ResponseParser.ParseChatResponse(jsongo.Parse(raw))
+        if scope.params.Has("_applicationTextFinal") {
+            response.response := scope.params["_applicationTextFinal"].content
+            response.usage := scope.params["_applicationTextFinal"].usage
+        }
         CodexCliTransport._Trace(scope, "ahk.codex.synthetic-response.parsed", "chars=" StrLen(response.response))
         if response.toolCalls.Length {
             _handleNonStreamToolCalls(response.toolCalls, scope)
@@ -620,7 +640,7 @@ _RepostActiveStreamForThread(threadId) {
                     repost: true,
                     threadId: stream.threadId
                 })
-            if content != ""
+            if content != "" && !ApplicationChat.UsesTextProtocol(stream.threadId)
                 postWebMessage("streamContent", content)
         }
     }
@@ -683,6 +703,7 @@ _BuildStreamRecord(chatHistoryJSONRequest, providerInfo, cURLPID, displayName, s
         uiStreaming: !requestParams.Has("stream") || requestParams["stream"],
         responsesPayload: requestParams.Has("_chatgptResponsesPayload") ? requestParams["_chatgptResponsesPayload"] : "",
         responsesCompleted: false,
+        httpCompleted: false,
         responseOutput: [],
         responsesToolCalls: [],
         responsesToolRounds: 0,
@@ -753,6 +774,7 @@ _LoadStreamIntoParams(stream) {
     requestParams["_streamUiStreaming"]      := !stream.HasOwnProp("uiStreaming") || stream.uiStreaming
     requestParams["_streamResponsesPayload"] := stream.HasOwnProp("responsesPayload") ? stream.responsesPayload : ""
     requestParams["_streamResponsesCompleted"] := stream.HasOwnProp("responsesCompleted") && stream.responsesCompleted
+    requestParams["_streamHttpCompleted"] := stream.HasOwnProp("httpCompleted") && stream.httpCompleted
     requestParams["_streamResponseOutput"]   := stream.HasOwnProp("responseOutput") ? stream.responseOutput : []
     requestParams["_streamResponsesToolCalls"] := stream.HasOwnProp("responsesToolCalls") ? stream.responsesToolCalls : []
     requestParams["_streamResponsesToolRounds"] := stream.HasOwnProp("responsesToolRounds") ? stream.responsesToolRounds : 0
@@ -819,6 +841,7 @@ _SaveStreamFromParams(stream) {
     stream.firstTokenTime   := requestParams["_streamFirstTokenTime"]
     stream.usage            := requestParams["_streamUsage"]
     stream.responsesCompleted := requestParams.Has("_streamResponsesCompleted") && requestParams["_streamResponsesCompleted"]
+    stream.httpCompleted := requestParams.Get("_streamHttpCompleted", false)
     stream.responseOutput      := requestParams.Has("_streamResponseOutput") ? requestParams["_streamResponseOutput"] : []
     stream.responsesToolCalls  := requestParams.Has("_streamResponsesToolCalls") ? requestParams["_streamResponsesToolCalls"] : []
     stream.responsesToolRounds := requestParams.Has("_streamResponsesToolRounds") ? requestParams["_streamResponsesToolRounds"] : 0
@@ -1090,6 +1113,7 @@ _StreamStateFromParams() {
         providerKey: requestParams["_streamProviderKey"],
         transport: requestParams.Has("_streamTransport") ? requestParams["_streamTransport"] : "http",
         responsesCompleted: requestParams.Has("_streamResponsesCompleted") && requestParams["_streamResponsesCompleted"],
+        httpCompleted: requestParams.Get("_streamHttpCompleted", false),
         responseOutput: requestParams.Has("_streamResponseOutput") ? requestParams["_streamResponseOutput"] : [],
         responsesToolCalls: requestParams.Has("_streamResponsesToolCalls") ? requestParams["_streamResponsesToolCalls"] : [],
         responsesContentPrefix: requestParams.Has("_streamResponsesContentPrefix") ? requestParams["_streamResponsesContentPrefix"] : "",
@@ -1111,6 +1135,7 @@ _ParamsFromStreamState(state) {
     requestParams["_streamFirstTokenTime"] := state.firstTokenTime
     requestParams["_streamUsage"] := state.usage
     requestParams["_streamResponsesCompleted"] := state.HasOwnProp("responsesCompleted") && state.responsesCompleted
+    requestParams["_streamHttpCompleted"] := state.HasOwnProp("httpCompleted") && state.httpCompleted
     requestParams["_streamResponseOutput"] := state.HasOwnProp("responseOutput") ? state.responseOutput : []
     requestParams["_streamResponsesToolCalls"] := state.HasOwnProp("responsesToolCalls") ? state.responsesToolCalls : []
     requestParams["_streamResponsesContentPrefix"] := state.HasOwnProp("responsesContentPrefix") ? state.responsesContentPrefix : ""
@@ -1241,12 +1266,14 @@ _IsCompleteJsonEvent(line) {
 
 ; Apply a parsed SSE chunk to the stream state, posting to WebView if needed.
 _processChunk(state, chunk, doPostMessage) {
+    HttpStreamCompletion.Observe(state, chunk)
+    ApplicationHttpReplay.Accumulate(state, chunk)
     switch chunk.type {
         case "content":
             if (state.firstTokenTime = 0)
                 state.firstTokenTime := A_TickCount
             state.content .= chunk.content
-            if doPostMessage
+            if doPostMessage && !ApplicationChat.UsesTextProtocol(requestParams.Get("_streamThreadId", ""))
                 postWebMessage("streamContent", chunk.content)
             if chunk.HasOwnProp("model") && chunk.model
                 state.modelName := ModelParser.Sanitize(chunk.model)
@@ -1346,24 +1373,7 @@ _AccumulateResponsesUsage(current, round) {
 ; Merge streaming tool_calls delta fragments (OpenAI-compatible shape) into
 ; completed {id, name, arguments} entries keyed by the call index.
 _mergeToolCallDeltas(state, fragments) {
-    if !IsObject(state.toolCalls)
-        state.toolCalls := Map()
-    for f in fragments {
-        if !IsObject(f)
-            continue
-        idx := f.Has("index") ? f["index"] : 0
-        if !state.toolCalls.Has(idx)
-            state.toolCalls[idx] := { id: "", name: "", arguments: "" }
-        entry := state.toolCalls[idx]
-        if f.Has("id") && f["id"] != ""
-            entry.id := f["id"]
-        if f.Has("function") && IsObject(f["function"]) {
-            if f["function"].Has("name") && f["function"]["name"] != ""
-                entry.name := f["function"]["name"]
-            if f["function"].Has("arguments") && f["function"]["arguments"] != ""
-                entry.arguments .= f["function"]["arguments"]
-        }
-    }
+    StreamingToolCallAssembler.Merge(state, fragments)
 }
 
 _finalizeStreaming() {
@@ -1396,10 +1406,19 @@ _finalizeStreaming() {
         ; A mid-stream SSE error event is a real provider failure after partial output.
 
         ; ChatGPT-plan HTTP inference is successful only after response.completed.
+        if !(requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"])
+            requestParams["_streamErrorMessage"] := HttpStreamCompletion.ErrorFromParams(requestParams)
         if requestParams.Has("_streamTransport") && requestParams["_streamTransport"] = "chatgpt-responses"
             && !(requestParams.Has("_streamResponsesCompleted") && requestParams["_streamResponsesCompleted"])
             && !(requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"])
             requestParams["_streamErrorMessage"] := "The ChatGPT Responses stream ended without response.completed."
+        if ApplicationChat.active.Has(requestParams.Get("_streamThreadId", ""))
+            && requestParams["_streamContent"] = ""
+            && !requestParams["_streamToolCalls"].Count
+            && !requestParams.Get("_streamResponsesToolCalls", []).Length
+            && !requestParams.Get("_streamGeneratedAttachments", []).Length
+            && !(requestParams.Has("_streamErrorMessage") && requestParams["_streamErrorMessage"])
+            requestParams["_streamErrorMessage"] := "The model ended with reasoning only, without an answer or application tool call."
 
         ; A mid-stream SSE error event is a real provider failure after partial output.
         ; real provider failure AFTER partial tokens - surface the provider
@@ -1414,6 +1433,11 @@ _finalizeStreaming() {
             _FinishStreamFinalize()
             return
         }
+
+        if ApplicationChat.UsesTextProtocol(requestParams.Get("_streamThreadId", ""))
+            && !(requestParams.Has("_streamOutputAlreadyParsed") && requestParams["_streamOutputAlreadyParsed"])
+            && ApplicationTextTools.ContinueStream()
+            return
 
         if _NoContentAndNoToolCalls() {
             _clearToolLoopState()
@@ -1447,6 +1471,11 @@ _finalizeStreaming() {
         _FinishStreamFinalize()
     } catch Error as e {
         debugLog("_finalizeStreaming error: " e.Message "`n" e.Stack)
+        failedApplicationStream := _FindStreamByKey(_currentStreamKey)
+        if IsObject(failedApplicationStream) && ApplicationChat.active.Has(failedApplicationStream.threadId) {
+            _FailApplicationToolRound(failedApplicationStream, e.Message)
+            return
+        }
         _clearToolLoopState()
         ; The finishing stream is still registered here, so exclude it while
         ; checking all other streams, search loops, and non-stream requests.
@@ -1483,6 +1512,14 @@ _HandleChatGptResponsesToolCalls() {
 
     calls := requestParams["_streamResponsesToolCalls"]
     outputs := []
+    if ApplicationChat.active.Has(stream.threadId) {
+        nativeCalls := []
+        for call in calls
+            if call.Get("namespace", "") = ""
+                nativeCalls.Push(call)
+        _LogCompletedProviderToolRound(stream)
+        outputs := ApplicationNativeTools.RunRound(stream.threadId, nativeCalls, (text) => _RecordApplicationToolActivity(stream, text))
+    }
     for call in calls {
         if !IsObject(call)
             throw Error("ChatGPT returned an invalid function call.")
@@ -1492,9 +1529,6 @@ _HandleChatGptResponsesToolCalls() {
         if namespace = "" && ApplicationRepo.Session(stream.threadId) {
             if callId = ""
                 throw Error("Application tool call has no call_id.")
-            _RecordApplicationToolActivity(stream, "Using " name "…")
-            outputs.Push(ApplicationChat.Tool(stream.threadId, call))
-            _RecordApplicationToolActivity(stream, "Finished " name ".")
             continue
         }
         if namespace != "ahkllm" || name != "generate_image"
@@ -1503,6 +1537,10 @@ _HandleChatGptResponsesToolCalls() {
             throw Error("Image Generation is disabled for this chat.")
         if callId = ""
             throw Error("ChatGPT image function call did not include a call_id.")
+        if outputs.HasOwnProp("rejected") && outputs.rejected {
+            outputs.Push(ApplicationNativeTools.Feedback(call, "This batch was not executed because an application call had invalid arguments."))
+            continue
+        }
 
         argsText := call.Has("arguments") ? String(call["arguments"]) : ""
         try args := jsongo.Parse(argsText)
@@ -1542,7 +1580,8 @@ _HandleChatGptResponsesToolCalls() {
     }
 
     ApplicationChat.RecordOutput(stream.threadId, stream.responseOutput, outputs)
-    _LogCompletedProviderToolRound(stream)
+    if !ApplicationChat.active.Has(stream.threadId)
+        _LogCompletedProviderToolRound(stream)
     nextPayload := ChatGptResponsesTransport.BuildToolContinuation(stream.responsesPayload, stream.responseOutput, outputs)
     stream.wireRequestJSON := ChatGptResponsesTransport.WritePayload(stream.requestFile, nextPayload)
     stream.logEndpoint := ChatGptResponsesTransport.ResolveEndpoint()
@@ -1648,14 +1687,18 @@ _handleStreamToolCalls() {
         _BuildAndFireRequestForScope(loopState)
     } catch Error as e {
         debugLog("_handleStreamToolCalls error: " e.Message "`n" e.Stack)
+        if IsSet(stream) && IsObject(stream) && ApplicationChat.active.Has(stream.threadId) {
+            _FailApplicationToolRound(stream, e.Message)
+            return
+        }
         _failToolLoop("Web search failed: " e.Message, "", IsSet(loopState) ? loopState : "", IsSet(stream) ? stream : "")
     }
 }
 
 ; Surface a tool-loop failure, tear down this round's stream, and clear the
 ; staged loop state so the next normal send starts clean.
-_failToolLoop(message, contextText := "", loopState := "", stream := "") {
-    debugLog("[SEARCH] " message)
+_failToolLoop(message, contextText := "", loopState := "", stream := "", category := "SEARCH") {
+    debugLog("[" category "] " message)
     if IsObject(loopState) && loopState.placeholderId = "" && loopState.placeholderQuery != "" && loopState.threadId && loopState.parentId {
         loopState.placeholderId := ChatDB.Msg_Insert({
             thread_id: loopState.threadId,
@@ -1750,6 +1793,8 @@ _FinishStreamFinalize() {
 }
 
 _cleanupStreamState() {
+    if requestParams.Has("_streamHttpCompleted")
+        requestParams.Delete("_streamHttpCompleted")
     if requestParams.Has("_streamThreadId")
         try ApplicationChat.Abort(requestParams["_streamThreadId"])
     ; Map.Delete throws "Item has no value" for a missing key, so guard every
@@ -1855,6 +1900,12 @@ _cleanupStreamState() {
 ; finalizes the partial before setChatButtonsEnabled(true) resets the
 ; composer.
 _handleMidStreamError() {
+    interruptedStream := _FindStreamByKey(_currentStreamKey)
+    if IsObject(interruptedStream) && ApplicationChat.active.Has(interruptedStream.threadId) {
+        _SaveStreamFromParams(interruptedStream)
+        try ApplicationChat.Abort(interruptedStream.threadId)
+        _LoadStreamIntoParams(interruptedStream)
+    }
     ; A failed retry is a transactional UI/DB operation: do not turn a
     ; provider error's partial text into a new active branch. The normal
     ; non-retry path keeps its existing partial-response behavior.

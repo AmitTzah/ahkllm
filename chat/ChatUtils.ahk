@@ -44,6 +44,7 @@ _RequestParamsAreDefault() {
 postWebMessage(target, data := unset, reqId := "") {
     global responseWindow
     global activeThreadId
+    global requestParams
     if !IsSet(responseWindow) || !responseWindow {
         return
     }
@@ -54,6 +55,25 @@ postWebMessage(target, data := unset, reqId := "") {
     if target = "setChatButtonsEnabled" && IsSet(data) && !IsObject(data) {
         ownerThreadId := IsSet(activeThreadId) ? activeThreadId : ""
         data := { enabled: data ? true : false, threadId: ownerThreadId }
+    }
+
+    ; Browser delivery is asynchronous: an unscoped chunk queued in A can
+    ; arrive after the UI switches to B and incorrectly start B's spinner.
+    if (target = "streamContent" || target = "streamReasoning") && IsSet(data) {
+        owner := IsSet(requestParams) && requestParams is Map && requestParams.Has("_streamThreadId")
+            ? requestParams["_streamThreadId"] : (IsSet(activeThreadId) ? activeThreadId : "")
+        if target = "streamContent" && !IsObject(data)
+            data := {text: data, threadId: owner}
+        else if IsObject(data) {
+            if data is Map {
+                data := data.Clone()
+                if !data.Has("threadId")
+                    data["threadId"] := owner
+            } else if !data.HasOwnProp("threadId") {
+                data := data.Clone()
+                data.threadId := owner
+            }
+        }
     }
 
     msgObj := { target: target }

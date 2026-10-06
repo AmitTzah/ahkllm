@@ -7,6 +7,9 @@
 ; ======================================================
 
 #Include ImagePayloadSerializer.ahk
+#Include HttpStreamTimeouts.ahk
+#Include ..\chat\applications\ApplicationWire.ahk
+#Include ..\chat\applications\ApplicationWire.ahk
 
 class ChatGptResponsesTransport {
     static DEFAULT_RESPONSES_ENDPOINT := "https://api.openai.com/v1/responses"
@@ -54,7 +57,7 @@ class ChatGptResponsesTransport {
 
         payload := Map(
             "model", requestObj.Has("model") ? requestObj["model"] : "",
-            "input", requestObj.Has("external_input") ? requestObj["external_input"] : input,
+            "input", requestObj.Has("external_input") ? ApplicationWire.ResponsesInput(requestObj["external_input"]) : input,
             "store", false,
             "stream", true,
             "parallel_tool_calls", false
@@ -509,7 +512,8 @@ class ChatGptResponsesTransport {
             "header = " q "Accept: text/event-stream" q,
             "data-binary = " q "@" ChatGptResponsesTransport._CurlEscape(path) q,
             "connect-timeout = 30",
-            "max-time = 600"
+            "speed-limit = 1",
+            "speed-time = " HttpStreamTimeouts.IdleSeconds()
         ]
         return CodexCliRuntime.Join(lines, Chr(10)) Chr(10)
     }

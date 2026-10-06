@@ -194,22 +194,15 @@ function formatCompact(n) {
 }
 
 // Token usage bar
+var _tokenUsageByThread = Object.create(null);
 function showTokenUsageBar() {
   var bar = document.getElementById('tokenBar');
   if (!bar) return;
 
-  // Always show zeros — updated by postThreadStats when data is available
-  updateTokenUsage({
-    activePathTokens: 0,
-    contextWindow: 0,
-    cumulativePromptTokens: 0,
-    cumulativeCompletionTokens: 0,
-    cumulativeCachedTokens: 0,
-    cumulativeCost: 0,
-    cumulativeInputCost: 0,
-    cumulativeCachedInputCost: 0,
-    cumulativeOutputCost: 0
-  });
+  // Reloading the same chat during generation must retain its last stats.
+  // A new thread gets its own empty state until the host posts its stats.
+  var threadId = typeof activeThreadId === 'string' ? activeThreadId : '';
+  updateTokenUsage(_tokenUsageByThread[threadId] || {});
 }
 
 function updateTokenUsage(data) {
@@ -219,6 +212,8 @@ function updateTokenUsage(data) {
   // Stats carry their owning thread id so completions cannot repaint another thread.
   // thread A must not repaint thread B's header while B is the active thread.
   if (data && data.threadId && activeThreadId && data.threadId !== activeThreadId) return;
+  var threadId = (data && data.threadId) || (typeof activeThreadId === 'string' ? activeThreadId : '');
+  _tokenUsageByThread[threadId] = Object.assign({}, data);
 
   var cu = data.activePathTokens || 0;
   var cw = data.contextWindow || 0;

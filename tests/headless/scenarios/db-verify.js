@@ -326,8 +326,10 @@ scenarios.push({
     if (window.indexOf("#Include ChatUtils.ahk") > window.indexOf("#Include ChatRequestBuilder.ahk"))
       throw new Error("ChatUtils must load before ChatRequestBuilder so _PostChatError is resolved before #Warn parses its calls");
     if (!ipc.includes('chatWindow.Show(headless ? "x-20000 y-20000 NA" : (activate ? "" : "NA"))') ||
-        !ipc.includes('headless := wParam = 2') || !ipc.includes('if activate') || !ipc.includes('WinActivate("ahk_id " chatWindow.hWnd)'))
-      throw new Error("IPC thread loads must make activation explicit (non-activating background loads, activating user commands)");
+        !ipc.includes('headless := wParam = 2 || EnvGet("AHKLLM_E2E_WORKER") != ""') ||
+        !ipc.includes('activate := wParam = 1 && !headless') ||
+        !ipc.includes('if activate') || !ipc.includes('WinActivate("ahk_id " chatWindow.hWnd)'))
+      throw new Error("IPC thread loads must make activation explicit and force marked E2E workers off-screen/non-activating");
     if (!dispatch.includes("#Include Message.ahk")) throw new Error("Message callback include missing");
     return "_RequestParamsAreDefault is defined once in ChatUtils, loaded before Dispatch/Message, so the first-send call cannot resolve as an unassigned local and show the blocking #Warn modal";
   }

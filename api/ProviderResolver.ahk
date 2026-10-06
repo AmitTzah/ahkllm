@@ -30,6 +30,7 @@ class ProviderResolver {
             endpoint: p.endpoint,
             fimEndpoint: p.HasOwnProp("fimEndpoint") ? p.fimEndpoint : "",
             transport: p.HasOwnProp("transport") && p.transport != "" ? p.transport : "http",
+            toolCallingMode: p.HasOwnProp("toolCallingMode") && p.toolCallingMode != "" ? p.toolCallingMode : "native",
             authMode: p.HasOwnProp("authMode") ? p.authMode : "env",
             billingMode: p.HasOwnProp("billingMode") ? p.billingMode : "api"
         }

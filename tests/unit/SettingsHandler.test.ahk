@@ -3,6 +3,21 @@
 ; ======================================================
 
 class SettingsHandlerTest {
+    Merge_DefaultModelsDoNotReferenceAbsentProviders() {
+        defaults := Map("providers", Map("deepseek", Map(), "xiaomi", Map()), "models", Map("deepseek/model", Map("provider", "deepseek"), "xiaomi/mimo", Map("provider", "xiaomi")))
+        defaults["models"]["xiaomi/mimo-pro"] := Map("provider", "xiaomi")
+        defaults["models"]["xiaomi/mimo-ultraspeed"] := Map("provider", "xiaomi")
+        existing := Map("providers", Map("deepseek", Map()))
+        merged := SettingsMerge.Merge(existing, defaults)
+        if merged["models"].Count != 1 || !merged["models"].Has("deepseek/model")
+            throw Error("New default models must not reference an absent provider")
+        if !defaults["models"].Has("xiaomi/mimo")
+            throw Error("Profile merge mutated the shared defaults")
+        existing["models"] := Map("xiaomi/mimo", Map("provider", "xiaomi"))
+        merged := SettingsMerge.Merge(existing, defaults)
+        if !merged["models"].Has("xiaomi/mimo")
+            throw Error("Explicit saved model choices must not be silently removed")
+    }
 
     static __New() {
         RegisterTestClass("SettingsHandlerTest")
@@ -248,6 +263,13 @@ class SettingsHandlerTest {
             providers := oldProviders
             providerMap := oldMap
         }
+    }
+
+    GetDefaults_PreservesProviderToolCallingMode() {
+        defaults := SettingsHandler.GetDefaults()
+        if defaults["providers"]["codex"]["toolCallingMode"] != "text-protocol"
+            || defaults["providers"]["chatgpt"]["toolCallingMode"] != "native"
+            throw Error("Provider defaults lost their independent application tool modes")
     }
 
     ; New custom-model rows may intentionally leave prices blank in the UI.

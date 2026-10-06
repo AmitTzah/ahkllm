@@ -170,14 +170,12 @@ llmClient := LLMRequestBuilder(APIKey)
 ; Handle inline dashboard IPC from Main.ahk
 OnMessage(CustomMessages.WM_SHOW_DASHBOARD, (*) => (
     postWebMessage("showDashboard"),
-    chatWindow.Show(),
-    WinActivate("ahk_id " chatWindow.hWnd)
+    showChatWindow(false)
 ))
 ; Handle Settings-panel IPC from Main.ahk
 OnMessage(CustomMessages.WM_SHOW_SETTINGS, (*) => (
     postWebMessage("showSettings"),
-    chatWindow.Show(),
-    WinActivate("ahk_id " chatWindow.hWnd)
+    showChatWindow(false)
 ))
 OnMessage(CustomMessages.WM_BACKUP_STATUS, _OnBackupStatus)
 
@@ -215,7 +213,7 @@ _OnBackupStatus(*) {
 responseWindow.Load("..\webui\index.html")
 _OpenImportedApplicationChat(threadId) {
     LoadThreadIntoUI(threadId, false)
-    showChatWindow(false, EnvGet("AHKLLM_E2E_WORKER") = "")
+    showChatWindow(false)
 }
 ApplicationSessionReceiver.Register(_OpenImportedApplicationChat)
 
@@ -224,9 +222,21 @@ ApplicationSessionReceiver.Register(_OpenImportedApplicationChat)
 ; ----------------------------------------------------
 
 showChatWindow(initialRequest := true, activate := true) {
-    if initialRequest {
+    headless := EnvGet("AHKLLM_E2E_WORKER") != ""
+    if headless {
+        ; E2E keeps WebView2 rendered, but the host window must never touch the
+        ; interactive desktop or take foreground focus. Preserve any viewport
+        ; size a scenario deliberately set after the initial show.
+        activate := false
+        if initialRequest {
+            d := _ChatWindowDims()
+            chatWindow.Show(Format("x-20000 y-20000 w{} h{} NA", d.w, d.h), "Chat")
+        } else {
+            chatWindow.Show("x-20000 y-20000 NA")
+        }
+    } else if initialRequest {
         _SetChatWindowSize()
-        options := _WindowPosStr() (activate ? "" : " NA")
+        options := _WindowPosStr() . (activate ? "" : " NA")
         chatWindow.Show(options, "Chat")
     } else {
         chatWindow.Show(activate ? "" : "NA")
@@ -286,6 +296,7 @@ _SetChatWindowSize() {
     d := _ChatWindowDims()
     WinMove(d.x, d.y, d.w, d.h, "ahk_id " chatWindow.hWnd)
 }
+
 
 ; Return a position string "xX yY wW hH" for the default chat window layout.
 _WindowPosStr() {

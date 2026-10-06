@@ -3,6 +3,45 @@
 ; ======================================================
 
 class CodexCliTransportTest {
+    FailureEvents_PreferTerminalDetailAndKeepExitCode() {
+        prefix := A_Temp "\codex-failure-test-" A_TickCount
+        errorFile := prefix "-stderr.txt", eventsFile := prefix "-events.jsonl"
+        try {
+            FileOpen(errorFile, "w", "UTF-8-RAW").Write("Reading prompt from stdin...`n")
+            events := '{"type":"error","message":"Reconnecting"}`nnot JSON`n{"type":"turn.failed","error":{"message":"Context exceeded: quoted \"detail\"\nsecond line"}}'
+            events := StrReplace(events, "``n", "`n")
+            FileOpen(eventsFile, "w", "UTF-8-RAW").Write(events)
+            CodexCliTransport._NormalizeErrorFile(errorFile, 9, eventsFile)
+            detail := FileRead(errorFile, "UTF-8")
+            if !InStr(detail, "code 9") || !InStr(detail, 'Context exceeded: quoted "detail"') || !InStr(detail, "second line")
+                throw Error("Structured Codex failure and exit code were lost: " detail)
+            if InStr(detail, "Reading prompt") || InStr(detail, "Reconnecting")
+                throw Error("Startup/retry notices displaced the terminal failure")
+        } finally {
+            for file in [errorFile, eventsFile]
+                if FileExist(file)
+                    FileDelete(file)
+        }
+    }
+
+    FailureEvents_BannerOnlyGivesUsefulFallback() {
+        file := A_Temp "\codex-banner-test-" A_TickCount ".txt"
+        try {
+            FileOpen(file, "w", "UTF-8-RAW").Write("Reading prompt from stdin...`n")
+            CodexCliTransport._NormalizeErrorFile(file, 3)
+            message := FileRead(file, "UTF-8")
+            if !InStr(message, "code 3") || !InStr(message, "No failure detail") || InStr(message, "Reading prompt")
+                throw Error("Banner-only failure was not explained")
+            FileOpen(file, "w", "UTF-8-RAW").Write("HTTP 429: quota exhausted")
+            CodexCliTransport._NormalizeErrorFile(file, 1)
+            if !InStr(FileRead(file), "quota exhausted") || !InStr(FileRead(file), "allowance resets")
+                throw Error("Failure normalization must preserve the original detail alongside guidance")
+        } finally {
+            if FileExist(file)
+                FileDelete(file)
+        }
+    }
+
     static __New() {
         RegisterTestClass("CodexCliTransportTest")
     }

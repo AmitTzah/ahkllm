@@ -3,7 +3,8 @@ class ChatGptResponseLog {
     static Normalize(raw, status := "success", fallbackText := "", fallbackOutput := "") {
         if Type(raw) != "String" || !InStr(raw, '"response.')
             return raw
-        if !InStr(raw, "data: ") {
+        ; Embedded SSE diagnostic text inside a JSON string is not an SSE log.
+        if !RegExMatch(raw, "m)^\s*data: ") {
             try parsed := jsongo.Parse(raw)
             catch
                 return raw

@@ -130,6 +130,7 @@ class CodexCliRuntime {
             'set "AZURE_OPENAI_API_KEY="',
             'set "CODEX_API_KEY="',
             'set "DEEPSEEK_API_KEY="',
+            'set "MIMO_API_KEY="',
             'set "GOOGLE_API_KEY="',
             'set "OPENROUTER_API_KEY="',
             'set "TAVILY_API_KEY="'
@@ -156,6 +157,7 @@ class CodexCliRuntime {
             'set "AZURE_OPENAI_API_KEY="',
             'set "CODEX_API_KEY="',
             'set "DEEPSEEK_API_KEY="',
+            'set "MIMO_API_KEY="',
             'set "GOOGLE_API_KEY="',
             'set "OPENROUTER_API_KEY="',
             'set "TAVILY_API_KEY="'

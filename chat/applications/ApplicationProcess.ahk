@@ -1,4 +1,6 @@
 ; UTF-8 JSON-lines subprocess transport. No shell, persistent daemon, or credentials.
+#Include ApplicationArgumentJson.ahk
+
 class ApplicationProcess {
     static Quote(value) {
         ; Windows CommandLineToArgvW quoting, including trailing backslashes.
@@ -29,7 +31,7 @@ class ApplicationProcess {
         DirCreate(directory)
         inputPath := directory "\input.jsonl", outputPath := directory "\output.jsonl", errorPath := directory "\error.txt"
         requestId := ChatDB._UUID()
-        FileOpen(inputPath, "w", "UTF-8-RAW").Write(jsongo.Stringify(Map("jsonrpc", "2.0", "id", requestId, "method", method, "params", params)) "`n")
+        FileOpen(inputPath, "w", "UTF-8-RAW").Write(ApplicationArgumentJson.Serialize(Map("jsonrpc", "2.0", "id", requestId, "method", method, "params", params)) "`n")
         command := ""
         for arg in profile["command"]
             command .= (command = "" ? "" : " ") this.Quote(arg)

@@ -103,7 +103,13 @@ describe('ipc-contract validate', () => {
   });
 
   it('flags wrong scalar payload types', () => {
-    const problems = contract.validate('streamContent', { text: 'x' }, 'ahk->web');
+    const problems = contract.validate('loadThread', { threadId: 'x' }, 'ahk->web');
     assert.ok(problems.some((p) => p.indexOf('payload should be string') >= 0));
+  });
+
+  it('requires an owning thread for streamed content', () => {
+    assert.deepEqual(contract.validate('streamContent',{text:'x',threadId:'t1'},'ahk->web'),[]);
+    assert.ok(contract.validate('streamContent',{text:'x'},'ahk->web').some(problem=>problem.includes('missing required field "threadId"')));
+    assert.ok(contract.validate('streamContent','unscoped','ahk->web').some(problem=>problem.includes('payload should be an object')));
   });
 });

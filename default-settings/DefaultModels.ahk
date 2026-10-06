@@ -5,7 +5,30 @@
 ; applied from scripts\models-corrections.json). Do not edit by hand -- use
 ; Models settings -> Fetch Latest Models or run scripts\Refresh-Models.ps1.
 ; ============================================================================
-models := Map(    ; -- DeepSeek --
+models := Map(
+    ; -- Xiaomi MiMo (models.dev: xiaomi) --
+    "xiaomi/mimo-v2.6-flash", {
+        provider: "xiaomi", api: "openai-completions",
+        compat: Map("thinkingFormat", "xiaomi", "supportsReasoningEffort", false, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens", "nativeToolNulls", "omit"),
+        thinkingLevelMap: Map("none", "disabled", "high", "enabled"),
+        thinkingOff: "disabled",
+        input: 0.14, cachedInput: 0.0028, output: 0.28, context: 1048576, reasoning: true, vision: true
+    },
+    "xiaomi/mimo-v2.6-pro", {
+        provider: "xiaomi", api: "openai-completions",
+        compat: Map("thinkingFormat", "xiaomi", "supportsReasoningEffort", false, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens", "nativeToolNulls", "omit"),
+        thinkingLevelMap: Map("none", "disabled", "high", "enabled"),
+        thinkingOff: "disabled",
+        input: 0.435, cachedInput: 0.0036, output: 0.87, context: 1048576, reasoning: true, vision: true
+    },
+    "xiaomi/mimo-v2.6-pro-ultraspeed", {
+        provider: "xiaomi", api: "openai-completions",
+        compat: Map("thinkingFormat", "xiaomi", "supportsReasoningEffort", false, "supportsUsageInStreaming", true, "maxTokensField", "max_completion_tokens", "nativeToolNulls", "omit"),
+        thinkingLevelMap: Map("none", "disabled", "high", "enabled"),
+        thinkingOff: "disabled",
+        input: 4.35, cachedInput: 0.036, output: 8.7, context: 1048576, reasoning: true, vision: true
+    },
+    ; -- DeepSeek --
     "deepseek/deepseek-v4-flash", {
         provider: "deepseek", api: "openai-completions",
         compat: Map("thinkingFormat", "deepseek", "supportsReasoningEffort", true, "supportsUsageInStreaming", true, "maxTokensField", "max_tokens"),

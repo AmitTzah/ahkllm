@@ -114,6 +114,34 @@ function loadSection(opts) {
 }
 
 describe('Providers settings section', () => {
+    it('offers a preconfigured native Xiaomi provider without replacing saved providers', () => {
+        const grid = makeEl('div'), button = makeEl('button');
+        grid.querySelectorAll = () => [];
+        const ctx = loadSection({grid,els:{addXiaomiProviderBtn:button}});
+        ctx.fireDomReady();
+        button.fire('click');
+        assert.ok(grid.children.some(card=>card.innerHTML.includes('https://api.xiaomimimo.com/v1/chat/completions') && card.innerHTML.includes('MIMO_API_KEY')));
+        assert.ok(grid.children.some(card=>card.innerHTML.includes('value="native" selected')));
+        assert.ok(ctx.dirtyCalls.length > 0);
+    });
+    it('renders and saves text mode for any provider without changing transport identity', () => {
+        const grid = makeEl('div');
+        grid.querySelectorAll = () => [];
+        let ctx = loadSection({grid,selectorMap:{}});
+        ctx.module.load({providers:{custom:{displayName:'Custom',toolCallingMode:'text-protocol'}}});
+        assert.ok(grid.children[0].innerHTML.includes('value="text-protocol" selected'));
+        const providerId = makeEl('input',{value:'custom'});
+        providerId.dataset.field='providerId';
+        const mode = makeEl('select',{value:'text-protocol'});
+        mode.dataset.field='toolCallingMode';
+        const card = wireQueries(makeEl('div'),{
+            '[data-field="providerId"]':[providerId], '[data-field]':[providerId,mode], '.prefix-tags .badge':[]
+        });
+        ctx=loadSection({docSelectorMap:{'#providerGrid .provider-card':[card]}});
+        const saved=ctx.module.save().providers.custom;
+        assert.equal(saved.toolCallingMode,'text-protocol');
+        assert.equal(saved.transport,'http');
+    });
     it('renders provider cards in sorted order and escapes display names', () => {
         const grid = makeEl('div');
         grid.querySelectorAll = () => [];

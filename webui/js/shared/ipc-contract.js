@@ -37,7 +37,7 @@
     'initChatMode': { dir: 'ahk->web', fields: ['messages', 'threadId'], required: ['messages', 'threadId'] },
     'appendChatMessage': { dir: 'ahk->web', data: 'object' },
     'updateChatMessage': { dir: 'ahk->web', data: 'object' },
-    'streamContent': { dir: 'ahk->web', data: 'string' },
+    'streamContent': { dir: 'ahk->web', fields: ['text', 'threadId'], required: ['text', 'threadId'] },
     'streamReasoning': { dir: 'ahk->web', data: 'object' },
     'streamModelName': { dir: 'ahk->web', fields: ['name', 'provider', 'threadId'], required: ['name'] },
     'streamDone': { dir: 'ahk->web', fields: ['model', 'displayName', 'provider', 'dbMsg', 'userTokenCount', 'threadId'], required: ['model'] },

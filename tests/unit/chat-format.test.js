@@ -423,6 +423,31 @@ describe('downloadCodeBlock', () => {
 });
 
 describe('updateTokenUsage with data', () => {
+    it('retains prior values on same-thread reload and keeps thread caches separate', () => {
+        const bar = {innerHTML: ''};
+        const previousGet = ctx.document.getElementById;
+        const previousThread = ctx.activeThreadId;
+        ctx.document.getElementById = id => id === 'tokenBar' ? bar : null;
+        try {
+            ctx.activeThreadId = 'usage-retention-A';
+            ctx.updateTokenUsage({threadId:ctx.activeThreadId,activePathTokens:5000,cumulativeInputTokens:12000,cumulativeOutputTokens:3000,cumulativeCachedTokens:4000,cumulativeCost:0.25});
+            const prior = bar.innerHTML;
+            ctx.showTokenUsageBar();
+            assert.equal(bar.innerHTML,prior,'showing the bar reset previous stats');
+            ctx.activeThreadId = 'usage-retention-B';
+            ctx.showTokenUsageBar();
+            assert.ok(!bar.innerHTML.includes('$0.25'),'new thread inherited another chat stats');
+            ctx.updateTokenUsage({threadId:ctx.activeThreadId,activePathTokens:77,cumulativeInputTokens:200});
+            ctx.activeThreadId = 'usage-retention-A';
+            ctx.showTokenUsageBar();
+            assert.equal(bar.innerHTML,prior,'returning to the streaming chat lost its previous values');
+            ctx.updateTokenUsage({threadId:ctx.activeThreadId,activePathTokens:0,cumulativeInputTokens:0});
+            assert.notEqual(bar.innerHTML,prior,'an authoritative zero must still replace old stats');
+        } finally {
+            ctx.document.getElementById = previousGet;
+            ctx.activeThreadId = previousThread;
+        }
+    });
     it('populates tokenBar innerHTML with token stats', () => {
         let barHTML = '';
         const bar = {

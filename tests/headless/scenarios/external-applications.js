@@ -4,8 +4,8 @@ const path = require('node:path');
 const os = require('node:os');
 const assert = require('node:assert/strict');
 const {CDP} = require('../cdp');
-const {spawnSync} = require('node:child_process');
 const launcher = require('../launch');
+const {launchApplicationPackage} = require('../application-launcher');
 const seed = require('../seed');
 const {showChat, runProbe, sleep, sendChatMessage, waitStreamingIdle} = require('./helpers');
 
@@ -30,10 +30,7 @@ const scenario = {
     const packagePath = path.join(dataDir, 'application-package.json');
     fs.writeFileSync(packagePath, JSON.stringify({protocol: 'ahkllm.external-applications', version: 1, request_id: 'example-366', application_id: 'example', title: 'Connected example (author title)', instructions: 'Use the supplied application tools.', message: 'Visible prepared task', initial_input: 'EXACT PRELOADED APPLICATION CONTEXT\n'+ 'canonical text '.repeat(12000), state: {checkpoint: 0}, await_first_message: !!this.composeFirst}));
     const info = runProbe('chat-info');
-    const result = spawnSync(launcher.AHK, ['/ErrorStdOut', path.join(launcher.REPO_ROOT, 'app/ExternalSessionLauncher.ahk'), '--open', packagePath, '--target-window', String(info.hwnd)], {
-      encoding: 'utf8', timeout: 35000, windowsHide: true,
-      env: {...process.env, AHKLLM_E2E_WORKER: process.env.AHKLLM_E2E_WORKER || 'external-test', AHKLLM_E2E_DATA_DIR: dataDir}
-    });
+    const result = await launchApplicationPackage(packagePath,dataDir,info.hwnd);
     if (result.status !== 0) throw new Error('Application launch failed: ' + result.stderr + result.stdout);
     const row = seed.query(dbPath, "SELECT thread_id FROM application_sessions WHERE request_id='example-366'")[0];
     if (!row) throw new Error('Application chat was not persisted');

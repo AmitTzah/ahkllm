@@ -463,7 +463,7 @@ function createThinkingBlock(collapsed, kind) {
 function handleStreamMessage(target, data) {
   switch (target) {
     case 'streamContent':
-      onStreamContent(typeof data === 'string' ? data : (data && data.text ? data.text : data), data && data.threadId);
+      onStreamContent(typeof data === 'string' ? data : (data && typeof data.text === 'string' ? data.text : ''), data && data.threadId);
       break;
     case 'streamReasoning':
       onStreamReasoning(data, data && data.threadId);

@@ -107,6 +107,14 @@ _e2eWorkerArg() {
     return worker != "" ? ' "--e2e-worker=' worker '"' : ""
 }
 
+_showE2EChatWindow(hwnd) {
+    ; Keep the WebView render host visible to Windows/WebView2 without ever
+    ; placing it on the user's desktop or taking foreground focus.
+    DllCall("user32.dll\SetWindowPos", "ptr", hwnd, "ptr", 1,
+        "int", -20000, "int", -20000, "int", 0, "int", 0, "uint", 0x0051)
+    DllCall("user32.dll\ShowWindow", "ptr", hwnd, "int", 4) ; SW_SHOWNOACTIVATE
+}
+
 ; Spawn ChatWindow hidden on startup — it initializes WebView2 and then hides itself
 ; The "prewarm" arg tells ChatWindow to stay hidden after init
 ; Resolve Main's own script window, not an arbitrary AutoHotkey v2
@@ -180,6 +188,9 @@ _followChatOpeningTooltip(*) {
 
 openChatWindow(threadId := "", activate := true) {
     global chatWindowPID, chatWindowhWnd
+    headless := EnvGet("AHKLLM_E2E_WORKER") != ""
+    if headless
+        activate := false
 
     if IsSet(chatWindowhWnd) && chatWindowhWnd && WinExist("ahk_id " chatWindowhWnd) {
         if threadId {
@@ -188,6 +199,8 @@ openChatWindow(threadId := "", activate := true) {
             ; new thread state, so the previous chat cannot flash first.
             WinHide("ahk_id " chatWindowhWnd)
             CustomMessages.notifyLoadThread(threadId, chatWindowhWnd, activate)
+        } else if headless {
+            _showE2EChatWindow(chatWindowhWnd)
         } else {
             WinShow("ahk_id " chatWindowhWnd)
             WinActivate("ahk_id " chatWindowhWnd)
