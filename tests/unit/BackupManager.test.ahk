@@ -25,6 +25,17 @@ class BackupManagerTestDouble extends BackupManager {
     }
 }
 
+class BackupNoChangeTestDouble extends BackupManager {
+    _CaptureConsistentData(stage) {
+    }
+
+    _CompressStage(stage, tmpPath) {
+        FileAppend("candidate", tmpPath)
+    }
+
+    _ArchivesEquivalent(existingPath, candidatePath) => true
+}
+
 class BackupCaptureTestDouble extends BackupManager {
     __New() {
         super.__New()
@@ -202,6 +213,47 @@ class BackupManagerTest {
                 throw Error("failed replacement must leave the previous backup recoverable")
             if FileRead(finalPath) != "known good"
                 throw Error("failed replacement corrupted the previous backup")
+        } finally {
+            try DirDelete(folder, true)
+        }
+    }
+
+    UnchangedBackupDoesNotReplaceExistingArchive() {
+        folder := A_Temp "\\backup-equivalent-" A_TickCount "-" Random(1000, 999999)
+        DirCreate(folder)
+        finalPath := folder "\\" BackupManager.FinalName
+        try {
+            FileAppend("known good", finalPath)
+            manager := BackupNoChangeTestDouble()
+            manager._folder := folder
+            manager._CreateAndPublishBackup()
+            if FileRead(finalPath) != "known good"
+                throw Error("unchanged backup must retain original archive")
+            if FileExist(folder "\\" BackupManager.TempName)
+                throw Error("unchanged backup must remove the candidate archive")
+            if FileExist(folder "\\" BackupManager.OldName)
+                throw Error("unchanged backup must not create an old archive")
+        } finally {
+            try DirDelete(folder, true)
+        }
+    }
+
+    SuccessfulReplacementDoesNotCreateOldZip() {
+        folder := A_Temp "\\backup-atomic-" A_TickCount "-" Random(1000, 999999)
+        DirCreate(folder)
+        finalPath := folder "\\" BackupManager.FinalName
+        tmpPath := folder "\\" BackupManager.TempName
+        oldPath := folder "\\" BackupManager.OldName
+        try {
+            FileAppend("previous", finalPath)
+            FileAppend("replacement", tmpPath)
+            manager := BackupManager()
+            manager._folder := folder
+            manager._PublishTemp(tmpPath)
+            if FileRead(finalPath) != "replacement"
+                throw Error("new archive was not published")
+            if FileExist(tmpPath) || FileExist(oldPath)
+                throw Error("successful replacement must not leave temp/old archives")
         } finally {
             try DirDelete(folder, true)
         }

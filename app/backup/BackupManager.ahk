@@ -185,9 +185,11 @@ class BackupManager {
 
     _CreateAndPublishBackup() {
         stage := A_Temp "\AhkLLM_Backup_" A_TickCount "_" Random(1000, 999999)
+        ; Build and compare outside the synchronized destination. Otherwise
+        ; even an unchanged backup creates/deletes a Drive-visible temp ZIP.
+        candidatePath := stage ".zip"
         tmpPath := this._folder "\" BackupManager.TempName
         try {
-            this._PrepareTemp(tmpPath)
             DirCreate(stage)
             ; The DB and the files it references must be captured as one
             ; short, coordinated operation. Compression happens afterwards.
@@ -205,9 +207,17 @@ class BackupManager {
             if DirExist(systemMessagesPath)
                 DirCopy(systemMessagesPath, stage "\system-messages", true)
 
-            this._CompressStage(stage, tmpPath)
+            this._CompressStage(stage, candidatePath)
+            finalPath := this._folder "\" BackupManager.FinalName
+            if FileExist(finalPath) && this._ArchivesEquivalent(finalPath, candidatePath)
+                return
+            ; Only changed archives are copied into the destination for
+            ; same-volume atomic replacement.
+            this._PrepareTemp(tmpPath)
+            FileCopy(candidatePath, tmpPath)
             this._PublishTemp(tmpPath)
         } finally {
+            try FileDelete(candidatePath)
             try DirDelete(stage, true)
         }
     }
@@ -367,6 +377,30 @@ class BackupManager {
             throw Error("ZIP creation failed")
     }
 
+    _ArchivesEquivalent(existingPath, candidatePath) {
+        ; Compare uncompressed entry names and content, ignoring ZIP timestamps.
+        ; A comparison failure conservatively triggers a normal replacement.
+        ps := "$ErrorActionPreference='Stop'; "
+        ps .= "Add-Type -AssemblyName System.IO.Compression; "
+        ps .= "Add-Type -AssemblyName System.IO.Compression.FileSystem; "
+        ps .= "$a=[IO.Compression.ZipFile]::OpenRead(" this._PsQuote(existingPath) "); "
+        ps .= "$b=[IO.Compression.ZipFile]::OpenRead(" this._PsQuote(candidatePath) "); "
+        ps .= "try { "
+        ps .= "$aa=@($a.Entries | Where-Object { $_.Name } | Sort-Object FullName); "
+        ps .= "$bb=@($b.Entries | Where-Object { $_.Name } | Sort-Object FullName); "
+        ps .= "if($aa.Count -ne $bb.Count){exit 1}; "
+        ps .= "$sha=[Security.Cryptography.SHA256]::Create(); "
+        ps .= "try { for($i=0;$i -lt $aa.Count;$i++){ "
+        ps .= "if($aa[$i].FullName -cne $bb[$i].FullName -or $aa[$i].Length -ne $bb[$i].Length){exit 1}; "
+        ps .= "$x=$aa[$i].Open(); try{$h1=[Convert]::ToBase64String($sha.ComputeHash($x))}finally{$x.Dispose()}; "
+        ps .= "$y=$bb[$i].Open(); try{$h2=[Convert]::ToBase64String($sha.ComputeHash($y))}finally{$y.Dispose()}; "
+        ps .= "if($h1 -cne $h2){exit 1} "
+        ps .= "}; exit 0 } finally {$sha.Dispose()} "
+        ps .= "} finally {$a.Dispose();$b.Dispose()}"
+        command := "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"" ps "`""
+        return RunWait(command, , "Hide") = 0
+    }
+
     _PublishTemp(tmpPath) {
         finalPath := this._folder "\" BackupManager.FinalName
         oldPath := this._folder "\" BackupManager.OldName
@@ -380,27 +414,17 @@ class BackupManager {
                 FileDelete(oldPath)
         }
 
-        try {
-            hadPrevious := FileExist(finalPath)
-            if hadPrevious {
-                FileMove(finalPath, oldPath, 1)
-                if FileExist(finalPath)
-                    throw Error("could not stage the previous backup")
-            }
-            FileMove(tmpPath, finalPath, 1)
-            if FileExist(tmpPath) || !FileExist(finalPath)
-                throw Error("could not publish the new backup")
-        } catch Error as e {
-            ; Restore the known-good artifact if replacement failed. If the
-            ; restore itself fails, the .old.zip remains available for manual
-            ; recovery and is never treated as the current backup.
-            if !FileExist(finalPath) && FileExist(oldPath) {
-                try FileMove(oldPath, finalPath, 1)
-            }
-            throw e
+        if FileExist(finalPath) {
+            ; Replace without renaming/deleting a separate .old.zip. Windows
+            ; preserves the previous destination if replacement fails.
+            if !DllCall("Kernel32\ReplaceFileW", "str", finalPath,
+                "str", tmpPath, "ptr", 0, "uint", 0, "ptr", 0, "ptr", 0, "int")
+                throw Error("could not replace existing backup (Windows error " A_LastError ")")
+        } else {
+            FileMove(tmpPath, finalPath)
         }
-        if FileExist(oldPath)
-            FileDelete(oldPath)
+        if FileExist(tmpPath) || !FileExist(finalPath)
+            throw Error("could not publish the new backup")
     }
 
     _PrepareTemp(tmpPath) {
