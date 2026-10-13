@@ -116,6 +116,42 @@ class ChatGptModelCatalogTest {
             throw Error("Failure of every source must not be reported as a successful refresh")
     }
 
+    Refresh_CodexCatalogUsesCliAndPreservesPartialResults() {
+        providerData := Map("codex", Map("transport", "codex-cli"))
+        catalog := _ParseCodexModelCatalog([Map("model", "gpt-6.1-sol", "displayName", "GPT-6.1 Sol",
+            "supportedReasoningEfforts", [Map("reasoningEffort", "low"), Map("reasoningEffort", "max"), Map("reasoningEffort", "ultra")],
+            "inputModalities", ["text", "image"])])
+        fail := (*) => this._ThrowRefreshFailure()
+        result := _RefreshConfiguredModelCatalogs(Map("providers", providerData), fail, fail, () => catalog)
+        if result.models.Length != 1 || result.sources[1] != "Codex CLI" || result.warnings.Length
+            throw Error("Codex-only discovery must skip HTTP catalogs")
+        metadata := result.models[1].meta
+        if result.models[1].id != "codex/gpt-6.1-sol" || metadata["api"] != "codex-cli"
+            throw Error("Discovered Codex models must keep their CLI routing")
+        if !metadata["vision"] || !metadata["thinkingLevelMap"].Has("max") || metadata["thinkingOff"] != "low"
+            throw Error("Codex capabilities must come from the CLI catalog")
+        if metadata["thinkingLevelMap"].Has("ultra")
+            throw Error("Efforts requiring unsupported CLI capabilities must not be offered")
+        providerData["openai"] := Map("transport", "http")
+        result := _RefreshConfiguredModelCatalogs(Map("providers", providerData),
+            (*) => [{ id: "openai/kept", meta: Map("provider", "openai") }], fail, fail)
+        if result.models.Length != 1 || !InStr(result.warnings[1], "Codex CLI:")
+            throw Error("Codex failures must preserve other providers and explain the failure")
+    }
+
+    CodexCatalog_FiltersHiddenAndRejectsInvalidEntries() {
+        if _ParseCodexModelCatalog([Map("hidden", true)]).Length
+            throw Error("Hidden Codex models must not be offered")
+        for catalog in [[Map("model", "../bad")], [Map("model", "same"), Map("model", "same")]] {
+            threw := false
+            try _ParseCodexModelCatalog(catalog)
+            catch
+                threw := true
+            if !threw
+                throw Error("Malformed Codex catalogs must be rejected")
+        }
+    }
+
     _ThrowRefreshFailure() {
         throw Error("Fixture refresh failed")
     }

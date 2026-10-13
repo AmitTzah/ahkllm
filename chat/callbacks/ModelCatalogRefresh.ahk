@@ -26,11 +26,13 @@ _HandleRefreshModelPricing(parsed) {
         postWebMessage("modelPricingRefresh", { success: false, error: e.Message })
 }
 
-_RefreshConfiguredModelCatalogs(parsed, fetchMetadata := "", refreshPlanCatalog := "") {
+_RefreshConfiguredModelCatalogs(parsed, fetchMetadata := "", refreshPlanCatalog := "", fetchCodexCatalog := "") {
     if !IsObject(fetchMetadata)
         fetchMetadata := _FetchModelsDevMetadata
     if !IsObject(refreshPlanCatalog)
         refreshPlanCatalog := _HandleRefreshChatGptModels
+    if !IsObject(fetchCodexCatalog)
+        fetchCodexCatalog := _FetchCodexModelCatalog
     providerData := parsed.Get("providers", "")
     liveCatalogs := IsObject(providerData)
     config := liveCatalogs ? _BuildModelsDevCatalogConfig(providerData) : ""
@@ -53,8 +55,72 @@ _RefreshConfiguredModelCatalogs(parsed, fetchMetadata := "", refreshPlanCatalog 
         } catch Error as e
             result.warnings.Push("ChatGPT: " e.Message)
     }
+    if !liveCatalogs || providerData.Has("codex") {
+        try {
+            for model in fetchCodexCatalog.Call()
+                result.models.Push(model)
+            result.sources.Push("Codex CLI")
+        } catch Error as e
+            result.warnings.Push("Codex CLI: " e.Message)
+    }
     if !result.sources.Length
         throw Error(result.warnings.Length ? CodexCliRuntime.Join(result.warnings, " ") : "No providers configured for model refresh")
+    return result
+}
+
+_FetchCodexModelCatalog() {
+    outputPath := A_Temp "\ahkllm-codex-models-" DllCall("GetCurrentProcessId") "-" A_TickCount ".json"
+    scriptPath := A_ScriptDir "\..\scripts\Get-CodexModels.ps1"
+    try {
+        exitCode := RunWait('powershell -NoProfile -ExecutionPolicy Bypass -File "' scriptPath '" -OutputPath "' outputPath '"', A_ScriptDir, "Hide")
+        if exitCode != 0 || !FileExist(outputPath)
+            throw Error("Could not discover models. Check that Codex CLI is installed and run codex login.")
+        return _ParseCodexModelCatalog(jsongo.Parse(FileRead(outputPath, "UTF-8")))
+    } finally {
+        if FileExist(outputPath)
+            FileDelete(outputPath)
+    }
+}
+
+_ParseCodexModelCatalog(catalog) {
+    if !(catalog is Array)
+        throw Error("Codex model catalog must be an array.")
+    result := [], seen := Map()
+    for item in catalog {
+        if item.Get("hidden", false)
+            continue
+        slug := item.Get("model", "")
+        if !RegExMatch(slug, "^[A-Za-z0-9][A-Za-z0-9._:-]*$") || seen.Has(slug)
+            throw Error("Codex returned an invalid or duplicate model ID.")
+        seen[slug] := true
+        efforts := Map()
+        for option in item.Get("supportedReasoningEfforts", []) {
+            ; New CLI efforts may require capabilities the text transport disables
+            ; (for example ultra requires delegation). Offer only supported values.
+            effort := option.Get("reasoningEffort", "")
+            try CodexCliRuntime.ValidateReasoning(effort)
+            catch
+                continue
+            if effort != ""
+                efforts[effort] := effort
+        }
+        thinkingOff := item.Get("defaultReasoningEffort", "")
+        for effort in ["none", "minimal", "low", "medium", "high", "xhigh", "max"] {
+            if efforts.Has(effort) {
+                thinkingOff := effort
+                break
+            }
+        }
+        modalities := item.Get("inputModalities", ["text", "image"])
+        vision := false
+        for modality in modalities
+            vision := vision || modality = "image"
+        metadata := Map("provider", "codex", "api", "codex-cli", "displayName", item.Get("displayName", slug),
+            "input", 0, "cachedInput", 0, "output", 0, "context", 0, "vision", vision, "reasoning", efforts.Count > 0,
+            "thinkingLevelMap", efforts, "thinkingOff", thinkingOff,
+            "compat", Map("thinkingFormat", "codex-cli", "supportsReasoningEffort", efforts.Count > 0, "supportsUsageInStreaming", false, "maxTokensField", ""))
+        result.Push({ id: "codex/" slug, meta: metadata })
+    }
     return result
 }
 

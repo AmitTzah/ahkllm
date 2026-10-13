@@ -9,7 +9,7 @@ AhkLLM's built-in `chatgpt` provider uses **Sign in with ChatGPT** and OpenAI's 
 3. Open **Settings -> Providers -> Codex CLI** and click **Check Codex CLI**.
 4. Select a `codex/...` model. If Codex is not on PATH, set `CODEX_CLI_PATH` before launching AhkLLM.
 
-Codex has its own provider card and curated model catalog. ChatGPT account refresh changes only `chatgpt/...` models and preserves Codex models.
+Codex has its own provider card and curated fallback model catalog. **Settings -> Models -> Fetch Latest Models** also queries the installed Codex CLI's `model/list` catalog. Select **+ Add** beside a discovered `codex/...` model, save the dialog, then save Settings. Discovery uses Codex's existing login, starts no inference turn, and keeps model names, supported reasoning efforts, and image capabilities from the CLI. The catalog may be cached or bundled by Codex; update the CLI if a newly released model is absent. Failed Codex discovery displays a warning while keeping other providers' results and existing models. ChatGPT account refresh changes only `chatgpt/...` models and preserves Codex models.
 
 Codex CLI defaults to **Text protocol** under **Connected application tools** in its
 provider card. Connected applications can therefore use their advertised, scoped
