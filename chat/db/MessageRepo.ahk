@@ -32,7 +32,8 @@ class MessageRepo {
         existing_sum := 0
         if !isLocalCopy && msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") && msgObj.prompt_tokens > 0 {
             attributionPath := msgObj.HasProp("token_attribution_path") ? msgObj.token_attribution_path : ""
-            new_input := MessageRepo._BackfillUserTokens(msgObj.thread_id, msgObj.prompt_tokens, &existing_sum, attributionPath)
+            contextPromptTokens := msgObj.HasProp("context_prompt_tokens") ? msgObj.context_prompt_tokens : msgObj.prompt_tokens
+            new_input := MessageRepo._BackfillUserTokens(msgObj.thread_id, contextPromptTokens, &existing_sum, attributionPath)
         }
 
         ; active_path_tokens: total context tokens from root to this message.
@@ -41,6 +42,7 @@ class MessageRepo {
         ; This column is read by GetThreadStats() for the UI token bar ("Context Used").
         activePathTokens := tc
         if msgObj.HasProp("active_path_tokens") && msgObj.active_path_tokens != "" {
+            ; Completed multi-round turns supply their terminal context snapshot.
             ; Local copies carry the source message's context total verbatim.
             activePathTokens := Integer(msgObj.active_path_tokens)
         } else if msgObj.role = "assistant" && msgObj.HasProp("prompt_tokens") {

@@ -194,6 +194,38 @@ class StreamHandlerTest {
     ; _persistStreamResponse â€” captured thread (bug #159)
     ; --------------------
 
+    PersistStreamResponse_SeparatesToolRoundContextFromAccounting() {
+        global activeThreadId, requestParams
+        this._setupDb()
+        threadId := ChatDB.Thread_Create("Tool round context regression")
+        userId := ChatDB.Msg_Insert({thread_id: threadId, role: "user", content: "Edit story files"})
+        activeThreadId := threadId
+        requestParams["_streamParentId"] := userId
+        usage := {}
+        inputs := [78743, 104316, 108192, 111129, 115715, 116273, 118433, 118959]
+        outputs := [105, 187, 1951, 109, 362, 82, 371, 217]
+        try {
+            for index, input in inputs
+                usage := _AccumulateResponsesUsage(usage, {promptTokens: input, completionTokens: outputs[index], thinkingTokens: 0, cachedTokens: 0, totalTokens: input + outputs[index]})
+            _persistStreamResponse("Locked down across four files", "deepseek/deepseek-v4-flash", "", usage, 500, 100, threadId)
+            stats := ChatDB.Msg_GetThreadStats(threadId)
+            if stats.activePathTokens != 119176
+                throw Error("Context display must show 119176, not 875144: " stats.activePathTokens)
+            if stats.cumulativeInputTokens != 871760 || stats.cumulativeOutputTokens != 3384
+                throw Error("Cumulative usage must continue to count every provider call")
+            user := ChatDB.db.Query("SELECT token_count FROM messages WHERE id=?;", userId)
+            if Integer(user[1, "token_count"]) != 118959
+                throw Error("User context attribution must not use cumulative input usage")
+            ledger := ChatDB.db.Query("SELECT prompt_tokens, completion_tokens FROM chat_usage WHERE model=?;", "deepseek/deepseek-v4-flash")
+            if Integer(ledger[1, "prompt_tokens"]) != 871760 || Integer(ledger[1, "completion_tokens"]) != 3384
+                throw Error("Daily usage accounting must retain all tool rounds")
+        } finally {
+            activeThreadId := ""
+            requestParams.Delete("_streamParentId")
+            this._teardownDb()
+        }
+    }
+
     PersistStreamResponse_UsesCapturedThread() {
         global activeThreadId, requestParams
         this._setupDb()

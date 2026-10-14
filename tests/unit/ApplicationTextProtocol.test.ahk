@@ -1,6 +1,31 @@
 class ApplicationTextProtocolTest {
     static __New() => RegisterTestClass("ApplicationTextProtocolTest")
 
+    FinalUsage_KeepsRoundContextSeparateFromCumulativeUsage() {
+        threadId := "context-usage-regression"
+        usage := {}
+        inputs := [78743, 104316, 108192, 111129, 115715, 116273, 118433]
+        outputs := [105, 187, 1951, 109, 362, 82, 371]
+        for index, input in inputs
+            usage := _AccumulateResponsesUsage(usage, {promptTokens: input, completionTokens: outputs[index], thinkingTokens: 0, cachedTokens: 0, totalTokens: input + outputs[index]})
+        ApplicationChat.active[threadId] := Map("tools", [], "usage", usage, "rounds", 7)
+        try {
+            reply := ApplicationTextTools.Advance(threadId,
+                ApplicationTextProtocol.Envelope(Map("kind", "final", "content", "Done")),
+                {promptTokens: 118959, completionTokens: 217, thinkingTokens: 0, cachedTokens: 0, totalTokens: 119176},
+                (*) => "", () => false)
+            if reply.usage.promptTokens != 871760 || reply.usage.completionTokens != 3384
+                throw Error("Tool rounds must retain exact cumulative accounting usage")
+            if reply.usage.contextPromptTokens != 118959 || reply.usage.contextTokens != 119176
+                throw Error("Context must use the terminal request, not 875144 cumulative tokens")
+            nested := _AccumulateResponsesUsage({}, reply.usage)
+            if nested.contextPromptTokens != 118959 || nested.contextTokens != 119176
+                throw Error("Nested transport accumulation must preserve the terminal context snapshot")
+        } finally {
+            ApplicationChat.active.Delete(threadId)
+        }
+    }
+
     _tools() => [Map("name", "echo_text", "parameters", Map("type", "object", "properties", Map("text", Map("type", "string")), "required", ["text"], "additionalProperties", false))]
 
     Parse_ValidCallsAndFinalAnswers() {

@@ -1367,6 +1367,12 @@ _AccumulateResponsesUsage(current, round) {
         added := IsObject(round) && round.HasOwnProp(field) ? round.%field% : 0
         result.%field% := existing + added
     }
+    ; Usage totals are a ledger; context is the most recent provider request.
+    ; Preserve snapshots when a transport has already accumulated inner rounds.
+    result.contextPromptTokens := round.HasOwnProp("contextPromptTokens") ? round.contextPromptTokens
+        : (round.HasOwnProp("promptTokens") ? round.promptTokens : 0)
+    result.contextTokens := round.HasOwnProp("contextTokens") ? round.contextTokens
+        : result.contextPromptTokens + (round.HasOwnProp("completionTokens") ? round.completionTokens : 0)
     return result
 }
 

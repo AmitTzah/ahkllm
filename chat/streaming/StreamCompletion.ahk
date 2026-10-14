@@ -282,6 +282,8 @@ _persistStreamResponse(content, modelName, reasoning, usage, responseTimeMs := 0
         parent_id: parentId, sibling_group: retrySiblingGroup, sibling_index: retrySiblingIdx,
         reasoning: reasoning,
         prompt_tokens: promptTokens,
+        context_prompt_tokens: usage.HasProp("contextPromptTokens") ? usage.contextPromptTokens : promptTokens,
+        active_path_tokens: usage.HasProp("contextTokens") ? usage.contextTokens : promptTokens + completionTokens,
         token_count: Max(0, completionTokens - thinkingTokens),
         thinking_tokens: thinkingTokens,
         cached_tokens: usage.HasProp("cachedTokens") ? usage.cachedTokens : 0,
